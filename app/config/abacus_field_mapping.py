@@ -29,6 +29,7 @@ Data Type Conversions:
 """
 
 import json
+import logging
 from datetime import date, datetime
 from typing import Any, Callable, Dict, List, Optional
 
@@ -746,13 +747,17 @@ def apply_field_mapping(
             value = mapping_rule.transform(value)
         except Exception as e:
             # Log transformation error but don't fail
-            print(f"Transformation error for {mapping_rule.abacus_field}: {e}")
+            logging.getLogger(__name__).warning(
+                "Transformation error for %s: %s", mapping_rule.abacus_field, e
+            )
             return None
 
     # Validate if validation function defined
     if value is not None and mapping_rule.validation:
         if not mapping_rule.validation(value):
-            print(f"Validation failed for {mapping_rule.abacus_field}: {value}")
+            logging.getLogger(__name__).warning(
+                "Validation failed for %s: %s", mapping_rule.abacus_field, value
+            )
             return None
 
     return value

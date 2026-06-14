@@ -329,9 +329,12 @@ def _register_vendors(app, csrf):
     # BPM-002: Tier 3 legacy fallback removed. USE_VENDORS_GUARDRAILS=True (Tier 1) is the
     # only active path. All 12 vendor blueprint families are registered via vendors v2 module.
     # vendor_analysis_bp, vendor_mdm_bp, options_analysis_bp are covered by v2/unified_vendor_api.
-    app.logger.warning(
-        "[BLUEPRINT] vendors Tier 1/2 both failed — no vendor blueprints registered. "
-        "Check USE_VENDORS_GUARDRAILS and app.modules.vendors.v2."
+    # Neither feature flag is enabled: the v2 (guardrail) vendor module is not mounted.
+    # Vendor routes are still served by the always-on unified vendor blueprints, so this
+    # is the expected default — not a failure. Set USE_VENDORS_GUARDRAILS=true to opt into v2.
+    app.logger.info(
+        "[BLUEPRINT] Vendors v2 (guardrail) module not enabled; vendor routes served by "
+        "the unified vendor blueprints. Set USE_VENDORS_GUARDRAILS=true to use v2."
     )
 
 

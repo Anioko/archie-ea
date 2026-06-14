@@ -33,11 +33,11 @@ def init_navigation(app: Flask) -> None:
     """
     
     # Step 1: Register all sections
-    print("[Navigation] Registering sections...")
+    app.logger.debug("[Navigation] Registering sections...")
     register_all_sections()
-    
+
     # Step 2: Validate registry on startup
-    print("[Navigation] Validating registry...")
+    app.logger.debug("[Navigation] Validating registry...")
     if not validate_on_startup():
         # IMPORTANT: Fail loudly in development, warn in production
         if app.debug:

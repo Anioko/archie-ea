@@ -67,7 +67,6 @@ def api_get_application_details(id):
 
     Optimized: Uses batch query helper to reduce N + 1 query pattern from 21+ queries to ~6.
     """
-    print(f"DEBUG: api_get_application_details called with id={id}")
     app_obj = ApplicationComponent.query.get_or_404(id)
 
     # Use batch helper for domain-specific model counts (reduces 21 queries to ~6)
@@ -614,10 +613,6 @@ def api_get_architecture_documents(id):
     """Get all architecture documents for an application."""
     from ..models.miscellaneous import ArchitectureDocument
 
-    print(f"DEBUG: Get documents called with id={id}")
-    print(f"DEBUG: Current user: {current_user}")
-    print(f"DEBUG: Is authenticated: {current_user.is_authenticated}")
-
     app_obj = ApplicationComponent.query.get_or_404(id)
     documents = (
         ArchitectureDocument.query.filter_by(application_id=id)
@@ -625,17 +620,11 @@ def api_get_architecture_documents(id):
         .all()
     )
 
-    print(f"DEBUG: Found {len(documents)} documents")
-
     try:
         result = {"documents": [doc.to_dict() for doc in documents]}
-        print(f"DEBUG: Returning {len(result['documents'])} documents")
         return jsonify(result)
-    except Exception as e:
-        print(f"DEBUG: Error in get documents: {str(e)}")
-        import traceback
-
-        print(f"DEBUG: Traceback: {traceback.format_exc()}")
+    except Exception:
+        current_app.logger.exception("Error serializing architecture documents")
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -652,28 +641,18 @@ def api_upload_architecture_document(id):
 
     from ..models.miscellaneous import ArchitectureDocument
 
-    print(f"DEBUG: Upload document called with id={id}")
-    print(f"DEBUG: Current user: {current_user}")
-    print(f"DEBUG: Is authenticated: {current_user.is_authenticated}")
-    print(f"DEBUG: Request files: {list(request.files.keys())}")
-    print(f"DEBUG: Request form: {dict(request.form)}")
-
     app_obj = ApplicationComponent.query.get_or_404(id)
 
     if "file" not in request.files:
-        print("DEBUG: No file in request")
         return jsonify({"error": "No file provided"}), 400
 
     file = request.files["file"]
     if file.filename == "":
-        print("DEBUG: Empty filename")
         return jsonify({"error": "No file selected"}), 400
 
     mime_type = file.content_type
-    print(f"DEBUG: File MIME type: {mime_type}")
 
     if mime_type not in ArchitectureDocument.ALLOWED_MIME_TYPES:
-        print(f"DEBUG: MIME type not allowed: {mime_type}")
         return jsonify({"error": f"File type {mime_type} not allowed"}), 400
 
     try:
@@ -689,8 +668,6 @@ def api_upload_architecture_document(id):
         file.save(file_path)
         file_size = os.path.getsize(file_path)
 
-        print(f"DEBUG: File saved to: {file_path}")
-
         doc = ArchitectureDocument(
             application_id=id,
             filename=filename,
@@ -705,17 +682,12 @@ def api_upload_architecture_document(id):
         db.session.add(doc)
         db.session.commit()
 
-        print(f"DEBUG: Document created with ID: {doc.id}")
-
         result = doc.to_dict()
-        print(f"DEBUG: to_dict result: {result}")
         return jsonify(result), 201
 
-    except Exception as e:
-        print(f"DEBUG: Exception in upload: {str(e)}")
-        print(f"DEBUG: Traceback: {traceback.format_exc()}")
+    except Exception:
         db.session.rollback()
-        current_app.logger.error(f"Error uploading document: {e}")
+        current_app.logger.exception("Error uploading architecture document")
         return jsonify({"error": "An internal error occurred"}), 500
 
 
