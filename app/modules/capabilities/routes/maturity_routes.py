@@ -346,6 +346,7 @@ def get_capability_api(capability_id):
         """
         _api_params = {"capability_id": capability_id}
 
+        result = db.session.execute(text(_api_query), _api_params)
         capability = result.fetchone()
 
         if not capability:
