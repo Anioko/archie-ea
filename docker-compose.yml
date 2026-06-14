@@ -3,6 +3,10 @@ services:
   server:
     build:
       context: .
+    # Create the schema (idempotent, non-destructive) before starting the web server.
+    # Without this, `docker compose up` boots gunicorn against an empty database and
+    # every request fails with "relation does not exist".
+    command: sh -c "flask --app manage init-db && gunicorn -c gunicorn.conf.py manage:app"
     ports:
       - '5000:5000'
     volumes:
