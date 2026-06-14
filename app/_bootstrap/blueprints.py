@@ -32,6 +32,22 @@ def init_blueprints(app):
     """Register every blueprint / module on *app*."""
     from app.extensions import csrf
 
+    # v2 is the canonical architecture: the shipped templates link to v2 endpoints
+    # (e.g. solution_design.*, capability_map.*, admin.* org/SSO/webhook pages).
+    # Each module is tiered behind a USE_*_GUARDRAILS flag that historically defaulted
+    # OFF, so a fresh install fell back to legacy blueprints and ~66 sidebar/template
+    # url_for() calls raised BuildError (500s). Production runs these ON; default them
+    # ON here too so a clean clone works. Opt back to legacy with the matching =false.
+    for _gf in (
+        "USE_ACCOUNT_GUARDRAILS", "USE_ADMIN_GUARDRAILS", "USE_VENDORS_GUARDRAILS",
+        "USE_IMPORT_BATCH_GUARDRAILS", "USE_SOLUTIONS_STRATEGIC_GUARDRAILS",
+        "USE_ARCHITECTURE_GUARDRAILS", "USE_APPLICATIONS_GUARDRAILS",
+        "USE_CAPABILITIES_GUARDRAILS", "USE_AI_CHAT_GUARDRAILS",
+        "USE_DUPLICATE_DETECTION_GUARDRAILS", "USE_GOVERNANCE_GUARDRAILS",
+        "USE_DASHBOARD_GUARDRAILS",
+    ):
+        os.environ.setdefault(_gf, "true")
+
     # --- Core blueprints (always registered) ---
     _register_main(app)
     _register_account(app)
@@ -912,11 +928,9 @@ def _register_capabilities(app, csrf):
 
 def _register_dashboard(app):
     # --- Tier 1: v2 (guardrail-enabled, new architecture) ---
-    # Default ON: v2 is the canonical dashboard — only it registers the
-    # health_scorecard route that admin_sidebar.html links to. The legacy tiers
-    # lack it, so a default install would 500 admin pages on the sidebar link.
-    # Set USE_DASHBOARD_GUARDRAILS=false to fall back to the legacy dashboard.
-    if os.environ.get("USE_DASHBOARD_GUARDRAILS", "true").lower() == "true":
+    # USE_DASHBOARD_GUARDRAILS defaults ON via init_blueprints (v2 is canonical:
+    # only it registers the health_scorecard route admin_sidebar.html links to).
+    if _is_flag("USE_DASHBOARD_GUARDRAILS"):
         try:
             from app.modules.dashboard.v2 import register as _reg_v2
 
