@@ -2,7 +2,7 @@ from flask import current_app
 from flask_login import AnonymousUserMixin, UserMixin
 from itsdangerous import BadSignature, SignatureExpired
 from itsdangerous import URLSafeTimedSerializer as Serializer
-from sqlalchemy import func
+from sqlalchemy import event, func, select
 from sqlalchemy.orm import validates
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -372,3 +372,32 @@ def load_user(user_id):
         # Database schema may not be initialized yet (tests/early startup).
         # Fail gracefully by returning None rather than raising.
         return None
+
+
+@event.listens_for(User, "before_insert")
+def _assign_default_organization(mapper, connection, target):
+    """Guarantee every user has an organization (users.organization_id is NOT NULL).
+
+    The email register, SSO and SAML flows all create a User without setting an
+    organization, which on a fresh install (no org rows yet) violated the NOT NULL
+    constraint and 500'd the very first sign-up. Assign the shared 'default'
+    organization, creating it on first use. An explicitly-set organization_id
+    (e.g. create_admin.py, invited users) is left untouched.
+    """
+    if target.organization_id is not None:
+        return
+    from app.models.organization import Organization
+
+    orgs = Organization.__table__
+    row = connection.execute(
+        select(orgs.c.id).where(orgs.c.slug == "default").limit(1)
+    ).first()
+    if row is not None:
+        target.organization_id = row[0]
+    else:
+        # Table.insert() applies the model's column defaults (plan, created_at, …),
+        # and runs on the flush connection so it is safe inside before_insert.
+        result = connection.execute(
+            orgs.insert().values(name="Default Organization", slug="default")
+        )
+        target.organization_id = result.inserted_primary_key[0]
