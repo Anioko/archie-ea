@@ -713,7 +713,7 @@ class BusinessOutputDisplay {
                 '<h3 class="text-red-800 font-semibold mb-2">Error</h3>' +
                 '<p class="text-destructive">' + DOMPurify.sanitize(message) + '</p>' +
             '</div>'
-        );
+        ));
     }
 
     hide() {

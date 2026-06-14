@@ -76,7 +76,7 @@ class APQCBrowserManager {
     async loadAPQCData() {
         try {
             this.showLoading(true);
-            const response = await fetch('/api/apqc/tree'.catch(console.error);
+            const response = await fetch('/api/apqc/tree');
             const data = await response.json();
 
             if (data.success) {
@@ -96,7 +96,7 @@ class APQCBrowserManager {
 
     async loadIndustryVariants() {
         try {
-            const response = await fetch('/api/apqc/variants'.catch(console.error);
+            const response = await fetch('/api/apqc/variants');
             const data = await response.json();
 
             if (data.success) {
@@ -189,7 +189,7 @@ class APQCBrowserManager {
     async selectNode(nodeId) {
         try {
             this.showLoading(true);
-            const response = await fetch(`/api/apqc/process/${nodeId}`.catch(console.error);
+            const response = await fetch(`/api/apqc/process/${nodeId}`);
             const data = await response.json();
 
             if (data.success) {
@@ -295,7 +295,7 @@ class APQCBrowserManager {
 
         try {
             this.showLoading(true);
-            const response = await fetch(`/api/apqc/search?q=${encodeURIComponent(query)}&level=${this.currentFilters.level}&industry=${this.currentFilters.industry}&limit=20`.catch(console.error);
+            const response = await fetch(`/api/apqc/search?q=${encodeURIComponent(query)}&level=${this.currentFilters.level}&industry=${this.currentFilters.industry}&limit=20`);
             const data = await response.json();
 
             if (data.success) {

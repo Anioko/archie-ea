@@ -70,7 +70,7 @@ function updateActiveFramework(activeFramework) {
                         '<div class="h-2 bg-emerald-500 rounded-full" style="width: ' + activeFramework.instance.implementation_percentage + '%"></div>' +
                     '</div>' +
                 '</div>' : '') +
-            '</div>';
+            '</div>');
     } else {
         safeHTML(container, '<p class="text-muted-foreground">No active framework deployed</p>');
     }

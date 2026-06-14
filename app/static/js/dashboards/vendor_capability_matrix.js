@@ -247,7 +247,6 @@ function showDetails(capability, vendor, product) {
 
 function closeDetailModal() {
     Platform.modal.close('detailModal');
-    }
 }
 
 function exportMatrix() {

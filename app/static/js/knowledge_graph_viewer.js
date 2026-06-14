@@ -87,7 +87,7 @@ async function loadGraphData() {
         let url = `/api/knowledge-graph/graph?max_nodes=${maxNodes}`;
         if (layer) url += `&layer=${layer}`;
 
-        const response = await fetch(url.catch(console.error);
+        const response = await fetch(url);
         const data = await response.json();
 
         if (data.success) {

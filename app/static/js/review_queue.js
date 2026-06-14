@@ -156,7 +156,7 @@ class ReviewQueueManager {
                     </div>
                 </div>
             </div>
-        `).join('');
+        `).join(''));
     }
 
     getConfidenceClass(score) {
@@ -481,7 +481,7 @@ class ReviewQueueManager {
                     </button>
                 </div>
             </div>
-        `;
+        `);
         document.body.appendChild(modal);
     }
 
