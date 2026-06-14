@@ -411,7 +411,8 @@ def api_arch_elements(id):
                 ApplicationService,
                 DataObject,
             )
-            from app.models.business_layer import BusinessProcess, BusinessService
+            from app.models.business_layer import BusinessService
+            from app.models.process_data import BusinessProcess
             from app.models.technology_layer import TechnologyService
 
             # Collect all elements
