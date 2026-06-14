@@ -196,6 +196,7 @@ aiohttp>=3.9.0
 # -----------------------------------------------------------------------------
 python-pptx>=0.6.23,<1.0.0  # PowerPoint generation
 weasyprint>=60.0,<61.0      # HTML to PDF (CSS support)
+pydyf>=0.8.0,<0.11.0        # weasyprint 60 backend; pydyf 0.11+ broke PDF() -> 500 on PDF export
 # pdfkit + wkhtmltopdf (alternative PDF generator - requires system install)
 
 # COM-010: Fernet field encryption for SOC 2 compliance — no existing encryption utility
