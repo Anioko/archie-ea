@@ -617,8 +617,8 @@ if (window.__ALPINE_ARCH_LOADED__) {
                     this.compareMode = this.compareIds.length > 0;
                 },
                 isInCompare(id) { return this.compareIds.includes(id); },
-                deleteSolution(id, name) {
-                    if (!confirm(`Delete solution "${name}"?`)) return;
+                async deleteSolution(id, name) {
+                    if (!(await Platform.modal.confirm(`Delete solution "${name}"?`))) return;
                     _fetch(`/enterprise/api/solutions/${id}`, { method: 'DELETE' })
                         .then(() => this._loadItems())
                         .catch(err => Platform.toast.error('Delete failed: ' + err.message));
