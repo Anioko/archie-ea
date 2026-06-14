@@ -398,7 +398,7 @@
  *           },
  *
  *           // 4. afterOpen(detail) — called by _modalMixin when modal opens
- *           afterOpen(detail) { /* populate form from detail */ },
+ *           afterOpen(detail) { ...populate form from detail },
  *
  *           // 5. afterClose() — called by _modalMixin when modal closes
  *           afterClose() { this.resetForm(); }

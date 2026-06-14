@@ -36,5 +36,10 @@ COPY . /app
 RUN useradd --create-home appuser && chown -R appuser /app
 USER appuser
 
-# RQ background worker
-ENTRYPOINT ["python", "-u", "manage.py", "run_worker"]
+# RQ background worker.
+# Must invoke the Flask CLI command, NOT `python manage.py run_worker`:
+# manage.py's __main__ block ignores argv and unconditionally starts the web
+# server (app.run on :5000), so `python manage.py run_worker` silently ran a
+# dev server instead of the worker. `run_worker` is registered via
+# @app.cli.command(), exposed as `run-worker`.
+ENTRYPOINT ["flask", "--app", "manage", "run-worker"]

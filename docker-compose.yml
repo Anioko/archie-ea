@@ -16,7 +16,7 @@ services:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/archie
       DEV_DATABASE_URL: postgresql://postgres:postgres@postgres:5432/archie
       TEST_DATABASE_URL: postgresql://postgres:postgres@postgres:5432/archie_test
-      REDISTOGO_URL: http://redis:6379
+      REDISTOGO_URL: redis://redis:6379
     depends_on:
       postgres:
         condition: service_healthy
@@ -34,7 +34,7 @@ services:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/archie
       DEV_DATABASE_URL: postgresql://postgres:postgres@postgres:5432/archie
       TEST_DATABASE_URL: postgresql://postgres:postgres@postgres:5432/archie_test
-      REDISTOGO_URL: http://redis:6379
+      REDISTOGO_URL: redis://redis:6379
     depends_on:
       postgres:
         condition: service_healthy
