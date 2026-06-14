@@ -65,27 +65,56 @@ def _get_request_context():
         return None, None, None, None
 
 
+def _json_safe(value):
+    """Coerce a value into something the JSON audit columns can store."""
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    return str(value)
+
+
+def _write_audit(connection, action, table_label, record_id, old_value=None, new_value=None):
+    """Insert one audit row using the flush's own connection.
+
+    Mapper events (after_insert/update/delete) fire mid-flush, so we must NOT use
+    db.session here — committing during a flush raises. Writing through the event
+    ``connection`` records the row in the same transaction as the mutation that
+    triggered it.
+    """
+    from app.models.audit_log import AuditLog
+
+    user_id, org_id, ip, ua = _get_request_context()
+    connection.execute(
+        AuditLog.__table__.insert().values(
+            action=str(action)[:20],
+            table_name=table_label,
+            record_id=record_id,
+            old_value=old_value,
+            new_value=new_value,
+            user_id=user_id,
+            organization_id=org_id,
+            ip_address=ip,
+            user_agent=ua,
+        )
+    )
+
+
+def _column_snapshot(target):
+    """JSON-safe dict of a model's column values (columns only, secrets excluded)."""
+    snap = {}
+    for attr in inspect(target).mapper.column_attrs:
+        if attr.key in _EXCLUDED_COLUMNS:
+            continue
+        snap[attr.key] = _json_safe(getattr(target, attr.key, None))
+    return snap
+
+
 def _make_after_insert(table_label: str):
     def _after_insert(mapper, connection, target):
         try:
-            from app.services.audit_log_service import AuditLogService
-
-            user_id, org_id, ip, ua = _get_request_context()
             record_id = getattr(target, "id", None)
-            new_val = {
-                col: getattr(target, col)
-                for col in inspect(target).attrs.keys()
-                if col not in _EXCLUDED_COLUMNS
-            }
-            AuditLogService.log(
-                action="create",
-                resource_type=table_label,
-                resource_id=record_id,
-                extra_json=new_val,
-                user_id=user_id,
-                org_id=org_id,
-                ip_address=ip,
-                user_agent=ua,
+            _write_audit(
+                connection, "create", table_label, record_id,
+                new_value=_column_snapshot(target),
             )
         except Exception:
             logger.debug("audit after_insert failed for %s", table_label, exc_info=True)
@@ -96,9 +125,6 @@ def _make_after_insert(table_label: str):
 def _make_after_update(table_label: str):
     def _after_update(mapper, connection, target):
         try:
-            from app.services.audit_log_service import AuditLogService
-
-            user_id, org_id, ip, ua = _get_request_context()
             record_id = getattr(target, "id", None)
 
             old_val = {}
@@ -109,21 +135,15 @@ def _make_after_update(table_label: str):
                     key = attr.key
                     if key in _EXCLUDED_COLUMNS:
                         continue
-                    old_val[key] = hist.deleted[0] if hist.deleted else None
-                    new_val[key] = hist.added[0] if hist.added else None
+                    old_val[key] = _json_safe(hist.deleted[0] if hist.deleted else None)
+                    new_val[key] = _json_safe(hist.added[0] if hist.added else None)
 
             if not old_val and not new_val:
                 return  # nothing auditable changed
 
-            AuditLogService.log(
-                action="update",
-                resource_type=table_label,
-                resource_id=record_id,
-                extra_json={"old": old_val, "new": new_val},
-                user_id=user_id,
-                org_id=org_id,
-                ip_address=ip,
-                user_agent=ua,
+            _write_audit(
+                connection, "update", table_label, record_id,
+                old_value=old_val, new_value=new_val,
             )
         except Exception:
             logger.debug("audit after_update failed for %s", table_label, exc_info=True)
@@ -134,24 +154,10 @@ def _make_after_update(table_label: str):
 def _make_after_delete(table_label: str):
     def _after_delete(mapper, connection, target):
         try:
-            from app.services.audit_log_service import AuditLogService
-
-            user_id, org_id, ip, ua = _get_request_context()
             record_id = getattr(target, "id", None)
-            old_val = {
-                col: getattr(target, col)
-                for col in inspect(target).attrs.keys()
-                if col not in _EXCLUDED_COLUMNS
-            }
-            AuditLogService.log(
-                action="delete",
-                resource_type=table_label,
-                resource_id=record_id,
-                extra_json=old_val,
-                user_id=user_id,
-                org_id=org_id,
-                ip_address=ip,
-                user_agent=ua,
+            _write_audit(
+                connection, "delete", table_label, record_id,
+                old_value=_column_snapshot(target),
             )
         except Exception:
             logger.debug("audit after_delete failed for %s", table_label, exc_info=True)
