@@ -26,6 +26,7 @@ from .. import db
 from ..models.application_portfolio import ApplicationComponent
 from . import application_mgmt
 from .routes import (
+    IMPORT_COLUMN_ALIASES,
     INTEGER_RANGE_FIELDS,
     _link_application_to_apqc_by_ids,
     _link_application_to_capabilities,
