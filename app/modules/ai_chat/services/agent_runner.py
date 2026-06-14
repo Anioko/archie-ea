@@ -583,11 +583,28 @@ class AgentRunner:
     # ------------------------------------------------------------------ #
 
     def _fallback(self, reason: str) -> dict:
+        reason_l = (reason or "").lower()
+        if any(t in reason_l for t in ("no api key", "not configured", "no provider", "no keys")):
+            msg = (
+                "AI features aren't configured yet — add an API key under "
+                "Admin → API Settings to enable the assistant."
+            )
+        elif any(
+            t in reason_l
+            for t in ("quota", "insufficient", "rate limit", "429", "billing", "exceeded")
+        ):
+            msg = (
+                "The AI provider rejected the request (rate limit or quota exceeded). "
+                "Check the provider's plan/billing, or switch providers in "
+                "Admin → API Settings."
+            )
+        else:
+            msg = (
+                "The AI request couldn't be completed. See the error detail below "
+                "or check Admin → API Settings."
+            )
         return {
-            "response": (
-                "I couldn't complete that action due to a configuration issue. "
-                "Please contact your administrator."
-            ),
+            "response": msg,
             "actions_taken": [],
             "pending_approvals": [],
             "error": reason,
