@@ -206,6 +206,13 @@
                             return;
                         }
                         this.elementCount = d.count || d.elements.length;
+                        // With no relationships the layered diagram lays out as
+                        // disconnected nodes and reads as a blank canvas; the
+                        // element-count summary is a cleaner, intentional state.
+                        if (!d.relationships || !d.relationships.length) {
+                            this.diagramState = 'fallback';
+                            return;
+                        }
                         for (let attempt = 0; attempt < 20; attempt++) {
                             if (typeof ComposerRenderer !== 'undefined' && window.joint && window.joint.dia) {
                                 try {
