@@ -355,7 +355,7 @@ def api_application_details(id):
                 "business_domain": app.business_domain,
                 "business_owner": app.business_owner,
                 "technical_owner": app.technical_owner,
-                "status": app.status,
+                "status": getattr(app, "status", None) or getattr(app, "lifecycle_status", None),
                 "criticality": app.criticality,
                 "technology_stack": app.technology_stack,
                 "deployment_status": app.deployment_status,

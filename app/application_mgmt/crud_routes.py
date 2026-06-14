@@ -15,6 +15,7 @@ from ..models.application_layer import (
 )
 from ..models.application_portfolio import ApplicationComponent
 from ..models.models import ArchiMateElement, ArchiMateRelationship
+from ..models.requirements import Requirement
 from . import application_mgmt
 from .forms import ApplicationComponentForm
 from .routes import _build_vendor_product_choices, _redirect_to_detail, _sync_vendor_products
