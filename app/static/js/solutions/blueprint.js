@@ -647,7 +647,6 @@ function blueprintPage() {
                 return r.json();
             })
             .then(function (data) {
-                console.log('[blueprint] inferCodeSpecs result:', data);
             })
             .catch(function (e) {
                 console.error('[blueprint] inferCodeSpecs error:', e);

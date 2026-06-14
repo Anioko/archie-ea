@@ -147,7 +147,6 @@
                             if (typeof this.showNotification === 'function') {
                                 this.showNotification(msg, 'success');
                             } else {
-                                console.info('[KAN-003]', msg);
                             }
                         }
                     }

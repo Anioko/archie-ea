@@ -5,7 +5,6 @@
 // This file intentionally provides a lightweight UI integration; enhance in future sprints for auto-layout and Visio export.
 
 document.addEventListener('DOMContentLoaded', function() {
-  console.log('[SC-Cyto] initializing');
   // Fetch palette and relationship types
   async function fetchPalette() {
     try {
@@ -191,14 +190,12 @@ document.addEventListener('DOMContentLoaded', function() {
         })
           .then((r) => r.json())
           .then((rj) => {
-            if (!rj.success) alert('Connection failed: ' + (rj.error || 'unknown'));
-            else console.log('Connection created', rj.data);
+            if (!rj.success) Platform.toast.error('Connection failed: ' + (rj.error || 'unknown'));
           })
           .catch((e) => console.warn('Connection error', e));
       }
     });
 
-    console.log('[SC-Cyto] initialized');
   }
 
   init();

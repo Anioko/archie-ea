@@ -539,7 +539,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Utility functions
     function showSuccess(message) {
-        console.log('SUCCESS:', message);
     }
 
     function showError(message) {
@@ -547,6 +546,5 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function showInfo(message) {
-        console.log('INFO:', message);
     }
 });

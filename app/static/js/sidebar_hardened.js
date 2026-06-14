@@ -29,13 +29,11 @@ document.addEventListener("DOMContentLoaded", function () {
 async function loadQuickAccessItems(type, limit) {
   // ✅ FIX: Validate type parameter
   if (!["applications", "vendors"].includes(type)) {
-    console.debug(`[Sidebar] Invalid type: ${type}`);
     return;
   }
   
   // ✅ FIX: Validate limit parameter
   if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
-    console.debug(`[Sidebar] Invalid limit: ${limit}`);
     return;
   }
 
@@ -65,7 +63,6 @@ async function loadQuickAccessItems(type, limit) {
 
     // ✅ FIX: Provide user feedback on API error
     if (!response.ok) {
-      console.debug(`[Sidebar] API error: ${response.status} ${response.statusText}`);
       showErrorFeedback(container, `Failed to load ${type} (Error ${response.status})`);
       return;
     }
@@ -73,7 +70,6 @@ async function loadQuickAccessItems(type, limit) {
     // ✅ FIX: Validate response is JSON
     const contentType = response.headers.get("content-type");
     if (!contentType || !contentType.includes("application/json")) {
-      console.debug(`[Sidebar] Invalid response type: ${contentType}`);
       showErrorFeedback(container, "Invalid server response");
       return;
     }
@@ -83,21 +79,18 @@ async function loadQuickAccessItems(type, limit) {
     try {
       data = await response.json();
     } catch (parseError) {
-      console.debug(`[Sidebar] Failed to parse JSON:`, parseError);
       showErrorFeedback(container, "Server returned invalid data");
       return;
     }
 
     // ✅ FIX: Validate data structure
     if (!data || !Array.isArray(data.items)) {
-      console.debug("[Sidebar] Invalid response structure: missing items array");
       showErrorFeedback(container, "Invalid server response structure");
       return;
     }
 
     // ✅ FIX: Validate each item in array
     if (!validateItems(data.items)) {
-      console.debug("[Sidebar] Response contains invalid items");
       showErrorFeedback(container, "Server returned invalid data");
       return;
     }
@@ -106,7 +99,6 @@ async function loadQuickAccessItems(type, limit) {
     renderQuickAccessItems(container, data.items, type);
     
   } catch (error) {
-    console.debug(`[Sidebar] Unexpected error loading ${type}:`, error);
     showErrorFeedback(container, "Network connection error. Please refresh.");
   }
 }

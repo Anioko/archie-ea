@@ -684,7 +684,6 @@ function aiChatDocumentUploader() {
             } else if (type === 'success') {
 
             } else {
-                console.info(message);
             }
         },
 

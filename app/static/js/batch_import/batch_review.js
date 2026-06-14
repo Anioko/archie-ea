@@ -431,7 +431,6 @@ function batchReview(jobId, batchId) {
             if (window.showToast) {
                 window.showToast(message, type);
             } else {
-                console.log('[' + type + '] ' + message);
             }
         }
     };

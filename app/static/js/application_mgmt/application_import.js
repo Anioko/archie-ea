@@ -30,10 +30,8 @@ async function loadImportFields() {
       TARGET_FIELDS = data.fields || TARGET_FIELDS;
       COLUMN_ALIASES = data.aliases || {};
       fieldsLoaded = true;
-      console.log(`Loaded ${TARGET_FIELDS.length} import fields from ApplicationComponent model`);
     }
   } catch (error) {
-    console.debug('Failed to load import fields from API, using fallback:', error);
     // Fall back to minimal defaults if API fails
     TARGET_FIELDS = [
       { value: '', label: '-- Skip Column --' },
@@ -161,7 +159,6 @@ function previewExcelFile(file) {
     document.getElementById('excel-preview').classList.remove('hidden');
   })
   .catch(error => {
-    console.debug('Preview error details:', error);
     alert('Error previewing file: ' + (error.message || 'Unknown error'));
   });
 }
@@ -358,7 +355,6 @@ function runPostImportAutoMap(importedCount, suffix) {
     window.location.reload();
   })
   .catch(error => {
-    console.debug('Auto-map error:', error);
     alert('Import succeeded but auto-mapping failed: ' + error.message);
     window.location.reload();
   });
@@ -409,7 +405,6 @@ function processExcelImport() {
   // These will be used to create ApplicationProcessSupport records during import
   if (apqcLinksByRow && Object.keys(apqcLinksByRow).length > 0) {
     formData.append('apqc_links', JSON.stringify(apqcLinksByRow));
-    console.log(`Sending ${Object.keys(apqcLinksByRow).length} rows with APQC links to import`);
   }
 
   // AI OPTIONS - Integrated Import
@@ -421,7 +416,6 @@ function processExcelImport() {
       formData.append('generate_archimate', (document.getElementById('import-generate-archimate')?.checked || false).toString());
       formData.append('clone_vendor_archimate', (document.getElementById('import-clone-vendor')?.checked || false).toString());
       formData.append('confidence_threshold', '0.7');
-      console.log('AI-powered import enabled with capabilities, processes, and ArchiMate generation');
   }
 
   // Show loading state
@@ -470,7 +464,6 @@ function processExcelImport() {
     importBtn.disabled = false;
     importBtn.textContent = originalText;
     _importInProgress = false;  // AUDIT-IMP-005: Reset guard on failure
-    console.debug('Error:', error);
     alert('Error importing: ' + error.message);
   });
 }
@@ -601,7 +594,6 @@ function processManualImport() {
   .catch(error => {
     importBtn.disabled = false;
     importBtn.textContent = originalText;
-    console.debug('Error:', error);
     alert('Error importing: ' + error.message);
   });
 }
@@ -643,7 +635,6 @@ function loadImportHistory() {
       }
     })
     .catch(error => {
-      console.debug('Error loading import history:', error);
     });
 }
 
@@ -789,7 +780,6 @@ function analyzeImportFile(analysisType) {
     try {
       performStreamingAnalysis();
     } catch (error) {
-      console.debug('[DEBUG] Streaming failed, using regular analysis:', error);
       performRegularAnalysis();
     }
   } else if (analysisType === 'standard') {
@@ -800,7 +790,6 @@ function analyzeImportFile(analysisType) {
 
 // Callback when review is confirmed
 window.onReviewConfirmed = function(approvedMappings) {
-  console.log('User approved', approvedMappings.length, 'mappings');
   processExcelImport();
 };
 
@@ -824,7 +813,6 @@ function displayAnalysisResults(data) {
   // Store APQC links for import execution (AI-powered semantic matches)
   if (data.apqc_links_by_row) {
     apqcLinksByRow = data.apqc_links_by_row;
-    console.log(`Stored ${Object.keys(apqcLinksByRow).length} rows with APQC links for import`);
   } else {
     apqcLinksByRow = {};
   }
