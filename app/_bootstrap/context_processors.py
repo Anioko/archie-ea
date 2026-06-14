@@ -540,10 +540,23 @@ def init_context_processors(app):
 
     # Override url_for globally so ALL static file references auto-version.
     # This covers all 132 uses across 66 templates without touching each file.
+    from werkzeug.routing import BuildError
+
     _original_url_for = flask.url_for
 
     def _versioned_url_for(endpoint, **values):
-        url = _original_url_for(endpoint, **values)
+        try:
+            url = _original_url_for(endpoint, **values)
+        except BuildError:
+            # A template references an endpoint that isn't registered — e.g. a nav
+            # link to a module disabled by a feature flag, or a stale/renamed route.
+            # Degrade to a dead link instead of 500-ing the entire page (a missing
+            # sidebar link must never take down every authenticated page); log it
+            # once so the bad reference stays discoverable.
+            app.logger.warning(
+                "url_for: unknown endpoint %r -> rendered as '#'", endpoint
+            )
+            return "#"
         if endpoint == "static" and _static_version:
             sep = "&" if "?" in url else "?"
             url = f"{url}{sep}v={_static_version}"
