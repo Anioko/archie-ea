@@ -894,9 +894,24 @@ def validate_application_name(mapper, connection, target):
 def create_app_component_archimate_element(mapper, connection, target):
     """Automatically create ArchiMateElement when ApplicationComponent is created."""
     if target.archimate_element_id is None:
-        from sqlalchemy import insert
+        from sqlalchemy import insert, select
 
         from .archimate_core import ArchiMateElement
+        from .organization import Organization
+
+        # archimate_elements.organization_id is NOT NULL, and this raw insert is
+        # invisible to the tenant middleware, so the org must be set explicitly.
+        # The element belongs to the same tenant as its application (set by the
+        # tenant before_flush); fall back to the default org if it is unset.
+        org_id = getattr(target, "organization_id", None)
+        if org_id is None:
+            orgs = Organization.__table__
+            row = connection.execute(
+                select(orgs.c.id).where(orgs.c.slug == "default").limit(1)
+            ).first()
+            org_id = row[0] if row is not None else connection.execute(
+                orgs.insert().values(name="Default Organization", slug="default")
+            ).inserted_primary_key[0]
 
         result = connection.execute(
             insert(ArchiMateElement.__table__).values(
@@ -904,6 +919,7 @@ def create_app_component_archimate_element(mapper, connection, target):
                 type="ApplicationComponent",
                 layer="Application",
                 description=target.description or f"Application: {target.name}",
+                organization_id=org_id,
             )
         )
         target.archimate_element_id = result.inserted_primary_key[0]
