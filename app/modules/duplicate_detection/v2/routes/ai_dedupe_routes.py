@@ -8,6 +8,7 @@ Blueprint name: ai (same as v1)
 URL prefix: /ai (nested under /duplicate-detection via register())
 """
 
+from werkzeug.exceptions import HTTPException
 import json
 import logging
 
@@ -72,6 +73,8 @@ def ai_dashboard():
             performance_metrics=ai_stats,
             ai_unavailable=False,
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error loading AI dashboard: {e}")
         return render_template(
@@ -118,6 +121,8 @@ def ai_analyze():
             )
         else:
             return jsonify(result), 500
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"AI analysis failed: {e}")
         return jsonify(
@@ -167,6 +172,8 @@ def ai_insights(run_id):
         return render_template(
             "dedupe/ai_insights.html", run=run, ai_insights=ai_insights_data
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error loading AI insights: {e}")
         return render_template("errors/500.html"), 500
@@ -201,6 +208,8 @@ def api_ai_detect():
     except ValueError as e:
         logger.warning(f"Invalid AI detection parameters: {e}")
         return jsonify({"success": False, "error": "Invalid detection parameters"}), 400
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"AI detection API failed: {e}")
         return jsonify(
@@ -242,6 +251,8 @@ def api_feedback():
             duplicate_id=duplicate_id, user_action=action, confidence=confidence
         )
         return jsonify({"success": True, "message": "Feedback processed successfully"})
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Feedback processing failed: {e}")
         return jsonify(
@@ -257,6 +268,8 @@ def api_performance():
     try:
         metrics = ai_detection_service.get_performance_metrics()
         return jsonify({"success": True, "metrics": metrics})
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error getting performance metrics: {e}")
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
@@ -294,12 +307,16 @@ def api_compare_strategies():
                     }
                 else:
                     comparison_results[strategy] = {"error": result["error"]}
+            except HTTPException:
+                raise
             except Exception as e:
                 logger.error(f"Strategy {strategy} comparison failed: {e}")
                 comparison_results[strategy] = {"error": "Strategy comparison failed"}
         return jsonify(
             {"success": True, "threshold": threshold, "comparison": comparison_results}
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Strategy comparison failed: {e}")
         return jsonify(
@@ -327,6 +344,8 @@ def api_optimize_threshold():
                 "recommendation": _get_threshold_recommendation(optimized_threshold),
             }
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Threshold optimization failed: {e}")
         return jsonify(

@@ -1,5 +1,6 @@
 """Vendor matching, analysis, process mapping, and dashboard API routes."""
 
+from werkzeug.exceptions import HTTPException
 import io
 import logging
 import time
@@ -105,6 +106,10 @@ def match_applications_to_vendors():
                 "method_used": method,
             }
         )
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         current_app.logger.error(f"Error in vendor matching: {str(e)}")
@@ -232,6 +237,10 @@ def confirm_vendor_matches():
                         {"app_id": application_id, "prod_id": vendor_product.id},
                     )
 
+            except HTTPException:
+
+                raise
+
             except Exception as e:
                 current_app.logger.error(
                     f"Error confirming match for application {match.get('application_id')}: {str(e)}"
@@ -247,6 +256,10 @@ def confirm_vendor_matches():
                 "message": f"Successfully confirmed {confirmed_count} vendor match(es)",
             }
         )
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         db.session.rollback()
@@ -295,6 +308,10 @@ def vendor_analyze_api():
 
         return jsonify({"success": True, "analysis": analysis_results})
 
+    except HTTPException:
+
+        raise
+
     except Exception as e:
         current_app.logger.error(f"Vendor analysis error: {str(e)}", exc_info=True)
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
@@ -329,6 +346,10 @@ def api_get_vendor_results(analysis_id):
             }
         )
 
+    except HTTPException:
+
+        raise
+
     except Exception as e:
         current_app.logger.error(f"Error getting vendor analysis results: {str(e)}")
         return jsonify({"error": "An internal error occurred"}), 500
@@ -361,6 +382,10 @@ def api_export_vendor_analysis(analysis_id):
             as_attachment=True,
             download_name=filename,
         )
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         current_app.logger.error(f"Error exporting vendor analysis: {str(e)}")
@@ -419,6 +444,10 @@ def generate_vendor_process_mappings():
         add_rate_limit_headers(response)
         return response
 
+    except HTTPException:
+
+        raise
+
     except Exception as e:
         current_app.logger.error(f"Error generating vendor-process mappings: {e}")
         return jsonify(
@@ -464,6 +493,10 @@ def save_vendor_process_mappings():
             }
         )
 
+    except HTTPException:
+
+        raise
+
     except Exception as e:
         current_app.logger.error(f"Error saving vendor-process mappings: {e}")
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
@@ -482,6 +515,10 @@ def get_vendor_process_coverage():
         coverage = service.get_process_coverage_analysis()
 
         return jsonify({"success": True, "coverage_analysis": coverage})
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         current_app.logger.error(f"Error getting process coverage: {e}")
@@ -516,6 +553,10 @@ def get_vendor_capability_analysis():
 
         return jsonify(analysis)
 
+    except HTTPException:
+
+        raise
+
     except Exception as e:
         current_app.logger.error(f"Error getting vendor analysis: {e}")
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
@@ -544,6 +585,10 @@ def get_vendor_organizations():
 
         return jsonify(vendor_list)
 
+    except HTTPException:
+
+        raise
+
     except Exception as e:
         current_app.logger.error(f"Error getting vendor organizations: {e}")
         return jsonify([]), 500
@@ -570,6 +615,10 @@ def get_capabilities():
             )
 
         return jsonify(capability_list)
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         current_app.logger.error(f"Error getting capabilities: {e}")
@@ -605,6 +654,10 @@ def create_vendor_analysis():
             }
         )
 
+    except HTTPException:
+
+        raise
+
     except Exception as e:
         current_app.logger.error(f"Error creating vendor analysis: {e}")
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
@@ -639,6 +692,10 @@ def confirm_vendor_mapping():
         return jsonify(
             {"success": True, "message": f"Mapping {mapping_id} confirmed successfully"}
         )
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         db.session.rollback()
@@ -861,6 +918,10 @@ def get_architectural_analysis(id):
                 },
             }
         )
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         current_app.logger.error(f"Error in architectural analysis: {e}")
