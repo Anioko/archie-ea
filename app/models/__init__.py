@@ -292,6 +292,9 @@ else:
 
     # Solution Workflow & Governance — FK dependency: governance references workflow_tasks
     from .solution_workflow import *  # noqa: F401
+    # solution_reasoning defines solution_ai_reasoning_states, which solution_governance
+    # references via FK; it must be in metadata for create_all() to resolve that FK.
+    from .solution_reasoning import *  # noqa: F401
     from .solution_governance import *  # noqa: F401
 
     # GOV-02: Architecture Decision Records (uses original architecture_decision.py, imported at line 61)
