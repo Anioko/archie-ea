@@ -137,10 +137,10 @@ def ai_insights(run_id):
     """View AI insights for a specific detection run"""
     try:
         run = UnifiedDetectionRun.query.get_or_404(run_id)
-        if run.algorithm_version.startswith("ai_"):
+        if (getattr(run, "strategy", "") or "").startswith("ai_"):
             groups = UnifiedDuplicateGroup.query.filter_by(run_id=run_id).all()
             ai_insights_data = {
-                "algorithm_version": run.algorithm_version,
+                "algorithm_version": getattr(run, "strategy", None),
                 "total_groups": len(groups),
                 "high_confidence_groups": len(
                     [g for g in groups if g.similarity_score > 0.8]
