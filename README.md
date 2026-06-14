@@ -99,6 +99,16 @@ and an Architecture Review Board governance workflow.
 Yes, under AGPL-3.0. To avoid AGPL's copyleft obligations (embedding in a proprietary
 product, offering it as a hosted service), buy a [commercial license](COMMERCIAL-LICENSE.md).
 
+## Guides
+
+Vendor-neutral enterprise architecture guides (useful with any tool):
+
+- [How to run an Architecture Review Board (ARB)](docs/architecture-review-board.md)
+- [ArchiMate 3.2 cheat sheet](docs/archimate-3-2-cheat-sheet.md)
+- [Application portfolio rationalization (TIME & 6R)](docs/application-rationalization.md)
+- [TOGAF ADM with ArchiMate](docs/togaf-adm-with-archimate.md)
+- [Open-source enterprise architecture tools](docs/open-source-enterprise-architecture-tools.md)
+
 ## Stack
 Python / Flask · PostgreSQL (SQLAlchemy, `db.create_all`) · Tailwind / shadcn-style UI ·
 optional LLM providers for the AI assistant · optional Abacus/Avolution portfolio connector.
