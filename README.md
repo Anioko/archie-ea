@@ -69,17 +69,33 @@ obligations? A **[commercial license](COMMERCIAL-LICENSE.md)** is available.
 
 ## Quick start
 
+**Requires PostgreSQL.** (For the AI/embedding features, enable the `vector` extension:
+`CREATE EXTENSION IF NOT EXISTS vector;`)
+
 ```bash
+# 1. Install
 python -m venv venv && source venv/bin/activate     # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env            # set SECRET_KEY, DATABASE_URL, admin creds
-python manage.py create-db      # schema via db.create_all (no migrations needed)
-python create_admin.py          # first admin user from .env
-flask run                       # or: gunicorn -c gunicorn.conf.py "app:create_app()"
+
+# 2. Configure
+cp .env.example .env
+#    edit .env: SECRET_KEY, DATABASE_URL (postgresql://…), ADMIN_EMAIL, ADMIN_PASSWORD
+#    (leave FLASK_CONFIG=development)
+
+# 3. Create the schema + first admin user
+flask --app manage init-db
+python create_admin.py
+
+# 4. Run
+flask --app manage run                               # dev server on :5000
+# production:  gunicorn -c gunicorn.conf.py "manage:app"
 ```
 
-Open http://127.0.0.1:5000 and sign in. Ships with an empty schema and synthetic demo
-data — **no customer data**.
+Open http://127.0.0.1:5000 and sign in with the `ADMIN_EMAIL` / `ADMIN_PASSWORD` from your
+`.env`. Ships with an **empty schema and no customer data**.
+
+> A `docker-compose.yml` (app + PostgreSQL + Redis) is also included for a containerized
+> setup.
 
 ## FAQ
 
