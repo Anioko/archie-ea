@@ -340,9 +340,9 @@ function rationalizationDashboard() {
         },
 
         /* ── Auto-resolve exact matches ───────────────── */
-        autoResolveExact: function() {
+        autoResolveExact: async function() {
             const self = this;
-            if (!confirm('Auto-resolve all 100% similarity matches? This will mark exact duplicates as resolved.')) {
+            if (!(await Platform.modal.confirm('Auto-resolve all 100% similarity matches? This will mark exact duplicates as resolved.'))) {
                 return;
             }
             self.autoResolveLoading = true;

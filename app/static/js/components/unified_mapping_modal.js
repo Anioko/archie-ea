@@ -1406,7 +1406,7 @@ async function saveReverseMappings() {
 }
 
 window.deleteUnifiedMapping = async function(mappingId, appId) {
-    if (!confirm('Are you sure you want to remove this mapping?')) {
+    if (!(await Platform.modal.confirm('Are you sure you want to remove this mapping?'))) {
         return;
     }
 

@@ -861,9 +861,9 @@
                 }, 5000);
             },
 
-            destroyDeployment: function () {
+            destroyDeployment: async function () {
                 let self = this;
-                if (!confirm('This will stop your deployed application. Continue?')) return;
+                if (!(await Platform.modal.confirm('This will stop your deployed application. Continue?'))) return;
                 _fetch('/solutions/' + self.solutionId + '/codegen/deploy-cloud', {
                     method: 'DELETE'
                 }).then(function () {
@@ -3182,9 +3182,9 @@
 
             // ── Domain Unconfirm ────────────────────────────────────────────────
 
-            unconfirmDomain: function (code) {
+            unconfirmDomain: async function (code) {
                 let self = this;
-                if (!confirm('Revert ' + self.getDomainName(code) + ' to pending? Promoted elements will be removed.')) return;
+                if (!(await Platform.modal.confirm('Revert ' + self.getDomainName(code) + ' to pending? Promoted elements will be removed.'))) return;
 
                 self.copilotMessage = 'Reverting ' + self.getDomainName(code) + '...';
                 _fetch(API_BASE + '/' + self.solutionId + '/domain/' + code + '/unconfirm', {
@@ -4003,9 +4003,9 @@
                 });
             },
 
-            rollbackToVersion: function (versionNumber) {
+            rollbackToVersion: async function (versionNumber) {
                 let self = this;
-                if (!confirm('Roll back to version ' + versionNumber + '? This will revert all changes made after that version.')) return;
+                if (!(await Platform.modal.confirm('Roll back to version ' + versionNumber + '? This will revert all changes made after that version.'))) return;
                 _fetch('/solutions/' + this.solutionId + '/codegen/version/rollback', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },

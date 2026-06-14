@@ -3759,10 +3759,10 @@ function composerApp() {
         /* CMP-028: Auto-persist restore/discard */
 
 
-        clearCanvas: function() {
+        clearCanvas: async function() {
             if (!this.graph || this.mode === 'view') return;
             if (Object.keys(this.canvasElements).length > 0) {
-                if (!confirm('Clear canvas? (Elements stay in catalog)')) return;
+                if (!(await Platform.modal.confirm('Clear canvas? (Elements stay in catalog)'))) return;
             }
             this.graph.clear();
             this.canvasElements = {};
@@ -4897,7 +4897,7 @@ function composerApp() {
             /* Fetch usage count before confirming */
             fetch('/archimate/api/elements/' + elId + '/detail', { credentials: 'same-origin' })
             .then(function(r) { return r.ok ? r.json() : { viewpoint_count: 0, solution_count: 0 }; })
-            .then(function(data) {
+            .then(async function(data) {
                 let vpCount = data.viewpoint_count || 0;
                 let solCount = data.solution_count || 0;
                 let msg = 'DELETE "' + name + '" from the ArchiMate repository?\n\n'
@@ -4905,7 +4905,7 @@ function composerApp() {
                     + '  • ' + vpCount + ' viewpoint(s)\n'
                     + '  • ' + solCount + ' solution(s)\n\n'
                     + 'This action CANNOT be undone.';
-                if (!confirm(msg)) return;
+                if (!(await Platform.modal.confirm(msg))) return;
 
                 fetch('/architecture/elements/' + elId, {
                     method: 'DELETE', credentials: 'same-origin',
@@ -4923,10 +4923,10 @@ function composerApp() {
                 })
                 .catch(function(err) { self.statusText = 'Error: ' + err.message; _toast('error', err.message || 'Operation failed'); });
             })
-            .catch(function() {
+            .catch(async function() {
                 /* Fallback — no usage data available, still allow delete */
                 _toast('warning', 'Could not check element usage — proceeding without usage info');
-                if (!confirm('DELETE "' + name + '" from the ArchiMate repository?\n\nThis action CANNOT be undone.')) return;
+                if (!(await Platform.modal.confirm('DELETE "' + name + '" from the ArchiMate repository?\n\nThis action CANNOT be undone.'))) return;
                 fetch('/architecture/elements/' + elId, {
                     method: 'DELETE', credentials: 'same-origin',
                     headers: { 'X-CSRFToken': csrfToken() },
@@ -5099,10 +5099,10 @@ function composerApp() {
         /* ── Helpers ──────────────────────────────────────── */
 
         /* GAP-CMP-007: Submit diagram for ARB review */
-        submitForReview: function() {
+        submitForReview: async function() {
             if (!this.currentSavedVpId) { _toast('error', 'Save the diagram first'); return; }
             let self = this;
-            if (!confirm('Submit this diagram to the Architecture Review Board for review?')) return;
+            if (!(await Platform.modal.confirm('Submit this diagram to the Architecture Review Board for review?'))) return;
 
             fetch('/archimate/api/saved-viewpoints/' + self.currentSavedVpId + '/submit-review', {
                 method: 'POST', credentials: 'same-origin',

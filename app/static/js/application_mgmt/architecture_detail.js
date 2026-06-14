@@ -362,7 +362,7 @@ class ApplicationArchitectureManager {
   }
 
   async deleteElement(elementId) {
-    if (!confirm('Delete this element? This will also remove all its relationships.')) {
+    if (!(await Platform.modal.confirm('Delete this element? This will also remove all its relationships.'))) {
       return;
     }
 
@@ -891,7 +891,7 @@ class ApplicationArchitectureManager {
   }
 
   async deleteDocument(docId) {
-    if (!confirm('Delete this document?')) return;
+    if (!(await Platform.modal.confirm('Delete this document?'))) return;
 
     try {
       const response = await fetch(
@@ -913,7 +913,7 @@ class ApplicationArchitectureManager {
   }
 
   async generateWithAI() {
-    if (!confirm('Generate ArchiMate elements using AI? This may take 30-60 seconds.')) {
+    if (!(await Platform.modal.confirm('Generate ArchiMate elements using AI? This may take 30-60 seconds.'))) {
       return;
     }
 

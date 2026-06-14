@@ -711,7 +711,7 @@
             },
 
             async deleteTemplateSet(id) {
-                if (!confirm('Delete this template set? This cannot be undone.')) return;
+                if (!(await Platform.modal.confirm('Delete this template set? This cannot be undone.'))) return;
                 try {
                     await this._fetch('/api/codegen/template-sets/' + id, { method: 'DELETE' });
                     if (this.config.template_set_id === id) this.config.template_set_id = null;
@@ -1076,7 +1076,7 @@
 
             /* ── Phase 2: Review ── */
             async resetUml() {
-                if (!confirm('Re-enrich will discard all UML edits and regenerated code. Continue?')) return;
+                if (!(await Platform.modal.confirm('Re-enrich will discard all UML edits and regenerated code. Continue?'))) return;
                 this.resetting = true;
                 try {
                     await this._fetch(
@@ -1166,11 +1166,11 @@
                 // Guard: warn before wiping manual edits
                 if (this.editedFiles.length > 0 || Object.keys(this.dirtyFiles).length > 0) {
                     const editCount = new Set([...this.editedFiles, ...Object.keys(this.dirtyFiles)]).size;
-                    if (!confirm(
+                    if (!(await Platform.modal.confirm(
                         `Re-generating will overwrite ${editCount} manually edited file(s).\n\n` +
                         `Use the AI Chat or "Edit with AI" to make targeted changes instead, ` +
                         `or download a ZIP first to preserve your edits.\n\nContinue?`
-                    )) return;
+                    ))) return;
                 }
 
                 this.errors = [];
@@ -1360,12 +1360,12 @@
                 // PROG-014: after a conformance block, offer to generate anyway.
                 if (this._pendingConformanceOverride) {
                     this._pendingConformanceOverride = false;
-                    if (confirm(
+                    if ((await Platform.modal.confirm(
                         'This blueprint has critical architecture-conformance issues:\n\n' +
                         (this._conformanceMessage || '') +
                         '\n\nGenerating ships the defect. Open the review packet to fix it, ' +
                         'or click OK to generate anyway.'
-                    )) {
+                    ))) {
                         this._overrideConformance = true;
                         this.generate();
                     }
@@ -2070,7 +2070,7 @@
             },
 
             async deleteFile(path) {
-                if (!confirm(`Delete "${path}" from generated code? This cannot be undone.`)) return;
+                if (!(await Platform.modal.confirm(`Delete "${path}" from generated code? This cannot be undone.`))) return;
                 try {
                     const data = await this._fetch(`/solutions/${this.solutionId}/codegen/files`, {
                         method: 'DELETE',

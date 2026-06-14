@@ -236,8 +236,8 @@ function saveConfiguration() {
     // Save configuration settings
 }
 
-function resetConfiguration() {
-    if (confirm('Are you sure you want to reset to default configuration?')) {
+async function resetConfiguration() {
+    if ((await Platform.modal.confirm('Are you sure you want to reset to default configuration?'))) {
         // Reset configuration to defaults
     }
 }

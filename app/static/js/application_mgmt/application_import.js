@@ -508,7 +508,7 @@ function removeManualEntryRow(rowId) {
   document.getElementById(rowId).remove();
 }
 
-function processManualImport() {
+async function processManualImport() {
   const tbody = document.getElementById('manual-entry-tbody');
   const rows = tbody.querySelectorAll('tr');
 
@@ -538,7 +538,7 @@ function processManualImport() {
   });
 
   if (hasErrors) {
-    if (!confirm('Some rows are missing required fields. Continue with valid rows only?')) {
+    if (!(await Platform.modal.confirm('Some rows are missing required fields. Continue with valid rows only?'))) {
       return;
     }
   }

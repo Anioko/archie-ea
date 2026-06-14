@@ -284,9 +284,9 @@ function planningApp() {
             .catch(function(err) { console.error('Override error:', err); });
         },
 
-        removeOverride: function() {
+        removeOverride: async function() {
             const self = this;
-            if (!confirm('Remove this disposition override?')) return;
+            if (!(await Platform.modal.confirm('Remove this disposition override?'))) return;
             fetch(baseUrl + '/override/' + appId, {
                 method: 'DELETE',
                 headers: { 'X-CSRFToken': csrfToken }

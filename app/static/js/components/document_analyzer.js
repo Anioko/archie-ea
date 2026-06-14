@@ -246,13 +246,13 @@ function documentAnalyzer(entityType, entityId) {
                 }
                 return response.json();
             })
-            .then(function(data) {
+            .then(async function(data) {
                 // Show success message with details
                 let message = 'Analysis applied successfully!\n\n' +
                     '- ' + data.archimate_elements_created + ' ArchiMate elements created\n' +
                     '- Application/Vendor details updated';
 
-                if (confirm(message + '\n\nReload page to see changes?')) {
+                if ((await Platform.modal.confirm(message + '\n\nReload page to see changes?'))) {
                     window.location.reload();
                 }
             })

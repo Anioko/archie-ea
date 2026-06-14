@@ -1112,7 +1112,7 @@ document.addEventListener('alpine:init', function () {
                         } else if (warnings.length > 0) {
                             // Only warnings — allow force advance
                             let warnMsg = '⚠️ Phase gate warnings:\n\n' + warnings.map(w => '• ' + w).join('\n') + '\n\nAdvance anyway?';
-                            if (confirm(warnMsg)) {
+                            if ((await Platform.modal.confirm(warnMsg))) {
                                 this.advancePhase(true);
                             }
                         } else {
@@ -1136,7 +1136,7 @@ document.addEventListener('alpine:init', function () {
                     this.showArbAiConfirmModal = true;
                     return;
                 }
-                if (!confirm('Submit this solution for Architecture Review Board review?')) return;
+                if (!(await Platform.modal.confirm('Submit this solution for Architecture Review Board review?'))) return;
                 this.doSubmitToArb(false);
             },
             async doSubmitToArb(aiContentReviewed) {
@@ -2128,7 +2128,7 @@ document.addEventListener('alpine:init', function () {
             },
 
             async deleteCapabilityMapping(mappingId) {
-                if (!confirm('Remove this capability mapping?')) return;
+                if (!(await Platform.modal.confirm('Remove this capability mapping?'))) return;
                 let csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || document.querySelector('[name=csrf_token]')?.value || '';
                 try {
                     let r = await fetch(this.apiBase + '/capabilities/' + mappingId, {
@@ -2483,7 +2483,7 @@ document.addEventListener('alpine:init', function () {
             },
 
             async removeLinkedArchimateElement(mappingId) {
-                if (!confirm('Remove this ArchiMate element from the solution?')) return;
+                if (!(await Platform.modal.confirm('Remove this ArchiMate element from the solution?'))) return;
                 try {
                     let resp = await fetch(this.apiBase + '/archimate-elements/' + mappingId, {
                         method: 'DELETE',
@@ -2644,7 +2644,7 @@ document.addEventListener('alpine:init', function () {
             },
 
             async removeCapability(capId) {
-                if (!confirm('Remove this capability from the solution?')) return;
+                if (!(await Platform.modal.confirm('Remove this capability from the solution?'))) return;
                 try {
                     let resp = await fetch(this.apiBase + '/capabilities/' + capId, {
                         method: 'DELETE',
@@ -2820,7 +2820,7 @@ document.addEventListener('alpine:init', function () {
             },
 
             async removeVendorProduct(productId) {
-                if (!confirm('Remove this vendor product from the solution?')) return;
+                if (!(await Platform.modal.confirm('Remove this vendor product from the solution?'))) return;
                 try {
                     let resp = await fetch(this.apiBase + '/unlink-vendor-product/' + productId, {
                         method: 'DELETE',
@@ -2897,7 +2897,7 @@ document.addEventListener('alpine:init', function () {
             },
 
             async removeAPQCProcess(processId) {
-                if (!confirm('Remove this APQC process from the solution?')) return;
+                if (!(await Platform.modal.confirm('Remove this APQC process from the solution?'))) return;
                 try {
                     let resp = await fetch(this.apiBase + '/unlink-apqc-process/' + processId, {
                         method: 'DELETE',
@@ -2975,7 +2975,7 @@ document.addEventListener('alpine:init', function () {
             },
 
             async removeApplication(appId) {
-                if (!confirm('Remove this application from the solution?')) return;
+                if (!(await Platform.modal.confirm('Remove this application from the solution?'))) return;
                 try {
                     let resp = await fetch(this.apiBase + '/unlink-application/' + appId, {
                         method: 'DELETE',

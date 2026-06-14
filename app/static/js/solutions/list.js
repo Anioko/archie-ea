@@ -6,7 +6,7 @@
 (function() {
 'use strict';
 
-window.deleteSolution = function(solutionId, solutionName) {
+window.deleteSolution = async function(solutionId, solutionName) {
     function doDelete() {
         let csrf = document.querySelector('meta[name="csrf-token"]');
         fetch('/solutions/' + solutionId + '/delete', {
@@ -44,7 +44,7 @@ window.deleteSolution = function(solutionId, solutionName) {
         });
         Platform.modal.open(modalId);
     } else {
-        if (confirm('Delete "' + solutionName + '"? This cannot be undone.')) doDelete();
+        if ((await Platform.modal.confirm('Delete "' + solutionName + '"? This cannot be undone.'))) doDelete();
     }
 };
 

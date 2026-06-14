@@ -383,11 +383,11 @@ function vendorAnalysisDetail(analysisId) {
     /* Mode switching with state cleanup                             */
     /* ============================================================ */
 
-    switchSelectionMode(mode) {
+    async switchSelectionMode(mode) {
       if (mode === this.selectionMode) return;
       const hadSelections = this.hasSelections();
       if (hadSelections) {
-        if (!confirm('Switching analysis mode will clear your current selections. Continue?')) return;
+        if (!(await Platform.modal.confirm('Switching analysis mode will clear your current selections. Continue?'))) return;
       }
       this.clearCapabilities();
       this.clearProcesses();
@@ -1050,7 +1050,7 @@ function vendorAnalysisDetail(analysisId) {
     },
 
     async deleteRequirement(reqId) {
-      if (!confirm('Delete this requirement?')) return;
+      if (!(await Platform.modal.confirm('Delete this requirement?'))) return;
       let self = this;
       try {
         let resp = await fetch('/dashboard/api/vendor-analysis/' + this.analysisId + '/requirements/' + reqId, {

@@ -485,7 +485,7 @@ function archimateRoadmapManager() {
         },
 
         async deleteWorkPackage(workPackage) {
-            if (confirm('Are you sure you want to delete "' + workPackage.name + '"?')) {
+            if ((await Platform.modal.confirm('Are you sure you want to delete "' + workPackage.name + '"?'))) {
                 try {
                     let response = await fetch('/api/archimate-work-packages/' + workPackage.id, {
                         method: 'DELETE'

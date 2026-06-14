@@ -150,8 +150,8 @@ window.sortTable = function(column) {
 window.editCapability = function(id) {};
 window.viewCapability = function(id) {};
 
-window.deleteCapability = function(id) {
-    if (confirm('Are you sure you want to delete this capability?')) {
+window.deleteCapability = async function(id) {
+    if ((await Platform.modal.confirm('Are you sure you want to delete this capability?'))) {
         loadTableData();
     }
 };

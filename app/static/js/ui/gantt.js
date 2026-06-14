@@ -1025,8 +1025,8 @@
                 this.crudError = '';
             },
 
-            confirmDelete: function (task) {
-                if (!task || !confirm('Delete "' + task.name + '"? This cannot be undone.')) return;
+            confirmDelete: async function (task) {
+                if (!task || !(await Platform.modal.confirm('Delete "' + task.name + '"? This cannot be undone.'))) return;
                 let self = this;
                 _fetch(self._crudEndpoint + '/' + task.id, { method: 'DELETE' })
                     .then(function (data) {

@@ -66,7 +66,7 @@
             isManageSelected(id) {
                 return this.manageSelectedIds.has(id);
             },
-            toggleManageItem(id) {
+            async toggleManageItem(id) {
                 if (this.manageSelectedIds.has(id)) {
                     this.manageSelectedIds.delete(id);
                 } else {
@@ -74,7 +74,7 @@
                     if (this.manageModalType === 'application') {
                         let item = (this.manageAllItems || []).find(function(i) { return i.id === id; });
                         if (item && (String(item.name || '').startsWith('(Duplicate)') || item.is_duplicate)) {
-                            if (!confirm('⚠️ This application is flagged as a duplicate:\n"' + item.name + '"\n\nLinking duplicate applications to solutions can create misleading traceability data. Resolve the duplicate first.\n\nLink anyway?')) {
+                            if (!(await Platform.modal.confirm('⚠️ This application is flagged as a duplicate:\n"' + item.name + '"\n\nLinking duplicate applications to solutions can create misleading traceability data. Resolve the duplicate first.\n\nLink anyway?'))) {
                                 return;
                             }
                         }
@@ -130,7 +130,7 @@
                 this.manageSaving = false;
             },
             async unlinkEntity(type, id) {
-                if (!confirm('Remove this item?')) return;
+                if (!(await Platform.modal.confirm('Remove this item?'))) return;
                 if (type === 'capability' && !id) {
                     Platform.toast.error('Cannot remove this capability: no mapping record found. Try re-linking it first.');
                     return;

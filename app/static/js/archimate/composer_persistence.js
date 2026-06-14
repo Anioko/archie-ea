@@ -2195,10 +2195,10 @@ let ComposerPersistence = (function() {
             });
         },
 
-        restoreSnapshot: function(sid) {
+        restoreSnapshot: async function(sid) {
             let self = this;
             if (!self.currentSavedVpId) return;
-            if (!confirm('Restore this snapshot? Current diagram positions will be replaced.')) return;
+            if (!(await Platform.modal.confirm('Restore this snapshot? Current diagram positions will be replaced.'))) return;
 
             self.snapshotListOpen = false;
             self.statusText = 'Restoring snapshot...';

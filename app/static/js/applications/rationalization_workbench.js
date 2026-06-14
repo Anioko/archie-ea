@@ -176,7 +176,7 @@ function workbenchApp() {
 
         /* ── Bulk actions ─────────────────────────────── */
         bulkDisposition: '',
-        bulkAction: function(action) {
+        bulkAction: async function(action) {
             const self = this;
             const ids = Object.keys(self.selectedIds).filter(function(k) { return self.selectedIds[k]; }).map(Number);
             if (ids.length === 0) return;
@@ -187,7 +187,7 @@ function workbenchApp() {
                 if (!self.bulkDisposition) { Platform.toast.warning('Select a disposition first.'); return; }
                 confirmMsg = 'Set disposition to "' + self.bulkDisposition + '" for ' + ids.length + ' application(s)?';
             }
-            if (!confirm(confirmMsg)) return;
+            if (!(await Platform.modal.confirm(confirmMsg))) return;
 
             const payload = { action: action, app_ids: ids };
             if (action === 'set_disposition') payload.disposition = self.bulkDisposition;

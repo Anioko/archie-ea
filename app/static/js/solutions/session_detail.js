@@ -198,7 +198,7 @@ function sessionDetail() {
         },
 
         async acceptRecommendation(recommendationId) {
-            if (!confirm('Accept this recommendation and create a Solution?')) return;
+            if (!(await Platform.modal.confirm('Accept this recommendation and create a Solution?'))) return;
             this.acceptingRec = recommendationId;
             try {
                 let csrfMeta = document.querySelector('meta[name="csrf-token"]');

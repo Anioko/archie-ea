@@ -241,7 +241,7 @@ let ComposerGraph = (function() {
             return { x: x, y: y };
         },
 
-        deleteRelationship: function() {
+        deleteRelationship: async function() {
             this.relCtxMenuOpen = false;
             let link = this.relCtxMenuLink;
             if (!link) return;
@@ -264,7 +264,7 @@ let ComposerGraph = (function() {
             if (warnings.length > 0) {
                 msg += '\n\nWarning: ' + warnings.join('; ');
             }
-            if (!confirm(msg)) return;
+            if (!(await Platform.modal.confirm(msg))) return;
 
             let relId = link.get('relId');
             let relType = link.get('relType') || '';
@@ -395,13 +395,13 @@ let ComposerGraph = (function() {
             });
         },
 
-        deleteElement: function() {
+        deleteElement: async function() {
             this.ctxMenuOpen = false;
             if (this.mode === 'view') return;
             let cell = this.ctxMenuCell;
             if (!cell) return;
             let name = cell.get('elName') || '(unnamed)';
-            if (!confirm('Remove "' + name + '" from canvas?\n(Element stays in catalog)')) return;
+            if (!(await Platform.modal.confirm('Remove "' + name + '" from canvas?\n(Element stays in catalog)'))) return;
 
             let elId = cell.get('elementId');
             let elType = cell.get('elType') || '';
@@ -1457,13 +1457,13 @@ let ComposerGraph = (function() {
         },
 
         /* ── New Diagram: clears canvas + resets saved viewpoint state ── */
-        newDiagram: function() {
+        newDiagram: async function() {
             if (this.mode === 'view') return;
             const hasContent = this.graph && this.graph.getElements().length > 0;
             if (hasContent && this.viewpointDirty) {
-                if (!confirm('You have unsaved changes. Start a new diagram anyway?')) return;
+                if (!(await Platform.modal.confirm('You have unsaved changes. Start a new diagram anyway?'))) return;
             } else if (hasContent) {
-                if (!confirm('Start a new blank diagram? Current canvas will be cleared.')) return;
+                if (!(await Platform.modal.confirm('Start a new blank diagram? Current canvas will be cleared.'))) return;
             }
             if (this.graph) { this.graph.clear(); }
             this.canvasElements = {};
