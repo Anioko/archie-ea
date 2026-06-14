@@ -120,7 +120,23 @@ def export_unmapped_capabilities():
     """Export unmapped capabilities as JSON"""
 
     try:
-        org_params = {}
+        # Unmapped = capabilities with no application mapping. unified_capabilities
+        # has no organization_id column, so no tenant filter is applied here.
+        unmapped_result = db.session.execute(
+            text(
+                """
+            SELECT uc.name, uc.description, uc.strategic_importance,
+                   uc.current_maturity_level, uc.target_maturity_level, uc.status,
+                   bd.name AS domain_name
+            FROM unified_capabilities uc
+            LEFT JOIN unified_application_capability_mapping uacm
+                ON uc.id = uacm.unified_capability_id
+            LEFT JOIN business_domains bd ON uc.domain_id = bd.id
+            WHERE uacm.unified_capability_id IS NULL
+            ORDER BY uc.name
+        """
+            )
+        ).fetchall()
 
         capabilities = []
         for row in unmapped_result:

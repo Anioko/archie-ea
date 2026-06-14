@@ -186,13 +186,12 @@ def export_vendor_archimate_analysis():
 
     try:
         # Get all unmapped vendor products
-        unmapped_products = db.session.execute(  # tenant-filtered
+        unmapped_products = db.session.execute(
             text(
                 """
-            SELECT vp.id, vp.name, vp.product_type, vpf.family_name as product_family, vo.name as vendor_name
+            SELECT vp.id, vp.name, vp.product_type, vp.product_family, vo.name as vendor_name
             FROM vendor_products vp
             JOIN vendor_organizations vo ON vp.vendor_organization_id = vo.id
-            LEFT JOIN vendor_product_families vpf ON vp.family_id = vpf.id
             WHERE vp.archimate_product_element_id IS NULL
             ORDER BY vo.name, vp.name
         """
