@@ -18,8 +18,10 @@ git clone <your-fork-url> && cd archie
 python -m venv venv && source venv/bin/activate   # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 cp .env.example .env                               # then edit secrets
-python manage.py create-db                         # schema via db.create_all (no migrations)
-python manage.py run                               # or: docker compose up
+createdb archie                                    # create the PostgreSQL database
+flask --app manage init-db                         # schema via db.create_all (no migrations)
+python create_admin.py                             # first admin user from .env
+flask --app manage run                             # or: docker compose up
 ```
 
 A PostgreSQL database is required. The fastest path is `docker compose up`, which

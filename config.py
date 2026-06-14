@@ -253,11 +253,12 @@ class DevelopmentConfig(Config):
     JIRA_AUTO_PUSH = os.environ.get("JIRA_AUTO_PUSH", "false").lower() == "true"
 
     # PostgreSQL configuration (REQUIRED - validated at runtime)
-    # Default to a local Postgres instance for development when DATABASE_URL is not set
-    # Note: Default port is 5439 for local Windows PostgreSQL installation
+    # Default to a local Postgres instance for development when DATABASE_URL is not set.
+    # Standard port 5432; set DATABASE_URL in .env to override (e.g. Windows installs
+    # that run Postgres on 5439).
     SQLALCHEMY_DATABASE_URI = os.environ.get(
         "DATABASE_URL",
-        "postgresql://postgres:postgres@127.0.0.1:5439/flask_app",  # secrets-safety-ok
+        "postgresql://postgres:postgres@127.0.0.1:5432/archie",  # secrets-safety-ok
     )
 
     # SERVER_NAME must NOT be hardcoded — Flask-WTF CSRF validates the Referer
@@ -289,10 +290,6 @@ class DevelopmentConfig(Config):
             app.logger.warning(
                 "No DATABASE_URL provided; falling back to local Postgres default."
             )
-        print(
-            "THIS APP IS IN DEBUG MODE. \
-                YOU SHOULD NOT SEE THIS IN PRODUCTION."
-        )
 
 
 class TestingConfig(Config):
@@ -301,10 +298,9 @@ class TestingConfig(Config):
 
     # PostgreSQL REQUIRED for tests (matches production behavior)
     # SQLite is NOT supported - tests must use PostgreSQL for consistency
-    # Note: Default port is 5439 for local Windows PostgreSQL installation
     SQLALCHEMY_DATABASE_URI = os.environ.get(
         "TEST_DATABASE_URL",
-        "postgresql://postgres:postgres@127.0.0.1:5439/flask_test",  # secrets-safety-ok
+        "postgresql://postgres:postgres@127.0.0.1:5432/archie_test",  # secrets-safety-ok
     )
 
     # PostgreSQL connection options for testing
