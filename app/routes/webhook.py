@@ -59,7 +59,7 @@ def verify_webhook_signature(payload, signature, secret):
 def list_subscriptions():
     """List webhook subscriptions for the authenticated user"""
     try:
-        user_id = current_user.id
+        user_id = str(current_user.id)  # webhook tables store user_id as String(36)
         service = WebhookService()
 
         subscriptions = service.get_user_subscriptions(user_id)
@@ -79,7 +79,7 @@ def list_subscriptions():
 def create_subscription():
     """Create a new webhook subscription"""
     try:
-        user_id = current_user.id
+        user_id = str(current_user.id)  # webhook tables store user_id as String(36)
         data = request.get_json()
 
         if not data:
@@ -118,7 +118,7 @@ def create_subscription():
 def get_subscription(subscription_id):
     """Get a specific webhook subscription"""
     try:
-        user_id = current_user.id
+        user_id = str(current_user.id)  # webhook tables store user_id as String(36)
         service = WebhookService()
 
         subscription = service.get_subscription(subscription_id, user_id)
@@ -139,7 +139,7 @@ def get_subscription(subscription_id):
 def update_subscription(subscription_id):
     """Update a webhook subscription"""
     try:
-        user_id = current_user.id
+        user_id = str(current_user.id)  # webhook tables store user_id as String(36)
         data = request.get_json()
 
         if not data:
@@ -167,7 +167,7 @@ def update_subscription(subscription_id):
 def delete_subscription(subscription_id):
     """Delete a webhook subscription"""
     try:
-        user_id = current_user.id
+        user_id = str(current_user.id)  # webhook tables store user_id as String(36)
         service = WebhookService()
 
         success = service.delete_subscription(subscription_id, user_id)
@@ -190,7 +190,7 @@ def delete_subscription(subscription_id):
 def test_subscription(subscription_id):
     """Test a webhook subscription by sending a test event"""
     try:
-        user_id = current_user.id
+        user_id = str(current_user.id)  # webhook tables store user_id as String(36)
         service = WebhookService()
 
         result = service.test_subscription(subscription_id, user_id)
@@ -424,7 +424,7 @@ def teams_notifications():
 def publish_event():
     """Publish a custom event to all subscribed webhooks"""
     try:
-        user_id = current_user.id
+        user_id = str(current_user.id)  # webhook tables store user_id as String(36)
         data = request.get_json()
 
         if not data:
