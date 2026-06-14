@@ -64,6 +64,22 @@ else:
     # SolutionCodeBundle lives in a feature module; import it so create_all() builds its
     # table (the route imports it lazily, which is too late for a fresh schema build).
     from app.modules.solutions_product.models import *  # noqa
+    # Feature models that were defined but never imported here, so create_all() skipped
+    # their tables -> routes querying them returned UndefinedTable 500s on a fresh install.
+    from .import_history import *  # noqa
+    from .sso_config import *  # noqa
+    from .gdpr_request import *  # noqa
+    from .subscription import *  # noqa
+    from .ai_chat_document import *  # noqa
+    from .consulting_partner import *  # noqa
+    from .capability_archimate_mapping import *  # noqa
+    from .copilot_insight import *  # noqa
+    from .frontend_configuration import *  # noqa
+    from .scoring_config import *  # noqa
+    from .usage_event import *  # noqa
+    from .simple_duplicate_detection import *  # noqa
+    from .optimization import *  # noqa
+    from .mapping_metrics import *  # noqa
     from .architecture_decision import (  # noqa: F401
         ArchitectureDecision, DecisionCapabilityLink,
         ArchitectureChangeRequest, ChangeImpactAssessment, ArchitectureChangeNotice,
