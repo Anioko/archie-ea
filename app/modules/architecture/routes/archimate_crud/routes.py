@@ -681,6 +681,10 @@ def create_element(layer, element_type):
 @login_required
 def detail_element(layer, element_type, element_id):
     """View/edit element details"""
+    # Unknown layer (e.g. a malformed URL) would otherwise crash the template that
+    # indexes layer_config by layer name; return 404 for an invalid layer.
+    if layer not in LAYER_CONFIG:
+        abort(404)
     model_class = MODEL_REGISTRY.get(element_type)
 
     element = None
