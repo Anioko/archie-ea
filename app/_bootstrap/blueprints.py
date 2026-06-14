@@ -114,8 +114,37 @@ def init_blueprints(app):
     # --- SSO federation (COM-005) ---
     _register_sso(app)
 
+    # --- Standalone feature blueprints the v2 module paths omit ---
+    _register_optional_standalone(app)
+
     # --- Blueprint registry enforcement ---
     _warn_non_canonical_blueprints(app)
+
+
+def _register_optional_standalone(app):
+    """Register standalone feature blueprints the active v2 module paths don't,
+    but shipped templates link to (governance dashboard, billing, team). Idempotent:
+    skips any blueprint name already registered, so it never double-registers."""
+    import importlib
+
+    specs = [
+        # (module_path, attr, url_prefix or None to use the blueprint's own)
+        ("app.modules.governance.routes.governance_dashboard_routes", "governance_bp", None),
+        ("app.modules.admin.billing_routes", "billing_bp", "/admin/billing"),
+        ("app.modules.admin.team_routes", "team_bp", "/admin"),
+    ]
+    for module_path, attr, prefix in specs:
+        try:
+            bp = getattr(importlib.import_module(module_path), attr)
+            if bp.name in app.blueprints:
+                continue
+            if prefix:
+                app.register_blueprint(bp, url_prefix=prefix)
+            else:
+                app.register_blueprint(bp)
+            app.logger.info("[BLUEPRINT] standalone %s registered", bp.name)
+        except Exception as exc:
+            app.logger.warning("[BLUEPRINT] standalone %s skipped (non-fatal): %s", attr, exc)
 
 
 # ---------------------------------------------------------------------------
