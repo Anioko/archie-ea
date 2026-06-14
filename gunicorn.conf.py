@@ -92,6 +92,21 @@ def on_starting(server):
 def post_fork(server, worker):
     """Called after a worker has been forked."""
     server.log.info("Worker spawned (pid: %s)", worker.pid)
+    # CRITICAL with preload_app=True: the SQLAlchemy engine is created in the master
+    # process, and create_app() opens DB connections during preload (admin bootstrap,
+    # prompt seeding). Those connections/sockets are inherited by every forked worker,
+    # so two workers end up sharing one libpq connection -> intermittent
+    # "error with status PGRES_TUPLES_OK and no message from the libpq" on queries.
+    # Dispose the pool here so each worker opens its own fresh connections.
+    try:
+        from manage import app
+        from app import db
+
+        with app.app_context():
+            db.engine.dispose()
+        server.log.info("post_fork: disposed DB engine for worker %s", worker.pid)
+    except Exception as exc:  # never let a hook failure crash worker startup
+        server.log.warning("post_fork: db.engine.dispose() failed: %s", exc)
 
 
 def worker_exit(server, worker):
