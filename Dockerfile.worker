@@ -20,15 +20,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Create and use virtualenv
 RUN python -m venv /venv
 
-# Install requirements (cache layer). Mirror the server image's dependency set.
+# Install requirements (cache layer) — exactly the same set as the server image.
+# Do NOT add extra pinned packages here: the old worker pinned flask_dance==5.1.0 /
+# Flask-Caching==1.11.1 etc., which dragged Flask below 2.3 and broke
+# flask_sqlalchemy import ("cannot import name 'app_ctx'"). requirements.txt is the
+# single source of truth for dependencies.
 COPY requirements.txt /app/requirements.txt
 RUN /venv/bin/pip install --upgrade pip setuptools wheel && \
-    /venv/bin/pip install -r /app/requirements.txt && \
-    /venv/bin/pip install \
-        sqlalchemy_utils==0.38.3 \
-        flask_dance==5.1.0 \
-        Flask-Caching==1.11.1 \
-        python-gitlab==3.10.0
+    /venv/bin/pip install -r /app/requirements.txt
 
 # Copy application
 COPY . /app
