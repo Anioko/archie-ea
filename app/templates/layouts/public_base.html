@@ -1,0 +1,89 @@
+{# Layout: public_base.html — Layout for unauthenticated/public pages.
+   Usage: login, register, password reset, and any page accessible without login.
+   Categories: account/login, account/register, account/reset_password, public-facing pages.
+   See also: admin_base.html (authenticated with sidebar), base.html (legacy, avoid).
+#}
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    {% include 'partials/_head.html' %}
+    <title>{% block title %}Welcome{% endblock %} - {{ config.APP_NAME }}</title>
+    
+    <!-- Accessibility CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/accessibility.css') }}">
+
+    {# CSRF Protection - in head so it's available before any scripts run #}
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+
+    <!-- ═══ Platform Core (load synchronously, before Alpine defer fires) ═══ -->
+    <script src="{{ url_for('static', filename='js/core/00-namespace.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/core/01-logger.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/core/02-sanitize.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/core/03-fetch.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/core/04-toast.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/core/05-error.js') }}"></script>
+
+    <!-- ═══ Platform UI: modal controller ═══ -->
+    <script src="{{ url_for('static', filename='js/ui/modal.js') }}"></script>
+
+    {% block extra_css %}{% endblock %}
+</head>
+<body class="h-full bg-background antialiased">
+    <!-- Skip to main content link for keyboard users -->
+    <a href="#main-content"
+       class="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[9999] focus:px-4 focus:py-2 focus:bg-background focus:text-foreground focus:rounded-md focus:shadow-lg focus:ring-2 focus:ring-ring">
+        Skip to main content
+    </a>
+    
+    <div class="flex flex-col h-screen">
+        <!-- Header (Optional for public pages - override in block if needed) -->
+        {% block header %}{% endblock %}
+
+        <!-- Main Content Area -->
+        <main id="main-content" 
+              class="flex-1 overflow-x-hidden overflow-y-auto bg-background"
+              role="main">
+            {% include 'partials/_flashes.html' %}
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+
+    {# Toast Notification System #}
+    {% include 'components/toast-container.html' %}
+
+    {% include 'partials/_scripts_common.html' %}
+
+    <!-- Alpine modal store — mirrors admin_base.html; delegates to Platform.modal -->
+    <script>
+        document.addEventListener('alpine:init', () => {
+            if (!Alpine.store('modal')) {
+                Alpine.store('modal', {
+                    _openIds: [],
+                    isOpen: function(id) { return this._openIds.indexOf(id) > -1; },
+                    open:    function(id, payload) {
+                        const m = (window.Platform && window.Platform.modal) || window.Modal;
+                        if (m) m.open(id, payload);
+                    },
+                    close:   function(id, result) {
+                        const m = (window.Platform && window.Platform.modal) || window.Modal;
+                        if (m) m.close(id, result);
+                    },
+                    resolve: function(id, result) {
+                        const m = (window.Platform && window.Platform.modal) || window.Modal;
+                        if (m) m.resolve(id, result);
+                    },
+                    getPayload: function(id) {
+                        const m = (window.Platform && window.Platform.modal) || window.Modal;
+                        return m ? m.getPayload(id) : null;
+                    }
+                });
+            }
+        });
+    </script>
+
+    <!-- Export Utilities -->
+    <script src="{{ url_for('static', filename='js/shared/export-utils.js') }}"></script>
+
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

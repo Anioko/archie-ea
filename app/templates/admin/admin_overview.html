@@ -1,0 +1,180 @@
+{% extends 'layouts/admin_base.html' %}
+{% block title %}Admin Overview{% endblock %}
+
+{% block breadcrumb %}
+{% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
+{{ breadcrumb_nav(items=[
+    {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
+    {'text': 'Admin', 'href': url_for('admin.index')},
+    {'text': 'Overview', 'current': true}
+]) }}
+{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-6">
+    <div class="mb-6">
+        <h1 class="text-2xl font-bold">Administration Overview</h1>
+        <p class="text-muted-foreground">Platform administrators, organization admins, and role assignments</p>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+        <!-- Super Admins Card -->
+        <div class="bg-card border border-red-500/50 rounded-lg p-6">
+            <div class="flex items-center gap-3 mb-4">
+                <div class="w-10 h-10 bg-red-500/10 rounded-lg flex items-center justify-center">
+                    <i data-lucide="shield-alert" class="w-5 h-5 text-destructive"></i>
+                </div>
+                <div>
+                    <h2 class="font-semibold">Super Admins</h2>
+                    <p class="text-sm text-muted-foreground">Platform-wide access</p>
+                </div>
+            </div>
+            <div class="text-3xl font-bold text-destructive mb-2">{{ platform_admins|length }}</div>
+            <p class="text-sm text-muted-foreground">Users with is_platform_admin = true</p>
+        </div>
+
+        <!-- Org Admins Card -->
+        <div class="bg-card border border-amber-500/50 rounded-lg p-6">
+            <div class="flex items-center gap-3 mb-4">
+                <div class="w-10 h-10 bg-amber-500/10 rounded-lg flex items-center justify-center">
+                    <i data-lucide="building-2" class="w-5 h-5 text-amber-600"></i>
+                </div>
+                <div>
+                    <h2 class="font-semibold">Org Admins</h2>
+                    <p class="text-sm text-muted-foreground">Organization managers</p>
+                </div>
+            </div>
+            <div class="text-3xl font-bold text-amber-600 mb-2">{{ org_admins|length }}</div>
+            <p class="text-sm text-muted-foreground">Users with is_org_admin = true</p>
+        </div>
+
+        <!-- Organizations Card -->
+        <div class="bg-card border border-border rounded-lg p-6">
+            <div class="flex items-center gap-3 mb-4">
+                <div class="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
+                    <i data-lucide="layers" class="w-5 h-5 text-primary"></i>
+                </div>
+                <div>
+                    <h2 class="font-semibold">Organizations</h2>
+                    <p class="text-sm text-muted-foreground">Tenant structure</p>
+                </div>
+            </div>
+            <div class="text-3xl font-bold mb-2">{{ organizations|length }}</div>
+            <p class="text-sm text-muted-foreground">{{ total_users }} total users</p>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Platform Admins List -->
+        <div class="bg-card border border-border rounded-lg overflow-hidden">
+            <div class="px-6 py-4 border-b border-border bg-red-500/5">
+                <h2 class="font-semibold flex items-center gap-2">
+                    <i data-lucide="shield-alert" class="w-4 h-4 text-destructive"></i>
+                    Platform Administrators
+                </h2>
+            </div>
+            <div class="divide-y divide-border">
+                {% for admin in platform_admins %}
+                <div class="px-6 py-4 flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 bg-destructive/10 rounded-full flex items-center justify-center">
+                            <span class="font-medium text-destructive">{{ admin.first_name[0] if admin.first_name else '?' }}</span>
+                        </div>
+                        <div>
+                            <div class="font-medium">{{ admin.first_name }} {{ admin.last_name }}</div>
+                            <div class="text-sm text-muted-foreground">{{ admin.email }}</div>
+                        </div>
+                    </div>
+                    <a href="{{ url_for('admin.user_info', user_id=admin.id) }}"
+                       class="text-primary hover:underline text-sm">View</a>
+                </div>
+                {% else %}
+                <div class="px-6 py-8 text-center text-muted-foreground">
+                    No platform admins configured
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Organization Admins List -->
+        <div class="bg-card border border-border rounded-lg overflow-hidden">
+            <div class="px-6 py-4 border-b border-border bg-amber-500/5">
+                <h2 class="font-semibold flex items-center gap-2">
+                    <i data-lucide="building-2" class="w-4 h-4 text-amber-600"></i>
+                    Organization Administrators
+                </h2>
+            </div>
+            <div class="divide-y divide-border">
+                {% for admin in org_admins %}
+                <div class="px-6 py-4 flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center">
+                            <span class="font-medium text-amber-700">{{ admin.first_name[0] if admin.first_name else '?' }}</span>
+                        </div>
+                        <div>
+                            <div class="font-medium">{{ admin.first_name }} {{ admin.last_name }}</div>
+                            <div class="text-sm text-muted-foreground">{{ admin.email }}</div>
+                            <div class="text-xs text-muted-foreground">Org: {{ admin.organization.name if admin.organization else 'None' }}</div>
+                        </div>
+                    </div>
+                    <a href="{{ url_for('admin.user_info', user_id=admin.id) }}"
+                       class="text-primary hover:underline text-sm">View</a>
+                </div>
+                {% else %}
+                <div class="px-6 py-8 text-center text-muted-foreground">
+                    No organization admins configured
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Role Distribution -->
+    <div class="mt-6 bg-card border border-border rounded-lg overflow-hidden">
+        <div class="px-6 py-4 border-b border-border">
+            <h2 class="font-semibold">Enterprise Role Distribution</h2>
+        </div>
+        <div class="p-6">
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {% for role, count in role_distribution.items() %}
+                <div class="p-4 bg-muted/30 rounded-lg text-center">
+                    <div class="text-2xl font-bold">{{ count }}</div>
+                    <div class="text-sm text-muted-foreground">{{ role|replace('_', ' ')|title }}</div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Admin Responsibilities -->
+    <div class="mt-6 bg-primary/5 border border-primary/20 rounded-lg p-6">
+        <h2 class="font-semibold text-blue-900 mb-4 flex items-center gap-2">
+            <i data-lucide="info" class="w-5 h-5"></i>
+            Admin Responsibilities
+        </h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm text-primary/90">
+            <div>
+                <h3 class="font-medium mb-2">Super Admin (Platform Admin)</h3>
+                <ul class="space-y-1 list-disc list-inside">
+                    <li>Create and manage organizations</li>
+                    <li>Assign platform admin privileges</li>
+                    <li>Configure system-wide settings</li>
+                    <li>Manage API keys and integrations</li>
+                    <li>Access all admin routes</li>
+                </ul>
+            </div>
+            <div>
+                <h3 class="font-medium mb-2">Org Admin</h3>
+                <ul class="space-y-1 list-disc list-inside">
+                    <li>Manage users in their organization</li>
+                    <li>Assign enterprise roles to users</li>
+                    <li>View organization-scoped data</li>
+                    <li>Cannot access system-wide settings</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>if (typeof lucide !== 'undefined') lucide.createIcons();</script>
+{% endblock %}

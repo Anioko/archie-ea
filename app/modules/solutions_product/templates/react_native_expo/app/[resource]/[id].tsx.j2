@@ -1,0 +1,539 @@
+import { useState } from "react"
+import {
+  Alert,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  ScrollView,
+  Switch,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+  FlatList,
+} from "react-native"
+import DateTimePicker from "@react-native-community/datetimepicker"
+import { useRouter, useLocalSearchParams } from "expo-router"
+import { useForm, Controller } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import Toast from "react-native-toast-message"
+import { Save, Trash2, AlertTriangle, Zap, Check, ChevronDown, Search, X } from "lucide-react-native"
+import { {{ name | lower }}Api } from "@/lib/api"
+import { {{ name }}Schema, type {{ name }}Input, type {{ name }} } from "@/lib/schemas"
+import { StatusBadge } from "@/components/StatusBadge"
+{% for rel in relationships %}
+import { {{ rel.target | lower }}Api } from "@/lib/api"
+{% endfor %}
+
+const _bg = (c: string) => ({ backgroundColor: c })
+const _fg = (c: string) => ({ color: c })
+const CARD_SHADOW = { shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 2 }
+const BTN_SHADOW = { shadowColor: "#6366f1", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 4 }
+const SCROLL_STYLE = { padding: 20, paddingBottom: 48 }
+const SWITCH_TRACK = { false: "#e2e8f0", true: "#6366f1" }
+
+{% set status_field = none %}
+{% for field in fields %}
+{% if field.name == 'status' %}{% set status_field = field %}{% endif %}
+{% endfor %}
+
+// ── Inline pickers (same as new.tsx — shared via components in a real project) ──
+
+function EnumPicker({ label, value, options, onChange, error }: {
+  label: string; value: string | undefined; options: string[]
+  onChange: (v: string) => void; error?: string
+}) {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <View className="px-5 py-3.5 border-b border-slate-50">
+        <Text className="text-xs font-medium text-slate-400 mb-1.5">{label}</Text>
+        <TouchableOpacity
+          onPress={() => setOpen(true)}
+          className={`bg-slate-50 border rounded-lg px-3.5 py-2.5 flex-row items-center justify-between ${error ? "border-red-400" : "border-slate-200"}`}
+        >
+          <Text className={value ? "text-sm text-slate-900" : "text-sm text-slate-400"}>
+            {value ? String(value).replace(/_/g, " ") : "Select…"}
+          </Text>
+          <ChevronDown size={16} color="#94a3b8" />
+        </TouchableOpacity>
+        {error ? <Text className="text-red-500 text-xs mt-1">{error}</Text> : null}
+      </View>
+      <Modal visible={open} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setOpen(false)}>
+        <View className="flex-1 bg-white">
+          <View className="flex-row items-center justify-between px-5 py-4 border-b border-slate-100">
+            <Text className="text-base font-semibold text-slate-900">{label}</Text>
+            <TouchableOpacity onPress={() => setOpen(false)}><X size={22} color="#64748b" /></TouchableOpacity>
+          </View>
+          <FlatList
+            data={options}
+            keyExtractor={(o) => o}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                onPress={() => { onChange(item); setOpen(false) }}
+                className="flex-row items-center px-5 py-4 border-b border-slate-50"
+              >
+                <Text className="text-sm text-slate-900 flex-1 capitalize">{item.replace(/_/g, " ")}</Text>
+                {value === item ? <Check size={16} color="#6366f1" /> : null}
+              </TouchableOpacity>
+            )}
+          />
+        </View>
+      </Modal>
+    </>
+  )
+}
+
+function DateField({ label, value, onChange, error, required }: {
+  label: string; value: string | undefined; onChange: (v: string) => void; error?: string; required?: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const date = value ? new Date(value) : new Date()
+  return (
+    <View className="px-5 py-3.5 border-b border-slate-50">
+      <Text className="text-xs font-medium text-slate-400 mb-1.5">{label}{required ? " *" : ""}</Text>
+      <TouchableOpacity
+        onPress={() => setOpen(true)}
+        className={`bg-slate-50 border rounded-lg px-3.5 py-2.5 ${error ? "border-red-400" : "border-slate-200"}`}
+      >
+        <Text className={value ? "text-sm text-slate-900" : "text-sm text-slate-400"}>
+          {value ? new Date(value).toLocaleDateString() : "Select date…"}
+        </Text>
+      </TouchableOpacity>
+      {error ? <Text className="text-red-500 text-xs mt-1">{error}</Text> : null}
+      {open && (
+        <DateTimePicker
+          value={date}
+          mode="date"
+          display={Platform.OS === "ios" ? "spinner" : "default"}
+          onChange={(_e, d) => {
+            setOpen(Platform.OS === "ios")
+            if (d) onChange(d.toISOString())
+          }}
+        />
+      )}
+    </View>
+  )
+}
+
+function RelationPicker({ label, value, fetchFn, displayField, onChange, error, required }: {
+  label: string; value: string | number | undefined
+  fetchFn: (params?: Record<string, string | number>) => Promise<unknown[]>
+  displayField: string; onChange: (id: string | number, label: string) => void
+  error?: string; required?: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState("")
+  const [displayLabel, setDisplayLabel] = useState<string>(value != null ? String(value) : "")
+  const { data: options = [], isLoading } = useQuery({
+    queryKey: ["relation-picker", label, search],
+    queryFn: () => fetchFn({ search, per_page: 30 }),
+    enabled: open,
+  })
+  return (
+    <>
+      <View className="px-5 py-3.5 border-b border-slate-50">
+        <Text className="text-xs font-medium text-slate-400 mb-1.5">{label}{required ? " *" : ""}</Text>
+        <TouchableOpacity
+          onPress={() => setOpen(true)}
+          className={`bg-slate-50 border rounded-lg px-3.5 py-2.5 flex-row items-center justify-between ${error ? "border-red-400" : "border-slate-200"}`}
+        >
+          <Text className={displayLabel ? "text-sm text-slate-900 flex-1" : "text-sm text-slate-400 flex-1"} numberOfLines={1}>
+            {displayLabel || "Search and select…"}
+          </Text>
+          <Search size={16} color="#94a3b8" />
+        </TouchableOpacity>
+        {error ? <Text className="text-red-500 text-xs mt-1">{error}</Text> : null}
+      </View>
+      <Modal visible={open} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setOpen(false)}>
+        <View className="flex-1 bg-white">
+          <View className="flex-row items-center justify-between px-5 py-4 border-b border-slate-100">
+            <Text className="text-base font-semibold text-slate-900">{label}</Text>
+            <TouchableOpacity onPress={() => setOpen(false)}><X size={22} color="#64748b" /></TouchableOpacity>
+          </View>
+          <View className="px-4 py-3 border-b border-slate-100">
+            <TextInput
+              className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-900"
+              placeholder={`Search ${label.toLowerCase()}…`}
+              placeholderTextColor="#94a3b8"
+              value={search}
+              onChangeText={setSearch}
+              autoFocus
+            />
+          </View>
+          <FlatList
+            data={options as Record<string, unknown>[]}
+            keyExtractor={(o) => String((o as Record<string, unknown>).id ?? JSON.stringify(o))}
+            ListEmptyComponent={
+              <Text className="text-sm text-slate-400 text-center py-8">
+                {isLoading ? "Loading…" : "No results"}
+              </Text>
+            }
+            renderItem={({ item }) => {
+              const rec = item as Record<string, unknown>
+              const label2 = String(rec[displayField] ?? rec.name ?? rec.title ?? rec.id)
+              const id = rec.id ?? rec._id
+              return (
+                <TouchableOpacity
+                  onPress={() => { onChange(id as string | number, label2); setDisplayLabel(label2); setOpen(false) }}
+                  className="flex-row items-center px-5 py-4 border-b border-slate-50"
+                >
+                  <Text className="text-sm text-slate-900 flex-1">{label2}</Text>
+                  {value === id ? <Check size={16} color="#6366f1" /> : null}
+                </TouchableOpacity>
+              )
+            }}
+          />
+        </View>
+      </Modal>
+    </>
+  )
+}
+
+export default function {{ name }}DetailScreen() {
+  const router = useRouter()
+  const { id } = useLocalSearchParams<{ id: string }>()
+  const queryClient = useQueryClient()
+  const [isEditing, setIsEditing] = useState(false)
+
+  const { data: item, isLoading, isError, error } = useQuery<{{ name }}>({
+    queryKey: ["{{ table_name }}", id],
+    queryFn: () => {{ name | lower }}Api.get(id),
+    enabled: !!id,
+  })
+
+  // Derive a human title from the first meaningful field, fall back to #id
+  const displayTitle = item
+    ? String((item as Record<string, unknown>)[
+        "{{ (fields | selectattr('primary_key', 'undefined') | first | default({'name': 'id'})).name }}"
+      ] ?? `#${id}`)
+    : `#${id}`
+
+  const { control, handleSubmit, formState: { errors, isSubmitting, isDirty }, reset } = useForm<{{ name }}Input>({
+    resolver: zodResolver({{ name }}Schema),
+    values: item as {{ name }}Input | undefined,
+  })
+
+  const updateMutation = useMutation({
+    mutationFn: (data: {{ name }}Input) => {{ name | lower }}Api.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["{{ table_name }}"] })
+      queryClient.invalidateQueries({ queryKey: ["{{ table_name }}", id] })
+      setIsEditing(false)
+      Toast.show({ type: "success", text1: "Saved", text2: "Changes saved successfully." })
+    },
+    onError: (e: unknown) => {
+      Toast.show({ type: "error", text1: "Error", text2: e instanceof Error ? e.message : "Save failed" })
+    },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: () => {{ name | lower }}Api.remove(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["{{ table_name }}"] })
+      Toast.show({ type: "success", text1: "Deleted", text2: "{{ name | replace('_', ' ') }} removed." })
+      router.back()
+    },
+    onError: (e: unknown) => {
+      Toast.show({ type: "error", text1: "Delete failed", text2: e instanceof Error ? e.message : "An error occurred" })
+    },
+  })
+
+  {% if state_machine %}
+  const { data: actionsData } = useQuery<{ available_triggers: string[] }>({
+    queryKey: ["{{ table_name }}", id, "actions"],
+    queryFn: () => {{ name | lower }}Api.availableActions(id),
+    enabled: !!id && !!item,
+  })
+
+  const transitionMutation = useMutation({
+    mutationFn: (trigger: string) => {{ name | lower }}Api.transition(id, trigger),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["{{ table_name }}"] })
+      queryClient.invalidateQueries({ queryKey: ["{{ table_name }}", id] })
+      queryClient.invalidateQueries({ queryKey: ["{{ table_name }}", id, "actions"] })
+      Toast.show({ type: "success", text1: "Action completed", text2: "Status updated successfully." })
+    },
+    onError: (e: unknown) => {
+      Toast.show({ type: "error", text1: "Action failed", text2: e instanceof Error ? e.message : "Could not perform action" })
+    },
+  })
+  {% endif %}
+
+  const onDelete = () => {
+    Alert.alert(
+      "Delete {{ name | replace('_', ' ') }}?",
+      "This action cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Delete", style: "destructive", onPress: () => deleteMutation.mutate() },
+      ],
+    )
+  }
+
+  if (isLoading) {
+    return (
+      <View className="flex-1 items-center justify-center bg-slate-50">
+        <View className="w-8 h-8 rounded-full bg-indigo-100 items-center justify-center">
+          <View className="w-4 h-4 rounded-full bg-indigo-600" />
+        </View>
+      </View>
+    )
+  }
+
+  if (isError || !item) {
+    return (
+      <View className="flex-1 items-center justify-center bg-slate-50 p-6">
+        <View className="w-16 h-16 rounded-full bg-red-50 items-center justify-center mb-4">
+          <AlertTriangle size={28} color="#ef4444" />
+        </View>
+        <Text className="text-lg font-semibold text-slate-900 mb-1">
+          {isError ? "Failed to load" : "Not found"}
+        </Text>
+        <Text className="text-sm text-slate-500 text-center">
+          {error instanceof Error ? error.message : "This record may have been deleted."}
+        </Text>
+        <TouchableOpacity onPress={() => router.back()} className="mt-4 bg-slate-100 px-5 py-2.5 rounded-xl">
+          <Text className="text-slate-700 font-medium">Go Back</Text>
+        </TouchableOpacity>
+      </View>
+    )
+  }
+
+  const rec = item as Record<string, unknown>
+
+  return (
+    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} className="flex-1 bg-slate-50">
+      <ScrollView className="flex-1" contentContainerStyle={SCROLL_STYLE}>
+
+        {/* Header card */}
+        <View className="bg-white rounded-2xl p-5 border border-slate-100 mb-4" style={CARD_SHADOW}>
+          <View className="flex-row items-start justify-between mb-3">
+            <Text className="text-xl font-bold text-slate-900 flex-1 mr-3" numberOfLines={2}>{displayTitle}</Text>
+            {% if status_field %}
+            <StatusBadge value={rec.status as string} />
+            {% endif %}
+          </View>
+          <TouchableOpacity
+            onPress={() => { setIsEditing(!isEditing); if (isEditing) reset() }}
+            className={`self-start rounded-lg px-4 py-2 ${isEditing ? "bg-slate-100" : "bg-indigo-50"}`}
+          >
+            <Text className={`text-sm font-medium ${isEditing ? "text-slate-600" : "text-indigo-600"}`}>
+              {isEditing ? "Cancel" : "Edit"}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Fields */}
+        <View className="bg-white rounded-2xl border border-slate-100 overflow-hidden mb-4" style={CARD_SHADOW}>
+          <View className="px-5 py-3 border-b border-slate-100">
+            <Text className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Details</Text>
+          </View>
+
+          {% for field in fields %}{% if not field.primary_key %}
+          {% set fl = field.name | lower %}
+          {% set is_bool = field.type in ["bool", "boolean"] %}
+          {% set is_numeric = field.type in ['int', 'integer', 'float', 'Decimal', 'decimal', 'number'] %}
+          {% set is_date = field.type in ['datetime', 'date'] or field.format in ['date', 'date-time'] %}
+          {% set is_email = 'email' in fl %}
+          {% set is_phone = 'phone' in fl %}
+          {% set is_url = 'url' in fl or 'website' in fl or 'link' in fl %}
+          {% set is_secret = 'password' in fl or 'secret' in fl or 'passwd' in fl %}
+          {% set is_multiline = ('description' in fl or 'notes' in fl or 'body' in fl or 'content' in fl or 'summary' in fl or 'comment' in fl or 'remarks' in fl) and field.type in ['str', 'string', 'text'] %}
+          {% set is_fk = field.foreignKey is defined and field.foreignKey %}
+          {% set has_enum = field.enum is defined and field.enum | length > 0 %}
+          {% set kbd = 'numeric' if is_numeric else ('email-address' if is_email else ('phone-pad' if is_phone else ('url' if is_url else 'default'))) %}
+
+          {% if is_bool %}
+          <View className="px-5 py-3.5 border-b border-slate-50 flex-row items-center justify-between">
+            <Text className="text-sm font-medium text-slate-700">{{ field.name | replace('_', ' ') | title }}</Text>
+            {isEditing ? (
+              <Controller
+                control={control}
+                name="{{ field.name }}"
+                render={({ field: { onChange, value } }) => (
+                  <Switch value={!!value} onValueChange={onChange} trackColor={SWITCH_TRACK} thumbColor="#fff" />
+                )}
+              />
+            ) : (
+              <View className={`rounded-full px-2.5 py-1 ${rec.{{ field.name }} ? "bg-green-50" : "bg-slate-100"}`}>
+                <Text className={`text-xs font-medium ${rec.{{ field.name }} ? "text-green-700" : "text-slate-500"}`}>
+                  {rec.{{ field.name }} ? "Yes" : "No"}
+                </Text>
+              </View>
+            )}
+          </View>
+
+          {% elif is_date %}
+          {isEditing ? (
+            <Controller
+              control={control}
+              name="{{ field.name }}"
+              render={({ field: { onChange, value } }) => (
+                <DateField
+                  label="{{ field.name | replace('_', ' ') | title }}{% if not field.nullable %} *{% endif %}"
+                  value={value as string | undefined}
+                  onChange={onChange}
+                  error={errors.{{ field.name }}?.message}
+                />
+              )}
+            />
+          ) : (
+            <View className="px-5 py-3.5 border-b border-slate-50">
+              <Text className="text-xs font-medium text-slate-400 mb-1">{{ field.name | replace('_', ' ') | title }}</Text>
+              <Text className="text-sm text-slate-900">
+                {rec.{{ field.name }} ? new Date(String(rec.{{ field.name }})).toLocaleDateString() : "\u2014"}
+              </Text>
+            </View>
+          )}
+
+          {% elif has_enum %}
+          {isEditing ? (
+            <Controller
+              control={control}
+              name="{{ field.name }}"
+              render={({ field: { onChange, value } }) => (
+                <EnumPicker
+                  label="{{ field.name | replace('_', ' ') | title }}"
+                  value={value as string | undefined}
+                  options={[{% for v in field.enum %}"{{ v }}"{% if not loop.last %}, {% endif %}{% endfor %}]}
+                  onChange={onChange}
+                  error={errors.{{ field.name }}?.message}
+                />
+              )}
+            />
+          ) : (
+            <View className="px-5 py-3.5 border-b border-slate-50">
+              <Text className="text-xs font-medium text-slate-400 mb-1">{{ field.name | replace('_', ' ') | title }}</Text>
+              <Text className="text-sm text-slate-900 capitalize">
+                {rec.{{ field.name }} != null ? String(rec.{{ field.name }}).replace(/_/g, " ") : "\u2014"}
+              </Text>
+            </View>
+          )}
+
+          {% elif is_fk %}
+          {isEditing ? (
+            <Controller
+              control={control}
+              name="{{ field.name }}"
+              render={({ field: { onChange, value } }) => (
+                <RelationPicker
+                  label="{{ field.name | replace('_id', '') | replace('_', ' ') | title }}"
+                  value={value as string | number | undefined}
+                  fetchFn={(params) => {{ field.foreignKey.split('.')[0] | lower }}Api.list(params)}
+                  displayField="name"
+                  onChange={(id) => onChange(id)}
+                  error={errors.{{ field.name }}?.message}
+                />
+              )}
+            />
+          ) : (
+            <View className="px-5 py-3.5 border-b border-slate-50">
+              <Text className="text-xs font-medium text-slate-400 mb-1">{{ field.name | replace('_id', '') | replace('_', ' ') | title }}</Text>
+              <Text className="text-sm text-slate-900">
+                {rec.{{ field.name }} != null ? String(rec.{{ field.name }}) : "\u2014"}
+              </Text>
+            </View>
+          )}
+
+          {% else %}
+          <View className="px-5 py-3.5 border-b border-slate-50">
+            <Text className="text-xs font-medium text-slate-400 mb-1.5">{{ field.name | replace('_', ' ') | title }}{% if not field.nullable %} *{% endif %}</Text>
+            {isEditing ? (
+              <Controller
+                control={control}
+                name="{{ field.name }}"
+                render={({ field: { onChange, onBlur, value } }) => (
+                  <TextInput
+                    className={`bg-slate-50 border rounded-lg px-3.5 {% if is_multiline %}py-3{% else %}py-2.5{% endif %} text-sm text-slate-900 ${errors.{{ field.name }} ? "border-red-400" : "border-slate-200"}`}
+                    onBlur={onBlur}
+                    onChangeText={(text) => onChange({% if is_numeric %}text === "" ? undefined : Number(text){% else %}text{% endif %})}
+                    value={value != null ? String(value) : ""}
+                    keyboardType="{{ kbd }}"
+                    {% if is_secret %}secureTextEntry{% endif %}
+                    {% if is_multiline %}multiline numberOfLines={4} textAlignVertical="top"{% endif %}
+                    {% if is_email %}autoCapitalize="none" autoComplete="email"{% endif %}
+                    placeholder="{{ field.name | replace('_', ' ') | title }}"
+                    placeholderTextColor="#94a3b8"
+                  />
+                )}
+              />
+            ) : (
+              <Text className="text-sm text-slate-900">
+                {rec.{{ field.name }} != null ? String(rec.{{ field.name }}) : "\u2014"}
+              </Text>
+            )}
+            {errors.{{ field.name }} && <Text className="text-red-500 text-xs mt-1">{errors.{{ field.name }}?.message}</Text>}
+          </View>
+          {% endif %}
+
+          {% endif %}{% endfor %}
+        </View>
+
+        {/* Save button */}
+        {isEditing && (
+          <TouchableOpacity
+            onPress={handleSubmit((data) => updateMutation.mutate(data))}
+            disabled={isSubmitting || updateMutation.isPending || !isDirty}
+            className={`rounded-2xl px-4 py-4 items-center flex-row justify-center gap-2 mb-3 ${
+              isSubmitting || updateMutation.isPending || !isDirty ? "bg-indigo-300" : "bg-indigo-600"
+            }`}
+            style={BTN_SHADOW}
+          >
+            <Save size={18} color="#fff" />
+            <Text className="text-white font-semibold text-base">
+              {isSubmitting || updateMutation.isPending ? "Saving…" : isDirty ? "Save Changes" : "No Changes"}
+            </Text>
+          </TouchableOpacity>
+        )}
+
+        {/* State machine actions */}
+        {% if state_machine %}
+        {!isEditing && (actionsData?.available_triggers?.length ?? 0) > 0 && (
+          <View className="bg-white rounded-2xl border border-indigo-100 p-5 mb-3" style={CARD_SHADOW}>
+            <View className="flex-row items-center gap-2 mb-3">
+              <Zap size={14} color="#6366f1" />
+              <Text className="text-xs font-semibold text-indigo-400 uppercase tracking-wider">Actions</Text>
+            </View>
+            <View className="flex-row flex-wrap gap-2">
+              {actionsData!.available_triggers.map((trigger) => (
+                <TouchableOpacity
+                  key={trigger}
+                  onPress={() => Alert.alert(
+                    trigger.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+                    `Are you sure you want to ${trigger.replace(/_/g, " ")} this {{ name | replace('_', ' ') | lower }}?`,
+                    [
+                      { text: "Cancel", style: "cancel" },
+                      { text: "Confirm", onPress: () => transitionMutation.mutate(trigger) },
+                    ]
+                  )}
+                  disabled={transitionMutation.isPending}
+                  className="bg-indigo-600 rounded-xl px-4 py-2.5"
+                >
+                  <Text className="text-white font-semibold text-sm capitalize">{trigger.replace(/_/g, " ")}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        )}
+        {% endif %}
+
+        {/* Danger zone */}
+        <View className="bg-white rounded-2xl border border-red-100 p-5 mt-2">
+          <Text className="text-xs font-semibold text-red-400 uppercase tracking-wider mb-3">Danger Zone</Text>
+          <TouchableOpacity
+            onPress={onDelete}
+            disabled={deleteMutation.isPending}
+            className="rounded-xl border border-red-200 px-4 py-3 items-center flex-row justify-center gap-2 bg-red-50"
+          >
+            <Trash2 size={16} color={deleteMutation.isPending ? "#d1d5db" : "#dc2626"} />
+            <Text className={`font-semibold ${deleteMutation.isPending ? "text-slate-400" : "text-red-600"}`}>
+              {deleteMutation.isPending ? "Deleting…" : "Delete {{ name | replace('_', ' ') }}"}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
+  )
+}

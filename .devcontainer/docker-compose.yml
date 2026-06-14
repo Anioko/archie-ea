@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  app:
+    image: mcr.microsoft.com/devcontainers/python:3.11
+    volumes:
+      - ../..:/workspaces:cached
+    command: sleep infinity
+    environment:
+      # Separate databases for dev and test
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/flask_dev
+      - DEV_DATABASE_URL=postgresql://postgres:postgres@db:5432/flask_dev
+      - TEST_DATABASE_URL=postgresql://postgres:postgres@db:5432/flask_test
+      - FLASK_CONFIG=codespaces
+      - PLAYWRIGHT_BROWSER_HEADLESS=true
+      - TOKENIZERS_PARALLELISM=false
+      - PIP_EXTRA_INDEX_URL=https://download.pytorch.org/whl/cpu
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      # Init script creates flask_dev and flask_test databases
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "5432:5432"
+
+volumes:
+  postgres-data:

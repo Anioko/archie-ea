@@ -1,0 +1,267 @@
+"use client"
+
+import { useEffect } from "react"
+import { useRouter, useParams } from "next/navigation"
+import { useForm, Controller } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { {{ name | lower }}Api } from "@/lib/api"
+import { {{ name }}Schema, type {{ name }}Input } from "@/lib/schemas"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Textarea } from "@/components/ui/textarea"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Badge } from "@/components/ui/badge"
+import { Separator } from "@/components/ui/separator"
+import { toast } from "@/components/ui/use-toast"
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
+
+export default function {{ name }}DetailPage() {
+  const router = useRouter()
+  const params = useParams()
+  const id = params.id as string
+  const queryClient = useQueryClient()
+
+  const { register, handleSubmit, control, reset, formState: { errors } } = useForm<{{ name }}Input>({
+    resolver: zodResolver({{ name }}Schema),
+  })
+
+  const { data: item, isLoading, isError, error } = useQuery({
+    queryKey: ["{{ table_name }}", id],
+    queryFn: () => {{ name | lower }}Api.get(id),
+  })
+
+  {% if state_machine %}
+  const { data: actionsData } = useQuery({
+    queryKey: ["{{ table_name }}", id, "actions"],
+    queryFn: () => {{ name | lower }}Api.availableActions(id),
+    enabled: !!id && !!item,
+  })
+
+  const transitionMutation = useMutation({
+    mutationFn: (trigger: string) => {{ name | lower }}Api.transition(id, trigger),
+    onSuccess: (updated) => {
+      queryClient.invalidateQueries({ queryKey: ["{{ table_name }}"] })
+      queryClient.invalidateQueries({ queryKey: ["{{ table_name }}", id] })
+      queryClient.invalidateQueries({ queryKey: ["{{ table_name }}", id, "actions"] })
+      if (updated) reset(updated as {{ name }}Input)
+      toast({ title: "Action completed", description: "Status updated successfully." })
+    },
+    onError: (e: unknown) => {
+      const msg = e instanceof Error ? e.message : "Action failed"
+      toast({ title: "Error", description: msg, variant: "destructive" })
+    },
+  })
+  {% endif %}
+
+  useEffect(() => {
+    if (item) reset(item)
+  }, [item, reset])
+
+  const updateMutation = useMutation({
+    mutationFn: (data: {{ name }}Input) => {{ name | lower }}Api.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["{{ table_name }}"] })
+      toast({ title: "Saved", description: "Changes saved successfully." })
+      router.push("/{{ table_name }}")
+    },
+    onError: (e: unknown) => {
+      const msg = e instanceof Error ? e.message : "An unexpected error occurred"
+      toast({ title: "Error", description: msg, variant: "destructive" })
+    },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: () => {{ name | lower }}Api.remove(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["{{ table_name }}"] })
+      toast({ title: "Deleted", description: "Record removed." })
+      router.push("/{{ table_name }}")
+    },
+    onError: (e: unknown) => {
+      const msg = e instanceof Error ? e.message : "An unexpected error occurred"
+      toast({ title: "Error", description: msg, variant: "destructive" })
+    },
+  })
+
+  if (isLoading) return (
+    <div className="max-w-xl space-y-4">
+      <Skeleton className="h-8 w-48" />
+      {% for field in fields %}{% if not field.primary_key %}
+      <Skeleton className="h-10 w-full" />
+      {% endif %}{% endfor %}
+    </div>
+  )
+  if (isError) return <p className="text-destructive">Error: {error instanceof Error ? error.message : "Failed to load"}</p>
+  if (!item) return <p className="text-muted-foreground">Record not found.</p>
+
+  return (
+    <div className="max-w-2xl space-y-6">
+      <div className="flex items-start justify-between">
+        <h1 className="text-2xl font-bold">{{ name | replace("_", " ") | title }}</h1>
+        {% if state_machine %}
+        {(item as Record<string, unknown>)?.status && (
+          <Badge variant="outline" className="capitalize text-sm">
+            {String((item as Record<string, unknown>).status).replace(/_/g, " ")}
+          </Badge>
+        )}
+        {% endif %}
+      </div>
+
+      {% if state_machine %}
+      {actionsData?.available_triggers && actionsData.available_triggers.length > 0 && (
+        <div className="rounded-lg border border-indigo-100 bg-indigo-50/50 p-4">
+          <p className="text-xs font-semibold text-indigo-500 uppercase tracking-wider mb-3">Available Actions</p>
+          <div className="flex flex-wrap gap-2">
+            {actionsData.available_triggers.map((trigger) => (
+              <AlertDialog key={trigger}>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={transitionMutation.isPending}
+                    className="capitalize border-indigo-200 text-indigo-700 hover:bg-indigo-100"
+                  >
+                    {trigger.replace(/_/g, " ")}
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle className="capitalize">{trigger.replace(/_/g, " ")}?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This will change the status of this {{ name | replace("_", " ") | lower }}. This action may not be reversible.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={() => transitionMutation.mutate(trigger)}>
+                      Confirm
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            ))}
+          </div>
+        </div>
+      )}
+      {% endif %}
+
+      <Separator />
+
+      <form onSubmit={handleSubmit((data) => updateMutation.mutate(data))} className="space-y-4">
+        {% for field in fields %}{% if not field.primary_key %}
+        {% set fl = field.name | lower %}
+        {% set is_bool = field.type == "bool" %}
+        {% set is_num = field.type in ["int", "float", "Decimal"] %}
+        {% set is_dt = field.type == "datetime" %}
+        {% set is_email = "email" in fl %}
+        {% set is_secret = "password" in fl or "secret" in fl or "passwd" in fl %}
+        {% set is_multiline = ("description" in fl or "notes" in fl or "body" in fl or "content" in fl or "summary" in fl or "detail" in fl or "comment" in fl) and field.type == "str" %}
+        {% set enum_vals = [] %}
+        {%- for v in validations %}
+          {%- if v.field == field.name and v.rule == "enum" and v.value %}
+            {%- set _ = enum_vals.extend(v.value if v.value is iterable and v.value is not string else [v.value]) %}
+          {%- endif %}
+        {%- endfor %}
+        {% if is_bool %}
+        <Controller
+          name="{{ field.name }}"
+          control={control}
+          render={({ field: f }) => (
+            <div className="flex items-center gap-2 py-1">
+              <Checkbox id="{{ field.name }}" checked={!!f.value} onCheckedChange={f.onChange} />
+              <Label htmlFor="{{ field.name }}">{{ field.name | replace("_", " ") | title }}</Label>
+            </div>
+          )}
+        />
+        {% elif enum_vals %}
+        <div className="space-y-1">
+          <Label>{{ field.name | replace("_", " ") | title }}{% if not field.nullable %} *{% endif %}</Label>
+          <Controller
+            name="{{ field.name }}"
+            control={control}
+            render={({ field: f }) => (
+              <Select onValueChange={f.onChange} value={f.value ?? ""}>
+                <SelectTrigger className={errors.{{ field.name }} ? "border-destructive" : ""}>
+                  <SelectValue placeholder="Select {{ field.name | replace('_', ' ') | lower }}..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {% for val in enum_vals %}
+                  <SelectItem value="{{ val }}">{{ val | replace("_", " ") | title }}</SelectItem>
+                  {% endfor %}
+                </SelectContent>
+              </Select>
+            )}
+          />
+          {errors.{{ field.name }} && <p className="text-xs text-destructive">{errors.{{ field.name }}?.message}</p>}
+        </div>
+        {% else %}
+        <div className="space-y-1">
+          <Label htmlFor="{{ field.name }}">{{ field.name | replace("_", " ") | title }}{% if not field.nullable %} *{% endif %}</Label>
+          {% if is_multiline %}
+          <Textarea
+            id="{{ field.name }}"
+            rows={4}
+            placeholder="Enter {{ field.name | replace('_', ' ') | lower }}..."
+            {...register("{{ field.name }}")}
+            className={errors.{{ field.name }} ? "border-destructive" : ""}
+          />
+          {% else %}
+          <Input
+            id="{{ field.name }}"
+            type="{{ "number" if is_num else "datetime-local" if is_dt else "email" if is_email else "password" if is_secret else "text" }}"
+            placeholder="{{ field.name | replace('_', ' ') | title }}"
+            {...register("{{ field.name }}"{% if is_num %}, { valueAsNumber: true }{% endif %})}
+            className={errors.{{ field.name }} ? "border-destructive" : ""}
+          />
+          {% endif %}
+          {errors.{{ field.name }} && (
+            <p className="text-xs text-destructive">{errors.{{ field.name }}?.message}</p>
+          )}
+        </div>
+        {% endif %}
+        {% endif %}{% endfor %}
+        <div className="flex gap-3 pt-2">
+          <Button type="submit" disabled={updateMutation.isPending}>
+            {updateMutation.isPending ? "Saving..." : "Save Changes"}
+          </Button>
+          <Button type="button" variant="outline" onClick={() => router.back()}>
+            Cancel
+          </Button>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button type="button" variant="destructive" className="ml-auto" disabled={deleteMutation.isPending}>
+                {deleteMutation.isPending ? "Deleting..." : "Delete"}
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete this {{ name }}?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This action cannot be undone. The record will be permanently removed.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => deleteMutation.mutate()}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  Delete
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
+      </form>
+    </div>
+  )
+}

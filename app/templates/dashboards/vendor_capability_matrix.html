@@ -1,0 +1,524 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'components/page_header.html' import page_header %}
+
+{% block title %}Vendor Capability Matrix{% endblock %}
+
+{% block extra_head_js %}
+<script>
+document.addEventListener('alpine:init', () => {
+    Alpine.store('matrixModal', { open: false, title: '', data: null });
+
+    Alpine.data('vendorCapabilityMatrix', () => ({
+        matrixData: [],
+        filteredData: [],
+        capabilities: [],
+        vendors: [],
+        vendorProducts: [],
+        allCategories: [],
+        loading: false,
+        loadingCategories: false,
+        dataLoaded: false,
+        error: '',
+        filters: { vendor: '', capability: '', minCoverage: '0', category: '' },
+        stats: { totalCaps: 0, totalVendors: 0, avgCoverage: null, strongCount: 0 },
+
+        init() { this.loadCategories(); },
+
+        async loadCategories() {
+            this.loadingCategories = true;
+            try {
+                const r = await fetch('/capability-map/api/vendor-capability-matrix?only_categories=1');
+                if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                this.allCategories = await r.json();
+            } catch (e) {
+                this.error = 'Failed to load categories. ' + e.message;
+            } finally {
+                this.loadingCategories = false;
+                this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+            }
+        },
+
+        async loadData() {
+            if (!this.filters.category) return;
+            this.loading = true;
+            this.error = '';
+            try {
+                const url = '/capability-map/api/vendor-capability-matrix?category=' + encodeURIComponent(this.filters.category);
+                const r = await fetch(url);
+                if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                this.matrixData = await r.json();
+                this.dataLoaded = true;
+                this.applyFilters();
+            } catch (e) {
+                this.error = 'Failed to load matrix data. ' + e.message;
+            } finally {
+                this.loading = false;
+                this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+            }
+        },
+
+        applyFilters() {
+            const { vendor, capability, minCoverage, category } = this.filters;
+            const min = parseInt(minCoverage) || 0;
+            this.filteredData = this.matrixData.filter(d =>
+                (!vendor || d.vendor_name.toLowerCase().includes(vendor.toLowerCase())) &&
+                (!capability || d.capability_name.toLowerCase().includes(capability.toLowerCase())) &&
+                (d.coverage_percentage >= min) &&
+                (!category || d.product_category === category)
+            );
+            this.buildMatrix();
+            this.computeStats();
+        },
+
+        buildMatrix() {
+            this.capabilities = [...new Set(this.filteredData.map(d => d.capability_name))];
+            const vendorMap = {};
+            this.filteredData.forEach(d => {
+                if (!vendorMap[d.vendor_name]) vendorMap[d.vendor_name] = new Set();
+                vendorMap[d.vendor_name].add(d.product_name);
+            });
+            this.vendors = Object.entries(vendorMap).map(([name, ps]) => ({ name, products: [...ps] }));
+            this.vendorProducts = this.vendors.flatMap(v => v.products.map(p => ({ vendor: v.name, product: p })));
+        },
+
+        computeStats() {
+            const caps = [...new Set(this.filteredData.map(d => d.capability_name))];
+            const vends = [...new Set(this.filteredData.map(d => d.vendor_name))];
+            const cvg = this.filteredData.map(d => d.coverage_percentage).filter(n => n != null);
+            const avg = cvg.length ? Math.round(cvg.reduce((a, b) => a + b, 0) / cvg.length) : null;
+            this.stats = {
+                totalCaps: caps.length,
+                totalVendors: vends.length,
+                avgCoverage: avg,
+                strongCount: this.filteredData.filter(d => d.coverage_percentage >= 80).length
+            };
+        },
+
+        resetFilters() {
+            this.filters = { vendor: '', capability: '', minCoverage: '0', category: '' };
+            this.matrixData = [];
+            this.filteredData = [];
+            this.capabilities = [];
+            this.vendors = [];
+            this.vendorProducts = [];
+            this.dataLoaded = false;
+            this.computeStats();
+        },
+
+        getCell(cap, vendor, product) {
+            return this.filteredData.find(d =>
+                d.capability_name === cap && d.vendor_name === vendor && d.product_name === product
+            ) || null;
+        },
+
+        getCellText(cap, vendor, product) {
+            const d = this.getCell(cap, vendor, product);
+            return d ? d.coverage_percentage + '%' : '—';
+        },
+
+        getCellClass(cap, vendor, product) {
+            const d = this.getCell(cap, vendor, product);
+            if (!d) return 'bg-muted/40 text-muted-foreground/40';
+            const p = d.coverage_percentage;
+            if (p >= 80) return 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/30';
+            if (p >= 60) return 'bg-amber-400/25 text-amber-700 dark:text-amber-400 hover:bg-amber-400/40';
+            if (p >= 40) return 'bg-amber-200/40 text-amber-600 dark:text-amber-300 hover:bg-amber-200/60';
+            return 'bg-muted/50 text-muted-foreground hover:bg-muted';
+        },
+
+        getCoverageVariant(pct) {
+            if (pct == null) return 'bg-muted/50 text-muted-foreground border-border';
+            if (pct >= 80) return 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30';
+            if (pct >= 60) return 'bg-amber-400/10 text-amber-600 border-amber-400/30';
+            if (pct >= 40) return 'bg-amber-200/10 text-amber-500 border-amber-200/30';
+            return 'bg-muted/50 text-muted-foreground border-border';
+        },
+
+        getCoverageBarClass(pct) {
+            if (!pct && pct !== 0) return 'bg-muted';
+            if (pct >= 80) return 'bg-emerald-500';
+            if (pct >= 60) return 'bg-amber-400';
+            if (pct >= 40) return 'bg-amber-300';
+            return 'bg-muted-foreground/40';
+        },
+
+        openDetail(cap, vendor, product) {
+            const d = this.getCell(cap, vendor, product);
+            if (!d) return;
+            const store = Alpine.store('matrixModal');
+            store.title = vendor + ' › ' + product;
+            store.subtitle = cap;
+            store.data = d;
+            store.badgeClass = this.getCoverageVariant(d.coverage_percentage);
+            store.barClass = this.getCoverageBarClass(d.coverage_percentage);
+            store.open = true;
+            this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+        },
+
+        exportCSV() {
+            const hdr = ['Capability', 'Vendor', 'Product', 'Coverage %', 'Out-of-Box %', 'Maturity', 'Complexity'];
+            const rows = this.filteredData.map(d => [
+                '"' + (d.capability_name || '').replace(/"/g, '""') + '"',
+                '"' + (d.vendor_name || '').replace(/"/g, '""') + '"',
+                '"' + (d.product_name || '').replace(/"/g, '""') + '"',
+                d.coverage_percentage ?? '',
+                d.out_of_box_percentage ?? '',
+                d.maturity_level ?? '',
+                d.implementation_complexity ?? ''
+            ]);
+            const csv = [hdr, ...rows].map(r => r.join(',')).join('\n');
+            const a = Object.assign(document.createElement('a'), {
+                href: URL.createObjectURL(new Blob([csv], { type: 'text/csv' })),
+                download: 'vendor_capability_matrix.csv'
+            });
+            a.click();
+            URL.revokeObjectURL(a.href);
+        }
+    }));
+});
+</script>
+{% endblock %}
+
+{% block content %}
+<div x-data="vendorCapabilityMatrix()" class="space-y-6">
+
+    {{ page_header(
+        title='Vendor Capability Matrix',
+        description='Heatmap of vendor product coverage across enterprise capabilities — click any cell to drill into gaps and strengths',
+        actions=[
+            {'text': 'Refresh', 'icon': 'refresh-cw', 'onclick': 'loadData()', 'variant': 'outline'},
+            {'text': 'Export CSV', 'icon': 'download', 'onclick': 'exportCSV()', 'variant': 'default'}
+        ]
+    ) }}
+
+    <!-- KPI bar -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="bg-card border border-border rounded-xl p-4">
+            <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Capabilities</p>
+            <p class="text-2xl font-bold text-foreground mt-1" x-text="stats.totalCaps || '—'"></p>
+        </div>
+        <div class="bg-card border border-border rounded-xl p-4">
+            <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Vendors</p>
+            <p class="text-2xl font-bold text-foreground mt-1" x-text="stats.totalVendors || '—'"></p>
+        </div>
+        <div class="bg-card border border-border rounded-xl p-4">
+            <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Avg Coverage</p>
+            <p class="text-2xl font-bold text-foreground mt-1" x-text="stats.avgCoverage != null ? stats.avgCoverage + '%' : '—'"></p>
+        </div>
+        <div class="bg-card border border-border rounded-xl p-4">
+            <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Strong Fits (80%+)</p>
+            <p class="text-2xl font-bold text-emerald-600 mt-1" x-text="stats.strongCount"></p>
+        </div>
+    </div>
+
+    <!-- Filters card -->
+    <div class="bg-card border border-border rounded-xl p-5">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-sm font-semibold text-foreground">Filters</h2>
+            <button @click="resetFilters()"
+                    class="text-xs text-muted-foreground hover:text-foreground transition-colors">
+                Reset all
+            </button>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+            <div class="space-y-1.5">
+                <label for="f-vendor" class="text-xs font-medium text-muted-foreground">Vendor</label>
+                <input id="f-vendor" type="text" x-model="filters.vendor" @input="applyFilters()"
+                       placeholder="Search vendors…"
+                       class="w-full h-9 px-3 text-sm rounded-md border border-input bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring">
+            </div>
+            <div class="space-y-1.5">
+                <label for="f-capability" class="text-xs font-medium text-muted-foreground">Capability</label>
+                <input id="f-capability" type="text" x-model="filters.capability" @input="applyFilters()"
+                       placeholder="Search capabilities…"
+                       class="w-full h-9 px-3 text-sm rounded-md border border-input bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring">
+            </div>
+            <div class="space-y-1.5">
+                <label for="f-coverage" class="text-xs font-medium text-muted-foreground">Min Coverage</label>
+                <select id="f-coverage" x-model="filters.minCoverage" @change="applyFilters()"
+                        class="w-full h-9 px-3 text-sm rounded-md border border-input bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring">
+                    <option value="0">All</option>
+                    <option value="40">40%+</option>
+                    <option value="60">60%+</option>
+                    <option value="80">80%+</option>
+                </select>
+            </div>
+            <div class="space-y-1.5">
+                <label for="f-category" class="text-xs font-medium text-muted-foreground">Category <span class="text-destructive">*</span></label>
+                <select id="f-category" x-model="filters.category" @change="loadData()"
+                        class="w-full h-9 px-3 text-sm rounded-md border border-input bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring">
+                    <option value="">— Select a category —</option>
+                    <template x-for="cat in allCategories" :key="cat">
+                        <option :value="cat" x-text="cat"></option>
+                    </template>
+                </select>
+            </div>
+        </div>
+        <!-- Inline legend -->
+        <div class="flex flex-wrap items-center gap-x-5 gap-y-2 mt-4 pt-4 border-t border-border">
+            <span class="text-xs font-medium text-muted-foreground">Coverage:</span>
+            <div class="flex items-center gap-1.5">
+                <span class="inline-block w-3 h-3 rounded-sm bg-emerald-500/70"></span>
+                <span class="text-xs text-muted-foreground">80–100% Strong</span>
+            </div>
+            <div class="flex items-center gap-1.5">
+                <span class="inline-block w-3 h-3 rounded-sm bg-amber-400/70"></span>
+                <span class="text-xs text-muted-foreground">60–79% Moderate</span>
+            </div>
+            <div class="flex items-center gap-1.5">
+                <span class="inline-block w-3 h-3 rounded-sm bg-amber-200/70 border border-amber-300/50"></span>
+                <span class="text-xs text-muted-foreground">40–59% Partial</span>
+            </div>
+            <div class="flex items-center gap-1.5">
+                <span class="inline-block w-3 h-3 rounded-sm bg-muted border border-border"></span>
+                <span class="text-xs text-muted-foreground">0–39% Weak</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Matrix card -->
+    <div class="bg-card border border-border rounded-xl overflow-hidden">
+
+        <!-- Loading -->
+        <div x-cloak x-show="loading" class="flex flex-col items-center justify-center py-24 gap-3">
+            <div class="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
+            <p class="text-sm text-muted-foreground">Loading matrix…</p>
+        </div>
+
+        <!-- Error -->
+        <div x-cloak x-show="!loading && error" class="flex flex-col items-center justify-center py-24 gap-3">
+            <i data-lucide="alert-triangle" class="h-10 w-10 text-destructive" aria-hidden="true"></i>
+            <p class="text-sm text-muted-foreground" x-text="error"></p>
+            <button @click="loadData()"
+                    class="mt-1 inline-flex items-center gap-2 px-3 py-2 text-sm rounded-md border border-border bg-background hover:bg-muted transition-colors">
+                <i data-lucide="refresh-cw" class="h-4 w-4" aria-hidden="true"></i> Retry
+            </button>
+        </div>
+
+        <!-- Pick category prompt -->
+        <div x-cloak x-show="!loading && !error && !dataLoaded"
+             class="flex flex-col items-center justify-center py-24 gap-3">
+            <i data-lucide="table-2" class="h-10 w-10 text-muted-foreground" aria-hidden="true"></i>
+            <p class="text-sm font-medium text-foreground">Select a product category to load the matrix</p>
+            <p x-cloak class="text-xs text-muted-foreground" x-show="loadingCategories">Loading categories…</p>
+            <p x-cloak class="text-xs text-muted-foreground" x-show="!loadingCategories && allCategories.length > 0">
+                <span x-text="allCategories.length"></span> categories available — use the Category filter above
+            </p>
+        </div>
+
+        <!-- Empty -->
+        <div x-cloak x-show="!loading && !error && dataLoaded && capabilities.length === 0"
+             class="flex flex-col items-center justify-center py-24 gap-3">
+            <i data-lucide="table-2" class="h-10 w-10 text-muted-foreground" aria-hidden="true"></i>
+            <p class="text-sm font-medium text-foreground">No data matches your filters</p>
+            <button @click="resetFilters()" class="text-xs text-primary hover:underline">Clear filters</button>
+        </div>
+
+        <!-- Matrix table -->
+        <div x-cloak x-show="!loading && !error && dataLoaded && capabilities.length > 0"
+             class="overflow-auto max-h-[65vh]">
+            <table class="w-full text-xs border-collapse">
+                <thead class="sticky top-0 z-20">
+                    <!-- Vendor header row -->
+                    <tr>
+                        <th class="sticky left-0 z-30 bg-muted border-r border-b border-border px-4 py-2.5 text-left text-xs font-semibold text-foreground min-w-[200px]"
+                            rowspan="2">
+                            Capability
+                        </th>
+                        <template x-for="vendor in vendors" :key="vendor.name">
+                            <th class="bg-primary/5 border-b border-r border-border px-2 py-2 text-center text-xs font-semibold text-primary whitespace-nowrap"
+                                :colspan="vendor.products.length"
+                                x-text="vendor.name"></th>
+                        </template>
+                    </tr>
+                    <!-- Product sub-header row -->
+                    <tr>
+                        <template x-for="col in vendorProducts" :key="'sub-' + col.vendor + '::' + col.product">
+                            <th class="bg-muted/60 border-r border-b border-border px-2 py-1.5 text-center text-[11px] font-medium text-muted-foreground whitespace-nowrap max-w-[96px] overflow-hidden text-ellipsis"
+                                :title="col.product"
+                                x-text="col.product"></th>
+                        </template>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="cap in capabilities" :key="cap">
+                        <tr class="group hover:bg-muted/20 transition-colors">
+                            <td class="sticky left-0 z-10 bg-card group-hover:bg-muted/20 border-r border-b border-border px-4 py-2 font-medium text-foreground whitespace-nowrap max-w-[220px] overflow-hidden text-ellipsis transition-colors"
+                                :title="cap"
+                                x-text="cap"></td>
+                            <template x-for="col in vendorProducts" :key="cap + '::' + col.vendor + '::' + col.product">
+                                    <td class="border-r border-b border-border text-center px-1.5 py-1.5 cursor-pointer transition-all hover:scale-105 hover:shadow-md hover:z-10 relative font-semibold"
+                                        :class="getCellClass(cap, col.vendor, col.product)"
+                                        :title="getCellText(cap, col.vendor, col.product) + ' — click for details'"
+                                        @click="openDetail(cap, col.vendor, col.product)">
+                                        <span x-text="getCellText(cap, col.vendor, col.product)"></span>
+                                    </td>
+                                </template>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Table footer -->
+        <div x-cloak x-show="!loading && dataLoaded && capabilities.length > 0"
+             class="flex items-center justify-between px-5 py-2.5 border-t border-border bg-muted/30">
+            <p class="text-xs text-muted-foreground">
+                <span x-text="capabilities.length"></span> capabilities ×
+                <span x-text="vendors.reduce((a, v) => a + v.products.length, 0)"></span> products
+            </p>
+            <button @click="exportCSV()"
+                    class="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                <i data-lucide="download" class="h-3.5 w-3.5" aria-hidden="true"></i>
+                Export CSV
+            </button>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block modals %}
+<!-- Capability detail modal -->
+<div x-data
+     x-cloak x-show="$store.matrixModal.open"
+     x-transition:enter="transition ease-out duration-200"
+     x-transition:enter-start="opacity-0"
+     x-transition:enter-end="opacity-100"
+     x-transition:leave="transition ease-in duration-150"
+     x-transition:leave-start="opacity-100"
+     x-transition:leave-end="opacity-0"
+     @keydown.escape.window="$store.matrixModal.open = false"
+     class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+     role="dialog" aria-modal="true" aria-labelledby="matrix-modal-title"
+     style="display:none"> <!-- inline-style-ok -->
+    <div @click.outside="$store.matrixModal.open = false"
+         x-transition:enter="transition ease-out duration-200"
+         x-transition:enter-start="opacity-0 scale-95"
+         x-transition:enter-end="opacity-100 scale-100"
+         class="bg-card border border-border rounded-xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col">
+
+        <!-- Modal header -->
+        <div class="flex items-start justify-between px-6 py-4 border-b border-border shrink-0">
+            <div class="pr-4 min-w-0">
+                <p class="text-xs text-muted-foreground mb-0.5" x-text="$store.matrixModal.title"></p>
+                <h2 id="matrix-modal-title"
+                    class="text-base font-semibold text-foreground truncate"
+                    x-text="$store.matrixModal.subtitle || ''"></h2>
+                <div class="flex items-center gap-2 mt-2" x-cloak x-show="$store.matrixModal.data" role="dialog">
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium border"
+                          :class="$store.matrixModal.badgeClass"
+                          x-text="($store.matrixModal.data?.coverage_percentage ?? '—') + '% Coverage'"></span>
+                    <span x-cloak x-show="$store.matrixModal.data?.maturity_level"
+                          class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium border bg-muted/50 text-muted-foreground border-border"
+                          x-text="'Maturity ' + $store.matrixModal.data?.maturity_level + '/5'"></span>
+                </div>
+            </div>
+            <button @click="$store.matrixModal.open = false" aria-label="Close"
+                    class="shrink-0 h-8 w-8 flex items-center justify-center rounded-md hover:bg-muted transition-colors text-muted-foreground">
+                <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
+            </button>
+        </div>
+
+        <!-- Modal body -->
+        <div class="overflow-y-auto px-6 py-5 space-y-5 flex-1" x-cloak x-show="$store.matrixModal.data">
+
+            <!-- Coverage bar -->
+            <div>
+                <div class="flex items-center justify-between mb-1.5">
+                    <span class="text-xs font-medium text-muted-foreground">Total Coverage</span>
+                    <span class="text-xs font-bold text-foreground"
+                          x-text="$store.matrixModal.data?.coverage_percentage + '%'"></span>
+                </div>
+                <div class="h-2 rounded-full bg-muted overflow-hidden">
+                    <div class="h-2 rounded-full transition-all duration-500"
+                         :class="$store.matrixModal.barClass"
+                         :style="'width:' + ($store.matrixModal.data?.coverage_percentage ?? 0) + '%'"></div><!-- inline-style-ok -->
+                </div>
+            </div>
+
+            <!-- Stats grid -->
+            <div class="grid grid-cols-3 gap-3">
+                <div class="bg-muted/40 rounded-lg p-3">
+                    <p class="text-xs text-muted-foreground">Out-of-Box</p>
+                    <p class="text-xl font-bold text-foreground mt-0.5"
+                       x-text="($store.matrixModal.data?.out_of_box_percentage ?? 0) + '%'"></p>
+                </div>
+                <div class="bg-muted/40 rounded-lg p-3">
+                    <p class="text-xs text-muted-foreground">Via Customisation</p>
+                    <p class="text-xl font-bold text-foreground mt-0.5"
+                       x-text="(($store.matrixModal.data?.coverage_percentage ?? 0) - ($store.matrixModal.data?.out_of_box_percentage ?? 0)) + '%'"></p>
+                </div>
+                <div class="bg-muted/40 rounded-lg p-3">
+                    <p class="text-xs text-muted-foreground">Impl. Complexity</p>
+                    <p class="text-xl font-bold text-foreground mt-0.5"
+                       x-text="$store.matrixModal.data?.implementation_complexity != null ? $store.matrixModal.data.implementation_complexity + '/10' : '—'"></p>
+                </div>
+            </div>
+
+            <!-- Gaps -->
+            <div x-cloak x-show="$store.matrixModal.data?.gaps?.length">
+                <h3 class="text-sm font-semibold text-foreground mb-2.5">Identified Gaps</h3>
+                <div class="space-y-1.5">
+                    <template x-for="gap in ($store.matrixModal.data?.gaps ?? [])" :key="gap.name">
+                        <div class="flex items-start gap-2.5">
+                            <span class="shrink-0 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border mt-0.5"
+                                  :class="gap.severity === 'high'   ? 'bg-destructive/10 text-destructive border-destructive/30' :
+                                          gap.severity === 'medium' ? 'bg-amber-500/10 text-amber-600 border-amber-500/30' :
+                                                                      'bg-primary/10 text-primary border-primary/30'"
+                                  x-text="gap.severity"></span>
+                            <span class="text-sm text-foreground leading-snug" x-text="gap.name"></span>
+                        </div>
+                    </template>
+                </div>
+            </div>
+
+            <!-- Strengths -->
+            <div x-cloak x-show="$store.matrixModal.data?.strengths?.length">
+                <h3 class="text-sm font-semibold text-foreground mb-2.5">Key Strengths</h3>
+                <div class="space-y-1.5">
+                    <template x-for="s in ($store.matrixModal.data?.strengths ?? [])" :key="s">
+                        <div class="flex items-center gap-2">
+                            <i data-lucide="check-circle-2" class="h-4 w-4 text-emerald-500 shrink-0" aria-hidden="true"></i>
+                            <span class="text-sm text-foreground" x-text="s"></span>
+                        </div>
+                    </template>
+                </div>
+            </div>
+
+            <!-- Evidence -->
+            <div x-cloak x-show="$store.matrixModal.data?.evidence">
+                <h3 class="text-sm font-semibold text-foreground mb-2.5">Evidence & Verification</h3>
+                <div class="bg-muted/40 border border-border rounded-lg p-3.5 space-y-1.5">
+                    <p class="text-xs text-muted-foreground">
+                        <span class="font-medium text-foreground">Source: </span>
+                        <span x-text="$store.matrixModal.data?.evidence?.source || 'N/A'"></span>
+                    </p>
+                    <p class="text-xs text-muted-foreground">
+                        <span class="font-medium text-foreground">Verified: </span>
+                        <span x-text="$store.matrixModal.data?.evidence?.verified_at
+                            ? new Date($store.matrixModal.data.evidence.verified_at).toLocaleDateString()
+                            : 'Not verified'"></span>
+                    </p>
+                    <p class="text-xs text-muted-foreground" x-cloak x-show="$store.matrixModal.data?.evidence?.verified_by">
+                        <span class="font-medium text-foreground">By: </span>
+                        <span x-text="$store.matrixModal.data?.evidence?.verified_by"></span>
+                    </p>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Modal footer -->
+        <div class="px-6 py-3 border-t border-border flex justify-end shrink-0">
+            <button @click="$store.matrixModal.open = false"
+                    class="px-4 py-2 text-sm rounded-md bg-muted hover:bg-muted/80 text-foreground transition-colors">
+                Close
+            </button>
+        </div>
+
+    </div>
+</div>
+{% endblock %}
+
+

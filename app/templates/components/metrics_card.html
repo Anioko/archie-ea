@@ -1,0 +1,122 @@
+{# shadcn/ui Metrics Card Component (v4 SectionCards pattern)
+
+   KPI/stat card matching shadcn/ui v4 dashboard-01 SectionCards.
+   Uses card primitives + badge for trend display.
+
+   Usage:
+   {% from 'components/metrics_card.html' import metrics_card %}
+
+   {{ metrics_card(
+       title='Total Revenue',
+       value='$1,250.00',
+       change='+12.5%',
+       change_type='positive',
+       footer_text='Trending up this month',
+       description='Visitors for the last 6 months',
+       icon='dollar-sign'
+   ) }}
+
+   {{ metrics_card(
+       title='New Customers',
+       value='1,234',
+       change='-20%',
+       change_type='negative',
+       footer_text='Down 20% this period',
+       description='Acquisition needs attention',
+       icon='users'
+   ) }}
+
+   Alpine-reactive value (no footer):
+   {{ metrics_card(
+       title='Processing',
+       value_alpine="stats.processing",
+       icon='loader-2',
+       icon_class='animate-spin',
+       description='Currently running',
+       value_class='text-primary'
+   ) }}
+#}
+
+{% macro metrics_card(
+    title='',
+    value='',
+    value_id='',
+    value_alpine='',
+    change='',
+    change_type='neutral',
+    icon=none,
+    icon_class='',
+    description='',
+    description_alpine='',
+    footer_text='',
+    value_class='',
+    class='',
+    href=''
+) %}
+{% if href %}<a href="{{ href }}" class="block cursor-pointer hover:bg-accent/50 transition-colors rounded-xl">{% endif %}
+<div data-slot="card" class="rounded-xl border bg-card text-card-foreground shadow-sm @container/card {{ class }}">
+    <div data-slot="card-header" class="relative flex flex-col space-y-1.5 p-6 pb-2">
+        <p data-slot="card-description" class="text-sm font-medium tracking-tight">{{ title }}</p>
+        <div data-slot="card-title" class="text-2xl font-bold tabular-nums {{ value_class }}">
+            {%- if value_alpine -%}
+                <span {% if value_id %}id="{{ value_id }}"{% endif %} x-text="{{ value_alpine }}">{{ value or '0' }}</span>
+            {%- else -%}
+                {% if value_id %}
+                <span id="{{ value_id }}">{{ value }}</span>
+                {% else %}
+                {{ value }}
+                {% endif %}
+            {%- endif -%}
+        </div>
+        {% if change %}
+        <div data-slot="card-action" class="absolute top-4 right-4">
+            <span class="inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors
+                {% if change_type == 'positive' %}text-success border-success/30
+                {% elif change_type == 'negative' %}text-destructive border-destructive/30
+                {% else %}text-muted-foreground{% endif %}">
+                {% if change_type == 'positive' %}
+                <i data-lucide="trending-up" class="h-3 w-3" aria-hidden="true"></i>
+                {% elif change_type == 'negative' %}
+                <i data-lucide="trending-down" class="h-3 w-3" aria-hidden="true"></i>
+                {% endif %}
+                {{ change }}
+            </span>
+        </div>
+        {% elif icon %}
+        <div data-slot="card-action" class="absolute top-4 right-4">
+            <i data-lucide="{{ icon }}" class="h-4 w-4 text-muted-foreground {{ icon_class }}" aria-hidden="true"></i>
+        </div>
+        {% endif %}
+    </div>
+    {% if footer_text %}
+    <div data-slot="card-footer" class="flex flex-col items-start gap-1.5 px-6 pb-6 text-sm">
+        <div class="line-clamp-1 flex gap-2 font-medium">
+            {{ footer_text }}
+            {% if change_type == 'positive' %}
+            <i data-lucide="trending-up" class="h-4 w-4" aria-hidden="true"></i>
+            {% elif change_type == 'negative' %}
+            <i data-lucide="trending-down" class="h-4 w-4" aria-hidden="true"></i>
+            {% endif %}
+        </div>
+        {% if description_alpine %}
+        <div class="text-muted-foreground">
+            <span x-text="{{ description_alpine }}">{{ description }}</span>
+        </div>
+        {% elif description %}
+        <div class="text-muted-foreground">{{ description }}</div>
+        {% endif %}
+    </div>
+    {% elif description or description_alpine %}
+    <div data-slot="card-content" class="px-6 pb-6 pt-0">
+        <p class="text-xs text-muted-foreground">
+            {% if description_alpine %}
+            <span x-text="{{ description_alpine }}">{{ description }}</span>
+            {% else %}
+            {{ description }}
+            {% endif %}
+        </p>
+    </div>
+    {% endif %}
+</div>
+{% if href %}</a>{% endif %}
+{% endmacro %}

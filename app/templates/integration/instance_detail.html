@@ -1,0 +1,188 @@
+{% extends 'layouts/admin_base.html' %}
+{% from 'components/page_header.html' import page_header %}
+{% from 'components/metrics_card.html' import metrics_card %}
+
+{% block title %}Instance {{ instance.instance_code[:8] }} - Details{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    {{ page_header(
+        title='Instance ' ~ instance.instance_code,
+        breadcrumbs=[
+            {'label': 'Instances', 'href': url_for('integration.list_instances')},
+            {'label': 'Instance Details'}
+        ]
+    ) }}
+
+    <!-- Status & Actions -->
+    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 -mt-2">
+        <div class="flex items-center gap-2">
+            <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2
+                {% if instance.status == 'running' %}border-transparent bg-primary/10 text-primary
+                {% elif instance.status == 'completed' %}border-transparent bg-success/10 text-success
+                {% elif instance.status == 'failed' %}border-transparent bg-destructive/10 text-destructive
+                {% elif instance.status == 'waiting_approval' %}border-transparent bg-warning/10 text-warning
+                {% else %}border-transparent bg-muted text-foreground{% endif %}">
+                {{ instance.status|replace('_', ' ')|title }}
+            </span>
+            <span class="text-sm text-muted-foreground">
+                Workflow: <a href="{{ url_for('integration.workflow_detail', workflow_code=instance.workflow_code) }}" class="text-primary hover:underline">{{ instance.workflow_definition.workflow_name }}</a>
+            </span>
+        </div>
+        <div class="flex gap-2">
+            {% if instance.status == 'running' or instance.status == 'waiting_approval' %}
+                <form action="{{ url_for('integration.cancel_workflow', instance_id=instance.id) }}" method="post" @submit.prevent="return confirm('Are you sure you want to cancel this workflow?');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-destructive hover:text-destructive-foreground h-10 px-4 py-2" aria-label="Submit">
+                        Cancel Workflow
+                    </button>
+                </form>
+            {% endif %}
+            
+            {% if instance.status == 'waiting_approval' %}
+                <button data-modal-open="approval-modal" class="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-success text-primary-foreground hover:bg-success h-10 px-4 py-2" aria-label="Action">
+                    Approve Step
+                </button>
+                
+                <div id="approval-modal" hidden role="dialog" aria-modal="true" aria-labelledby="approval-modal-title" class="modal-root fixed inset-0 z-50 items-center justify-center p-4">
+                    <div data-modal-backdrop="approval-modal" class="absolute inset-0 bg-background/80" aria-hidden="true"></div>
+                    <div data-modal-panel class="relative w-full max-w-md bg-background border border-border rounded-lg shadow-lg p-6">
+                        <h3 id="approval-modal-title" class="text-lg font-semibold mb-2">Approve Workflow Step</h3>
+                        <p class="text-sm text-muted-foreground mb-4">Provide optional comments for this approval.</p>
+                        <form action="{{ url_for('integration.approve_workflow_step', instance_id=instance.id) }}" method="post">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <textarea name="comments" class="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 mb-4" placeholder="Approval comments..."></textarea>
+                            <div class="flex justify-end gap-2">
+                                <button type="button" data-modal-close="approval-modal" class="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2" aria-label="Action">Cancel</button>
+                                <button type="submit" class="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-success text-primary-foreground hover:bg-success h-10 px-4 py-2" aria-label="Submit">Approve & Resume</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="grid gap-6 md:grid-cols-3">
+        <!-- Main Content: Steps -->
+        <div class="md:col-span-2 space-y-6">
+            <div data-slot="card" class="rounded-xl border bg-card text-card-foreground shadow-sm">
+                <div class="flex flex-col space-y-1.5 p-6">
+                    <div class="flex items-center justify-between">
+                        <h3 class="font-semibold leading-none tracking-tight">Execution History</h3>
+                        <span class="text-sm text-muted-foreground">{{ instance.progress_percent }}% Complete</span>
+                    </div>
+                    <div class="mt-2 h-2 w-full bg-secondary rounded-full overflow-hidden">
+                        <div class="h-full bg-primary transition-all duration-300" style="width: {{ instance.progress_percent }}%"></div>
+                    </div>
+                </div>
+                <div class="p-6 pt-0">
+                    <div class="relative">
+                        <div class="absolute left-4 top-0 bottom-0 w-px bg-border"></div>
+                        <div class="space-y-8">
+                            {% for step in step_executions %}
+                            <div class="relative pl-10 group">
+                                <div class="absolute left-0 top-1 flex h-8 w-8 items-center justify-center rounded-full border text-xs font-medium z-10 transition-colors
+                                    {% if step.status == 'completed' %}bg-success/10 text-success border-success/20
+                                    {% elif step.status == 'failed' %}bg-destructive/10 text-destructive border-destructive/20
+                                    {% elif step.status == 'running' %}bg-primary/10 text-primary border-primary/20 animate-pulse
+                                    {% elif step.status == 'waiting_approval' %}bg-warning/10 text-warning border-warning/20
+                                    {% else %}bg-background text-muted-foreground border-border{% endif %}">
+                                    {% if step.status == 'completed' %}
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                                    {% elif step.status == 'failed' %}
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                                    {% else %}
+                                        {{ step.step_index + 1 }}
+                                    {% endif %}
+                                </div>
+                                
+                                <div class="flex flex-col gap-1">
+                                    <div class="flex items-center justify-between">
+                                        <h4 class="text-sm font-semibold">{{ step.step_name }}</h4>
+                                        <span class="text-xs text-muted-foreground">{{ step.completed_at.strftime('%H:%M:%S') if step.completed_at else (step.started_at.strftime('%H:%M:%S') if step.started_at else '') }}</span>
+                                    </div>
+                                    <p class="text-xs text-muted-foreground">{{ step.step_type|title }} • {{ step.duration_seconds if step.duration_seconds else 0 }}s</p>
+                                    
+                                    {% if step.error_message %}
+                                        <div class="mt-2 rounded-md bg-destructive/10 p-3 text-xs text-destructive">
+                                            <p class="font-semibold">Error:</p>
+                                            <p>{{ step.error_message }}</p>
+                                        </div>
+                                    {% endif %}
+                                    
+                                    {% if step.status == 'waiting_approval' %}
+                                        <div class="mt-2 rounded-md bg-warning/5 p-3 text-xs text-warning border border-warning/20">
+                                            <p class="font-semibold">Waiting for Approval</p>
+                                            <p>This step requires manual confirmation to proceed.</p>
+                                        </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            {% endfor %}
+                            
+                            {% if instance.status == 'running' or instance.status == 'waiting_approval' %}
+                            <div class="relative pl-10 opacity-50">
+                                <div class="absolute left-0 top-1 flex h-8 w-8 items-center justify-center rounded-full border bg-background text-xs font-medium text-muted-foreground z-10">
+                                    ...
+                                </div>
+                                <div>
+                                    <h4 class="text-sm font-semibold">Remaining Steps...</h4>
+                                </div>
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sidebar: Context & Metadata -->
+        <div class="space-y-6">
+            <div data-slot="card" class="rounded-xl border bg-card text-card-foreground shadow-sm">
+                <div class="flex flex-col space-y-1.5 p-6">
+                    <h3 class="font-semibold leading-none tracking-tight">Instance Details</h3>
+                </div>
+                <div class="p-6 pt-0">
+                    <dl class="space-y-4">
+                        <div>
+                            <dt class="text-sm font-medium text-muted-foreground">Started By</dt>
+                            <dd class="text-sm mt-1">
+                                {% if instance.triggered_by_user_id %}
+                                    User ID: {{ instance.triggered_by_user_id }}
+                                {% else %}
+                                    System
+                                {% endif %}
+                                <span class="text-xs text-muted-foreground ml-1">({{ instance.triggered_by }})</span>
+                            </dd>
+                        </div>
+                        <div>
+                            <dt class="text-sm font-medium text-muted-foreground">Start Time</dt>
+                            <dd class="text-sm mt-1">{{ instance.started_at.strftime('%Y-%m-%d %H:%M:%S') if instance.started_at else '-' }}</dd>
+                        </div>
+                        <div>
+                            <dt class="text-sm font-medium text-muted-foreground">Completion Time</dt>
+                            <dd class="text-sm mt-1">{{ instance.completed_at.strftime('%Y-%m-%d %H:%M:%S') if instance.completed_at else '-' }}</dd>
+                        </div>
+                        <div>
+                            <dt class="text-sm font-medium text-muted-foreground">Total Duration</dt>
+                            <dd class="text-sm mt-1">{{ instance.duration_seconds }}s</dd>
+                        </div>
+                    </dl>
+                </div>
+            </div>
+
+            <div data-slot="card" class="rounded-xl border bg-card text-card-foreground shadow-sm">
+                <div class="flex flex-col space-y-1.5 p-6">
+                    <h3 class="font-semibold leading-none tracking-tight">Context Data</h3>
+                </div>
+                <div class="p-6 pt-0">
+                    <div class="bg-muted rounded-md p-4 overflow-x-auto">
+                        <pre class="text-xs font-mono">{{ instance.context | tojson(indent=2) }}</pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

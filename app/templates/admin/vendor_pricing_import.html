@@ -1,0 +1,309 @@
+{% extends 'layouts/admin_base.html' %}
+{% from 'components/page_header.html' import page_header %}
+
+{% block title %}Vendor Pricing Import{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8" x-data="vendorPricingImport()">
+    {{ page_header(
+        title='Vendor Pricing Import',
+        description='Import vendor pricing from CSV/Excel files or contract documents (PDF/DOCX).',
+        breadcrumbs=[
+            {'label': 'Admin', 'href': url_for('admin.index')},
+            {'label': 'Vendor Pricing Import'}
+        ]
+    ) }}
+
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div class="mb-6 space-y-2">
+                {% for category, message in messages %}
+                    <div class="rounded-md border p-4 {% if category == 'success' %}bg-primary/10 border-primary/20 text-foreground{% elif category == 'error' %}bg-destructive/10 border-destructive/20 text-destructive{% else %}bg-accent border-border text-foreground{% endif %}">
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+
+    <!-- Upload Section -->
+    <div class="rounded-xl border-2 border-input bg-card mb-6">
+        <div class="p-4 sm:p-6 border-b border-border">
+            <h3 class="text-lg font-semibold">Upload Pricing Data</h3>
+            <p class="text-sm text-muted-foreground mt-1">
+                Upload a structured CSV/Excel file or a contract document for AI extraction.
+            </p>
+        </div>
+        <div class="p-4 sm:p-6">
+            <form method="POST" enctype="multipart/form-data" class="space-y-4">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                <div class="flex items-end gap-4">
+                    <div class="flex-1">
+                        <label class="block text-sm font-medium text-foreground mb-1">
+                            Select file
+                        </label>
+                        <input type="file" name="file" accept=".csv,.xlsx,.xls,.pdf,.docx,.txt,.md"
+                               class="block w-full text-sm text-muted-foreground
+                                      file:mr-4 file:py-2 file:px-4
+                                      file:rounded-md file:border file:border-input
+                                      file:bg-background file:text-sm file:font-medium
+                                      hover:file:bg-accent hover:file:text-accent-foreground
+                                      file:transition-colors">
+                    </div>
+                    <button type="submit"
+                            class="inline-flex items-center justify-center rounded-md text-sm font-medium
+                                   ring-offset-background transition-colors
+                                   focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2
+                                   bg-primary text-primary-foreground hover:bg-primary/90
+                                   h-9 px-4">
+                        <i data-lucide="upload" class="h-4 w-4 mr-2"></i>
+                        Upload &amp; Parse
+                    </button>
+                </div>
+
+                <p class="text-xs text-muted-foreground">
+                    <strong>CSV/Excel:</strong> Must include columns: <code class="bg-muted px-1 rounded">vendor_name</code>,
+                    <code class="bg-muted px-1 rounded">product_name</code>,
+                    <code class="bg-muted px-1 rounded">tier</code>,
+                    <code class="bg-muted px-1 rounded">annual_cost</code>,
+                    <code class="bg-muted px-1 rounded">unit_type</code>,
+                    <code class="bg-muted px-1 rounded">unit_quantity</code>.
+                    <br>
+                    <strong>PDF/DOCX:</strong> Contract documents — AI extracts pricing automatically for your review.
+                </p>
+            </form>
+        </div>
+    </div>
+
+    <!-- Upload Error -->
+    {% if upload_error %}
+    <div class="rounded-md border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive mb-6">
+        <div class="flex items-center gap-2">
+            <i data-lucide="alert-circle" class="h-4 w-4 flex-shrink-0"></i>
+            <span>{{ upload_error }}</span>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Staging Review Table -->
+    {% if staging_items %}
+    <div class="rounded-xl border-2 border-input bg-card mb-6">
+        <div class="p-4 sm:p-6 border-b border-border">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h3 class="text-lg font-semibold">Review Extracted Pricing</h3>
+                    <p class="text-sm text-muted-foreground mt-1">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30">
+                            {{ staging_items|length }} item{{ 's' if staging_items|length != 1 else '' }} ready for review
+                        </span>
+                    </p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button @click="rejectAll()"
+                            class="inline-flex items-center justify-center rounded-md text-sm font-medium
+                                   ring-offset-background transition-colors
+                                   focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2
+                                   border border-destructive/50 text-destructive hover:bg-destructive/10
+                                   h-9 px-3">
+                        <i data-lucide="x-circle" class="h-4 w-4 mr-1.5"></i>
+                        Discard All
+                    </button>
+                    <button @click="confirmAll()"
+                            :disabled="confirming"
+                            class="inline-flex items-center justify-center rounded-md text-sm font-medium
+                                   ring-offset-background transition-colors
+                                   focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2
+                                   bg-primary text-primary-foreground hover:bg-primary/90
+                                   h-9 px-4 disabled:opacity-50 disabled:cursor-not-allowed">
+                        <i data-lucide="check-circle" class="h-4 w-4 mr-1.5"></i>
+                        <span x-text="confirming ? 'Saving...' : 'Confirm All'">Confirm All</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b border-border bg-muted/50">
+                        <th class="px-4 py-3 text-left font-medium text-muted-foreground">Vendor</th>
+                        <th class="px-4 py-3 text-left font-medium text-muted-foreground">Product</th>
+                        <th class="px-4 py-3 text-left font-medium text-muted-foreground">Tier</th>
+                        <th class="px-4 py-3 text-right font-medium text-muted-foreground">Annual Cost</th>
+                        <th class="px-4 py-3 text-left font-medium text-muted-foreground">Unit</th>
+                        <th class="px-4 py-3 text-right font-medium text-muted-foreground">Qty</th>
+                        <th class="px-4 py-3 text-left font-medium text-muted-foreground">Currency</th>
+                        <th class="px-4 py-3 text-left font-medium text-muted-foreground">Term</th>
+                        <th class="px-4 py-3 text-left font-medium text-muted-foreground">Discount</th>
+                        <th class="px-4 py-3 text-right font-medium text-muted-foreground">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="(item, idx) in items" :key="idx">
+                        <tr class="border-b border-border hover:bg-muted/30 transition-colors" x-show="!item._removed">
+                            <td class="px-4 py-3 font-medium text-foreground" x-text="item.vendor_name"></td>
+                            <td class="px-4 py-3 text-foreground" x-text="item.product_name"></td>
+                            <td class="px-4 py-3">
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-accent text-accent-foreground border border-border"
+                                      x-text="item.tier || 'Standard'"></span>
+                            </td>
+                            <td class="px-4 py-3 text-right font-mono text-foreground"
+                                x-text="item.annual_cost ? '$' + Number(item.annual_cost).toLocaleString() : '—'"></td>
+                            <td class="px-4 py-3 text-muted-foreground" x-text="item.unit_type || 'user'"></td>
+                            <td class="px-4 py-3 text-right text-muted-foreground" x-text="item.unit_quantity || '—'"></td>
+                            <td class="px-4 py-3 text-muted-foreground" x-text="item.currency || 'USD'"></td>
+                            <td class="px-4 py-3 text-muted-foreground"
+                                x-text="item.contract_term_months ? item.contract_term_months + 'mo' : '12mo'"></td>
+                            <td class="px-4 py-3">
+                                <span x-show="item.discount_percent"
+                                      class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-green-500/10 text-emerald-600 border border-green-500/30"
+                                      x-text="item.discount_percent + '%'"></span>
+                                <span x-show="!item.discount_percent" class="text-muted-foreground">—</span>
+                            </td>
+                            <td class="px-4 py-3 text-right">
+                                <button @click="removeItem(idx)"
+                                        class="inline-flex items-center justify-center rounded-md text-xs font-medium
+                                               border border-destructive/50 text-destructive hover:bg-destructive/10
+                                               h-7 px-2 transition-colors">
+                                    Remove
+                                </button>
+                            </td>
+                        </tr>
+                    </template>
+                    <tr x-show="items.filter(function(i) { return !i._removed; }).length === 0" x-cloak>
+                        <td colspan="10" class="px-4 py-8 text-center text-muted-foreground">
+                            No items remaining.
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Confirmation result -->
+        <div x-show="confirmResult" x-cloak
+             class="p-4 sm:p-6 border-t border-border rounded-b-xl text-sm"
+             :class="confirmResult && confirmResult.success
+                     ? 'bg-green-500/10 border-green-500/30 text-emerald-700'
+                     : 'bg-destructive/10 border-destructive/30 text-destructive'">
+            <template x-if="confirmResult && confirmResult.success">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="check-circle" class="h-4 w-4 flex-shrink-0"></i>
+                    <span>Saved: <strong x-text="confirmResult.created"></strong> created,
+                          <strong x-text="confirmResult.updated"></strong> updated.</span>
+                </div>
+            </template>
+            <template x-if="confirmResult && !confirmResult.success">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="alert-circle" class="h-4 w-4 flex-shrink-0"></i>
+                    <span x-text="confirmResult.error || 'Unknown error'"></span>
+                </div>
+            </template>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- CSV Template Help -->
+    <div class="rounded-xl border-2 border-input bg-card">
+        <div class="p-4 sm:p-6 border-b border-border">
+            <h3 class="text-sm font-semibold">CSV Template</h3>
+            <p class="text-xs text-muted-foreground mt-1">
+                Copy the header row below and fill in your vendor pricing data.
+                Required columns are <code class="bg-muted px-1 rounded">vendor_name</code>,
+                <code class="bg-muted px-1 rounded">product_name</code>,
+                <code class="bg-muted px-1 rounded">tier</code>,
+                <code class="bg-muted px-1 rounded">annual_cost</code>.
+            </p>
+        </div>
+        <div class="p-4 sm:p-6">
+            <pre class="text-xs bg-muted rounded-md p-3 overflow-x-auto leading-relaxed">vendor_name,product_name,tier,annual_cost,unit_type,unit_quantity,currency,contract_term_months,discount_percent,expiry_date
+SAP,S/4HANA Cloud,Professional,4800,user,100,EUR,36,15,2028-12-31
+Okta,Workforce Identity,Enterprise,14400,user,500,USD,24,,2027-06-30</pre>
+            <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs text-muted-foreground">
+                <div>
+                    <p class="font-medium text-foreground mb-1">Supported file types</p>
+                    <ul class="space-y-0.5">
+                        <li><span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30 mr-1">CSV / XLSX / XLS</span> Structured data import</li>
+                        <li><span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-amber-500/10 text-amber-600 border border-amber-500/30 mr-1">PDF / DOCX</span> AI contract extraction</li>
+                        <li><span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-accent text-accent-foreground border border-border mr-1">TXT / MD</span> Plain text extraction</li>
+                    </ul>
+                </div>
+                <div>
+                    <p class="font-medium text-foreground mb-1">How it works</p>
+                    <ol class="space-y-0.5 list-decimal list-inside">
+                        <li>Upload your file</li>
+                        <li>Review extracted pricing in the staging table</li>
+                        <li>Remove any incorrect rows</li>
+                        <li>Click "Confirm All" to write to the database</li>
+                    </ol>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function vendorPricingImport() {
+    const rawItems = {{ staging_items | tojson | safe }};
+    return {
+        items: rawItems || [],
+        confirming: false,
+        confirmResult: null,
+
+        removeItem: function(idx) {
+            const updated = this.items.slice();
+            updated[idx] = Object.assign({}, updated[idx], { _removed: true });
+            this.items = updated;
+        },
+
+        rejectAll: function() {
+            this.items = [];
+            this.confirmResult = null;
+        },
+
+        confirmAll: function() {
+            const self = this;
+            const activeItems = self.items.filter(function(item) { return !item._removed; });
+            if (activeItems.length === 0) return;
+
+            self.confirming = true;
+            self.confirmResult = null;
+
+            const csrfInput = document.querySelector('input[name="csrf_token"]');
+            const csrfToken = csrfInput ? csrfInput.value : '';
+
+            fetch('{{ url_for("admin.vendor_pricing_confirm") }}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken,
+                },
+                body: JSON.stringify({ items: activeItems }),
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                self.confirmResult = data;
+                self.confirming = false;
+                if (data.success) {
+                    self.items = [];
+                }
+                self.$nextTick(function() {
+                    if (typeof lucide !== 'undefined') lucide.createIcons();
+                });
+            })
+            .catch(function(err) {
+                self.confirmResult = { success: false, error: err.message };
+                self.confirming = false;
+            });
+        },
+    };
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+});
+</script>
+{% endblock %}

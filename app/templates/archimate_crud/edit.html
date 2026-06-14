@@ -1,0 +1,242 @@
+{% extends 'layouts/admin_base.html' %}
+
+{% block title %}Edit {{ element_type }}: {{ element.name if element.name else (element.title if element.title else 'Unnamed') }}{% endblock %}
+
+{% block breadcrumb %}
+{% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
+{{ breadcrumb_nav(items=[
+    {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
+    {'text': 'Architecture Elements', 'href': url_for('archimate_crud.dashboard')},
+    {'text': layer_config[layer].name, 'href': url_for('archimate_crud.dashboard') + '#' + layer},
+    {'text': element_type, 'href': url_for('archimate_crud.list_elements', layer=layer, element_type=element_type)},
+    {'text': 'Edit', 'current': true}
+]) }}
+{% endblock %}
+
+{% block content %}
+<div class="container mx-auto p-6 space-y-6" x-data="archimateForm">
+    <!-- Header -->
+    <div class="flex items-center justify-between">
+        <div>
+            <nav class="flex items-center gap-2 text-sm text-muted-foreground mb-2">
+                <a href="{{ url_for('archimate_crud.dashboard') }}" class="hover:text-foreground">Dashboard</a>
+                <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
+                <a href="{{ url_for('archimate_crud.list_elements', layer=layer, element_type=element_type) }}" class="hover:text-foreground">{{ element_type }}</a>
+                <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
+                <a href="{{ url_for('archimate_crud.detail_element', layer=layer, element_type=element_type, element_id=element.id) }}" class="hover:text-foreground">{{ element.name if element.name else (element.title if element.title else 'Unnamed') }}</a>
+                <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
+                <span class="text-foreground">Edit</span>
+            </nav>
+            <h1 class="text-3xl font-bold">Edit {{ element_type }}</h1>
+            <p class="text-muted-foreground mt-2">{{ layer_config[layer].name }}</p>
+        </div>
+    </div>
+
+    <!-- Form -->
+    <form @submit.prevent="submitForm()" class="space-y-6">
+        <div class="border rounded-lg p-6 space-y-6">
+            <!-- Basic Fields -->
+            <div>
+                <label for="name" class="block text-sm font-medium mb-2">Name <span class="text-destructive">*</span></label>
+                <input 
+                    type="text" 
+                    id="name" 
+                    x-model="formData.name"
+                    required
+                    class="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                    placeholder="Enter {{ element_type }} name"
+                 autofocus>
+            </div>
+
+            <div>
+                <label for="description" class="block text-sm font-medium mb-2">Description</label>
+                <textarea 
+                    id="description" 
+                    x-model="formData.description"
+                    rows="4"
+                    class="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                    placeholder="Enter description"
+                ></textarea>
+            </div>
+
+            <!-- Layer-Specific Fields (same as create form) -->
+            {% if element_type == 'Driver' %}
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label for="driver_type" class="block text-sm font-medium mb-2">Driver Type</label>
+                    <select id="driver_type" x-model="formData.driver_type" class="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary">
+                        <option value="">Select type</option>
+                        <option value="regulatory">Regulatory</option>
+                        <option value="competitive">Competitive</option>
+                        <option value="customer">Customer</option>
+                        <option value="technology">Technology</option>
+                        <option value="financial">Financial</option>
+                        <option value="operational">Operational</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="source" class="block text-sm font-medium mb-2">Source</label>
+                    <select id="source" x-model="formData.source" class="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary">
+                        <option value="">Select source</option>
+                        <option value="external">External</option>
+                        <option value="internal">Internal</option>
+                    </select>
+                </div>
+            </div>
+            {% elif element_type == 'Goal' %}
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label for="goal_type" class="block text-sm font-medium mb-2">Goal Type</label>
+                    <select id="goal_type" x-model="formData.goal_type" class="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary">
+                        <option value="">Select type</option>
+                        <option value="strategic">Strategic</option>
+                        <option value="operational">Operational</option>
+                        <option value="tactical">Tactical</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="category" class="block text-sm font-medium mb-2">Category</label>
+                    <select id="category" x-model="formData.category" class="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary">
+                        <option value="">Select category</option>
+                        <option value="growth">Growth</option>
+                        <option value="efficiency">Efficiency</option>
+                        <option value="innovation">Innovation</option>
+                        <option value="compliance">Compliance</option>
+                        <option value="quality">Quality</option>
+                    </select>
+                </div>
+            </div>
+            {% elif element_type == 'BusinessActor' %}
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label for="actor_type" class="block text-sm font-medium mb-2">Actor Type</label>
+                    <select id="actor_type" x-model="formData.actor_type" class="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary">
+                        <option value="">Select type</option>
+                        <option value="Department">Department</option>
+                        <option value="Team">Team</option>
+                        <option value="Business Unit">Business Unit</option>
+                        <option value="External Partner">External Partner</option>
+                        <option value="Individual">Individual</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="location" class="block text-sm font-medium mb-2">Location</label>
+                    <input type="text" id="location" x-model="formData.location" class="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary">
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Form Actions -->
+            <div class="flex gap-2 pt-4 border-t">
+                <button type="submit" class="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2" aria-label="Submit">
+                    <i data-lucide="save" class="h-4 w-4 mr-2" aria-hidden="true"></i>
+                    Save Changes
+                </button>
+                <a href="{{ url_for('archimate_crud.detail_element', layer=layer, element_type=element_type, element_id=element.id) }}" class="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2">
+                    Cancel
+                </a>
+            </div>
+        </div>
+    </form>
+
+    <!-- ARCH-016: Inline ArchiMate 3.2 Validation -->
+    <div x-data="{ validating: false, validated: false, issues: [] }" class="mt-4">
+        <button type="button" @click="validate()" :disabled="validating"
+                class="inline-flex items-center gap-2 px-3 py-2 text-sm border border-border rounded-md hover:bg-accent disabled:opacity-50">
+            <i data-lucide="shield-check" class="h-4 w-4" aria-hidden="true"></i>
+            <span x-text="validating ? 'Validating...' : 'Validate'"></span>
+        </button>
+        <template x-if="validated && issues.length === 0">
+            <div class="mt-2 px-3 py-2 rounded-md text-sm flex items-center gap-2 bg-emerald-500/10 text-emerald-700">
+                <i data-lucide="check-circle" class="h-4 w-4" aria-hidden="true"></i>
+                <span>Valid ArchiMate 3.2 element</span>
+            </div>
+        </template>
+        <template x-if="issues.length > 0">
+            <div class="mt-2 space-y-1">
+                <template x-for="issue in issues" :key="issue.message">
+                    <div :class="issue.severity === 'error' ? 'bg-destructive/10 text-destructive' : 'bg-amber-500/10 text-amber-700'"
+                         class="px-3 py-2 rounded-md text-sm flex items-center gap-2">
+                        <i :data-lucide="issue.severity === 'error' ? 'alert-circle' : 'alert-triangle'" class="h-4 w-4 flex-shrink-0" aria-hidden="true"></i>
+                        <span x-text="issue.message"></span>
+                    </div>
+                </template>
+            </div>
+        </template>
+        <script>
+        document.addEventListener('alpine:init', () => {
+            Alpine.data('archimateValidate_{{ element.id }}', () => ({}));
+        });
+        document.addEventListener('DOMContentLoaded', () => {
+            const panel = document.querySelector('[x-data*="validating"]');
+            if (panel && panel._x_dataStack) {
+                const data = panel._x_dataStack[0];
+                data.validate = async function() {
+                    this.validating = true;
+                    try {
+                        const r = await fetch('{{ url_for("archimate_crud.validate_archimate_element", element_id=element.id) }}');
+                        const json = await r.json();
+                        this.issues = json.issues || [];
+                        this.validated = true;
+                    } catch (e) {
+                        this.issues = [{ severity: 'error', message: 'Validation request failed: ' + e.message }];
+                    }
+                    this.validating = false;
+                };
+            }
+        });
+        </script>
+    </div>
+</div>
+
+<script>
+document.addEventListener('alpine:init', () => {
+    Alpine.data('archimateForm', () => ({
+        formData: {
+            name: '{{ element.name if element.name else (element.title if element.title else "") }}',
+            description: '{{ element.description if element.description else "" }}',
+            {% if element_type == 'Driver' %}
+            driver_type: '{{ element.driver_type if element.driver_type else "" }}',
+            source: '{{ element.source if element.source else "" }}',
+            {% elif element_type == 'Goal' %}
+            goal_type: '{{ element.goal_type if element.goal_type else "" }}',
+            category: '{{ element.category if element.category else "" }}',
+            {% elif element_type == 'BusinessActor' %}
+            actor_type: '{{ element.actor_type if element.actor_type else "" }}',
+            location: '{{ element.location if element.location else "" }}',
+            {% endif %}
+        },
+        
+        async submitForm() {
+            try {
+                const response = await fetch('{{ url_for("archimate_crud.update_element", layer=layer, element_type=element_type, element_id=element.id) }}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(this.formData)
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    Platform.toast.success('{{ element_type }} updated successfully');
+                    window.location.href = '{{ url_for("archimate_crud.detail_element", layer=layer, element_type=element_type, element_id=element.id) }}';
+                } else {
+                    Platform.toast.error('Error: ' + data.error);
+                }
+            } catch (error) {
+                Platform.toast.error('Error: ' + error.message);
+            }
+        }
+    }));
+});
+</script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
+});
+</script>
+{% endblock %}

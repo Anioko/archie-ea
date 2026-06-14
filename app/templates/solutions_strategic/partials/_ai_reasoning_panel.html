@@ -1,0 +1,453 @@
+<!-- AI Reasoning & Explainability Panel
+     Displays transparent explanations for all AI recommendations.
+     Each recommendation includes:
+     - Why? (reasoning chain)
+     - How confident? (confidence score ±%)
+     - What data? (data sources used)
+     - What else? (alternatives considered)
+     - Could be wrong if... (uncertainty factors)
+-->
+
+<div id="ai-reasoning-panel" class="space-y-4 p-4 bg-gradient-to-br from-purple-50 to-pink-50 rounded-lg border border-purple-200">
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-4">
+        <h3 class="text-lg font-semibold text-foreground flex items-center">
+            <svg class="w-5 h-5 mr-2 text-primary" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M18 5v8a2 2 0 01-2 2h-5l-5 4v-4H4a2 2 0 01-2-2V5a2 2 0 012-2h12a2 2 0 012 2zm-11-1a1 1 0 11-2 0 1 1 0 012 0zM8 7a1 1 0 100-2 1 1 0 000 2zm1 3a1 1 0 11-2 0 1 1 0 012 0zm3-1a1 1 0 100-2 1 1 0 000 2zm2 0a1 1 0 11-2 0 1 1 0 012 0z" clip-rule="evenodd"/>
+            </svg>
+            AI Transparency & Reasoning
+        </h3>
+        <span class="text-xs font-medium px-2 py-1 bg-purple-200 text-purple-800 rounded">Phase 6</span>
+    </div>
+
+    <!-- Tabs for different explainability sections -->
+    <div class="flex space-x-1 border-b border-purple-200 mb-4">
+        <button class="reasoning-tab active px-3 py-2 text-sm font-medium text-purple-700 border-b-2 border-purple-600 cursor-pointer hover:text-purple-900" data-tab="why">
+            🤔 Why?
+        </button>
+        <button class="reasoning-tab px-3 py-2 text-sm font-medium text-muted-foreground border-b-2 border-transparent cursor-pointer hover:text-purple-700" data-tab="confidence">
+            📊 Confidence
+        </button>
+        <button class="reasoning-tab px-3 py-2 text-sm font-medium text-muted-foreground border-b-2 border-transparent cursor-pointer hover:text-purple-700" data-tab="sources">
+            📚 Data Used
+        </button>
+        <button class="reasoning-tab px-3 py-2 text-sm font-medium text-muted-foreground border-b-2 border-transparent cursor-pointer hover:text-purple-700" data-tab="alternatives">
+            🔄 Alternatives
+        </button>
+        <button class="reasoning-tab px-3 py-2 text-sm font-medium text-muted-foreground border-b-2 border-transparent cursor-pointer hover:text-purple-700" data-tab="risks">
+            ⚠️ Could Be Wrong
+        </button>
+        <button class="reasoning-tab px-3 py-2 text-sm font-medium text-muted-foreground border-b-2 border-transparent cursor-cursor hover:text-purple-700" data-tab="assumptions">
+            🏗️ Assumptions
+        </button>
+    </div>
+
+    <!-- TAB 1: WHY? - Reasoning Chain -->
+    <div id="tab-why" class="tab-content active">
+        <div class="bg-background rounded-lg p-4 border border-purple-100">
+            <h4 class="font-semibold text-foreground mb-3">Reasoning Chain</h4>
+            <div id="reasoning-chain" class="space-y-2">
+                <div class="flex items-start">
+                    <span class="w-6 h-6 rounded-full bg-gradient-to-br from-purple-400 to-pink-400 text-primary-foreground flex items-center justify-center text-sm font-bold mr-3 flex-shrink-0">1</span>
+                    <p class="text-sm text-foreground">Analyzing solution requirements...</p>
+                </div>
+                <div class="flex items-start">
+                    <span class="w-6 h-6 rounded-full bg-gradient-to-br from-purple-400 to-pink-400 text-primary-foreground flex items-center justify-center text-sm font-bold mr-3 flex-shrink-0">2</span>
+                    <p class="text-sm text-foreground">Matching against vendor database...</p>
+                </div>
+                <div class="flex items-start">
+                    <span class="w-6 h-6 rounded-full bg-gradient-to-br from-purple-400 to-pink-400 text-primary-foreground flex items-center justify-center text-sm font-bold mr-3 flex-shrink-0">3</span>
+                    <p class="text-sm text-foreground">Evaluating fit scores...</p>
+                </div>
+                <div class="flex items-start">
+                    <span class="w-6 h-6 rounded-full bg-gradient-to-br from-purple-400 to-pink-400 text-primary-foreground flex items-center justify-center text-sm font-bold mr-3 flex-shrink-0">4</span>
+                    <p class="text-sm text-foreground">Comparing to alternatives...</p>
+                </div>
+                <div class="flex items-start">
+                    <span class="w-6 h-6 rounded-full bg-gradient-to-br from-green-400 to-emerald-400 text-primary-foreground flex items-center justify-center text-sm font-bold mr-3 flex-shrink-0">✓</span>
+                    <p class="text-sm text-foreground font-medium">Recommendation: Primary option selected</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TAB 2: CONFIDENCE - Confidence Score & Intervals -->
+    <div id="tab-confidence" class="tab-content hidden">
+        <div class="bg-background rounded-lg p-4 border border-purple-100">
+            <h4 class="font-semibold text-foreground mb-3">Confidence Analysis</h4>
+            
+            <!-- Confidence Score Meter -->
+            <div class="mb-4">
+                <div class="flex justify-between items-center mb-2">
+                    <span class="text-sm font-medium text-foreground">Overall Confidence</span>
+                    <span id="confidence-score" class="text-2xl font-bold text-primary">85%</span>
+                </div>
+                <div class="w-full h-3 bg-muted rounded-full overflow-hidden">
+                    <div id="confidence-bar" class="h-full bg-gradient-to-r from-yellow-400 via-green-400 to-green-500" style="width: 85%"></div>
+                </div>
+                <p id="confidence-label" class="text-xs text-muted-foreground mt-1">High confidence in this recommendation</p>
+            </div>
+
+            <!-- Confidence Intervals -->
+            <div class="space-y-3">
+                <div class="p-3 bg-muted/30 rounded border border-border">
+                    <p class="text-xs font-semibold text-foreground mb-2">Vendor Fit Score Range</p>
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm text-muted-foreground">Lower bound (77%)</span>
+                        <div class="flex-1 mx-3 h-2 bg-muted rounded-full">
+                            <div class="h-full bg-blue-400" style="width: 77%"></div>
+                        </div>
+                        <span class="text-sm text-muted-foreground">Upper bound (93%)</span>
+                    </div>
+                    <p class="text-xs text-muted-foreground mt-2">Point estimate: 85% ±8%</p>
+                </div>
+
+                <div class="p-3 bg-muted/30 rounded border border-border">
+                    <p class="text-xs font-semibold text-foreground mb-2">Cost Estimate Range</p>
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm text-muted-foreground">$3.2M</span>
+                        <div class="flex-1 mx-3 h-2 bg-muted rounded-full">
+                            <div class="h-full bg-amber-400" style="width: 50%"></div>
+                        </div>
+                        <span class="text-sm text-muted-foreground">$4.8M</span>
+                    </div>
+                    <p class="text-xs text-muted-foreground mt-2">Point estimate: $4.0M ±20%</p>
+                </div>
+
+                <div class="p-3 bg-muted/30 rounded border border-border">
+                    <p class="text-xs font-semibold text-foreground mb-2">Timeline Estimate Range</p>
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm text-muted-foreground">20 weeks</span>
+                        <div class="flex-1 mx-3 h-2 bg-muted rounded-full">
+                            <div class="h-full bg-orange-400" style="width: 40%"></div>
+                        </div>
+                        <span class="text-sm text-muted-foreground">28 weeks</span>
+                    </div>
+                    <p class="text-xs text-muted-foreground mt-2">Point estimate: 24 weeks ±20%</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TAB 3: DATA SOURCES - What Data Informed This -->
+    <div id="tab-sources" class="tab-content hidden">
+        <div class="bg-background rounded-lg p-4 border border-purple-100">
+            <h4 class="font-semibold text-foreground mb-3">Data Sources Used</h4>
+            
+            <div class="space-y-3">
+                <div class="p-3 bg-primary/5 rounded border border-primary/20">
+                    <div class="flex items-start justify-between">
+                        <div>
+                            <p class="font-medium text-blue-900">Solution Requirements</p>
+                            <p class="text-sm text-primary mt-1">From: solution.description + capability mapping</p>
+                            <p class="text-xs text-primary mt-1">• Real-time data requirement</p>
+                            <p class="text-xs text-primary">• Enterprise scale needed</p>
+                            <p class="text-xs text-primary">• Mobile support required</p>
+                        </div>
+                        <span class="px-2 py-1 bg-primary/20 text-blue-900 text-xs font-semibold rounded">30%</span>
+                    </div>
+                </div>
+
+                <div class="p-3 bg-emerald-500/5 rounded border border-emerald-200">
+                    <div class="flex items-start justify-between">
+                        <div>
+                            <p class="font-medium text-green-900">Vendor Capabilities</p>
+                            <p class="text-sm text-emerald-700 mt-1">From: vendor_products + capability matrix</p>
+                            <p class="text-xs text-emerald-600 mt-1">• 47 vendors evaluated</p>
+                            <p class="text-xs text-emerald-600">• 2,300+ capability data points</p>
+                        </div>
+                        <span class="px-2 py-1 bg-green-200 text-green-900 text-xs font-semibold rounded">35%</span>
+                    </div>
+                </div>
+
+                <div class="p-3 bg-purple-50 rounded border border-purple-200">
+                    <div class="flex items-start justify-between">
+                        <div>
+                            <p class="font-medium text-purple-900">Historical Precedent</p>
+                            <p class="text-sm text-purple-700 mt-1">From: similar solutions + outcomes</p>
+                            <p class="text-xs text-primary mt-1">• 12 similar projects found</p>
+                            <p class="text-xs text-primary">• Success rate: 91%</p>
+                        </div>
+                        <span class="px-2 py-1 bg-purple-200 text-purple-900 text-xs font-semibold rounded">25%</span>
+                    </div>
+                </div>
+
+                <div class="p-3 bg-amber-50 rounded border border-amber-200">
+                    <div class="flex items-start justify-between">
+                        <div>
+                            <p class="font-medium text-amber-900">Cost Benchmarking</p>
+                            <p class="text-sm text-amber-700 mt-1">From: cost_intelligence + market data</p>
+                            <p class="text-xs text-amber-600 mt-1">• Industry benchmarks</p>
+                            <p class="text-xs text-amber-600">• Recent implementation costs</p>
+                        </div>
+                        <span class="px-2 py-1 bg-amber-200 text-amber-900 text-xs font-semibold rounded">10%</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TAB 4: ALTERNATIVES - Other Options Considered -->
+    <div id="tab-alternatives" class="tab-content hidden">
+        <div class="bg-background rounded-lg p-4 border border-purple-100">
+            <h4 class="font-semibold text-foreground mb-3">Alternative Options Considered</h4>
+            
+            <div class="space-y-3">
+                <!-- Alternative 1 -->
+                <div class="p-3 border-l-4 border-yellow-400 bg-amber-500/5 rounded">
+                    <div class="flex items-start justify-between mb-2">
+                        <div>
+                            <p class="font-medium text-foreground">Alternative 1: Oracle</p>
+                            <p class="text-sm text-muted-foreground">Fit Score: 0.87 <span class="text-amber-600 font-semibold">(-8%)</span></p>
+                        </div>
+                    </div>
+                    <div class="bg-background rounded p-2 text-sm">
+                        <p class="font-semibold text-foreground mb-1">Why rejected:</p>
+                        <ul class="space-y-1 text-xs text-foreground">
+                            <li>• <span class="font-medium">Higher cost:</span> $4.6M vs $4.0M (+$600K)</li>
+                            <li>• <span class="font-medium">Longer timeline:</span> 28 weeks vs 24 weeks (+4 weeks)</li>
+                            <li>• <span class="font-medium">Complex licensing:</span> Per-core model adds uncertainty</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Alternative 2 -->
+                <div class="p-3 border-l-4 border-orange-400 bg-orange-50 rounded">
+                    <div class="flex items-start justify-between mb-2">
+                        <div>
+                            <p class="font-medium text-foreground">Alternative 2: Salesforce</p>
+                            <p class="text-sm text-muted-foreground">Fit Score: 0.84 <span class="text-orange-600 font-semibold">(-11%)</span></p>
+                        </div>
+                    </div>
+                    <div class="bg-background rounded p-2 text-sm">
+                        <p class="font-semibold text-foreground mb-1">Why rejected:</p>
+                        <ul class="space-y-1 text-xs text-foreground">
+                            <li>• <span class="font-medium">Limited analytics:</span> Not suitable for data volumes</li>
+                            <li>• <span class="font-medium">Weaker integration:</span> Less backend capability</li>
+                            <li>• <span class="font-medium">Capability gap:</span> 78% coverage vs 95% needed</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Alternative 3 -->
+                <div class="p-3 border-l-4 border-red-400 bg-destructive/5 rounded">
+                    <div class="flex items-start justify-between mb-2">
+                        <div>
+                            <p class="font-medium text-foreground">Alternative 3: Microsoft Dynamics</p>
+                            <p class="text-sm text-muted-foreground">Fit Score: 0.81 <span class="text-destructive font-semibold">(-14%)</span></p>
+                        </div>
+                    </div>
+                    <div class="bg-background rounded p-2 text-sm">
+                        <p class="font-semibold text-foreground mb-1">Why rejected:</p>
+                        <ul class="space-y-1 text-xs text-foreground">
+                            <li>• <span class="font-medium">Weakest candidate:</span> Lower overall capability</li>
+                            <li>• <span class="font-medium">Implementation risk:</span> Fewer skilled resources</li>
+                            <li>• <span class="font-medium">Support concerns:</span> Less proven in enterprise</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TAB 5: COULD BE WRONG IF... - Uncertainty Factors -->
+    <div id="tab-risks" class="tab-content hidden">
+        <div class="bg-background rounded-lg p-4 border border-purple-100">
+            <h4 class="font-semibold text-foreground mb-3">Factors That Could Make This Wrong</h4>
+            
+            <div class="space-y-3">
+                <!-- High Impact -->
+                <div class="mb-4">
+                    <p class="text-xs font-semibold text-destructive mb-2 flex items-center">
+                        <span class="w-2 h-2 bg-destructive rounded-full mr-2"></span>
+                        HIGH IMPACT - Could invalidate recommendation
+                    </p>
+                    <div class="space-y-2">
+                        <div class="p-3 bg-destructive/5 rounded border border-destructive/20">
+                            <p class="font-medium text-foreground text-sm">Requirements Interpretation</p>
+                            <p class="text-xs text-foreground mt-1"><strong>Our assumption:</strong> Real-time means &lt;1 second latency</p>
+                            <p class="text-xs text-foreground mt-1"><strong>If wrong:</strong> SAP S/4HANA might not meet SLA</p>
+                            <p class="text-xs text-destructive mt-1"><strong>Likelihood:</strong> LOW</p>
+                            <p class="text-xs text-foreground mt-1"><strong>Mitigation:</strong> Validate latency requirements in Phase B</p>
+                        </div>
+
+                        <div class="p-3 bg-destructive/5 rounded border border-destructive/20">
+                            <p class="font-medium text-foreground text-sm">Budget Stability</p>
+                            <p class="text-xs text-foreground mt-1"><strong>Our assumption:</strong> Budget remains $5M ±10%</p>
+                            <p class="text-xs text-foreground mt-1"><strong>If wrong:</strong> May need to downgrade vendor or scope</p>
+                            <p class="text-xs text-destructive mt-1"><strong>Likelihood:</strong> MEDIUM</p>
+                            <p class="text-xs text-foreground mt-1"><strong>Mitigation:</strong> Get CFO sign-off on budget</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Medium Impact -->
+                <div class="mb-4">
+                    <p class="text-xs font-semibold text-amber-700 mb-2 flex items-center">
+                        <span class="w-2 h-2 bg-amber-500 rounded-full mr-2"></span>
+                        MEDIUM IMPACT - Recommendation still valid but risky
+                    </p>
+                    <div class="space-y-2">
+                        <div class="p-3 bg-amber-50 rounded border border-amber-200">
+                            <p class="font-medium text-foreground text-sm">Team Capability</p>
+                            <p class="text-xs text-foreground mt-1"><strong>Our assumption:</strong> Team has basic ERP implementation experience</p>
+                            <p class="text-xs text-foreground mt-1"><strong>If wrong:</strong> Implementation could slip or need more vendor support</p>
+                            <p class="text-xs text-amber-600 mt-1"><strong>Likelihood:</strong> MEDIUM</p>
+                            <p class="text-xs text-foreground mt-1"><strong>Mitigation:</strong> Plan for additional training or consultant support</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Low Impact -->
+                <div>
+                    <p class="text-xs font-semibold text-emerald-700 mb-2 flex items-center">
+                        <span class="w-2 h-2 bg-emerald-500 rounded-full mr-2"></span>
+                        LOW IMPACT - Minor considerations
+                    </p>
+                    <div class="space-y-2">
+                        <div class="p-3 bg-emerald-500/5 rounded border border-emerald-200">
+                            <p class="font-medium text-foreground text-sm">Competitive Landscape Changes</p>
+                            <p class="text-xs text-foreground mt-1"><strong>Our assumption:</strong> Current vendor capabilities remain stable</p>
+                            <p class="text-xs text-foreground mt-1"><strong>If wrong:</strong> New vendors or features might emerge</p>
+                            <p class="text-xs text-emerald-600 mt-1"><strong>Likelihood:</strong> LOW</p>
+                            <p class="text-xs text-foreground mt-1"><strong>Mitigation:</strong> Re-evaluate annually</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TAB 6: ASSUMPTIONS - What We Assumed -->
+    <div id="tab-assumptions" class="tab-content hidden">
+        <div class="bg-background rounded-lg p-4 border border-purple-100">
+            <h4 class="font-semibold text-foreground mb-3">Model Assumptions</h4>
+            
+            <div class="space-y-3">
+                <!-- Technical Assumptions -->
+                <div>
+                    <p class="text-sm font-semibold text-foreground mb-2 flex items-center">
+                        <span class="w-3 h-3 bg-primary rounded-full mr-2"></span>
+                        Technical Assumptions
+                    </p>
+                    <div class="space-y-1 pl-5 border-l-2 border-primary/20">
+                        <div class="text-sm text-foreground">
+                            ✓ Cloud deployment is acceptable (not on-premise only)
+                        </div>
+                        <div class="text-sm text-foreground">
+                            ✓ Existing infrastructure can be retired or repurposed
+                        </div>
+                        <div class="text-sm text-foreground">
+                            ✓ Team has basic cloud experience
+                        </div>
+                        <div class="text-sm text-foreground">
+                            ✓ APIs and integrations follow REST standards
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Business Assumptions -->
+                <div class="mt-4">
+                    <p class="text-sm font-semibold text-foreground mb-2 flex items-center">
+                        <span class="w-3 h-3 bg-emerald-500 rounded-full mr-2"></span>
+                        Business Assumptions
+                    </p>
+                    <div class="space-y-1 pl-5 border-l-2 border-emerald-200">
+                        <div class="text-sm text-foreground">
+                            ✓ Budget is fixed at $5M ±10%
+                        </div>
+                        <div class="text-sm text-foreground">
+                            ✓ Timeline is 24 months maximum
+                        </div>
+                        <div class="text-sm text-foreground">
+                            ✓ Single vendor preferred (no best-of-breed)
+                        </div>
+                        <div class="text-sm text-foreground">
+                            ✓ ROI target is 3 years payback
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Organizational Assumptions -->
+                <div class="mt-4">
+                    <p class="text-sm font-semibold text-foreground mb-2 flex items-center">
+                        <span class="w-3 h-3 bg-primary rounded-full mr-2"></span>
+                        Organizational Assumptions
+                    </p>
+                    <div class="space-y-1 pl-5 border-l-2 border-purple-200">
+                        <div class="text-sm text-foreground">
+                            ✓ Change management team is available
+                        </div>
+                        <div class="text-sm text-foreground">
+                            ✓ No competing initiatives in same timeframe
+                        </div>
+                        <div class="text-sm text-foreground">
+                            ✓ Executive sponsorship is committed
+                        </div>
+                        <div class="text-sm text-foreground">
+                            ✓ Key resources will not be pulled to other projects
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer with Metadata -->
+    <div class="mt-4 pt-4 border-t border-purple-200 text-xs text-muted-foreground">
+        <div class="flex items-center justify-between">
+            <div>
+                <p>Generated: <span id="generated-at" class="font-mono">2026-03-02 21:00:00</span></p>
+                <p>Reasoning State ID: <span id="reasoning-state-id" class="font-mono">RST-12345</span></p>
+            </div>
+            <div class="text-right">
+                <p class="mb-1">💡 Tip: Review assumptions before proceeding to Phase B</p>
+                <button class="px-3 py-1 bg-primary text-primary-foreground text-xs rounded hover:bg-purple-700">
+                    Export as PDF
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- JavaScript for Tab Switching -->
+<script>
+document.querySelectorAll('.reasoning-tab').forEach(tab => {
+    tab.addEventListener('click', function() {
+        // Remove active state from all tabs and contents
+        document.querySelectorAll('.reasoning-tab').forEach(t => {
+            t.classList.remove('active', 'border-purple-600', 'text-purple-700');
+            t.classList.add('border-transparent', 'text-muted-foreground');
+        });
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
+        
+        // Add active state to clicked tab
+        this.classList.add('active', 'border-purple-600', 'text-purple-700');
+        this.classList.remove('border-transparent', 'text-muted-foreground');
+        
+        // Show corresponding content
+        const tabName = this.dataset.tab;
+        document.getElementById(`tab-${tabName}`).classList.remove('hidden');
+    });
+});
+
+// Dynamically populate from API
+function populateReasoningPanel(reasoningData) {
+    if (reasoningData.reasoning_chain) {
+        const chainDiv = document.getElementById('reasoning-chain');
+        chainDiv.innerHTML = reasoningData.reasoning_chain.map((step, idx) => `
+            <div class="flex items-start">
+                <span class="w-6 h-6 rounded-full bg-gradient-to-br from-purple-400 to-pink-400 text-primary-foreground flex items-center justify-center text-sm font-bold mr-3 flex-shrink-0">${idx + 1}</span>
+                <p class="text-sm text-foreground">${step}</p>
+            </div>
+        `).join('');
+    }
+    
+    if (reasoningData.confidence) {
+        const conf = reasoningData.confidence;
+        document.getElementById('confidence-score').textContent = `${Math.round(conf.score * 100)}%`;
+        document.getElementById('confidence-bar').style.width = `${conf.score * 100}%`;
+        document.getElementById('confidence-label').textContent = conf.interpretation || '';
+    }
+}
+</script>

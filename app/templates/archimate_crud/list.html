@@ -1,0 +1,438 @@
+{% extends 'layouts/admin_base.html' %}
+
+{% block title %}{{ element_type }} - {{ layer_config[layer].name }}{% endblock %}
+
+{% block breadcrumb %}
+{# FAR-018: Breadcrumb navigation #}
+{% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
+{{ breadcrumb_nav(items=[
+    {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
+    {'text': 'Architecture Elements', 'href': url_for('archimate_crud.dashboard')},
+    {'text': layer_config[layer].name, 'href': url_for('archimate_crud.dashboard') + '#' + layer},
+    {'text': element_type, 'current': true}
+]) }}
+{% endblock %}
+
+{% block content %}
+<div class="container mx-auto p-6 space-y-6" x-data="archimateList">
+    <!-- Header -->
+    <div class="flex items-center justify-between">
+        <div>
+            {# FAR-018: Breadcrumb navigation #}
+{%from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
+{{ breadcrumb_nav(items=[
+    {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
+    {'text': 'Architecture Elements', 'href': url_for('archimate_crud.dashboard')},
+    {'text': layer_config[layer].name, 'href': url_for('archimate_crud.dashboard') + '#' + layer},
+    {'text': element_type, 'current': true}
+]) }}
+            <h1 class="text-3xl font-bold">{{ element_type }}</h1>
+            <p class="text-muted-foreground mt-2">{{ layer_config[layer].name }} - {{ pagination.total }} total</p>
+        </div>
+        <div class="flex gap-2">
+            <button @click="toggleViewMode()" class="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2" aria-label="Toggle">
+                <i :data-lucide="viewMode === 'table' ? 'grid' : 'list'" class="h-4 w-4 mr-2"></i>
+                <span x-text="viewMode === 'table' ? 'Card View' : 'Table View'"></span>
+            </button>
+            <button @click="showBulkActions = !showBulkActions" class="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2" aria-label="Action">
+                <i data-lucide="more-horizontal" class="h-4 w-4 mr-2" aria-hidden="true"></i>
+                Bulk Actions
+            </button>
+            <a href="{{ url_for('archimate_crud.create_element', layer=layer, element_type=element_type) }}" class="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2">
+                <i data-lucide="plus" class="h-4 w-4 mr-2" aria-hidden="true"></i>
+                Create New
+            </a>
+        </div>
+    </div>
+
+    <!-- Search and Filters -->
+    <div class="flex gap-4 items-center">
+        <div class="flex-1 relative">
+            <i data-lucide="search" class="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden="true"></i>
+            <input 
+                type="text" 
+                x-model="searchQuery"
+                @input.debounce.300ms="performSearch()"
+                placeholder="Search {{ element_type }}..."
+                class="w-full pl-10 pr-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+             aria-label="Search {{ element_type }}...">
+        </div>
+        <button @click="showAIGenerate = true" class="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2" aria-label="Action">
+            <i data-lucide="sparkles" class="h-4 w-4 mr-2" aria-hidden="true"></i>
+            AI Generate
+        </button>
+    </div>
+
+    <!-- Bulk Actions Panel -->
+    <div x-show="showBulkActions" x-cloak x-transition class="border rounded-lg p-4 bg-muted/10">
+        <div class="flex items-center justify-between">
+            <div class="flex items-center gap-4">
+                <label class="flex items-center gap-2">
+                    <input type="checkbox" @change="toggleSelectAll($event)" class="rounded" aria-label="Checkbox field">
+                    <span class="text-sm">Select All (<span x-text="selectedItems.length"></span> selected)</span>
+                </label>
+            </div>
+            <div class="flex gap-2">
+                <button @click="bulkDelete()" class="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-destructive text-destructive-foreground hover:bg-destructive/90 h-9 px-3" aria-label="Delete">
+                    <i data-lucide="trash-2" class="h-4 w-4 mr-2" aria-hidden="true"></i>
+                    Delete Selected
+                </button>
+                <button @click="bulkExport()" class="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-3" aria-label="Export">
+                    <i data-lucide="download" class="h-4 w-4 mr-2" aria-hidden="true"></i>
+                    Export Selected
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Table View -->
+    <div x-show="viewMode === 'table'" x-cloak class="border rounded-lg overflow-hidden">
+        <table class="w-full">
+            <thead class="bg-muted/50">
+                <tr>
+                    <th class="p-4 text-left">
+                        <input type="checkbox" @change="toggleSelectAll($event)" class="rounded" aria-label="Checkbox field">
+                    </th>
+                    <th class="p-4 text-left font-semibold">Name</th>
+                    <th class="p-4 text-left font-semibold">Description</th>
+                    {% if element_type in ['Goal', 'Driver', 'BusinessService'] %}
+                    <th class="p-4 text-left font-semibold">Status</th>
+                    {% endif %}
+                    <th class="p-4 text-left font-semibold">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y">
+                {% for element in elements %}
+                <tr class="border-t hover:bg-muted/10">
+                    <td class="p-4">
+                        <input type="checkbox" :value="{{ element.id }}" x-model="selectedItems" class="rounded" aria-label="Checkbox field">
+                    </td>
+                    <td class="p-4">
+                        <a href="{{ url_for('archimate_crud.detail_element', layer=layer, element_type=element_type, element_id=element.id) }}" class="font-medium text-primary hover:underline">
+                            {{ element.name if element.name else (element.title if element.title else 'Unnamed') }}
+                        </a>
+                    </td>
+                    <td class="p-4 text-sm text-muted-foreground">
+                        {{ (element.description or '')[:100] }}{% if element.description and element.description|length > 100 %}...{% endif %}
+                    </td>
+                    {% if element_type in ['Goal', 'Driver', 'BusinessService'] %}
+                    <td class="p-4">
+                        <span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium bg-success/10 text-success">
+                            {{ element.status if element.status else (element.operational_status if element.operational_status else 'Active') }}
+                        </span>
+                    </td>
+                    {% endif %}
+                    <td class="p-4">
+                        <div class="flex gap-2">
+                            <a href="{{ url_for('archimate_crud.detail_element', layer=layer, element_type=element_type, element_id=element.id) }}" class="text-primary hover:underline text-sm">
+                                <i data-lucide="eye" class="h-4 w-4" aria-hidden="true"></i>
+                            </a>
+                            <a href="{{ url_for('archimate_crud.update_element', layer=layer, element_type=element_type, element_id=element.id) }}" class="text-primary hover:underline text-sm">
+                                <i data-lucide="edit" class="h-4 w-4" aria-hidden="true"></i>
+                            </a>
+                            <a href="{{ url_for('architect_ui.impact_analysis', element_id=element.id) }}" class="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1" title="Impact Analysis">
+                                <i data-lucide="zap" class="h-3 w-3" aria-hidden="true"></i> Impact
+                            </a>
+                            <button @click="deleteElement({{ element.id }})" class="text-destructive hover:underline text-sm" aria-label="Delete">
+                                <i data-lucide="trash-2" class="h-4 w-4" aria-hidden="true"></i>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Card View -->
+    <div x-show="viewMode === 'card'" x-cloak class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {% for element in elements %}
+        <div class="border rounded-lg p-4 hover:shadow-md transition-shadow">
+            <div class="flex items-start justify-between mb-3">
+                <div class="flex items-center gap-2">
+                    <input type="checkbox" :value="{{ element.id }}" x-model="selectedItems" class="rounded" aria-label="Checkbox field">
+                    <h2 class="font-semibold">
+                        <a href="{{ url_for('archimate_crud.detail_element', layer=layer, element_type=element_type, element_id=element.id) }}" class="text-primary hover:underline">
+                            {{ element.name if element.name else (element.title if element.title else 'Unnamed') }}
+                        </a>
+                    </h2>
+                </div>
+                <div class="flex gap-1">
+                    <a href="{{ url_for('archimate_crud.detail_element', layer=layer, element_type=element_type, element_id=element.id) }}" class="text-muted-foreground hover:text-foreground">
+                        <i data-lucide="eye" class="h-4 w-4" aria-hidden="true"></i>
+                    </a>
+                    <a href="{{ url_for('archimate_crud.update_element', layer=layer, element_type=element_type, element_id=element.id) }}" class="text-muted-foreground hover:text-foreground">
+                        <i data-lucide="edit" class="h-4 w-4" aria-hidden="true"></i>
+                    </a>
+                    <a href="{{ url_for('architect_ui.impact_analysis', element_id=element.id) }}" class="text-muted-foreground hover:text-foreground" title="Impact Analysis">
+                        <i data-lucide="zap" class="h-4 w-4" aria-hidden="true"></i>
+                    </a>
+                    <button @click="deleteElement({{ element.id }})" class="text-destructive hover:text-foreground" aria-label="Delete">
+                        <i data-lucide="trash-2" class="h-4 w-4" aria-hidden="true"></i>
+                    </button>
+                </div>
+            </div>
+            <p class="text-sm text-muted-foreground mb-3">
+                {{ (element.description or '')[:150] }}{% if element.description and element.description|length > 150 %}...{% endif %}
+            </p>
+            {% if element_type in ['Goal', 'Driver', 'BusinessService'] %}
+            <div class="flex items-center gap-2">
+                <span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium bg-success/10 text-success">
+                    {{ element.status if element.status else (element.operational_status if element.operational_status else 'Active') }}
+                </span>
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Pagination -->
+    {% if pagination.pages > 1 %}
+    <div class="flex items-center justify-between">
+        <div class="text-sm text-muted-foreground">
+            Showing {{ (pagination.page - 1) * pagination.per_page + 1 }} to {{ pagination.page * pagination.per_page if pagination.page * pagination.per_page < pagination.total else pagination.total }} of {{ pagination.total }} results
+        </div>
+        <div class="flex gap-2">
+            {% if pagination.has_prev %}
+            <a href="?page={{ pagination.prev_num }}{% if search %}&search={{ search }}{% endif %}" class="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-3">
+                Previous
+            </a>
+            {% endif %}
+            {% if pagination.has_next %}
+            <a href="?page={{ pagination.next_num }}{% if search %}&search={{ search }}{% endif %}" class="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-3">
+                Next
+            </a>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+document.addEventListener('alpine:init', () => {
+    Alpine.data('archimateList', () => ({
+        viewMode: '{{ view_mode }}',
+        searchQuery: '{{ search }}',
+        selectedItems: [],
+        showBulkActions: false,
+        showAIGenerate: false,
+        aiPrompt: '',
+        aiGenerating: false,
+        aiResult: null,
+        
+        async generateWithAI() {
+            if (!this.aiPrompt.trim()) {
+                Platform.toast.error('Please enter a prompt describing what you want to generate');
+                return;
+            }
+            
+            this.aiGenerating = true;
+            this.aiResult = null;
+            
+            try {
+                const response = await fetch('{{ url_for("archimate_crud.ai_generate", layer=layer, element_type=element_type) }}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        prompt: this.aiPrompt,
+                        context: {
+                            // Could include related elements, documents, etc.
+                        }
+                    })
+                });
+                
+                const data = await response.json();
+                if (data.success && data.data.success) {
+                    this.aiResult = data.data.element;
+                    // Auto-fill form or show result
+                    Platform.toast.success('AI generation successful! Check the result below.');
+                } else {
+                    Platform.toast.error('Error: ' + (data.error || data.data?.error || 'Failed to generate'));
+                }
+            } catch (error) {
+                Platform.toast.error('Error: ' + error.message);
+            } finally {
+                this.aiGenerating = false;
+            }
+        },
+        
+        useAIGeneratedData() {
+            if (this.aiResult) {
+                // Navigate to create page with pre-filled data
+                const params = new URLSearchParams({
+                    name: this.aiResult.name || '',
+                    description: this.aiResult.description || '',
+                    ...this.aiResult.attributes
+                });
+                window.location.href = '{{ url_for("archimate_crud.create_element", layer=layer, element_type=element_type) }}?' + params.toString();
+            }
+        },
+        
+        toggleViewMode() {
+            this.viewMode = this.viewMode === 'table' ? 'card' : 'table';
+            const url = new URL(window.location);
+            url.searchParams.set('view', this.viewMode);
+            window.location.href = url.toString();
+        },
+        
+        performSearch() {
+            const url = new URL(window.location);
+            if (this.searchQuery) {
+                url.searchParams.set('search', this.searchQuery);
+            } else {
+                url.searchParams.delete('search');
+            }
+            url.searchParams.set('page', '1');
+            window.location.href = url.toString();
+        },
+        
+        toggleSelectAll(event) {
+            const checkboxes = document.querySelectorAll('input[type="checkbox"][value]');
+            checkboxes.forEach(cb => {
+                cb.checked = event.target.checked;
+                if (event.target.checked && !this.selectedItems.includes(parseInt(cb.value))) {
+                    this.selectedItems.push(parseInt(cb.value));
+                } else if (!event.target.checked) {
+                    this.selectedItems = [];
+                }
+            });
+        },
+        
+        async bulkDelete() {
+            if (this.selectedItems.length === 0) {
+                Platform.toast.error('Please select items to delete');
+                return;
+            }
+            
+            if (!(await Platform.modal.confirm(`Delete ${this.selectedItems.length} item(s)?`))) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('{{ url_for("archimate_crud.bulk_delete", layer=layer, element_type=element_type) }}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ ids: this.selectedItems })
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    Platform.toast.info(data.message);
+                    window.location.reload();
+                } else {
+                    Platform.toast.error('Error: ' + data.error);
+                }
+            } catch (error) {
+                Platform.toast.error('Error: ' + error.message);
+            }
+        },
+        
+        bulkExport() {
+            if (this.selectedItems.length === 0) {
+                Platform.toast.error('Please select items to export');
+                return;
+            }
+            
+            const ids = this.selectedItems.map(id => `ids=${id}`).join('&');
+            window.location.href = `{{ url_for("archimate_crud.export_elements", layer=layer, element_type=element_type) }}?format=json&${ids}`;
+        },
+        
+        async deleteElement(id) {
+            if (!(await Platform.modal.confirm('Are you sure you want to delete this item?'))) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`{{ url_for("archimate_crud.delete_element", layer=layer, element_type=element_type, element_id=0) }}`.replace('0', id), {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    Platform.toast.info(data.message);
+                    window.location.reload();
+                } else {
+                    Platform.toast.error('Error: ' + data.error);
+                }
+            } catch (error) {
+                Platform.toast.error('Error: ' + error.message);
+            }
+        }
+    }
+    }));
+});
+</script>
+
+<!-- AI Generate Modal -->
+<div x-show="showAIGenerate" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-background/80" @click.away="showAIGenerate = false">
+    <div class="bg-background border rounded-lg shadow-lg w-full max-w-2xl mx-4 p-6" @click.stop>
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-2xl font-bold">AI Generate {{ element_type }}</h2>
+            <button @click="showAIGenerate = false" class="text-muted-foreground hover:text-foreground" aria-label="Action">
+                <i data-lucide="x" class="h-5 w-5" aria-hidden="true"></i>
+            </button>
+        </div>
+        
+        <div class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium mb-2">Describe what you want to generate</label>
+                <textarea 
+                    x-model="aiPrompt"
+                    rows="4"
+                    placeholder="e.g., 'A goal to improve customer satisfaction by 20% in the next quarter' or 'A business process for handling customer orders'"
+                    class="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                ></textarea>
+                <p class="text-xs text-muted-foreground mt-1">The AI will search documents and generate an appropriate {{ element_type }} element.</p>
+            </div>
+            
+            <div x-show="aiResult" x-cloak class="border rounded-lg p-4 bg-muted/10">
+                <h3 class="font-semibold mb-2">Generated Result:</h3>
+                <div class="space-y-2">
+                    <div><strong>Name:</strong> <span x-text="aiResult.name"></span></div>
+                    <div><strong>Description:</strong> <span x-text="aiResult.description"></span></div>
+                    <div x-show="aiResult.attributes && Object.keys(aiResult.attributes).length > 0" x-cloak>
+                        <strong>Attributes:</strong>
+                        <pre class="text-xs mt-1" x-text="JSON.stringify(aiResult.attributes, null, 2)"></pre>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="flex gap-2 justify-end">
+                <button @click="showAIGenerate = false" class="px-4 py-2 border rounded-md hover:bg-accent" aria-label="Action">
+                    Cancel
+                </button>
+                <button 
+                    @click="generateWithAI()" 
+                    :disabled="aiGenerating || !aiPrompt.trim()"
+                    class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+                 aria-label="Action">
+                    <span x-show="!aiGenerating" x-cloak>Generate</span>
+                    <span x-show="aiGenerating" x-cloak>Generating...</span>
+                </button>
+                <button 
+                    x-show="aiResult" x-cloak
+                    @click="useAIGeneratedData()"
+                    class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
+                 aria-label="Action">
+                    Use This Data
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
+});
+</script>
+{% endblock %}

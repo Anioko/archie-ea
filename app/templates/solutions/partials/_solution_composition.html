@@ -1,0 +1,40 @@
+{# Solution Composition — Component roles, criticality, coupling matrix
+   Included in solutions/detail.html within solutionDetail() x-data scope #}
+<div class="mt-7">
+    <div class="flex items-center justify-between mb-3">
+        <h3 class="text-sm font-semibold text-foreground flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-orange-500 inline-block"></span>Solution Composition</h3>
+        <div class="sad-actions"><button @click="openEntityModal('composition')" class="inline-flex items-center gap-1 h-7 px-2.5 rounded-md text-xs font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors">+ Component</button></div>
+    </div>
+    <template x-if="sadComposition.length > 0">
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead><tr class="border-b border-border">
+                    <th class="text-left py-2 px-3 text-muted-foreground font-medium">Component</th>
+                    <th class="text-left py-2 px-3 text-muted-foreground font-medium">Type</th>
+                    <th class="text-left py-2 px-3 text-muted-foreground font-medium">Role</th>
+                    <th class="text-left py-2 px-3 text-muted-foreground font-medium">Criticality</th>
+                    <th class="text-left py-2 px-3 text-muted-foreground font-medium">Coupling</th>
+                    <th class="text-right py-2 px-3 text-muted-foreground font-medium sad-actions">Actions</th>
+                </tr></thead>
+                <tbody>
+                    <template x-for="item in sadComposition" :key="item.id">
+                        <tr class="border-b border-border/50 hover:bg-muted/30">
+                            <td class="py-2 px-3 font-medium text-foreground" x-text="item.component_name"></td>
+                            <td class="py-2 px-3"><span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-blue-500/10 text-primary border border-blue-500/30" x-text="item.component_type"></span></td>
+                            <td class="py-2 px-3 text-muted-foreground" x-text="item.role"></td>
+                            <td class="py-2 px-3"><span :class="{'text-destructive': item.criticality === 'critical', 'text-orange-600': item.criticality === 'high', 'text-amber-600': item.criticality === 'medium', 'text-emerald-600': item.criticality === 'low'}" x-text="item.criticality"></span></td>
+                            <td class="py-2 px-3 text-muted-foreground" x-text="item.coupling?.replace('_', ' ')"></td>
+                            <td class="py-2 px-3 text-right sad-actions">
+                                <button @click="openEntityModal('composition', item)" class="text-muted-foreground hover:text-foreground p-1 rounded-md text-xs">Edit</button>
+                                <button @click="confirmDeleteEntity('composition', item)" class="text-muted-foreground hover:text-destructive p-1 rounded-md text-xs">Delete</button>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+    </template>
+    <template x-if="sadComposition.length === 0">
+        <p class="text-sm text-muted-foreground/60 italic">No components documented. Add components to map how applications interlock within this solution.</p>
+    </template>
+</div>

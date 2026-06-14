@@ -1,0 +1,172 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'components/page_header.html' import page_header %}
+
+{% block title %}Frameworks Overview{% endblock %}
+
+{% block breadcrumb %}
+{% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
+{{ breadcrumb_nav(items=[
+    {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
+    {'text': 'Business Layer', 'href': url_for('archimate_crud.dashboard') + '#business'},
+    {'text': 'Capabilities', 'href': url_for('capability_map.index')},
+    {'text': 'Maturity Frameworks', 'current': true}
+]) }}
+{% endblock %}
+
+{% block content %}
+{# Safe color mapping — dynamic bg-{{ color }}-* classes don't work with CDN Tailwind JIT #}
+{% set color_map = {
+    'blue':   {'icon_bg': 'bg-primary/10',   'icon_text': 'text-primary',       'badge': 'bg-primary/10 text-primary',       'bar': 'bg-primary'},
+    'green':  {'icon_bg': 'bg-primary/10',   'icon_text': 'text-primary',       'badge': 'bg-primary/10 text-primary',       'bar': 'bg-primary'},
+    'purple': {'icon_bg': 'bg-secondary/50', 'icon_text': 'text-foreground',    'badge': 'bg-secondary/50 text-foreground',  'bar': 'bg-foreground/60'},
+    'orange': {'icon_bg': 'bg-muted',        'icon_text': 'text-muted-foreground', 'badge': 'bg-muted text-foreground',      'bar': 'bg-muted-foreground'},
+    'red':    {'icon_bg': 'bg-destructive/10','icon_text': 'text-destructive',  'badge': 'bg-destructive/10 text-destructive','bar': 'bg-destructive'},
+    'yellow': {'icon_bg': 'bg-warning/10','icon_text': 'text-warning',    'badge': 'bg-warning/10 text-warning', 'bar': 'bg-warning'},
+    'gray':   {'icon_bg': 'bg-muted',        'icon_text': 'text-muted-foreground', 'badge': 'bg-muted text-foreground',      'bar': 'bg-muted-foreground'}
+} %}
+
+<div class="mx-auto px-4 py-6">
+    {{ page_header(
+        title='Capability Frameworks',
+        description='Navigate capability maturity by framework and domain',
+        actions=[
+            {'text': 'Back to Overview', 'icon': 'arrow-left', 'href': url_for('maturity_management.frameworks_overview'), 'variant': 'outline'}
+        ]
+    ) }}
+
+    <!-- Framework Grid -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        {% for framework_key, framework_data in all_frameworks.items() %}
+        {% set stats = framework_stats[framework_key] %}
+        {% set colors = color_map.get(framework_data.color, color_map['blue']) %}
+        {% if stats and stats[0] > 0 %}
+        <a href="{{ url_for('maturity_management.framework_dashboard', framework_key=framework_key) }}"
+           class="block bg-card rounded-lg shadow hover:shadow-lg transition-shadow duration-200 border border-border">
+            <div class="p-6">
+                <!-- Framework Header -->
+                <div class="flex items-center mb-4">
+                    <div class="flex-shrink-0 w-12 h-12 rounded-lg {{ colors.icon_bg }} flex items-center justify-center">
+                        <i data-lucide="{{ framework_data.icon }}" class="w-6 h-6 {{ colors.icon_text }}" aria-hidden="true"></i>
+                    </div>
+                    <div class="ml-4">
+                        <h3 class="text-lg font-semibold text-foreground">{{ framework_data.name }}</h3>
+                        <p class="text-sm text-muted-foreground">{{ framework_data.description }}</p>
+                    </div>
+                </div>
+
+                <!-- Statistics -->
+                <div class="grid grid-cols-2 gap-4 mb-4">
+                    <div>
+                        <p class="text-2xl font-bold text-foreground">{{ stats[0] }}</p>
+                        <p class="text-xs text-muted-foreground">Capabilities</p>
+                    </div>
+                    <div>
+                        <p class="text-2xl font-bold {{ colors.icon_text }}">{{ "%.1f"|format(stats[4] or 0) }}</p>
+                        <p class="text-xs text-muted-foreground">Avg Current</p>
+                    </div>
+                </div>
+
+                <!-- Domains -->
+                <div class="mb-4">
+                    <p class="text-xs text-muted-foreground mb-2">{{ framework_data.domains|length }} Domains</p>
+                    <div class="flex flex-wrap gap-1">
+                        {% for domain_key, domain_data in framework_data.domains.items() %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium {{ colors.badge }}">
+                            {{ domain_data.name }}
+                        </span>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <!-- Progress Bar -->
+                <div class="w-full bg-muted rounded-full h-2">
+                    <div class="{{ colors.bar }} h-2 rounded-full transition-all duration-300"
+                         style="width: {{ ((stats[4] or 0) / 5 * 100)|round }}%"></div>
+                </div>
+            </div>
+        </a>
+        {% endif %}
+        {% endfor %}
+    </div>
+
+    <!-- Framework Comparison -->
+    <div class="bg-card rounded-lg shadow border border-border">
+        <div class="px-6 py-4 border-b border-border">
+            <h2 class="text-lg font-semibold text-foreground">Framework Comparison</h2>
+        </div>
+        <div class="p-6">
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-border">
+                    <thead class="bg-muted/50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Framework</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Capabilities</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">With Current</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">With Target</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Avg Current</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Avg Target</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Progress</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-card divide-y divide-border">
+                        {% for framework_key, framework_data in all_frameworks.items() %}
+                        {% set stats = framework_stats[framework_key] %}
+                        {% set colors = color_map.get(framework_data.color, color_map['blue']) %}
+                        {% if stats and stats[0] > 0 %}
+                        <tr class="hover:bg-accent/50">
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <div class="flex items-center">
+                                    <div class="flex-shrink-0 w-8 h-8 rounded {{ colors.icon_bg }} flex items-center justify-center">
+                                        <i data-lucide="{{ framework_data.icon }}" class="w-4 h-4 {{ colors.icon_text }}" aria-hidden="true"></i>
+                                    </div>
+                                    <div class="ml-3">
+                                        <div class="text-sm font-medium text-foreground">{{ framework_data.name }}</div>
+                                        <div class="text-xs text-muted-foreground">{{ framework_data.description }}</div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-foreground">{{ stats[0] }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-foreground">{{ stats[1] }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-foreground">{{ stats[2] }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary">
+                                    {{ "%.1f"|format(stats[4] or 0) }}
+                                </span>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-muted text-foreground">
+                                    {{ "%.1f"|format(stats[5] or 0) }}
+                                </span>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <div class="flex items-center">
+                                    <div class="flex-1 mr-2">
+                                        <div class="w-full bg-muted rounded-full h-2">
+                                            <div class="{{ colors.bar }} h-2 rounded-full transition-all duration-300"
+                                                 style="width: {{ ((stats[4] or 0) / 5 * 100)|round }}%"></div>
+                                        </div>
+                                    </div>
+                                    <span class="text-xs text-muted-foreground">{{ ((stats[4] or 0) / 5 * 100)|round }}%</span>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endif %}
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="mt-4 p-4 rounded-lg {% if category == 'error' %}bg-destructive/10 border border-destructive/20 text-destructive{% else %}bg-primary/10 border border-primary/20 text-foreground{% endif %}">
+                    {{ message }}
+                </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+</div>
+{% endblock %}

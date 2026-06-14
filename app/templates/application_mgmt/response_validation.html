@@ -1,0 +1,356 @@
+{% extends 'layouts/admin_base.html' %}
+{% from 'components/metrics_card.html' import metrics_card %}
+
+{% block title %}Data Validation - Response Comparison{% endblock %}
+
+{% block head %}
+<style>
+  .comparison-row { transition: all 0.2s; }
+  .comparison-row:hover { background: hsl(var(--accent)); }
+  .value-diff { background: hsl(var(--destructive)/0.1); border-left: 3px solid hsl(var(--destructive)); }
+  .value-match { background: hsl(var(--success)/0.1); border-left: 3px solid hsl(var(--success)); }
+  .source-badge { font-size: 0.75rem; padding: 0.125rem 0.5rem; border-radius: 9999px; }
+  .source-abacus { background: hsl(var(--primary)/0.1); color: hsl(var(--primary)); }
+  .source-manual { background: hsl(var(--amber-500)/0.1); color: hsl(var(--amber-600)); }
+  .source-assessment { background: hsl(var(--green-500)/0.1); color: hsl(var(--green-600)); }
+  .conflict-indicator { animation: pulse 2s infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+  <!-- Header -->
+  <div class="mb-8">
+    <nav class="flex items-center gap-2 text-sm text-muted-foreground mb-4">
+      <a href="{{ url_for('main.index') }}" class="hover:text-foreground">Dashboard</a>
+      <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
+      <a href="{{ url_for('dashboard_pages.rationalization_scorecard') }}" class="hover:text-foreground">Rationalization</a>
+      <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
+      <span class="text-foreground font-medium">Data Validation</span>
+    </nav>
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div>
+        <h1 class="text-3xl font-bold">Response Validation</h1>
+        <p class="text-muted-foreground mt-1">Compare and resolve data discrepancies between sources</p>
+      </div>
+      <div class="flex gap-3">
+        <select id="app-selector" class="px-3 py-2 border rounded-lg" @change="loadComparison()">
+          <option value="">Select Application...</option>
+          {% for app in applications %}
+          <option value="{{ app.id }}">{{ app.name }}</option>
+          {% endfor %}
+        </select>
+        <button @click="resolveAllConflicts()" class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90" id="resolve-all-btn" disabled aria-label="Action">
+          Resolve All
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Summary Stats -->
+  <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+    {{ metrics_card(title='Total Fields', value='-', value_id='total-fields', icon='list', description='Compared fields') }}
+    {{ metrics_card(title='Matched', value='-', value_id='matched-fields', icon='check-circle', value_class='text-success', description='Values in agreement') }}
+    {{ metrics_card(title='Conflicts', value='-', value_id='conflict-fields', icon='alert-triangle', value_class='text-warning', description='Requires resolution') }}
+    {{ metrics_card(title='Missing Data', value='-', value_id='missing-fields', icon='database', value_class='text-primary', description='Incomplete values') }}
+  </div>
+
+  <!-- Data Sources Legend -->
+  <div class="bg-card border rounded-lg p-4 mb-6">
+    <div class="flex flex-wrap items-center gap-4 text-sm">
+      <span class="font-medium">Data Sources:</span>
+      <span class="source-badge source-abacus">Abacus (System of Record)</span>
+      <span class="source-badge source-manual">Manual Entry</span>
+      <span class="source-badge source-assessment">Assessment Response</span>
+    </div>
+  </div>
+
+  <!-- Comparison Table -->
+  <div class="bg-card border rounded-lg overflow-hidden">
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="bg-muted">
+          <tr>
+            <th class="text-left py-3 px-4 font-medium">Field</th>
+            <th class="text-left py-3 px-4 font-medium w-48">Abacus Value</th>
+            <th class="text-left py-3 px-4 font-medium w-48">Manual/Assessment Value</th>
+            <th class="text-center py-3 px-4 font-medium w-24">Status</th>
+            <th class="text-center py-3 px-4 font-medium w-32">Action</th>
+          </tr>
+        </thead>
+        <tbody id="comparison-body">
+          <tr>
+            <td colspan="5" class="text-center py-12 text-muted-foreground">
+              <i data-lucide="database" class="h-12 w-12 mx-auto mb-3 opacity-50" aria-hidden="true"></i>
+              <p>Select an application to view data comparison</p>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Resolution Modal -->
+  <div id="resolution-modal" class="modal-root items-center justify-center fixed inset-0 bg-black/50 overflow-y-auto z-50" hidden  role="dialog">
+    <div class="bg-card border rounded-lg p-6 max-w-md w-full mx-4">
+      <h2 class="text-lg font-semibold mb-4">Resolve Conflict</h2>
+      <div class="space-y-4">
+        <div>
+          <label class="text-sm text-muted-foreground">Field</label>
+          <div id="modal-field-name" class="font-medium"></div>
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+          <div class="p-3 bg-primary/5 rounded-lg">
+            <div class="text-xs text-primary mb-1">Abacus</div>
+            <div id="modal-abacus-value" class="font-medium"></div>
+          </div>
+          <div class="p-3 bg-warning/5 rounded-lg">
+            <div class="text-xs text-warning mb-1">Manual/Assessment</div>
+            <div id="modal-manual-value" class="font-medium"></div>
+          </div>
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-2">Select Correct Value</label>
+          <div class="space-y-2">
+            <label class="flex items-center gap-2 p-3 border rounded-md cursor-pointer hover:bg-accent">
+              <input type="radio" name="resolution" value="abacus" class="w-4 h-4" aria-label="Resolution">
+              <span>Use Abacus value</span>
+            </label>
+            <label class="flex items-center gap-2 p-3 border rounded-md cursor-pointer hover:bg-accent">
+              <input type="radio" name="resolution" value="manual" class="w-4 h-4" aria-label="Resolution">
+              <span>Use Manual/Assessment value</span>
+            </label>
+            <label class="flex items-center gap-2 p-3 border rounded-md cursor-pointer hover:bg-accent">
+              <input type="radio" name="resolution" value="custom" class="w-4 h-4" aria-label="Resolution">
+              <span>Enter custom value:</span>
+            </label>
+            <input type="text" id="custom-value" class="w-full rounded border px-3 py-2 hidden" placeholder="Enter value...">
+          </div>
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-2">Resolution Notes (optional)</label>
+          <textarea id="resolution-notes" rows="2" class="w-full rounded border px-3 py-2" placeholder="Why this value was chosen..."></textarea>
+        </div>
+      </div>
+      <div class="flex justify-end gap-3 mt-6">
+        <button @click="closeResolutionModal()" class="px-4 py-2 border rounded-md hover:bg-accent" aria-label="Close">Cancel</button>
+        <button @click="confirmResolution()" class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90" aria-label="Confirm">Confirm</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function escapeHtml(str) {
+    if (str == null) return '';
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+let currentAppId = null;
+let comparisonData = [];
+let currentConflict = null;
+
+async function loadComparison() {
+  const appId = document.getElementById('app-selector').value;
+  if (!appId) {
+    document.getElementById('comparison-body').innerHTML = `
+      <tr>
+        <td colspan="5" class="text-center py-12 text-muted-foreground">
+          <i data-lucide="database" class="h-12 w-12 mx-auto mb-3 opacity-50" aria-hidden="true"></i>
+          <p>Select an application to view data comparison</p>
+        </td>
+      </tr>
+    `;
+    lucide.createIcons();
+    return;
+  }
+
+  currentAppId = appId;
+
+  try {
+    const res = await fetch(`/dashboard/api/rationalization/validate/${appId}`);
+    const data = await res.json();
+
+    if (data.success) {
+      comparisonData = data.data.comparisons;
+      renderComparison(comparisonData);
+      updateStats(data.data.stats);
+      document.getElementById('resolve-all-btn').disabled = data.data.stats.conflicts === 0;
+    }
+  } catch (err) {
+    console.error('Failed to load comparison:', err);
+  }
+}
+
+function renderComparison(comparisons) {
+  const tbody = document.getElementById('comparison-body');
+
+  if (!comparisons.length) {
+    tbody.innerHTML = '<tr><td colspan="5" class="text-center py-8 text-muted-foreground">No data available</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = comparisons.map((item, idx) => {
+    const statusClass = item.status === 'conflict' ? 'value-diff' : (item.status === 'match' ? 'value-match' : '');
+    const statusIcon = item.status === 'conflict'
+      ? '<i data-lucide="alert-triangle" class="h-4 w-4 text-warning" aria-hidden="true"></i>'
+      : (item.status === 'match' ? '<i data-lucide="check-circle" class="h-4 w-4 text-success" aria-hidden="true"></i>' : '<i data-lucide="help-circle" class="h-4 w-4 text-primary" aria-hidden="true"></i>');
+
+    return `
+      <tr class="comparison-row border-b ${statusClass}" data-idx="${idx}">
+        <td class="py-3 px-4 font-medium">${escapeHtml(item.field)}</td>
+        <td class="py-3 px-4">
+          <span class="source-badge source-abacus mb-1 inline-block">Abacus</span>
+          <div class="text-sm ${!item.abacus_value ? 'text-muted-foreground italic' : ''}">${escapeHtml(item.abacus_value || 'Not set')}</div>
+        </td>
+        <td class="py-3 px-4">
+          <span class="source-badge ${item.manual_source === 'assessment' ? 'source-assessment' : 'source-manual'} mb-1 inline-block">${item.manual_source === 'assessment' ? 'Assessment' : 'Manual'}</span>
+          <div class="text-sm ${!item.manual_value ? 'text-muted-foreground italic' : ''}">${escapeHtml(item.manual_value || 'Not set')}</div>
+        </td>
+        <td class="py-3 px-4 text-center">${statusIcon}</td>
+        <td class="py-3 px-4 text-center">
+          ${item.status === 'conflict' ?
+            `<button data-action="openResolutionModal" data-id="${idx}" class="text-primary hover:underline text-sm" aria-label="Action">Resolve</button>` :
+            '<span class="text-muted-foreground text-sm">-</span>'
+          }
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  lucide.createIcons();
+}
+
+function updateStats(stats) {
+  document.getElementById('total-fields').textContent = stats.total;
+  document.getElementById('matched-fields').textContent = stats.matched;
+  document.getElementById('conflict-fields').textContent = stats.conflicts;
+  document.getElementById('missing-fields').textContent = stats.missing;
+}
+
+function openResolutionModal(idx) {
+  currentConflict = idx;
+  const item = comparisonData[idx];
+
+  document.getElementById('modal-field-name').textContent = item.field;
+  document.getElementById('modal-abacus-value').textContent = item.abacus_value || 'Not set';
+  document.getElementById('modal-manual-value').textContent = item.manual_value || 'Not set';
+  document.getElementById('custom-value').classList.add('hidden');
+  document.querySelectorAll('input[name="resolution"]').forEach(r => r.checked = false);
+  document.getElementById('resolution-notes').value = '';
+
+  if (window.Platform && window.Platform.modal) {
+    window.Platform.modal.open('resolution-modal');
+  } else {
+    document.getElementById('resolution-modal').classList.remove('hidden');
+    document.getElementById('resolution-modal').classList.add('flex');
+  }
+}
+
+function closeResolutionModal() {
+  if (window.Platform && window.Platform.modal) {
+    window.Platform.modal.close('resolution-modal');
+  } else {
+    document.getElementById('resolution-modal').classList.add('hidden');
+    document.getElementById('resolution-modal').classList.remove('flex');
+  }
+  currentConflict = null;
+}
+
+// Handle custom value toggle
+document.querySelectorAll('input[name="resolution"]').forEach(radio => {
+  radio.addEventListener('change', (e) => {
+    document.getElementById('custom-value').classList.toggle('hidden', e.target.value !== 'custom');
+  });
+});
+
+async function confirmResolution() {
+  const resolution = document.querySelector('input[name="resolution"]:checked')?.value;
+  if (!resolution) {
+    Platform.toast.error('Please select a resolution');
+    return;
+  }
+
+  const item = comparisonData[currentConflict];
+  let finalValue;
+
+  if (resolution === 'abacus') {
+    finalValue = item.abacus_value;
+  } else if (resolution === 'manual') {
+    finalValue = item.manual_value;
+  } else {
+    finalValue = document.getElementById('custom-value').value;
+  }
+
+  try {
+    const res = await fetch(`/dashboard/api/rationalization/validate/${currentAppId}/resolve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        field: item.field,
+        value: finalValue,
+        source: resolution === 'custom' ? 'manual' : resolution,
+        notes: document.getElementById('resolution-notes').value
+      })
+    });
+
+    const result = await res.json();
+    if (result.success) {
+      // Update local data
+      comparisonData[currentConflict].status = 'resolved';
+      comparisonData[currentConflict].resolved_value = finalValue;
+      renderComparison(comparisonData);
+      closeResolutionModal();
+    }
+  } catch (err) {
+    console.error('Failed to resolve:', err);
+  }
+}
+
+async function resolveAllConflicts() {
+  const conflicts = comparisonData.filter(c => c.status === 'conflict');
+  if (!conflicts.length) return;
+
+  if (!(await Platform.modal.confirm(`Resolve all ${conflicts.length} conflicts using Abacus as the source of record?`))) {
+    return;
+  }
+
+  for (const conflict of conflicts) {
+    try {
+      await fetch(`/dashboard/api/rationalization/validate/${currentAppId}/resolve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          field: conflict.field,
+          value: conflict.abacus_value,
+          source: 'abacus',
+          notes: 'Bulk resolution - Abacus as system of record'
+        })
+      });
+
+      conflict.status = 'resolved';
+      conflict.resolved_value = conflict.abacus_value;
+    } catch (err) {
+      console.error(`Failed to resolve ${conflict.field}:`, err);
+    }
+  }
+
+  renderComparison(comparisonData);
+  updateStats({
+    total: comparisonData.length,
+    matched: comparisonData.filter(c => c.status === 'match' || c.status === 'resolved').length,
+    conflicts: 0,
+    missing: comparisonData.filter(c => c.status === 'missing').length
+  });
+}
+
+// Close modal on backdrop click
+document.getElementById('resolution-modal').addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) closeResolutionModal();
+});
+
+// Initialize
+lucide.createIcons();
+</script>
+{% endblock %}

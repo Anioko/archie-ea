@@ -1,0 +1,84 @@
+{# Simple public navbar without sidebar toggle #}
+<header class="flex items-center justify-between h-16 px-6 bg-background border-b border-border">
+    <div class="flex items-center gap-8">
+        <!-- Logo/Brand -->
+        <a href="{{ url_for('main.index') }}" class="text-lg font-bold text-foreground hover:text-primary transition-colors">
+            {{ config.APP_NAME }}
+        </a>
+    </div>
+
+    <div class="flex items-center gap-6">
+        {% if current_user.is_authenticated %}
+            <!-- Authenticated User Menu -->
+            <div class="relative" id="userMenuContainer">
+                <button 
+                    id="userMenuBtn"
+                    class="flex items-center gap-2 rounded-lg hover:bg-accent px-2 py-1.5 transition-colors"
+                 aria-label="Action">
+                    <div class="w-8 h-8 rounded-full bg-muted flex items-center justify-center">
+                        <span class="text-sm font-medium">{{ current_user.first_name[0] if current_user.first_name else 'U' }}</span>
+                    </div>
+                    <svg data-lucide="chevron-down" class="h-4 w-4 text-muted-foreground"></svg>
+                </button>
+
+                <!-- Dropdown -->
+                <div 
+                    id="userMenuDropdown"
+                    class="absolute right-0 mt-2 w-56 rounded-md border bg-popover shadow-lg z-50 hidden"
+                >
+                    <div class="p-2">
+                        <div class="px-2 py-1.5 text-sm text-muted-foreground">{{ current_user.email }}</div>
+                        <div class="h-px bg-border my-1"></div>
+                        <a href="{{ url_for('account.manage') }}" class="flex items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent transition-colors">
+                            <svg data-lucide="user" class="h-4 w-4"></svg>
+                            Profile
+                        </a>
+                        <a href="{{ url_for('admin.index') }}" class="flex items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent transition-colors">
+                            <svg data-lucide="layout-dashboard" class="h-4 w-4"></svg>
+                            Dashboard
+                        </a>
+                        <div class="h-px bg-border my-1"></div>
+                        <a href="{{ url_for('account.logout') }}" class="flex items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-destructive hover:bg-destructive/10 transition-colors">
+                            <svg data-lucide="log-out" class="h-4 w-4"></svg>
+                            Log out
+                        </a>
+                    </div>
+                </div>
+            </div>
+        {% else %}
+            <!-- Unauthenticated User Links -->
+            <a href="{{ url_for('account.login') }}" class="text-sm font-medium text-foreground hover:text-primary transition-colors">
+                Sign In
+            </a>
+            <a href="{{ url_for('account.register') }}" class="text-sm font-medium bg-primary text-primary-foreground px-4 py-2 rounded-lg hover:bg-primary/90 transition-colors">
+                Sign Up
+            </a>
+        {% endif %}
+    </div>
+</header>
+
+<script>
+    // Simple vanilla JS dropdown for user menu
+    {% if current_user.is_authenticated %}
+    const userMenuBtn = document.getElementById('userMenuBtn');
+    const userMenuDropdown = document.getElementById('userMenuDropdown');
+    
+    if (userMenuBtn && userMenuDropdown) {
+        userMenuBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            userMenuDropdown.classList.toggle('hidden');
+        });
+        
+        document.addEventListener('click', (e) => {
+            if (!userMenuBtn.contains(e.target) && !userMenuDropdown.contains(e.target)) {
+                userMenuDropdown.classList.add('hidden');
+            }
+        });
+    }
+    {% endif %}
+
+    // Initialize Lucide icons
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
+</script>

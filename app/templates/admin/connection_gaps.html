@@ -1,0 +1,227 @@
+{% extends "layouts/admin_base.html" %}
+{% from "components/page_header.html" import page_header %}
+
+{% block title %}Connection Gaps Report{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 sm:px-6 lg:px-8 py-6 max-w-7xl">
+    {{ page_header(
+        title='Connection Gaps Report',
+        description='Portfolio-wide view of solution data completeness — sorted by lowest score first',
+        breadcrumbs=[
+            {'label': 'Dashboard', 'href': url_for('main.index')},
+            {'label': 'Admin', 'href': url_for('admin.index')},
+            {'label': 'Connection Gaps'}
+        ]
+    ) }}
+
+    <!-- Aggregate Stats Cards -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
+        <div class="rounded-xl border bg-card p-4">
+            <div class="text-xs font-medium text-muted-foreground uppercase tracking-wider">Total Solutions</div>
+            <div class="text-2xl font-semibold mt-1">{{ aggregate_stats.total }}</div>
+        </div>
+        <div class="rounded-xl border bg-card p-4">
+            <div class="text-xs font-medium text-muted-foreground uppercase tracking-wider">Below 25% Complete</div>
+            <div class="text-2xl font-semibold mt-1 text-destructive">{{ aggregate_stats.below_25 }}</div>
+            {% if aggregate_stats.total > 0 %}
+            <div class="text-xs text-muted-foreground mt-0.5">{{ (aggregate_stats.below_25 * 100 / aggregate_stats.total) | round | int }}% of portfolio</div>
+            {% endif %}
+        </div>
+        <div class="rounded-xl border bg-card p-4">
+            <div class="text-xs font-medium text-muted-foreground uppercase tracking-wider">No Phase A Data</div>
+            <div class="text-2xl font-semibold mt-1 text-amber-600">{{ aggregate_stats.no_phase_a }}</div>
+            <div class="text-xs text-muted-foreground mt-0.5">Missing drivers, goals, and constraints</div>
+        </div>
+        <div class="rounded-xl border bg-card p-4">
+            <div class="text-xs font-medium text-muted-foreground uppercase tracking-wider">Avg Completeness</div>
+            <div class="text-2xl font-semibold mt-1">{{ aggregate_stats.avg_score }}%</div>
+            <div class="text-xs text-muted-foreground mt-0.5">Across all solutions</div>
+        </div>
+    </div>
+
+    <!-- Most Common Missing Junctions -->
+    {% if aggregate_stats.junction_gap_counts %}
+    <div class="rounded-xl border bg-card p-4 mt-4">
+        <h3 class="text-sm font-medium text-foreground mb-3">Most Common Missing Junctions</h3>
+        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-2">
+            {% for jk, label in junction_labels.items() %}
+            {% set gap_count = aggregate_stats.junction_gap_counts.get(jk, 0) %}
+            {% set gap_pct = (gap_count * 100 / aggregate_stats.total) | round | int if aggregate_stats.total > 0 else 0 %}
+            <div class="text-center p-2 rounded-lg {{ 'bg-destructive/10' if gap_pct >= 75 else ('bg-amber-500/10' if gap_pct >= 50 else 'bg-muted') }}">
+                <div class="text-lg font-semibold {{ 'text-destructive' if gap_pct >= 75 else ('text-amber-600' if gap_pct >= 50 else 'text-muted-foreground') }}">{{ gap_count }}</div>
+                <div class="text-[10px] text-muted-foreground leading-tight mt-0.5">{{ label }}</div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Filters -->
+    <form method="get" action="{{ url_for('admin.connection_gaps') }}" class="mt-6 rounded-xl border bg-card p-4">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+            <div>
+                <label for="domain" class="block text-xs font-medium text-muted-foreground mb-1">Business Domain</label>
+                <select id="domain" name="domain"
+                        class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm">
+                    <option value="">All Domains</option>
+                    {% for d in domain_options %}
+                    <option value="{{ d }}" {{ 'selected' if domain_filter == d else '' }}>{{ d }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="type" class="block text-xs font-medium text-muted-foreground mb-1">Solution Type</label>
+                <select id="type" name="type"
+                        class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm">
+                    <option value="">All Types</option>
+                    {% for t in type_options %}
+                    <option value="{{ t }}" {{ 'selected' if type_filter == t else '' }}>{{ t }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="score_min" class="block text-xs font-medium text-muted-foreground mb-1">Min Score (%)</label>
+                <input type="number" id="score_min" name="score_min" value="{{ score_min }}" min="0" max="100" placeholder="0"
+                       class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm">
+            </div>
+            <div>
+                <label for="score_max" class="block text-xs font-medium text-muted-foreground mb-1">Max Score (%)</label>
+                <input type="number" id="score_max" name="score_max" value="{{ score_max }}" min="0" max="100" placeholder="100"
+                       class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm">
+            </div>
+            <div class="flex items-end">
+                <button type="submit"
+                        class="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors w-full">
+                    <i data-lucide="search" class="h-4 w-4 mr-1.5"></i> Filter
+                </button>
+            </div>
+        </div>
+        <div class="flex items-center gap-3 mt-3">
+            <a href="{{ url_for('admin.connection_gaps') }}"
+               class="inline-flex items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-accent transition-colors">
+                Clear
+            </a>
+            <a href="{{ url_for('admin.connection_gaps', domain=domain_filter, type=type_filter, score_min=score_min, score_max=score_max, export='csv') }}"
+               class="inline-flex items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-accent transition-colors ml-auto">
+                <i data-lucide="download" class="h-4 w-4 mr-1.5"></i> Export CSV
+            </a>
+        </div>
+    </form>
+
+    <!-- Results summary -->
+    <div class="flex items-center justify-between mt-6 mb-3">
+        <p class="text-sm text-muted-foreground">
+            {{ total }} solution{{ 's' if total != 1 else '' }} found
+            {% if page > 1 %} (page {{ page }} of {{ total_pages }}){% endif %}
+        </p>
+    </div>
+
+    <!-- Results table -->
+    <div class="rounded-xl border bg-card overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b bg-muted/50">
+                        <th class="px-4 py-3 text-left font-medium text-muted-foreground whitespace-nowrap">Solution</th>
+                        <th class="px-3 py-3 text-center font-medium text-muted-foreground whitespace-nowrap">Score</th>
+                        {% for jk, label in junction_labels.items() %}
+                        <th class="px-1.5 py-3 text-center font-medium text-muted-foreground" title="{{ label }}">
+                            <span class="text-[10px] leading-tight block">{{ label[:3] }}</span>
+                        </th>
+                        {% endfor %}
+                        <th class="px-3 py-3 text-center font-medium text-muted-foreground whitespace-nowrap">Filled</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-border">
+                    {% for sol in solutions %}
+                    <tr class="hover:bg-muted/30 transition-colors">
+                        <td class="px-4 py-3">
+                            <a href="{{ url_for('solution_design.view_solution', solution_id=sol.id) }}"
+                               class="font-medium text-primary hover:underline">
+                                {{ sol.name }}
+                            </a>
+                            {% if sol.business_domain or sol.solution_type %}
+                            <div class="text-xs text-muted-foreground mt-0.5">
+                                {% if sol.business_domain %}{{ sol.business_domain }}{% endif %}
+                                {% if sol.business_domain and sol.solution_type %} &middot; {% endif %}
+                                {% if sol.solution_type %}{{ sol.solution_type }}{% endif %}
+                            </div>
+                            {% endif %}
+                        </td>
+                        <td class="px-3 py-3 text-center">
+                            {% if sol.score < 25 %}
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive border border-destructive/30">
+                                {{ sol.score }}%
+                            </span>
+                            {% elif sol.score < 50 %}
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-amber-500/10 text-amber-600 border border-amber-500/30">
+                                {{ sol.score }}%
+                            </span>
+                            {% elif sol.score < 75 %}
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30">
+                                {{ sol.score }}%
+                            </span>
+                            {% else %}
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30">
+                                {{ sol.score }}%
+                            </span>
+                            {% endif %}
+                        </td>
+                        {% for jk in junction_labels %}
+                        <td class="px-1.5 py-3 text-center">
+                            {% if jk in sol.filled %}
+                            <span class="inline-block h-3 w-3 rounded-full bg-emerald-500" title="{{ junction_labels[jk] }}: Connected"></span>
+                            {% else %}
+                            <span class="inline-block h-3 w-3 rounded-full bg-red-500/40" title="{{ junction_labels[jk] }}: Missing"></span>
+                            {% endif %}
+                        </td>
+                        {% endfor %}
+                        <td class="px-3 py-3 text-center text-muted-foreground">
+                            {{ sol.filled_count }}/{{ sol.total_junctions }}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="{{ junction_labels | length + 3 }}" class="px-4 py-12 text-center text-muted-foreground">
+                            <i data-lucide="link-2-off" class="h-8 w-8 mx-auto mb-2 opacity-50"></i>
+                            <p>No solutions found matching your filters.</p>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Legend -->
+    <div class="flex items-center gap-4 mt-3 text-xs text-muted-foreground">
+        <span class="flex items-center gap-1.5">
+            <span class="inline-block h-3 w-3 rounded-full bg-emerald-500"></span> Connected
+        </span>
+        <span class="flex items-center gap-1.5">
+            <span class="inline-block h-3 w-3 rounded-full bg-red-500/40"></span> Missing
+        </span>
+        <span class="ml-auto">Column headers: Dri=Drivers, Goa=Goals, Con=Constraints, Req=Requirements, App=Applications, Arc=ArchiMate, Ven=Vendors, Rec=Recommendations, Ris=Risks, Tco=TCO, Met=Metrics, Pla=Plateaus, Apq=APQC, Cap=Capabilities</span>
+    </div>
+
+    <!-- Pagination -->
+    {% if total_pages > 1 %}
+    <nav class="flex items-center justify-center gap-1 mt-6" aria-label="Connection gaps pagination">
+        {% if page > 1 %}
+        <a href="{{ url_for('admin.connection_gaps', page=page-1, domain=domain_filter, type=type_filter, score_min=score_min, score_max=score_max) }}"
+           class="inline-flex items-center justify-center rounded-md border border-input bg-background px-3 py-1.5 text-sm hover:bg-accent transition-colors">
+            Previous
+        </a>
+        {% endif %}
+        <span class="px-3 py-1.5 text-sm text-muted-foreground">Page {{ page }} of {{ total_pages }}</span>
+        {% if page < total_pages %}
+        <a href="{{ url_for('admin.connection_gaps', page=page+1, domain=domain_filter, type=type_filter, score_min=score_min, score_max=score_max) }}"
+           class="inline-flex items-center justify-center rounded-md border border-input bg-background px-3 py-1.5 text-sm hover:bg-accent transition-colors">
+            Next
+        </a>
+        {% endif %}
+    </nav>
+    {% endif %}
+</div>
+{% endblock %}

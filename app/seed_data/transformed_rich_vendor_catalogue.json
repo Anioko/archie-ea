@@ -1,0 +1,330 @@
+{
+  "SAP": {
+    "id": "sap",
+    "name": "SAP",
+    "vendorType": "ENTERPRISE_SOFTWARE",
+    "category": "ERP",
+    "deploymentModel": [
+      "CLOUD",
+      "ON_PREMISE",
+      "HYBRID"
+    ],
+    "licenseModel": "Subscription",
+    "headquarters": "Walldorf, Germany",
+    "website": "https://www.sap.com",
+    "founded": 1972,
+    "marketPosition": "LEADER",
+    "products": {
+      "SAP S/4HANA Finance": {
+        "name": "SAP S/4HANA Finance",
+        "category": "ERP",
+        "deploymentModel": [
+          "CLOUD",
+          "ON_PREMISE",
+          "HYBRID"
+        ],
+        "licenseModel": "Subscription",
+        "apqcProcesses": [
+          "8.2",
+          "8.3",
+          "8.4"
+        ],
+        "apqcProcessDetails": [
+          {
+            "level2": "8.2 Manage Revenue",
+            "level3": "8.2.1 Process customer billing"
+          },
+          {
+            "level2": "8.3 Manage General Accounting and Reporting",
+            "level3": "8.3.2 Perform general accounting"
+          },
+          {
+            "level2": "8.4 Manage Accounts Payable and Expense Reimbursements",
+            "level3": "8.4.1 Process accounts payable"
+          }
+        ],
+        "capabilities": [
+          "Financial Planning and Analysis",
+          "Accounting and Financial Close",
+          "Treasury and Risk Management",
+          "Accounts Payable and Receivable",
+          "Financial Operations",
+          "Governance, Risk, and Compliance"
+        ],
+        "description": "SAP SAP S/4HANA Finance - Enterprise ERP solution",
+        "targetMarket": "Enterprise",
+        "maturityLevel": "MANAGED",
+        "verified": true
+      }
+    },
+    "apqcProcesses": [
+      "8.2",
+      "8.3",
+      "8.4"
+    ],
+    "capabilities": [
+      "Financial Planning and Analysis",
+      "Accounting and Financial Close",
+      "Treasury and Risk Management",
+      "Accounts Payable and Receivable",
+      "Financial Operations",
+      "Governance, Risk, and Compliance"
+    ]
+  },
+  "Salesforce": {
+    "id": "salesforce",
+    "name": "Salesforce",
+    "vendorType": "CLOUD_PROVIDER",
+    "category": "CRM",
+    "deploymentModel": [
+      "CLOUD"
+    ],
+    "licenseModel": "Subscription",
+    "headquarters": "San Francisco, California, USA",
+    "website": "https://www.salesforce.com",
+    "founded": 1999,
+    "marketPosition": "LEADER",
+    "products": {
+      "Salesforce Sales Cloud": {
+        "name": "Salesforce Sales Cloud",
+        "category": "CRM",
+        "deploymentModel": [
+          "CLOUD"
+        ],
+        "licenseModel": "Subscription",
+        "apqcProcesses": [
+          "3.2",
+          "3.4"
+        ],
+        "apqcProcessDetails": [
+          {
+            "level2": "3.2 Generate Demand",
+            "level3": "3.2.2 Generate and manage leads"
+          },
+          {
+            "level2": "3.4 Manage Sales Orders",
+            "level3": "3.4.1 Create and manage sales orders"
+          }
+        ],
+        "capabilities": [
+          "Opportunity Management",
+          "Lead Management",
+          "Sales Forecasting",
+          "Pipeline Management",
+          "Contact and Account Management",
+          "Mobile Sales Productivity"
+        ],
+        "description": "Salesforce Salesforce Sales Cloud - Enterprise CRM solution",
+        "targetMarket": "Enterprise",
+        "maturityLevel": "MANAGED",
+        "verified": true
+      }
+    },
+    "apqcProcesses": [
+      "3.2",
+      "3.4"
+    ],
+    "capabilities": [
+      "Opportunity Management",
+      "Lead Management",
+      "Sales Forecasting",
+      "Pipeline Management",
+      "Contact and Account Management",
+      "Mobile Sales Productivity"
+    ]
+  },
+  "Workday": {
+    "id": "workday",
+    "name": "Workday",
+    "vendorType": "CLOUD_PROVIDER",
+    "category": "HCM",
+    "deploymentModel": [
+      "CLOUD"
+    ],
+    "licenseModel": "Subscription",
+    "headquarters": "Pleasanton, California, USA",
+    "website": "https://www.workday.com",
+    "founded": 2005,
+    "marketPosition": "LEADER",
+    "products": {
+      "Workday Human Capital Management": {
+        "name": "Workday Human Capital Management",
+        "category": "HCM",
+        "deploymentModel": [
+          "CLOUD"
+        ],
+        "licenseModel": "Subscription",
+        "apqcProcesses": [
+          "10.2",
+          "10.3"
+        ],
+        "apqcProcessDetails": [
+          {
+            "level2": "10.2 Recruit, Source, and Select Employees",
+            "level3": "10.2.2 Recruit and source candidates"
+          },
+          {
+            "level2": "10.3 Develop and Counsel Employees",
+            "level3": "10.3.1 Manage employee performance"
+          }
+        ],
+        "capabilities": [
+          "Talent Management",
+          "Employee Lifecycle Management",
+          "Compensation and Benefits Admin",
+          "Workforce Planning",
+          "Recruiting and Onboarding",
+          "Payroll Management"
+        ],
+        "description": "Workday Workday Human Capital Management - Enterprise HCM solution",
+        "targetMarket": "Enterprise",
+        "maturityLevel": "MANAGED",
+        "verified": true
+      }
+    },
+    "apqcProcesses": [
+      "10.2",
+      "10.3"
+    ],
+    "capabilities": [
+      "Talent Management",
+      "Employee Lifecycle Management",
+      "Compensation and Benefits Admin",
+      "Workforce Planning",
+      "Recruiting and Onboarding",
+      "Payroll Management"
+    ]
+  },
+  "Oracle": {
+    "id": "oracle",
+    "name": "Oracle",
+    "vendorType": "ENTERPRISE_SOFTWARE",
+    "category": "SCM",
+    "deploymentModel": [
+      "CLOUD",
+      "ON_PREMISE",
+      "HYBRID"
+    ],
+    "licenseModel": "Subscription",
+    "headquarters": "Austin, Texas, USA",
+    "website": "https://www.oracle.com",
+    "founded": 1977,
+    "marketPosition": "LEADER",
+    "products": {
+      "Oracle Fusion Cloud SCM": {
+        "name": "Oracle Fusion Cloud SCM",
+        "category": "SCM",
+        "deploymentModel": [
+          "CLOUD",
+          "ON_PREMISE",
+          "HYBRID"
+        ],
+        "licenseModel": "Subscription",
+        "apqcProcesses": [
+          "4.1",
+          "4.3"
+        ],
+        "apqcProcessDetails": [
+          {
+            "level2": "4.1 Plan for and Align Supply Chain Resources",
+            "level3": "4.1.2 Create and manage supply plans"
+          },
+          {
+            "level2": "4.3 Schedule and Production Products",
+            "level3": "4.3.2 Schedule production"
+          }
+        ],
+        "capabilities": [
+          "Inventory Management",
+          "Manufacturing Execution",
+          "Logistics and Order Management",
+          "Procurement Automation",
+          "Product Lifecycle Management",
+          "Supply Chain Planning"
+        ],
+        "description": "Oracle Oracle Fusion Cloud SCM - Enterprise SCM solution",
+        "targetMarket": "Enterprise",
+        "maturityLevel": "MANAGED",
+        "verified": true
+      }
+    },
+    "apqcProcesses": [
+      "4.1",
+      "4.3"
+    ],
+    "capabilities": [
+      "Inventory Management",
+      "Manufacturing Execution",
+      "Logistics and Order Management",
+      "Procurement Automation",
+      "Product Lifecycle Management",
+      "Supply Chain Planning"
+    ]
+  },
+  "IBM": {
+    "id": "ibm",
+    "name": "IBM",
+    "vendorType": "ENTERPRISE_SOFTWARE",
+    "category": "EAM",
+    "deploymentModel": [
+      "CLOUD",
+      "ON_PREMISE",
+      "HYBRID"
+    ],
+    "licenseModel": "Subscription",
+    "headquarters": "Armonk, New York, USA",
+    "website": "https://www.ibm.com",
+    "founded": 1911,
+    "marketPosition": "LEADER",
+    "products": {
+      "IBM Maximo Application Suite": {
+        "name": "IBM Maximo Application Suite",
+        "category": "EAM",
+        "deploymentModel": [
+          "CLOUD",
+          "ON_PREMISE",
+          "HYBRID"
+        ],
+        "licenseModel": "Subscription",
+        "apqcProcesses": [
+          "9.1",
+          "9.2"
+        ],
+        "apqcProcessDetails": [
+          {
+            "level2": "9.1 Manage Product/Service Assets",
+            "level3": "9.1.2 Maintain and repair assets"
+          },
+          {
+            "level2": "9.2 Manage Physical Assets",
+            "level3": "9.2.2 Monitor and evaluate asset health"
+          }
+        ],
+        "capabilities": [
+          "Asset Lifecycle Management",
+          "Work Order Management",
+          "Predictive Maintenance",
+          "Inventory and Spare Parts Control",
+          "Mobile Asset Inspection",
+          "Health, Safety and Environment (HSE)"
+        ],
+        "description": "IBM IBM Maximo Application Suite - Enterprise EAM solution",
+        "targetMarket": "Enterprise",
+        "maturityLevel": "MANAGED",
+        "verified": true
+      }
+    },
+    "apqcProcesses": [
+      "9.1",
+      "9.2"
+    ],
+    "capabilities": [
+      "Asset Lifecycle Management",
+      "Work Order Management",
+      "Predictive Maintenance",
+      "Inventory and Spare Parts Control",
+      "Mobile Asset Inspection",
+      "Health, Safety and Environment (HSE)"
+    ]
+  }
+}

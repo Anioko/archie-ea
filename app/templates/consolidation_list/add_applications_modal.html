@@ -1,0 +1,412 @@
+<!-- Add Applications to Consolidation List Modal -->
+<div id="add-applications-modal"
+     data-modal-id="add-applications-modal"
+     hidden
+     class="modal-root items-center justify-center fixed inset-0 bg-black/50 overflow-y-auto z-50" role="dialog"
+     aria-modal="true"
+     aria-labelledby="add-applications-modal-title">
+    <div class="bg-card rounded-xl border shadow-lg max-w-2xl w-full mx-4 max-h-[90vh] overflow-hidden flex flex-col">
+        <!-- Header -->
+        <div class="border-b px-6 py-4">
+            <div class="flex items-center justify-between">
+                <h2 id="add-applications-modal-title" class="text-lg font-semibold">Add Applications to Consolidation List</h2>
+                <button type="button" data-modal-close="add-applications-modal"
+                        class="text-muted-foreground hover:text-foreground text-xl leading-none rounded-md p-1"
+                        aria-label="Close"
+                        type="button">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <p class="text-sm text-muted-foreground mt-1">Search and select applications from your portfolio</p>
+        </div>
+
+        <!-- Body -->
+        <div class="flex-1 overflow-y-auto px-6 py-4">
+            <!-- Search Section -->
+            <div class="mb-4">
+                <label for="app-search-input" class="block text-sm font-medium mb-1.5">Search Applications</label>
+                <div class="flex gap-2">
+                    <input
+                        type="text"
+                        id="app-search-input"
+                        placeholder="Search by name, ID, or business domain..."
+                        class="flex-1 h-9 px-3 py-1 text-sm border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                    >
+                    <button type="button" id="app-clear-btn" class="h-9 px-3 text-sm border rounded-md hover:bg-accent transition-colors" aria-label="Clear search filter">
+                        Clear
+                    </button>
+                </div>
+            </div>
+
+            <!-- Filter Section -->
+            <div class="mb-4 grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <div>
+                    <label for="app-filter-domain" class="block text-xs font-medium text-muted-foreground mb-1">Business Domain</label>
+                    <select id="app-filter-domain" class="w-full h-9 px-2 py-1 border rounded-md text-sm bg-background">
+                        <option value="">All Domains</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="app-filter-criticality" class="block text-xs font-medium text-muted-foreground mb-1">Criticality</label>
+                    <select id="app-filter-criticality" class="w-full h-9 px-2 py-1 border rounded-md text-sm bg-background">
+                        <option value="">All</option>
+                        <option value="mission_critical">Mission Critical</option>
+                        <option value="business_critical">Business Critical</option>
+                        <option value="business_operational">Business Operational</option>
+                        <option value="administrative">Administrative</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="app-filter-status" class="block text-xs font-medium text-muted-foreground mb-1">Lifecycle Status</label>
+                    <select id="app-filter-status" class="w-full h-9 px-2 py-1 border rounded-md text-sm bg-background">
+                        <option value="">All Status</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="app-filter-cost" class="block text-xs font-medium text-muted-foreground mb-1">Cost Range</label>
+                    <select id="app-filter-cost" class="w-full h-9 px-2 py-1 border rounded-md text-sm bg-background">
+                        <option value="">All Costs</option>
+                        <option value="0-50000">Under &pound;50k</option>
+                        <option value="50000-100000">&pound;50k &ndash; &pound;100k</option>
+                        <option value="100000-500000">&pound;100k &ndash; &pound;500k</option>
+                        <option value="500000-999999999">&pound;500k+</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Applications List -->
+            <div id="app-list-container" class="border rounded-lg max-h-80 overflow-y-auto">
+                <div class="p-8 text-center text-muted-foreground">
+                    <div class="inline-block w-6 h-6 border-2 border-muted-foreground/30 border-t-primary rounded-full animate-spin"></div>
+                    <p class="mt-2 text-sm">Loading applications...</p>
+                </div>
+            </div>
+
+            <!-- Selected Count -->
+            <div class="mt-3 px-3 py-2 bg-primary/5 border border-primary/20 rounded-md">
+                <p class="text-sm">
+                    <strong id="selected-count">0</strong> application(s) selected
+                </p>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="border-t px-6 py-3 flex items-center justify-between">
+            <div class="text-sm text-muted-foreground" id="footer-info">
+                Select applications to add to consolidation list
+            </div>
+            <div class="flex gap-2">
+                <button type="button" data-modal-close="add-applications-modal"
+                        class="h-9 px-4 text-sm border rounded-md hover:bg-accent transition-colors"
+                        aria-label="Cancel">
+                    Cancel
+                </button>
+                <button type="button"
+                        class="h-9 px-4 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:pointer-events-none"
+                        id="add-submit-btn"
+                        disabled
+                        aria-label="Add selected applications to consolidation list">
+                    Add Selected
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+'use strict';
+
+// ── State ───────────────────────────────────────────────────────────────
+let allAvailableApps = [];
+const selectedAppIds = new Set();
+
+// ── DOM refs ────────────────────────────────────────────────────────────
+const searchInput    = document.getElementById('app-search-input');
+const domainSelect   = document.getElementById('app-filter-domain');
+const critSelect     = document.getElementById('app-filter-criticality');
+const statusSelect   = document.getElementById('app-filter-status');
+const costSelect     = document.getElementById('app-filter-cost');
+const listContainer  = document.getElementById('app-list-container');
+const countEl        = document.getElementById('selected-count');
+const submitBtn      = document.getElementById('add-submit-btn');
+const footerInfo     = document.getElementById('footer-info');
+
+const clearBtn   = document.getElementById('app-clear-btn');
+
+// ── Event listeners (replaces CSP-blocked inline handlers) ───────────────
+if (searchInput)  searchInput.addEventListener('input',  function () { filterApplications(); });
+if (domainSelect) domainSelect.addEventListener('change', function () { filterApplications(); });
+if (critSelect)   critSelect.addEventListener('change',   function () { filterApplications(); });
+if (statusSelect) statusSelect.addEventListener('change', function () { filterApplications(); });
+if (costSelect)   costSelect.addEventListener('change',   function () { filterApplications(); });
+if (clearBtn)     clearBtn.addEventListener('click',      function () { clearSearchFilter(); });
+if (submitBtn)    submitBtn.addEventListener('click',      function () { submitAddApplications(); });
+
+// ── Event delegation (click on app rows) ────────────────────────────────
+document.addEventListener('click', function (e) {
+    const row = e.target.closest('[data-action="toggleAppSelection"]');
+    if (!row) return;
+    let id = parseInt(row.dataset.id, 10);
+    const cb = document.getElementById('app-cb-' + id);
+    if (!cb) return;
+    // If the click was NOT on the checkbox itself, toggle it
+    if (e.target !== cb) cb.checked = !cb.checked;
+    syncSelection();
+});
+
+document.addEventListener('change', function (e) {
+    if (e.target.classList.contains('app-checkbox')) {
+        syncSelection();
+    }
+});
+
+// ── Filter + submit wiring (CSP-safe) ───────────────────────────────────
+[domainSelect, critSelect, statusSelect, costSelect].forEach(function (el) {
+    if (el) el.addEventListener('change', function () { filterApplications(); });
+});
+if (searchInput) searchInput.addEventListener('input', function () { filterApplications(); });
+const clearBtn = document.getElementById('app-clear-btn');
+if (clearBtn) clearBtn.addEventListener('click', function () { clearSearchFilter(); });
+if (submitBtn) submitBtn.addEventListener('click', function () { submitAddApplications(); });
+
+// ── Public: open / close ────────────────────────────────────────────────
+window.openAddApplicationsModal = function () {
+    Platform.modal.open('add-applications-modal');
+    loadAvailableApplications();
+};
+
+function closeAddApplicationsModal() {
+    Platform.modal.close('add-applications-modal');
+    allAvailableApps = [];
+    selectedAppIds.clear();
+    // Reset filters
+    if (searchInput) searchInput.value = '';
+    if (domainSelect) domainSelect.selectedIndex = 0;
+    if (critSelect)   critSelect.selectedIndex = 0;
+    if (statusSelect) statusSelect.selectedIndex = 0;
+    if (costSelect)   costSelect.selectedIndex = 0;
+}
+
+// ── Load applications from API ──────────────────────────────────────────
+function loadAvailableApplications() {
+    const currentAppIds = (typeof window.allEntries !== 'undefined' && Array.isArray(window.allEntries))
+        ? window.allEntries.map(function (e) { return e.application_id; })
+        : [];
+
+    Platform.fetch.get('/capability-map/api/applications')
+    .then(function (data) {
+        if (!data.applications) {
+            showError('No application data returned.');
+            return;
+        }
+        // Exclude apps already in the consolidation list
+        allAvailableApps = data.applications.filter(function (app) {
+            return currentAppIds.indexOf(app.id) === -1;
+        });
+
+        populateDynamicFilters(allAvailableApps);
+        displayApps(allAvailableApps);
+    })
+    .catch(function (err) {
+        Platform.log.error('Error loading applications:', err);
+        showError('Error loading applications. Please close and retry.');
+    });
+}
+
+// ── Populate domain + status dropdowns from live data ───────────────────
+function populateDynamicFilters(apps) {
+    // Business Domain
+    const domains = uniqueSorted(apps, 'domain');
+    resetSelect(domainSelect, 'All Domains');
+    domains.forEach(function (d) { addOption(domainSelect, d, d); });
+
+    // Lifecycle Status
+    const statuses = uniqueSorted(apps, 'status');
+    resetSelect(statusSelect, 'All Status');
+    statuses.forEach(function (s) { addOption(statusSelect, s, s); });
+}
+
+function uniqueSorted(arr, key) {
+    const seen = {};
+    const out = [];
+    arr.forEach(function (item) {
+        const v = item[key];
+        if (v && v !== 'Not specified' && v !== 'Unknown' && !seen[v]) {
+            seen[v] = true;
+            out.push(v);
+        }
+    });
+    return out.sort();
+}
+
+function resetSelect(el, placeholder) {
+    if (!el) return;
+    el.innerHTML = '';
+    addOption(el, '', placeholder);
+}
+
+function addOption(selectEl, value, label) {
+    const opt = document.createElement('option');
+    opt.value = value;
+    opt.textContent = label;
+    selectEl.appendChild(opt);
+}
+
+// ── Display applications ────────────────────────────────────────────────
+function displayApps(apps) {
+    if (apps.length === 0) {
+        Platform.sanitize.html(listContainer,
+            '<div class="p-6 text-center text-sm text-muted-foreground">No applications match the current filters.</div>');
+        return;
+    }
+
+    const html = apps.map(function (app) {
+        const checked = selectedAppIds.has(app.id) ? ' checked' : '';
+        const costLine = app.total_cost_of_ownership
+            ? '<span class="text-xs font-medium text-emerald-600">TCO: &pound;' +
+              Platform.sanitize.escape(parseFloat(app.total_cost_of_ownership).toLocaleString()) + '</span>'
+            : '';
+        const critBadge = app.criticality && app.criticality !== 'Not assessed'
+            ? '<span class="' + getCriticalityClasses(app.criticality) + '">' +
+              Platform.sanitize.escape(app.criticality) + '</span>'
+            : '';
+
+        return '<div class="border-b last:border-b-0 px-4 py-3 hover:bg-accent/50 transition-colors cursor-pointer" ' +
+               'data-action="toggleAppSelection" data-id="' + app.id + '">' +
+            '<div class="flex items-start gap-3">' +
+                '<input type="checkbox" class="app-checkbox mt-0.5" value="' + app.id + '" ' +
+                'id="app-cb-' + app.id + '"' + checked + '>' +
+                '<div class="flex-1 min-w-0">' +
+                    '<div class="flex items-center gap-2">' +
+                        '<span class="font-medium text-sm truncate">' + Platform.sanitize.escape(app.name || 'Unknown') + '</span>' +
+                        '<span class="text-xs text-muted-foreground shrink-0">#' + Platform.sanitize.escape(String(app.id)) + '</span>' +
+                    '</div>' +
+                    '<div class="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">' +
+                        '<span class="text-xs text-muted-foreground">' + Platform.sanitize.escape(app.domain || 'No domain') + '</span>' +
+                        (app.status && app.status !== 'Unknown'
+                            ? '<span class="' + getStatusClasses(app.status) + '">' + Platform.sanitize.escape(app.status) + '</span>'
+                            : '') +
+                        critBadge +
+                        costLine +
+                    '</div>' +
+                '</div>' +
+            '</div>' +
+        '</div>';
+    }).join('');
+
+    Platform.sanitize.html(listContainer, html);
+}
+
+// ── Filtering ───────────────────────────────────────────────────────────
+window.filterApplications = function () {
+    const term   = searchInput ? searchInput.value.toLowerCase() : '';
+    const domain = domainSelect ? domainSelect.value : '';
+    const crit   = critSelect ? critSelect.value : '';
+    const status = statusSelect ? statusSelect.value : '';
+    const cost   = costSelect ? costSelect.value : '';
+
+    const filtered = allAvailableApps.filter(function (app) {
+        if (term) {
+            const haystack = [app.name, String(app.id), app.domain, app.application_category]
+                .join(' ').toLowerCase();
+            if (haystack.indexOf(term) === -1) return false;
+        }
+        if (domain && app.domain !== domain) return false;
+        if (crit && app.criticality !== crit) return false;
+        if (status && app.status !== status) return false;
+        if (cost) {
+            const c = parseFloat(app.total_cost_of_ownership) || 0;
+            const parts = cost.split('-').map(Number);
+            if (c < parts[0] || c > parts[1]) return false;
+        }
+        return true;
+    });
+
+    displayApps(filtered);
+};
+
+window.clearSearchFilter = function () {
+    if (searchInput)  searchInput.value = '';
+    if (domainSelect) domainSelect.selectedIndex = 0;
+    if (critSelect)   critSelect.selectedIndex = 0;
+    if (statusSelect) statusSelect.selectedIndex = 0;
+    if (costSelect)   costSelect.selectedIndex = 0;
+    displayApps(allAvailableApps);
+};
+
+// ── Selection tracking ──────────────────────────────────────────────────
+function syncSelection() {
+    selectedAppIds.clear();
+    const checked = document.querySelectorAll('.app-checkbox:checked');
+    checked.forEach(function (cb) { selectedAppIds.add(parseInt(cb.value, 10)); });
+
+    const n = selectedAppIds.size;
+    if (countEl) countEl.textContent = n;
+    if (submitBtn) submitBtn.disabled = (n === 0);
+    if (footerInfo) {
+        footerInfo.textContent = n > 0
+            ? 'Ready to add ' + n + ' application' + (n !== 1 ? 's' : '')
+            : 'Select applications to add to consolidation list';
+    }
+}
+
+// ── Submit ──────────────────────────────────────────────────────────────
+window.submitAddApplications = function () {
+    if (selectedAppIds.size === 0) {
+        Platform.toast.warning('Please select at least one application');
+        return;
+    }
+
+    Platform.fetch.post('/consolidation-list/api/add', {
+        application_ids: Array.from(selectedAppIds),
+        source_type: 'manual',
+        source_group_name: 'Manual Selection'
+    })
+    .then(function (data) {
+        if (data.success) {
+            Platform.toast.success('Added ' + data.added_count + ' application(s) to consolidation list');
+            closeAddApplicationsModal();
+            if (typeof window.loadEntries === 'function') window.loadEntries();
+        } else {
+            Platform.toast.error('Error: ' + (data.error || 'Unknown error'));
+        }
+    })
+    .catch(function (err) {
+        Platform.log.error('Error adding applications:', err);
+        Platform.toast.error('Error adding applications. Please try again.');
+    });
+};
+
+// ── Helpers ─────────────────────────────────────────────────────────────
+function showError(msg) {
+    Platform.sanitize.html(listContainer,
+        '<div class="p-6 text-center text-sm text-destructive">' + Platform.sanitize.escape(msg) + '</div>');
+}
+
+function getStatusClasses(status) {
+    const map = {
+        '2.1 STRATEGIC':      'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-500/10 text-emerald-600',
+        '2.2 TACTICAL':       'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-primary',
+        '3. SUNSET':          'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/10 text-amber-600',
+        '4.1 DECOM DECIDED':  'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-500/10 text-destructive',
+        '4.2 DECOM PLANNED':  'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-500/10 text-destructive',
+        '4.3 READ-ONLY':      'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/10 text-amber-600',
+        '5. DECOMMISSIONED':  'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-500/10 text-muted-foreground',
+        '1. UNDETERMINED':    'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-500/10 text-muted-foreground'
+    };
+    return map[status] || 'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-500/10 text-muted-foreground';
+}
+
+function getCriticalityClasses(crit) {
+    const map = {
+        'mission_critical':    'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-500/10 text-destructive',
+        'business_critical':   'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/10 text-amber-600',
+        'business_operational':'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-primary',
+        'administrative':      'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-500/10 text-muted-foreground'
+    };
+    return map[crit] || 'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-500/10 text-muted-foreground';
+}
+
+})();
+</script>

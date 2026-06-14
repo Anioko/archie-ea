@@ -1,0 +1,74 @@
+{% extends 'layouts/admin_base.html' %}
+{% from 'components/page_header.html' import page_header %}
+{% import 'macros/form_macros.html' as f %}
+{% import 'macros/check_password.html' as check %}
+
+{% block scripts %}
+{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto space-y-6">
+    {{ page_header(
+        title='Add New User',
+        description='Create a new user account',
+        breadcrumbs=[
+            {'label': 'Admin', 'href': url_for('admin.index')},
+            {'label': 'New User'}
+        ]
+    ) }}
+
+    <div data-slot="card" class="rounded-xl border bg-card text-card-foreground shadow-sm p-6">
+        {% set flashes = {
+            'error':   get_flashed_messages(category_filter=['form-error']),
+            'warning': get_flashed_messages(category_filter=['form-check-email']),
+            'info':    get_flashed_messages(category_filter=['form-info']),
+            'success': get_flashed_messages(category_filter=['form-success'])
+        } %}
+
+        {{ f.begin_form(form, flashes) }}
+
+            {{ f.render_form_field(form.role) }}
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {# Manual render for autofocus on primary text input #}
+                <div class="space-y-2">
+                    <label for="{{ form.first_name.id }}" class="text-sm font-medium leading-none block mb-2">{{ form.first_name.label.text }}</label>
+                    {% if form.first_name.errors %}
+                        {{ form.first_name(class="flex h-10 w-full rounded-md border border-destructive bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive focus-visible:ring-offset-2", placeholder=form.first_name.label.text, autofocus='', **{'aria-invalid': 'true', 'aria-describedby': form.first_name.id ~ '-error'}) }}
+                        <p id="{{ form.first_name.id }}-error" class="text-sm font-medium text-destructive" role="alert">{{ form.first_name.errors[0] | safe }}</p>
+                    {% else %}
+                        {{ form.first_name(class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2", placeholder=form.first_name.label.text, autofocus='') }}
+                    {% endif %}
+                </div>
+                {{ f.render_form_field(form.last_name) }}
+            </div>
+
+            {{ f.render_form_field(form.email) }}
+
+            {% if form.password %}
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {{ f.render_form_field(form.password) }}
+                    {{ f.render_form_field(form.password2) }}
+                </div>
+            {% endif %}
+
+            {{ f.form_message(flashes['error'], header='Something went wrong.', class='error') }}
+            {{ f.form_message(flashes['warning'], header='Check your email.', class='warning') }}
+            {{ f.form_message(flashes['info'], header='Information', class='info') }}
+            {{ f.form_message(flashes['success'], header='Success!', class='success') }}
+
+            {% for field in form | selectattr('type', 'equalto', 'SubmitField') %}
+                {{ f.render_form_field(field) }}
+            {% endfor %}
+
+        {{ f.end_form() }}
+        {% if form.password %}
+          {{ check.password_check('password', 0) }}
+        {% endif %}
+    </div>
+</div>
+
+<script>
+    if (typeof lucide !== 'undefined') { lucide.createIcons(); }
+</script>
+{% endblock %}

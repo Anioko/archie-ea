@@ -1,0 +1,208 @@
+{% extends 'layouts/admin_base.html' %}
+{% from 'components/page_header.html' import page_header %}
+{% from 'components/metrics_card.html' import metrics_card %}
+{% import 'components/card.html' as card %}
+
+{% block title %}Architecture Health Scorecard{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    {{ page_header(
+        title='Architecture Health Scorecard',
+        description='Real-time portfolio risk, ARB pipeline, ArchiMate coverage, and ADM progression'
+    ) }}
+
+    {# ── Summary Metric Cards ─────────────────────────────────────────────── #}
+    <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        {{ metrics_card(
+            title='Avg Solution Maturity',
+            value=(avg_maturity | string) + '%',
+            icon='trending-up',
+            description='Derived from ADM phase completion'
+        ) }}
+        {{ metrics_card(
+            title='Total Solutions',
+            value=total_solutions | string,
+            icon='puzzle',
+            description='Solutions tracked in portfolio'
+        ) }}
+        {{ metrics_card(
+            title='ArchiMate Elements',
+            value=total_archimate | string,
+            icon='boxes',
+            description='Catalog elements across all layers'
+        ) }}
+        {{ metrics_card(
+            title='Open Risks',
+            value=((risk_counts.critical or 0) + (risk_counts.high or 0) + (risk_counts.medium or 0) + (risk_counts.low or 0)) | string,
+            icon='alert-triangle',
+            description='Active risk register entries'
+        ) }}
+    </div>
+
+    <div class="grid gap-6 lg:grid-cols-2">
+        {# ── P1: Solution Risk Summary ─────────────────────────────────────── #}
+        {% call card.card() %}
+            {% call card.card_header(class='pb-3') %}
+                {% call card.card_title(class='text-lg') %}
+                    <i data-lucide="shield-alert" class="h-5 w-5 inline mr-2 text-destructive" aria-hidden="true"></i>
+                    Solution Risk Register
+                {% endcall %}
+            {% endcall %}
+            {% call card.card_content() %}
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {% set risk_colors = {'critical': 'text-destructive', 'high': 'text-orange-500', 'medium': 'text-amber-500', 'low': 'text-success'} %}
+                    {% for level in ['critical', 'high', 'medium', 'low'] %}
+                    <div class="rounded-lg border border-border bg-background p-4 text-center">
+                        <p class="text-xs text-muted-foreground capitalize mb-1">{{ level }}</p>
+                        <p class="text-3xl font-bold {{ risk_colors.get(level, 'text-foreground') }}">
+                            {{ risk_counts.get(level, 0) }}
+                        </p>
+                    </div>
+                    {% endfor %}
+                </div>
+                <p class="mt-3 text-xs text-muted-foreground">
+                    Live from the solution risk register.
+                    <a href="{{ url_for('solution_design.list_solutions') }}" class="text-primary hover:underline">View solutions &#8594;</a>
+                </p>
+            {% endcall %}
+        {% endcall %}
+
+        {# ── P2: ARB Pipeline ─────────────────────────────────────────────── #}
+        {% call card.card() %}
+            {% call card.card_header(class='pb-3') %}
+                {% call card.card_title(class='text-lg') %}
+                    <i data-lucide="git-pull-request" class="h-5 w-5 inline mr-2 text-primary" aria-hidden="true"></i>
+                    ARB Review Pipeline
+                {% endcall %}
+            {% endcall %}
+            {% call card.card_content() %}
+                <div class="grid grid-cols-3 gap-3 mb-3">
+                    <div class="rounded-lg border border-border bg-background p-4 text-center">
+                        <p class="text-xs text-muted-foreground mb-1">Pending</p>
+                        <p class="text-3xl font-bold text-amber-500">{{ arb_pipeline.pending }}</p>
+                    </div>
+                    <div class="rounded-lg border border-border bg-background p-4 text-center">
+                        <p class="text-xs text-muted-foreground mb-1">Under Review</p>
+                        <p class="text-3xl font-bold text-primary">{{ arb_pipeline.under_review }}</p>
+                    </div>
+                    <div class="rounded-lg border border-border bg-background p-4 text-center">
+                        <p class="text-xs text-muted-foreground mb-1">Approved</p>
+                        <p class="text-3xl font-bold text-success">{{ arb_pipeline.approved }}</p>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="rounded-lg border border-border bg-background p-3 text-center">
+                        <p class="text-xs text-muted-foreground mb-1">Rejected</p>
+                        <p class="text-2xl font-bold text-destructive">{{ arb_pipeline.rejected }}</p>
+                    </div>
+                    <div class="rounded-lg border border-border bg-background p-3 text-center">
+                        <p class="text-xs text-muted-foreground mb-1">Deferred</p>
+                        <p class="text-2xl font-bold text-muted-foreground">{{ arb_pipeline.deferred }}</p>
+                    </div>
+                </div>
+                <p class="mt-3 text-xs text-muted-foreground">
+                    Live from the ARB review pipeline.
+                    <a href="{{ url_for('arb.decision_register_page') }}" class="text-primary hover:underline">View ARB decisions &#8594;</a>
+                </p>
+            {% endcall %}
+        {% endcall %}
+
+        {# ── P3: ArchiMate Coverage by Layer ──────────────────────────────── #}
+        {% call card.card() %}
+            {% call card.card_header(class='pb-3') %}
+                {% call card.card_title(class='text-lg') %}
+                    <i data-lucide="layers" class="h-5 w-5 inline mr-2 text-amber-500" aria-hidden="true"></i>
+                    ArchiMate Coverage by Layer
+                {% endcall %}
+            {% endcall %}
+            {% call card.card_content() %}
+                {% set layer_colors = {
+                    'motivation': 'bg-violet-100 dark:bg-violet-950',
+                    'strategy': 'bg-primary/10 dark:bg-blue-950',
+                    'business': 'bg-amber-500/10 dark:bg-yellow-950',
+                    'application': 'bg-emerald-500/10 dark:bg-green-950',
+                    'technology': 'bg-cyan-100 dark:bg-cyan-950',
+                    'implementation': 'bg-orange-100 dark:bg-orange-950',
+                    'other': 'bg-muted'
+                } %}
+                <div class="rounded-lg border border-border overflow-hidden">
+                    <table class="w-full text-sm">
+                        <thead class="bg-muted/50">
+                            <tr>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Layer</th>
+                                <th class="px-4 py-2 text-right text-xs font-medium text-muted-foreground">Elements</th>
+                                <th class="px-4 py-2 text-right text-xs font-medium text-muted-foreground">Share</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for layer, count in archimate_by_layer.items() if count > 0 %}
+                            <tr class="border-t border-border">
+                                <td class="px-4 py-2">
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium {{ layer_colors.get(layer, 'bg-muted') }} capitalize">{{ layer }}</span>
+                                </td>
+                                <td class="px-4 py-2 text-right font-medium text-foreground">{{ count }}</td>
+                                <td class="px-4 py-2 text-right text-muted-foreground">
+                                    {% if total_archimate > 0 %}{{ ((count / total_archimate) * 100) | round(1) }}%{% else %}&#8212;{% endif %}
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="3" class="px-4 py-3 text-center text-muted-foreground">No ArchiMate elements found</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <p class="mt-3 text-xs text-muted-foreground">
+                    Total: <strong>{{ total_archimate }}</strong> elements.
+                    <a href="{{ url_for('archimate_crud.dashboard') }}" class="text-primary hover:underline">Manage catalog &#8594;</a>
+                </p>
+            {% endcall %}
+        {% endcall %}
+
+        {# ── P4: ADM Phase Distribution ───────────────────────────────────── #}
+        {% call card.card() %}
+            {% call card.card_header(class='pb-3') %}
+                {% call card.card_title(class='text-lg') %}
+                    <i data-lucide="milestone" class="h-5 w-5 inline mr-2 text-emerald-500" aria-hidden="true"></i>
+                    ADM Phase Distribution
+                {% endcall %}
+            {% endcall %}
+            {% call card.card_content() %}
+                {% set adm_labels = {
+                    'A': 'Vision', 'B': 'Business', 'C': 'Info Systems',
+                    'D': 'Technology', 'E': 'Opportunities', 'F': 'Migration',
+                    'G': 'Governance', 'H': 'Change Mgmt'
+                } %}
+                {% set adm_pct = {'A': 12, 'B': 25, 'C': 37, 'D': 50, 'E': 62, 'F': 75, 'G': 87, 'H': 100} %}
+                <div class="space-y-2">
+                    {% for phase in 'ABCDEFGH' %}
+                    {% set count = adm_distribution.get(phase, 0) %}
+                    <div class="flex items-center gap-3">
+                        <span class="w-24 text-xs font-medium text-muted-foreground shrink-0">
+                            {{ phase }}: {{ adm_labels.get(phase, '') }}
+                        </span>
+                        <div class="flex-1 bg-muted rounded-full h-2 overflow-hidden">
+                            <div class="bg-primary h-full rounded-full transition-all"
+                                 style="width: {% if total_solutions > 0 %}{{ ((count / total_solutions) * 100) | round(1) }}%{% else %}0%{% endif %}">
+                            </div>
+                        </div>
+                        <span class="w-8 text-xs text-right text-foreground font-medium shrink-0">{{ count }}</span>
+                        <span class="w-10 text-xs text-right text-muted-foreground shrink-0">{{ adm_pct.get(phase, 0) }}%</span>
+                    </div>
+                    {% endfor %}
+                </div>
+                <div class="mt-4 pt-3 border-t border-border flex items-center justify-between">
+                    <span class="text-sm text-muted-foreground">Average Maturity</span>
+                    <span class="text-2xl font-bold text-primary">{{ avg_maturity }}%</span>
+                </div>
+                <p class="mt-2 text-xs text-muted-foreground">
+                    Maturity derived from ADM phase for solutions without explicit maturity scores.
+                    <a href="{{ url_for('solution_design.list_solutions') }}" class="text-primary hover:underline">View all &#8594;</a>
+                </p>
+            {% endcall %}
+        {% endcall %}
+    </div>
+</div>
+{% endblock %}

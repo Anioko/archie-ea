@@ -1,0 +1,51 @@
+import '@testing-library/jest-native/extend-expect';
+import { jest } from '@jest/globals';
+
+// Mock Expo modules that don't work in Node.js test environment
+jest.mock('expo-secure-store', () => ({
+  setItemAsync: jest.fn().mockResolvedValue(undefined),
+  getItemAsync: jest.fn().mockResolvedValue(null),
+  deleteItemAsync: jest.fn().mockResolvedValue(undefined),
+}));
+
+jest.mock('expo-router', () => ({
+  useRouter: () => ({
+    push: jest.fn(),
+    replace: jest.fn(),
+    back: jest.fn(),
+    navigate: jest.fn(),
+  }),
+  useLocalSearchParams: () => ({}),
+  usePathname: () => '/',
+  Link: ({ children }) => children,
+  Redirect: ({ href }) => null,
+  Stack: { Screen: () => null },
+  Tabs: { Screen: () => null },
+}));
+
+jest.mock('@react-native-async-storage/async-storage', () =>
+  require('@react-native-async-storage/async-storage/jest/async-storage-mock')
+);
+
+jest.mock('expo-constants', () => ({
+  expoConfig: {
+    name: '{{ solution_name }}',
+    version: '1.0.0',
+    extra: {
+      apiUrl: 'http://localhost:8000',
+    },
+  },
+}));
+
+jest.mock('react-native/Libraries/Animated/NativeAnimatedHelper');
+
+// Silence specific RN warnings that are noise in tests
+const originalWarn = console.warn;
+beforeAll(() => {
+  console.warn = (...args) => {
+    if (typeof args[0] === 'string' && args[0].includes('Animated:')) return;
+    if (typeof args[0] === 'string' && args[0].includes('componentWillReceiveProps')) return;
+    originalWarn(...args);
+  };
+});
+afterAll(() => { console.warn = originalWarn; });

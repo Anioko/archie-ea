@@ -1,0 +1,276 @@
+<!-- APQC Hierarchy Tree Browser Component -->
+<!-- Professional EA tool for APQC PCF navigation with full parent/child context -->
+<div id="apqc-tree-browser" hidden class="modal-root fixed inset-0 bg-foreground bg-opacity-50 items-center justify-center" style="z-index:1000;">
+  <div class="bg-background rounded-lg shadow-2xl w-full max-w-6xl h-5/6 flex flex-col">
+    <!-- Header -->
+    <div class="flex items-center justify-between p-6 border-b border-border">
+      <div>
+        <h2 class="text-2xl font-bold text-foreground">APQC PCF Hierarchy Browser</h2>
+        <p class="text-sm text-muted-foreground mt-1">Navigate the complete APQC Process Classification Framework</p>
+      </div>
+      <button @click="closeAPQCBrowser()" class="text-muted-foreground hover:text-muted-foreground" aria-label="Close APQC browser">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Search and Filters -->
+    <div class="p-4 border-b border-border bg-muted">
+      <div class="flex gap-4">
+        <div class="flex-1">
+          <label for="apqc-search">Field</label>
+    <input type="text" id="apqc-search" placeholder="Search processes by name or code..."
+            class="w-full px-4 py-2 border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+            @input="searchAPQCProcesses(this.value)">
+        </div>
+        <select id="apqc-level-filter" class="px-4 py-2 border border-border rounded-lg" @change="filterAPQCByLevel(this.value)">
+          <option value="">All Levels</option>
+          <option value="1">Level 1 - Operating Processes</option>
+          <option value="2">Level 2 - Process Groups</option>
+          <option value="3">Level 3 - Processes</option>
+          <option value="4">Level 4 - Activities</option>
+          <option value="5">Level 5 - Tasks</option>
+        </select>
+        <button @click="expandAllAPQC()" class="px-4 py-2 bg-muted-foreground text-primary-foreground rounded-md hover:bg-foreground/80" aria-label="Expand all nodes">
+          Expand All
+        </button>
+        <button @click="collapseAllAPQC()" class="px-4 py-2 bg-muted-foreground text-primary-foreground rounded-md hover:bg-foreground/80" aria-label="Collapse all nodes">
+          Collapse All
+        </button>
+      </div>
+    </div>
+
+    <!-- Tree Content -->
+    <div class="flex-1 overflow-y-auto p-6">
+      <div id="apqc-tree-content">
+        <div class="flex items-center justify-center py-12">
+          <div class="text-center">
+            <svg class="animate-spin h-8 w-8 text-primary mx-auto mb-4" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <p class="text-muted-foreground">Loading APQC hierarchy...</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Selected Process Details Panel -->
+    <div id="apqc-details-panel" class="hidden border-t border-border bg-primary/5 p-4">
+      <div class="flex items-start justify-between">
+        <div class="flex-1">
+          <div class="flex items-center gap-3 mb-2">
+            <span id="apqc-selected-level" class="px-2 py-1 bg-primary text-primary-foreground text-xs font-semibold rounded">L1</span>
+            <h3 id="apqc-selected-code" class="text-lg font-bold text-foreground">1.0</h3>
+            <h4 id="apqc-selected-name" class="text-lg text-foreground/80">Develop Vision and Strategy</h4>
+          </div>
+          <div id="apqc-breadcrumb" class="text-sm text-muted-foreground mb-3">
+            <!-- Breadcrumb will be inserted here -->
+          </div>
+          <div id="apqc-selected-description" class="text-sm text-foreground/80">
+            <!-- Description will be inserted here -->
+          </div>
+        </div>
+        <button @click="useSelectedAPQC()" class="ml-4 px-6 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary font-medium" aria-label="Use selected process">
+          Use This Process
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let apqcTreeData = [];
+let selectedAPQCProcess = null;
+let apqcExpandedNodes = new Set();
+
+function escapeHtml(str) {
+  if (str == null) return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+function openAPQCBrowser() {
+  Platform.modal.open('apqc-tree-browser');
+  loadAPQCHierarchy();
+}
+
+function closeAPQCBrowser() {
+  Platform.modal.close('apqc-tree-browser');
+}
+
+// Delegated click handler for tree nodes (data-action="toggleAPQCNode")
+document.addEventListener('click', function(e) {
+  const trigger = e.target.closest('[data-action="toggleAPQCNode"]');
+  if (!trigger) return;
+  try {
+    let params = JSON.parse(trigger.getAttribute('data-params'));
+    toggleAPQCNode(params[0], params[1], params[2]);
+  } catch(err) {
+    console.error('[apqc-tree-browser] toggleAPQCNode parse error', err);
+  }
+});
+
+async function loadAPQCHierarchy() {
+  try {
+    const response = await fetch('/api/apqc/hierarchy');
+    const data = await response.json();
+
+    if (data.success) {
+      apqcTreeData = data.tree || [];
+      document.getElementById('apqc-tree-content').innerHTML = renderAPQCTree(apqcTreeData);
+    } else {
+      document.getElementById('apqc-tree-content').innerHTML =
+        `<div class="text-destructive text-center py-8">Error: ${escapeHtml(data.error)}</div>`;
+    }
+  } catch (error) {
+    document.getElementById('apqc-tree-content').innerHTML =
+      `<div class="text-destructive text-center py-8">Failed to load APQC hierarchy: ${escapeHtml(error.message)}</div>`;
+  }
+}
+
+function renderAPQCTree(nodes, parentPath = []) {
+  if (!nodes || nodes.length === 0) return '';
+
+  return nodes.map(node => {
+    const nodeId = `apqc-node-${node.process_id || node.id}`;
+    const isExpanded = apqcExpandedNodes.has(nodeId);
+    const hasChildren = node.children && node.children.length > 0;
+    const currentPath = [...parentPath, node.process_name || node.name];
+
+    const levelColors = {
+      1: 'bg-accent text-primary border-primary/30',
+      2: 'bg-primary/10 text-primary border-primary/30',
+      3: 'bg-success/10 text-success border-green-300',
+      4: 'bg-warning/10 text-warning border-yellow-300',
+      5: 'bg-warning/10 text-warning border-orange-300'
+    };
+
+    const levelColor = levelColors[node.level] || 'bg-muted text-foreground border-border';
+
+    return `
+      <div class="mb-2" data-level="${node.level}" data-process-id="${node.process_id || node.id}">
+        <div class="flex items-center gap-2 p-3 rounded-md border ${levelColor} hover:shadow-md transition-shadow cursor-pointer"
+             data-action="toggleAPQCNode" data-params='${JSON.stringify([nodeId, node, currentPath]).replace(/'/g, "&#39;")}'>
+          ${hasChildren ? `
+            <svg class="w-5 h-5 transition-transform ${isExpanded ? 'rotate-90' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+            </svg>
+          ` : '<div class="w-5 h-5"></div>'}
+
+          <span class="px-2 py-1 bg-background rounded text-xs font-bold">L${node.level}</span>
+          <span class="font-mono text-sm font-semibold">${escapeHtml(node.process_code || node.code)}</span>
+          <span class="flex-1 font-medium">${escapeHtml(node.process_name || node.name)}</span>
+
+          ${node.application_count ? `
+            <span class="text-xs bg-background px-2 py-1 rounded">
+              ${node.application_count} apps
+            </span>
+          ` : ''}
+        </div>
+
+        ${hasChildren ? `
+          <div id="${nodeId}-children" class="ml-8 mt-2 ${isExpanded ? '' : 'hidden'}">
+            ${renderAPQCTree(node.children, currentPath)}
+          </div>
+        ` : ''}
+      </div>
+    `;
+  }).join('');
+}
+
+function toggleAPQCNode(nodeId, nodeData, path) {
+  const childrenDiv = document.getElementById(`${nodeId}-children`);
+  if (childrenDiv) {
+    const isExpanded = !childrenDiv.classList.contains('hidden');
+    if (isExpanded) {
+      childrenDiv.classList.add('hidden');
+      apqcExpandedNodes.delete(nodeId);
+    } else {
+      childrenDiv.classList.remove('hidden');
+      apqcExpandedNodes.add(nodeId);
+    }
+  }
+
+  // Update selected process details
+  selectedAPQCProcess = nodeData;
+  showAPQCDetails(nodeData, path);
+}
+
+function showAPQCDetails(node, path) {
+  const panel = document.getElementById('apqc-details-panel');
+  panel.classList.remove('hidden');
+
+  document.getElementById('apqc-selected-level').textContent = `L${node.level}`;
+  document.getElementById('apqc-selected-code').textContent = node.process_code || node.code;
+  document.getElementById('apqc-selected-name').textContent = node.process_name || node.name;
+
+  // Build breadcrumb
+  const breadcrumb = path.map((p, i) =>
+    `<span class="text-primary">${escapeHtml(p)}</span>`
+  ).join(' <span class="text-muted-foreground">→</span> ');
+  document.getElementById('apqc-breadcrumb').innerHTML = breadcrumb;
+
+  document.getElementById('apqc-selected-description').textContent =
+    node.description || 'No description available';
+}
+
+function expandAllAPQC() {
+  document.querySelectorAll('[id$="-children"]').forEach(el => {
+    el.classList.remove('hidden');
+    apqcExpandedNodes.add(el.id.replace('-children', ''));
+  });
+}
+
+function collapseAllAPQC() {
+  document.querySelectorAll('[id$="-children"]').forEach(el => {
+    el.classList.add('hidden');
+  });
+  apqcExpandedNodes.clear();
+}
+
+async function searchAPQCProcesses(query) {
+  if (!query || query.length < 2) {
+    document.getElementById('apqc-tree-content').innerHTML = renderAPQCTree(apqcTreeData);
+    return;
+  }
+
+  try {
+    const response = await fetch(`/api/apqc/search?q=${encodeURIComponent(query)}&limit=50`);
+    const data = await response.json();
+
+    if (data.success && data.results) {
+      const searchResults = data.results.map(r => ({
+        process_id: r.process_id,
+        process_code: r.process_code,
+        process_name: r.process_name,
+        level: r.level,
+        description: r.match_rationale?.primary_reason || '',
+        children: []
+      }));
+
+      document.getElementById('apqc-tree-content').innerHTML = renderAPQCTree(searchResults);
+    }
+  } catch (error) {
+    console.error('APQC search error:', error);
+  }
+}
+
+function filterAPQCByLevel(level) {
+  const nodes = document.querySelectorAll('[data-level]');
+  nodes.forEach(node => {
+    if (!level || node.dataset.level === level) {
+      node.style.display = '';
+    } else {
+      node.style.display = 'none';
+    }
+  });
+}
+
+function useSelectedAPQC() {
+  if (selectedAPQCProcess && window.onAPQCSelected) {
+    window.onAPQCSelected(selectedAPQCProcess);
+    closeAPQCBrowser();
+  }
+}
+</script>

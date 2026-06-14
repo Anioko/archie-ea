@@ -1,0 +1,48 @@
+/**
+ * Auto-generated Zod schemas from confirmed field specs.
+ * DO NOT EDIT — regenerate via the Code Workbench.
+ */
+import { z } from "zod"
+
+{% for cls in classes %}
+export const {{ cls.name }}Schema = z.object({
+  {% for field in cls.fields %}{% if not field.primary_key %}
+  {% set fl = field.name | lower %}
+  {% set enum_vals = [] %}
+  {%- for v in cls.validations %}
+    {%- if v.field == field.name and v.rule == "enum" and v.value %}
+      {%- set _ = enum_vals.extend(v.value if v.value is iterable and v.value is not string else [v.value]) %}
+    {%- endif %}
+  {%- endfor %}
+  {{ field.name }}: {% if enum_vals %}z.enum([{{ enum_vals | map('tojson') | join(', ') }}] as [string, ...string[]])
+  {%- elif field.type == "str" %}z.string()
+    {%- for v in cls.validations %}
+      {%- if v.field == field.name and v.rule == "min_length" %}.min({{ v.value }}, "{{ field.name | replace('_', ' ') | title }} must be at least {{ v.value }} characters"){% endif %}
+      {%- if v.field == field.name and v.rule == "max_length" %}.max({{ v.value }}, "{{ field.name | replace('_', ' ') | title }} cannot exceed {{ v.value }} characters"){% endif %}
+      {%- if v.field == field.name and v.rule == "regex" %}.regex(new RegExp({{ v.value | tojson }}), "Invalid {{ field.name | replace('_', ' ') | lower }} format"){% endif %}
+    {%- endfor %}
+    {%- if "email" in fl %}.email("Invalid email address"){% endif %}
+    {%- if "url" in fl or "website" in fl %}.url("Must be a valid URL (include https://)"){% endif %}
+    {%- if not field.nullable %}.min(1, "{{ field.name | replace('_', ' ') | title }} is required"){% endif %}
+  {%- elif field.type == "int" %}z.number().int("Must be a whole number")
+    {%- for v in cls.validations %}
+      {%- if v.field == field.name and v.rule == "min" %}.min({{ v.value }}, "Minimum value is {{ v.value }}"){% endif %}
+      {%- if v.field == field.name and v.rule == "max" %}.max({{ v.value }}, "Maximum value is {{ v.value }}"){% endif %}
+    {%- endfor %}
+  {%- elif field.type in ["float", "Decimal"] %}z.number("Must be a number")
+    {%- for v in cls.validations %}
+      {%- if v.field == field.name and v.rule == "min" %}.min({{ v.value }}, "Minimum value is {{ v.value }}"){% endif %}
+      {%- if v.field == field.name and v.rule == "max" %}.max({{ v.value }}, "Maximum value is {{ v.value }}"){% endif %}
+    {%- endfor %}
+  {%- elif field.type == "bool" %}z.boolean()
+  {%- elif field.type == "datetime" %}z.string().datetime({ offset: true, message: "Must be a valid date and time" })
+  {%- elif field.type == "UUID" %}z.string().uuid("Must be a valid ID")
+  {%- else %}z.string()
+  {%- endif %}{% if field.nullable %}.nullable().optional(){% endif %},
+  {% endif %}{% endfor %}
+})
+
+export type {{ cls.name }}Input = z.infer<typeof {{ cls.name }}Schema>
+export type {{ cls.name }} = {{ cls.name }}Input & { id: number | string }
+
+{% endfor %}

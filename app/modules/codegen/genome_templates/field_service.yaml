@@ -1,0 +1,186 @@
+genome_version: "1.0.0"
+solution_id: 0
+solution_name: "Field Service Management"
+generated_at: "2026-04-01T00:00:00Z"
+language: "python-fastapi"
+
+problem:
+  statement: "Field technicians spend 3+ hours per day on paperwork — manual work orders, paper timesheets, and phone-based dispatching cause delays, lost records, and invoicing errors."
+  success_metrics:
+    - "Reduce daily paperwork from 3 hours to 30 minutes"
+    - "Achieve 100% digital work order completion"
+    - "Cut invoicing cycle from 14 days to 2 days"
+  constraints:
+    - "Must work offline in areas with no cellular coverage"
+    - "Must integrate with existing ERP for invoicing"
+  business_domain: "Field Service"
+  _rationale: "Field service is one of the last industries still running on paper. The ROI is immediate and measurable — every hour saved per technician per day multiplied across a fleet."
+
+modules:
+  work_orders:
+    _rationale: "Core business object — everything revolves around dispatching, executing, and closing work orders."
+    aggregate_root: "WorkOrder"
+    entities: ["WorkOrder", "WorkOrderLine"]
+    fields:
+      WorkOrder:
+        - {name: "customer_id", type: "integer", required: true, foreign_key: "Customer.id"}
+        - {name: "technician_id", type: "integer", required: false, foreign_key: "Technician.id"}
+        - {name: "description", type: "text", required: true}
+        - {name: "priority", type: "enum", enum_values: ["low", "medium", "high", "critical"]}
+        - {name: "scheduled_date", type: "datetime", required: true}
+        - {name: "completed_date", type: "datetime", required: false}
+        - {name: "total_amount", type: "decimal", required: false}
+        - {name: "location_lat", type: "float", required: false}
+        - {name: "location_lng", type: "float", required: false}
+        - {name: "notes", type: "text", required: false}
+      WorkOrderLine:
+        - {name: "work_order_id", type: "integer", required: true, foreign_key: "WorkOrder.id"}
+        - {name: "description", type: "string", max_length: 500, required: true}
+        - {name: "quantity", type: "integer", required: true, minimum: 1}
+        - {name: "unit_price", type: "decimal", required: true}
+        - {name: "line_total", type: "decimal", required: false}
+    state_machine:
+      field: "status"
+      states: ["draft", "assigned", "in_progress", "completed", "cancelled"]
+      initial_state: "draft"
+      transitions:
+        - {from: "draft", to: "assigned", trigger: "assign", guard: "has_technician"}
+        - {from: "assigned", to: "in_progress", trigger: "start"}
+        - {from: "in_progress", to: "completed", trigger: "complete", guard: "has_signature", effect: "create_invoice(order)"}
+        - {from: ["draft", "assigned"], to: "cancelled", trigger: "cancel"}
+    operations:
+      create_work_order:
+        type: "command"
+        input: "WorkOrderDraft"
+        output: "WorkOrderId"
+        authorization: ["admin", "dispatcher"]
+        validation:
+          - {field: "customer_id", rule: "must reference existing customer"}
+          - {field: "scheduled_date", rule: "must be in the future"}
+      list_work_orders:
+        type: "query"
+        output: "Page<WorkOrderSummary>"
+        cache: {ttl: "30s"}
+    views:
+      list:
+        columns: ["id", "customer_id", "technician_id", "status", "priority", "scheduled_date"]
+        filters: ["status", "priority", "technician_id"]
+        default_sort: {field: "scheduled_date", dir: "desc"}
+      detail:
+        sections: ["summary", "lines", "time_entries", "history"]
+      create:
+        fields: ["customer_id", "description", "priority", "scheduled_date"]
+    sensitive_fields:
+      - {field: "WorkOrder.customer_id", level: "internal"}
+    archimate_element_ids: [101, 102]
+
+  customers:
+    _rationale: "Every work order belongs to a customer. Customer data drives scheduling, routing, and invoicing."
+    aggregate_root: "Customer"
+    entities: ["Customer"]
+    fields:
+      Customer:
+        - {name: "name", type: "string", max_length: 255, required: true}
+        - {name: "email", type: "string", format: "email", required: true, unique: true}
+        - {name: "phone", type: "string", format: "phone", required: false}
+        - {name: "address", type: "text", required: false}
+        - {name: "city", type: "string", max_length: 100, required: false}
+        - {name: "postal_code", type: "string", max_length: 20, required: false}
+    archimate_element_ids: [103]
+
+  technicians:
+    _rationale: "Technicians are the workforce. Tracking skills and availability enables smart dispatching."
+    aggregate_root: "Technician"
+    entities: ["Technician"]
+    fields:
+      Technician:
+        - {name: "name", type: "string", max_length: 255, required: true}
+        - {name: "email", type: "string", format: "email", required: true, unique: true}
+        - {name: "phone", type: "string", format: "phone", required: true}
+        - {name: "skill_level", type: "enum", enum_values: ["junior", "senior", "specialist"]}
+        - {name: "is_available", type: "boolean", required: false}
+    archimate_element_ids: [104]
+
+  equipment:
+    _rationale: "Equipment tracking prevents loss and enables preventive maintenance scheduling."
+    aggregate_root: "Equipment"
+    entities: ["Equipment"]
+    fields:
+      Equipment:
+        - {name: "serial_number", type: "string", max_length: 100, required: true, unique: true}
+        - {name: "name", type: "string", max_length: 255, required: true}
+        - {name: "category", type: "string", max_length: 100, required: false}
+        - {name: "assigned_technician_id", type: "integer", required: false, foreign_key: "Technician.id"}
+        - {name: "last_maintenance_date", type: "date", required: false}
+    archimate_element_ids: [105]
+
+  time_entries:
+    _rationale: "Time tracking per work order drives payroll and customer billing accuracy."
+    aggregate_root: "TimeEntry"
+    entities: ["TimeEntry"]
+    fields:
+      TimeEntry:
+        - {name: "work_order_id", type: "integer", required: true, foreign_key: "WorkOrder.id"}
+        - {name: "technician_id", type: "integer", required: true, foreign_key: "Technician.id"}
+        - {name: "start_time", type: "datetime", required: true}
+        - {name: "end_time", type: "datetime", required: false}
+        - {name: "description", type: "text", required: false}
+        - {name: "billable", type: "boolean", required: false}
+    archimate_element_ids: [106]
+
+  materials:
+    _rationale: "Material usage per work order feeds inventory management and accurate billing."
+    aggregate_root: "Material"
+    entities: ["Material", "MaterialUsage"]
+    fields:
+      Material:
+        - {name: "name", type: "string", max_length: 255, required: true}
+        - {name: "sku", type: "string", max_length: 50, required: true, unique: true}
+        - {name: "unit_cost", type: "decimal", required: true}
+        - {name: "quantity_in_stock", type: "integer", required: false}
+      MaterialUsage:
+        - {name: "work_order_id", type: "integer", required: true, foreign_key: "WorkOrder.id"}
+        - {name: "material_id", type: "integer", required: true, foreign_key: "Material.id"}
+        - {name: "quantity_used", type: "integer", required: true, minimum: 1}
+    archimate_element_ids: [107]
+
+infrastructure:
+  database: "postgresql"
+  cache: "redis"
+  auth: "keycloak"
+  observability: "opentelemetry"
+
+security:
+  mfa: "required_for_admin"
+  api_keys: true
+  rate_limiting: {default: "100/min", authenticated: "1000/min"}
+  encryption_at_rest: true
+  multi_tenancy: true
+
+deployment:
+  target: "docker_compose"
+  environments: ["staging", "production"]
+  ci_cd: {provider: "github_actions", registry: "ghcr"}
+
+identity_provider:
+  type: "oidc"
+  preset: "keycloak"
+  roles: ["admin", "dispatcher", "technician", "manager"]
+
+mobile:
+  framework: "expo-react-native"
+  offline:
+    tier: 2
+    offline_entities: ["work_orders", "time_entries"]
+    conflict_strategy: "last_write_wins"
+  push_notifications:
+    enabled: true
+    channels:
+      - {id: "assignment", trigger: "work_orders.status -> assigned", title: "New Assignment"}
+      - {id: "completion", trigger: "work_orders.status -> completed", title: "Work Order Completed"}
+  features: ["camera", "gps_location"]
+
+compliance:
+  frameworks: ["soc2"]
+  audit_logging: "all_mutations"
+  data_retention_years: 7

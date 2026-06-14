@@ -1,0 +1,56 @@
+{#
+  Filter Section Partial
+
+  Provides a responsive filter bar with search and dropdown filters.
+
+  Parameters:
+    - filters: List of filter configurations, each with:
+        - type: 'search' or 'select'
+        - id: HTML id attribute
+        - label: Label text (uppercase tracking)
+        - placeholder: For search inputs
+        - value: Current value (for search)
+        - options: For select type - list of {'value': ..., 'label': ..., 'selected': bool}
+
+  Usage:
+    {% set filters = [
+      {'type': 'search', 'id': 'vendor-search', 'label': 'Search Vendors', 'placeholder': 'Search by name...', 'value': search_query},
+      {'type': 'select', 'id': 'vendor-type', 'label': 'Filter by Type', 'options': [
+        {'value': 'all', 'label': 'All Types', 'selected': true},
+        {'value': 'saas', 'label': 'SaaS Provider'}
+      ]}
+    ] %}
+    {% include 'partials/_filter_section.html' %}
+#}
+
+<div class="p-4 sm:p-6 border-b bg-muted/30">
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-{{ [filters|length, 4]|min }} gap-4">
+    {% for filter in filters %}
+      <div>
+        <label class="block text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">{{ filter.label }}</label>
+        {% if filter.type == 'search' %}
+        <div class="relative">
+          <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none"></i>
+          <label for="{{ filter.id }}">Field</label>
+    <input
+            type="text"
+            id="{{ filter.id }}"
+            placeholder="{{ filter.placeholder or 'Search...' }}"
+            value="{{ filter.value or '' }}"
+            class="flex h-10 w-full rounded-md border border-input bg-background pl-9 pr-3 py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+        </div>
+        {% elif filter.type == 'select' %}
+        <select
+          id="{{ filter.id }}"
+          class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          {% for option in filter.options %}
+          <option value="{{ option.value }}" {{ 'selected' if option.selected else '' }}>{{ option.label }}</option>
+          {% endfor %}
+        </select>
+        {% endif %}
+      </div>
+    {% endfor %}
+  </div>
+</div>

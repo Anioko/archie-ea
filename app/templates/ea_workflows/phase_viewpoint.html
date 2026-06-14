@@ -1,0 +1,191 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'components/page_header.html' import page_header %}
+{% from 'components/card.html' import card, card_header, card_title, card_content %}
+{% from 'components/badge.html' import badge %}
+
+{% block title %}{{ phase_name }} — Viewpoint Detail{% endblock %}
+
+{% block content %}
+<div class="space-y-6" x-data="phaseViewpointData()">
+
+  <!-- Breadcrumbs -->
+  <nav class="flex items-center gap-2 text-sm text-muted-foreground mb-2" aria-label="Breadcrumb">
+    <a href="{{ url_for('main.index') }}" class="hover:text-foreground transition-colors">Dashboard</a>
+    <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
+    <a href="{{ url_for('main.ea_workflows_dashboard') }}" class="hover:text-foreground transition-colors">EA Workflows</a>
+    <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
+    <span class="text-foreground font-medium">{{ phase_name }} — Viewpoint</span>
+  </nav>
+
+  <!-- Page Header -->
+  <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+    {{ page_header(
+        title=phase_name,
+        description='ArchiMate 3.2 viewpoint detail for this TOGAF ADM phase'
+    ) }}
+  </div>
+
+  <!-- Viewpoint Metadata -->
+  {% call card(class="mb-6") %}
+    {% call card_header() %}
+      {% call card_title() %}Viewpoint Metadata{% endcall %}
+    {% endcall %}
+    {% call card_content() %}
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div>
+          <p class="text-sm text-muted-foreground mb-1">Viewpoint Name</p>
+          <p class="text-sm font-medium">{{ viewpoint_name or '—' }}</p>
+        </div>
+        <div>
+          <p class="text-sm text-muted-foreground mb-1">ArchiMate Layer</p>
+          <p class="text-sm font-medium">
+            {% if primary_layer %}
+              {% call badge(variant='outline') %}{{ primary_layer|replace('_',' ')|title }}{% endcall %}
+            {% else %}
+              <span class="text-muted-foreground">—</span>
+            {% endif %}
+          </p>
+        </div>
+        <div>
+          <p class="text-sm text-muted-foreground mb-1">Concern</p>
+          <p class="text-sm font-medium">{{ archimate_concern or '—' }}</p>
+        </div>
+      </div>
+      {% if input_types or derived_types %}
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
+        {% if input_types %}
+        <div>
+          <p class="text-sm text-muted-foreground mb-1">Input Element Types</p>
+          <div class="flex flex-wrap gap-1">
+            {% for t in input_types %}
+              {% call badge(variant='secondary') %}{{ t }}{% endcall %}
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+        {% if derived_types %}
+        <div>
+          <p class="text-sm text-muted-foreground mb-1">Derived Element Types</p>
+          <div class="flex flex-wrap gap-1">
+            {% for t in derived_types %}
+              {% call badge(variant='default') %}{{ t }}{% endcall %}
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+      </div>
+      {% endif %}
+    {% endcall %}
+  {% endcall %}
+
+  <!-- Summary counts -->
+  {% call card(class="mb-6") %}
+    {% call card_header() %}
+      {% call card_title() %}Summary{% endcall %}
+    {% endcall %}
+    {% call card_content() %}
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="text-center p-4 rounded-lg bg-muted/50">
+          <p class="text-2xl font-bold" x-text="elementCount">{{ element_count }}</p>
+          <p class="text-sm text-muted-foreground">Elements</p>
+        </div>
+        <div class="text-center p-4 rounded-lg bg-muted/50">
+          <p class="text-2xl font-bold" x-text="relationshipCount">{{ relationship_count }}</p>
+          <p class="text-sm text-muted-foreground">Relationships</p>
+        </div>
+        <div class="text-center p-4 rounded-lg bg-muted/50">
+          <p class="text-2xl font-bold" x-text="layerCount">0</p>
+          <p class="text-sm text-muted-foreground">Layers</p>
+        </div>
+        <div class="text-center p-4 rounded-lg bg-muted/50">
+          <p class="text-2xl font-bold">{{ input_types|length + derived_types|length }}</p>
+          <p class="text-sm text-muted-foreground">Element Types</p>
+        </div>
+      </div>
+    {% endcall %}
+  {% endcall %}
+
+  <!-- Elements table (grouped by layer) -->
+  <template x-if="elements.length > 0">
+    <div>
+      <template x-for="group in groupedElements" :key="group.layer">
+        {% call card(class="mb-4") %}
+          {% call card_header() %}
+            {% call card_title() %}
+              <span x-text="group.label" class="capitalize"></span>
+              <span class="text-muted-foreground text-sm font-normal ml-2"
+                    x-text="'(' + group.items.length + ' elements)'"></span>
+            {% endcall %}
+          {% endcall %}
+          {% call card_content() %}
+            <div class="overflow-x-auto">
+              <table class="w-full text-sm">
+                <thead>
+                  <tr class="border-b border-border">
+                    <th class="text-left py-3 px-4 font-medium text-muted-foreground">Name</th>
+                    <th class="text-left py-3 px-4 font-medium text-muted-foreground">Type</th>
+                    <th class="text-left py-3 px-4 font-medium text-muted-foreground">Layer</th>
+                    <th class="text-left py-3 px-4 font-medium text-muted-foreground">Plateau</th>
+                    <th class="text-left py-3 px-4 font-medium text-muted-foreground">Building Block</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template x-for="el in group.items" :key="el.id">
+                    <tr class="border-b border-border/50 hover:bg-muted/30 transition-colors">
+                      <td class="py-3 px-4 font-medium" x-text="el.name"></td>
+                      <td class="py-3 px-4" x-text="el.type || el.element_type || '—'"></td>
+                      <td class="py-3 px-4">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30"
+                              x-text="el.layer || '—'"></span>
+                      </td>
+                      <td class="py-3 px-4" x-text="el.plateau || '—'"></td>
+                      <td class="py-3 px-4" x-text="el.building_block_type || '—'"></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+          {% endcall %}
+        {% endcall %}
+      </template>
+    </div>
+  </template>
+
+  <!-- Empty state -->
+  <template x-if="elements.length === 0">
+    <div class="text-center py-16 text-muted-foreground" x-cloak>
+      <i data-lucide="layers" class="h-12 w-12 mx-auto mb-4 opacity-50" aria-hidden="true"></i>
+      <h3 class="text-lg font-medium mb-2">No ArchiMate elements derived for this phase yet.</h3>
+      <p class="text-sm">Run the corresponding ADM workflow to derive elements for this viewpoint.</p>
+    </div>
+  </template>
+
+</div>
+
+<script>
+document.addEventListener('alpine:init', () => {
+    Alpine.data('phaseViewpointData', () => ({
+        elements: {{ elements | tojson }},
+        elementCount: {{ element_count }},
+        relationshipCount: {{ relationship_count }},
+
+        get layerCount() {
+            const layers = new Set(this.elements.map(e => e.layer || 'unknown'));
+            return layers.size;
+        },
+
+        get groupedElements() {
+            const groups = {};
+            for (const el of this.elements) {
+                const layer = el.layer || 'unknown';
+                if (!groups[layer]) {
+                    groups[layer] = { layer, label: layer.replace(/_/g, ' '), items: [] };
+                }
+                groups[layer].items.push(el);
+            }
+            return Object.values(groups).sort((a, b) => a.label.localeCompare(b.label));
+        },
+    }));
+});
+</script>
+{% endblock %}

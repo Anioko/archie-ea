@@ -1,0 +1,200 @@
+{# app/[entity]/new/page.tsx and app/[entity]/[id]/edit/page.tsx — Create/Edit form #}
+{# Context: entity_name, entity_slug, fields, is_edit (bool), has_state_machine #}
+"use client"
+
+import { useRouter } from "next/navigation"
+import { useForm } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { z } from "zod"
+import { useMutation, useQueryClient{% if is_edit %}, useQuery{% endif %} } from "@tanstack/react-query"
+import { toast } from "sonner"
+import { Loader2 } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
+import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Separator } from "@/components/ui/separator"
+import { api } from "@/lib/api"
+
+// ── Zod schema (generated from genome field definitions) ──
+
+const formSchema = z.object({
+{% for field in fields %}{% if not field.primary_key and field.name not in ['created_at', 'updated_at', 'deleted_at'] %}
+{% if field.type == 'string' or field.type == 'text' %}
+  {{ field.name }}: z.string(){% if field.max_length %}.max({{ field.max_length }}){% endif %}{% if field.required %}.min(1, "{{ field.name | replace('_', ' ') | title }} is required"){% else %}.optional().nullable(){% endif %},
+{% elif field.type == 'integer' %}
+  {{ field.name }}: z.coerce.number().int(){% if not field.required %}.optional().nullable(){% endif %},
+{% elif field.type in ['float', 'decimal'] %}
+  {{ field.name }}: z.coerce.number(){% if not field.required %}.optional().nullable(){% endif %},
+{% elif field.type == 'boolean' %}
+  {{ field.name }}: z.boolean().default(false),
+{% elif field.type == 'enum' %}
+  {{ field.name }}: z.enum([{% for v in field.enum_values %}"{{ v }}"{% if not loop.last %}, {% endif %}{% endfor %}]){% if not field.required %}.optional().nullable(){% endif %},
+{% elif field.type in ['datetime', 'date'] %}
+  {{ field.name }}: z.string(){% if field.required %}.min(1, "{{ field.name | replace('_', ' ') | title }} is required"){% else %}.optional().nullable(){% endif %},
+{% else %}
+  {{ field.name }}: z.string(){% if not field.required %}.optional().nullable(){% endif %},
+{% endif %}
+{% endif %}{% endfor %}
+})
+
+type FormValues = z.infer<typeof formSchema>
+
+{% if is_edit %}
+export default function Edit{{ entity_name }}Page({ params }: { params: { id: string } }) {
+  const { id } = params
+{% else %}
+export default function New{{ entity_name }}Page() {
+{% endif %}
+  const router = useRouter()
+  const queryClient = useQueryClient()
+
+{% if is_edit %}
+  const { data: existing, isLoading: loadingExisting } = useQuery({
+    queryKey: ["{{ entity_slug }}", id],
+    queryFn: () => api.get<FormValues & { id: string }>(`/api/{{ api_resource }}/${id}`),
+  })
+{% endif %}
+
+  const form = useForm<FormValues>({
+    resolver: zodResolver(formSchema),
+{% if is_edit %}
+    values: existing as FormValues | undefined,
+{% endif %}
+  })
+
+  const mutation = useMutation({
+{% if is_edit %}
+    mutationFn: (data: FormValues) => api.put(`/api/{{ api_resource }}/${id}`, data),
+{% else %}
+    mutationFn: (data: FormValues) => api.post("/api/{{ api_resource }}", data),
+{% endif %}
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["{{ entity_slug }}"] })
+      toast.success("{{ entity_name | replace('_', ' ') }} {{ 'updated' if is_edit else 'created' }} successfully")
+      router.push("/{{ entity_slug }}")
+    },
+    onError: (err: Error) => {
+      toast.error("Failed to {{ 'update' if is_edit else 'create' }}", { description: err.message })
+    },
+  })
+
+{% if is_edit %}
+  if (loadingExisting) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+{% endif %}
+
+  return (
+    <div className="max-w-2xl space-y-6">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">
+          {{ 'Edit' if is_edit else 'New' }} {{ entity_name | replace('_', ' ') }}
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          {{ 'Update the details below.' if is_edit else 'Fill in the details to create a new record.' }}
+        </p>
+      </div>
+
+      <form onSubmit={form.handleSubmit((data) => mutation.mutate(data))}>
+        <Card>
+          <CardHeader>
+            <CardTitle>Details</CardTitle>
+            <CardDescription>{{ entity_name | replace('_', ' ') }} information</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+{% for field in fields %}{% if not field.primary_key and field.name not in ['created_at', 'updated_at', 'deleted_at'] %}
+
+            {/* {{ field.name }} */}
+            <div className="space-y-2">
+              <Label htmlFor="{{ field.name }}">
+                {{ field.name | replace('_', ' ') | title }}
+                {% if field.required %}<span className="text-destructive ml-0.5">*</span>{% endif %}
+              </Label>
+{% if field.type == 'text' or ('description' in field.name or 'notes' in field.name) %}
+              <Textarea
+                id="{{ field.name }}"
+                placeholder="Enter {{ field.name | replace('_', ' ') | lower }}"
+                {...form.register("{{ field.name }}")}
+              />
+{% elif field.type == 'boolean' %}
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="{{ field.name }}"
+                  checked={form.watch("{{ field.name }}")}
+                  onCheckedChange={(v) => form.setValue("{{ field.name }}", v)}
+                />
+                <Label htmlFor="{{ field.name }}" className="text-sm text-muted-foreground font-normal">
+                  {{ field.name | replace('_', ' ') | title }}
+                </Label>
+              </div>
+{% elif field.type == 'enum' and field.enum_values %}
+              <Select
+                value={form.watch("{{ field.name }}") ?? undefined}
+                onValueChange={(v) => form.setValue("{{ field.name }}", v as any)}
+              >
+                <SelectTrigger id="{{ field.name }}">
+                  <SelectValue placeholder="Select {{ field.name | replace('_', ' ') | lower }}" />
+                </SelectTrigger>
+                <SelectContent>
+{% for val in field.enum_values %}
+                  <SelectItem value="{{ val }}">{{ val | replace('_', ' ') | title }}</SelectItem>
+{% endfor %}
+                </SelectContent>
+              </Select>
+{% elif field.type in ['datetime', 'date'] %}
+              <Input
+                id="{{ field.name }}"
+                type="{{ 'datetime-local' if field.type == 'datetime' else 'date' }}"
+                {...form.register("{{ field.name }}")}
+              />
+{% elif field.type in ['integer', 'float', 'decimal'] %}
+              <Input
+                id="{{ field.name }}"
+                type="number"
+                {% if field.type in ['float', 'decimal'] %}step="0.01"{% endif %}
+                placeholder="Enter {{ field.name | replace('_', ' ') | lower }}"
+                {...form.register("{{ field.name }}")}
+              />
+{% elif field.name == 'email' or field.name.endswith('_email') %}
+              <Input
+                id="{{ field.name }}"
+                type="email"
+                placeholder="Enter email address"
+                {...form.register("{{ field.name }}")}
+              />
+{% else %}
+              <Input
+                id="{{ field.name }}"
+                placeholder="Enter {{ field.name | replace('_', ' ') | lower }}"
+                {...form.register("{{ field.name }}")}
+              />
+{% endif %}
+              {form.formState.errors.{{ field.name }} && (
+                <p className="text-xs text-destructive">{form.formState.errors.{{ field.name }}?.message}</p>
+              )}
+            </div>
+{% endif %}{% endfor %}
+          </CardContent>
+        </Card>
+
+        <div className="flex items-center gap-3 pt-4">
+          <Button type="submit" disabled={mutation.isPending}>
+            {mutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {{ 'Save Changes' if is_edit else 'Create' }}
+          </Button>
+          <Button type="button" variant="outline" onClick={() => router.back()}>
+            Cancel
+          </Button>
+        </div>
+      </form>
+    </div>
+  )
+}

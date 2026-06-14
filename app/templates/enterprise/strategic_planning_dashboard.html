@@ -1,0 +1,97 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'components/page_header.html' import page_header %}
+{% from 'components/metrics_card.html' import metrics_card %}
+
+{% block title %}Strategic Planning Dashboard{% endblock %}
+
+{% block breadcrumb %}
+{% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
+{{ breadcrumb_nav(items=[
+    {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
+    {'text': 'Enterprise Architecture'},
+    {'text': 'Enterprise', 'current': true}
+]) }}
+{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-background">
+    <!-- Header -->
+    <div class="border-b border-border bg-card">
+        <div class="space-y-6">
+            {{ page_header(
+                title='Strategic Planning',
+                description='Manage strategic initiatives and roadmaps'
+            ) }}
+        </div>
+    </div>
+
+    <!-- Metrics Cards -->
+    <div class="space-y-6">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {{ metrics_card(title='Gaps Identified', value=gap_count or 0, icon='search') }}
+            {{ metrics_card(title='Implementation Plateaus', value=plateau_count or 0, icon='target') }}
+            {{ metrics_card(title='Work Packages', value=workpackage_count or 0, icon='package') }}
+        </div>
+    </div>
+
+    <!-- Strategic Planning Areas -->
+    <div class="space-y-6">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <a href="{{ url_for('enterprise.capability_health') }}" class="block bg-card rounded-lg border border-border p-6 hover:bg-accent transition-colors">
+                <div class="flex items-center gap-4">
+                    <div class="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center">
+                        <i data-lucide="heart-pulse" class="w-6 h-6 text-primary" aria-hidden="true"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-semibold text-foreground">Capability Health</h3>
+                        <p class="text-sm text-muted-foreground">Assess capability maturity</p>
+                    </div>
+                </div>
+            </a>
+            
+            <a href="{{ url_for('enterprise.investment_matrix') }}" class="block bg-card rounded-lg border border-border p-6 hover:bg-accent transition-colors">
+                <div class="flex items-center gap-4">
+                    <div class="w-12 h-12 bg-success/10 rounded-lg flex items-center justify-center">
+                        <i data-lucide="trending-up" class="w-6 h-6 text-success" aria-hidden="true"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-semibold text-foreground">Investment Matrix</h3>
+                        <p class="text-sm text-muted-foreground">Prioritize investments</p>
+                    </div>
+                </div>
+            </a>
+            
+            <a href="{{ url_for('enterprise.risk_assessment') }}" class="block bg-card rounded-lg border border-border p-6 hover:bg-accent transition-colors">
+                <div class="flex items-center gap-4">
+                    <div class="w-12 h-12 bg-destructive/10 rounded-lg flex items-center justify-center">
+                        <i data-lucide="shield-alert" class="w-6 h-6 text-destructive" aria-hidden="true"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-semibold text-foreground">Risk Assessment</h3>
+                        <p class="text-sm text-muted-foreground">Identify and mitigate risks</p>
+                    </div>
+                </div>
+            </a>
+            
+            <a href="{{ url_for('enterprise.technology_roadmap') }}" class="block bg-card rounded-lg border border-border p-6 hover:bg-accent transition-colors">
+                <div class="flex items-center gap-4">
+                    <div class="w-12 h-12 bg-accent rounded-lg flex items-center justify-center">
+                        <i data-lucide="route" class="w-6 h-6 text-primary" aria-hidden="true"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-semibold text-foreground">Technology Roadmap</h3>
+                        <p class="text-sm text-muted-foreground">Plan technology evolution</p>
+                    </div>
+                </div>
+            </a>
+        </div>
+    </div>
+</div>
+
+<script>
+// Initialize Lucide icons
+if (typeof lucide !== 'undefined') {
+    lucide.createIcons();
+}
+</script>
+{% endblock %}

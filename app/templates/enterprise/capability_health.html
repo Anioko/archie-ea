@@ -1,0 +1,54 @@
+{% extends 'layouts/admin_base.html' %}
+{% from 'components/page_header.html' import page_header %}
+
+{% block title %}Capability Health{% endblock %}
+
+{% block breadcrumb %}
+{% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
+{{ breadcrumb_nav(items=[
+    {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
+    {'text': 'Enterprise Architecture'},
+    {'text': 'Capability Health', 'current': true}
+]) }}
+{% endblock %}
+
+{% block content %}
+<div class="flex flex-col space-y-8 animate-in fade-in duration-500">
+    {{ page_header(
+        title='Capability Health Assessment',
+        description='Assess and monitor the health of business capabilities.'
+    ) }}
+
+    <!-- Capabilities Grid -->
+    <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {% for cap in capabilities|default([]) %}
+        <div data-slot="card" class="rounded-xl border bg-card p-6 hover:shadow-md transition-shadow">
+            <div class="flex items-start justify-between mb-4">
+                <h3 class="font-semibold">{{ cap.name|default('Unnamed') }}</h3>
+                <span class="px-2 py-1 text-xs rounded-full
+                    {% if cap.strategic_importance == 'critical' %}bg-destructive/20 text-destructive
+                    {% elif cap.strategic_importance == 'high' %}bg-warning/20 text-warning
+                    {% else %}bg-muted text-muted-foreground{% endif %}">
+                    {{ cap.strategic_importance|default('Normal')|title }}
+                </span>
+            </div>
+            <p class="text-sm text-muted-foreground mb-4">{{ cap.description|default('No description')|truncate(100) }}</p>
+            <div class="space-y-2">
+                <div class="flex justify-between text-sm">
+                    <span class="text-muted-foreground">Maturity</span>
+                    <span>{{ cap.current_maturity|default(0) }} / {{ cap.target_maturity|default(5) }}</span>
+                </div>
+                <div class="h-2 bg-secondary rounded-full overflow-hidden">
+                    <div class="h-full bg-primary" style="width: {{ (cap.current_maturity|default(0) / 5 * 100)|int }}%"></div>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <div data-slot="card" class="col-span-full p-12 text-center text-muted-foreground rounded-xl border bg-card">
+            <i data-lucide="heart" class="h-12 w-12 mx-auto mb-4 opacity-50" aria-hidden="true"></i>
+            <p>No capabilities found</p>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

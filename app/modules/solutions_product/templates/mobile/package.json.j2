@@ -1,0 +1,56 @@
+{# app/modules/solutions_product/templates/mobile/package.json.j2 #}
+{
+  "name": "{{ project_name | lower | replace(' ', '-') }}-mobile",
+  "version": "1.0.0",
+  "main": "expo-router/entry",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web",
+    "test": "jest --watchAll",
+    "lint": "eslint . --ext .ts,.tsx",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "expo": "~51.0.0",
+    "expo-router": "~3.5.0",
+    "expo-status-bar": "~1.12.1",
+    "expo-secure-store": "~13.0.1",
+    "expo-local-authentication": "~14.0.1",
+    "expo-notifications": "~0.28.0",
+    "expo-device": "~6.0.1",
+    "expo-camera": "~15.0.9",
+    "expo-location": "~17.0.1",
+    "expo-file-system": "~17.0.1",
+    "expo-image-picker": "~15.0.6",
+    "react": "18.2.0",
+    "react-native": "0.74.5",
+    "react-native-safe-area-context": "4.10.5",
+    "react-native-screens": "3.31.1",
+    "@react-navigation/native": "^6.1.18",
+    "zustand": "^4.5.2",
+    "react-query": "^3.39.3",
+    "axios": "^1.7.2",
+    "@tanstack/react-query": "^5.40.0",
+    "react-native-reanimated": "~3.10.1",
+    "react-native-gesture-handler": "~2.16.1"{% if offline_enabled %},
+    "@nozbe/watermelondb": "^0.27.1",
+    "@nozbe/with-observables": "^1.6.0"{% endif %}
+  },
+  "devDependencies": {
+    "@babel/core": "^7.24.0",
+    "@types/react": "~18.2.45",
+    "@types/react-native": "~0.73.0",
+    "typescript": "^5.3.3",
+    "jest": "^29.7.0",
+    "jest-expo": "~51.0.0",
+    "@testing-library/react-native": "^12.4.0",
+    "eslint": "^8.57.0",
+    "eslint-config-expo": "~7.0.0"
+  },
+  "jest": {
+    "preset": "jest-expo"
+  },
+  "private": true
+}

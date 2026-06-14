@@ -1,0 +1,537 @@
+{# product_ui.html.j2 — Production-grade single-page UI for genome-generated apps #}
+{# Context: project_name, solution_id, entities (list), state_machines (dict) #}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ project_name }}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: { extend: { colors: {
+                border: 'hsl(214.3 31.8% 91.4%)',
+                input: 'hsl(214.3 31.8% 91.4%)',
+                background: 'hsl(0 0% 100%)',
+                foreground: 'hsl(222.2 84% 4.9%)',
+                card: 'hsl(0 0% 100%)',
+                'card-foreground': 'hsl(222.2 84% 4.9%)',
+                primary: { DEFAULT: 'hsl(222.2 47.4% 11.2%)', foreground: 'hsl(210 40% 98%)' },
+                secondary: { DEFAULT: 'hsl(210 40% 96.1%)', foreground: 'hsl(222.2 47.4% 11.2%)' },
+                muted: { DEFAULT: 'hsl(210 40% 96.1%)', foreground: 'hsl(215.4 16.3% 46.9%)' },
+                accent: { DEFAULT: 'hsl(210 40% 96.1%)', foreground: 'hsl(222.2 47.4% 11.2%)' },
+                destructive: { DEFAULT: 'hsl(0 84.2% 60.2%)', foreground: 'hsl(210 40% 98%)' },
+            }}}
+        }
+    </script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js" integrity="sha256-NY2a+7GrW++i9IBhowd25bzXcH9BCmBrqYX5i8OxwDQ=" crossorigin="anonymous"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lucide-static@latest/font/lucide.min.css">
+    <style>
+        [x-cloak] { display: none !important; }
+        .badge-status { @apply inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border; }
+    </style>
+</head>
+<body class="bg-gray-50 text-foreground min-h-screen" x-data="app()" x-init="init()">
+
+{# ── Auth Gate ── #}
+<template x-if="!token">
+<div class="min-h-screen flex items-center justify-center bg-gray-50">
+    <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-8 w-full max-w-sm space-y-5">
+        <div class="text-center">
+            <h1 class="text-xl font-semibold text-gray-900">{{ project_name }}</h1>
+            <p class="text-sm text-gray-500 mt-1">Sign in to continue</p>
+        </div>
+        <div x-show="authError" class="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2" x-text="authError"></div>
+        <div class="space-y-3">
+            <input type="email" x-model="authEmail" placeholder="Email address"
+                   class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none">
+            <input type="password" x-model="authPassword" placeholder="Password" @keydown.enter="doLogin()"
+                   class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none">
+        </div>
+        <div class="flex gap-2">
+            <button @click="doLogin()" class="flex-1 px-4 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition">Sign In</button>
+            <button @click="doRegister()" class="flex-1 px-4 py-2 text-sm font-medium bg-secondary text-secondary-foreground rounded-lg hover:bg-gray-100 transition">Register</button>
+        </div>
+    </div>
+</div>
+</template>
+
+{# ── Main App ── #}
+<template x-if="token">
+<div class="flex min-h-screen">
+    {# Sidebar #}
+    <aside class="w-64 bg-white border-r border-gray-200 flex flex-col shrink-0">
+        <div class="px-4 py-5 border-b border-gray-100">
+            <h1 class="text-sm font-semibold text-gray-900 truncate">{{ project_name }}</h1>
+            <p class="text-xs text-gray-500">Solution #{{ solution_id }}</p>
+        </div>
+        <nav class="flex-1 py-3 px-2 space-y-0.5 overflow-y-auto">
+            <button @click="currentEntity = '__dashboard__'; items = []"
+                    :class="currentEntity === '__dashboard__' ? 'bg-primary text-primary-foreground' : 'text-gray-700 hover:bg-gray-100'"
+                    class="w-full flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg transition-colors mb-1">
+                <span class="text-base leading-none">&#9632;</span> Dashboard
+            </button>
+            <div class="border-t border-gray-100 my-1"></div>
+            {% for entity in entities %}
+            <button @click="currentEntity = '{{ entity.name_snake }}'; loadItems('{{ entity.name_snake }}')"
+                    :class="currentEntity === '{{ entity.name_snake }}' ? 'bg-primary text-primary-foreground' : 'text-gray-700 hover:bg-gray-100'"
+                    class="w-full flex items-center justify-between px-3 py-2 text-sm font-medium rounded-lg transition-colors">
+                <span class="truncate">{{ entity.name_display }}</span>
+                <span class="text-xs opacity-60" x-text="counts['{{ entity.name_snake }}'] ?? ''"></span>
+            </button>
+            {% endfor %}
+        </nav>
+        <div class="px-4 py-3 border-t border-gray-100 space-y-1">
+            <a href="/docs" class="block text-xs text-gray-500 hover:text-gray-900">API Documentation</a>
+            <button @click="doLogout()" class="text-xs text-red-600 hover:text-red-800">Sign Out</button>
+        </div>
+    </aside>
+
+    {# Main Content #}
+    <main class="flex-1 overflow-hidden">
+        {# Top bar #}
+        <header class="h-14 border-b border-gray-200 bg-white flex items-center justify-between px-6">
+            <h2 class="text-base font-semibold text-gray-900" x-text="currentEntity === '__dashboard__' ? 'Dashboard' : (entityMeta[currentEntity]?.display || currentEntity)"></h2>
+            <button x-show="currentEntity !== '__dashboard__'" @click="openCreate()" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition">
+                <span class="text-lg leading-none">+</span> New
+            </button>
+        </header>
+
+        {# ── Dashboard View ── #}
+        <template x-if="currentEntity === '__dashboard__'">
+        <div class="px-6 py-6 overflow-auto" style="max-height: calc(100vh - 5rem);">
+            {# Health + summary row #}
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                <div class="bg-white border border-gray-200 rounded-xl p-4">
+                    <p class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Service Health</p>
+                    <div class="flex items-center gap-2">
+                        <span class="w-2.5 h-2.5 rounded-full" :class="healthStatus === 'ok' ? 'bg-emerald-500' : 'bg-red-500'"></span>
+                        <span class="text-sm font-semibold" x-text="healthStatus"></span>
+                    </div>
+                </div>
+                <div class="bg-white border border-gray-200 rounded-xl p-4">
+                    <p class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Total Entities</p>
+                    <p class="text-2xl font-bold text-gray-900">{{ entities | length }}</p>
+                </div>
+                <div class="bg-white border border-gray-200 rounded-xl p-4">
+                    <p class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Total Records</p>
+                    <p class="text-2xl font-bold text-gray-900" x-text="Object.values(counts).reduce((a,b) => a+b, 0)"></p>
+                </div>
+                <div class="bg-white border border-gray-200 rounded-xl p-4">
+                    <p class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Solution</p>
+                    <p class="text-sm font-semibold text-gray-900">#{{ solution_id }}</p>
+                    <p class="text-xs text-gray-500 mt-0.5">{{ project_name }}</p>
+                </div>
+            </div>
+
+            {# Entity cards grid #}
+            <h3 class="text-sm font-semibold text-gray-900 mb-3">Entities</h3>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {% for entity in entities %}
+                <button @click="currentEntity = '{{ entity.name_snake }}'; loadItems('{{ entity.name_snake }}')"
+                        class="bg-white border border-gray-200 rounded-xl p-4 text-left hover:border-primary/40 hover:shadow-sm transition group">
+                    <div class="flex items-center justify-between mb-2">
+                        <h4 class="text-sm font-semibold text-gray-900 group-hover:text-primary transition">{{ entity.name_display }}</h4>
+                        <span class="text-lg font-bold text-gray-400" x-text="counts['{{ entity.name_snake }}'] ?? 0"></span>
+                    </div>
+                    <div class="flex items-center gap-2 text-xs text-gray-500">
+                        <span>{{ entity.fields | length }} fields</span>
+                        {% if entity.status_field %}
+                        <span class="inline-flex items-center px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-medium">State Machine</span>
+                        {% endif %}
+                    </div>
+                </button>
+                {% endfor %}
+            </div>
+
+            {# Quick links #}
+            <div class="mt-6 flex gap-3">
+                <a href="/docs" target="_blank" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition">API Documentation</a>
+                <a href="/health" target="_blank" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition">Health Check</a>
+                <a href="/redoc" target="_blank" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition">ReDoc</a>
+            </div>
+        </div>
+        </template>
+
+        {# Search + filters #}
+        <div class="px-6 py-3 border-b border-gray-100 bg-white flex items-center gap-3">
+            <input type="text" x-model="searchQuery" placeholder="Search..."
+                   class="w-72 px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none">
+            {% for entity in entities %}
+            {% if entity.status_field %}
+            <template x-if="currentEntity === '{{ entity.name_snake }}'">
+                <div class="flex gap-1">
+                    <button @click="statusFilter = ''" :class="!statusFilter ? 'bg-primary text-white' : 'bg-gray-100 text-gray-600'"
+                            class="px-2.5 py-1 text-xs font-medium rounded-md transition">All</button>
+                    {% for state in entity.states %}
+                    <button @click="statusFilter = '{{ state }}'" :class="statusFilter === '{{ state }}' ? 'bg-primary text-white' : 'bg-gray-100 text-gray-600'"
+                            class="px-2.5 py-1 text-xs font-medium rounded-md transition">{{ state | replace('_', ' ') | capitalize }}</button>
+                    {% endfor %}
+                </div>
+            </template>
+            {% endif %}
+            {% endfor %}
+        </div>
+
+        {# Data table #}
+        <div class="px-6 py-4 overflow-auto" style="max-height: calc(100vh - 10rem);">
+            {% for entity in entities %}
+            <template x-if="currentEntity === '{{ entity.name_snake }}'">
+            <div>
+                <table class="w-full text-sm" x-show="items.length">
+                    <thead>
+                        <tr class="border-b border-gray-200">
+                            {% for field in entity.fields[:7] %}
+                            <th @click="toggleSort('{{ field.name }}')" class="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wide cursor-pointer hover:text-gray-900 select-none">
+                                {{ field.display_name }}
+                                <span x-show="sortField === '{{ field.name }}'" x-text="sortDir === 'asc' ? '↑' : '↓'" class="text-primary ml-0.5"></span>
+                            </th>
+                            {% endfor %}
+                            <th class="px-4 py-2.5 text-right text-xs font-medium text-gray-500">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="item in filteredItems()" :key="item.id">
+                        <tr class="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                            {% for field in entity.fields[:7] %}
+                            {% if field.name == entity.status_field %}
+                            <td class="px-4 py-2.5">
+                                <span class="badge-status" :class="statusColor(item.{{ field.name }})" x-text="(item.{{ field.name }} || '').replace(/_/g, ' ')"></span>
+                            </td>
+                            {% elif field.type == 'boolean' %}
+                            <td class="px-4 py-2.5">
+                                <span :class="item.{{ field.name }} ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-gray-50 text-gray-600 border-gray-200'"
+                                      class="badge-status" x-text="item.{{ field.name }} ? 'Yes' : 'No'"></span>
+                            </td>
+                            {% elif field.type == 'date-time' or field.name.endsWith and ('_at' in field.name) %}
+                            <td class="px-4 py-2.5 text-gray-600" x-text="item.{{ field.name }} ? new Date(item.{{ field.name }}).toLocaleDateString() : '—'"></td>
+                            {% else %}
+                            <td class="px-4 py-2.5 text-gray-900 max-w-xs truncate" x-text="item.{{ field.name }} ?? '—'"></td>
+                            {% endif %}
+                            {% endfor %}
+                            <td class="px-4 py-2.5 text-right whitespace-nowrap space-x-1">
+                                {% if entity.status_field and entity.transitions %}
+                                <template x-for="t in availableTransitions(item)" :key="t.trigger">
+                                    <button @click="executeTransition('{{ entity.name_snake }}', item.id, t.trigger)"
+                                            class="px-2 py-1 text-xs font-medium rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition"
+                                            x-text="t.trigger.replace(/_/g, ' ')"></button>
+                                </template>
+                                {% endif %}
+                                <button @click="openEdit(item)" class="px-2 py-1 text-xs font-medium rounded-md text-gray-600 hover:bg-gray-100 transition">Edit</button>
+                                <button @click="confirmDelete(item.id)" class="px-2 py-1 text-xs font-medium rounded-md text-red-600 hover:bg-red-50 transition">Delete</button>
+                            </td>
+                        </tr>
+                        </template>
+                    </tbody>
+                </table>
+
+                {# Pagination #}
+                <div x-show="!loading && items.length > 0" class="flex items-center justify-between px-4 py-3 border-t border-gray-200 bg-gray-50">
+                    <span class="text-xs text-gray-500" x-text="`Page ${page}` + (hasMore ? '' : ' (last)')"></span>
+                    <div class="flex gap-2">
+                        <button @click="prevPage()" :disabled="page <= 1" class="px-3 py-1 text-xs font-medium border border-gray-300 rounded-md hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition">&larr; Previous</button>
+                        <button @click="nextPage()" :disabled="!hasMore" class="px-3 py-1 text-xs font-medium border border-gray-300 rounded-md hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition">Next &rarr;</button>
+                    </div>
+                </div>
+
+                {# Empty state #}
+                <div x-show="!loading && !items.length" class="text-center py-16">
+                    <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <span class="text-2xl text-gray-400">&#128466;</span>
+                    </div>
+                    <p class="text-sm font-medium text-gray-900">No {{ entity.name_display | lower }} yet</p>
+                    <p class="text-xs text-gray-500 mt-1">Create your first record to get started.</p>
+                    <button @click="openCreate()" class="mt-4 px-4 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition">
+                        + Create {{ entity.name_display }}
+                    </button>
+                </div>
+
+                {# Loading #}
+                <div x-show="loading" class="text-center py-16 text-sm text-gray-500">Loading...</div>
+            </div>
+            </template>
+            {% endfor %}
+        </div>
+    </main>
+
+    {# ── Slide-over: Create / Edit ── #}
+    <div x-show="showForm" x-cloak class="fixed inset-0 z-50 flex justify-end" @keydown.escape.window="showForm = false">
+        <div class="absolute inset-0 bg-black/20 backdrop-blur-sm" @click="showForm = false" x-transition.opacity></div>
+        <div class="relative w-full max-w-md bg-white shadow-xl overflow-y-auto" @click.stop x-transition:enter="transform transition ease-out duration-200" x-transition:enter-start="translate-x-full" x-transition:enter-end="translate-x-0">
+            <div class="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+                <h3 class="text-base font-semibold" x-text="editingId ? 'Edit Record' : 'New Record'"></h3>
+                <button @click="showForm = false" class="text-gray-400 hover:text-gray-600">&times;</button>
+            </div>
+            <form @submit.prevent="saveItem()" class="px-6 py-4 space-y-4">
+                {% for entity in entities %}
+                <template x-if="currentEntity === '{{ entity.name_snake }}'">
+                <div class="space-y-4">
+                    {% for field in entity.fields %}
+                    {% if not field.is_auto %}
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">{{ field.display_name }}{% if field.required %} <span class="text-red-500">*</span>{% endif %}</label>
+                        {% if field.type == 'boolean' %}
+                        <button type="button" @click="formData.{{ field.name }} = !formData.{{ field.name }}"
+                                :class="formData.{{ field.name }} ? 'bg-primary' : 'bg-gray-200'"
+                                class="relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full transition-colors">
+                            <span :class="formData.{{ field.name }} ? 'translate-x-5' : 'translate-x-0.5'"
+                                  class="pointer-events-none mt-0.5 inline-block h-5 w-5 rounded-full bg-white shadow transition-transform"></span>
+                        </button>
+                        {% elif field.type == 'text' %}
+                        <textarea x-model="formData.{{ field.name }}" rows="3" {% if field.required %}required{% endif %}
+                                  class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none resize-y"></textarea>
+                        {% elif field.type == 'integer' or field.type == 'number' or field.type == 'decimal' or field.type == 'float' %}
+                        <input type="number" x-model="formData.{{ field.name }}" {% if field.required %}required{% endif %} {% if field.type in ('number', 'decimal', 'float') %}step="any"{% endif %}
+                               class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none">
+                        {% elif field.name == entity.status_field and entity.states %}
+                        <select x-model="formData.{{ field.name }}" {% if field.required %}required{% endif %}
+                                class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none bg-white">
+                            {% for state in entity.states %}<option value="{{ state }}">{{ state | replace('_', ' ') | capitalize }}</option>{% endfor %}
+                        </select>
+                        {% elif field.enum_values %}
+                        <select x-model="formData.{{ field.name }}" {% if field.required %}required{% endif %}
+                                class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none bg-white">
+                            <option value="">Select...</option>
+                            {% for val in field.enum_values %}<option value="{{ val }}">{{ val | replace('_', ' ') | capitalize }}</option>{% endfor %}
+                        </select>
+                        {% elif field.type == 'date-time' %}
+                        <input type="datetime-local" x-model="formData.{{ field.name }}" {% if field.required %}required{% endif %}
+                               class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none">
+                        {% elif field.format == 'email' %}
+                        <input type="email" x-model="formData.{{ field.name }}" {% if field.required %}required{% endif %} placeholder="name@example.com"
+                               class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none">
+                        {% elif field.format == 'url' %}
+                        <input type="url" x-model="formData.{{ field.name }}" {% if field.required %}required{% endif %} placeholder="https://..."
+                               class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none">
+                        {% else %}
+                        <input type="text" x-model="formData.{{ field.name }}" {% if field.required %}required{% endif %}
+                               {% if field.max_length %}maxlength="{{ field.max_length }}"{% endif %}
+                               class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary outline-none">
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                    {% endfor %}
+                </div>
+                </template>
+                {% endfor %}
+                <div class="flex gap-2 pt-2 sticky bottom-0 bg-white pb-4">
+                    <button type="submit" :disabled="saving"
+                            class="flex-1 px-4 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-lg hover:opacity-90 disabled:opacity-50 transition">
+                        <span x-show="!saving" x-text="editingId ? 'Save Changes' : 'Create'"></span>
+                        <span x-show="saving">Saving...</span>
+                    </button>
+                    <button type="button" @click="showForm = false"
+                            class="px-4 py-2 text-sm font-medium border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {# ── Delete confirm ── #}
+    <div x-show="deleteId" x-cloak class="fixed inset-0 z-50 flex items-center justify-center" @keydown.escape.window="deleteId = null">
+        <div class="absolute inset-0 bg-black/20 backdrop-blur-sm" @click="deleteId = null"></div>
+        <div class="relative bg-white rounded-xl shadow-xl p-6 max-w-sm w-full mx-4" @click.stop>
+            <h3 class="text-base font-semibold text-gray-900">Delete record?</h3>
+            <p class="text-sm text-gray-500 mt-1">This action cannot be undone.</p>
+            <div class="flex gap-2 justify-end mt-5">
+                <button @click="deleteId = null" class="px-4 py-2 text-sm font-medium border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition">Cancel</button>
+                <button @click="executeDelete()" class="px-4 py-2 text-sm font-medium bg-destructive text-destructive-foreground rounded-lg hover:opacity-90 transition">Delete</button>
+            </div>
+        </div>
+    </div>
+
+    {# ── Toast ── #}
+    <div x-show="toast.show" x-cloak x-transition class="fixed bottom-4 right-4 z-[60] px-4 py-2 rounded-lg text-sm font-medium shadow-lg"
+         :class="toast.type === 'error' ? 'bg-red-600 text-white' : 'bg-emerald-600 text-white'"
+         x-text="toast.message"></div>
+</div>
+</template>
+
+<script>
+function app() {
+    // Detect base path for reverse proxy (e.g., /docker-preview/9211)
+    const _basePath = (() => {
+        const m = window.location.pathname.match(/^(\/docker-preview\/\d+)/);
+        return m ? m[1] : '';
+    })();
+    const _api = (path) => _basePath + path;
+
+    return {
+        // Auth
+        token: localStorage.getItem('archie_token') || '',
+        authEmail: '', authPassword: '', authError: '',
+        async doLogin() {
+            this.authError = '';
+            try {
+                const r = await fetch(_api('/auth/login'), { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({email: this.authEmail, password: this.authPassword}) });
+                if (!r.ok) { this.authError = 'Invalid credentials'; return; }
+                const d = await r.json(); this.token = d.access_token; localStorage.setItem('archie_token', this.token); this.init();
+            } catch(e) { this.authError = e.message; }
+        },
+        async doRegister() {
+            this.authError = '';
+            try {
+                const r = await fetch(_api('/auth/register'), { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({email: this.authEmail, password: this.authPassword, full_name: 'User'}) });
+                if (!r.ok) { const d = await r.json(); this.authError = d.detail || 'Failed'; return; }
+                const d = await r.json(); this.token = d.access_token; localStorage.setItem('archie_token', this.token); this.init();
+            } catch(e) { this.authError = e.message; }
+        },
+        doLogout() { this.token = ''; localStorage.removeItem('archie_token'); },
+        authH() { return this.token ? { 'Authorization': 'Bearer ' + this.token, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' }; },
+
+        // State
+        currentEntity: '__dashboard__',
+        healthStatus: '...',
+        items: [], counts: {}, loading: false,
+        searchQuery: '', statusFilter: '', sortField: '', sortDir: 'asc',
+        page: 1, pageSize: 50, hasMore: false,
+        showForm: false, editingId: null, formData: {}, saving: false,
+        deleteId: null,
+        toast: { show: false, message: '', type: 'success' },
+
+        // Entity metadata
+        entityMeta: {
+            {% for entity in entities %}
+            '{{ entity.name_snake }}': {
+                display: '{{ entity.name_display }}',
+                api: _api('{{ entity.api_path }}'),
+                {% if entity.status_field %}statusField: '{{ entity.status_field }}',{% endif %}
+                {% if entity.states %}states: {{ entity.states | tojson }},{% endif %}
+                {% if entity.states %}initialState: '{{ entity.states[0] }}',{% endif %}
+                {% if entity.transitions %}
+                transitions: {{ entity.transitions | tojson }},
+                {% endif %}
+            },
+            {% endfor %}
+        },
+
+        async init() {
+            if (!this.token) return;
+            // Health check
+            try { const h = await fetch(_api('/health')); if (h.ok) { const d = await h.json(); this.healthStatus = d.status || 'ok'; } else { this.healthStatus = 'error'; } } catch(e) { this.healthStatus = 'unreachable'; }
+            // Load counts for sidebar
+            {% for entity in entities %}
+            try { const r = await fetch(_api('{{ entity.api_path }}'), {headers: this.authH()}); if (r.ok) { const d = await r.json(); this.counts['{{ entity.name_snake }}'] = d.total ?? (Array.isArray(d) ? d.length : (d.items?.length ?? 0)); } } catch(e) {}
+            {% endfor %}
+        },
+
+        async loadItems(entity, resetPage = true) {
+            this.currentEntity = entity;
+            if (resetPage) this.page = 1;
+            this.loading = true; this.items = [];
+            const meta = this.entityMeta[entity];
+            if (!meta) { this.loading = false; return; }
+            try {
+                const url = `${meta.api}?page=${this.page}&per_page=${this.pageSize}`;
+                const r = await fetch(url, {headers: this.authH()});
+                if (r.status === 401) { this.doLogout(); return; }
+                if (r.ok) {
+                    const d = await r.json();
+                    this.items = Array.isArray(d) ? d : (d.items || []);
+                    this.hasMore = d.has_next ?? this.items.length >= this.pageSize;
+                }
+            } catch(e) { this.showToast('Failed to load data', 'error'); }
+            this.loading = false;
+        },
+
+        nextPage() { if (this.hasMore) { this.page++; this.loadItems(this.currentEntity, false); } },
+        prevPage() { if (this.page > 1) { this.page--; this.loadItems(this.currentEntity, false); } },
+
+        filteredItems() {
+            let result = [...this.items];
+            if (this.searchQuery) {
+                const q = this.searchQuery.toLowerCase();
+                result = result.filter(item => Object.values(item).some(v => v && String(v).toLowerCase().includes(q)));
+            }
+            if (this.statusFilter) {
+                const sf = this.entityMeta[this.currentEntity]?.statusField;
+                if (sf) result = result.filter(item => item[sf] === this.statusFilter);
+            }
+            if (this.sortField) {
+                result.sort((a, b) => {
+                    const va = a[this.sortField] ?? '', vb = b[this.sortField] ?? '';
+                    const cmp = String(va).localeCompare(String(vb), undefined, {numeric: true});
+                    return this.sortDir === 'asc' ? cmp : -cmp;
+                });
+            }
+            return result;
+        },
+
+        toggleSort(field) {
+            if (this.sortField === field) { this.sortDir = this.sortDir === 'asc' ? 'desc' : 'asc'; }
+            else { this.sortField = field; this.sortDir = 'asc'; }
+        },
+
+        statusColor(status) {
+            const s = (status || '').toLowerCase();
+            if (['active', 'verified', 'approved', 'completed', 'low_risk'].includes(s)) return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+            if (['pending', 'submitted', 'initiated', 'queued', 'analyzing', 'under_review', 'documents_uploaded'].includes(s)) return 'bg-amber-50 text-amber-700 border-amber-200';
+            if (['rejected', 'failed', 'high_risk', 'expired', 'suspended'].includes(s)) return 'bg-red-50 text-red-700 border-red-200';
+            if (['draft', 'archived', 'medium_risk'].includes(s)) return 'bg-gray-50 text-gray-600 border-gray-200';
+            return 'bg-blue-50 text-blue-700 border-blue-200';
+        },
+
+        availableTransitions(item) {
+            const meta = this.entityMeta[this.currentEntity];
+            if (!meta?.transitions || !meta?.statusField) return [];
+            const currentStatus = item[meta.statusField];
+            return meta.transitions.filter(t => {
+                const froms = Array.isArray(t.from) ? t.from : [t.from];
+                return froms.includes(currentStatus);
+            });
+        },
+
+        async executeTransition(entity, id, trigger) {
+            const meta = this.entityMeta[entity];
+            try {
+                const r = await fetch(`${meta.api}/${id}/${trigger}`, { method: 'POST', headers: this.authH() });
+                if (r.ok) { this.showToast(`${trigger.replace(/_/g, ' ')} successful`); await this.loadItems(entity); }
+                else { const d = await r.json(); this.showToast(d.detail || 'Transition failed', 'error'); }
+            } catch(e) { this.showToast('Failed', 'error'); }
+        },
+
+        openCreate() {
+            this.editingId = null;
+            this.formData = {};
+            // Pre-populate initial state for state machine entities
+            const meta = this.entityMeta[this.currentEntity];
+            if (meta?.statusField && meta?.initialState) {
+                this.formData[meta.statusField] = meta.initialState;
+            }
+            this.showForm = true;
+        },
+        openEdit(item) { this.editingId = item.id; this.formData = {...item}; this.showForm = true; },
+
+        async saveItem() {
+            this.saving = true;
+            const meta = this.entityMeta[this.currentEntity];
+            const url = this.editingId ? `${meta.api}/${this.editingId}` : meta.api;
+            const method = this.editingId ? 'PUT' : 'POST';
+            try {
+                const r = await fetch(url, { method, headers: this.authH(), body: JSON.stringify(this.formData) });
+                if (r.ok) { this.showToast(this.editingId ? 'Updated' : 'Created'); this.showForm = false; await this.loadItems(this.currentEntity); this.counts[this.currentEntity] = this.items.length; }
+                else { const d = await r.json(); const msg = Array.isArray(d.detail) ? d.detail.map(e => e.msg || e.message || JSON.stringify(e)).join('; ') : (d.detail || JSON.stringify(d)); this.showToast(msg, 'error'); }
+            } catch(e) { this.showToast('Save failed', 'error'); }
+            this.saving = false;
+        },
+
+        confirmDelete(id) { this.deleteId = id; },
+        async executeDelete() {
+            const meta = this.entityMeta[this.currentEntity];
+            try {
+                const r = await fetch(`${meta.api}/${this.deleteId}`, { method: 'DELETE', headers: this.authH() });
+                if (r.ok) { this.showToast('Deleted'); await this.loadItems(this.currentEntity); this.counts[this.currentEntity] = this.items.length; }
+                else { this.showToast('Delete failed', 'error'); }
+            } catch(e) { this.showToast('Delete failed', 'error'); }
+            this.deleteId = null;
+        },
+
+        showToast(msg, type = 'success') {
+            this.toast = { show: true, message: msg, type };
+            setTimeout(() => this.toast.show = false, 3000);
+        },
+    };
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,277 @@
+{% extends "layouts/admin_base.html" %}
+
+{% block title %}{{ framework_info.name }}{% endblock %}
+
+{% block content %}
+{# Safe color mapping for dynamic framework colors #}
+{% set color_map = {
+    'blue':   {'icon_bg': 'bg-primary/10',    'icon_text': 'text-primary',          'badge': 'bg-primary/10 text-primary',       'bar': 'bg-primary'},
+    'green':  {'icon_bg': 'bg-primary/10',    'icon_text': 'text-primary',          'badge': 'bg-primary/10 text-primary',       'bar': 'bg-primary'},
+    'purple': {'icon_bg': 'bg-secondary/50',  'icon_text': 'text-foreground',       'badge': 'bg-secondary/50 text-foreground',  'bar': 'bg-foreground/60'},
+    'orange': {'icon_bg': 'bg-muted',         'icon_text': 'text-muted-foreground', 'badge': 'bg-muted text-foreground',         'bar': 'bg-muted-foreground'},
+    'red':    {'icon_bg': 'bg-destructive/10','icon_text': 'text-destructive',      'badge': 'bg-destructive/10 text-destructive','bar': 'bg-destructive'},
+    'yellow': {'icon_bg': 'bg-warning/10', 'icon_text': 'text-warning',       'badge': 'bg-warning/10 text-warning', 'bar': 'bg-warning'},
+    'gray':   {'icon_bg': 'bg-muted',         'icon_text': 'text-muted-foreground', 'badge': 'bg-muted text-foreground',         'bar': 'bg-muted-foreground'}
+} %}
+{% set colors = color_map.get(framework_info.color, color_map['blue']) %}
+
+<div class="mx-auto px-4 py-6">
+    <!-- Header -->
+    <div class="mb-8">
+        <div class="flex items-center justify-between">
+            <div>
+                <nav class="flex items-center space-x-2 text-sm text-muted-foreground mb-2">
+                    <a href="{{ url_for('maturity_management.frameworks_overview') }}" class="hover:text-foreground transition-colors">Frameworks</a>
+                    <i data-lucide="chevron-right" class="w-4 h-4" aria-hidden="true"></i>
+                    <span class="text-foreground">{{ framework_info.name }}</span>
+                </nav>
+                <div class="flex items-center">
+                    <div class="flex-shrink-0 w-12 h-12 rounded-lg {{ colors.icon_bg }} flex items-center justify-center mr-4">
+                        <i data-lucide="{{ framework_info.icon }}" class="w-6 h-6 {{ colors.icon_text }}" aria-hidden="true"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-3xl font-bold text-foreground mb-1">{{ framework_info.name }}</h1>
+                        <p class="text-muted-foreground">{{ framework_info.description }}</p>
+                    </div>
+                </div>
+            </div>
+            <a href="{{ url_for('maturity_management.frameworks_overview') }}"
+               class="inline-flex items-center px-4 py-2 border border-input text-sm font-medium rounded-md text-foreground bg-background hover:bg-accent hover:text-accent-foreground transition-colors">
+                <i data-lucide="arrow-left" class="w-4 h-4 mr-2" aria-hidden="true"></i>
+                Back to Frameworks
+            </a>
+        </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <a href="{{ url_for('maturity_management.search_capabilities') }}"
+           class="bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg p-6 transition-colors">
+            <div class="flex items-center">
+                <i data-lucide="search" class="w-8 h-8 mr-3" aria-hidden="true"></i>
+                <div>
+                    <h3 class="text-lg font-semibold">Search Capabilities</h3>
+                    <p class="text-primary-foreground/80 text-sm">Find and edit {{ framework_info.name }} capabilities</p>
+                </div>
+            </div>
+        </a>
+
+        <a href="{{ url_for('maturity_management.batch_update_maturity') }}"
+           class="bg-primary/80 hover:bg-primary/70 text-primary-foreground rounded-lg p-6 transition-colors">
+            <div class="flex items-center">
+                <i data-lucide="refresh-cw" class="w-8 h-8 mr-3" aria-hidden="true"></i>
+                <div>
+                    <h3 class="text-lg font-semibold">Batch Update</h3>
+                    <p class="text-primary-foreground/80 text-sm">Update multiple {{ framework_info.name }} capabilities</p>
+                </div>
+            </div>
+        </a>
+
+        <a href="{{ url_for('maturity_management.frameworks_overview') }}"
+           class="bg-secondary hover:bg-secondary/80 text-secondary-foreground rounded-lg p-6 transition-colors">
+            <div class="flex items-center">
+                <i data-lucide="bar-chart-2" class="w-8 h-8 mr-3" aria-hidden="true"></i>
+                <div>
+                    <h3 class="text-lg font-semibold">Main Dashboard</h3>
+                    <p class="text-secondary-foreground/80 text-sm">View all capability analytics</p>
+                </div>
+            </div>
+        </a>
+    </div>
+
+    <!-- Statistics Cards -->
+    {% if stats %}
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        <div class="bg-card rounded-lg shadow border border-border p-6">
+            <div class="flex items-center">
+                <div class="flex-shrink-0 {{ colors.icon_bg }} rounded-lg p-3">
+                    <i data-lucide="clipboard-list" class="w-6 h-6 {{ colors.icon_text }}" aria-hidden="true"></i>
+                </div>
+                <div class="ml-4">
+                    <p class="text-sm font-medium text-muted-foreground">Total Capabilities</p>
+                    <p class="text-2xl font-semibold text-foreground">{{ stats.total_capabilities or 0 }}</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-card rounded-lg shadow border border-border p-6">
+            <div class="flex items-center">
+                <div class="flex-shrink-0 bg-primary/10 rounded-lg p-3">
+                    <i data-lucide="trending-up" class="w-6 h-6 text-primary" aria-hidden="true"></i>
+                </div>
+                <div class="ml-4">
+                    <p class="text-sm font-medium text-muted-foreground">Avg Current Maturity</p>
+                    <p class="text-2xl font-semibold text-foreground">{{ "%.1f"|format(stats.avg_current or 0) }}</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-card rounded-lg shadow border border-border p-6">
+            <div class="flex items-center">
+                <div class="flex-shrink-0 bg-warning/10 rounded-lg p-3">
+                    <i data-lucide="zap" class="w-6 h-6 text-warning" aria-hidden="true"></i>
+                </div>
+                <div class="ml-4">
+                    <p class="text-sm font-medium text-muted-foreground">Avg Target Maturity</p>
+                    <p class="text-2xl font-semibold text-foreground">{{ "%.1f"|format(stats.avg_target or 0) }}</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-card rounded-lg shadow border border-border p-6">
+            <div class="flex items-center">
+                <div class="flex-shrink-0 bg-destructive/10 rounded-lg p-3">
+                    <i data-lucide="alert-circle" class="w-6 h-6 text-destructive" aria-hidden="true"></i>
+                </div>
+                <div class="ml-4">
+                    <p class="text-sm font-medium text-muted-foreground">Capabilities with Gaps</p>
+                    <p class="text-2xl font-semibold text-foreground">{{ stats.with_gap or 0 }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Module Breakdown -->
+    {% if domain_stats %}
+    <div class="bg-card rounded-lg shadow border border-border mb-8">
+        <div class="px-6 py-4 border-b border-border">
+            <h2 class="text-lg font-semibold text-foreground">Module Breakdown</h2>
+            <p class="text-sm text-muted-foreground">Maturity levels by {{ framework_info.name }} module</p>
+        </div>
+        <div class="p-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                {% for domain_key, d_stats in domain_stats.items() %}
+                {% set domain_info = framework_info.domains[domain_key] %}
+                {% if d_stats and d_stats[0] > 0 %}
+                <a href="{{ url_for('maturity_management.domain_dashboard', framework_key=framework_info.key, domain_key=domain_key) }}"
+                   class="block">
+                    <div class="border border-border rounded-lg p-4 hover:shadow-md transition-shadow duration-200 hover:bg-accent/30">
+                        <div class="flex items-center justify-between mb-3">
+                            <h3 class="font-medium text-foreground">{{ domain_info.name }}</h3>
+                            <span class="text-xs text-muted-foreground">{{ d_stats[0] }} caps</span>
+                        </div>
+
+                        <div class="space-y-2">
+                            <div class="flex justify-between items-center">
+                                <span class="text-sm text-muted-foreground">Current</span>
+                                <span class="text-sm font-medium text-primary">{{ "%.1f"|format(d_stats[1] or 0) }}</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-sm text-muted-foreground">Target</span>
+                                <span class="text-sm font-medium text-foreground">{{ "%.1f"|format(d_stats[2] or 0) }}</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-sm text-muted-foreground">Gap</span>
+                                <span class="text-sm font-medium text-destructive">{{ "%.1f"|format(d_stats[3] or 0) }}</span>
+                            </div>
+                        </div>
+
+                        <div class="mt-3 pt-3 border-t border-border">
+                            <div class="w-full bg-muted rounded-full h-1.5">
+                                <div class="{{ colors.bar }} h-1.5 rounded-full transition-all duration-300"
+                                     style="width: {{ ((d_stats[1] or 0) / 5 * 100)|round }}%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </a>
+                {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Capabilities Needing Attention -->
+    {% if attention_needed %}
+    <div class="bg-card rounded-lg shadow border border-border">
+        <div class="px-6 py-4 border-b border-border">
+            <h2 class="text-lg font-semibold text-foreground">Capabilities Needing Attention</h2>
+            <p class="text-sm text-muted-foreground">{{ framework_info.name }} capabilities with significant maturity gaps</p>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-border">
+                <thead class="bg-muted/50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Capability</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Domain</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Category</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Current</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Target</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Gap</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Priority</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Action</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-card divide-y divide-border">
+                    {% for cap in attention_needed %}
+                    <tr class="hover:bg-accent/50">
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <div class="text-sm font-medium text-foreground">{{ cap.name }}</div>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <div class="text-sm text-muted-foreground">{{ cap.domain or 'Unknown' }}</div>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {{ colors.badge }}">
+                                {{ cap.category }}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary">
+                                {{ cap.current_maturity_level or 'Not Set' }}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-muted text-foreground">
+                                {{ cap.target_maturity_level or 'Not Set' }}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            {% if cap.maturity_gap and cap.maturity_gap > 0 %}
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+                                    {% if cap.maturity_gap > 2 %}bg-destructive/10 text-destructive
+                                    {% else %}bg-warning/10 text-warning{% endif %}">
+                                    {{ cap.maturity_gap }}
+                                </span>
+                            {% else %}
+                                <span class="text-muted-foreground">—</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+                                {% if cap.strategic_importance == 'critical' %}bg-destructive/10 text-destructive
+                                {% elif cap.strategic_importance == 'high' %}bg-warning/10 text-warning
+                                {% elif cap.strategic_importance == 'medium' %}bg-primary/10 text-primary
+                                {% else %}bg-muted text-foreground{% endif %}">
+                                {{ cap.strategic_importance or 'Not Set' }}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                            <a href="{{ url_for('maturity_management.edit_capability_maturity', capability_id=cap.id) }}"
+                               class="text-primary hover:text-primary/80 transition-colors">Edit</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="px-6 py-4 bg-muted/50 border-t border-border">
+            <a href="{{ url_for('maturity_management.search_capabilities') }}"
+               class="text-primary hover:text-primary/80 font-medium transition-colors">View All {{ framework_info.name }} Capabilities →</a>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="mt-4 p-4 rounded-lg {% if category == 'error' %}bg-destructive/10 border border-destructive/20 text-destructive{% else %}bg-primary/10 border border-primary/20 text-foreground{% endif %}">
+                    {{ message }}
+                </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+</div>
+{% endblock %}

@@ -1,0 +1,77 @@
+{# Page macros with shadcn Button components #}
+
+{% macro render_inline_editor(editable_html_obj, current_user) %}
+    <div id="editor-{{ editable_html_obj.editor_name }}" contenteditable="false" class="prose prose-sm max-w-none mb-6">
+        {{ editable_html_obj.value|sanitize_html }}
+    </div>
+
+    {% if current_user.is_admin() %}
+       <div class="flex gap-2" x-data="{ editing: false }">
+           <button 
+               @click="editing = true"
+               x-show="!editing" x-cloak
+               class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2 start-edit" aria-label="Edit">
+               <i data-lucide="edit-2" class="mr-2 h-4 w-4"></i>
+               Edit
+           </button>
+           <button 
+               @click="editing = false"
+               x-show="editing" x-cloak class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2 end-edit hidden" aria-label="Edit">
+               <i data-lucide="save" class="mr-2 h-4 w-4"></i>
+               Save
+           </button>
+       </div>
+    {% endif %}
+
+    <script>
+    const editorIDName = "editor-{{ editable_html_obj.editor_name }}";
+    document.addEventListener('DOMContentLoaded', function() {
+        {% if current_user.is_admin() %}
+            const startEditBtn = document.querySelector(".start-edit");
+            const endEditBtn = document.querySelector(".end-edit");
+            const editorElement = document.getElementById(editorIDName);
+            
+            startEditBtn.addEventListener('click', function() {
+                CKEDITOR.disableAutoInline = true;
+                const editor = CKEDITOR.inline(editorIDName, {
+                    startupFocus: true,
+                    autoGrow_onStartup: true
+                });
+                editorElement.setAttribute("contenteditable", "true");
+            });
+
+            endEditBtn.addEventListener('click', function() {
+                if (CKEDITOR.instances[editorIDName]) {
+                    const editorData = CKEDITOR.instances[editorIDName].getData();
+                    const csrfToken = "{{ csrf_token() }}";
+                    
+                    // Send POST request with vanilla JS
+                    fetch("{{ url_for('admin.update_editor_contents') }}", {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            csrf_token: csrfToken,
+                            editor_name: "{{ editable_html_obj.editor_name }}",
+                            edit_data: editorData
+                        })
+                    }).then(response => {
+                        if (response.ok) {
+                        }
+                    });
+                    
+                    CKEDITOR.instances[editorIDName].destroy();
+                }
+                editorElement.setAttribute("contenteditable", "false");
+            });
+            
+            // Initialize Lucide icons
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons();
+            }
+        {% endif %}
+    });
+    </script>
+
+{% endmacro %}

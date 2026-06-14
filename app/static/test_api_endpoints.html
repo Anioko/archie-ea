@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>API Endpoint Test</title>
+    <style>
+        body { font-family: monospace; padding: 20px; }
+        button { margin: 10px 0; padding: 10px; }
+        pre { background: #f4f4f4; padding: 10px; overflow-x: auto; }
+        .result { margin: 20px 0; border: 1px solid #ccc; padding: 10px; }
+    </style>
+</head>
+<body>
+    <h1>VEN-012 & VEN-013 API Endpoint Tests</h1>
+    
+    <button onclick="testUnifiedCapabilities()">Test 1: GET /dashboard/api/unified-capabilities?level=1</button>
+    <div id="test1" class="result"></div>
+
+    <button onclick="testRelatedCapabilities()">Test 2: POST /dashboard/api/related-capabilities (L1→L2)</button>
+    <div id="test2" class="result"></div>
+
+    <button onclick="testVendorsByCapabilities()">Test 3: POST /dashboard/api/vendors/by-capabilities</button>
+    <div id="test3" class="result"></div>
+
+    <script>
+        let l1CapabilityId = null;
+
+        async function testUnifiedCapabilities() {
+            const result = document.getElementById('test1');
+            result.innerHTML = '<p>Loading...</p>';
+            
+            try {
+                const response = await fetch('/dashboard/api/unified-capabilities?level=1');
+                const data = await response.json();
+                
+                if (data && data.length > 0) {
+                    l1CapabilityId = data[0].id;
+                    result.innerHTML = `
+                        <h3>✅ SUCCESS</h3>
+                        <p>Status: ${response.status}</p>
+                        <p>Count: ${data.length} L1 capabilities</p>
+                        <p>First 3 items:</p>
+                        <pre>${JSON.stringify(data.slice(0, 3), null, 2)}</pre>
+                        <p>Saved L1 ID for next test: ${l1CapabilityId}</p>
+                    `;
+                } else {
+                    result.innerHTML = `<h3>⚠️ EMPTY RESPONSE</h3><pre>${JSON.stringify(data, null, 2)}</pre>`;
+                }
+            } catch (error) {
+                result.innerHTML = `<h3>❌ ERROR</h3><pre>${error.message}</pre>`;
+            }
+        }
+
+        async function testRelatedCapabilities() {
+            const result = document.getElementById('test2');
+            
+            if (!l1CapabilityId) {
+                result.innerHTML = '<p>⚠️ Please run Test 1 first to get an L1 capability ID</p>';
+                return;
+            }
+            
+            result.innerHTML = '<p>Loading...</p>';
+            
+            try {
+                const response = await fetch('/dashboard/api/related-capabilities', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        capability_ids: [l1CapabilityId],
+                        target_level: 2
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    result.innerHTML = `
+                        <h3>✅ SUCCESS (VEN-012 Fix)</h3>
+                        <p>Status: ${response.status}</p>
+                        <p>L2 children count: ${data.length}</p>
+                        <p>Request: L1 ID ${l1CapabilityId} → L2 children</p>
+                        <p>First item:</p>
+                        <pre>${JSON.stringify(data[0], null, 2)}</pre>
+                    `;
+                } else {
+                    result.innerHTML = `<h3>❌ ERROR</h3><p>Status: ${response.status}</p><pre>${JSON.stringify(data, null, 2)}</pre>`;
+                }
+            } catch (error) {
+                result.innerHTML = `<h3>❌ ERROR</h3><pre>${error.message}</pre>`;
+            }
+        }
+
+        async function testVendorsByCapabilities() {
+            const result = document.getElementById('test3');
+            result.innerHTML = '<p>Loading...</p>';
+            
+            try {
+                const response = await fetch('/dashboard/api/vendors/by-capabilities', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        capability_ids: [1, 2, 3]
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    result.innerHTML = `
+                        <h3>✅ SUCCESS (VEN-013 Fix)</h3>
+                        <p>Status: ${response.status}</p>
+                        <p>Vendors count: ${data.length}</p>
+                        <p>Request: capability_ids [1, 2, 3]</p>
+                        <p>First vendor:</p>
+                        <pre>${JSON.stringify(data[0], null, 2)}</pre>
+                    `;
+                } else {
+                    result.innerHTML = `<h3>❌ ERROR</h3><p>Status: ${response.status}</p><pre>${JSON.stringify(data, null, 2)}</pre>`;
+                }
+            } catch (error) {
+                result.innerHTML = `<h3>❌ ERROR</h3><pre>${error.message}</pre>`;
+            }
+        }
+    </script>
+</body>
+</html>

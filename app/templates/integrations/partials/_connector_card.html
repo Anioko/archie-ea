@@ -1,0 +1,70 @@
+<!-- Connector Status Card -->
+<div class="bg-card border border-border rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer"
+     @click="viewDetails(connector.id)">
+  <!-- Header -->
+  <div class="flex items-center justify-between mb-3">
+    <div class="flex items-center gap-2">
+      <!-- Connector Icon -->
+      <div class="w-10 h-10 rounded-full flex items-center justify-center text-primary-foreground text-xs font-semibold"
+           :class="{
+             'bg-primary': connector.connector_type === 'datadog',
+             'bg-primary': connector.connector_type === 'jira',
+             'bg-destructive': connector.connector_type === 'servicenow',
+             'bg-info': connector.connector_type === 'salesforce'
+           }">
+        <span x-text="connector.connector_type.substring(0, 2).toUpperCase()"></span>
+      </div>
+
+      <!-- Name -->
+      <div>
+        <h3 class="text-sm font-medium text-card-foreground" x-text="connector.name"></h3>
+        <p class="text-xs text-muted-foreground" x-text="connector.connector_type"></p>
+      </div>
+    </div>
+
+    <!-- Status Badge -->
+    <span class="px-2 py-1 text-xs rounded-full font-medium"
+          :class="{
+            'bg-success/10 text-success': connector.status === 'active',
+            'bg-muted text-muted-foreground': connector.status === 'inactive',
+            'bg-destructive/10 text-destructive': connector.status === 'error'
+          }"
+          x-text="connector.status"></span>
+  </div>
+
+  <!-- Sync Mode -->
+  <div class="mb-3">
+    <div class="text-xs text-muted-foreground">Sync Mode</div>
+    <div class="text-sm text-card-foreground font-medium mt-1" x-text="connector.sync_mode"></div>
+  </div>
+
+  <!-- Last Sync -->
+  <div class="mb-3">
+    <div class="text-xs text-muted-foreground">Last Sync</div>
+    <div class="text-sm text-card-foreground mt-1">
+      <span x-show="connector.last_sync" x-cloak x-text="formatDate(connector.last_sync)"></span>
+      <span x-show="!connector.last_sync" x-cloak class="text-muted-foreground">Never</span>
+    </div>
+    <div x-show="connector.last_sync_status" x-cloak class="mt-1">
+      <span class="text-xs px-2 py-0.5 rounded-full"
+            :class="{
+              'bg-success/10 text-success': connector.last_sync_status === 'success',
+              'bg-destructive/10 text-destructive': connector.last_sync_status === 'error',
+              'bg-warning/10 text-warning': connector.last_sync_status === 'partial'
+            }"
+            x-text="connector.last_sync_status"></span>
+    </div>
+  </div>
+
+  <!-- Actions -->
+  <div class="flex gap-2 pt-3 border-t border-border">
+    <button @click.stop="testConnection(connector.id)"
+            class="flex-1 px-3 py-1.5 bg-muted hover:bg-muted/80 text-muted-foreground rounded text-xs font-medium transition-colors" aria-label="Action">
+      Test
+    </button>
+    <button @click.stop="triggerSync(connector.id)"
+            class="flex-1 px-3 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded text-xs font-medium transition-colors" aria-label="Action">
+      Sync
+    </button>
+  </div>
+</div>

@@ -1,0 +1,577 @@
+{% extends 'layouts/admin_base.html' %}
+
+{% block title %}Rationalization Assessment{% endblock %}
+
+{% block head %}{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+  <!-- Header -->
+  <div class="mb-8">
+    <nav class="flex items-center gap-2 text-sm text-muted-foreground mb-4">
+      <a href="{{ url_for('main.index') }}" class="hover:text-foreground">Dashboard</a>
+      <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
+      <a href="{{ url_for('dashboard_pages.rationalization_dashboard') }}" class="hover:text-foreground">TIME Framework</a>
+      <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
+      <span class="text-foreground font-medium">Assessment Questionnaire</span>
+    </nav>
+    <h1 class="text-3xl font-bold">Application Rationalization Assessment</h1>
+    <p class="text-muted-foreground mt-2">Complete this questionnaire to enrich application data for TIME framework scoring</p>
+  </div>
+
+  <!-- Progress -->
+  <div class="bg-card border rounded-lg p-6 mb-6">
+    <div class="flex justify-between items-center mb-2">
+      <span class="text-sm font-medium">Progress</span>
+      <span class="text-sm text-muted-foreground" id="progress-text">Step 1 of 6</span>
+    </div>
+    <div class="w-full bg-muted rounded-full h-2">
+      <div id="progress-bar" class="progress-bar bg-primary h-2 rounded-full transition-[width] duration-300 ease-in-out" style="width: 16%"></div>  <!-- inline-style-ok -->
+    </div>
+  </div>
+
+  <!-- Data Readiness Card — shows evidence completeness for the selected application -->
+  <div id="readiness-card" class="bg-card border rounded-lg p-6 mb-6 hidden" aria-live="polite">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-base font-semibold flex items-center gap-2">
+        <i data-lucide="clipboard-check" class="h-5 w-5 text-primary" aria-hidden="true"></i>
+        Data Readiness
+      </h2>
+      <span id="readiness-badge" class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium"></span>
+    </div>
+
+    <!-- Not-ready warning banner -->
+    <div id="readiness-warning" class="hidden mb-4 flex items-start gap-3 rounded-lg border border-warning/30 bg-warning/5 px-4 py-3">
+      <i data-lucide="alert-triangle" class="h-4 w-4 text-warning mt-0.5 shrink-0" aria-hidden="true"></i>
+      <p class="text-sm text-warning">
+        <strong>Incomplete evidence</strong> — this application is missing required data. Rationalization
+        recommendations will have <strong>reduced confidence</strong> until all critical dimensions are populated.
+      </p>
+    </div>
+
+    <!-- Dimension indicators -->
+    <div id="readiness-dimensions" class="grid grid-cols-2 gap-3 sm:grid-cols-4 mb-5">
+      <!-- Populated by JS -->
+    </div>
+
+    <!-- Overall readiness bar -->
+    <div>
+      <div class="flex justify-between items-center mb-1">
+        <span class="text-xs font-medium text-muted-foreground">Overall Data Completeness</span>
+        <span id="readiness-pct" class="text-xs font-semibold text-foreground">0%</span>
+      </div>
+      <div class="w-full bg-muted rounded-full h-2">
+        <div id="readiness-bar" class="h-2 rounded-full transition-[width] duration-500 ease-in-out bg-primary w-0"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Application Selector -->
+  <div id="app-selector" class="bg-card border rounded-lg p-6 mb-6">
+    <label class="block text-sm font-medium mb-2">Select Application to Assess</label>
+    <select id="application-select" class="w-full rounded-md border px-3 py-2">
+      <option value="">Choose an application...</option>
+      {% for app in applications %}
+      <option value="{{ app.id }}">{{ app.name }} ({{ app.application_type or 'Unknown' }})</option>
+      {% endfor %}
+    </select>
+    <div id="app-details" class="mt-4 hidden">
+      <div class="grid grid-cols-3 gap-4 text-sm">
+        <div><span class="text-muted-foreground">Current Score:</span> <span id="current-score" class="font-medium">-</span></div>
+        <div><span class="text-muted-foreground">TIME Action:</span> <span id="current-action" class="font-medium">-</span></div>
+        <div><span class="text-muted-foreground">Last Assessed:</span> <span id="last-assessed" class="font-medium">-</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Questionnaire Steps -->
+  <form id="assessment-form" class="space-y-6">
+    <!-- Step 1: Technical Health -->
+    <div class="questionnaire-step" data-step="1">
+      <div class="bg-card border rounded-lg p-6">
+        <h2 class="text-xl font-semibold mb-4 flex items-center gap-2">
+          <i data-lucide="cpu" class="h-5 w-5 text-primary" aria-hidden="true"></i>
+          Technical Health Assessment
+        </h2>
+        <div class="space-y-6">
+          <div class="question-card border rounded-lg p-4 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
+            <label class="block font-medium mb-3">What is the current architecture pattern?</label>
+            <div class="grid grid-cols-2 gap-3">
+              <label class="flex items-center gap-3 p-3 border rounded-md cursor-pointer hover:bg-accent">
+                <input type="radio" name="architecture_pattern" value="modern_microservices" class="w-4 h-4" aria-label="Architecture Pattern">
+                <div><div class="font-medium">Modern/Microservices</div><div class="text-xs text-muted-foreground">Cloud-native, scalable</div></div>
+              </label>
+              <label class="flex items-center gap-3 p-3 border rounded-md cursor-pointer hover:bg-accent">
+                <input type="radio" name="architecture_pattern" value="soa" class="w-4 h-4" aria-label="Architecture Pattern">
+                <div><div class="font-medium">Service-Oriented (SOA)</div><div class="text-xs text-muted-foreground">Modular but aging</div></div>
+              </label>
+              <label class="flex items-center gap-3 p-3 border rounded-md cursor-pointer hover:bg-accent">
+                <input type="radio" name="architecture_pattern" value="monolithic" class="w-4 h-4" aria-label="Architecture Pattern">
+                <div><div class="font-medium">Monolithic</div><div class="text-xs text-muted-foreground">Single codebase, harder to scale</div></div>
+              </label>
+              <label class="flex items-center gap-3 p-3 border rounded-md cursor-pointer hover:bg-accent">
+                <input type="radio" name="architecture_pattern" value="legacy" class="w-4 h-4" aria-label="Architecture Pattern">
+                <div><div class="font-medium">Legacy/Mainframe</div><div class="text-xs text-muted-foreground">Outdated technology stack</div></div>
+              </label>
+            </div>
+          </div>
+
+          <div class="question-card border rounded-lg p-4 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
+            <label class="block font-medium mb-3">How would you rate the technical debt level?</label>
+            <div class="flex gap-2">
+              <label class="flex-1 text-center p-3 border rounded-md cursor-pointer hover:bg-accent">
+                <input type="radio" name="technical_debt" value="low" class="hidden peer" aria-label="Technical Debt">
+                <div class="peer-checked:text-primary font-medium">Low</div>
+                <div class="text-xs text-muted-foreground">Clean codebase</div>
+              </label>
+              <label class="flex-1 text-center p-3 border rounded-md cursor-pointer hover:bg-accent">
+                <input type="radio" name="technical_debt" value="medium" class="hidden peer" aria-label="Technical Debt">
+                <div class="peer-checked:text-primary font-medium">Medium</div>
+                <div class="text-xs text-muted-foreground">Some refactoring needed</div>
+              </label>
+              <label class="flex-1 text-center p-3 border rounded-md cursor-pointer hover:bg-accent">
+                <input type="radio" name="technical_debt" value="high" class="hidden peer" aria-label="Technical Debt">
+                <div class="peer-checked:text-primary font-medium">High</div>
+                <div class="text-xs text-muted-foreground">Significant issues</div>
+              </label>
+              <label class="flex-1 text-center p-3 border rounded-md cursor-pointer hover:bg-accent">
+                <input type="radio" name="technical_debt" value="critical" class="hidden peer" aria-label="Technical Debt">
+                <div class="peer-checked:text-primary font-medium">Critical</div>
+                <div class="text-xs text-muted-foreground">Blocking issues</div>
+              </label>
+            </div>
+          </div>
+
+          <div class="question-card border rounded-lg p-4 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
+            <label class="block font-medium mb-3">What is the deployment frequency?</label>
+            <select name="deployment_frequency" class="w-full rounded-md border px-3 py-2">
+              <option value="">Select...</option>
+              <option value="multiple_daily">Multiple times per day (CI/CD)</option>
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+              <option value="monthly">Monthly</option>
+              <option value="quarterly">Quarterly or less</option>
+              <option value="manual">Manual deployments only</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 2: Business Value -->
+    <div class="questionnaire-step hidden" data-step="2">
+      <div class="bg-card border rounded-lg p-6">
+        <h2 class="text-xl font-semibold mb-4 flex items-center gap-2">
+          <i data-lucide="briefcase" class="h-5 w-5 text-success" aria-hidden="true"></i>
+          Business Value Assessment
+        </h2>
+        <div class="space-y-6">
+          <div class="question-card border rounded-lg p-4 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
+            <label class="block font-medium mb-3">Strategic Importance</label>
+            <div class="flex gap-2">
+              <label class="flex-1 text-center p-3 border rounded-md cursor-pointer hover:bg-accent">
+                <input type="radio" name="strategic_importance" value="critical" class="hidden peer" aria-label="Strategic Importance">
+                <div class="peer-checked:text-primary font-medium">Critical</div>
+                <div class="text-xs text-muted-foreground">Mission-critical</div>
+              </label>
+              <label class="flex-1 text-center p-3 border rounded-md cursor-pointer hover:bg-accent">
+                <input type="radio" name="strategic_importance" value="high" class="hidden peer" aria-label="Strategic Importance">
+                <div class="peer-checked:text-primary font-medium">High</div>
+                <div class="text-xs text-muted-foreground">Strategic priority</div>
+              </label>
+              <label class="flex-1 text-center p-3 border rounded-md cursor-pointer hover:bg-accent">
+                <input type="radio" name="strategic_importance" value="medium" class="hidden peer" aria-label="Strategic Importance">
+                <div class="peer-checked:text-primary font-medium">Medium</div>
+                <div class="text-xs text-muted-foreground">Supporting role</div>
+              </label>
+              <label class="flex-1 text-center p-3 border rounded-md cursor-pointer hover:bg-accent">
+                <input type="radio" name="strategic_importance" value="low" class="hidden peer" aria-label="Strategic Importance">
+                <div class="peer-checked:text-primary font-medium">Low</div>
+                <div class="text-xs text-muted-foreground">Non-essential</div>
+              </label>
+            </div>
+          </div>
+
+          <div class="question-card border rounded-lg p-4 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
+            <label class="block font-medium mb-3">User Satisfaction (1-10)</label>
+            <input type="range" name="user_satisfaction" min="1" max="10" value="5" class="w-full mb-2" aria-label="User Satisfaction">
+            <div class="flex justify-between text-xs text-muted-foreground">
+              <span>Very Dissatisfied (1)</span>
+              <span id="satisfaction-value" class="font-medium text-foreground">5</span>
+              <span>Very Satisfied (10)</span>
+            </div>
+          </div>
+
+          <div class="question-card border rounded-lg p-4 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
+            <label class="block font-medium mb-3">Business Process Coverage</label>
+            <div class="flex gap-2">
+              <label class="flex-1 text-center p-3 border rounded-md cursor-pointer hover:bg-accent">
+                <input type="radio" name="process_coverage" value="comprehensive" class="hidden peer" aria-label="Process Coverage">
+                <div class="peer-checked:text-primary font-medium">Comprehensive</div>
+                <div class="text-xs text-muted-foreground">End-to-end</div>
+              </label>
+              <label class="flex-1 text-center p-3 border rounded-md cursor-pointer hover:bg-accent">
+                <input type="radio" name="process_coverage" value="partial" class="hidden peer" aria-label="Process Coverage">
+                <div class="peer-checked:text-primary font-medium">Partial</div>
+                <div class="text-xs text-muted-foreground">Key processes</div>
+              </label>
+              <label class="flex-1 text-center p-3 border rounded-md cursor-pointer hover:bg-accent">
+                <input type="radio" name="process_coverage" value="limited" class="hidden peer" aria-label="Process Coverage">
+                <div class="peer-checked:text-primary font-medium">Limited</div>
+                <div class="text-xs text-muted-foreground">Single process</div>
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 3: Cost Efficiency -->
+    <div class="questionnaire-step hidden" data-step="3">
+      <div class="bg-card border rounded-lg p-6">
+        <h2 class="text-xl font-semibold mb-4 flex items-center gap-2">
+          <i data-lucide="dollar-sign" class="h-5 w-5 text-warning" aria-hidden="true"></i>
+          Cost Efficiency Assessment
+        </h2>
+        <div class="space-y-6">
+          <div class="question-card border rounded-lg p-4 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
+            <label class="block font-medium mb-3">Annual Operating Cost Tier</label>
+            <div class="grid grid-cols-2 gap-3">
+              <label class="flex items-center gap-3 p-3 border rounded-md cursor-pointer hover:bg-accent">
+                <input type="radio" name="cost_tier" value="very_low" class="w-4 h-4" aria-label="Cost Tier">
+                <div><div class="font-medium">Very Low</div><div class="text-xs text-muted-foreground">&lt; $50K/year</div></div>
+              </label>
+              <label class="flex items-center gap-3 p-3 border rounded-md cursor-pointer hover:bg-accent">
+                <input type="radio" name="cost_tier" value="low" class="w-4 h-4" aria-label="Cost Tier">
+                <div><div class="font-medium">Low</div><div class="text-xs text-muted-foreground">$50K - $250K/year</div></div>
+              </label>
+              <label class="flex items-center gap-3 p-3 border rounded-md cursor-pointer hover:bg-accent">
+                <input type="radio" name="cost_tier" value="medium" class="w-4 h-4" aria-label="Cost Tier">
+                <div><div class="font-medium">Medium</div><div class="text-xs text-muted-foreground">$250K - $1M/year</div></div>
+              </label>
+              <label class="flex items-center gap-3 p-3 border rounded-md cursor-pointer hover:bg-accent">
+                <input type="radio" name="cost_tier" value="high" class="w-4 h-4" aria-label="Cost Tier">
+                <div><div class="font-medium">High</div><div class="text-xs text-muted-foreground">$1M - $5M/year</div></div>
+              </label>
+            </div>
+          </div>
+
+          <div class="question-card border rounded-lg p-4 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
+            <label class="block font-medium mb-3">License Optimization Opportunity</label>
+            <select name="license_optimization" class="w-full rounded-md border px-3 py-2">
+              <option value="">Select...</option>
+              <option value="high">High - Significant unused licenses</option>
+              <option value="medium">Medium - Some optimization possible</option>
+              <option value="low">Low - Well optimized</option>
+              <option value="none">None - No licenses required</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 4: Vendor Risk -->
+    <div class="questionnaire-step hidden" data-step="4">
+      <div class="bg-card border rounded-lg p-6">
+        <h2 class="text-xl font-semibold mb-4 flex items-center gap-2">
+          <i data-lucide="shield" class="h-5 w-5 text-destructive" aria-hidden="true"></i>
+          Vendor Risk Assessment
+        </h2>
+        <div class="space-y-6">
+          <div class="question-card border rounded-lg p-4 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
+            <label class="block font-medium mb-3">Vendor Financial Health</label>
+            <div class="flex gap-2">
+              <label class="flex-1 text-center p-3 border rounded-md cursor-pointer hover:bg-accent">
+                <input type="radio" name="vendor_health" value="strong" class="hidden peer" aria-label="Vendor Health">
+                <div class="peer-checked:text-primary font-medium">Strong</div>
+                <div class="text-xs text-muted-foreground">Stable, growing</div>
+              </label>
+              <label class="flex-1 text-center p-3 border rounded-md cursor-pointer hover:bg-accent">
+                <input type="radio" name="vendor_health" value="stable" class="hidden peer" aria-label="Vendor Health">
+                <div class="peer-checked:text-primary font-medium">Stable</div>
+                <div class="text-xs text-muted-foreground">No concerns</div>
+              </label>
+              <label class="flex-1 text-center p-3 border rounded-md cursor-pointer hover:bg-accent">
+                <input type="radio" name="vendor_health" value="at_risk" class="hidden peer" aria-label="Vendor Health">
+                <div class="peer-checked:text-primary font-medium">At Risk</div>
+                <div class="text-xs text-muted-foreground">Some concerns</div>
+              </label>
+              <label class="flex-1 text-center p-3 border rounded-md cursor-pointer hover:bg-accent">
+                <input type="radio" name="vendor_health" value="critical" class="hidden peer" aria-label="Vendor Health">
+                <div class="peer-checked:text-primary font-medium">Critical</div>
+                <div class="text-xs text-muted-foreground">High risk</div>
+              </label>
+            </div>
+          </div>
+
+          <div class="question-card border rounded-lg p-4 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
+            <label class="block font-medium mb-3">Contract Status</label>
+            <select name="contract_status" class="w-full rounded-md border px-3 py-2">
+              <option value="">Select...</option>
+              <option value="long_term">Long-term contract (3+ years)</option>
+              <option value="medium_term">Medium-term (1-3 years)</option>
+              <option value="short_term">Short-term (&lt; 1 year)</option>
+              <option value="expiring">Expiring soon</option>
+              <option value="no_contract">No contract / Open source</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 5: Dependencies & Duplication -->
+    <div class="questionnaire-step hidden" data-step="5">
+      <div class="bg-card border rounded-lg p-6">
+        <h2 class="text-xl font-semibold mb-4 flex items-center gap-2">
+          <i data-lucide="git-branch" class="h-5 w-5 text-primary" aria-hidden="true"></i>
+          Dependencies & Duplication
+        </h2>
+        <div class="space-y-6">
+          <div class="question-card border rounded-lg p-4 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
+            <label class="block font-medium mb-3">Are there duplicate/similar applications?</label>
+            <div class="flex gap-4">
+              <label class="flex items-center gap-2">
+                <input type="radio" name="has_duplicates" value="yes" class="w-4 h-4" aria-label="Has Duplicates">
+                <span>Yes</span>
+              </label>
+              <label class="flex items-center gap-2">
+                <input type="radio" name="has_duplicates" value="no" class="w-4 h-4" aria-label="Has Duplicates">
+                <span>No</span>
+              </label>
+              <label class="flex items-center gap-2">
+                <input type="radio" name="has_duplicates" value="unknown" class="w-4 h-4" aria-label="Has Duplicates">
+                <span>Unknown</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="question-card border rounded-lg p-4 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
+            <label class="block font-medium mb-3">Integration Complexity</label>
+            <select name="integration_complexity" class="w-full rounded-md border px-3 py-2">
+              <option value="">Select...</option>
+              <option value="high">High - Many critical integrations</option>
+              <option value="medium">Medium - Some integrations</option>
+              <option value="low">Low - Few integrations</option>
+              <option value="none">None - Standalone</option>
+            </select>
+          </div>
+
+          <div class="question-card border rounded-lg p-4 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
+            <label class="block font-medium mb-3">Data Migration Complexity</label>
+            <select name="data_migration_complexity" class="w-full rounded-md border px-3 py-2">
+              <option value="">Select...</option>
+              <option value="simple">Simple - Standard data formats</option>
+              <option value="moderate">Moderate - Some transformation needed</option>
+              <option value="complex">Complex - Heavy transformation</option>
+              <option value="very_complex">Very Complex - Legacy data formats</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 6: Review & Submit -->
+    <div class="questionnaire-step hidden" data-step="6">
+      <div class="bg-card border rounded-lg p-6">
+        <h2 class="text-xl font-semibold mb-4 flex items-center gap-2">
+          <i data-lucide="check-circle" class="h-5 w-5 text-success" aria-hidden="true"></i>
+          Review & Submit
+        </h2>
+        <div id="review-summary" class="space-y-4">
+          <p class="text-muted-foreground">Review your answers before submitting.</p>
+        </div>
+        <div class="mt-6 p-4 bg-warning/5 border border-warning/20 rounded-lg">
+          <p class="text-sm text-warning">
+            <i data-lucide="alert-triangle" class="h-4 w-4 inline mr-1" aria-hidden="true"></i>
+            This assessment will update the application's rationalization score using the TIME framework.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Navigation -->
+    <div class="flex justify-between pt-4">
+      <button type="button" id="prev-btn" class="px-4 py-2 border rounded-md hover:bg-accent hidden" aria-label="Go to previous step">
+        <i data-lucide="arrow-left" class="h-4 w-4 inline mr-1" aria-hidden="true"></i> Previous
+      </button>
+      <button type="button" id="next-btn" class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 ml-auto" aria-label="Go to next step">
+        Next <i data-lucide="arrow-right" class="h-4 w-4 inline ml-1" aria-hidden="true"></i>
+      </button>
+      <button type="submit" id="submit-btn" class="px-4 py-2 bg-success text-primary-foreground rounded-md hover:bg-success ml-auto hidden" aria-label="Submit assessment">
+        <i data-lucide="save" class="h-4 w-4 inline mr-1" aria-hidden="true"></i> Submit Assessment
+      </button>
+    </div>
+  </form>
+</div>
+
+<script>
+let currentStep = 1;
+const totalSteps = 6;
+
+function updateProgress() {
+  document.getElementById('progress-bar').style.width = `${(currentStep / totalSteps) * 100}%`;
+  document.getElementById('progress-text').textContent = `Step ${currentStep} of ${totalSteps}`;
+
+  document.querySelectorAll('.questionnaire-step').forEach((step, idx) => {
+    step.classList.toggle('hidden', idx + 1 !== currentStep);
+  });
+
+  document.getElementById('prev-btn').classList.toggle('hidden', currentStep === 1);
+  document.getElementById('next-btn').classList.toggle('hidden', currentStep === totalSteps);
+  document.getElementById('submit-btn').classList.toggle('hidden', currentStep !== totalSteps);
+}
+
+function validateStep(step) {
+  const currentStepEl = document.querySelector(`.questionnaire-step[data-step="${step}"]`);
+  const requiredInputs = currentStepEl.querySelectorAll('input[required], select[required]');
+  for (const input of requiredInputs) {
+    if (!input.value) {
+      input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      input.classList.add('border-destructive');
+      return false;
+    }
+  }
+  return true;
+}
+
+document.getElementById('next-btn').addEventListener('click', () => {
+  if (currentStep < totalSteps) {
+    currentStep++;
+    updateProgress();
+  }
+});
+
+document.getElementById('prev-btn').addEventListener('click', () => {
+  if (currentStep > 1) {
+    currentStep--;
+    updateProgress();
+  }
+});
+
+// Dimension display metadata — order and labels match READINESS_DIMENSIONS in the model.
+const READINESS_DIM_META = {
+  owner:        { label: 'Owner',        severity: 'high' },
+  lifecycle:    { label: 'Lifecycle',    severity: 'high' },
+  cost:         { label: 'Cost Data',    severity: 'high' },
+  risk:         { label: 'Risk',         severity: 'high' },
+  usage:        { label: 'Usage',        severity: 'medium' },
+  dependencies: { label: 'Dependencies', severity: 'medium' },
+  capability:   { label: 'Capability',   severity: 'medium' },
+  vendor:       { label: 'Vendor',       severity: 'medium' },
+};
+
+function renderReadinessCard(readiness) {
+  const card = document.getElementById('readiness-card');
+  const warning = document.getElementById('readiness-warning');
+  const dimContainer = document.getElementById('readiness-dimensions');
+  const bar = document.getElementById('readiness-bar');
+  const pct = document.getElementById('readiness-pct');
+  const badge = document.getElementById('readiness-badge');
+
+  if (!readiness) {
+    card.classList.add('hidden');
+    return;
+  }
+
+  // Populate dimension indicators
+  dimContainer.innerHTML = '';
+  Object.entries(READINESS_DIM_META).forEach(([key, meta]) => {
+    const satisfied = readiness.dimensions && readiness.dimensions[key];
+    const isHigh = meta.severity === 'high';
+    const iconName = satisfied ? 'check-circle-2' : (isHigh ? 'x-circle' : 'circle-dashed');
+    const colorClass = satisfied
+      ? 'text-success border-success/30 bg-success/5'
+      : (isHigh ? 'text-destructive border-destructive/30 bg-destructive/5' : 'text-muted-foreground border-border bg-muted/30');
+    const iconColor = satisfied ? 'text-success' : (isHigh ? 'text-destructive' : 'text-muted-foreground');
+
+    const el = document.createElement('div');
+    el.className = `flex items-center gap-2 rounded-md border px-3 py-2 text-xs font-medium ${colorClass}`;
+    el.innerHTML = `<i data-lucide="${iconName}" class="h-3.5 w-3.5 shrink-0 ${iconColor}" aria-hidden="true"></i><span>${meta.label}${isHigh ? ' *' : ''}</span>`;
+    dimContainer.appendChild(el);
+  });
+
+  // Progress bar
+  const pctVal = Math.round((readiness.readiness_score || 0) * 100);
+  bar.style.width = `${pctVal}%`;
+  bar.className = `h-2 rounded-full transition-[width] duration-500 ease-in-out ${pctVal >= 75 ? 'bg-success' : pctVal >= 50 ? 'bg-warning' : 'bg-destructive'}`;
+  pct.textContent = `${pctVal}%`;
+
+  // Badge
+  const isReady = readiness.is_decision_ready;
+  badge.textContent = isReady ? 'Decision Ready' : 'Incomplete Evidence';
+  badge.className = `inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium border ${
+    isReady
+      ? 'bg-success/10 text-success border-success/30'
+      : 'bg-warning/10 text-warning border-warning/30'
+  }`;
+
+  // Warning banner
+  warning.classList.toggle('hidden', isReady);
+
+  // Re-init Lucide for dynamically inserted icons
+  lucide.createIcons({ attrs: { 'stroke-width': 1.75 } });
+
+  card.classList.remove('hidden');
+}
+
+document.getElementById('application-select').addEventListener('change', async (e) => {
+  const appId = e.target.value;
+  if (!appId) {
+    document.getElementById('app-details').classList.add('hidden');
+    document.getElementById('readiness-card').classList.add('hidden');
+    return;
+  }
+  try {
+    const res = await fetch(`/dashboard/api/rationalization/calculate/${appId}`, { method: 'POST', headers: {'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''} });
+    const data = await res.json();
+    if (data.success) {
+      document.getElementById('current-score').textContent = data.data.overall_score || 'N/A';
+      document.getElementById('current-action').textContent = data.data.time_action || 'N/A';
+      document.getElementById('last-assessed').textContent = new Date().toLocaleDateString();
+      document.getElementById('app-details').classList.remove('hidden');
+      // Render readiness card if the API returns readiness data
+      renderReadinessCard(data.data.readiness || null);
+    }
+  } catch (err) {
+    console.error('Failed to load app data:', err);
+  }
+});
+
+document.querySelector('input[name="user_satisfaction"]').addEventListener('input', (e) => {
+  document.getElementById('satisfaction-value').textContent = e.target.value;
+});
+
+document.getElementById('assessment-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const appId = document.getElementById('application-select').value;
+  if (!appId) {
+    Platform.toast.error('Please select an application');
+    return;
+  }
+
+  const formData = new FormData(e.target);
+  const data = Object.fromEntries(formData);
+  data.application_id = appId;
+
+  try {
+    const res = await fetch('/dashboard/api/rationalization/assessment', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    const result = await res.json();
+    if (result.success) {
+      Platform.toast.info('Assessment submitted successfully!');
+      window.location.href = '{{ url_for("dashboard_pages.rationalization_dashboard") }}';
+    } else {
+      Platform.toast.error('Error: ' + result.error);
+    }
+  } catch (err) {
+    Platform.toast.error('Failed to submit assessment');
+  }
+});
+
+// Initialize Lucide icons
+lucide.createIcons();
+</script>
+{% endblock %}

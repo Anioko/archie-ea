@@ -1,0 +1,1119 @@
+{% extends "layouts/admin_base.html" %}
+
+{% block title %}Entity Matching Chat Interface - AI Chat{% endblock %}
+
+{% block extra_css %}
+<style>
+/* Chat interface styles for entity matching */
+.entity-chat-container {
+  display: flex;
+  height: calc(100vh - 200px);
+  gap: 1rem;
+}
+
+.chat-main-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.chat-header {
+  background: var(--muted);
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.chat-messages {
+  flex: 1;
+  padding: 1.5rem;
+  overflow-y: auto;
+  max-height: 500px;
+}
+
+.chat-input-area {
+  padding: 1rem 1.5rem;
+  border-top: 1px solid var(--border);
+  background: var(--background);
+}
+
+.entity-sidebar {
+  width: 350px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-header {
+  background: var(--muted);
+  padding: 1rem;
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+}
+
+.sidebar-content {
+  flex: 1;
+  padding: 1rem;
+  overflow-y: auto;
+}
+
+.message {
+  margin-bottom: 1rem;
+  display: flex;
+  gap: 0.75rem;
+}
+
+.message.user {
+  flex-direction: row-reverse;
+}
+
+.message-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.875rem;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.message.user .message-avatar {
+  background: var(--primary);
+  color: white;
+}
+
+.message.assistant .message-avatar {
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+}
+
+.message-content {
+  max-width: 70%;
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.75rem 1rem;
+}
+
+.message.user .message-content {
+  background: var(--primary);
+  color: white;
+  border-color: var(--primary);
+}
+
+.entity-card {
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem;
+  margin-bottom: 0.75rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.entity-card:hover {
+  border-color: var(--primary);
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.1);
+}
+
+.entity-card.selected {
+  border-color: var(--primary);
+  background: var(--accent);
+}
+
+.entity-type-badge {
+  display: inline-block;
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  margin-bottom: 0.25rem;
+}
+
+.entity-type-application {
+  background: hsl(var(--primary) / 0.1);
+  color: hsl(var(--primary));
+}
+
+.entity-type-vendor {
+  background: hsl(var(--warning) / 0.15);
+  color: hsl(var(--warning));
+}
+
+.entity-type-capability {
+  background: hsl(var(--success) / 0.15);
+  color: hsl(var(--success));
+}
+
+.entity-type-archimate {
+  background: hsl(270 100% 95%);
+  color: hsl(273 67% 40%);
+}
+
+.confidence-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  margin-top: 0.25rem;
+}
+
+.confidence-high {
+  color: hsl(var(--success));
+}
+
+.confidence-medium {
+  color: hsl(var(--warning));
+}
+
+.confidence-low {
+  color: hsl(var(--destructive));
+}
+
+.chat-input-container {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-end;
+}
+
+.chat-input {
+  flex: 1;
+  min-height: 44px;
+  max-height: 120px;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  resize: vertical;
+  font-family: inherit;
+  font-size: 0.875rem;
+  background: var(--background);
+  color: var(--foreground);
+}
+
+.chat-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+}
+
+.send-button {
+  padding: 0.75rem 1.5rem;
+  background: var(--primary);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.send-button:hover:not(:disabled) {
+  background: hsl(var(--primary));
+}
+
+.send-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.action-suggestion {
+  background: var(--accent);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  margin: 0.25rem 0;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.action-suggestion:hover {
+  background: var(--muted);
+  border-color: var(--primary);
+}
+
+.typing-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.75rem 1rem;
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+}
+
+.typing-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--muted-foreground);
+  animation: typing 1.4s infinite ease-in-out;
+}
+
+.typing-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typing-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes typing {
+  0%, 60%, 100% {
+    transform: translateY(0);
+    opacity: 0.5;
+  }
+  30% {
+    transform: translateY(-10px);
+    opacity: 1;
+  }
+}
+
+.document-upload-area {
+  border: 2px dashed var(--border);
+  border-radius: 8px;
+  padding: 2rem;
+  text-align: center;
+  margin-bottom: 1rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.document-upload-area:hover {
+  border-color: var(--primary);
+  background: var(--accent);
+}
+
+.document-upload-area.dragover {
+  border-color: var(--primary);
+  background: var(--accent);
+}
+
+.upload-icon {
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 1rem;
+  color: var(--muted-foreground);
+}
+
+.persona-selector {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.persona-option {
+  padding: 0.375rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.8125rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background: var(--background);
+}
+
+.persona-option:hover {
+  border-color: var(--primary);
+}
+
+.persona-option.selected {
+  background: var(--primary);
+  color: white;
+  border-color: var(--primary);
+}
+
+.entity-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.action-button {
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background: var(--background);
+}
+
+.action-button:hover {
+  background: var(--muted);
+}
+
+.action-button.accept {
+  border-color: hsl(var(--success));
+  color: hsl(var(--success));
+}
+
+.action-button.accept:hover {
+  background: hsl(var(--success));
+  color: white;
+}
+
+.action-button.reject {
+  border-color: hsl(var(--destructive));
+  color: hsl(var(--destructive));
+}
+
+.action-button.reject:hover {
+  background: hsl(var(--destructive));
+  color: white;
+}
+
+@media (max-width: 1024px) {
+  .entity-chat-container {
+    flex-direction: column;
+    height: auto;
+  }
+  
+  .entity-sidebar {
+    width: 100%;
+    max-height: 400px;
+  }
+  
+  .chat-main-area {
+    min-height: 500px;
+  }
+}
+
+@media (max-width: 768px) {
+  .message-content {
+    max-width: 85%;
+  }
+  
+  .chat-input-container {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .send-button {
+    justify-content: center;
+  }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+{% from 'components/drawer.html' import drawer %}
+<script>
+  document.addEventListener('alpine:init', () => {
+    if (!Alpine.store('chat')) {
+      Alpine.store('chat', { messages: [], loading: false, error: null });
+    }
+  });
+</script>
+<div class="entity-chat-container" x-data="entityMatchingChat()">
+  
+  <!-- Main Chat Area -->
+  <div class="chat-main-area">
+    
+    <!-- Chat Header -->
+    <div class="chat-header">
+      <div class="flex items-center gap-3">
+        <i data-lucide="brain" class="w-5 h-5" aria-hidden="true"></i>
+        <div>
+          <h2 class="text-lg font-semibold">Entity Matching Assistant</h2>
+          <p class="text-sm text-muted-foreground">
+            <span x-text="currentPersona.replace('_', ' ').title()"></span> • 
+            <span x-text="currentDomain"></span> Domain
+          </p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <button type="button" @click="clearChat()" class="action-button outline" aria-label="Clear chat history">
+          <i data-lucide="trash-2" class="w-4 h-4" aria-hidden="true"></i>
+          Clear
+        </button>
+        <button type="button" @click="exportChat()" class="action-button outline" aria-label="Export">
+          <i data-lucide="download" class="w-4 h-4" aria-hidden="true"></i>
+          Export
+        </button>
+      </div>
+    </div>
+    
+    <!-- Chat Messages -->
+    <div class="chat-messages" x-ref="messagesContainer">
+      
+      <!-- Welcome Message -->
+      <div class="message assistant">
+        <div class="message-avatar">
+          <i data-lucide="bot" class="w-4 h-4" aria-hidden="true"></i>
+        </div>
+        <div class="message-content">
+          <p>Hello! I'm your Entity Matching Assistant. I can help you analyze documents and match entities to your existing enterprise architecture.</p>
+          <div class="mt-2">
+            <p class="text-sm font-medium mb-2">To get started:</p>
+            <ul class="text-sm space-y-1">
+              <li>• Upload a document or paste text below</li>
+              <li>• Choose your persona for specialized analysis</li>
+              <li>• I'll extract and match entities automatically</li>
+              <li>• Review matches and take action on suggestions</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Dynamic Messages -->
+      <template x-for="message in messages" :key="message.id">
+        <div class="message" :class="message.role">
+          <div class="message-avatar">
+            <template x-if="message.role === 'user'">
+              <i data-lucide="user" class="w-4 h-4" aria-hidden="true"></i>
+            </template>
+            <template x-if="message.role === 'assistant'">
+              <i data-lucide="bot" class="w-4 h-4" aria-hidden="true"></i>
+            </template>
+          </div>
+          <div class="message-content">
+            <div x-html="DOMPurify.sanitize(message.content)"></div>
+            
+            <!-- Entity Suggestions in Assistant Messages -->
+            <template x-if="message.entitySuggestions && message.entitySuggestions.length > 0">
+              <div class="mt-3">
+                <p class="text-sm font-medium mb-2">Entity Matches Found:</p>
+                <template x-for="suggestion in message.entitySuggestions" :key="suggestion.id">
+                  <div class="entity-card" @click="selectEntity(suggestion)">
+                    <div class="flex items-center justify-between mb-1">
+                      <span class="entity-type-badge" :class="'entity-type-' + suggestion.type" x-text="suggestion.type"></span>
+                      <span class="confidence-indicator" :class="'confidence-' + suggestion.confidenceLevel">
+                        <i data-lucide="check-circle" class="w-3 h-3" aria-hidden="true"></i>
+                        <span x-text="suggestion.confidence + '%'"></span>
+                      </span>
+                    </div>
+                    <h3 class="font-medium text-sm" x-text="suggestion.name"></h3>
+                    <p class="text-xs text-muted-foreground mt-1" x-text="suggestion.description"></p>
+                    <div class="entity-actions">
+                      <button type="button" @click="acceptEntity(suggestion)" class="action-button accept" aria-label="Accept entity match">Accept</button>
+                      <button type="button" @click="reviewEntity(suggestion)" class="action-button outline" aria-label="Review suggested entity">Review</button>
+                      <button type="button" @click="dismissEntity(suggestion)" class="action-button reject" aria-label="Dismiss entity suggestion">Dismiss</button>
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </template>
+            
+            <!-- Action Suggestions -->
+            <template x-if="message.actionSuggestions && message.actionSuggestions.length > 0">
+              <div class="mt-3">
+                <p class="text-sm font-medium mb-2">Suggested Actions:</p>
+                <template x-for="action in message.actionSuggestions" :key="action">
+                  <div class="action-suggestion" @click="executeAction(action)">
+                    <p x-text="action"></p>
+                  </div>
+                </template>
+              </div>
+            </template>
+          </div>
+        </div>
+      </template>
+      
+      <!-- Typing Indicator -->
+      <div x-show="isTyping" x-cloak class="message assistant">
+        <div class="message-avatar">
+          <i data-lucide="bot" class="w-4 h-4" aria-hidden="true"></i>
+        </div>
+        <div class="typing-indicator">
+          <div class="typing-dot"></div>
+          <div class="typing-dot"></div>
+          <div class="typing-dot"></div>
+          <span>Analyzing entities...</span>
+        </div>
+      </div>
+      
+    </div>
+    
+    <!-- Chat Input Area -->
+    <div class="chat-input-area">
+      
+      <!-- Document Upload Area -->
+      <div x-show="!hasDocument" x-cloak class="document-upload-area" @click="triggerFileUpload()" @dragover="handleDragOver" @dragleave="handleDragLeave" @drop="handleDrop">
+        <i data-lucide="upload-cloud" class="upload-icon" aria-hidden="true"></i>
+        <h3 class="text-lg font-medium mb-2">Upload Document</h3>
+        <p class="text-sm text-muted-foreground mb-2">
+          Drag and drop a file here, or click to browse
+        </p>
+        <p class="text-xs text-muted-foreground">
+          Supports PDF, DOCX, TXT files (max 10MB)
+        </p>
+        <input type="file" x-ref="fileInput" @change="handleFileSelect" accept=".pdf,.docx,.txt" class="hidden"  aria-label="File field">
+      </div>
+      
+      <!-- Document Info -->
+      <div x-show="hasDocument" x-cloak class="mb-3 p-3 bg-muted rounded-lg">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <i data-lucide="file-text" class="w-4 h-4" aria-hidden="true"></i>
+            <span class="text-sm font-medium" x-text="documentInfo.name"></span>
+            <span class="text-xs text-muted-foreground" x-text="documentInfo.size"></span>
+          </div>
+          <button type="button" @click="removeDocument()" class="action-button outline text-xs" aria-label="Remove">
+            <i data-lucide="x" class="w-3 h-3" aria-hidden="true"></i>
+            Remove
+          </button>
+        </div>
+      </div>
+      
+      <!-- Persona Selector -->
+      <div class="persona-selector">
+        <template x-for="persona in availablePersonas" :key="persona.value">
+          <button type="button" 
+            @click="selectPersona(persona.value)"
+            :class="{ 'selected': currentPersona === persona.value }"
+            class="persona-option"
+            x-text="persona.label"
+           :aria-label="'Select ' + persona.label + ' persona'"></button>
+        </template>
+      </div>
+      
+      <!-- Chat Input -->
+      <div class="chat-input-container">
+        <textarea 
+          x-model="currentMessage"
+          @keydown.enter.exact.prevent="sendMessage()"
+          @keydown.enter.shift="currentMessage += '\n'"
+          placeholder="Type your message or paste document text here..."
+          class="chat-input"
+          rows="1"
+          x-ref="chatInput"
+        ></textarea>
+        <button type="button"
+          @click="sendMessage()"
+          :disabled="!currentMessage.trim() || isProcessing"
+          class="send-button"
+         aria-label="Send message">
+          <i data-lucide="send" class="w-4 h-4" aria-hidden="true"></i>
+          Send
+        </button>
+      </div>
+      
+    </div>
+    
+  </div>
+  
+  <!-- Entity Sidebar -->
+  <div class="entity-sidebar">
+    
+    <!-- Sidebar Header -->
+    <div class="sidebar-header">
+      <div class="flex items-center gap-2">
+        <i data-lucide="layers" class="w-4 h-4" aria-hidden="true"></i>
+        <span>Entity Matches</span>
+      </div>
+    </div>
+    
+    <!-- Sidebar Content -->
+    <div class="sidebar-content">
+      
+      <!-- Match Statistics -->
+      <div class="mb-4 p-3 bg-muted rounded-lg">
+        <h4 class="font-medium text-sm mb-2">Match Statistics</h4>
+        <div class="grid grid-cols-2 gap-2 text-xs">
+          <div>
+            <span class="text-muted-foreground">Matches:</span>
+            <span class="font-medium ml-1" x-text="matchStats.matches"></span>
+          </div>
+          <div>
+            <span class="text-muted-foreground">New:</span>
+            <span class="font-medium ml-1" x-text="matchStats.new"></span>
+          </div>
+          <div>
+            <span class="text-muted-foreground">Duplicates:</span>
+            <span class="font-medium ml-1" x-text="matchStats.duplicates"></span>
+          </div>
+          <div>
+            <span class="text-muted-foreground">Relations:</span>
+            <span class="font-medium ml-1" x-text="matchStats.relationships"></span>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Filter Tabs -->
+      <div class="flex gap-1 mb-3 border-b border-border">
+        <button type="button" 
+          @click="activeFilter = 'all'"
+          :class="{ 'border-b-2 border-primary text-primary': activeFilter === 'all' }"
+          class="px-3 py-2 text-xs font-medium transition-colors"
+         aria-label="Filter">
+          All (<span x-text="allEntities.length"></span>)
+        </button>
+        <button type="button" 
+          @click="activeFilter = 'matches'"
+          :class="{ 'border-b-2 border-primary text-primary': activeFilter === 'matches' }"
+          class="px-3 py-2 text-xs font-medium transition-colors"
+         aria-label="Filter">
+          Matches (<span x-text="matchedEntities.length"></span>)
+        </button>
+        <button type="button" 
+          @click="activeFilter = 'new'"
+          :class="{ 'border-b-2 border-primary text-primary': activeFilter === 'new' }"
+          class="px-3 py-2 text-xs font-medium transition-colors"
+         aria-label="Filter">
+          New (<span x-text="newEntities.length"></span>)
+        </button>
+        <button type="button" 
+          @click="activeFilter = 'duplicates'"
+          :class="{ 'border-b-2 border-primary text-primary': activeFilter === 'duplicates' }"
+          class="px-3 py-2 text-xs font-medium transition-colors"
+         aria-label="Filter">
+          Duplicates (<span x-text="duplicateEntities.length"></span>)
+        </button>
+      </div>
+      
+      <!-- Entity List -->
+      <div class="space-y-2">
+        <template x-for="entity in filteredEntities" :key="entity.id">
+          <div class="entity-card" :class="{ 'selected': selectedEntity?.id === entity.id }" @click="selectEntity(entity)">
+            <div class="flex items-center justify-between mb-1">
+              <span class="entity-type-badge" :class="'entity-type-' + entity.type" x-text="entity.type"></span>
+              <span class="confidence-indicator" :class="'confidence-' + entity.confidenceLevel">
+                <i data-lucide="check-circle" class="w-3 h-3" aria-hidden="true"></i>
+                <span x-text="entity.confidence + '%'"></span>
+              </span>
+            </div>
+            <h4 class="font-medium text-sm" x-text="entity.name"></h4>
+            <p class="text-xs text-muted-foreground mt-1" x-text="entity.description"></p>
+            
+            <!-- Entity Status -->
+            <div class="mt-2 flex items-center gap-2">
+              <template x-if="entity.status === 'matched'">
+                <span class="text-xs text-success">✓ Matched</span>
+              </template>
+              <template x-if="entity.status === 'new'">
+                <span class="text-xs text-primary">+ New</span>
+              </template>
+              <template x-if="entity.status === 'duplicate'">
+                <span class="text-xs text-warning">⚠ Duplicate</span>
+              </template>
+              <template x-if="entity.status === 'pending'">
+                <span class="text-xs text-muted-foreground">⏳ Pending</span>
+              </template>
+            </div>
+            
+            <!-- Quick Actions -->
+            <div class="entity-actions">
+              <template x-if="entity.status === 'matched'">
+                <button type="button" @click.stop="acceptMatch(entity)" class="action-button accept" aria-label="Accept matched entity">Accept</button>
+                <button type="button" @click.stop="viewDetails(entity)" class="action-button outline" aria-label="View entity details">Details</button>
+              </template>
+              <template x-if="entity.status === 'new'">
+                <button type="button" @click.stop="importEntity(entity)" class="action-button accept" aria-label="Import new entity">Import</button>
+                <button type="button" @click.stop="reviewEntity(entity)" class="action-button outline" aria-label="Review new entity">Review</button>
+              </template>
+              <template x-if="entity.status === 'duplicate'">
+                <button type="button" @click.stop="resolveDuplicate(entity)" class="action-button accept" aria-label="Resolve duplicate entity">Resolve</button>
+                <button type="button" @click.stop="dismissDuplicate(entity)" class="action-button reject" aria-label="Dismiss duplicate entity">Dismiss</button>
+              </template>
+            </div>
+          </div>
+        </template>
+      </div>
+      
+      <!-- Empty State -->
+      <div x-show="filteredEntities.length === 0" x-cloak class="text-center py-8">
+        <i data-lucide="inbox" class="w-12 h-12 mx-auto text-muted-foreground mb-3" aria-hidden="true"></i>
+        <p class="text-sm text-muted-foreground">No entities found</p>
+        <p class="text-xs text-muted-foreground mt-1">Upload a document to start matching</p>
+      </div>
+      
+    </div>
+    
+  </div>
+  
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function entityMatchingChat() {
+  return {
+    messages: [],
+    currentMessage: '',
+    isTyping: false,
+    isProcessing: false,
+    hasDocument: false,
+    documentInfo: {},
+    currentPersona: 'enterprise_architect',
+    currentDomain: 'architecture',
+    selectedEntity: null,
+    activeFilter: 'all',
+    allEntities: [],
+    matchStats: {
+      matches: 0,
+      new: 0,
+      duplicates: 0,
+      relationships: 0
+    },
+    
+    availablePersonas: [
+      { value: 'enterprise_architect', label: 'Enterprise Architect' },
+      { value: 'solutions_architect', label: 'Solutions Architect' },
+      { value: 'application_architect', label: 'Application Architect' },
+      { value: 'integration_architect', label: 'Integration Architect' },
+      { value: 'business_architect', label: 'Business Architect' },
+      { value: 'business_analyst', label: 'Business Analyst' }
+    ],
+    
+    get matchedEntities() {
+      return this.allEntities.filter(e => e.status === 'matched');
+    },
+    
+    get newEntities() {
+      return this.allEntities.filter(e => e.status === 'new');
+    },
+    
+    get duplicateEntities() {
+      return this.allEntities.filter(e => e.status === 'duplicate');
+    },
+    
+    get filteredEntities() {
+      switch(this.activeFilter) {
+        case 'matches': return this.matchedEntities;
+        case 'new': return this.newEntities;
+        case 'duplicates': return this.duplicateEntities;
+        default: return this.allEntities;
+      }
+    },
+    
+    init() {
+      // Initialize Lucide icons
+      if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+      }
+      
+      // Auto-resize textarea
+      this.$watch('currentMessage', () => {
+        this.$nextTick(() => {
+          const textarea = this.$refs.chatInput;
+          if (textarea) {
+            textarea.style.height = 'auto';
+            textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
+          }
+        });
+      });
+    },
+    
+    async sendMessage() {
+      if (!this.currentMessage.trim() || this.isProcessing) return;
+      
+      const message = this.currentMessage.trim();
+      this.currentMessage = '';
+      this.isProcessing = true;
+      
+      // Add user message
+      this.addMessage('user', message);
+      
+      // Show typing indicator
+      this.isTyping = true;
+      
+      try {
+        // Call entity matching API
+        const response = await fetch('/ai-chat/entity-matching', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content,
+          },
+          body: JSON.stringify({
+            document_text: message,
+            user_persona: this.currentPersona,
+            domain: this.currentDomain,
+            chat_history: this.messages.slice(-5).map(m => ({ role: m.role, content: m.content }))
+          })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+          // Process results and update entities
+          this.processMatchingResults(result);
+          
+          // Add assistant response
+          this.addAssistantMessage(result);
+        } else {
+          this.addMessage('assistant', `I encountered an error: ${result.error}`);
+        }
+        
+      } catch (error) {
+        console.error('Error sending message:', error);
+        this.addMessage('assistant', 'Sorry, I encountered an error while processing your request. Please try again.');
+      } finally {
+        this.isTyping = false;
+        this.isProcessing = false;
+      }
+    },
+    
+    addMessage(role, content) {
+      this.messages.push({
+        id: Date.now() + Math.random(),
+        role: role,
+        content: content,
+        timestamp: new Date().toISOString()
+      });
+      
+      this.scrollToBottom();
+    },
+    
+    addAssistantMessage(result) {
+      let content = `<p>I've analyzed your document and found the following entities:</p>`;
+      
+      if (result.matching_results?.summary) {
+        const summary = result.matching_results.summary;
+        content += `<div class="mt-2 p-2 bg-muted rounded">
+          <strong>Summary:</strong> ${summary.total_matches} matches, ${summary.total_new_entities} new entities, ${summary.total_duplicates} potential duplicates
+        </div>`;
+      }
+      
+      // Add entity suggestions
+      const entitySuggestions = this.extractEntitySuggestions(result);
+      
+      // Add action suggestions
+      const actionSuggestions = this.extractActionSuggestions(result);
+      
+      this.messages.push({
+        id: Date.now() + Math.random(),
+        role: 'assistant',
+        content: content,
+        entitySuggestions: entitySuggestions,
+        actionSuggestions: actionSuggestions,
+        timestamp: new Date().toISOString()
+      });
+      
+      this.scrollToBottom();
+    },
+    
+    extractEntitySuggestions(result) {
+      const suggestions = [];
+      
+      // Extract from matching results
+      if (result.matching_results) {
+        Object.values(result.matching_results).forEach(entityResults => {
+          if (entityResults.matches) {
+            entityResults.matches.slice(0, 3).forEach(match => {
+              suggestions.push({
+                id: `match_${match.entity_id}`,
+                name: match.entity_name,
+                type: match.entity_type.toLowerCase(),
+                confidence: match.match_confidence,
+                confidenceLevel: match.match_level,
+                description: match.existing_data?.description || 'Existing entity match',
+                status: 'matched',
+                data: match
+              });
+            });
+          }
+          
+          if (entityResults.new_entities) {
+            entityResults.new_entities.slice(0, 2).forEach(newEntity => {
+              suggestions.push({
+                id: `new_${newEntity.name}`,
+                name: newEntity.name,
+                type: newEntity.type.toLowerCase(),
+                confidence: 0,
+                confidenceLevel: 'low',
+                description: newEntity.recommendation || 'New entity detected',
+                status: 'new',
+                data: newEntity
+              });
+            });
+          }
+        });
+      }
+      
+      return suggestions.slice(0, 5); // Limit to 5 suggestions
+    },
+    
+    extractActionSuggestions(result) {
+      const suggestions = [];
+      
+      if (result.chat_insights?.conversation_starters) {
+        suggestions.push(...result.chat_insights.conversation_starters.slice(0, 3));
+      }
+      
+      if (result.recommendations && result.recommendations.length > 0) {
+        suggestions.push(`Review ${result.recommendations.length} prioritized recommendations`);
+      }
+      
+      return suggestions;
+    },
+    
+    processMatchingResults(result) {
+      if (!result.matching_results) return;
+      
+      // Update match statistics
+      const summary = result.matching_results.summary || {};
+      this.matchStats = {
+        matches: summary.total_matches || 0,
+        new: summary.total_new_entities || 0,
+        duplicates: summary.total_duplicates || 0,
+        relationships: summary.total_relationship_suggestions || 0
+      };
+      
+      // Update entities list
+      this.allEntities = this.extractEntitySuggestions(result);
+    },
+    
+    selectPersona(persona) {
+      this.currentPersona = persona;
+    },
+    
+    selectEntity(entity) {
+      this.selectedEntity = entity;
+    },
+    
+    acceptEntity(entity) {
+      // Implement accept logic
+      entity.status = 'accepted';
+    },
+    
+    reviewEntity(entity) {
+      // Implement review logic
+    },
+    
+    dismissEntity(entity) {
+      // Remove from suggestions
+      const index = this.allEntities.findIndex(e => e.id === entity.id);
+      if (index > -1) {
+        this.allEntities.splice(index, 1);
+      }
+    },
+    
+    acceptMatch(entity) {
+      this.acceptEntity(entity);
+    },
+    
+    importEntity(entity) {
+      this.acceptEntity(entity);
+    },
+    
+    resolveDuplicate(entity) {
+      // Implement duplicate resolution
+    },
+    
+    dismissDuplicate(entity) {
+      this.dismissEntity(entity);
+    },
+    
+    viewDetails(entity) {
+      // Navigate to entity details
+    },
+    
+    executeAction(action) {
+      this.currentMessage = action;
+      this.sendMessage();
+    },
+    
+    triggerFileUpload() {
+      this.$refs.fileInput.click();
+    },
+    
+    handleFileSelect(event) {
+      const file = event.target.files[0];
+      if (file) {
+        this.processFile(file);
+      }
+    },
+    
+    handleDragOver(event) {
+      event.preventDefault();
+      event.target.classList.add('dragover');
+    },
+    
+    handleDragLeave(event) {
+      event.target.classList.remove('dragover');
+    },
+    
+    handleDrop(event) {
+      event.preventDefault();
+      event.target.classList.remove('dragover');
+      
+      const files = event.dataTransfer.files;
+      if (files.length > 0) {
+        this.processFile(files[0]);
+      }
+    },
+    
+    async processFile(file) {
+      // For now, just show file info
+      this.documentInfo = {
+        name: file.name,
+        size: this.formatFileSize(file.size),
+        type: file.type
+      };
+      this.hasDocument = true;
+      
+      // In a real implementation, you would extract text from the file
+      // and set it as the current message
+    },
+    
+    formatFileSize(bytes) {
+      if (bytes === 0) return '0 Bytes';
+      const k = 1024;
+      const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    },
+    
+    removeDocument() {
+      this.hasDocument = false;
+      this.documentInfo = {};
+      this.$refs.fileInput.value = '';
+    },
+    
+    clearChat() {
+      this.messages = [];
+      this.allEntities = [];
+      this.selectedEntity = null;
+      this.matchStats = { matches: 0, new: 0, duplicates: 0, relationships: 0 };
+    },
+    
+    exportChat() {
+      const data = {
+        messages: this.messages,
+        entities: this.allEntities,
+        matchStats: this.matchStats,
+        exportTime: new Date().toISOString()
+      };
+      
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `entity-matching-chat-${Date.now()}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    },
+    
+    scrollToBottom() {
+      this.$nextTick(() => {
+        const container = this.$refs.messagesContainer;
+        if (container) {
+          container.scrollTop = container.scrollHeight;
+        }
+        
+        // Re-initialize Lucide icons for new content
+        if (typeof lucide !== 'undefined') {
+          lucide.createIcons();
+        }
+      });
+    }
+  };
+}
+</script>
+{% endblock %}

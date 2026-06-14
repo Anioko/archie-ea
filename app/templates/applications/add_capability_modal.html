@@ -1,0 +1,67 @@
+{% from 'components/modal_form.html' import modal_form %}
+
+{% call modal_form(
+    id='add-capability-modal',
+    title='Map Capability to Application',
+    description='Link an enterprise capability to this application',
+    submit_text='Add Mapping',
+    size='md',
+    form_action=url_for('application_mgmt.application_capability_mapping_create', id=app.id),
+    form_method='POST'
+) %}
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+<div class="space-y-4">
+    <div>
+        <label for="cap-select" class="block text-sm font-medium mb-1.5">Capability <span class="text-destructive">*</span></label>
+        <select id="cap-select" name="capability_id" required
+                class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+            <option value="">Select a capability...</option>
+            {% for opt in capability_form_config.capability_options %}
+            <option value="{{ opt.id }}"{% if opt.disabled %} disabled{% endif %}>{{ opt.label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <div>
+        <label for="cap-support" class="block text-sm font-medium mb-1.5">Support Level</label>
+        <select id="cap-support" name="support_level"
+                class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+            <option value="">Select...</option>
+            {% for val, label in capability_form_config.support_levels %}
+            <option value="{{ val }}">{{ label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <div class="grid grid-cols-2 gap-4">
+        <div>
+            <label for="cap-coverage" class="block text-sm font-medium mb-1.5">Coverage %</label>
+            <input type="number" id="cap-coverage" name="coverage_percentage" min="0" max="100" placeholder="0-100"
+                   class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+        </div>
+        <div>
+            <label for="cap-maturity" class="block text-sm font-medium mb-1.5">Maturity Level</label>
+            <select id="cap-maturity" name="maturity_level"
+                    class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                <option value="">Select...</option>
+                {% for val, label in capability_form_config.maturity_levels %}
+                <option value="{{ val }}">{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+    </div>
+
+    <div class="flex items-center gap-2">
+        <input type="checkbox" id="cap-strategic" name="is_strategic" value="on"
+               class="h-4 w-4 rounded border-input text-primary focus:ring-ring">
+        <label for="cap-strategic" class="text-sm font-medium">Strategic capability</label>
+    </div>
+
+    <div>
+        <label for="cap-notes" class="block text-sm font-medium mb-1.5">Notes</label>
+        <textarea id="cap-notes" name="notes" rows="2" placeholder="Optional notes about this mapping..."
+                  class="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"></textarea>
+    </div>
+</div>
+{% endcall %}

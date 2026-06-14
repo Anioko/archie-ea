@@ -1,0 +1,369 @@
+{% extends 'layouts/admin_base.html' %}
+{% from 'components/modal.html' import modal %}
+
+{% block title %}Implementation Planning Dashboard{% endblock %}
+
+{% block breadcrumb %}
+{% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
+{{ breadcrumb_nav(items=[
+    {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
+    {'text': 'Implementation & Migration', 'href': url_for('archimate_crud.dashboard') + '#implementation'},
+    {'text': 'Planning Dashboard', 'current': true}
+]) }}
+{% endblock %}
+
+{% from 'components/archimate_gantt_widget.html' import archimate_gantt_widget %}
+
+{% block content %}
+<div class="mx-auto px-4 py-6" x-data="implementationPlanningDashboard()">
+    <!-- Header -->
+    <div class="space-y-6 mb-6">
+        <!-- Title Section (Jumbotron-style) -->
+        <div class="text-center py-8 bg-primary/10 rounded-lg border border-border">
+            <h1 class="text-4xl font-bold text-foreground mb-3">Implementation Planning</h1>
+            <p class="text-lg text-muted-foreground max-w-3xl mx-auto">Enterprise Architecture Migration & Implementation Roadmap</p>
+        </div>
+        
+        <!-- Main Content -->
+        <div class="space-y-6">
+            <!-- ArchiMate Gantt Widget Section -->
+            <div x-show="viewMode === 'gantt'">
+                {{ archimate_gantt_widget(
+                    data_endpoint=url_for('implementation_planning.api_roadmap_data'),
+                    title='Implementation Roadmap',
+                    subtitle='Work Packages & Plateaus Timeline',
+                    container_id='impl-archimate-gantt'
+                ) }}
+            </div>
+        </div>
+    </div>
+
+    <!-- Export Modal -->
+    <div x-show="showExportModal" x-cloak
+         @keydown.escape.window="showExportModal = false"
+         x-transition:enter="transition ease-out duration-300"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         x-transition:leave="transition ease-in duration-200"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="opacity-0"
+         class="modal-root fixed inset-0 bg-black/80 flex items-center justify-center z-50"
+         @click.self="showExportModal = false" role="dialog">
+        <div class="bg-card border border-border rounded-lg p-6 w-full max-w-md"
+             role="dialog" aria-modal="true" x-trap="showExportModal">
+            <h2 class="text-lg font-semibold text-foreground mb-4">Export Implementation Data</h2>
+            
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-foreground mb-2">Export Format</label>
+                    <div class="space-y-2">
+                        <label class="flex items-center gap-2">
+                            <input type="radio" name="exportFormat" value="csv" x-model="exportFormat" class="text-primary" aria-label="Exportformat">
+                            <span class="text-sm">CSV (Excel compatible)</span>
+                        </label>
+                        <label class="flex items-center gap-2">
+                            <input type="radio" name="exportFormat" value="png" x-model="exportFormat" class="text-primary" aria-label="Exportformat">
+                            <span class="text-sm">PNG Image</span>
+                        </label>
+                        <label class="flex items-center gap-2">
+                            <input type="radio" name="exportFormat" value="jpg" x-model="exportFormat" class="text-primary" aria-label="Exportformat">
+                            <span class="text-sm">JPG Image</span>
+                        </label>
+                        <label class="flex items-center gap-2">
+                            <input type="radio" name="exportFormat" value="pdf" x-model="exportFormat" class="text-primary" aria-label="Exportformat">
+                            <span class="text-sm">PDF Document</span>
+                        </label>
+                    </div>
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-foreground mb-2">Include Data</label>
+                    <div class="space-y-2">
+                        <label class="flex items-center gap-2">
+                            <input type="checkbox" x-model="exportOptions.workPackages" class="text-primary" aria-label="Checkbox field">
+                            <span class="text-sm">Work Packages</span>
+                        </label>
+                        <label class="flex items-center gap-2">
+                            <input type="checkbox" x-model="exportOptions.gaps" class="text-primary" aria-label="Checkbox field">
+                            <span class="text-sm">Gap Analysis</span>
+                        </label>
+                        <label class="flex items-center gap-2">
+                            <input type="checkbox" x-model="exportOptions.deliverables" class="text-primary" aria-label="Checkbox field">
+                            <span class="text-sm">Deliverables</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="flex justify-end gap-2 mt-6">
+                <button @click="showExportModal = false"
+                        class="px-4 py-2 border border-input bg-background rounded-md hover:bg-accent" aria-label="Export">
+                    Cancel
+                </button>
+                <button @click="performExport()"
+                        class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90" aria-label="Export">
+                    Export
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function implementationPlanningDashboard() {
+    return {
+        viewMode: 'gantt',
+        showExportModal: false,
+        exportFormat: 'csv',
+        exportOptions: {
+            workPackages: true,
+            gaps: true,
+            deliverables: false
+        },
+        stats: {
+            work_packages: 0,
+            in_progress: 0,
+            completed: 0,
+            critical_gaps: 0
+        },
+        workPackages: [],
+        criticalGaps: [],
+        recentWorkPackages: [],
+        
+        init() {
+            this.loadDashboardData();
+        },
+        
+        loadDashboardData() {
+            // Load statistics
+            fetch('/implementation/api/dashboard-stats')
+                .then(response => response.json())
+                .then(data => {
+                    this.stats = data.stats;
+                })
+                .catch(error => {
+                    console.error('Error loading stats:', error);
+                });
+            
+            // Load work packages
+            fetch('/implementation/api/work-packages')
+                .then(response => response.json())
+                .then(data => {
+                    this.workPackages = data.work_packages || [];
+                })
+                .catch(error => {
+                    console.error('Error loading work packages:', error);
+                });
+            
+            // Load critical gaps
+            fetch('/implementation/api/gaps?priority=critical&limit=5')
+                .then(response => response.json())
+                .then(data => {
+                    this.criticalGaps = data.gaps || [];
+                })
+                .catch(error => {
+                    console.error('Error loading gaps:', error);
+                });
+            
+            // Load recent work packages
+            fetch('/implementation/api/work-packages?limit=5&sort=updated_at')
+                .then(response => response.json())
+                .then(data => {
+                    this.recentWorkPackages = data.work_packages || [];
+                })
+                .catch(error => {
+                    console.error('Error loading recent work packages:', error);
+                });
+        },
+        
+        async runGapDiscovery() {
+            if ((await Platform.modal.confirm('Run intelligent gap discovery? This may take a few minutes.'))) {
+                fetch('/implementation/gaps/discover', { method: 'POST', headers: {'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''} })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            Platform.toast.success('Gap discovery completed successfully!');
+                            this.loadDashboardData();
+                        } else {
+                            Platform.toast.error('Error during gap discovery: ' + data.error);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error running gap discovery:', error);
+                        Platform.toast.error('Error during gap discovery');
+                    });
+            }
+        },
+        
+        createWorkPackage() {
+            Platform.modal.open('create-work-package');
+        },
+        
+        viewGapDetail(gapId) {
+            window.location.href = `/implementation/gaps/${gapId}`;
+        },
+        
+        viewAllGaps() {
+            window.location.href = '/implementation/gaps';
+        },
+        
+        generateReport() {
+            // Generate comprehensive report
+            window.open('/implementation/reports/generate', '_blank');
+        },
+        
+        performExport() {
+            const params = new URLSearchParams();
+            params.append('format', this.exportFormat);
+            
+            if (this.exportOptions.workPackages) params.append('include_work_packages', 'true');
+            if (this.exportOptions.gaps) params.append('include_gaps', 'true');
+            if (this.exportOptions.deliverables) params.append('include_deliverables', 'true');
+            
+            window.open(`/implementation/export?${params.toString()}`, '_blank');
+            this.showExportModal = false;
+        },
+        
+        getStatusColor(status) {
+            const colors = {
+                planned:     'bg-primary/10 text-primary',
+                in_progress: 'bg-warning/10 text-warning',
+                completed:   'bg-primary/10 text-primary',
+                cancelled:   'bg-muted text-muted-foreground'
+            };
+            return colors[status] || 'bg-muted text-muted-foreground';
+        },
+        
+        getImpactLevelColor(level) {
+            const colors = {
+                low:      'bg-primary/10 text-primary',
+                medium:   'bg-warning/10 text-warning',
+                high:     'bg-warning/10 text-warning',
+                critical: 'bg-destructive/10 text-destructive'
+            };
+            return colors[level] || 'bg-muted text-foreground';
+        },
+        
+        getPriorityColor(priority) {
+            const colors = {
+                low:      'bg-primary/10 text-primary',
+                medium:   'bg-warning/10 text-warning',
+                high:     'bg-warning/10 text-warning',
+                critical: 'bg-destructive/10 text-destructive'
+            };
+            return colors[priority] || 'bg-muted text-foreground';
+        },
+        
+        formatDate(dateString) {
+            if (!dateString) return '';
+            const date = new Date(dateString);
+            return date.toLocaleDateString('en-US', { 
+                year: 'numeric', 
+                month: 'short', 
+                day: 'numeric' 
+            });
+        }
+    };
+}
+</script>
+
+{% call modal(id='create-work-package', title='Create Work Package', description='Add a new implementation work package', size='lg') %}
+<form @submit.prevent="submitCreateWorkPackage()" class="space-y-4" x-data="workPackageCreateModal()">
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+    <div class="sm:col-span-2">
+      <label for="cwp-name" class="block text-sm font-medium mb-1">Name <span class="text-destructive">*</span></label>
+      <input type="text" id="cwp-name" x-model="formData.name" required maxlength="255"
+             class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+             placeholder="e.g. Cloud Migration Phase 1">
+    </div>
+    <div>
+      <label for="cwp-priority" class="block text-sm font-medium mb-1">Priority</label>
+      <select id="cwp-priority" x-model="formData.priority"
+              class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <option value="low">Low</option>
+        <option value="medium" selected>Medium</option>
+        <option value="high">High</option>
+        <option value="critical">Critical</option>
+      </select>
+    </div>
+    <div>
+      <label for="cwp-status" class="block text-sm font-medium mb-1">Status</label>
+      <select id="cwp-status" x-model="formData.status"
+              class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <option value="planned" selected>Planned</option>
+        <option value="in_progress">In Progress</option>
+        <option value="completed">Completed</option>
+        <option value="cancelled">Cancelled</option>
+      </select>
+    </div>
+    <div>
+      <label for="cwp-start" class="block text-sm font-medium mb-1">Start Date</label>
+      <input type="date" id="cwp-start" x-model="formData.start_date"
+             class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+    </div>
+    <div>
+      <label for="cwp-end" class="block text-sm font-medium mb-1">End Date</label>
+      <input type="date" id="cwp-end" x-model="formData.end_date"
+             class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+    </div>
+    <div>
+      <label for="cwp-assigned" class="block text-sm font-medium mb-1">Assigned To</label>
+      <input type="text" id="cwp-assigned" x-model="formData.assigned_to" maxlength="255"
+             class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+             placeholder="Name or team">
+    </div>
+    <div class="sm:col-span-2">
+      <label for="cwp-description" class="block text-sm font-medium mb-1">Description</label>
+      <textarea id="cwp-description" x-model="formData.description" rows="2"
+                class="flex min-h-[64px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                placeholder="Describe the scope and objectives"></textarea>
+    </div>
+  </div>
+  <div x-show="errorMsg" x-cloak class="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-sm text-destructive" x-text="errorMsg"></div>
+  <div class="flex justify-end gap-3 pt-2 border-t border-border">
+    <button type="button" data-modal-close="create-work-package"
+            class="px-4 py-2 text-sm font-medium rounded-md border border-input bg-background hover:bg-accent" aria-label="Action">Cancel</button>
+    <button type="submit" :disabled="submitting"
+            class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50" aria-label="Submit">
+      <i data-lucide="loader-2" class="h-4 w-4 animate-spin" x-show="submitting" x-cloak></i>
+      <span x-text="submitting ? 'Creating...' : 'Create Work Package'"></span>
+    </button>
+  </div>
+</form>
+{% endcall %}
+
+<script>
+function workPackageCreateModal() {
+  return {
+    formData: { name: '', description: '', assigned_to: '', priority: 'medium', status: 'planned', start_date: '', end_date: '' },
+    submitting: false,
+    errorMsg: '',
+    submitCreateWorkPackage() {
+      if (!this.formData.name.trim()) { this.errorMsg = 'Name is required.'; return; }
+      this.submitting = true;
+      this.errorMsg = '';
+      fetch('{{ url_for("implementation_planning.create_work_package") }}', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || ''
+        },
+        body: JSON.stringify(this.formData)
+      })
+      .then(r => r.json())
+      .then(data => {
+        this.submitting = false;
+        if (!data.success) {
+          this.errorMsg = Object.values(data.errors || {}).join(' ') || 'An error occurred.';
+          return;
+        }
+        Platform.modal.close('create-work-package');
+        showToast({ title: 'Work package created successfully', variant: 'default' });
+        setTimeout(() => window.location.reload(), 800);
+      })
+      .catch(() => { this.submitting = false; this.errorMsg = 'Network error. Please try again.'; });
+    }
+  };
+}
+</script>
+{% endblock %}

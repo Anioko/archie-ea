@@ -1,0 +1,166 @@
+{# Navigation macros for Flask-Base with Tailwind CSS + shadcn styling #}
+{# ⚠️ DEPRECATED: This file is deprecated and will be removed in v2.0 #}
+{# MIGRATION: Use nav_macros_shadcn_fixed.html instead #}
+{# REASON: Consolidating duplicate navigation macros (nav_macros vs nav_macros_shadcn) #}
+{# GUIDE: See docs/design-system/components.md#migration-guide #}
+
+{% macro render_menu_items(endpoints, mobile=False) %}
+    {# DEPRECATED: Use nav_macros_shadcn_fixed.html::render_menu_items #}
+    {# Removal: v2.0 #}
+    {% for endpoint, name, icon in endpoints %}
+        <a class="{% if mobile %}block px-4 py-3 text-sm font-medium text-foreground hover:bg-accent hover:text-accent-foreground transition-colors{% else %}inline-flex items-center px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-accent rounded-md transition-colors{% endif %} {% if request.endpoint == endpoint %}{% if mobile %}bg-accent text-accent-foreground{% else %}bg-accent text-accent-foreground{% endif %}{% endif %}" href="{{ url_for(endpoint) }}">
+            {% if icon %}
+                <i data-lucide="{{ icon }}" class="{% if mobile %}mr-3{% else %}mr-2{% endif %} h-4 w-4"></i>
+            {% endif %}
+            {{ name | safe }}
+        </a>
+    {% endfor %}
+{% endmacro %}
+
+{% macro menu_items(current_user, mobile=False) %}
+    {# DEPRECATED: Use nav_macros_shadcn_fixed.html navigation macros #}
+    {# Removal: v2.0 #}
+    {% set endpoints = [
+      ('main.about', 'About', 'info')
+    ]%}
+    {% set user = [] %}
+    {% set ai_chat = [] %}
+    {% if current_user.is_authenticated %}
+      {% set user = ([(current_user.role.index + '.index', current_user.role.name + ' Dashboard', 'layout-dashboard')]) %}
+      {% set ai_chat = [('unified_ai_chat.index', 'AI Assistant', 'message-circle')] %}
+    {% endif %}
+    {{ render_menu_items( endpoints + user + ai_chat, mobile ) }}
+{% endmacro %}
+{# DEPRECATED: Use nav_macros_shadcn_fixed.html navigation macros #}
+    {# Removal: v2.0 #}
+    
+{% macro header_items(current_user, mobile=False) %}
+       {% set endpoints = [
+        ('main.index', config.APP_NAME, 'home'),
+      ] %}
+     {{ render_menu_items( endpoints, mobile ) }}
+ {% endmacro %}
+
+{% macro account_items(current_user, mobile=False) %}
+    {% if current_user.is_authenticated %}
+      {% set endpoints = [
+        ('account.manage', 'Your Account', 'settings'),
+        ('account.logout', 'Log out', 'log-out')
+      ] %}
+      {{ render_menu_items(endpoints, mobile) }}
+    {% else %}
+      {% set endpoints = [
+        ('account.register', 'Register', 'user-plus'),
+        ('account.login', 'Log In', 'log-in')
+      ] %}
+      {{ render_menu_items(endpoints, mobile) }}
+    {# DEPRECATED: Use nav_macros_shadcn_fixed.html::mobile_nav #}
+    {# Removal: v2.0 #}
+    {% endif %}
+{% endmacro %}
+
+{% macro mobile_nav(current_user, dropdown=None) %}
+    <div class="lg:hidden" x-data="{ mobileMenuOpen: false }">
+        <!-- Mobile Top Bar -->
+        <div class="fixed top-0 left-0 right-0 z-50 bg-background border-b border-border">
+            <div class="flex items-center justify-between px-4 py-3">
+                <div class="flex items-center space-x-4">
+                    {{ header_items(current_user, mobile=True) }}
+                </div>
+                <button @click="mobileMenuOpen = !mobileMenuOpen" type="button" class="inline-flex items-center justify-center p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors" aria-label="Open">
+                    <span class="sr-only">Open main menu</span>
+                    <!-- Hamburger icon -->
+                    <i data-lucide="menu" class="h-5 w-5" x-show="!mobileMenuOpen" x-cloak></i>
+                    <!-- Close icon -->
+                    <i data-lucide="x" class="h-5 w-5" x-show="mobileMenuOpen" x-cloak @keydown.escape.window="mobileMenuOpen = false" role="dialog" aria-modal="true"></i>
+                </button>
+            </div>
+        </div>
+
+        {# The menu items which will be shown when hamburger is clicked #}
+        <div x-show="mobileMenuOpen" x-cloak @keydown.escape.window="mobileMenuOpen = false" role="dialog" aria-modal="true" 
+             x-transition:enter="transition ease-out duration-200"
+             x-transition:enter-start="opacity-0 -translate-y-1"
+             x-transition:enter-end="opacity-100 translate-y-0"
+             x-transition:leave="transition ease-in duration-150"
+             x-transition:leave-start="opacity-100 translate-y-0"
+             x-transition:leave-end="opacity-0 -translate-y-1"
+             @click.away="mobileMenuOpen = false"
+             x-cloak
+             class="fixed top-[57px] left-0 right-0 z-40 bg-card border-b border-border shadow-lg" >
+            <div class="px-2 pt-2 pb-3 space-y-1">
+                {{ menu_items(current_user, mobile=True) }}
+                {{ account_items(current_user, mobile=True) }}
+                {{ create_dropdown(dropdown, mobile=True) }}
+            </div>
+        </div>
+    </div>
+{% endmacro %}
+
+{% macro create_dropdown(dropdown, mobile=False) %}
+  {% for item in dropdown %}
+    {% if item | length == 3 %}
+      {{ render_menu_items([item], mobile) }}
+    {% elif item | length == 2 %}
+      <div class="{% if mobile %}block{% else %}relative inline-block{% endif %}" x-data="{ dropdownOpen: false }">
+        <button @click="dropdownOpen = !dropdownOpen" type="button" class="{% if mobile %}w-full text-left px-4 py-3 text-sm font-medium text-foreground hover:bg-accent hover:text-accent-foreground transition-colors flex items-center justify-between{% else %}inline-flex items-center px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-accent rounded-md transition-colors{% endif %}" aria-label="Open">
+          {{ item[0] }}
+          <i data-lucide="chevron-down" class="ml-2 h-4 w-4 transition-transform" :class="{ 'rotate-180': dropdownOpen }"></i>
+        </button>
+        <div x-show="dropdownOpen" x-cloak @keydown.escape.window="dropdownOpen = false" role="dialog" aria-modal="true" 
+             @click.away="dropdownOpen = false"
+             x-transition:enter="transition ease-out duration-100"
+             x-transition:enter-start="transform opacity-0 scale-95"
+             x-transition:enter-end="transform opacity-100 scale-100"
+             x-transition:leave="transition ease-in duration-75"
+             x-transition:leave-start="transform opacity-100 scale-100"
+             x-transition:leave-end="transform opacity-0 scale-95"
+             x-cloak
+             class="{% if mobile %}ml-4 mt-1{% else %}absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-popover border border-border ring-1 ring-black/5 focus-visible:outline-none z-50{% endif %}" >
+          <div class="{% if not mobile %}py-1{% endif %}">
+            {{ create_dropdown(item[1], mobile) }}
+          </div>
+        </div>
+    {# DEPRECATED: Use nav_macros_shadcn_fixed.html navigation macros #}
+    {# Removal: v2.0 #}
+      </div>
+    {% endif %}
+  {% endfor %}
+{% endmacro %}
+
+{% macro desktop_nav(current_user, dropdown=None) %}
+    <div class="hidden lg:block">
+        <div class="fixed top-0 left-0 right-0 z-50 bg-background border-b border-border">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex items-center justify-between h-16">
+                    <div class="flex items-center space-x-1">
+                        {{ header_items(current_user) }}
+                        {{ menu_items(current_user) }}
+                        {{ create_dropdown(dropdown) }}
+                    </div>
+                    <div class="flex items-center space-x-1">
+                        {{ account_items(current_user) }}
+                    </div>
+                </div>
+    {# DEPRECATED: Use nav_macros_shadcn_fixed.html::pill_tabs for tab navigation #}
+    {# Removal: v2.0 #}
+            </div>
+        </div>
+    </div>
+{% endmacro %}
+
+{% macro render_nav(current_user, dropdown=[]) %}
+    <nav x-data role="navigation" aria-label="Main navigation">
+        {{ mobile_nav(current_user, dropdown=dropdown) }}
+        {{ desktop_nav(current_user, dropdown=dropdown) }}
+    </nav>
+    <!-- Spacer to prevent content from going under fixed navbar -->
+    <div class="h-16"></div>
+    
+    <script>
+      // Initialize Lucide icons for navigation
+      if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+      }
+    </script>
+{% endmacro %}

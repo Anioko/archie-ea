@@ -1,0 +1,46 @@
+{# Migration & Investment — Investment phases with funding allocation table
+   Included in solutions/detail.html within solutionDetail() x-data scope #}
+
+<div class="mt-7">
+    <div class="flex items-center justify-between mb-3">
+        <h3 class="text-sm font-semibold text-foreground flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-primary inline-block"></span>
+            Investment Phases
+        </h3>
+        <div class="sad-actions"><button @click="openEntityModal('investment_phase')" class="inline-flex items-center gap-1 h-7 px-2.5 rounded-md text-xs font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors">+ Phase</button></div>
+    </div>
+    <template x-if="sadInvestmentPhases.length > 0">
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead><tr class="border-b border-border">
+                    <th class="text-left py-2 px-3 text-muted-foreground font-medium">#</th>
+                    <th class="text-left py-2 px-3 text-muted-foreground font-medium">Phase</th>
+                    <th class="text-right py-2 px-3 text-muted-foreground font-medium">Authorized</th>
+                    <th class="text-right py-2 px-3 text-muted-foreground font-medium">Spend to Date</th>
+                    <th class="text-left py-2 px-3 text-muted-foreground font-medium">Source</th>
+                    <th class="text-left py-2 px-3 text-muted-foreground font-medium">Status</th>
+                    <th class="text-right py-2 px-3 text-muted-foreground font-medium sad-actions">Actions</th>
+                </tr></thead>
+                <tbody>
+                    <template x-for="item in sadInvestmentPhases" :key="item.id">
+                        <tr class="border-b border-border/50 hover:bg-muted/30">
+                            <td class="py-2 px-3 text-muted-foreground" x-text="item.phase_number"></td>
+                            <td class="py-2 px-3 font-medium text-foreground" x-text="item.phase_name"></td>
+                            <td class="py-2 px-3 text-right font-mono" x-text="item.authorized_amount ? (item.currency || '\u00a3') + ' ' + Number(item.authorized_amount).toLocaleString() : '\u2014'"></td>
+                            <td class="py-2 px-3 text-right font-mono" x-text="item.spend_to_date ? (item.currency || '\u00a3') + ' ' + Number(item.spend_to_date).toLocaleString() : '\u2014'"></td>
+                            <td class="py-2 px-3 text-muted-foreground" x-text="item.funding_source || '\u2014'"></td>
+                            <td class="py-2 px-3"><span :class="{'text-emerald-600': item.status === 'approved', 'text-amber-600': item.status === 'pending', 'text-primary': item.status === 'in_progress'}" x-text="item.status"></span></td>
+                            <td class="py-2 px-3 text-right sad-actions">
+                                <button @click="openEntityModal('investment_phase', item)" class="text-primary hover:underline text-xs mr-2">Edit</button>
+                                <button @click="confirmDeleteEntity('investment_phase', item)" class="text-destructive hover:underline text-xs">Delete</button>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+    </template>
+    <template x-if="sadInvestmentPhases.length === 0">
+        <p class="text-sm text-muted-foreground/60 italic">No investment phases defined. Funding tranches track budget allocation per transition plateau for ARB financial governance.</p>
+    </template>
+</div>

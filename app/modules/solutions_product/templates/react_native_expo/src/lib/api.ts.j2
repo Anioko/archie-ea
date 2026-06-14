@@ -1,0 +1,135 @@
+/**
+ * Auto-generated typed API client for React Native / Expo.
+ * Base URL is controlled by EXPO_PUBLIC_API_URL env var.
+{% if auth == "jwt-local" %}
+ * Auth: JWT — token stored in expo-secure-store under key TOKEN_KEY.
+ * On 401 the user is navigated to /login.
+{% endif %}
+ */
+{% for cls in classes %}
+import type { {{ cls.name }}, {{ cls.name }}Input } from "./schemas"
+{% endfor %}
+{% if auth == "jwt-local" %}
+import * as SecureStore from "expo-secure-store"
+import { router } from "expo-router"
+{% endif %}
+
+const BASE = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:8000"
+
+/** Shared SecureStore key — import this in AuthProvider to stay in sync. */
+export const TOKEN_KEY = "{{ app_slug | default('app') }}_token"
+
+{% if auth == "jwt-local" %}
+/** Persist JWT to secure encrypted storage. */
+export async function storeToken(token: string): Promise<void> {
+  await SecureStore.setItemAsync(TOKEN_KEY, token)
+}
+
+/** Read JWT from secure storage — null if absent. */
+export async function getToken(): Promise<string | null> {
+  return SecureStore.getItemAsync(TOKEN_KEY)
+}
+
+/** Erase JWT from secure storage (logout). */
+export async function clearToken(): Promise<void> {
+  await SecureStore.deleteItemAsync(TOKEN_KEY)
+}
+
+async function _authHeaders(): Promise<Record<string, string>> {
+  const token = await getToken()
+  return token ? { Authorization: `Bearer ${token}` } : {}
+}
+{% endif %}
+
+async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+{% if auth == "jwt-local" %}
+  const authH = await _authHeaders()
+{% endif %}
+  const res = await fetch(`${BASE}${path}`, {
+    headers: {
+      "Content-Type": "application/json",
+      ...init?.headers,
+{% if auth == "jwt-local" %}
+      ...authH,
+{% endif %}
+    },
+    ...init,
+  })
+{% if auth == "jwt-local" %}
+  if (res.status === 401) {
+    await clearToken()
+    router.replace("/login")
+    throw new Error("Unauthorized")
+  }
+{% endif %}
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText)
+    throw new Error(`API ${res.status}: ${text}`)
+  }
+  return res.json() as Promise<T>
+}
+
+{% if auth == "jwt-local" %}
+export interface UserProfile {
+  id: string
+  email: string
+  full_name?: string
+  organization_id?: string
+}
+
+export const authApi = {
+  register: (email: string, password: string, fullName?: string) =>
+    apiFetch<{ access_token: string; token_type: string }>("/auth/register", {
+      method: "POST",
+      body: JSON.stringify({ email, password, full_name: fullName }),
+    }),
+  login: (email: string, password: string) =>
+    apiFetch<{ access_token: string; token_type: string }>("/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    }),
+  me: () =>
+    apiFetch<UserProfile>("/auth/me"),
+  logout: () =>
+    apiFetch<void>("/auth/logout", { method: "POST" }).catch(() => {}),
+}
+{% endif %}
+
+export type PaginatedResponse<T> = {
+  items: T[]
+  total: number
+  page: number
+  per_page: number
+  pages: number
+  has_next: boolean
+  has_prev: boolean
+}
+
+{% for cls in classes %}
+{% set slug = cls.table_name | replace('_', '-') %}
+export const {{ cls.name | lower }}Api = {
+  list: (params?: Record<string, string | number>) => {
+    const qs = params ? "?" + new URLSearchParams(Object.fromEntries(Object.entries(params).map(([k, v]) => [k, String(v)]))).toString() : ""
+    return apiFetch<PaginatedResponse<{{ cls.name }}>>(`/api/{{ slug }}${qs}`)
+  },
+  get: (id: number | string) =>
+    apiFetch<{{ cls.name }}>(`/api/{{ slug }}/${id}`),
+  create: (body: {{ cls.name }}Input) =>
+    apiFetch<{{ cls.name }}>(`/api/{{ slug }}`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  update: (id: number | string, body: Partial<{{ cls.name }}Input>) =>
+    apiFetch<{{ cls.name }}>(`/api/{{ slug }}/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  remove: (id: number | string) =>
+    apiFetch<void>(`/api/{{ slug }}/${id}`, { method: "DELETE" }),
+  availableActions: (id: number | string) =>
+    apiFetch<{ available_triggers: string[] }>(`/api/{{ slug }}/${id}/available-actions`),
+  transition: (id: number | string, trigger: string) =>
+    apiFetch<{{ cls.name }}>(`/api/{{ slug }}/${id}/${trigger}`, { method: "POST" }),
+}
+
+{% endfor %}

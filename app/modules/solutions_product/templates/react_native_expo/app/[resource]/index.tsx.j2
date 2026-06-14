@@ -1,0 +1,266 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import {
+  ActivityIndicator,
+  Animated,
+  FlatList,
+  RefreshControl,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native"
+import { useRouter } from "expo-router"
+import { SafeAreaView } from "react-native-safe-area-context"
+import { useQuery, useQueryClient, useInfiniteQuery } from "@tanstack/react-query"
+import { Plus, Search, X, Inbox } from "lucide-react-native"
+import { {{ name | lower }}Api } from "@/lib/api"
+import type { {{ name }} } from "@/lib/schemas"
+import { OfflineBanner } from "@/components/OfflineBanner"
+import { StatusBadge, PriorityBadge } from "@/components/StatusBadge"
+
+const PER_PAGE = 25
+
+// Dynamic style helpers — avoids Jinja2/JSX double-brace conflict
+const _bg = (c: string) => ({ backgroundColor: c })
+const CARD_SHADOW = { shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 2 }
+const FAB_SHADOW = { shadowColor: "{{ primary_color }}", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 8 }
+const LIST_CONTENT_STYLE = { padding: 16, gap: 10, paddingBottom: 96 }
+const SEARCH_ICON_STYLE = { position: "absolute" as const, left: 12, top: 11 }
+const CLEAR_BTN_POS = { position: "absolute" as const, right: 12, top: 11 }
+const LOAD_MORE_STYLE = { marginVertical: 16 }
+
+{% set status_field = none %}
+{% set priority_field = none %}
+{% for field in fields %}
+{% if field.name == 'status' %}{% set status_field = field %}{% endif %}
+{% if field.name == 'priority' %}{% set priority_field = field %}{% endif %}
+{% endfor %}
+
+// First non-pk field is the display title; next two are sub-labels
+const DISPLAY_FIELDS = [
+  {% for field in fields %}{% if not field.primary_key %}
+  "{{ field.name }}",
+  {% endif %}{% endfor %}
+].slice(0, 3)
+
+// Skeleton shimmer card
+function SkeletonCard() {
+  const opacity = useRef(new Animated.Value(0.3)).current
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(opacity, { toValue: 1, duration: 700, useNativeDriver: true }),
+        Animated.timing(opacity, { toValue: 0.3, duration: 700, useNativeDriver: true }),
+      ])
+    ).start()
+  }, [opacity])
+  return (
+    <Animated.View style={[{ opacity }, CARD_SHADOW]} className="bg-white rounded-2xl p-4 border border-slate-100">
+      <View className="flex-row items-center justify-between mb-3">
+        <View className="h-4 bg-slate-200 rounded-full flex-1 mr-4" />
+        <View className="h-5 w-16 bg-slate-100 rounded-full" />
+      </View>
+      <View className="h-3 bg-slate-100 rounded-full w-2/3 mb-2" />
+      <View className="h-3 bg-slate-100 rounded-full w-1/2" />
+    </Animated.View>
+  )
+}
+
+function FieldValue({ label, value }: { label: string; value: unknown }) {
+  if (label === "status") return <StatusBadge value={value as string} />
+  if (label === "priority") return <PriorityBadge value={value as string} />
+  return (
+    <Text className="text-sm text-slate-700 flex-1" numberOfLines={1}>
+      {value != null ? String(value) : "\u2014"}
+    </Text>
+  )
+}
+
+export default function {{ name }}ListScreen() {
+  const router = useRouter()
+  const queryClient = useQueryClient()
+  const [search, setSearch] = useState("")
+  const [debouncedSearch, setDebouncedSearch] = useState("")
+
+  // Debounce search so we don't fire on every keystroke
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300)
+    return () => clearTimeout(t)
+  }, [search])
+
+  const {
+    data,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isLoading,
+    isError,
+    error,
+    refetch,
+    isFetching,
+  } = useInfiniteQuery({
+    queryKey: ["{{ table_name }}", debouncedSearch],
+    queryFn: ({ pageParam = 1 }) =>
+      {{ name | lower }}Api.list({
+        page: pageParam as number,
+        per_page: PER_PAGE,
+        ...(debouncedSearch ? { search: debouncedSearch } : {}),
+      }),
+    getNextPageParam: (lastPage, pages) => {
+      return lastPage.has_next ? pages.length + 1 : undefined
+    },
+    initialPageParam: 1,
+  })
+
+  const items: {{ name }}[] = useMemo(
+    () => (data?.pages.flatMap(p => p.items) ?? []) as {{ name }}[],
+    [data]
+  )
+
+  const onRefresh = useCallback(() => {
+    queryClient.resetQueries({ queryKey: ["{{ table_name }}"] })
+  }, [queryClient])
+
+  if (isLoading) {
+    return (
+      <SafeAreaView className="flex-1 bg-slate-50" edges={["bottom"]}>
+        <View className="px-4 pt-2 pb-1">
+          <View className="bg-slate-100 border border-slate-200 rounded-xl h-10" />
+        </View>
+        <View className="p-4 gap-2.5">
+          {[0, 1, 2, 3, 4].map((i) => <SkeletonCard key={i} />)}
+        </View>
+      </SafeAreaView>
+    )
+  }
+
+  if (isError) {
+    return (
+      <View className="flex-1 items-center justify-center bg-slate-50 p-6">
+        <View className="w-16 h-16 rounded-full bg-red-50 items-center justify-center mb-4">
+          <X size={28} color="#ef4444" />
+        </View>
+        <Text className="text-lg font-semibold text-slate-900 mb-1">Something went wrong</Text>
+        <Text className="text-sm text-slate-500 text-center mb-4">
+          {error instanceof Error ? error.message : "Failed to load records"}
+        </Text>
+        <TouchableOpacity onPress={() => refetch()} className="bg-indigo-600 px-5 py-2.5 rounded-xl">
+          <Text className="text-white font-semibold">Try Again</Text>
+        </TouchableOpacity>
+      </View>
+    )
+  }
+
+  return (
+    <SafeAreaView className="flex-1 bg-slate-50" edges={["bottom"]}>
+      <OfflineBanner />
+
+      {/* Search bar */}
+      <View className="px-4 pt-2 pb-1">
+        <View className="relative">
+          <Search size={18} color="#94a3b8" style={SEARCH_ICON_STYLE} />
+          <TextInput
+            className="bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-900"
+            placeholder="Search {{ name | replace('_', ' ') | lower }}..."
+            placeholderTextColor="#94a3b8"
+            value={search}
+            onChangeText={setSearch}
+            autoCapitalize="none"
+            accessibilityLabel="Search {{ name }}"
+          />
+          {search.length > 0 && (
+            <TouchableOpacity onPress={() => setSearch("")} style={CLEAR_BTN_POS}>
+              <X size={18} color="#94a3b8" />
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+
+      <FlatList
+        data={items}
+        keyExtractor={(item) => String(item.id)}
+        contentContainerStyle={LIST_CONTENT_STYLE}
+        refreshControl={
+          <RefreshControl refreshing={isFetching && !isLoading} onRefresh={onRefresh} tintColor="{{ primary_color }}" />
+        }
+        {% if use_pagination %}
+        onEndReached={() => {
+          if (hasNextPage && !isFetchingNextPage) fetchNextPage()
+        }}
+        onEndReachedThreshold={0.3}
+        {% endif %}
+        ListFooterComponent={
+          isFetchingNextPage
+            ? <ActivityIndicator size="small" color="{{ primary_color }}" style={LOAD_MORE_STYLE} />
+            : null
+        }
+        ListEmptyComponent={
+          <View className="items-center justify-center py-16">
+            <View className="w-16 h-16 rounded-full bg-slate-100 items-center justify-center mb-4">
+              <Inbox size={28} color="#94a3b8" />
+            </View>
+            <Text className="text-lg font-semibold text-slate-900 mb-1">
+              {search ? "No results" : "No records yet"}
+            </Text>
+            <Text className="text-sm text-slate-500 text-center px-8">
+              {search
+                ? `No {{ name | replace('_', ' ') | lower }} matching "${String(search)}"`
+                : "Create your first {{ name | replace('_', ' ') | lower }} to get started."}
+            </Text>
+          </View>
+        }
+        renderItem={({ item }) => {
+          const rec = item as Record<string, unknown>
+          const title = String(rec[DISPLAY_FIELDS[0]] ?? `#${item.id}`)
+          return (
+            <TouchableOpacity
+              onPress={() => router.push(`/{{ table_name }}/${item.id}` as never)}
+              className="bg-white rounded-2xl p-4 border border-slate-100 active:scale-[0.98]"
+              style={CARD_SHADOW}
+              accessibilityLabel={`Open {{ name }}: ${title}`}
+            >
+              {/* Top row: title + status */}
+              <View className="flex-row items-center justify-between mb-2">
+                <Text className="text-base font-semibold text-slate-900 flex-1 mr-2" numberOfLines={1}>
+                  {title}
+                </Text>
+                {% if status_field %}
+                <StatusBadge value={rec.status as string} />
+                {% endif %}
+              </View>
+              {/* Sub-fields */}
+              <View className="gap-1">
+                {DISPLAY_FIELDS.slice(1).map((field) => {
+                  if (field === "status") return null
+                  return (
+                    <View key={field} className="flex-row items-center">
+                      <Text className="text-xs text-slate-400 w-24 capitalize">{field.replace(/_/g, " ")}</Text>
+                      <FieldValue label={field} value={rec[field]} />
+                    </View>
+                  )
+                })}
+              </View>
+              {% if priority_field %}
+              {rec.priority != null && (
+                <View className="mt-2">
+                  <PriorityBadge value={rec.priority as string} />
+                </View>
+              )}
+              {% endif %}
+            </TouchableOpacity>
+          )
+        }}
+      />
+
+      {/* FAB — always circular */}
+      <TouchableOpacity
+        onPress={() => router.push("/{{ table_name }}/new" as never)}
+        className="absolute bottom-6 right-5 w-14 h-14 bg-indigo-600 rounded-full items-center justify-center"
+        style={FAB_SHADOW}
+        accessibilityLabel="Create new {{ name }}"
+      >
+        <Plus size={24} color="#fff" />
+      </TouchableOpacity>
+    </SafeAreaView>
+  )
+}

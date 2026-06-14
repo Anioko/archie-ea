@@ -1,0 +1,911 @@
+{% extends 'layouts/admin_base.html' %}
+{% from 'components/page_header.html' import page_header %}
+
+{% block title %}Abacus Integration Settings{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+    {{ page_header(
+        title='Abacus Integration Settings',
+        description='Configure Avolution Abacus EA repository integration for automatic synchronization of applications, capabilities, and relationships.',
+        breadcrumbs=[
+            {'label': 'Admin', 'href': url_for('admin.index')},
+            {'label': 'Abacus Settings'}
+        ]
+    ) }}
+
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div class="mb-6 space-y-2">
+                {% for category, message in messages %}
+                    <div class="rounded-md border p-4 {% if category == 'success' %}bg-primary/10 border-primary/20 text-foreground{% elif category == 'error' %}bg-destructive/10 border-destructive/20 text-destructive{% else %}bg-accent border-border text-foreground{% endif %}">
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Status Panel -->
+        <div class="lg:col-span-1">
+            <div data-slot="card" class="rounded-xl border-2 border-input bg-card">
+                <div class="p-4 sm:p-6 border-b">
+                    <h3 class="text-lg font-semibold">Connection Status</h3>
+                </div>
+                <div class="p-4 sm:p-6 space-y-4">
+                    {% if abacus_config or env_config %}
+                        <!-- Connection Status -->
+                        {% if abacus_config %}
+                        <div>
+                            <p class="text-sm text-muted-foreground mb-2">Status</p>
+                            <div class="flex items-center gap-2">
+                                {% if abacus_config.connection_status == 'connected' %}
+                                    <div class="h-3 w-3 rounded-full bg-primary"></div>
+                                    <span class="font-medium text-foreground">Connected</span>
+                                {% elif abacus_config.connection_status == 'error' %}
+                                    <div class="h-3 w-3 rounded-full bg-destructive"></div>
+                                    <span class="font-medium text-destructive">Error</span>
+                                {% else %}
+                                    <div class="h-3 w-3 rounded-full bg-muted-foreground"></div>
+                                    <span class="font-medium text-muted-foreground">Not Tested</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% elif env_config %}
+                        <div>
+                            <p class="text-sm text-muted-foreground mb-2">Status</p>
+                            <div class="flex items-center gap-2">
+                                <div class="h-3 w-3 rounded-full bg-primary/60"></div>
+                                <span class="font-medium text-muted-foreground">Using .env</span>
+                            </div>
+                        </div>
+                        {% endif %}
+
+                        <!-- Last Sync -->
+                        {% if abacus_config %}
+                        <div>
+                            <p class="text-sm text-muted-foreground mb-2">Last Sync</p>
+                            <p class="font-medium">
+                                {% if abacus_config.last_sync_at %}
+                                    {{ abacus_config.last_sync_at.strftime('%Y-%m-%d %H:%M:%S') }}
+                                {% else %}
+                                    Never
+                                {% endif %}
+                            </p>
+                        </div>
+                        {% endif %}
+
+                        <!-- Sync Status -->
+                        {% if abacus_config %}
+                        <div>
+                            <p class="text-sm text-muted-foreground mb-2">Auto Sync</p>
+                            <div class="flex items-center gap-2">
+                                {% if abacus_config.sync_enabled %}
+                                    <span class="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary">Enabled</span>
+                                    <span class="text-sm text-muted-foreground">
+                                        Every {{ abacus_config.sync_interval_minutes or 1440 }} minutes
+                                    </span>
+                                {% else %}
+                                    <span class="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">Disabled</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endif %}
+
+                        <!-- Error Message -->
+                        {% if abacus_config and abacus_config.last_error %}
+                            <div class="p-3 bg-destructive/10 border border-destructive/20 rounded-md">
+                                <p class="text-sm text-destructive font-medium mb-1">Last Error:</p>
+                                <p class="text-xs text-destructive/80">{{ abacus_config.last_error }}</p>
+                            </div>
+                        {% endif %}
+
+                        <!-- Manual Actions -->
+                        <div class="pt-4 border-t space-y-3">
+                            <form method="POST" action="{{ url_for('admin.test_abacus_connection') }}" class="w-full">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                <button type="submit"
+                                        class="w-full inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2" aria-label="Test Abacus connection">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-wifi"><path d="M12 20h.01"/><path d="M2 8.82a15 15 0 0 1 20 0"/><path d="M5 12.859a10 10 0 0 1 14 0"/><path d="M8.5 16.429a5 5 0 0 1 7 0"/></svg>
+                                    Test Connection
+                                </button>
+                            </form>
+                            <form method="POST" action="{{ url_for('admin.trigger_abacus_sync') }}" class="w-full">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                <button type="submit" id="sync-button"
+                                        class="w-full inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2"
+                                        {% if abacus_config and not abacus_config.enabled %}disabled{% endif %} aria-label="Sync data from Abacus">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-refresh-cw"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
+                                    Sync Data from Abacus
+                                </button>
+                            </form>
+
+                            <!-- Cancel Button — visibility managed by syncStatusPanel Alpine component -->
+                            <button id="cancel-job-btn"
+                                    class="w-full inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium bg-destructive text-destructive-foreground hover:bg-destructive/90 h-10 px-4 py-2 hidden" aria-label="Stop running sync job">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>
+                                Stop Running Job
+                            </button>
+                        </div>
+                    {% else %}
+                        <p class="text-sm text-muted-foreground">No Abacus configuration found. Configure settings to get started.</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Sync Job Status -->
+            <div data-slot="card" class="mt-6 rounded-xl border-2 border-input bg-card" x-data="syncStatusPanel()">
+                <div class="p-4 sm:p-6 border-b flex items-center justify-between">
+                    <h3 class="text-lg font-semibold">Sync Job Status</h3>
+                    <button x-show="isStale" @click="clearStaleJobs()" x-cloak
+                            class="text-xs px-2.5 py-1 rounded-md bg-destructive/10 text-destructive hover:bg-destructive/20 font-medium">
+                        Clear Stale Job
+                    </button>
+                </div>
+                <div class="p-4 sm:p-6 space-y-3">
+                    <div class="flex items-center gap-2">
+                        <div class="h-3 w-3 rounded-full" :class="indicatorClass"></div>
+                        <span class="font-medium" :class="textClass" x-text="statusLabel"></span>
+                        <span x-show="elapsed && status === 'in_progress'" x-cloak
+                              class="text-xs text-muted-foreground ml-auto" x-text="elapsed"></span>
+                    </div>
+                    <!-- Progress bar for running jobs -->
+                    <div x-show="status === 'in_progress'" x-cloak class="space-y-1">
+                        <div class="h-2 bg-muted rounded-full overflow-hidden">
+                            <div class="h-full bg-primary rounded-full transition-all duration-500 animate-pulse" style="width: 100%"></div>
+                        </div>
+                    </div>
+                    <div class="text-xs text-muted-foreground" x-text="details"></div>
+                    <!-- Stale job warning -->
+                    <div x-show="isStale" x-cloak class="p-2 bg-amber-500/10 border border-amber-500/30 rounded text-xs text-amber-700">
+                        This job has been running for over 1 hour without completing. It's likely stuck. Click "Clear Stale Job" above to reset.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Imported Data Summary -->
+            <!-- Updated: 2026-02-03 04:10 - Added imported data tracking -->
+            {% if abacus_config or env_config %}
+            <div data-slot="card" class="mt-6 rounded-xl border-2 border-input bg-card">
+                <div class="p-4 sm:p-6 border-b flex items-center justify-between">
+                    <h3 class="text-lg font-semibold flex items-center gap-2"><i data-lucide="bar-chart-3" class="w-4 h-4 text-muted-foreground"></i>Imported Data</h3>
+                    <span class="text-xs text-muted-foreground">From Abacus</span>
+                </div>
+                <div class="p-4 sm:p-6 space-y-4">
+                    <div>
+                        <div class="flex items-center justify-between mb-2">
+                            <div class="flex items-center gap-2">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-primary"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M7 7h10"/><path d="M7 12h10"/><path d="M7 17h10"/></svg>
+                                <span class="text-sm font-medium text-muted-foreground">Applications</span>
+                            </div>
+                            <span class="text-2xl font-bold text-primary" id="imported-apps-count">{{ imported_stats.applications or 0 }}</span>
+                        </div>
+                        <div class="h-2 bg-muted rounded-full overflow-hidden">
+                            <div class="h-full bg-primary" style="width: {% if imported_stats.applications > 100 %}100{% else %}{{ imported_stats.applications or 0 }}{% endif %}%;" id="apps-progress"></div>
+                        </div>
+                        <p class="text-xs text-muted-foreground mt-1">Applications imported from Abacus</p>
+                    </div>
+                    <div class="pt-2">
+                        <div class="flex items-center justify-between mb-2">
+                            <div class="flex items-center gap-2">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-foreground"><path d="M12 2v20M2 12h20"/><circle cx="12" cy="12" r="4"/></svg>
+                                <span class="text-sm font-medium text-muted-foreground">Capabilities</span>
+                            </div>
+                            <span class="text-2xl font-bold text-foreground" id="imported-caps-count">{{ imported_stats.capabilities or 0 }}</span>
+                        </div>
+                        <div class="h-2 bg-muted rounded-full overflow-hidden">
+                            <div class="h-full bg-primary/70" style="width: {% if (imported_stats.capabilities or 0) * 2 > 100 %}100{% else %}{{ (imported_stats.capabilities or 0) * 2 }}{% endif %}%;" id="caps-progress"></div>
+                        </div>
+                        <p class="text-xs text-muted-foreground mt-1">Business capabilities imported from Abacus</p>
+                    </div>
+                    <div class="pt-4 border-t">
+                        <a href="{{ url_for('admin.abacus_dashboard') }}"
+                           class="w-full inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 h-10 px-4 py-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-bar-chart-3"><path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>
+                            View Full Dashboard & Details
+                        </a>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Configuration Form -->
+        <div class="lg:col-span-2">
+            <div data-slot="card" class="rounded-xl border-2 border-input bg-card">
+                <div class="p-4 sm:p-6 border-b">
+                    <h3 class="text-lg font-semibold">Configuration</h3>
+                </div>
+                <form method="POST" action="{{ url_for('admin.abacus_settings') }}" class="p-4 sm:p-6">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+
+                    <div class="space-y-6">
+                        <!-- Connection Settings -->
+                        <div>
+                            <h4 class="text-sm font-medium mb-4">Connection Settings</h4>
+                            <div class="space-y-4">
+                                <div>
+                                    <label for="base_url" class="block text-sm font-medium mb-2">
+                                        Base URL <span class="text-destructive">*</span>
+                                    </label>
+                                    <input type="url"
+                                           id="base_url"
+                                           name="base_url"
+                                           value="{{ form.base_url.data or '' }}"
+                                           placeholder="https://your-instance.avolutionsoftware.com"
+                                           class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                           required>
+                                     <p class="text-xs text-muted-foreground mt-1">Your Abacus instance URL (e.g., https://abacus.example.com)</p>
+                                </div>
+
+                                <div>
+                                    <label for="client_id" class="block text-sm font-medium mb-2">
+                                        Client ID <span class="text-destructive">*</span>
+                                    </label>
+                                    <input type="text"
+                                           id="client_id"
+                                           name="client_id"
+                                           value="{{ form.client_id.data or '' }}"
+                                           placeholder="your-client-id"
+                                           class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                           required>
+                                     <p class="text-xs text-muted-foreground mt-1">OAuth2 client ID from Abacus API settings</p>
+                                </div>
+
+                                <div>
+                                    <label for="client_secret" class="block text-sm font-medium mb-2">
+                                        Client Secret {% if not env_config %}<span class="text-destructive">*</span>{% endif %}
+                                    </label>
+                                    <input type="password"
+                                           id="client_secret"
+                                           name="client_secret"
+                                           value="{{ form.client_secret.data or '' }}"
+                                           placeholder="{% if abacus_config or env_config %}••••••••••••{% else %}your-client-secret{% endif %}"
+                                           class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                           {% if not abacus_config and not env_config %}required{% endif %}>
+                                    <p class="text-xs text-muted-foreground mt-1">
+                                        {% if env_config %}
+                                            Using secret from .env file (leave blank to keep it)
+                                        {% else %}
+                                            OAuth2 client secret (leave blank to keep existing)
+                                        {% endif %}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Sync Settings -->
+                        <div>
+                            <h4 class="text-sm font-medium mb-4">Sync Settings</h4>
+                            <div class="space-y-4">
+                                <div class="flex items-center justify-between p-3 bg-accent/50 rounded-md">
+                                    <div>
+                                        <label for="enabled" class="text-sm font-medium">Enable Integration</label>
+                                        <p class="text-xs text-muted-foreground">Allow data synchronization with Abacus</p>
+                                    </div>
+                                    <label class="relative inline-flex items-center cursor-pointer">
+                                        <input type="checkbox"
+                                               id="enabled"
+                                               name="enabled"
+                                               value="true"
+                                               {% if form.enabled.data %}checked{% endif %}
+                                               class="sr-only peer">
+                                        <div class="w-11 h-6 bg-muted peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-ring/30 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-background after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-background after:border-border after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                                    </label>
+                                </div>
+
+                                <div class="flex items-center justify-between p-3 bg-accent/50 rounded-md">
+                                    <div>
+                                        <label for="sync_enabled" class="text-sm font-medium">Enable Auto-Sync</label>
+                                        <p class="text-xs text-muted-foreground">Automatically sync data on schedule</p>
+                                    </div>
+                                    <label class="relative inline-flex items-center cursor-pointer">
+                                        <input type="checkbox"
+                                               id="sync_enabled"
+                                               name="sync_enabled"
+                                               value="true"
+                                               {% if form.sync_enabled.data %}checked{% endif %}
+                                               class="sr-only peer">
+                                        <div class="w-11 h-6 bg-muted peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-ring/30 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-background after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-background after:border-border after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                                    </label>
+                                </div>
+
+                                <div>
+                                    <label for="sync_interval_minutes" class="block text-sm font-medium mb-2">
+                                        Sync Interval (minutes)
+                                    </label>
+                                    <select id="sync_interval_minutes"
+                                            name="sync_interval_minutes"
+                                            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                                        <option value="60" {% if form.sync_interval_minutes.data == 60 %}selected{% endif %}>Every Hour</option>
+                                        <option value="240" {% if form.sync_interval_minutes.data == 240 %}selected{% endif %}>Every 4 Hours</option>
+                                        <option value="720" {% if form.sync_interval_minutes.data == 720 %}selected{% endif %}>Every 12 Hours</option>
+                                        <option value="1440" {% if form.sync_interval_minutes.data == 1440 or not form.sync_interval_minutes.data %}selected{% endif %}>Daily (2 AM)</option>
+                                        <option value="10080" {% if form.sync_interval_minutes.data == 10080 %}selected{% endif %}>Weekly</option>
+                                    </select>
+                                    <p class="text-xs text-muted-foreground mt-1">How often to automatically sync with Abacus</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Sync Relationships Toggle -->
+                        <div>
+                            <h4 class="text-sm font-medium mb-4">Relationship Import</h4>
+                            <div class="flex items-center justify-between p-3 bg-accent/50 rounded-md">
+                                <div>
+                                    <label for="sync_relationships" class="text-sm font-medium">Sync Relationships</label>
+                                    <p class="text-xs text-muted-foreground">Import OutConnection relationships as ArchiMate relationships after apps + capabilities</p>
+                                </div>
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox"
+                                           id="sync_relationships"
+                                           name="sync_relationships"
+                                           value="true"
+                                           {% if abacus_config and abacus_config.config_json %}
+                                               {% set _cfg = abacus_config.config_json | default('{}', true) %}
+                                               {% if '"sync_relationships": true' in _cfg %}checked{% endif %}
+                                           {% endif %}
+                                           class="sr-only peer">
+                                    <div class="w-11 h-6 bg-muted peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-ring/30 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-background after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-background after:border-border after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Entity Type Selection -->
+                        <div x-data="entityTypeSelector()">
+                            <h4 class="text-sm font-medium mb-4">Entity Types to Sync</h4>
+                            <input type="hidden" id="sync_entity_types" name="sync_entity_types" :value="JSON.stringify(selectedTypes)">
+                            <div class="space-y-3">
+                                <div x-show="!typesLoaded && !typesLoading" class="p-3 bg-accent/50 rounded-md">
+                                    <p class="text-sm text-muted-foreground mb-2">Discover which entity types are available in your Abacus instance.</p>
+                                    <button type="button" @click="discoverTypes()"
+                                            class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-background border border-input hover:bg-accent transition-colors">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                                        Discover Entity Types
+                                    </button>
+                                </div>
+                                <div x-show="typesLoading" x-cloak class="p-3 bg-accent/50 rounded-md text-sm text-muted-foreground">
+                                    Fetching from Abacus API...
+                                </div>
+                                <div x-show="typesLoaded" x-cloak>
+                                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                        <template x-for="t in availableTypes" :key="t.name">
+                                            <label class="flex items-center gap-2 p-2 rounded-md hover:bg-muted cursor-pointer text-sm border border-transparent" :class="selectedTypes.includes(t.name) ? 'bg-primary/5 border-primary/20' : ''">
+                                                <input type="checkbox" :value="t.name" :checked="selectedTypes.includes(t.name)"
+                                                       @change="toggleType(t.name)" class="rounded border-input">
+                                                <span x-text="t.name" class="flex-1"></span>
+                                                <span class="text-xs text-muted-foreground" x-text="t.count + ' items'"></span>
+                                            </label>
+                                        </template>
+                                    </div>
+                                    <p class="text-xs text-muted-foreground mt-2" x-text="selectedTypes.length + ' of ' + availableTypes.length + ' types selected for sync'"></p>
+                                </div>
+                                <div x-show="typesError" x-cloak class="p-2 bg-destructive/10 rounded text-xs text-destructive" x-text="typesError"></div>
+                            </div>
+                        </div>
+
+                        <!-- Data Filter Settings -->
+                        <div>
+                            <h4 class="text-sm font-medium mb-4">Data Filters</h4>
+                            <div class="space-y-4">
+                                <div class="p-3 bg-accent/50 rounded-md space-y-3">
+                                    <div>
+                                        <label for="filter_countries" class="text-sm font-medium">Country Filter</label>
+                                        <p class="text-xs text-muted-foreground">Select which countries to import applications from via the "App is used in Country" relationship</p>
+                                    </div>
+                                    <div>
+                                        <input type="text"
+                                               id="filter_countries"
+                                               name="filter_countries"
+                                               value="{{ form.filter_countries.data or '' }}"
+                                               placeholder="e.g. United Kingdom,Ireland,France"
+                                               class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring">
+                                    </div>
+                                    <div class="flex flex-wrap gap-2">
+                                        <button type="button" @click="addCountry('United Kingdom')" class="text-xs px-2 py-1 rounded bg-accent text-accent-foreground hover:bg-accent/80" aria-label="Add United Kingdom to filter">+ United Kingdom</button>
+                                        <button type="button" @click="addCountry('Ireland')" class="text-xs px-2 py-1 rounded bg-accent text-accent-foreground hover:bg-accent/80" aria-label="Add Ireland to filter">+ Ireland</button>
+                                        <button type="button" @click="addCountry('France')" class="text-xs px-2 py-1 rounded bg-accent text-accent-foreground hover:bg-accent/80" aria-label="Add France to filter">+ France</button>
+                                        <button type="button" @click="addCountry('Germany')" class="text-xs px-2 py-1 rounded bg-accent text-accent-foreground hover:bg-accent/80" aria-label="Add Germany to filter">+ Germany</button>
+                                        <button type="button" @click="addCountry('Spain')" class="text-xs px-2 py-1 rounded bg-accent text-accent-foreground hover:bg-accent/80" aria-label="Add Spain to filter">+ Spain</button>
+                                        <button type="button" @click="addCountry('Italy')" class="text-xs px-2 py-1 rounded bg-accent text-accent-foreground hover:bg-accent/80" aria-label="Add Italy to filter">+ Italy</button>
+                                        <button type="button" @click="document.getElementById('filter_countries').value='all'" class="text-xs px-2 py-1 rounded bg-muted text-muted-foreground hover:bg-muted/80" aria-label="Import all countries">All Countries</button>
+                                        <button type="button" @click="document.getElementById('filter_countries').value=''" class="text-xs px-2 py-1 rounded bg-destructive/10 text-destructive hover:bg-destructive/20" aria-label="Clear country filter">Clear</button>
+                                    </div>
+                                </div>
+                                {# Dynamic filter discovery from Abacus API #}
+                                <input type="hidden" id="discover-filters-url" value="{{ url_for('admin.discover_abacus_filters') }}">
+                                <input type="hidden" id="active-filters-data" value="{{ abacus_config.config_json|default('{}', true)|e if abacus_config else '{}' }}">
+                                <input type="hidden" id="dynamic_filters" name="dynamic_filters" value="">
+                                {% if not filter_dimensions %}
+                                <div class="p-3 bg-amber-500/10 border border-amber-500/30 rounded-md text-sm text-amber-700 dark:text-amber-400">
+                                    <p class="font-medium">No filter dimensions available yet</p>
+                                    <p class="text-xs mt-1">Click the button below to discover filter options from Abacus. They'll be saved and available on next page load.</p>
+                                    <button type="button" id="btn-discover-now"
+                                            class="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-background border border-input hover:bg-accent transition-colors">
+                                        Fetch Filter Options Now
+                                    </button>
+                                </div>
+                                {% endif %}
+                                {% if filter_dimensions %}
+                                <div class="p-3 bg-accent/50 rounded-md space-y-3" x-data="{
+                                    selectedDimension: '',
+                                    selectedValues: [],
+                                    addFilter() {
+                                        if (!this.selectedDimension || this.selectedValues.length === 0) return;
+                                        let el = document.getElementById('dynamic_filters');
+                                        let filters = [];
+                                        try { filters = JSON.parse(el.value || '[]'); } catch(e) { filters = []; }
+                                        filters = filters.filter(f => f.connection_type !== this.selectedDimension);
+                                        filters.push({ connection_type: this.selectedDimension, values: [...this.selectedValues] });
+                                        el.value = JSON.stringify(filters);
+                                        this.selectedValues = [];
+                                        this.selectedDimension = '';
+                                    },
+                                    toggleValue(val) {
+                                        const idx = this.selectedValues.indexOf(val);
+                                        if (idx === -1) this.selectedValues.push(val);
+                                        else this.selectedValues.splice(idx, 1);
+                                    }
+                                }">
+                                    <div>
+                                        <h5 class="text-sm font-medium">Advanced Filters (from Abacus API)</h5>
+                                        <p class="text-xs text-muted-foreground mb-2">Filter the sync by any relationship dimension available in Abacus</p>
+                                    </div>
+
+                                    <div>
+                                        <label for="filter-dimension-select" class="text-xs font-medium mb-1 block">Filter Dimension</label>
+                                        <select id="filter-dimension-select" x-model="selectedDimension"
+                                                class="w-full h-9 px-3 text-sm rounded-md border border-input bg-background">
+                                            <option value="">Select a dimension...</option>
+                                            {% for dim, values in filter_dimensions.items() %}
+                                            <option value="{{ dim }}">{{ dim }} ({{ values|length }} values)</option>
+                                            {% endfor %}
+                                        </select>
+                                    </div>
+
+                                    {% for dim, values in filter_dimensions.items() %}
+                                    <div x-show="selectedDimension === '{{ dim }}'" x-cloak>
+                                        <label class="text-xs font-medium mb-1 block">Select Values</label>
+                                        <div class="max-h-48 overflow-y-auto border border-border rounded-md bg-background p-2 space-y-1">
+                                            {% for val in values %}
+                                            <label class="flex items-center gap-2 px-2 py-1 rounded hover:bg-muted cursor-pointer text-sm">
+                                                <input type="checkbox" value="{{ val }}" @change="toggleValue('{{ val }}')"
+                                                       class="rounded border-input">
+                                                <span>{{ val }}</span>
+                                            </label>
+                                            {% endfor %}
+                                        </div>
+                                        <div class="flex items-center justify-between mt-2">
+                                            <span class="text-xs text-muted-foreground" x-text="selectedValues.length + ' selected'"></span>
+                                            <button type="button" @click="addFilter()"
+                                                    :disabled="selectedValues.length === 0"
+                                                    class="px-3 py-1 text-xs font-medium rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                                                Apply Filter
+                                            </button>
+                                        </div>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <script>
+                        function addCountry(country) {
+                            const input = document.getElementById('filter_countries');
+                            const current = input.value.trim();
+                            if (current === 'all') { input.value = country; return; }
+                            const countries = current ? current.split(',').map(function(c) { return c.trim(); }) : [];
+                            if (countries.indexOf(country) === -1) {
+                                countries.push(country);
+                                input.value = countries.join(',');
+                            }
+                        }
+                        </script>
+
+                        <!-- Submit Buttons -->
+                        <div class="flex items-center gap-3 pt-4 border-t">
+                            <button type="submit" class="inline-flex items-center gap-2 rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm font-medium hover:bg-primary/90 transition-colors" aria-label="Save Abacus configuration settings">
+                                <i data-lucide="save" class="w-4 h-4" aria-hidden="true"></i>
+                                Save Settings
+                            </button>
+                            <a href="{{ url_for('admin.index') }}" class="inline-flex items-center gap-2 rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground transition-colors">
+                                Cancel
+                            </a>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Documentation Section -->
+    <div class="mt-8">
+        <div data-slot="card" class="rounded-xl border-2 border-input bg-card p-4 sm:p-6">
+            <h3 class="text-lg font-semibold mb-4">Setup Instructions</h3>
+            <div class="prose prose-sm dark:prose-invert max-w-none">
+                <ol class="space-y-2">
+                    <li>Log in to your Abacus instance as an administrator</li>
+                    <li>Navigate to <strong>Settings → API → OAuth Applications</strong></li>
+                    <li>Create a new OAuth application with the following settings:
+                        <ul class="ml-6 mt-2">
+                            <li>Grant type: <code>client_credentials</code></li>
+                            <li>Scopes: <code>read:objects read:relationships read:architectures</code></li>
+                        </ul>
+                    </li>
+                    <li>Copy the <strong>Client ID</strong> and <strong>Client Secret</strong></li>
+                    <li>Paste them into the fields above and configure sync settings</li>
+                    <li>Click <strong>Test Connection</strong> to verify the setup</li>
+                    <li>Enable integration and auto-sync when ready</li>
+                </ol>
+                <p class="mt-4 text-sm text-muted-foreground">
+                    For more information, see the                     <a href="{{ url_for('static', filename='docs/ABACUS_FIELD_MAPPING.md') }}" class="text-primary hover:underline" target="_blank">Abacus Integration Guide</a>.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Relationship Import Configuration (BPP-011) -->
+<div class="mt-6" x-data="relationshipMappings()">
+    <div data-slot="card" class="rounded-xl border-2 border-input bg-card">
+        <div class="p-4 sm:p-6 border-b cursor-pointer flex items-center justify-between"
+             @click="expanded = !expanded">
+            <div>
+                <h3 class="text-lg font-semibold">Relationship Import</h3>
+                <p class="text-sm text-muted-foreground">Configure which Abacus OutConnection types map to ArchiMate relationships</p>
+            </div>
+            <svg x-show="!expanded" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
+            <svg x-show="expanded" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" /></svg>
+        </div>
+        <div x-show="expanded" x-cloak class="p-4 sm:p-6">
+            <template x-if="loading">
+                <div class="text-center py-8 text-muted-foreground">Loading mappings...</div>
+            </template>
+            <template x-if="!loading && Object.keys(mappings).length > 0">
+                <div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="border-b">
+                                    <th class="text-left py-2 px-3 font-medium">OutConnection Type</th>
+                                    <th class="text-left py-2 px-3 font-medium">ArchiMate Relationship</th>
+                                    <th class="text-left py-2 px-3 font-medium">Source Type</th>
+                                    <th class="text-left py-2 px-3 font-medium">Target Type</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <template x-for="[connType, mapping] in Object.entries(mappings)" :key="connType">
+                                    <tr class="border-b last:border-0">
+                                        <td class="py-2 px-3">
+                                            <span class="font-mono text-xs" x-text="connType"></span>
+                                        </td>
+                                        <td class="py-2 px-3">
+                                            <select x-model="mapping.rel_type"
+                                                    :aria-label="'Relationship type for ' + connType"
+                                                    class="h-8 px-2 text-xs rounded-md border border-input bg-background">
+                                                <option value="skip">Skip</option>
+                                                <option value="association">association</option>
+                                                <option value="serving">serving</option>
+                                                <option value="assignment">assignment</option>
+                                                <option value="flow">flow</option>
+                                                <option value="realization">realization</option>
+                                                <option value="access">access</option>
+                                                <option value="composition">composition</option>
+                                                <option value="aggregation">aggregation</option>
+                                                <option value="triggering">triggering</option>
+                                                <option value="influence">influence</option>
+                                                <option value="specialization">specialization</option>
+                                            </select>
+                                        </td>
+                                        <td class="py-2 px-3">
+                                            <select x-model="mapping.source_type"
+                                                    :aria-label="'Source type for ' + connType"
+                                                    class="h-8 px-2 text-xs rounded-md border border-input bg-background">
+                                                <option value="ApplicationComponent">ApplicationComponent</option>
+                                                <option value="BusinessActor">BusinessActor</option>
+                                                <option value="Node">Node</option>
+                                            </select>
+                                        </td>
+                                        <td class="py-2 px-3">
+                                            <select x-model="mapping.target_type"
+                                                    :aria-label="'Target type for ' + connType"
+                                                    class="h-8 px-2 text-xs rounded-md border border-input bg-background">
+                                                <option value="ApplicationComponent">ApplicationComponent</option>
+                                                <option value="Node">Node</option>
+                                                <option value="BusinessActor">BusinessActor</option>
+                                                <option value="Facility">Facility</option>
+                                                <option value="ApplicationInterface">ApplicationInterface</option>
+                                                <option value="SystemSoftware">SystemSoftware</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="flex items-center gap-3 mt-4 pt-4 border-t">
+                        <button @click="saveMappings()"
+                                :disabled="saving"
+                                class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                            <span x-show="!saving">Save Mappings</span>
+                            <span x-show="saving">Saving...</span>
+                        </button>
+                        <span x-show="saveMessage" x-text="saveMessage"
+                              class="text-sm" :class="saveError ? 'text-destructive' : 'text-primary'"></span>
+                        <span class="text-xs text-muted-foreground ml-auto" x-text="Object.keys(mappings).length + ' mappings configured'"></span>
+                    </div>
+                </div>
+            </template>
+            <template x-if="!loading && Object.keys(mappings).length === 0">
+                <div class="text-center py-8 text-muted-foreground">
+                    No relationship mappings configured. Check Abacus integration setup.
+                </div>
+            </template>
+        </div>
+    </div>
+</div>
+
+<!-- Initialize Lucide Icons -->
+<script>
+    lucide.createIcons();
+
+    const csrfToken = document.querySelector('meta[name=csrf-token]')?.content || '';
+
+    // ── Relationship mapping Alpine component ────────────────────────
+    function relationshipMappings() {
+        return {
+            expanded: false,
+            loading: false,
+            saving: false,
+            saveMessage: '',
+            saveError: false,
+            mappings: {},
+            init() {
+                this.$watch('expanded', (val) => {
+                    if (val && Object.keys(this.mappings).length === 0) this.loadMappings();
+                });
+            },
+            async loadMappings() {
+                this.loading = true;
+                try {
+                    const resp = await fetch('/admin/abacus-settings/relationship-mappings');
+                    const data = await resp.json();
+                    this.mappings = data.mappings || {};
+                } catch (e) { console.error('Failed to load mappings:', e); }
+                finally { this.loading = false; }
+            },
+            async saveMappings() {
+                this.saving = true; this.saveMessage = '';
+                try {
+                    const resp = await fetch('/admin/abacus-settings/save-relationship-mappings', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
+                        body: JSON.stringify({mappings: this.mappings})
+                    });
+                    const data = await resp.json();
+                    this.saveMessage = data.success ? `Saved ${data.saved_count} mappings` : (data.error || 'Save failed');
+                    this.saveError = !data.success;
+                } catch (e) { this.saveMessage = 'Network error'; this.saveError = true; }
+                finally { this.saving = false; setTimeout(() => this.saveMessage = '', 5000); }
+            }
+        };
+    }
+
+    // ── Entity type selector Alpine component ────────────────────────
+    function entityTypeSelector() {
+        // Pre-load selected types from config_json
+        let initial = [];
+        try {
+            const cfg = JSON.parse('{{ abacus_config.config_json|default("{}", true)|e if abacus_config else "{}" }}');
+            initial = cfg.sync_entity_types || [];
+        } catch(e) {}
+        return {
+            availableTypes: [],
+            selectedTypes: initial,
+            typesLoaded: false,
+            typesLoading: false,
+            typesError: '',
+            async discoverTypes() {
+                this.typesLoading = true; this.typesError = '';
+                try {
+                    const resp = await fetch('/admin/abacus-settings/discover-types', {
+                        method: 'POST', headers: {'X-CSRFToken': csrfToken}
+                    });
+                    const data = await resp.json();
+                    if (data.success) {
+                        this.availableTypes = data.types;
+                        this.typesLoaded = true;
+                        // Auto-select Apps and Cap types if nothing selected
+                        if (this.selectedTypes.length === 0) {
+                            this.selectedTypes = data.types
+                                .filter(t => t.name.startsWith('Apps') || t.name.startsWith('Cap'))
+                                .map(t => t.name);
+                        }
+                    } else {
+                        this.typesError = data.error || 'Discovery failed';
+                    }
+                } catch(e) { this.typesError = e.message; }
+                finally { this.typesLoading = false; }
+            },
+            toggleType(name) {
+                const idx = this.selectedTypes.indexOf(name);
+                if (idx === -1) this.selectedTypes.push(name);
+                else this.selectedTypes.splice(idx, 1);
+            }
+        };
+    }
+
+    // ── Sync status Alpine component ─────────────────────────────────
+    function syncStatusPanel() {
+        return {
+            status: 'loading',
+            statusLabel: 'Loading...',
+            indicatorClass: 'bg-muted-foreground',
+            textClass: 'text-muted-foreground',
+            details: 'Checking sync status...',
+            elapsed: '',
+            jobId: null,
+            isStale: false,
+            pollTimer: null,
+            init() {
+                this.poll();
+                this.pollTimer = setInterval(() => this.poll(), 3000);
+            },
+            destroy() {
+                if (this.pollTimer) clearInterval(this.pollTimer);
+            },
+            async poll() {
+                try {
+                    const resp = await fetch('{{ url_for("admin.abacus_sync_status") }}');
+                    const data = await resp.json();
+                    this.jobId = data.job_id;
+                    this.status = data.status;
+
+                    const cancelBtn = document.getElementById('cancel-job-btn');
+                    const syncBtn = document.getElementById('sync-button');
+
+                    const map = {
+                        no_jobs:     ['No sync jobs',  'bg-muted-foreground', 'text-muted-foreground'],
+                        pending:     ['Queued',        'bg-amber-500',        'text-foreground'],
+                        in_progress: ['Running',       'bg-primary animate-pulse', 'text-foreground'],
+                        completed:   ['Completed',     'bg-emerald-500',      'text-foreground'],
+                        failed:      ['Failed',        'bg-destructive',      'text-destructive'],
+                        cancelled:   ['Cancelled',     'bg-muted-foreground', 'text-muted-foreground'],
+                    };
+                    const [label, ind, txt] = map[data.status] || ['Unknown', 'bg-muted-foreground', 'text-muted-foreground'];
+                    this.statusLabel = label;
+                    this.indicatorClass = 'h-3 w-3 rounded-full ' + ind;
+                    this.textClass = 'font-medium ' + txt;
+
+                    // Cancel button + sync button visibility
+                    const isRunning = data.status === 'in_progress' || data.status === 'pending';
+                    if (cancelBtn) cancelBtn.classList.toggle('hidden', !isRunning);
+                    if (syncBtn) syncBtn.disabled = isRunning;
+
+                    // Elapsed time
+                    this.elapsed = '';
+                    if (data.started_at && !data.finished_at) {
+                        const secs = Math.floor((Date.now() - new Date(data.started_at).getTime()) / 1000);
+                        this.elapsed = secs < 60 ? secs + 's' : Math.floor(secs / 60) + 'm ' + (secs % 60) + 's';
+                    }
+
+                    // Stale detection (>1hr running with no finish)
+                    this.isStale = false;
+                    if (data.status === 'in_progress' && data.started_at) {
+                        const age = Date.now() - new Date(data.started_at).getTime();
+                        this.isStale = age > 3600000;
+                    }
+
+                    // Details line
+                    let d = '';
+                    if (data.job_id) d += 'Job #' + data.job_id;
+                    if (data.started_at) d += ' | Started: ' + new Date(data.started_at).toLocaleString();
+                    if (data.finished_at) d += ' | Finished: ' + new Date(data.finished_at).toLocaleString();
+                    if (data.result && typeof data.result === 'object') {
+                        const r = data.result.records_fetched || data.result;
+                        if (r.applications !== undefined) d += ` | ${r.applications} apps, ${r.capabilities || 0} caps`;
+                    }
+                    if (data.error) d += ' | Error: ' + data.error;
+                    this.details = d || 'No sync jobs have been run yet.';
+
+                } catch(e) {
+                    this.statusLabel = 'Error';
+                    this.details = 'Failed to fetch status: ' + e.message;
+                }
+            },
+            async clearStaleJobs() {
+                try {
+                    const resp = await fetch('/admin/abacus-settings/clear-stale-jobs', {
+                        method: 'POST', headers: {'X-CSRFToken': csrfToken}
+                    });
+                    const data = await resp.json();
+                    if (data.success) {
+                        this.isStale = false;
+                        this.poll();
+                    }
+                } catch(e) { console.error('Failed to clear stale jobs:', e); }
+            }
+        };
+    }
+
+    // ── Cancel job (global function for the button) ──────────────────
+    let currentJobId = null;
+    async function cancelCurrentJob() {
+        // Read job ID from the sync status panel
+        const panel = document.querySelector('[x-data="syncStatusPanel()"]');
+        const jobId = panel ? panel.__x?.$data?.jobId : currentJobId;
+        if (!jobId) { Platform.toast.info('No job to cancel'); return; }
+        if (!(await Platform.modal.confirm('Cancel job #' + jobId + '?'))) return;
+
+        fetch('/admin/abacus-settings/cancel-job/' + jobId, {
+            method: 'POST',
+            headers: {'X-CSRFToken': csrfToken, 'Content-Type': 'application/json'},
+            credentials: 'same-origin'
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) location.reload();
+            else Platform.toast.error('Failed: ' + data.message);
+        })
+        .catch(e => Platform.toast.error('Error: ' + e.message));
+    }
+
+    // ── Imported data count updater ──────────────────────────────────
+    function updateImportedDataCounts() {
+        fetch('/admin/abacus-settings/stats')
+        .then(r => r.json())
+        .then(data => {
+            if (!data.success) return;
+            const appsEl = document.getElementById('imported-apps-count');
+            const capsEl = document.getElementById('imported-caps-count');
+            const appsProg = document.getElementById('apps-progress');
+            const capsProg = document.getElementById('caps-progress');
+            if (appsEl) appsEl.textContent = data.applications || 0;
+            if (capsEl) capsEl.textContent = data.capabilities || 0;
+            if (appsProg) appsProg.style.width = Math.min(100, (data.applications || 0) / 10) + '%';
+            if (capsProg) capsProg.style.width = Math.min(100, (data.capabilities || 0) * 2) + '%';
+        })
+        .catch(() => {});
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        updateImportedDataCounts();
+        setInterval(updateImportedDataCounts, 10000);
+
+        // CSP-safe: attach cancel job button listener
+        const cancelBtn = document.getElementById('cancel-job-btn');
+        if (cancelBtn) cancelBtn.addEventListener('click', cancelCurrentJob);
+
+        // CSP-safe: attach discover filters button listener
+        const discoverBtn = document.getElementById('btn-discover-now');
+        if (discoverBtn) {
+            discoverBtn.addEventListener('click', async function() {
+                discoverBtn.disabled = true;
+                discoverBtn.textContent = 'Fetching from Abacus API...';
+                try {
+                    const urlEl = document.getElementById('discover-filters-url');
+                    if (!urlEl) { discoverBtn.textContent = 'Config error'; discoverBtn.disabled = false; return; }
+                    const r = await fetch(urlEl.value, {
+                        method: 'POST',
+                        headers: { 'X-CSRFToken': csrfToken }
+                    });
+                    const d = await r.json();
+                    if (d.success) {
+                        const count = Object.keys(d.dimensions || {}).length;
+                        discoverBtn.textContent = 'Discovered ' + count + ' dimensions! Reloading...';
+                        setTimeout(() => location.reload(), 500);
+                    } else {
+                        discoverBtn.textContent = 'Failed: ' + (d.error || 'Unknown');
+                        discoverBtn.disabled = false;
+                    }
+                } catch(e) {
+                    discoverBtn.textContent = 'Error: ' + e.message;
+                    discoverBtn.disabled = false;
+                }
+            });
+        }
+    });
+</script>
+{% endblock %}

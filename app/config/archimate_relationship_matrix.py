@@ -1,0 +1,1768 @@
+"""
+ArchiMate 3.2 Relationship Validation Matrix
+PRD - 009.1: Complete relationship rules per ArchiMate specification
+
+Defines valid relationships between element types and their cardinality constraints.
+This module serves as the authoritative source for validating ArchiMate relationships
+according to the official ArchiMate 3.2 Specification (The Open Group).
+
+Reference: ArchiMate 3.2 Specification, Appendix B: Derivation Rules
+"""
+from dataclasses import dataclass
+from enum import Enum
+from typing import Dict, List, Optional, Set, Tuple
+
+# =============================================================================
+# Data Classes and Enumerations
+# =============================================================================
+
+
+class RelationshipCategory(Enum):
+    """Categories of ArchiMate relationship types."""
+
+    STRUCTURAL = "structural"  # Composition, Aggregation, Assignment, Realization
+    DEPENDENCY = "dependency"  # Serving, Access, Influence
+    DYNAMIC = "dynamic"  # Triggering, Flow
+    OTHER = "other"  # Specialization, Association
+
+
+class AccessMode(Enum):
+    """Access relationship modes (read, write, read/write)."""
+
+    READ = "read"
+    WRITE = "write"
+    READ_WRITE = "read_write"
+    UNSPECIFIED = "unspecified"
+
+
+@dataclass
+class RelationshipRule:
+    """Defines a valid relationship between element types."""
+
+    source_type: str
+    target_type: str
+    relationship_types: List[str]
+    cardinality: Tuple[int, Optional[int]]  # (min, max) - None means unlimited
+    description: str
+
+
+@dataclass
+class RelationshipTypeDefinition:
+    """Complete definition of an ArchiMate relationship type."""
+
+    name: str
+    category: RelationshipCategory
+    description: str
+    notation: str
+    is_directed: bool
+    can_be_derived: bool
+    derivation_strength: int  # Higher = stronger in derivation chains
+
+
+# =============================================================================
+# ArchiMate 3.2 Relationship Types
+# =============================================================================
+
+RELATIONSHIP_TYPES = [
+    "composition",  # Source contains target (whole-part)
+    "aggregation",  # Source groups target (collection)
+    "assignment",  # Active element assigned to behavior
+    "realization",  # Element realizes another
+    "serving",  # Element provides functionality to another
+    "access",  # Behavior accesses data (passive element)
+    "influence",  # Motivation element influences another
+    "triggering",  # Behavior triggers another behavior
+    "flow",  # Flow of information/material/value
+    "specialization",  # Element is specialization of another
+    "association",  # Generic/unspecified relationship
+]
+
+RELATIONSHIP_TYPE_DEFINITIONS: Dict[str, RelationshipTypeDefinition] = {
+    "composition": RelationshipTypeDefinition(
+        name="composition",
+        category=RelationshipCategory.STRUCTURAL,
+        description="Indicates that an element consists of one or more other elements",
+        notation="Filled diamond at source",
+        is_directed=True,
+        can_be_derived=True,
+        derivation_strength=10,
+    ),
+    "aggregation": RelationshipTypeDefinition(
+        name="aggregation",
+        category=RelationshipCategory.STRUCTURAL,
+        description="Indicates that an element groups a number of other elements",
+        notation="Open diamond at source",
+        is_directed=True,
+        can_be_derived=True,
+        derivation_strength=9,
+    ),
+    "assignment": RelationshipTypeDefinition(
+        name="assignment",
+        category=RelationshipCategory.STRUCTURAL,
+        description="Links active structure elements with behavior elements",
+        notation="Filled circle at source with line",
+        is_directed=True,
+        can_be_derived=True,
+        derivation_strength=8,
+    ),
+    "realization": RelationshipTypeDefinition(
+        name="realization",
+        category=RelationshipCategory.STRUCTURAL,
+        description="Links a logical entity with a more concrete entity that realizes it",
+        notation="Dashed line with open arrowhead",
+        is_directed=True,
+        can_be_derived=True,
+        derivation_strength=7,
+    ),
+    "serving": RelationshipTypeDefinition(
+        name="serving",
+        category=RelationshipCategory.DEPENDENCY,
+        description="Models that an element provides functionality to another element",
+        notation="Line with open arrowhead",
+        is_directed=True,
+        can_be_derived=True,
+        derivation_strength=6,
+    ),
+    "access": RelationshipTypeDefinition(
+        name="access",
+        category=RelationshipCategory.DEPENDENCY,
+        description="Models the access of behavioral elements to passive structure elements",
+        notation="Dashed line with optional arrowhead",
+        is_directed=True,
+        can_be_derived=True,
+        derivation_strength=5,
+    ),
+    "influence": RelationshipTypeDefinition(
+        name="influence",
+        category=RelationshipCategory.DEPENDENCY,
+        description="Models how motivation elements influence each other",
+        notation="Dashed line with open arrowhead and optional +/-",
+        is_directed=True,
+        can_be_derived=True,
+        derivation_strength=4,
+    ),
+    "triggering": RelationshipTypeDefinition(
+        name="triggering",
+        category=RelationshipCategory.DYNAMIC,
+        description="Describes temporal/causal relationship between behaviors",
+        notation="Line with filled arrowhead",
+        is_directed=True,
+        can_be_derived=True,
+        derivation_strength=3,
+    ),
+    "flow": RelationshipTypeDefinition(
+        name="flow",
+        category=RelationshipCategory.DYNAMIC,
+        description="Describes transfer of something from one element to another",
+        notation="Dashed line with filled arrowhead",
+        is_directed=True,
+        can_be_derived=True,
+        derivation_strength=2,
+    ),
+    "specialization": RelationshipTypeDefinition(
+        name="specialization",
+        category=RelationshipCategory.OTHER,
+        description="Indicates that an element is a more specific form of another",
+        notation="Line with open triangle arrowhead",
+        is_directed=True,
+        can_be_derived=False,
+        derivation_strength=0,
+    ),
+    "association": RelationshipTypeDefinition(
+        name="association",
+        category=RelationshipCategory.OTHER,
+        description="Used when no other relationship applies",
+        notation="Simple line",
+        is_directed=False,
+        can_be_derived=True,
+        derivation_strength=1,
+    ),
+}
+
+
+# =============================================================================
+# Element Type Categories for Relationship Rules
+# =============================================================================
+
+# Strategy Layer Elements
+STRATEGY_ELEMENTS = ["Resource", "Capability", "CourseOfAction", "ValueStream"]
+
+# Business Layer Elements
+BUSINESS_ACTIVE_ELEMENTS = [
+    "BusinessActor",
+    "BusinessRole",
+    "BusinessCollaboration",
+    "BusinessInterface",
+]
+BUSINESS_BEHAVIOR_ELEMENTS = [
+    "BusinessProcess",
+    "BusinessFunction",
+    "BusinessInteraction",
+    "BusinessEvent",
+    "BusinessService",
+]
+BUSINESS_PASSIVE_ELEMENTS = ["BusinessObject", "Contract", "Representation", "Product"]
+BUSINESS_ELEMENTS = (
+    BUSINESS_ACTIVE_ELEMENTS + BUSINESS_BEHAVIOR_ELEMENTS + BUSINESS_PASSIVE_ELEMENTS
+)
+
+# Application Layer Elements
+APPLICATION_ACTIVE_ELEMENTS = [
+    "ApplicationComponent",
+    "ApplicationCollaboration",
+    "ApplicationInterface",
+]
+APPLICATION_BEHAVIOR_ELEMENTS = [
+    "ApplicationFunction",
+    "ApplicationProcess",
+    "ApplicationInteraction",
+    "ApplicationEvent",
+    "ApplicationService",
+]
+APPLICATION_PASSIVE_ELEMENTS = ["DataObject"]
+APPLICATION_ELEMENTS = (
+    APPLICATION_ACTIVE_ELEMENTS + APPLICATION_BEHAVIOR_ELEMENTS + APPLICATION_PASSIVE_ELEMENTS
+)
+
+# Technology Layer Elements
+TECHNOLOGY_ACTIVE_ELEMENTS = [
+    "Node",
+    "Device",
+    "SystemSoftware",
+    "TechnologyCollaboration",
+    "TechnologyInterface",
+    "Path",
+    "CommunicationNetwork",
+]
+TECHNOLOGY_BEHAVIOR_ELEMENTS = [
+    "TechnologyFunction",
+    "TechnologyProcess",
+    "TechnologyInteraction",
+    "TechnologyEvent",
+    "TechnologyService",
+]
+TECHNOLOGY_PASSIVE_ELEMENTS = ["Artifact"]
+TECHNOLOGY_ELEMENTS = (
+    TECHNOLOGY_ACTIVE_ELEMENTS + TECHNOLOGY_BEHAVIOR_ELEMENTS + TECHNOLOGY_PASSIVE_ELEMENTS
+)
+
+# Physical Layer Elements
+PHYSICAL_ACTIVE_ELEMENTS = ["Equipment", "Facility", "DistributionNetwork"]
+PHYSICAL_PASSIVE_ELEMENTS = ["Material"]
+PHYSICAL_ELEMENTS = PHYSICAL_ACTIVE_ELEMENTS + PHYSICAL_PASSIVE_ELEMENTS
+
+# Motivation Layer Elements
+MOTIVATION_ACTIVE_ELEMENTS = ["Stakeholder"]
+MOTIVATION_PASSIVE_ELEMENTS = [
+    "Driver",
+    "Assessment",
+    "Goal",
+    "Outcome",
+    "Principle",
+    "Requirement",
+    "Constraint",
+    "Meaning",
+    "Value",
+]
+MOTIVATION_ELEMENTS = MOTIVATION_ACTIVE_ELEMENTS + MOTIVATION_PASSIVE_ELEMENTS
+
+# Implementation & Migration Layer Elements
+IMPLEMENTATION_BEHAVIOR_ELEMENTS = ["WorkPackage", "ImplementationEvent"]
+IMPLEMENTATION_PASSIVE_ELEMENTS = ["Deliverable", "Plateau", "Gap"]
+IMPLEMENTATION_ELEMENTS = IMPLEMENTATION_BEHAVIOR_ELEMENTS + IMPLEMENTATION_PASSIVE_ELEMENTS
+
+# All Elements
+ALL_ACTIVE_ELEMENTS = (
+    BUSINESS_ACTIVE_ELEMENTS
+    + APPLICATION_ACTIVE_ELEMENTS
+    + TECHNOLOGY_ACTIVE_ELEMENTS
+    + PHYSICAL_ACTIVE_ELEMENTS
+    + MOTIVATION_ACTIVE_ELEMENTS
+    + ["Resource"]
+)
+
+ALL_BEHAVIOR_ELEMENTS = (
+    BUSINESS_BEHAVIOR_ELEMENTS
+    + APPLICATION_BEHAVIOR_ELEMENTS
+    + TECHNOLOGY_BEHAVIOR_ELEMENTS
+    + IMPLEMENTATION_BEHAVIOR_ELEMENTS
+    + ["Capability", "CourseOfAction", "ValueStream"]
+)
+
+ALL_PASSIVE_ELEMENTS = (
+    BUSINESS_PASSIVE_ELEMENTS
+    + APPLICATION_PASSIVE_ELEMENTS
+    + TECHNOLOGY_PASSIVE_ELEMENTS
+    + PHYSICAL_PASSIVE_ELEMENTS
+    + MOTIVATION_PASSIVE_ELEMENTS
+    + IMPLEMENTATION_PASSIVE_ELEMENTS
+)
+
+ALL_ELEMENTS = (
+    STRATEGY_ELEMENTS
+    + BUSINESS_ELEMENTS
+    + APPLICATION_ELEMENTS
+    + TECHNOLOGY_ELEMENTS
+    + PHYSICAL_ELEMENTS
+    + MOTIVATION_ELEMENTS
+    + IMPLEMENTATION_ELEMENTS
+)
+
+
+# =============================================================================
+# Complete ArchiMate 3.2 Relationship Matrix
+# =============================================================================
+
+# Format: (source_type, target_type): [allowed_relationship_types]
+# This matrix is based on ArchiMate 3.2 Specification Appendix B
+
+VALID_RELATIONSHIPS: Dict[Tuple[str, str], List[str]] = {
+    # =========================================================================
+    # STRATEGY LAYER RELATIONSHIPS
+    # =========================================================================
+    # Resource relationships
+    ("Resource", "Resource"): ["composition", "aggregation", "specialization", "association"],
+    ("Resource", "Capability"): ["assignment", "association"],
+    ("Resource", "CourseOfAction"): ["association"],
+    ("Resource", "ValueStream"): ["association"],
+    # Capability relationships
+    ("Capability", "Resource"): ["association"],
+    ("Capability", "Capability"): ["composition", "aggregation", "specialization", "association"],
+    ("Capability", "CourseOfAction"): ["realization", "association"],
+    ("Capability", "ValueStream"): ["realization", "serving", "association"],
+    ("Capability", "BusinessProcess"): ["realization", "association"],
+    ("Capability", "BusinessFunction"): ["realization", "association"],
+    ("Capability", "BusinessService"): ["realization", "association"],
+    # Course of Action relationships
+    ("CourseOfAction", "Resource"): ["association"],
+    ("CourseOfAction", "Capability"): ["association"],
+    ("CourseOfAction", "CourseOfAction"): [
+        "composition",
+        "aggregation",
+        "specialization",
+        "association",
+    ],
+    ("CourseOfAction", "ValueStream"): ["association"],
+    ("CourseOfAction", "Goal"): ["realization", "association"],
+    ("CourseOfAction", "Requirement"): ["realization", "association"],
+    # Value Stream relationships
+    ("ValueStream", "Resource"): ["association"],
+    ("ValueStream", "Capability"): ["triggering", "association"],
+    ("ValueStream", "CourseOfAction"): ["association"],
+    ("ValueStream", "ValueStream"): [
+        "composition",
+        "aggregation",
+        "triggering",
+        "flow",
+        "specialization",
+        "association",
+    ],
+    ("ValueStream", "Outcome"): ["realization", "association"],
+    ("ValueStream", "Value"): ["realization", "association"],
+    # =========================================================================
+    # BUSINESS LAYER RELATIONSHIPS - Active Structure
+    # =========================================================================
+    # BusinessActor relationships
+    ("BusinessActor", "BusinessActor"): [
+        "composition",
+        "aggregation",
+        "specialization",
+        "association",
+    ],
+    ("BusinessActor", "BusinessRole"): ["assignment", "association"],
+    ("BusinessActor", "BusinessCollaboration"): ["aggregation", "assignment", "association"],
+    ("BusinessActor", "BusinessInterface"): ["composition", "association"],
+    ("BusinessActor", "BusinessProcess"): ["assignment", "association"],
+    ("BusinessActor", "BusinessFunction"): ["assignment", "association"],
+    ("BusinessActor", "BusinessInteraction"): ["assignment", "association"],
+    ("BusinessActor", "BusinessService"): ["assignment", "serving", "association"],
+    ("BusinessActor", "BusinessEvent"): ["triggering", "association"],
+    ("BusinessActor", "BusinessObject"): ["access", "association"],
+    ("BusinessActor", "ApplicationComponent"): ["assignment", "association"],
+    # BusinessRole relationships
+    ("BusinessRole", "BusinessActor"): ["association"],
+    ("BusinessRole", "BusinessRole"): [
+        "composition",
+        "aggregation",
+        "specialization",
+        "association",
+    ],
+    ("BusinessRole", "BusinessCollaboration"): ["aggregation", "assignment", "association"],
+    ("BusinessRole", "BusinessInterface"): ["composition", "assignment", "association"],
+    ("BusinessRole", "BusinessProcess"): ["assignment", "association"],
+    ("BusinessRole", "BusinessFunction"): ["assignment", "association"],
+    ("BusinessRole", "BusinessInteraction"): ["assignment", "association"],
+    ("BusinessRole", "BusinessService"): ["assignment", "serving", "association"],
+    ("BusinessRole", "BusinessEvent"): ["triggering", "association"],
+    ("BusinessRole", "BusinessObject"): ["access", "association"],
+    # BusinessCollaboration relationships
+    ("BusinessCollaboration", "BusinessActor"): ["aggregation", "association"],
+    ("BusinessCollaboration", "BusinessRole"): ["aggregation", "association"],
+    ("BusinessCollaboration", "BusinessCollaboration"): [
+        "composition",
+        "aggregation",
+        "specialization",
+        "association",
+    ],
+    ("BusinessCollaboration", "BusinessInterface"): ["composition", "association"],
+    ("BusinessCollaboration", "BusinessProcess"): ["assignment", "association"],
+    ("BusinessCollaboration", "BusinessFunction"): ["assignment", "association"],
+    ("BusinessCollaboration", "BusinessInteraction"): ["assignment", "association"],
+    ("BusinessCollaboration", "BusinessService"): ["serving", "association"],
+    # BusinessInterface relationships
+    ("BusinessInterface", "BusinessActor"): ["serving", "association"],
+    ("BusinessInterface", "BusinessRole"): ["serving", "association"],
+    ("BusinessInterface", "BusinessCollaboration"): ["serving", "association"],
+    ("BusinessInterface", "BusinessInterface"): [
+        "composition",
+        "aggregation",
+        "specialization",
+        "association",
+    ],
+    ("BusinessInterface", "BusinessService"): ["assignment", "serving", "association"],
+    ("BusinessInterface", "BusinessProcess"): ["triggering", "flow", "association"],
+    # =========================================================================
+    # BUSINESS LAYER RELATIONSHIPS - Behavior
+    # =========================================================================
+    # BusinessProcess relationships
+    ("BusinessProcess", "BusinessActor"): ["serving", "association"],
+    ("BusinessProcess", "BusinessRole"): ["serving", "association"],
+    ("BusinessProcess", "BusinessCollaboration"): ["serving", "association"],
+    ("BusinessProcess", "BusinessInterface"): ["serving", "association"],
+    ("BusinessProcess", "BusinessProcess"): [
+        "composition",
+        "aggregation",
+        "triggering",
+        "flow",
+        "specialization",
+        "association",
+    ],
+    ("BusinessProcess", "BusinessFunction"): ["composition", "aggregation", "association"],
+    ("BusinessProcess", "BusinessInteraction"): [
+        "composition",
+        "aggregation",
+        "triggering",
+        "flow",
+        "association",
+    ],
+    ("BusinessProcess", "BusinessEvent"): ["triggering", "flow", "association"],
+    ("BusinessProcess", "BusinessService"): ["realization", "association"],
+    ("BusinessProcess", "BusinessObject"): ["access", "association"],
+    ("BusinessProcess", "Contract"): ["access", "association"],
+    ("BusinessProcess", "Representation"): ["access", "association"],
+    ("BusinessProcess", "Product"): ["realization", "association"],
+    ("BusinessProcess", "ApplicationService"): ["serving", "association"],
+    ("BusinessProcess", "DataObject"): ["access", "association"],
+    # BusinessFunction relationships
+    ("BusinessFunction", "BusinessActor"): ["serving", "association"],
+    ("BusinessFunction", "BusinessRole"): ["serving", "association"],
+    ("BusinessFunction", "BusinessCollaboration"): ["serving", "association"],
+    ("BusinessFunction", "BusinessInterface"): ["serving", "association"],
+    ("BusinessFunction", "BusinessProcess"): [
+        "composition",
+        "aggregation",
+        "triggering",
+        "association",
+    ],
+    ("BusinessFunction", "BusinessFunction"): [
+        "composition",
+        "aggregation",
+        "specialization",
+        "association",
+    ],
+    ("BusinessFunction", "BusinessInteraction"): ["composition", "aggregation", "association"],
+    ("BusinessFunction", "BusinessEvent"): ["triggering", "association"],
+    ("BusinessFunction", "BusinessService"): ["realization", "association"],
+    ("BusinessFunction", "BusinessObject"): ["access", "association"],
+    ("BusinessFunction", "Contract"): ["access", "association"],
+    # BusinessInteraction relationships
+    ("BusinessInteraction", "BusinessActor"): ["serving", "association"],
+    ("BusinessInteraction", "BusinessRole"): ["serving", "association"],
+    ("BusinessInteraction", "BusinessCollaboration"): ["serving", "association"],
+    ("BusinessInteraction", "BusinessProcess"): ["triggering", "flow", "association"],
+    ("BusinessInteraction", "BusinessFunction"): ["triggering", "association"],
+    ("BusinessInteraction", "BusinessInteraction"): [
+        "composition",
+        "aggregation",
+        "triggering",
+        "flow",
+        "specialization",
+        "association",
+    ],
+    ("BusinessInteraction", "BusinessEvent"): ["triggering", "flow", "association"],
+    ("BusinessInteraction", "BusinessService"): ["realization", "association"],
+    ("BusinessInteraction", "BusinessObject"): ["access", "association"],
+    # BusinessEvent relationships
+    ("BusinessEvent", "BusinessProcess"): ["triggering", "association"],
+    ("BusinessEvent", "BusinessFunction"): ["triggering", "association"],
+    ("BusinessEvent", "BusinessInteraction"): ["triggering", "association"],
+    ("BusinessEvent", "BusinessEvent"): [
+        "composition",
+        "aggregation",
+        "triggering",
+        "specialization",
+        "association",
+    ],
+    ("BusinessEvent", "BusinessService"): ["triggering", "association"],
+    ("BusinessEvent", "BusinessObject"): ["access", "association"],
+    # BusinessService relationships
+    ("BusinessService", "BusinessActor"): ["serving", "association"],
+    ("BusinessService", "BusinessRole"): ["serving", "association"],
+    ("BusinessService", "BusinessCollaboration"): ["serving", "association"],
+    ("BusinessService", "BusinessInterface"): ["serving", "association"],
+    ("BusinessService", "BusinessProcess"): ["serving", "triggering", "association"],
+    ("BusinessService", "BusinessFunction"): ["serving", "association"],
+    ("BusinessService", "BusinessInteraction"): ["serving", "association"],
+    ("BusinessService", "BusinessEvent"): ["triggering", "association"],
+    ("BusinessService", "BusinessService"): [
+        "composition",
+        "aggregation",
+        "serving",
+        "specialization",
+        "association",
+    ],
+    ("BusinessService", "BusinessObject"): ["access", "association"],
+    ("BusinessService", "Product"): ["composition", "association"],
+    # =========================================================================
+    # BUSINESS LAYER RELATIONSHIPS - Passive Structure
+    # =========================================================================
+    # BusinessObject relationships
+    ("BusinessObject", "BusinessObject"): [
+        "composition",
+        "aggregation",
+        "specialization",
+        "association",
+    ],
+    ("BusinessObject", "Contract"): ["composition", "aggregation", "association"],
+    ("BusinessObject", "Representation"): ["realization", "association"],
+    ("BusinessObject", "Product"): ["composition", "association"],
+    ("BusinessObject", "DataObject"): ["realization", "association"],
+    # Contract relationships
+    ("Contract", "BusinessObject"): ["aggregation", "association"],
+    ("Contract", "Contract"): ["composition", "aggregation", "specialization", "association"],
+    ("Contract", "Representation"): ["realization", "association"],
+    ("Contract", "Product"): ["composition", "association"],
+    ("Contract", "BusinessService"): ["association"],
+    # Representation relationships
+    ("Representation", "BusinessObject"): ["association"],
+    ("Representation", "Contract"): ["association"],
+    ("Representation", "Representation"): [
+        "composition",
+        "aggregation",
+        "specialization",
+        "association",
+    ],
+    ("Representation", "Product"): ["composition", "association"],
+    # Product relationships
+    ("Product", "BusinessActor"): ["serving", "association"],
+    ("Product", "BusinessRole"): ["serving", "association"],
+    ("Product", "BusinessCollaboration"): ["serving", "association"],
+    ("Product", "BusinessInterface"): ["composition", "aggregation", "serving", "association"],
+    ("Product", "BusinessService"): ["composition", "aggregation", "association"],
+    ("Product", "BusinessObject"): ["composition", "aggregation", "association"],
+    ("Product", "Contract"): ["composition", "aggregation", "association"],
+    ("Product", "Product"): ["composition", "aggregation", "specialization", "association"],
+    ("Product", "Value"): ["realization", "association"],
+    # =========================================================================
+    # APPLICATION LAYER RELATIONSHIPS - Active Structure
+    # =========================================================================
+    # ApplicationComponent relationships
+    ("ApplicationComponent", "ApplicationComponent"): [
+        "composition",
+        "aggregation",
+        "serving",
+        "specialization",
+        "association",
+    ],
+    ("ApplicationComponent", "ApplicationCollaboration"): ["aggregation", "association"],
+    ("ApplicationComponent", "ApplicationInterface"): ["composition", "assignment", "association"],
+    ("ApplicationComponent", "ApplicationFunction"): ["assignment", "association"],
+    ("ApplicationComponent", "ApplicationProcess"): ["assignment", "association"],
+    ("ApplicationComponent", "ApplicationInteraction"): ["assignment", "association"],
+    ("ApplicationComponent", "ApplicationEvent"): ["triggering", "association"],
+    ("ApplicationComponent", "ApplicationService"): ["realization", "serving", "association"],
+    ("ApplicationComponent", "DataObject"): ["access", "association"],
+    ("ApplicationComponent", "BusinessProcess"): ["serving", "association"],
+    ("ApplicationComponent", "BusinessFunction"): ["serving", "association"],
+    ("ApplicationComponent", "BusinessService"): ["serving", "association"],
+    ("ApplicationComponent", "Node"): ["association"],
+    # ApplicationCollaboration relationships
+    ("ApplicationCollaboration", "ApplicationComponent"): ["aggregation", "association"],
+    ("ApplicationCollaboration", "ApplicationCollaboration"): [
+        "composition",
+        "aggregation",
+        "specialization",
+        "association",
+    ],
+    ("ApplicationCollaboration", "ApplicationInterface"): ["composition", "association"],
+    ("ApplicationCollaboration", "ApplicationFunction"): ["assignment", "association"],
+    ("ApplicationCollaboration", "ApplicationProcess"): ["assignment", "association"],
+    ("ApplicationCollaboration", "ApplicationInteraction"): ["assignment", "association"],
+    ("ApplicationCollaboration", "ApplicationService"): ["realization", "serving", "association"],
+    ("ApplicationCollaboration", "DataObject"): ["access", "association"],
+    # ApplicationInterface relationships
+    ("ApplicationInterface", "ApplicationComponent"): ["serving", "association"],
+    ("ApplicationInterface", "ApplicationCollaboration"): ["serving", "association"],
+    ("ApplicationInterface", "ApplicationInterface"): [
+        "composition",
+        "aggregation",
+        "specialization",
+        "association",
+    ],
+    ("ApplicationInterface", "ApplicationService"): ["assignment", "serving", "association"],
+    ("ApplicationInterface", "ApplicationProcess"): ["triggering", "flow", "association"],
+    ("ApplicationInterface", "ApplicationEvent"): ["triggering", "flow", "association"],
+    ("ApplicationInterface", "DataObject"): ["access", "flow", "association"],
+    ("ApplicationInterface", "BusinessActor"): ["serving", "association"],
+    ("ApplicationInterface", "BusinessRole"): ["serving", "association"],
+    ("ApplicationInterface", "BusinessProcess"): ["serving", "triggering", "flow", "association"],
+    # =========================================================================
+    # APPLICATION LAYER RELATIONSHIPS - Behavior
+    # =========================================================================
+    # ApplicationFunction relationships
+    ("ApplicationFunction", "ApplicationComponent"): ["serving", "association"],
+    ("ApplicationFunction", "ApplicationCollaboration"): ["serving", "association"],
+    ("ApplicationFunction", "ApplicationInterface"): ["serving", "association"],
+    ("ApplicationFunction", "ApplicationFunction"): [
+        "composition",
+        "aggregation",
+        "triggering",
+        "specialization",
+        "association",
+    ],
+    ("ApplicationFunction", "ApplicationProcess"): [
+        "composition",
+        "aggregation",
+        "triggering",
+        "association",
+    ],
+    ("ApplicationFunction", "ApplicationInteraction"): [
+        "composition",
+        "aggregation",
+        "association",
+    ],
+    ("ApplicationFunction", "ApplicationEvent"): ["triggering", "association"],
+    ("ApplicationFunction", "ApplicationService"): ["realization", "association"],
+    ("ApplicationFunction", "DataObject"): ["access", "association"],
+    ("ApplicationFunction", "BusinessProcess"): ["serving", "association"],
+    ("ApplicationFunction", "BusinessFunction"): ["serving", "association"],
+    # ApplicationProcess relationships
+    ("ApplicationProcess", "ApplicationComponent"): ["serving", "association"],
+    ("ApplicationProcess", "ApplicationCollaboration"): ["serving", "association"],
+    ("ApplicationProcess", "ApplicationInterface"): ["serving", "association"],
+    ("ApplicationProcess", "ApplicationFunction"): ["composition", "aggregation", "association"],
+    ("ApplicationProcess", "ApplicationProcess"): [
+        "composition",
+        "aggregation",
+        "triggering",
+        "flow",
+        "specialization",
+        "association",
+    ],
+    ("ApplicationProcess", "ApplicationInteraction"): [
+        "composition",
+        "aggregation",
+        "triggering",
+        "flow",
+        "association",
+    ],
+    ("ApplicationProcess", "ApplicationEvent"): ["triggering", "flow", "association"],
+    ("ApplicationProcess", "ApplicationService"): ["realization", "association"],
+    ("ApplicationProcess", "DataObject"): ["access", "association"],
+    ("ApplicationProcess", "BusinessProcess"): ["serving", "association"],
+    # ApplicationInteraction relationships
+    ("ApplicationInteraction", "ApplicationComponent"): ["serving", "association"],
+    ("ApplicationInteraction", "ApplicationCollaboration"): ["serving", "association"],
+    ("ApplicationInteraction", "ApplicationFunction"): ["triggering", "association"],
+    ("ApplicationInteraction", "ApplicationProcess"): ["triggering", "flow", "association"],
+    ("ApplicationInteraction", "ApplicationInteraction"): [
+        "composition",
+        "aggregation",
+        "triggering",
+        "flow",
+        "specialization",
+        "association",
+    ],
+    ("ApplicationInteraction", "ApplicationEvent"): ["triggering", "flow", "association"],
+    ("ApplicationInteraction", "ApplicationService"): ["realization", "association"],
+    ("ApplicationInteraction", "DataObject"): ["access", "association"],
+    # ApplicationEvent relationships
+    ("ApplicationEvent", "ApplicationFunction"): ["triggering", "association"],
+    ("ApplicationEvent", "ApplicationProcess"): ["triggering", "association"],
+    ("ApplicationEvent", "ApplicationInteraction"): ["triggering", "association"],
+    ("ApplicationEvent", "ApplicationEvent"): [
+        "composition",
+        "aggregation",
+        "triggering",
+        "specialization",
+        "association",
+    ],
+    ("ApplicationEvent", "ApplicationService"): ["triggering", "association"],
+    ("ApplicationEvent", "DataObject"): ["access", "association"],
+    ("ApplicationEvent", "BusinessProcess"): ["triggering", "association"],
+    ("ApplicationEvent", "BusinessEvent"): ["triggering", "association"],
+    # ApplicationService relationships
+    ("ApplicationService", "ApplicationComponent"): ["serving", "association"],
+    ("ApplicationService", "ApplicationCollaboration"): ["serving", "association"],
+    ("ApplicationService", "ApplicationInterface"): ["serving", "association"],
+    ("ApplicationService", "ApplicationFunction"): ["triggering", "association"],
+    ("ApplicationService", "ApplicationProcess"): ["triggering", "association"],
+    ("ApplicationService", "ApplicationInteraction"): ["triggering", "association"],
+    ("ApplicationService", "ApplicationEvent"): ["triggering", "association"],
+    ("ApplicationService", "ApplicationService"): [
+        "composition",
+        "aggregation",
+        "serving",
+        "specialization",
+        "association",
+    ],
+    ("ApplicationService", "DataObject"): ["access", "association"],
+    ("ApplicationService", "BusinessActor"): ["serving", "association"],
+    ("ApplicationService", "BusinessRole"): ["serving", "association"],
+    ("ApplicationService", "BusinessCollaboration"): ["serving", "association"],
+    ("ApplicationService", "BusinessProcess"): ["serving", "triggering", "association"],
+    ("ApplicationService", "BusinessFunction"): ["serving", "association"],
+    ("ApplicationService", "BusinessInteraction"): ["serving", "association"],
+    ("ApplicationService", "BusinessService"): ["serving", "association"],
+    # =========================================================================
+    # APPLICATION LAYER RELATIONSHIPS - Passive Structure
+    # =========================================================================
+    # DataObject relationships
+    ("DataObject", "DataObject"): ["composition", "aggregation", "specialization", "association"],
+    ("DataObject", "BusinessObject"): ["realization", "association"],
+    ("DataObject", "Artifact"): ["realization", "association"],
+    # =========================================================================
+    # TECHNOLOGY LAYER RELATIONSHIPS - Active Structure
+    # =========================================================================
+    # Node relationships
+    ("Node", "Node"): ["composition", "aggregation", "serving", "specialization", "association"],
+    ("Node", "Device"): ["composition", "aggregation", "association"],
+    ("Node", "SystemSoftware"): ["composition", "assignment", "association"],
+    ("Node", "TechnologyCollaboration"): ["aggregation", "association"],
+    ("Node", "TechnologyInterface"): ["composition", "assignment", "association"],
+    ("Node", "Path"): ["assignment", "association"],
+    ("Node", "CommunicationNetwork"): ["assignment", "serving", "association"],
+    ("Node", "TechnologyFunction"): ["assignment", "association"],
+    ("Node", "TechnologyProcess"): ["assignment", "association"],
+    ("Node", "TechnologyInteraction"): ["assignment", "association"],
+    ("Node", "TechnologyEvent"): ["triggering", "association"],
+    ("Node", "TechnologyService"): ["realization", "serving", "association"],
+    ("Node", "Artifact"): ["assignment", "association"],
+    ("Node", "ApplicationComponent"): ["assignment", "association"],
+    # Device relationships
+    ("Device", "Node"): ["composition", "aggregation", "association"],
+    ("Device", "Device"): [
+        "composition",
+        "aggregation",
+        "serving",
+        "specialization",
+        "association",
+    ],
+    ("Device", "SystemSoftware"): ["composition", "assignment", "association"],
+    ("Device", "TechnologyCollaboration"): ["aggregation", "association"],
+    ("Device", "TechnologyInterface"): ["composition", "assignment", "association"],
+    ("Device", "Path"): ["assignment", "association"],
+    ("Device", "CommunicationNetwork"): ["assignment", "serving", "association"],
+    ("Device", "TechnologyFunction"): ["assignment", "association"],
+    ("Device", "TechnologyProcess"): ["assignment", "association"],
+    ("Device", "TechnologyEvent"): ["triggering", "association"],
+    ("Device", "TechnologyService"): ["realization", "serving", "association"],
+    ("Device", "Artifact"): ["assignment", "association"],
+    ("Device", "ApplicationComponent"): ["assignment", "association"],
+    ("Device", "Equipment"): ["realization", "association"],
+    # SystemSoftware relationships
+    ("SystemSoftware", "Node"): ["serving", "association"],
+    ("SystemSoftware", "Device"): ["serving", "association"],
+    ("SystemSoftware", "SystemSoftware"): [
+        "composition",
+        "aggregation",
+        "serving",
+        "specialization",
+        "association",
+    ],
+    ("SystemSoftware", "TechnologyCollaboration"): ["aggregation", "association"],
+    ("SystemSoftware", "TechnologyInterface"): ["composition", "assignment", "association"],
+    ("SystemSoftware", "TechnologyFunction"): ["assignment", "association"],
+    ("SystemSoftware", "TechnologyProcess"): ["assignment", "association"],
+    ("SystemSoftware", "TechnologyEvent"): ["triggering", "association"],
+    ("SystemSoftware", "TechnologyService"): ["realization", "serving", "association"],
+    ("SystemSoftware", "Artifact"): ["assignment", "association"],
+    ("SystemSoftware", "ApplicationComponent"): ["assignment", "serving", "association"],
+    # TechnologyCollaboration relationships
+    ("TechnologyCollaboration", "Node"): ["aggregation", "association"],
+    ("TechnologyCollaboration", "Device"): ["aggregation", "association"],
+    ("TechnologyCollaboration", "SystemSoftware"): ["aggregation", "association"],
+    ("TechnologyCollaboration", "TechnologyCollaboration"): [
+        "composition",
+        "aggregation",
+        "specialization",
+        "association",
+    ],
+    ("TechnologyCollaboration", "TechnologyInterface"): ["composition", "association"],
+    ("TechnologyCollaboration", "TechnologyInteraction"): ["assignment", "association"],
+    ("TechnologyCollaboration", "TechnologyService"): ["realization", "serving", "association"],
+    # TechnologyInterface relationships
+    ("TechnologyInterface", "Node"): ["serving", "association"],
+    ("TechnologyInterface", "Device"): ["serving", "association"],
+    ("TechnologyInterface", "SystemSoftware"): ["serving", "association"],
+    ("TechnologyInterface", "TechnologyCollaboration"): ["serving", "association"],
+    ("TechnologyInterface", "TechnologyInterface"): [
+        "composition",
+        "aggregation",
+        "specialization",
+        "association",
+    ],
+    ("TechnologyInterface", "TechnologyService"): ["assignment", "serving", "association"],
+    ("TechnologyInterface", "TechnologyProcess"): ["triggering", "flow", "association"],
+    ("TechnologyInterface", "TechnologyEvent"): ["triggering", "flow", "association"],
+    ("TechnologyInterface", "Artifact"): ["access", "flow", "association"],
+    ("TechnologyInterface", "ApplicationInterface"): ["serving", "association"],
+    # Path relationships
+    ("Path", "Node"): ["serving", "association"],
+    ("Path", "Device"): ["serving", "association"],
+    ("Path", "Path"): ["composition", "aggregation", "specialization", "association"],
+    ("Path", "CommunicationNetwork"): ["realization", "association"],
+    ("Path", "TechnologyService"): ["realization", "association"],
+    # CommunicationNetwork relationships
+    ("CommunicationNetwork", "Node"): ["serving", "association"],
+    ("CommunicationNetwork", "Device"): ["serving", "association"],
+    ("CommunicationNetwork", "Path"): ["aggregation", "association"],
+    ("CommunicationNetwork", "CommunicationNetwork"): [
+        "composition",
+        "aggregation",
+        "serving",
+        "specialization",
+        "association",
+    ],
+    ("CommunicationNetwork", "TechnologyService"): ["realization", "serving", "association"],
+    ("CommunicationNetwork", "ApplicationComponent"): ["serving", "association"],
+    # =========================================================================
+    # TECHNOLOGY LAYER RELATIONSHIPS - Behavior
+    # =========================================================================
+    # TechnologyFunction relationships
+    ("TechnologyFunction", "Node"): ["serving", "association"],
+    ("TechnologyFunction", "Device"): ["serving", "association"],
+    ("TechnologyFunction", "SystemSoftware"): ["serving", "association"],
+    ("TechnologyFunction", "TechnologyCollaboration"): ["serving", "association"],
+    ("TechnologyFunction", "TechnologyInterface"): ["serving", "association"],
+    ("TechnologyFunction", "TechnologyFunction"): [
+        "composition",
+        "aggregation",
+        "triggering",
+        "specialization",
+        "association",
+    ],
+    ("TechnologyFunction", "TechnologyProcess"): [
+        "composition",
+        "aggregation",
+        "triggering",
+        "association",
+    ],
+    ("TechnologyFunction", "TechnologyInteraction"): ["composition", "aggregation", "association"],
+    ("TechnologyFunction", "TechnologyEvent"): ["triggering", "association"],
+    ("TechnologyFunction", "TechnologyService"): ["realization", "association"],
+    ("TechnologyFunction", "Artifact"): ["access", "association"],
+    ("TechnologyFunction", "ApplicationComponent"): ["serving", "association"],
+    ("TechnologyFunction", "ApplicationFunction"): ["serving", "association"],
+    # TechnologyProcess relationships
+    ("TechnologyProcess", "Node"): ["serving", "association"],
+    ("TechnologyProcess", "Device"): ["serving", "association"],
+    ("TechnologyProcess", "SystemSoftware"): ["serving", "association"],
+    ("TechnologyProcess", "TechnologyCollaboration"): ["serving", "association"],
+    ("TechnologyProcess", "TechnologyInterface"): ["serving", "association"],
+    ("TechnologyProcess", "TechnologyFunction"): ["composition", "aggregation", "association"],
+    ("TechnologyProcess", "TechnologyProcess"): [
+        "composition",
+        "aggregation",
+        "triggering",
+        "flow",
+        "specialization",
+        "association",
+    ],
+    ("TechnologyProcess", "TechnologyInteraction"): [
+        "composition",
+        "aggregation",
+        "triggering",
+        "flow",
+        "association",
+    ],
+    ("TechnologyProcess", "TechnologyEvent"): ["triggering", "flow", "association"],
+    ("TechnologyProcess", "TechnologyService"): ["realization", "association"],
+    ("TechnologyProcess", "Artifact"): ["access", "association"],
+    # TechnologyInteraction relationships
+    ("TechnologyInteraction", "Node"): ["serving", "association"],
+    ("TechnologyInteraction", "Device"): ["serving", "association"],
+    ("TechnologyInteraction", "SystemSoftware"): ["serving", "association"],
+    ("TechnologyInteraction", "TechnologyCollaboration"): ["serving", "association"],
+    ("TechnologyInteraction", "TechnologyFunction"): ["triggering", "association"],
+    ("TechnologyInteraction", "TechnologyProcess"): ["triggering", "flow", "association"],
+    ("TechnologyInteraction", "TechnologyInteraction"): [
+        "composition",
+        "aggregation",
+        "triggering",
+        "flow",
+        "specialization",
+        "association",
+    ],
+    ("TechnologyInteraction", "TechnologyEvent"): ["triggering", "flow", "association"],
+    ("TechnologyInteraction", "TechnologyService"): ["realization", "association"],
+    ("TechnologyInteraction", "Artifact"): ["access", "association"],
+    # TechnologyEvent relationships
+    ("TechnologyEvent", "TechnologyFunction"): ["triggering", "association"],
+    ("TechnologyEvent", "TechnologyProcess"): ["triggering", "association"],
+    ("TechnologyEvent", "TechnologyInteraction"): ["triggering", "association"],
+    ("TechnologyEvent", "TechnologyEvent"): [
+        "composition",
+        "aggregation",
+        "triggering",
+        "specialization",
+        "association",
+    ],
+    ("TechnologyEvent", "TechnologyService"): ["triggering", "association"],
+    ("TechnologyEvent", "Artifact"): ["access", "association"],
+    ("TechnologyEvent", "ApplicationEvent"): ["triggering", "association"],
+    # TechnologyService relationships
+    ("TechnologyService", "Node"): ["serving", "association"],
+    ("TechnologyService", "Device"): ["serving", "association"],
+    ("TechnologyService", "SystemSoftware"): ["serving", "association"],
+    ("TechnologyService", "TechnologyCollaboration"): ["serving", "association"],
+    ("TechnologyService", "TechnologyInterface"): ["serving", "association"],
+    ("TechnologyService", "TechnologyFunction"): ["triggering", "association"],
+    ("TechnologyService", "TechnologyProcess"): ["triggering", "association"],
+    ("TechnologyService", "TechnologyInteraction"): ["triggering", "association"],
+    ("TechnologyService", "TechnologyEvent"): ["triggering", "association"],
+    ("TechnologyService", "TechnologyService"): [
+        "composition",
+        "aggregation",
+        "serving",
+        "specialization",
+        "association",
+    ],
+    ("TechnologyService", "Artifact"): ["access", "association"],
+    ("TechnologyService", "ApplicationComponent"): ["serving", "association"],
+    ("TechnologyService", "ApplicationService"): ["serving", "association"],
+    # =========================================================================
+    # TECHNOLOGY LAYER RELATIONSHIPS - Passive Structure
+    # =========================================================================
+    # Artifact relationships
+    ("Artifact", "Artifact"): ["composition", "aggregation", "specialization", "association"],
+    ("Artifact", "DataObject"): ["realization", "association"],
+    # =========================================================================
+    # PHYSICAL LAYER RELATIONSHIPS
+    # =========================================================================
+    # Equipment relationships
+    ("Equipment", "Equipment"): [
+        "composition",
+        "aggregation",
+        "serving",
+        "specialization",
+        "association",
+    ],
+    ("Equipment", "Facility"): ["composition", "association"],
+    ("Equipment", "DistributionNetwork"): ["assignment", "association"],
+    ("Equipment", "Node"): ["assignment", "realization", "association"],
+    ("Equipment", "Device"): ["realization", "association"],
+    ("Equipment", "Material"): ["access", "association"],
+    ("Equipment", "TechnologyService"): ["realization", "association"],
+    # Facility relationships
+    ("Facility", "Equipment"): ["aggregation", "composition", "association"],
+    ("Facility", "Facility"): [
+        "composition",
+        "aggregation",
+        "serving",
+        "specialization",
+        "association",
+    ],
+    ("Facility", "DistributionNetwork"): ["assignment", "association"],
+    ("Facility", "Node"): ["assignment", "composition", "association"],
+    ("Facility", "Material"): ["access", "association"],
+    ("Facility", "BusinessProcess"): ["assignment", "association"],
+    # DistributionNetwork relationships
+    ("DistributionNetwork", "Equipment"): ["aggregation", "association"],
+    ("DistributionNetwork", "Facility"): ["serving", "association"],
+    ("DistributionNetwork", "DistributionNetwork"): [
+        "composition",
+        "aggregation",
+        "serving",
+        "specialization",
+        "association",
+    ],
+    ("DistributionNetwork", "Material"): ["flow", "association"],
+    ("DistributionNetwork", "CommunicationNetwork"): ["realization", "association"],
+    ("DistributionNetwork", "BusinessService"): ["realization", "association"],
+    # Material relationships
+    ("Material", "Material"): ["composition", "aggregation", "specialization", "association"],
+    ("Material", "BusinessObject"): ["realization", "association"],
+    # =========================================================================
+    # MOTIVATION LAYER RELATIONSHIPS
+    # =========================================================================
+    # Stakeholder relationships
+    ("Stakeholder", "Stakeholder"): ["composition", "aggregation", "specialization", "association"],
+    ("Stakeholder", "Driver"): ["association"],
+    ("Stakeholder", "Assessment"): ["association"],
+    ("Stakeholder", "Goal"): ["association"],
+    ("Stakeholder", "Outcome"): ["association"],
+    ("Stakeholder", "Principle"): ["association"],
+    ("Stakeholder", "Requirement"): ["association"],
+    ("Stakeholder", "Constraint"): ["association"],
+    ("Stakeholder", "Value"): ["association"],
+    # Driver relationships
+    ("Driver", "Stakeholder"): ["association"],
+    ("Driver", "Driver"): [
+        "composition",
+        "aggregation",
+        "influence",
+        "specialization",
+        "association",
+    ],
+    ("Driver", "Assessment"): ["association"],
+    ("Driver", "Goal"): ["influence", "association"],
+    ("Driver", "Outcome"): ["influence", "association"],
+    ("Driver", "Principle"): ["influence", "association"],
+    ("Driver", "Requirement"): ["influence", "association"],
+    ("Driver", "Constraint"): ["influence", "association"],
+    # Assessment relationships
+    ("Assessment", "Stakeholder"): ["association"],
+    ("Assessment", "Driver"): ["association"],
+    ("Assessment", "Assessment"): [
+        "composition",
+        "aggregation",
+        "influence",
+        "specialization",
+        "association",
+    ],
+    ("Assessment", "Goal"): ["influence", "association"],
+    ("Assessment", "Outcome"): ["influence", "association"],
+    ("Assessment", "Principle"): ["influence", "association"],
+    ("Assessment", "Requirement"): ["influence", "association"],
+    ("Assessment", "Constraint"): ["influence", "association"],
+    # Goal relationships
+    ("Goal", "Stakeholder"): ["association"],
+    ("Goal", "Driver"): ["association"],
+    ("Goal", "Assessment"): ["association"],
+    ("Goal", "Goal"): ["composition", "aggregation", "influence", "specialization", "association"],
+    ("Goal", "Outcome"): ["realization", "influence", "association"],
+    ("Goal", "Principle"): ["realization", "influence", "association"],
+    ("Goal", "Requirement"): ["realization", "influence", "association"],
+    ("Goal", "Constraint"): ["realization", "influence", "association"],
+    ("Goal", "Value"): ["association"],
+    ("Goal", "Meaning"): ["association"],
+    ("Goal", "CourseOfAction"): ["association"],
+    ("Goal", "Capability"): ["influence", "association"],
+    ("Goal", "Resource"): ["influence", "association"],
+    # Outcome relationships
+    ("Outcome", "Stakeholder"): ["association"],
+    ("Outcome", "Goal"): ["association"],
+    ("Outcome", "Outcome"): [
+        "composition",
+        "aggregation",
+        "influence",
+        "specialization",
+        "association",
+    ],
+    ("Outcome", "Principle"): ["influence", "association"],
+    ("Outcome", "Requirement"): ["influence", "association"],
+    ("Outcome", "Constraint"): ["influence", "association"],
+    ("Outcome", "Value"): ["realization", "association"],
+    # Principle relationships
+    ("Principle", "Stakeholder"): ["association"],
+    ("Principle", "Goal"): ["association"],
+    ("Principle", "Outcome"): ["influence", "association"],
+    ("Principle", "Principle"): [
+        "composition",
+        "aggregation",
+        "influence",
+        "specialization",
+        "association",
+    ],
+    ("Principle", "Requirement"): ["realization", "influence", "association"],
+    ("Principle", "Constraint"): ["realization", "influence", "association"],
+    # Requirement relationships
+    ("Requirement", "Stakeholder"): ["association"],
+    ("Requirement", "Goal"): ["association"],
+    ("Requirement", "Outcome"): ["influence", "association"],
+    ("Requirement", "Principle"): ["association"],
+    ("Requirement", "Requirement"): [
+        "composition",
+        "aggregation",
+        "influence",
+        "specialization",
+        "association",
+    ],
+    ("Requirement", "Constraint"): ["realization", "influence", "association"],
+    ("Requirement", "Meaning"): ["association"],
+    # Core element realizations
+    ("Requirement", "BusinessProcess"): ["realization", "association"],
+    ("Requirement", "BusinessFunction"): ["realization", "association"],
+    ("Requirement", "BusinessService"): ["realization", "association"],
+    ("Requirement", "ApplicationComponent"): ["realization", "association"],
+    ("Requirement", "ApplicationService"): ["realization", "association"],
+    ("Requirement", "Node"): ["realization", "association"],
+    ("Requirement", "TechnologyService"): ["realization", "association"],
+    # Constraint relationships
+    ("Constraint", "Stakeholder"): ["association"],
+    ("Constraint", "Goal"): ["association"],
+    ("Constraint", "Outcome"): ["influence", "association"],
+    ("Constraint", "Principle"): ["association"],
+    ("Constraint", "Requirement"): ["influence", "association"],
+    ("Constraint", "Constraint"): [
+        "composition",
+        "aggregation",
+        "influence",
+        "specialization",
+        "association",
+    ],
+    # Core element constraints
+    ("Constraint", "BusinessProcess"): ["realization", "association"],
+    ("Constraint", "BusinessFunction"): ["realization", "association"],
+    ("Constraint", "BusinessService"): ["realization", "association"],
+    ("Constraint", "ApplicationComponent"): ["realization", "association"],
+    ("Constraint", "ApplicationService"): ["realization", "association"],
+    # Meaning relationships
+    ("Meaning", "Meaning"): ["composition", "aggregation", "specialization", "association"],
+    ("Meaning", "BusinessObject"): ["association"],
+    ("Meaning", "Representation"): ["association"],
+    ("Meaning", "Requirement"): ["association"],
+    ("Meaning", "Value"): ["association"],
+    # Value relationships
+    ("Value", "Stakeholder"): ["association"],
+    ("Value", "Goal"): ["association"],
+    ("Value", "Outcome"): ["association"],
+    ("Value", "Value"): ["composition", "aggregation", "specialization", "association"],
+    ("Value", "Meaning"): ["association"],
+    ("Value", "Product"): ["association"],
+    ("Value", "BusinessService"): ["association"],
+    # =========================================================================
+    # IMPLEMENTATION & MIGRATION LAYER RELATIONSHIPS
+    # =========================================================================
+    # WorkPackage relationships
+    ("WorkPackage", "WorkPackage"): [
+        "composition",
+        "aggregation",
+        "triggering",
+        "flow",
+        "specialization",
+        "association",
+    ],
+    ("WorkPackage", "ImplementationEvent"): ["triggering", "flow", "association"],
+    ("WorkPackage", "Deliverable"): ["realization", "access", "association"],
+    ("WorkPackage", "Plateau"): ["realization", "association"],
+    ("WorkPackage", "Gap"): ["association"],
+    # WorkPackage realizes core elements
+    ("WorkPackage", "BusinessProcess"): ["realization", "association"],
+    ("WorkPackage", "BusinessFunction"): ["realization", "association"],
+    ("WorkPackage", "BusinessService"): ["realization", "association"],
+    ("WorkPackage", "ApplicationComponent"): ["realization", "association"],
+    ("WorkPackage", "ApplicationService"): ["realization", "association"],
+    ("WorkPackage", "Node"): ["realization", "association"],
+    ("WorkPackage", "TechnologyService"): ["realization", "association"],
+    ("WorkPackage", "Capability"): ["realization", "association"],
+    ("WorkPackage", "CourseOfAction"): ["realization", "association"],
+    # ImplementationEvent relationships
+    ("ImplementationEvent", "WorkPackage"): ["triggering", "association"],
+    ("ImplementationEvent", "ImplementationEvent"): [
+        "composition",
+        "aggregation",
+        "triggering",
+        "specialization",
+        "association",
+    ],
+    ("ImplementationEvent", "Deliverable"): ["access", "association"],
+    ("ImplementationEvent", "Plateau"): ["triggering", "association"],
+    # Deliverable relationships
+    ("Deliverable", "Deliverable"): ["composition", "aggregation", "specialization", "association"],
+    ("Deliverable", "Plateau"): ["association"],
+    # Deliverable realizes core elements
+    ("Deliverable", "BusinessObject"): ["realization", "association"],
+    ("Deliverable", "DataObject"): ["realization", "association"],
+    ("Deliverable", "Artifact"): ["realization", "association"],
+    # Plateau relationships
+    ("Plateau", "Plateau"): [
+        "composition",
+        "aggregation",
+        "triggering",
+        "specialization",
+        "association",
+    ],
+    ("Plateau", "Gap"): ["association"],
+    # Plateau aggregates core elements (represents architecture state)
+    ("Plateau", "BusinessProcess"): ["composition", "aggregation", "association"],
+    ("Plateau", "BusinessFunction"): ["composition", "aggregation", "association"],
+    ("Plateau", "BusinessService"): ["composition", "aggregation", "association"],
+    ("Plateau", "BusinessObject"): ["composition", "aggregation", "association"],
+    ("Plateau", "ApplicationComponent"): ["composition", "aggregation", "association"],
+    ("Plateau", "ApplicationService"): ["composition", "aggregation", "association"],
+    ("Plateau", "DataObject"): ["composition", "aggregation", "association"],
+    ("Plateau", "Node"): ["composition", "aggregation", "association"],
+    ("Plateau", "TechnologyService"): ["composition", "aggregation", "association"],
+    ("Plateau", "Capability"): ["composition", "aggregation", "association"],
+    # Gap relationships
+    ("Gap", "Plateau"): ["association"],
+    ("Gap", "Gap"): ["composition", "aggregation", "specialization", "association"],
+    # Gap associated with core elements (what's missing/changing)
+    ("Gap", "BusinessProcess"): ["association"],
+    ("Gap", "BusinessService"): ["association"],
+    ("Gap", "ApplicationComponent"): ["association"],
+    ("Gap", "ApplicationService"): ["association"],
+    ("Gap", "Node"): ["association"],
+    ("Gap", "TechnologyService"): ["association"],
+    ("Gap", "Capability"): ["association"],
+    # =========================================================================
+    # CROSS-LAYER RELATIONSHIPS (Additional)
+    # =========================================================================
+    # Strategy to Business
+    ("Capability", "BusinessActor"): ["association"],
+    ("Capability", "BusinessRole"): ["association"],
+    ("Resource", "BusinessActor"): ["assignment", "association"],
+    ("Resource", "BusinessRole"): ["assignment", "association"],
+    ("ValueStream", "BusinessProcess"): ["triggering", "association"],
+    # Strategy to Application
+    ("Capability", "ApplicationComponent"): ["realization", "association"],
+    ("Capability", "ApplicationService"): ["realization", "association"],
+    # Strategy to Technology
+    ("Capability", "Node"): ["realization", "association"],
+    ("Capability", "TechnologyService"): ["realization", "association"],
+    ("Resource", "Node"): ["assignment", "association"],
+    # Business to Application (additional cross-layer)
+    ("BusinessInterface", "ApplicationInterface"): ["serving", "association"],
+    ("BusinessEvent", "ApplicationEvent"): ["triggering", "association"],
+    ("BusinessObject", "ApplicationComponent"): ["access", "association"],
+    # Application to Technology (additional cross-layer)
+    ("ApplicationInterface", "TechnologyInterface"): ["serving", "association"],
+    ("ApplicationEvent", "TechnologyEvent"): ["triggering", "association"],
+    ("ApplicationProcess", "TechnologyService"): ["serving", "association"],
+    # Technology to Physical
+    ("Node", "Facility"): ["association"],
+    ("Node", "Equipment"): ["assignment", "association"],
+    ("CommunicationNetwork", "DistributionNetwork"): ["association"],
+    ("Artifact", "Material"): ["realization", "association"],
+    # Motivation to Core Layers (influence relationships)
+    ("Goal", "BusinessProcess"): ["influence", "association"],
+    ("Goal", "BusinessService"): ["influence", "association"],
+    ("Goal", "ApplicationComponent"): ["influence", "association"],
+    ("Goal", "ApplicationService"): ["influence", "association"],
+    ("Principle", "BusinessProcess"): ["influence", "association"],
+    ("Principle", "BusinessService"): ["influence", "association"],
+    ("Principle", "ApplicationComponent"): ["influence", "association"],
+    ("Driver", "BusinessProcess"): ["influence", "association"],
+    ("Driver", "Capability"): ["influence", "association"],
+    ("Assessment", "BusinessProcess"): ["influence", "association"],
+    ("Assessment", "Capability"): ["influence", "association"],
+}
+
+
+# =============================================================================
+# Cardinality Constraints
+# =============================================================================
+
+RELATIONSHIP_CARDINALITY: Dict[str, Tuple[int, Optional[int]]] = {
+    "composition": (1, 1),  # Exactly one parent (composite)
+    "aggregation": (0, None),  # Zero or more
+    "assignment": (0, None),  # Zero or more
+    "realization": (1, None),  # At least one (something must realize)
+    "serving": (0, None),  # Zero or more
+    "access": (0, None),  # Zero or more
+    "influence": (0, None),  # Zero or more
+    "triggering": (0, None),  # Zero or more
+    "flow": (0, None),  # Zero or more
+    "specialization": (0, 1),  # At most one parent
+    "association": (0, None),  # Zero or more
+}
+
+
+# =============================================================================
+# Derivation Rules (ArchiMate 3.2 Appendix B)
+# =============================================================================
+
+# Derivation strength order (strongest to weakest)
+DERIVATION_STRENGTH_ORDER = [
+    "composition",
+    "aggregation",
+    "assignment",
+    "realization",
+    "serving",
+    "access",
+    "influence",
+    "triggering",
+    "flow",
+    "association",
+]
+
+# Relationships that can participate in derivation chains
+DERIVABLE_RELATIONSHIPS = {
+    "composition",
+    "aggregation",
+    "assignment",
+    "realization",
+    "serving",
+    "access",
+    "influence",
+    "triggering",
+    "flow",
+    "association",
+}
+
+# Specialization always yields the most specific relationship
+# Association is always a valid derived relationship (fallback)
+
+
+# =============================================================================
+# Utility Functions
+# =============================================================================
+
+
+def get_valid_relationships(source_type: str, target_type: str) -> List[str]:
+    """
+    Get valid relationship types between two element types.
+
+    Args:
+        source_type: The source ArchiMate element type
+        target_type: The target ArchiMate element type
+
+    Returns:
+        List of valid relationship type names, or empty list if none valid
+    """
+    return VALID_RELATIONSHIPS.get((source_type, target_type), [])
+
+
+def is_valid_relationship(source_type: str, target_type: str, relationship_type: str) -> bool:
+    """
+    Check if a relationship is valid per ArchiMate 3.2 specification.
+
+    Args:
+        source_type: The source ArchiMate element type
+        target_type: The target ArchiMate element type
+        relationship_type: The relationship type to validate
+
+    Returns:
+        True if the relationship is valid, False otherwise
+    """
+    valid = get_valid_relationships(source_type, target_type)
+    return relationship_type.lower() in [r.lower() for r in valid]
+
+
+def get_cardinality(relationship_type: str) -> Tuple[int, Optional[int]]:
+    """
+    Get cardinality constraints for a relationship type.
+
+    Args:
+        relationship_type: The relationship type
+
+    Returns:
+        Tuple of (min, max) where max=None means unlimited
+    """
+    return RELATIONSHIP_CARDINALITY.get(relationship_type.lower(), (0, None))
+
+
+def get_relationship_category(relationship_type: str) -> Optional[RelationshipCategory]:
+    """
+    Get the category of a relationship type.
+
+    Args:
+        relationship_type: The relationship type
+
+    Returns:
+        RelationshipCategory enum value, or None if not found
+    """
+    definition = RELATIONSHIP_TYPE_DEFINITIONS.get(relationship_type.lower())
+    return definition.category if definition else None
+
+
+def get_all_valid_sources_for_target(target_type: str) -> Dict[str, List[str]]:
+    """
+    Get all valid source types and their allowed relationships for a target.
+
+    Args:
+        target_type: The target ArchiMate element type
+
+    Returns:
+        Dict mapping source types to lists of valid relationship types
+    """
+    result = {}
+    for (src, tgt), relationships in VALID_RELATIONSHIPS.items():
+        if tgt == target_type:
+            result[src] = relationships
+    return result
+
+
+def get_all_valid_targets_for_source(source_type: str) -> Dict[str, List[str]]:
+    """
+    Get all valid target types and their allowed relationships for a source.
+
+    Args:
+        source_type: The source ArchiMate element type
+
+    Returns:
+        Dict mapping target types to lists of valid relationship types
+    """
+    result = {}
+    for (src, tgt), relationships in VALID_RELATIONSHIPS.items():
+        if src == source_type:
+            result[tgt] = relationships
+    return result
+
+
+def get_derivation_strength(relationship_type: str) -> int:
+    """
+    Get the derivation strength of a relationship type.
+    Higher values mean stronger relationships in derivation chains.
+
+    Args:
+        relationship_type: The relationship type
+
+    Returns:
+        Integer strength value (0 - 10, higher is stronger)
+    """
+    definition = RELATIONSHIP_TYPE_DEFINITIONS.get(relationship_type.lower())
+    return definition.derivation_strength if definition else 0
+
+
+def derive_relationship(chain: List[str]) -> str:
+    """
+    Derive the resulting relationship type from a chain of relationships.
+    Per ArchiMate 3.2, the derived relationship is typically the weakest in the chain.
+
+    Args:
+        chain: List of relationship type names in the chain
+
+    Returns:
+        The derived relationship type name
+    """
+    if not chain:
+        return "association"
+
+    # Find the weakest relationship (lowest derivation strength)
+    min_strength = float("inf")
+    weakest = "association"
+
+    for rel_type in chain:
+        strength = get_derivation_strength(rel_type)
+        if strength < min_strength:
+            min_strength = strength
+            weakest = rel_type
+
+    return weakest
+
+
+def can_derive_relationship(relationship_type: str) -> bool:
+    """
+    Check if a relationship type can participate in derivation.
+
+    Args:
+        relationship_type: The relationship type
+
+    Returns:
+        True if the relationship can be derived
+    """
+    definition = RELATIONSHIP_TYPE_DEFINITIONS.get(relationship_type.lower())
+    return definition.can_be_derived if definition else False
+
+
+def get_element_layer(element_type: str) -> Optional[str]:
+    """
+    Get the ArchiMate layer for an element type.
+
+    Args:
+        element_type: The ArchiMate element type
+
+    Returns:
+        Layer name string, or None if not found
+    """
+    if element_type in STRATEGY_ELEMENTS:
+        return "Strategy"
+    elif element_type in BUSINESS_ELEMENTS:
+        return "Business"
+    elif element_type in APPLICATION_ELEMENTS:
+        return "Application"
+    elif element_type in TECHNOLOGY_ELEMENTS:
+        return "Technology"
+    elif element_type in PHYSICAL_ELEMENTS:
+        return "Physical"
+    elif element_type in MOTIVATION_ELEMENTS:
+        return "Motivation"
+    elif element_type in IMPLEMENTATION_ELEMENTS:
+        return "Implementation & Migration"
+    return None
+
+
+def get_element_aspect(element_type: str) -> Optional[str]:
+    """
+    Get the ArchiMate aspect (active/behavior/passive) for an element type.
+
+    Args:
+        element_type: The ArchiMate element type
+
+    Returns:
+        Aspect name string, or None if not found
+    """
+    if element_type in ALL_ACTIVE_ELEMENTS:
+        return "Active Structure"
+    elif element_type in ALL_BEHAVIOR_ELEMENTS:
+        return "Behavior"
+    elif element_type in ALL_PASSIVE_ELEMENTS:
+        return "Passive Structure"
+    return None
+
+
+def validate_cross_layer_relationship(
+    source_type: str, target_type: str, relationship_type: str
+) -> Tuple[bool, Optional[str]]:
+    """
+    Validate a relationship considering cross-layer rules.
+
+    Args:
+        source_type: The source ArchiMate element type
+        target_type: The target ArchiMate element type
+        relationship_type: The relationship type
+
+    Returns:
+        Tuple of (is_valid, warning_message)
+        warning_message is None if valid, contains guidance if potentially problematic
+    """
+    # First check if relationship is valid at all
+    if not is_valid_relationship(source_type, target_type, relationship_type):
+        return (
+            False,
+            f"Relationship '{relationship_type}' is not valid between {source_type} and {target_type}",
+        )
+
+    source_layer = get_element_layer(source_type)
+    target_layer = get_element_layer(target_type)
+
+    # Same layer is always fine
+    if source_layer == target_layer:
+        return True, None
+
+    # Cross-layer relationships have specific rules
+    # Generally, serving/realization flow "downward" (Business -> Application -> Technology)
+    layer_order = [
+        "Motivation",
+        "Strategy",
+        "Business",
+        "Application",
+        "Technology",
+        "Physical",
+        "Implementation & Migration",
+    ]
+
+    source_idx = layer_order.index(source_layer) if source_layer in layer_order else -1
+    target_idx = layer_order.index(target_layer) if target_layer in layer_order else -1
+
+    # Cross-layer serving should flow upward (lower serves higher)
+    if relationship_type == "serving" and source_idx < target_idx:
+        return (
+            True,
+            f"Cross-layer serving from {source_layer} to {target_layer} - verify direction is intentional",
+        )
+
+    # Cross-layer realization should flow upward (lower realizes higher)
+    if relationship_type == "realization" and source_idx > target_idx:
+        return (
+            True,
+            f"Cross-layer realization from {source_layer} to {target_layer} - verify direction is intentional",
+        )
+
+    return True, None
+
+
+def get_relationship_summary() -> Dict[str, int]:
+    """
+    Get a summary of the relationship matrix.
+
+    Returns:
+        Dict with counts of relationships by type
+    """
+    summary = {rel_type: 0 for rel_type in RELATIONSHIP_TYPES}
+
+    for relationships in VALID_RELATIONSHIPS.values():
+        for rel_type in relationships:
+            if rel_type in summary:
+                summary[rel_type] += 1
+
+    return summary
+
+
+def get_matrix_statistics() -> Dict[str, any]:
+    """
+    Get statistics about the relationship matrix.
+
+    Returns:
+        Dict with various statistics
+    """
+    total_rules = len(VALID_RELATIONSHIPS)
+    total_relationships = sum(len(rels) for rels in VALID_RELATIONSHIPS.values())
+
+    source_types = set(src for src, _ in VALID_RELATIONSHIPS.keys())
+    target_types = set(tgt for _, tgt in VALID_RELATIONSHIPS.keys())
+
+    return {
+        "total_rules": total_rules,
+        "total_relationships": total_relationships,
+        "unique_source_types": len(source_types),
+        "unique_target_types": len(target_types),
+        "all_element_types": len(ALL_ELEMENTS),
+        "relationship_types": len(RELATIONSHIP_TYPES),
+        "relationship_summary": get_relationship_summary(),
+    }
+
+
+# =============================================================================
+# Validation Classes
+# =============================================================================
+
+
+class RelationshipValidator:
+    """
+    Comprehensive ArchiMate relationship validator.
+    Provides detailed validation with error messages and suggestions.
+    """
+
+    def __init__(self):
+        self.errors: List[str] = []
+        self.warnings: List[str] = []
+
+    def validate(
+        self,
+        source_type: str,
+        target_type: str,
+        relationship_type: str,
+        check_cross_layer: bool = True,
+    ) -> bool:
+        """
+        Validate a relationship and collect errors/warnings.
+
+        Args:
+            source_type: The source ArchiMate element type
+            target_type: The target ArchiMate element type
+            relationship_type: The relationship type
+            check_cross_layer: Whether to check cross-layer rules
+
+        Returns:
+            True if valid, False otherwise
+        """
+        self.errors = []
+        self.warnings = []
+
+        # Check if element types are valid
+        if source_type not in ALL_ELEMENTS:
+            self.errors.append(f"Unknown source element type: {source_type}")
+            return False
+
+        if target_type not in ALL_ELEMENTS:
+            self.errors.append(f"Unknown target element type: {target_type}")
+            return False
+
+        # Check if relationship type is valid
+        if relationship_type.lower() not in RELATIONSHIP_TYPES:
+            self.errors.append(f"Unknown relationship type: {relationship_type}")
+            return False
+
+        # Check if relationship is valid between these types
+        if not is_valid_relationship(source_type, target_type, relationship_type):
+            valid_rels = get_valid_relationships(source_type, target_type)
+            if valid_rels:
+                self.errors.append(
+                    f"Relationship '{relationship_type}' is not valid between {source_type} and {target_type}. "
+                    f"Valid relationships are: {', '.join(valid_rels)}"
+                )
+            else:
+                self.errors.append(
+                    f"No direct relationship is defined between {source_type} and {target_type} "
+                    f"in the ArchiMate 3.2 specification"
+                )
+            return False
+
+        # Check cross-layer rules
+        if check_cross_layer:
+            is_valid, warning = validate_cross_layer_relationship(
+                source_type, target_type, relationship_type
+            )
+            if warning:
+                self.warnings.append(warning)
+
+        return True
+
+    def get_suggestions(self, source_type: str, target_type: str) -> List[str]:
+        """
+        Get suggested valid relationships between two element types.
+
+        Args:
+            source_type: The source ArchiMate element type
+            target_type: The target ArchiMate element type
+
+        Returns:
+            List of valid relationship type suggestions
+        """
+        return get_valid_relationships(source_type, target_type)
+
+    def get_errors(self) -> List[str]:
+        """Get the list of validation errors."""
+        return self.errors
+
+    def get_warnings(self) -> List[str]:
+        """Get the list of validation warnings."""
+        return self.warnings
+
+
+# =============================================================================
+# Module Exports
+# =============================================================================
+
+__all__ = [
+    # Constants
+    "RELATIONSHIP_TYPES",
+    "RELATIONSHIP_TYPE_DEFINITIONS",
+    "VALID_RELATIONSHIPS",
+    "RELATIONSHIP_CARDINALITY",
+    "DERIVATION_STRENGTH_ORDER",
+    "DERIVABLE_RELATIONSHIPS",
+    # Element type lists
+    "STRATEGY_ELEMENTS",
+    "BUSINESS_ELEMENTS",
+    "BUSINESS_ACTIVE_ELEMENTS",
+    "BUSINESS_BEHAVIOR_ELEMENTS",
+    "BUSINESS_PASSIVE_ELEMENTS",
+    "APPLICATION_ELEMENTS",
+    "APPLICATION_ACTIVE_ELEMENTS",
+    "APPLICATION_BEHAVIOR_ELEMENTS",
+    "APPLICATION_PASSIVE_ELEMENTS",
+    "TECHNOLOGY_ELEMENTS",
+    "TECHNOLOGY_ACTIVE_ELEMENTS",
+    "TECHNOLOGY_BEHAVIOR_ELEMENTS",
+    "TECHNOLOGY_PASSIVE_ELEMENTS",
+    "PHYSICAL_ELEMENTS",
+    "PHYSICAL_ACTIVE_ELEMENTS",
+    "PHYSICAL_PASSIVE_ELEMENTS",
+    "MOTIVATION_ELEMENTS",
+    "MOTIVATION_ACTIVE_ELEMENTS",
+    "MOTIVATION_PASSIVE_ELEMENTS",
+    "IMPLEMENTATION_ELEMENTS",
+    "IMPLEMENTATION_BEHAVIOR_ELEMENTS",
+    "IMPLEMENTATION_PASSIVE_ELEMENTS",
+    "ALL_ELEMENTS",
+    "ALL_ACTIVE_ELEMENTS",
+    "ALL_BEHAVIOR_ELEMENTS",
+    "ALL_PASSIVE_ELEMENTS",
+    # Data classes and enums
+    "RelationshipRule",
+    "RelationshipTypeDefinition",
+    "RelationshipCategory",
+    "AccessMode",
+    # Functions
+    "get_valid_relationships",
+    "is_valid_relationship",
+    "get_cardinality",
+    "get_relationship_category",
+    "get_all_valid_sources_for_target",
+    "get_all_valid_targets_for_source",
+    "get_derivation_strength",
+    "derive_relationship",
+    "can_derive_relationship",
+    "get_element_layer",
+    "get_element_aspect",
+    "validate_cross_layer_relationship",
+    "get_relationship_summary",
+    "get_matrix_statistics",
+    # Classes
+    "RelationshipValidator",
+]

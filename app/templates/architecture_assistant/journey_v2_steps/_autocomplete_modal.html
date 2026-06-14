@@ -1,0 +1,136 @@
+{# Auto-Complete Review Modal — per-field accept/reject for AI completions.
+   Controlled by Alpine.store('autocomplete'). #}
+
+<div x-show="$store.autocomplete.visible"
+     x-cloak
+     x-transition:enter="transition ease-out duration-200"
+     x-transition:enter-start="opacity-0"
+     x-transition:enter-end="opacity-100"
+     x-transition:leave="transition ease-in duration-150"
+     x-transition:leave-start="opacity-100"
+     x-transition:leave-end="opacity-0"
+     class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+
+  <div class="bg-card border border-border rounded-lg shadow-xl w-full max-w-2xl mx-4 max-h-[85vh] flex flex-col"
+       @click.outside="$store.autocomplete.dismiss()">
+
+    {# Header #}
+    <div class="px-6 py-4 border-b border-border flex-shrink-0">
+      <div class="flex items-center justify-between">
+        <div>
+          <h3 class="text-lg font-semibold text-foreground">Review AI Completions</h3>
+          <p class="text-sm text-muted-foreground mt-0.5">
+            <span x-text="$store.autocomplete.totalCount"></span> fields completed
+            <template x-if="$store.autocomplete.qualityDelta > 0">
+              <span> — estimated quality +<span x-text="$store.autocomplete.qualityDelta"></span> points</span>
+            </template>
+          </p>
+        </div>
+        <button @click="$store.autocomplete.dismiss()"
+                class="text-muted-foreground hover:text-foreground transition-colors">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    {# Completion list #}
+    <div class="flex-1 overflow-y-auto px-6 py-4">
+      <div class="space-y-3">
+        <template x-for="(comp, idx) in $store.autocomplete.completions" :key="comp.field_path">
+          <div class="border border-border rounded-lg p-3 transition-colors"
+               :class="$store.autocomplete.selected[comp.field_path] ? 'bg-primary/5 border-primary/30' : 'bg-card'">
+            {# Field header with checkbox #}
+            <div class="flex items-start gap-3">
+              <label class="flex items-center mt-0.5 cursor-pointer">
+                <input type="checkbox"
+                       :checked="$store.autocomplete.selected[comp.field_path]"
+                       @change="$store.autocomplete.toggleField(comp.field_path)"
+                       class="rounded border-input text-primary focus:ring-primary/50">
+              </label>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="text-sm font-medium text-foreground" x-text="comp.field_path"></span>
+                  <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
+                        :class="{
+                          'bg-emerald-500/10 text-emerald-600': comp.confidence >= 0.8,
+                          'bg-amber-500/10 text-amber-600': comp.confidence >= 0.5 && comp.confidence < 0.8,
+                          'bg-muted text-muted-foreground': comp.confidence < 0.5,
+                        }"
+                        x-text="Math.round(comp.confidence * 100) + '% confidence'"></span>
+                </div>
+
+                {# Original value #}
+                <template x-if="comp.original_value">
+                  <div class="mb-2">
+                    <span class="text-[10px] uppercase tracking-wide text-muted-foreground">Current</span>
+                    <p class="text-xs text-muted-foreground line-through mt-0.5 truncate"
+                       x-text="typeof comp.original_value === 'string' ? comp.original_value : JSON.stringify(comp.original_value)"></p>
+                  </div>
+                </template>
+                <template x-if="!comp.original_value">
+                  <div class="mb-2">
+                    <span class="text-[10px] uppercase tracking-wide text-muted-foreground">Current</span>
+                    <p class="text-xs text-muted-foreground italic mt-0.5">[empty]</p>
+                  </div>
+                </template>
+
+                {# Completed value #}
+                <div>
+                  <span class="text-[10px] uppercase tracking-wide text-emerald-600">Suggested</span>
+                  <p class="text-sm text-foreground mt-0.5"
+                     x-text="typeof comp.completed_value === 'string' ? comp.completed_value : JSON.stringify(comp.completed_value)"></p>
+                </div>
+
+                {# Rationale #}
+                <template x-if="comp.rationale">
+                  <p class="text-xs text-muted-foreground mt-1 italic" x-text="comp.rationale"></p>
+                </template>
+              </div>
+            </div>
+          </div>
+        </template>
+      </div>
+
+      {# Empty state #}
+      <template x-if="$store.autocomplete.completions.length === 0 && !$store.autocomplete.loading">
+        <div class="text-center py-8 text-muted-foreground">
+          <p class="text-sm">No completions available for this step.</p>
+        </div>
+      </template>
+
+      {# Loading state #}
+      <template x-if="$store.autocomplete.loading">
+        <div class="text-center py-8">
+          <span class="animate-spin inline-block h-5 w-5 border-2 border-primary border-t-transparent rounded-full"></span>
+          <p class="text-sm text-muted-foreground mt-2">Generating completions...</p>
+        </div>
+      </template>
+    </div>
+
+    {# Footer actions #}
+    <div class="px-6 py-4 border-t border-border flex items-center justify-between flex-shrink-0">
+      <div class="flex items-center gap-3">
+        <button @click="$store.autocomplete.selectAll()"
+                class="text-xs text-primary hover:underline">Select all</button>
+        <button @click="$store.autocomplete.deselectAll()"
+                class="text-xs text-muted-foreground hover:underline">Deselect all</button>
+        <span class="text-xs text-muted-foreground">
+          <span x-text="$store.autocomplete.selectedCount"></span>/<span x-text="$store.autocomplete.totalCount"></span> selected
+        </span>
+      </div>
+      <div class="flex items-center gap-2">
+        <button @click="$store.autocomplete.dismiss()"
+                class="px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
+          Cancel
+        </button>
+        <button @click="$store.autocomplete.applySelected()"
+                :disabled="$store.autocomplete.selectedCount === 0 || $store.autocomplete.loading"
+                class="px-4 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50">
+          Accept selected (<span x-text="$store.autocomplete.selectedCount"></span>)
+        </button>
+      </div>
+    </div>
+  </div>
+</div>

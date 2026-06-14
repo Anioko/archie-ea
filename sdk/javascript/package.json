@@ -1,0 +1,50 @@
+{
+  "name": "enterprise-sdk",
+  "version": "2.0.0",
+  "description": "JavaScript SDK for Enterprise Architecture Platform API",
+  "main": "enterprise-sdk.js",
+  "type": "module",
+  "scripts": {
+    "test": "jest",
+    "build": "webpack --mode production",
+    "dev": "webpack --mode development --watch",
+    "lint": "eslint enterprise-sdk.js",
+    "docs": "jsdoc enterprise-sdk.js -d docs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Anioko/archie.git"
+  },
+  "keywords": [
+    "enterprise",
+    "architecture",
+    "api",
+    "sdk",
+    "archimate",
+    "knowledge-graph"
+  ],
+  "author": "Enterprise Architecture Team",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/Anioko/archie/issues"
+  },
+  "homepage": "https://github.com/Anioko/archie#readme",
+  "devDependencies": {
+    "@babel/core": "^7.20.0",
+    "@babel/preset-env": "^7.20.0",
+    "babel-loader": "^9.1.0",
+    "eslint": "^8.30.0",
+    "jest": "^29.3.0",
+    "jsdoc": "^4.0.0",
+    "webpack": "^5.75.0",
+    "webpack-cli": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "browserslist": [
+    "> 1%",
+    "last 2 versions",
+    "not ie <= 8"
+  ]
+}

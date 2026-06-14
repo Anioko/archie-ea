@@ -1,0 +1,128 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<!-- Alpine.js x-cloak: prevent flash of unstyled content -->
+<style>[x-cloak] { display: none !important; }</style>
+
+<!-- Tailwind CSS (local JIT build — run: python scripts/build_css.py) -->
+<link rel="stylesheet" href="{{ 'css/shadcn_tokens.css' | asset_url }}">
+<link rel="stylesheet" href="{{ 'css/tailwind-output.css' | asset_url }}">
+<link rel="stylesheet" href="{{ 'css/app.css' | asset_url }}">
+<link rel="stylesheet" href="{{ 'css/accessibility.css' | asset_url }}">
+
+<!-- North Star Phase 3: Professional Enterprise Palette -->
+{% if north_star_phase3_enabled %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/north-star-professional.css') }}">
+{% endif %}
+
+<!-- Lucide Icons (pinned) -->
+<script src="https://unpkg.com/lucide@0.344.0"
+        integrity="sha384-tTkFttkBclaU1cloKwOi9xk3pbao3VZxTjLNBt8iFABWDBQibbAbWpVmO28zMuxq"
+        crossorigin="anonymous"></script>
+
+<!-- DOMPurify for XSS prevention -->
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.8/dist/purify.min.js"
+        integrity="sha384-vdScihEZCfbPnBQf+lc7LgXUdJVYyhC3yWHUW5C5P5GpHRqVnaM6HJELJxT6IqwM"
+        crossorigin="anonymous"></script>
+<script>
+  // safeSetHTML: explicit XSS guard for dynamic HTML — call this instead of el.innerHTML = ...
+  // Does NOT patch Element.prototype.innerHTML globally (that breaks Alpine.js, Lucide, etc.)
+  window.safeSetHTML = function safeSetHTML(element, html) {
+    if (!element) return;
+    if (window.DOMPurify) {
+      element.innerHTML = window.DOMPurify.sanitize(html);
+    } else {
+      // DOMPurify not yet loaded — strip tags as last resort
+      const tmp = document.createElement('div');
+      tmp.textContent = html;
+      element.textContent = tmp.textContent;
+    }
+  };
+</script>
+{# safe_html.js replaced by core/02-sanitize.js (Platform.sanitize).
+   Shims window.safeHTML / window.safeText / window.escapeHtml are installed
+   by 02-sanitize.js when loaded in admin_base.html. #}
+
+<!-- Page-specific Alpine registrations (must load BEFORE Alpine defer fires) -->
+{# extra_head_js block moved to admin_base.html — blocks inside {% include %} don't inherit #}
+
+<!-- Alpine.js plugins (must appear BEFORE Alpine in DOM order for defer scripts) -->
+<script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/focus@3.14.3/dist/cdn.min.js"
+        crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/intersect@3.14.3/dist/cdn.min.js"
+        crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/collapse@3.14.3/dist/cdn.min.js"
+        crossorigin="anonymous"></script>
+<!-- Alpine.js (pinned) -->
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.3/dist/cdn.min.js"
+        integrity="sha384-iZD2X8o1Zdq0HR5H/7oa8W30WS4No+zWCKUPD7fHRay9I1Gf+C4F8sVmw7zec1wW"
+        crossorigin="anonymous"></script>
+<!-- Alpine.js $screen plugin -->
+<script>
+  // Add $screen magic property to Alpine.js for responsive breakpoint detection
+  // This plugin adds $screen('lg'), $screen('md'), etc. to match Tailwind breakpoints
+  document.addEventListener('alpine:init', () => {
+    Alpine.magic('screen', () => {
+      // Tailwind breakpoints: sm: 640px, md: 768px, lg: 1024px, xl: 1280px, 2xl: 1536px
+      const breakpoints = {
+        'sm': '(min-width: 640px)',
+        'md': '(min-width: 768px)',
+        'lg': '(min-width: 1024px)',
+        'xl': '(min-width: 1280px)',
+        '2xl': '(min-width: 1536px)'
+      };
+
+      return (size) => {
+        const query = breakpoints[size];
+        if (!query) {
+          console.warn(`Alpine $screen: Unknown breakpoint "${size}". Available: ${Object.keys(breakpoints).join(', ')}`);
+          return false;
+        }
+        return window.matchMedia(query).matches;
+      };
+    });
+  });
+</script>
+<!-- Currency Manager -->
+<script src="{{ url_for('static', filename='js/currency.js') }}"></script>
+
+<!-- Custom Scripts -->
+{% if app_js %}
+{# <script type="text/javascript" src="{{ ASSET_URL }}"></script> #}
+{% endif %}
+
+{% if config.GOOGLE_ANALYTICS_ID %}
+<!-- Google Analytics -->
+<script type="text/javascript">
+  (function(i, s, o, g, r, a, m) {
+    i['GoogleAnalyticsObject'] = r;
+    i[r] = i[r] || function() {
+      (i[r].q = i[r].q || []).push(arguments)
+    }, i[r].l = 1 * new Date();
+    a = s.createElement(o),
+      m = s.getElementsByTagName(o)[0];
+    a.async = 1;
+    a.src = g;
+    m.parentNode.insertBefore(a, m)
+  })(window, document, 'script', 'https://www.google-analytics.com/analytics.js', 'ga');
+  ga('create', '{{ config.GOOGLE_ANALYTICS_ID }}', 'auto');
+  ga('send', 'pageview');
+</script>
+{% endif %}
+
+{% if config.SEGMENT_API_KEY %}
+<!-- Segment Analytics -->
+<script>
+  !function(){var analytics=window.analytics=window.analytics||[]; // frontend-quality-ok — third-party vendor snippetif(!analytics.initialize)if(analytics.invoked)window.console&&console.error&&console.error("Segment snippet included twice.");else{analytics.invoked=!0;analytics.methods=["trackSubmit","trackClick","trackLink","trackForm","pageview","identify","reset","group","track","ready","alias","debug","page","once","off","on"];analytics.factory=function(t){return function(){var e=Array.prototype.slice.call(arguments);e.unshift(t);analytics.push(e);return analytics}};for(var t=0;t<analytics.methods.length;t++){var e=analytics.methods[t];analytics[e]=analytics.factory(e)}analytics.load=function(t){var e=document.createElement("script");e.type="text/javascript";e.async=!0;e.src=("https:"===document.location.protocol?"https://":"http://")+"cdn.segment.com/analytics.js/v1/"+t+"/analytics.min.js";var n=document.getElementsByTagName("script")[0];n.parentNode.insertBefore(e,n)};analytics.SNIPPET_VERSION="4.0.0";
+  analytics.load('{{ config.SEGMENT_API_KEY }}');
+  analytics.page();
+  }}();
+</script>
+{% endif %}
+{% if posthog_key %}
+<!-- PostHog Analytics (COM-013) — frontend-quality-ok: third-party vendor snippet -->
+<script>
+  !function(t,e){var o,n,p,r;e.__SV||(window.posthog=e,e._i=[],e.init=function(i,s,a){function g(t,e){var o=e.split(".");2==o.length&&(t=t[o[0]],e=o[1]);t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}}(p=t.createElement("script")).type="text/javascript",p.crossOrigin="anonymous",p.async=!0,p.src=s.api_host+"/static/array.js",(r=t.getElementsByTagName("script")[0]).parentNode.insertBefore(p,r);var u=e;for(void 0!==a?u=e[a]=[]:a="posthog",u.people=u.people||[],u.toString=function(t){var e="posthog";return"posthog"!==a&&(e+="."+a),t||(e+=" (stub)"),e},u.people.toString=function(){return u.toString(1)+" (stub)"},o="capture identify alias people.set people.set_once set_config register register_once unregister opt_out_capturing has_opted_out_capturing opt_in_capturing reset isFeatureEnabled onFeatureFlags getFeatureFlag getFeatureFlagPayload reloadFeatureFlags group updateEarlyAccessFeatureEnrollment getEarlyAccessFeatures getActiveMatchingSurveys getSurveys onSessionId".split(" "),n=0;n<o.length;n++)g(u,o[n]);e._i.push([i,s,a])},e.__SV=1)}(document,window.posthog||[]);  // frontend-quality-ok — third-party PostHog loader, keep verbatim
+  posthog.init('{{ posthog_key }}', {api_host: '{{ config.get("POSTHOG_HOST", "https://app.posthog.com") }}'});
+</script>
+{% endif %}

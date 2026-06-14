@@ -1,0 +1,247 @@
+{% extends 'layouts/admin_base.html' %}
+{% from 'components/page_header.html' import page_header %}
+
+{% block title %}Pricing Analytics{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8" x-data="pricingAnalytics()">
+    {{ page_header(
+        title='Pricing Analytics',
+        description='Coverage, confidence distribution, and staleness metrics for the vendor pricing pipeline.',
+        breadcrumbs=[
+            {'label': 'Admin', 'href': url_for('admin.index')},
+            {'label': 'Pricing Analytics'}
+        ]
+    ) }}
+
+    <!-- Summary Cards -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+
+        <!-- Coverage Card -->
+        <div class="rounded-xl border-2 border-input bg-card p-5">
+            <div class="flex items-center justify-between mb-3">
+                <span class="text-sm font-medium text-muted-foreground">Capability Coverage</span>
+                <i data-lucide="target" class="h-4 w-4 text-muted-foreground"></i>
+            </div>
+            <p class="text-3xl font-bold text-foreground">{{ analytics.coverage_pct }}%</p>
+            <p class="text-xs text-muted-foreground mt-1">
+                {{ analytics.covered_capabilities }} of {{ analytics.total_capabilities }} capabilities
+            </p>
+            <div class="mt-3 h-2 rounded-full bg-muted overflow-hidden">
+                <div class="h-2 rounded-full bg-primary transition-all duration-500"
+                     style="width: {{ analytics.coverage_pct }}%"></div>
+            </div>
+        </div>
+
+        <!-- Total Pricing Rows Card -->
+        <div class="rounded-xl border-2 border-input bg-card p-5">
+            <div class="flex items-center justify-between mb-3">
+                <span class="text-sm font-medium text-muted-foreground">Pricing Rows</span>
+                <i data-lucide="table-2" class="h-4 w-4 text-muted-foreground"></i>
+            </div>
+            <p class="text-3xl font-bold text-foreground">{{ analytics.total_pricing_rows }}</p>
+            <p class="text-xs text-muted-foreground mt-1">
+                Total rows in VendorProductPricing
+            </p>
+        </div>
+
+        <!-- Freshness Card -->
+        <div class="rounded-xl border-2 border-input bg-card p-5">
+            <div class="flex items-center justify-between mb-3">
+                <span class="text-sm font-medium text-muted-foreground">Fresh Data</span>
+                <i data-lucide="clock" class="h-4 w-4 text-muted-foreground"></i>
+            </div>
+            <p class="text-3xl font-bold text-foreground">{{ analytics.fresh_pct }}%</p>
+            <p class="text-xs text-muted-foreground mt-1">
+                Verified within last 6 months
+            </p>
+            <div class="mt-3 h-2 rounded-full bg-muted overflow-hidden">
+                <div class="h-2 rounded-full transition-all duration-500"
+                     :class="freshPct >= 80 ? 'bg-emerald-500' : freshPct >= 50 ? 'bg-amber-500' : 'bg-destructive'"
+                     style="width: {{ analytics.fresh_pct }}%"></div>
+            </div>
+        </div>
+
+        <!-- Stale Count Card -->
+        <div class="rounded-xl border-2 border-input bg-card p-5">
+            <div class="flex items-center justify-between mb-3">
+                <span class="text-sm font-medium text-muted-foreground">Stale Rows</span>
+                <i data-lucide="alert-triangle" class="h-4 w-4 text-muted-foreground"></i>
+            </div>
+            <p class="text-3xl font-bold"
+               :class="staleCount > 0 ? 'text-amber-600' : 'text-emerald-600'">
+                {{ analytics.stale_count }}
+            </p>
+            <p class="text-xs text-muted-foreground mt-1">
+                Rows &gt; 6 months since verification
+            </p>
+        </div>
+
+    </div>
+
+    <!-- Charts Row -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+
+        <!-- Confidence Distribution Pie Chart -->
+        <div class="rounded-xl border-2 border-input bg-card">
+            <div class="p-4 sm:p-6 border-b border-border">
+                <h3 class="text-base font-semibold">Confidence Distribution</h3>
+                <p class="text-sm text-muted-foreground mt-1">
+                    Pricing rows by data source type
+                </p>
+            </div>
+            <div class="p-4 sm:p-6 flex items-center justify-center">
+                {% if analytics.total_pricing_rows > 0 %}
+                    <div class="w-full max-w-xs">
+                        <canvas id="confidencePieChart" height="220"></canvas>
+                    </div>
+                {% else %}
+                    <div class="py-12 text-center text-muted-foreground">
+                        <i data-lucide="pie-chart" class="h-8 w-8 mx-auto mb-2 opacity-40"></i>
+                        <p class="text-sm">No pricing data yet</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Staleness Gauge / Bar -->
+        <div class="rounded-xl border-2 border-input bg-card">
+            <div class="p-4 sm:p-6 border-b border-border">
+                <h3 class="text-base font-semibold">Data Freshness</h3>
+                <p class="text-sm text-muted-foreground mt-1">
+                    How recently pricing rows were verified
+                </p>
+            </div>
+            <div class="p-4 sm:p-6 space-y-4">
+                <!-- Fresh band -->
+                <div>
+                    <div class="flex items-center justify-between text-sm mb-1.5">
+                        <span class="font-medium text-foreground">Fresh (&lt; 6 months)</span>
+                        <span class="font-mono text-emerald-600">{{ analytics.fresh_pct }}%</span>
+                    </div>
+                    <div class="h-3 rounded-full bg-muted overflow-hidden">
+                        <div class="h-3 rounded-full bg-emerald-500 transition-all duration-500"
+                             style="width: {{ analytics.fresh_pct }}%"></div>
+                    </div>
+                </div>
+                <!-- Stale band -->
+                <div>
+                    <div class="flex items-center justify-between text-sm mb-1.5">
+                        <span class="font-medium text-foreground">Stale (&gt; 6 months)</span>
+                        {% set stale_pct = (100 - analytics.fresh_pct) if analytics.total_pricing_rows > 0 else 0 %}
+                        <span class="font-mono text-amber-600">{{ stale_pct | round(1) }}%</span>
+                    </div>
+                    <div class="h-3 rounded-full bg-muted overflow-hidden">
+                        <div class="h-3 rounded-full bg-amber-500 transition-all duration-500"
+                             style="width: {{ stale_pct | round(1) }}%"></div>
+                    </div>
+                </div>
+                <!-- Coverage band -->
+                <div class="pt-2 border-t border-border">
+                    <div class="flex items-center justify-between text-sm mb-1.5">
+                        <span class="font-medium text-foreground">Capability Coverage</span>
+                        <span class="font-mono text-primary">{{ analytics.coverage_pct }}%</span>
+                    </div>
+                    <div class="h-3 rounded-full bg-muted overflow-hidden">
+                        <div class="h-3 rounded-full bg-primary transition-all duration-500"
+                             style="width: {{ analytics.coverage_pct }}%"></div>
+                    </div>
+                    <p class="text-xs text-muted-foreground mt-1">
+                        {{ analytics.covered_capabilities }} / {{ analytics.total_capabilities }} capabilities have vendor pricing
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Source Breakdown Table -->
+    <div class="rounded-xl border-2 border-input bg-card">
+        <div class="p-4 sm:p-6 border-b border-border">
+            <h3 class="text-base font-semibold">Source Breakdown</h3>
+            <p class="text-sm text-muted-foreground mt-1">
+                Pricing rows by data source — higher rank = higher confidence
+            </p>
+        </div>
+        {% if analytics.confidence_distribution %}
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b border-border bg-muted/50">
+                        <th class="px-4 py-3 text-left font-medium text-muted-foreground">Source Type</th>
+                        <th class="px-4 py-3 text-right font-medium text-muted-foreground">Rows</th>
+                        <th class="px-4 py-3 text-right font-medium text-muted-foreground">Rank Score</th>
+                        <th class="px-4 py-3 text-left font-medium text-muted-foreground">Confidence</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% set rank_map = {
+                        'api_synced': 95,
+                        'contract_verified': 90,
+                        'architect_confirmed': 60,
+                        'seeded': 20,
+                        'llm_proposed': 10
+                    } %}
+                    {% set badge_map = {
+                        'api_synced': 'bg-primary/10 text-primary border-primary/30',
+                        'contract_verified': 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30',
+                        'architect_confirmed': 'bg-blue-500/10 text-blue-600 border-blue-500/30',
+                        'seeded': 'bg-amber-500/10 text-amber-600 border-amber-500/30',
+                        'llm_proposed': 'bg-muted text-muted-foreground border-border'
+                    } %}
+                    {% for source, count in analytics.confidence_distribution.items() %}
+                    <tr class="border-b border-border hover:bg-muted/30 transition-colors">
+                        <td class="px-4 py-3">
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium border
+                                         {{ badge_map.get(source, 'bg-muted text-muted-foreground border-border') }}">
+                                {{ source | replace('_', ' ') | title }}
+                            </span>
+                        </td>
+                        <td class="px-4 py-3 text-right font-mono font-medium text-foreground">{{ count }}</td>
+                        <td class="px-4 py-3 text-right font-mono text-muted-foreground">{{ rank_map.get(source, 0) }}</td>
+                        <td class="px-4 py-3">
+                            {% set rank = rank_map.get(source, 0) %}
+                            <div class="flex items-center gap-2">
+                                <div class="flex-1 h-1.5 rounded-full bg-muted overflow-hidden max-w-24">
+                                    <div class="h-1.5 rounded-full bg-primary" style="width: {{ rank }}%"></div>
+                                </div>
+                                <span class="text-xs text-muted-foreground">{{ rank }}/100</span>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="p-8 text-center text-muted-foreground">
+            <i data-lucide="database" class="h-8 w-8 mx-auto mb-2 opacity-40"></i>
+            <p class="text-sm">No pricing rows in database yet. Use <a href="{{ url_for('admin.vendor_pricing_import') }}" class="text-primary hover:underline">Vendor Pricing Import</a> to get started.</p>
+        </div>
+        {% endif %}
+    </div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/admin/pricing_analytics.js') }}"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+
+    const dist = {{ analytics.confidence_distribution | tojson | safe }};
+    const totalRows = {{ analytics.total_pricing_rows | tojson | safe }};
+    if (totalRows > 0 && typeof Chart !== 'undefined') {
+        initConfidencePieChart(dist);
+    }
+});
+
+function pricingAnalytics() {
+    return {
+        freshPct: {{ analytics.fresh_pct }},
+        staleCount: {{ analytics.stale_count }},
+    };
+}
+</script>
+{% endblock %}

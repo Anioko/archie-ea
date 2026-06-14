@@ -1,0 +1,148 @@
+{# react_native_expo/app/register.tsx.j2 #}
+{# Rendered only when auth == "jwt-local". #}
+import { useState } from "react"
+import {
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native"
+import { useRouter } from "expo-router"
+import { Eye, EyeOff } from "lucide-react-native"
+import Toast from "react-native-toast-message"
+import { useAuth } from "@/providers/AuthProvider"
+import { authApi } from "@/lib/api"
+
+const EYE_POS = { position: "absolute" as const, right: 14, top: 0, bottom: 0, justifyContent: "center" as const }
+const BTN_SHADOW = { shadowColor: "#6366f1", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 8, elevation: 6 }
+
+export default function RegisterScreen() {
+  const { signIn } = useAuth()
+  const router = useRouter()
+  const [fullName, setFullName] = useState("")
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
+  const [showPassword, setShowPassword] = useState(false)
+  const [loading, setLoading] = useState(false)
+
+  async function handleRegister() {
+    if (!email || !password) {
+      Toast.show({ type: "error", text1: "Validation", text2: "Email and password are required" })
+      return
+    }
+    if (password.length < 8) {
+      Toast.show({ type: "error", text1: "Validation", text2: "Password must be at least 8 characters" })
+      return
+    }
+    setLoading(true)
+    try {
+      const { access_token } = await authApi.register(email, password, fullName || undefined)
+      await signIn(access_token)
+      router.replace("/")
+    } catch (err) {
+      Toast.show({
+        type: "error",
+        text1: "Registration failed",
+        text2: err instanceof Error ? err.message : "Could not reach the server",
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      className="flex-1 bg-slate-50"
+    >
+      <ScrollView
+        contentContainerClassName="flex-grow justify-center items-center px-6 py-10"
+        keyboardShouldPersistTaps="handled"
+      >
+        <Text className="text-2xl font-bold text-slate-900 mb-1">Create Account</Text>
+        <Text className="text-sm text-slate-500 mb-8">{{ solution_name }}</Text>
+
+        {/* Full name */}
+        <View className="w-full mb-3">
+          <Text className="text-xs font-medium text-slate-500 mb-1.5">Full name (optional)</Text>
+          <TextInput
+            className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-900"
+            placeholder="Jane Smith"
+            autoComplete="name"
+            value={fullName}
+            onChangeText={setFullName}
+            placeholderTextColor="#94a3b8"
+            accessibilityLabel="Full name"
+          />
+        </View>
+
+        {/* Email */}
+        <View className="w-full mb-3">
+          <Text className="text-xs font-medium text-slate-500 mb-1.5">Email *</Text>
+          <TextInput
+            className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-900"
+            placeholder="you@company.com"
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoComplete="email"
+            value={email}
+            onChangeText={setEmail}
+            placeholderTextColor="#94a3b8"
+            accessibilityLabel="Email"
+          />
+        </View>
+
+        {/* Password */}
+        <View className="w-full mb-6">
+          <Text className="text-xs font-medium text-slate-500 mb-1.5">Password * (min 8 characters)</Text>
+          <View className="relative">
+            <TextInput
+              className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 pr-12 text-sm text-slate-900"
+              placeholder="••••••••"
+              secureTextEntry={!showPassword}
+              autoComplete="new-password"
+              value={password}
+              onChangeText={setPassword}
+              placeholderTextColor="#94a3b8"
+              accessibilityLabel="Password"
+            />
+            <TouchableOpacity
+              onPress={() => setShowPassword((v) => !v)}
+              style={EYE_POS}
+              accessibilityLabel={showPassword ? "Hide password" : "Show password"}
+            >
+              {showPassword
+                ? <EyeOff size={18} color="#94a3b8" />
+                : <Eye size={18} color="#94a3b8" />
+              }
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <TouchableOpacity
+          className={`w-full rounded-xl py-3.5 items-center ${loading ? "bg-indigo-400" : "bg-indigo-600"}`}
+          onPress={handleRegister}
+          disabled={loading}
+          style={BTN_SHADOW}
+          accessibilityLabel="Create account"
+        >
+          {loading
+            ? <ActivityIndicator color="#fff" />
+            : <Text className="text-white font-semibold text-base">Create Account</Text>
+          }
+        </TouchableOpacity>
+
+        <TouchableOpacity onPress={() => router.back()} className="mt-5">
+          <Text className="text-slate-500 text-sm text-center">
+            Already have an account?{" "}
+            <Text className="text-indigo-600 font-semibold">Sign in</Text>
+          </Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </KeyboardAvoidingView>
+  )
+}

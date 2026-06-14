@@ -1,0 +1,266 @@
+{# ArchiMate Footprint Panel (SA-002) — fetched from GET /solutions/<id>/archimate-elements #}
+<div
+    x-data="{
+        amLoading: false,
+        amError: null,
+        amElements: {},
+        amLayerSummary: {},
+        amTotal: 0,
+        amLoaded: false,
+        amUnlinking: null,
+        viewerVisible: false,
+        activeViewpoint: 'auto',
+        renderer: null,
+        availableViewpoints: [
+            { id: 'auto', label: 'Auto (dominant layer)' },
+            { id: 'application_cooperation', label: 'Application Cooperation' },
+            { id: 'technology', label: 'Technology' },
+            { id: 'motivation', label: 'Motivation' },
+            { id: 'business_process', label: 'Business Process' },
+            { id: 'layered', label: 'Layered' },
+        ],
+        layerOrder: ['strategy','motivation','business','application','technology','implementation','implementation_migration','unknown'],
+        layerLabel(l) {
+            const labels = {
+                strategy: 'Strategy',
+                motivation: 'Motivation',
+                business: 'Business',
+                application: 'Application',
+                technology: 'Technology',
+                implementation: 'Impl. & Migration',
+                implementation_migration: 'Impl. & Migration',
+                unknown: 'Other'
+            };
+            return labels[l] || l;
+        },
+        layerColor(l) {
+            const colors = {
+                strategy:                '#8b5cf6',
+                motivation:              '#06b6d4',
+                business:                '#f59e0b',
+                application:             '#3b82f6',
+                technology:              '#10b981',
+                implementation:          '#6b7280',
+                implementation_migration:'#6b7280',
+                unknown:                 '#9ca3af'
+            };
+            return colors[l] || '#9ca3af';
+        },
+        roleColor(r) {
+            const colors = {
+                primary:    'bg-primary/10 text-primary',
+                supporting: 'bg-emerald-500/10 text-emerald-600',
+                impacted:   'bg-amber-500/10 text-amber-600',
+                ai_derived: 'bg-violet-500/10 text-violet-600'
+            };
+            return colors[r] || 'bg-muted text-muted-foreground';
+        },
+        initViewer(elements, relationships) {
+            if (!elements || elements.length === 0) return;
+            this.viewerVisible = true;
+            var self = this;
+            this.$nextTick(function() {
+                var container = document.getElementById('archimate-viewer-canvas');
+                if (!container || typeof ComposerRenderer === 'undefined') {
+                    self.viewerVisible = false;
+                    return;
+                }
+                self.renderer = ComposerRenderer.create(container, {
+                    mode: 'view',
+                    height: 320,
+                    background: '#fafbfc',
+                });
+                self.renderer.loadElements(elements, relationships || []);
+                self.renderer.fitToContent();
+            });
+        },
+        switchViewpoint(vpId) {
+            this.activeViewpoint = vpId;
+        },
+        destroyViewer() {
+            if (this.renderer) {
+                this.renderer.destroy();
+                this.renderer = null;
+            }
+        },
+        async load() {
+            this.amLoading = true;
+            this.amError = null;
+            try {
+                const sid = window.__SOLUTION_CONFIG__ ? window.__SOLUTION_CONFIG__.solutionId : null;
+                if (!sid) throw new Error('Solution ID not configured');
+                const res = await fetch('/solutions/' + sid + '/archimate-elements', {credentials:'same-origin'});
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                const data = await res.json();
+                this.amElements    = data.elements_by_layer || {};
+                this.amLayerSummary= data.layer_summary     || {};
+                this.amTotal       = data.total_count       || 0;
+                /* Flatten elements for diagram viewer */
+                var flatElements = [];
+                var layers = Object.keys(this.amElements);
+                for (var li = 0; li < layers.length; li++) {
+                    var layerName = layers[li];
+                    var els = this.amElements[layerName] || [];
+                    for (var ei = 0; ei < els.length; ei++) {
+                        var el = Object.assign({}, els[ei], { layer: layerName });
+                        flatElements.push(el);
+                    }
+                }
+                this.initViewer(flatElements, data.relationships || []);
+            } catch(e) {
+                this.amError = e.message;
+            } finally {
+                this.amLoading = false;
+                this.amLoaded  = true;
+            }
+        },
+        async unlinkElement(elementId) {
+            if (!(await Platform.modal.confirm('Remove this ArchiMate element from the solution?'))) return;
+            this.amUnlinking = elementId;
+            try {
+                const sid = window.__SOLUTION_CONFIG__.solutionId;
+                const res = await fetch('/solutions/' + sid + '/archimate-elements/' + elementId, {
+                    method: 'DELETE',
+                    credentials: 'same-origin',
+                    headers: {'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''}
+                });
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                await this.load();
+            } catch(e) {
+                this.amError = 'Unlink failed: ' + e.message;
+            } finally {
+                this.amUnlinking = null;
+            }
+        }
+    }"
+    x-init="load()"
+    id="archimate-footprint"
+    class="rounded-lg border border-border p-4 mt-4"
+>
+    <div class="flex items-center gap-2 mb-3">
+        <i data-lucide="layers" class="w-4 h-4 text-primary" aria-hidden="true"></i>
+        <h3 class="text-sm font-semibold text-foreground">ArchiMate Footprint</h3>
+        <template x-if="!amLoading && amTotal > 0">
+            <div class="ml-auto flex items-center gap-3">
+                <span class="text-xs text-muted-foreground" x-text="amTotal + ' element' + (amTotal !== 1 ? 's' : '')"></span>
+                <a :href="'/archimate/viewpoints?active=basic&solution_id=' + (window.__SOLUTION_CONFIG__ ? window.__SOLUTION_CONFIG__.solutionId : '')"
+                   class="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                   title="View elements in ArchiMate Viewpoints">
+                    <i data-lucide="eye" class="w-3 h-3"></i>
+                    Viewpoints
+                </a>
+            </div>
+        </template>
+    </div>
+
+    {# Loading spinner #}
+    <div x-show="amLoading" x-cloak class="flex items-center gap-2 py-4 text-sm text-muted-foreground">
+        <svg class="animate-spin h-4 w-4 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+        </svg>
+        Loading ArchiMate elements&hellip;
+    </div>
+
+    {# Error state #}
+    <div x-show="!amLoading && amError" x-cloak class="text-sm text-destructive py-2" x-text="'Error: ' + amError"></div>
+
+    {# Empty state #}
+    <div x-show="!amLoading && !amError && amLoaded && amTotal === 0" x-cloak
+         class="text-sm text-muted-foreground italic py-2">
+        No ArchiMate elements linked to this solution yet.
+    </div>
+
+    {# Layer summary badges #}
+    <template x-if="!amLoading && !amError && amTotal > 0">
+        <div>
+            <div class="flex flex-wrap gap-1.5 mb-3">
+                <template x-for="layer in layerOrder.filter(l => amLayerSummary[l])" :key="layer">
+                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold text-primary-foreground"
+                          :style="'background:' + layerColor(layer)">
+                        <span x-text="layerLabel(layer)"></span>
+                        <span class="opacity-80" x-text="'(' + amLayerSummary[layer] + ')'"></span>
+                    </span>
+                </template>
+            </div>
+
+            {# Diagram viewer (ComposerRenderer — read-only) #}
+            <div x-show="viewerVisible" x-cloak class="mt-3 mb-3">
+                <div class="flex items-center justify-between mb-2">
+                    <div class="flex items-center gap-2">
+                        <label class="text-xs text-muted-foreground">Viewpoint:</label>
+                        <select x-model="activeViewpoint" @change="switchViewpoint(activeViewpoint)"
+                                class="rounded-md border border-input bg-background px-2 py-1 text-xs">
+                            <template x-for="vp in availableViewpoints" :key="vp.id">
+                                <option :value="vp.id" x-text="vp.label"></option>
+                            </template>
+                        </select>
+                    </div>
+                    <a :href="'/archimate/composer?solution_id=' + (window.__SOLUTION_CONFIG__ ? window.__SOLUTION_CONFIG__.solutionId : '')"
+                       class="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                       title="Open full ArchiMate Composer">
+                        <i data-lucide="external-link" class="w-3 h-3"></i>
+                        Open Composer
+                    </a>
+                </div>
+                <div id="archimate-viewer-canvas"
+                     class="rounded-md border border-border bg-background h-80 overflow-hidden"></div>
+            </div>
+
+            {# Elements grouped by layer #}
+            <div class="space-y-3">
+                <template x-for="layer in layerOrder.filter(l => amElements[l] && amElements[l].length)" :key="layer">
+                    <div>
+                        <div class="flex items-center gap-1.5 mb-1.5">
+                            <span class="w-2 h-2 rounded-full flex-shrink-0"
+                                  :style="'background:' + layerColor(layer)"></span>
+                            <span class="text-xs font-medium text-foreground" x-text="layerLabel(layer)"></span>
+                            <span class="text-[10px] text-muted-foreground" x-text="'(' + amElements[layer].length + ')'"></span>
+                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5 pl-3.5">
+                            <template x-for="el in amElements[layer]" :key="el.id">
+                                <div class="group flex items-start gap-2 rounded-md border border-border bg-muted/30 px-2.5 py-1.5">
+                                    <div class="min-w-0 flex-1">
+                                        <p class="text-xs font-medium text-foreground truncate" x-text="el.name"></p>
+                                        <div class="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border"
+                                                  :style="'border-color:' + layerColor(layer) + '40; color:' + layerColor(layer)"
+                                                  x-text="el.type || 'Unknown'"></span>
+                                            <template x-if="el.element_role">
+                                                <span class="inline-flex items-center px-1 py-0.5 rounded text-[10px] font-medium"
+                                                      :class="roleColor(el.element_role)"
+                                                      x-text="el.element_role"></span>
+                                            </template>
+                                            <template x-if="el.plateau">
+                                                <span class="text-[10px] bg-accent text-accent-foreground px-1 rounded" x-text="el.plateau"></span>
+                                            </template>
+                                            <template x-if="el.building_block_type">
+                                                <span class="text-[10px] bg-primary/10 text-primary px-1 rounded" x-text="el.building_block_type"></span>
+                                            </template>
+                                        </div>
+                                    </div>
+                                    <button
+                                        @click="unlinkElement(el.id)"
+                                        :disabled="amUnlinking === el.id"
+                                        class="sad-actions opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                                        :aria-label="'Remove ' + el.name"
+                                        title="Remove element">
+                                        <template x-if="amUnlinking === el.id">
+                                            <svg class="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+                                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                                            </svg>
+                                        </template>
+                                        <template x-if="amUnlinking !== el.id">
+                                            <i data-lucide="x" class="w-3 h-3"></i>
+                                        </template>
+                                    </button>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </template>
+</div>

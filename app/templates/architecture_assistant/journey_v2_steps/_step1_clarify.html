@@ -1,0 +1,820 @@
+{# Step 1: Clarify — Structured intake + Problem statement + clarifying questions + enriched brief #}
+<div class="bg-card border border-border rounded-lg p-6 space-y-4">
+    <div>
+        <h2 class="text-lg font-semibold text-foreground">Step 1: Clarify the Problem</h2>
+        <p class="text-sm text-muted-foreground">Provide business context, describe your problem, and capture requirements for architecture generation.</p>
+    </div>
+
+    {# ── Start from Template ─────────────────────────────────── #}
+    <div x-show="!templateApplied && step1Phase === 'context'" x-cloak class="rounded-lg border-2 border-dashed border-primary/30 bg-primary/5 p-4">
+        <div class="flex items-center gap-2 mb-3">
+            <i data-lucide="layout-template" class="h-4 w-4 text-primary"></i>
+            <span class="text-sm font-semibold text-foreground">Start from an Industry Template</span>
+            <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-primary/10 text-primary border border-primary/20">NEW</span>
+        </div>
+        <p class="text-xs text-muted-foreground mb-3">Pre-built architectures with entities, state machines, roles, and compliance. Customize the 30% that makes your app unique.</p>
+        <div x-show="!genomeTemplates" class="flex items-center gap-2">
+            <button type="button" @click="loadGenomeTemplates()" :disabled="loadingTemplates"
+                    class="inline-flex items-center gap-1.5 rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-xs font-medium hover:bg-primary/90 disabled:opacity-50">
+                <svg x-show="loadingTemplates" x-cloak class="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
+                <i x-show="!loadingTemplates" data-lucide="sparkles" class="h-3 w-3"></i>
+                Browse Templates
+            </button>
+        </div>
+        <div x-show="genomeTemplates" x-cloak class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mt-2">
+            <template x-for="tpl in (genomeTemplates || [])" :key="tpl.slug">
+                <button type="button" @click="applyGenomeTemplate(tpl.slug)" :disabled="applyingTemplate"
+                        class="text-left rounded-lg border border-border bg-background p-3 hover:border-primary/50 hover:bg-primary/5 transition-colors">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="text-sm font-semibold text-foreground" x-text="tpl.name"></span>
+                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30"
+                              x-text="tpl.quality_score + '/100'"></span>
+                    </div>
+                    <p class="text-xs text-muted-foreground line-clamp-2 mb-2" x-text="tpl.description"></p>
+                    <div class="flex flex-wrap gap-1">
+                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-blue-600 border border-blue-500/30"
+                              x-text="tpl.module_count + ' modules'"></span>
+                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-violet-500/10 text-violet-600 border border-violet-500/30"
+                              x-text="tpl.entity_count + ' entities'"></span>
+                        <span x-show="tpl.has_state_machine" class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/10 text-amber-600 border border-amber-500/30">state machines</span>
+                    </div>
+                </button>
+            </template>
+        </div>
+        <div x-show="templateApplyResult" x-cloak class="mt-3 flex items-center gap-2 text-xs text-emerald-600">
+            <i data-lucide="check-circle-2" class="h-3.5 w-3.5"></i>
+            <span x-text="templateApplyResult"></span>
+        </div>
+    </div>
+    <div x-show="templateApplied" x-cloak class="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 flex items-center gap-2">
+        <i data-lucide="check-circle-2" class="h-4 w-4 text-emerald-600"></i>
+        <span class="text-sm text-emerald-700 font-medium" x-text="'Template applied: ' + (templateAppliedName || '') + ' — customize below'"></span>
+    </div>
+
+    {# ── Sub-step indicator ─────────────────────────────────── #}
+    <div class="flex items-center gap-2 text-xs text-muted-foreground mb-4">
+        <span :class="step1Phase === 'context' ? 'text-primary font-medium' : ''">Business Context</span>
+        <span>&rarr;</span>
+        <span :class="step1Phase === 'requirements' ? 'text-primary font-medium' : ''">Requirements</span>
+        <span>&rarr;</span>
+        <span :class="step1Phase === 'current_state' ? 'text-primary font-medium' : ''">Current State</span>
+        <span>&rarr;</span>
+        <span :class="step1Phase === 'motivation' ? 'text-primary font-medium' : ''">Motivation</span>
+    </div>
+
+    {# ══════════════════════════════════════════════════════════
+       SUB-STEP 1A: Business Context
+       ══════════════════════════════════════════════════════════ #}
+    <div x-show="step1Phase === 'context'" x-cloak class="space-y-6">
+
+        {# ── Structured business context fields ── #}
+        <div class="border border-border rounded-lg p-4 bg-card space-y-4">
+            <div>
+                <h3 class="text-lg font-semibold text-foreground">Business Context</h3>
+                <p class="text-sm text-muted-foreground">Help A.R.C.H.I.E. understand the organizational and project context.</p>
+            </div>
+
+            {# Solution Name #}
+            <div class="space-y-1">
+                <label class="text-sm font-medium">Solution Name</label>
+                <div class="flex gap-2">
+                    <input type="text" x-model="solutionName" placeholder="e.g. Claims Processing Modernisation"
+                           @blur="saveSolutionName()"
+                           @keydown.enter.prevent="saveSolutionName()"
+                           class="flex-1 px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                    <span x-show="solutionNameSaving" x-cloak class="flex items-center text-xs text-muted-foreground gap-1">
+                        <span class="animate-spin h-3 w-3 border-2 border-muted-foreground border-t-transparent rounded-full"></span>
+                        Saving
+                    </span>
+                </div>
+            </div>
+
+            {# Business Domain #}
+            <div class="space-y-1">
+                <label for="intake-business-domain" class="text-sm font-medium">Business Domain</label>
+                <select id="intake-business-domain" x-model="structuredIntake.business_domain" name="business_domain"
+                        class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                    <option value="">Select domain...</option>
+                    <option value="insurance">Insurance</option>
+                    <option value="finance">Finance &amp; Banking</option>
+                    <option value="healthcare">Healthcare</option>
+                    <option value="manufacturing">Manufacturing</option>
+                    <option value="retail">Retail &amp; Commerce</option>
+                    <option value="energy">Energy &amp; Utilities</option>
+                    <option value="public_sector">Public Sector</option>
+                    <option value="technology">Technology</option>
+                    <option value="logistics">Logistics &amp; Supply Chain</option>
+                    <option value="other">Other</option>
+                </select>
+            </div>
+
+            {# Timeline #}
+            <div class="space-y-1">
+                <label class="text-sm font-medium">Timeline</label>
+                <input type="number" x-model.number="structuredIntake.timeline_months" min="1" max="60" placeholder="Duration in months"
+                       class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+            </div>
+
+            {# Budget Range #}
+            <div class="space-y-1">
+                <label class="text-sm font-medium">Budget Range</label>
+                <div class="grid grid-cols-2 gap-4">
+                    <input type="number" x-model.number="structuredIntake.budget_min" placeholder="Min budget (&pound;)"
+                           class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                    <input type="number" x-model.number="structuredIntake.budget_max" placeholder="Max budget (&pound;)"
+                           class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                </div>
+            </div>
+
+            {# Organization Size #}
+            <div class="space-y-1">
+                <label for="intake-org-size" class="text-sm font-medium">Organization Size</label>
+                <select id="intake-org-size" x-model="structuredIntake.organization_size"
+                        class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                    <option value="">Select size...</option>
+                    <option value="smb">SMB (&lt; 500 employees)</option>
+                    <option value="midmarket">Mid-Market (500-5000)</option>
+                    <option value="enterprise">Enterprise (5000+)</option>
+                </select>
+            </div>
+
+            {# Geographic Scope #}
+            <div class="space-y-1">
+                <label for="intake-geo-scope" class="text-sm font-medium">Geographic Scope</label>
+                <select id="intake-geo-scope" x-model="structuredIntake.geographic_scope"
+                        class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                    <option value="">Select scope...</option>
+                    <option value="local">Local / Single Site</option>
+                    <option value="regional">Regional / Multi-Site</option>
+                    <option value="national">National</option>
+                    <option value="multinational">Multinational</option>
+                    <option value="global">Global</option>
+                </select>
+            </div>
+
+            {# Scale Indicators #}
+            <div class="space-y-1">
+                <label class="text-sm font-medium">Scale Indicators</label>
+                <div class="grid grid-cols-3 gap-4">
+                    <!-- entity-picker-ok -->
+                    <input type="number" x-model.number="structuredIntake.user_count" placeholder="End users"
+                           class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                    <input type="number" x-model.number="structuredIntake.transaction_volume" placeholder="Daily transactions"
+                           class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                    <input type="number" x-model.number="structuredIntake.data_volume_gb" placeholder="Data volume (GB)"
+                           class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                </div>
+            </div>
+        </div>
+
+        {# ── Problem statement input (EXISTING — preserved) ──── #}
+        <div x-show="clarifyPhase === 'input' || clarifyPhase === 'questions'" class="space-y-3">
+            <div>
+                <div class="flex items-center justify-between mb-1">
+                    <label class="block text-sm font-medium">Problem Statement</label>
+                    <label x-show="!briefUploading" class="inline-flex items-center gap-1.5 cursor-pointer text-xs text-muted-foreground hover:text-foreground border border-dashed border-border rounded px-2.5 py-1 transition-colors"
+                           title="Upload one or more documents (RFP, business case, brief) to auto-populate this field">
+                        <i data-lucide="upload" class="w-3.5 h-3.5"></i>
+                        Import from document(s)
+                        <input type="file" class="sr-only"
+                               accept=".pdf,.docx,.txt,.md"
+                               multiple
+                               @change="importBriefFromDoc($event)">
+                    </label>
+                    <span x-show="briefUploading" x-cloak
+                          class="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <span class="animate-spin h-3.5 w-3.5 border-2 border-muted-foreground border-t-transparent rounded-full"></span>
+                        Extracting from document(s)…
+                    </span>
+                </div>
+                <textarea x-model="problemStatement" rows="5"
+                          :disabled="clarifyPhase === 'questions'"
+                          @input="searchLandscape()"
+                          placeholder="e.g., We need to consolidate our three CRM systems into a single platform to reduce licensing costs and improve customer visibility across sales and support teams."
+                          class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-ring focus:outline-none disabled:opacity-60"></textarea>
+
+                {# ── Landscape Discovery Panel ── #}
+                <div x-show="landscapeMatches || landscapeSearching" x-cloak
+                     class="mt-3 rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 space-y-2.5">
+                    <div class="flex items-center gap-2">
+                        <i data-lucide="layers" class="w-3.5 h-3.5 text-primary shrink-0" aria-hidden="true"></i>
+                        <span class="text-xs font-semibold text-primary">Your Enterprise Landscape</span>
+                        <template x-if="landscapeSearching">
+                            <span class="animate-spin h-3 w-3 border-2 border-primary border-t-transparent rounded-full ml-auto"></span>
+                        </template>
+                        <template x-if="landscapeMatches && !landscapeSearching">
+                            <span class="ml-auto text-[10px] text-muted-foreground"
+                                  x-text="landscapeMatches.total_matches + ' matching entities in your platform'"></span>
+                        </template>
+                    </div>
+
+                    <template x-if="landscapeMatches && landscapeMatches.is_greenfield">
+                        <p class="text-xs text-muted-foreground italic">No existing entities matched — this appears to be a greenfield initiative. The wizard will help design new capabilities from scratch.</p>
+                    </template>
+
+                    <template x-if="landscapeMatches && !landscapeMatches.is_greenfield">
+                        <div class="space-y-2">
+                            <template x-if="landscapeMatches.capabilities && landscapeMatches.capabilities.length > 0">
+                                <div>
+                                    <p class="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Capabilities you already own</p>
+                                    <div class="flex flex-wrap gap-1.5">
+                                        <template x-for="c in landscapeMatches.capabilities" :key="c.name">
+                                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium bg-emerald-500/10 text-emerald-700 border border-emerald-500/20"
+                                                  x-text="c.name"></span>
+                                        </template>
+                                    </div>
+                                </div>
+                            </template>
+                            <template x-if="landscapeMatches.applications && landscapeMatches.applications.length > 0">
+                                <div>
+                                    <p class="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Applications in your portfolio</p>
+                                    <div class="flex flex-wrap gap-1.5">
+                                        <template x-for="a in landscapeMatches.applications" :key="a.name">
+                                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium bg-blue-500/10 text-blue-700 border border-blue-500/20"
+                                                  x-text="a.name"></span>
+                                        </template>
+                                    </div>
+                                </div>
+                            </template>
+                            <template x-if="landscapeMatches.elements && landscapeMatches.elements.length > 0">
+                                <div>
+                                    <p class="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">ArchiMate elements</p>
+                                    <div class="flex flex-wrap gap-1.5">
+                                        <template x-for="e in landscapeMatches.elements" :key="e.name">
+                                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium bg-violet-500/10 text-violet-700 border border-violet-500/20"
+                                                  x-text="e.layer ? e.name + ' (' + e.layer + ')' : e.name"></span>
+                                        </template>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+                </div>
+                {# Dual-pipeline notice — shown after document upload kicks off background extraction #}
+                <div x-show="briefIngestionNotice" x-cloak
+                     class="mt-2 flex items-start gap-2 rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-primary/80">
+                    <i data-lucide="cpu" class="w-3.5 h-3.5 mt-0.5 flex-shrink-0"></i>
+                    <span x-text="briefIngestionNotice"></span>
+                </div>
+                <div class="flex items-center justify-between mt-2">
+                    <span class="text-xs"
+                          :class="problemStatement.length > 45000 ? 'text-amber-500 font-medium' : 'text-muted-foreground'"
+                          x-text="problemStatement.length.toLocaleString() + ' / 50,000 characters'"></span>
+                    <button type="button" @click="getClarifyingQuestions()"
+                            x-show="clarifyPhase === 'input'"
+                            :disabled="problemStatement.length < 20 || loading"
+                            class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50">
+                        <template x-if="!loading">
+                            <span class="flex items-center gap-2">
+                                <i data-lucide="message-circle" class="w-4 h-4" aria-hidden="true"></i>
+                                Get Clarifying Questions
+                            </span>
+                        </template>
+                        <template x-if="loading">
+                            <span class="flex items-center gap-2">
+                                <span class="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full"></span>
+                                Analyzing...
+                            </span>
+                        </template>
+                    </button>
+                </div>
+            </div>
+
+            {# Skip clarification link #}
+            <div x-show="clarifyPhase === 'input'" class="text-center">
+                <button type="button" @click="skipClarification()"
+                        :disabled="problemStatement.length < 20"
+                        class="text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50">
+                    Skip clarification and use statement as-is
+                </button>
+            </div>
+        </div>
+
+        {# ── LLM degradation warning ─────────────────────────── #}
+        <div x-show="llmDegraded.step1" x-cloak
+             class="flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3">
+            <svg class="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+            </svg>
+            <div>
+                <p class="text-sm font-medium text-amber-700">AI clarification unavailable</p>
+                <p class="text-xs text-amber-600/80 mt-0.5">The LLM did not return questions. You can continue directly — your problem statement will be used as-is for architecture generation.</p>
+            </div>
+        </div>
+
+        {# ── Clarifying questions (EXISTING — preserved) ─────── #}
+        <div x-show="clarifyPhase === 'questions' && clarifyQuestions.length > 0" x-cloak class="space-y-3">
+            <div class="flex items-center justify-between">
+                <h3 class="text-sm font-semibold">Clarifying Questions</h3>
+                <span class="text-xs text-muted-foreground" x-text="clarifyQuestions.length + ' questions'"></span>
+            </div>
+
+            <div class="space-y-3">
+                <template x-for="(q, idx) in clarifyQuestions" :key="idx">
+                    <div class="rounded-md border border-border bg-background p-4 space-y-2">
+                        <div class="flex items-start justify-between gap-2">
+                            <div class="flex items-start gap-2">
+                                <span class="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-bold text-primary flex-shrink-0 mt-0.5"
+                                      x-text="idx + 1"></span>
+                                <p class="text-sm text-foreground" x-text="typeof q === 'string' ? q : (q.question || q.text || '')"></p>
+                            </div>
+                            <button type="button" @click="skipQuestion(idx)"
+                                    x-show="clarifyAnswers[idx] !== '[skipped]'"
+                                    class="text-[10px] text-muted-foreground hover:text-foreground border border-input rounded px-2 py-0.5 flex-shrink-0 transition-colors">
+                                Skip
+                            </button>
+                        </div>
+                        <div x-show="clarifyAnswers[idx] === '[skipped]'" x-cloak
+                             class="text-xs text-muted-foreground italic pl-7">Skipped</div>
+                        <div x-show="clarifyAnswers[idx] !== '[skipped]'" x-cloak class="pl-7">
+                            {# Entity picker for entity_picker type questions #}
+                            <template x-if="q.type === 'entity_picker'">
+                                <div class="space-y-2">
+                                    <div class="relative">
+                                        <input type="text"
+                                               x-model="pickerState[idx].query"
+                                               @input="searchEntities(idx)"
+                                               @keydown.enter.prevent="addFreeText(idx)"
+                                               :placeholder="'Search ' + (q.entity_type || 'entities') + '...'"
+                                               class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-ring focus:outline-none" />
+                                        <div x-show="pickerState[idx].loading" class="absolute right-3 top-2.5">
+                                            <span class="animate-spin h-4 w-4 border-2 border-primary border-t-transparent rounded-full inline-block"></span>
+                                        </div>
+                                    </div>
+                                    <p x-show="pickerState[idx].searchError" x-cloak class="text-xs text-destructive" x-text="pickerState[idx].searchError"></p>
+                                    <div x-show="pickerState[idx].results.length > 0" x-cloak
+                                         class="border border-border rounded-md bg-background shadow-md max-h-40 overflow-y-auto">
+                                        <template x-for="(item, ri) in pickerState[idx].results" :key="ri">
+                                            <button @click="addEntity(idx, item)" type="button"
+                                                    class="w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors border-b border-border last:border-0">
+                                                <span x-text="item.name || item.application_name || ('Entity #' + item.id)"></span>
+                                                <span x-show="item.type" class="ml-2 text-xs text-muted-foreground" x-text="item.type"></span>
+                                            </button>
+                                        </template>
+                                    </div>
+                                    <div x-show="pickerState[idx].selected.length > 0" class="flex flex-wrap gap-1.5">
+                                        <template x-for="(sel, si) in pickerState[idx].selected" :key="si">
+                                            <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30">
+                                                <span x-text="sel.name"></span>
+                                                <button @click="removeEntity(idx, sel.id)" type="button"
+                                                        class="hover:text-destructive transition-colors">&times;</button>
+                                            </span>
+                                        </template>
+                                    </div>
+                                    <textarea x-model="pickerState[idx].contextText" rows="1"
+                                              placeholder="Additional context (optional)..."
+                                              class="w-full rounded-md border border-input bg-background px-3 py-2 text-xs focus:ring-2 focus:ring-ring focus:outline-none text-muted-foreground"></textarea>
+                                </div>
+                            </template>
+                            {# Regular textarea for text type questions #}
+                            <template x-if="q.type !== 'entity_picker'">
+                                <textarea x-model="clarifyAnswers[idx]" rows="2"
+                                          placeholder="Your answer..."
+                                          class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-ring focus:outline-none"></textarea>
+                            </template>
+                        </div>
+                    </div>
+                </template>
+            </div>
+
+            <div class="flex items-center justify-between pt-2">
+                <button type="button" @click="clarifyPhase = 'input'; clarifyQuestions = []"
+                        class="text-xs text-muted-foreground hover:text-foreground transition-colors">
+                    Back to edit statement
+                </button>
+                <button type="button" @click="submitClarifyAnswers()"
+                        :disabled="loading"
+                        class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50">
+                    <template x-if="!loading">
+                        <span class="flex items-center gap-2">
+                            <i data-lucide="check" class="w-4 h-4" aria-hidden="true"></i>
+                            Continue with Answers
+                        </span>
+                    </template>
+                    <template x-if="loading">
+                        <span class="flex items-center gap-2">
+                            <span class="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full"></span>
+                            Enriching brief...
+                        </span>
+                    </template>
+                </button>
+            </div>
+        </div>
+
+        {# ── Enriched brief preview ───── #}
+        <div x-show="clarifyPhase === 'enriched' && enrichedBrief" x-cloak
+             class="rounded-xl border-l-4 border-l-emerald-500 border border-emerald-500/20 bg-emerald-500/5 p-5 space-y-3">
+            <div class="flex items-center justify-between">
+                <p class="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Enriched Brief</p>
+                <span class="inline-flex items-center gap-1 text-[10px] text-emerald-600 font-medium">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>AI-enhanced
+                </span>
+            </div>
+            <p class="text-sm text-foreground/90 leading-relaxed" x-text="enrichedBrief"></p>
+            <div>
+                <button type="button" @click="clarifyPhase = 'input'; enrichedBrief = ''"
+                        class="text-xs text-muted-foreground hover:text-foreground transition-colors">
+                    Start over
+                </button>
+            </div>
+        </div>
+
+        {# ── Sub-step navigation (context) ── #}
+        <div class="flex justify-between mt-6 pt-4 border-t border-border">
+            <div></div>
+            <button type="button" @click="step1Phase = nextStep1Phase()"
+                    class="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90">
+                Next
+            </button>
+        </div>
+    </div>
+
+    {# ══════════════════════════════════════════════════════════
+       SUB-STEP 1B: Requirements & Constraints
+       ══════════════════════════════════════════════════════════ #}
+    <div x-show="step1Phase === 'requirements'" x-cloak class="space-y-6">
+
+        <div class="border border-border rounded-lg p-4 bg-card space-y-5">
+            <div>
+                <h3 class="text-lg font-semibold text-foreground">Requirements &amp; Constraints</h3>
+                <p class="text-sm text-muted-foreground">Define compliance, non-functional requirements, technology constraints, and business drivers.</p>
+            </div>
+
+            {# Compliance Frameworks (multi-select checkboxes) #}
+            <div class="space-y-2">
+                <label class="text-sm font-medium">Compliance Frameworks</label>
+                <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    <template x-for="fw in ['GDPR', 'PCI-DSS', 'SOX', 'HIPAA', 'ISO27001', 'SOC2', 'NIST', 'FCA', 'MiFID-II']" :key="fw">
+                        <label class="flex items-center gap-2">
+                            <input type="checkbox" :value="fw" x-model="structuredIntake.compliance_frameworks"
+                                   class="rounded border-border">
+                            <span x-text="fw" class="text-sm"></span>
+                        </label>
+                    </template>
+                </div>
+            </div>
+
+            {# Key NFRs (dynamic list) #}
+            <div class="space-y-2">
+                <label class="text-sm font-medium">Non-Functional Requirements</label>
+                <div class="space-y-2">
+                    <template x-for="(nfr, idx) in structuredIntake.nfrs" :key="idx">
+                        <div class="border border-border rounded-md p-3 space-y-2 bg-background">
+                            {# Row 1: type / target / priority / delete #}
+                            <div class="grid grid-cols-12 gap-2 items-center">
+                                <div class="col-span-4">
+                                    <select x-model="nfr.type" aria-label="NFR type"
+                                            class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                                        <option value="availability">Availability</option>
+                                        <option value="performance">Response Time</option>
+                                        <option value="scalability">Scalability</option>
+                                        <option value="security">Security</option>
+                                        <option value="reliability">Reliability (RPO/RTO)</option>
+                                        <option value="maintainability">Maintainability</option>
+                                    </select>
+                                </div>
+                                <div class="col-span-4">
+                                    <input type="text" x-model="nfr.target" placeholder="Target (e.g. 99.9%, &lt; 200ms)"
+                                           class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                                </div>
+                                <div class="col-span-3">
+                                    <select x-model="nfr.priority" aria-label="NFR priority"
+                                            class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                                        <option value="must">Must Have</option>
+                                        <option value="should">Should Have</option>
+                                        <option value="could">Could Have</option>
+                                    </select>
+                                </div>
+                                <div class="col-span-1 flex justify-center">
+                                    <button @click="structuredIntake.nfrs.splice(idx, 1)" type="button"
+                                            class="text-muted-foreground hover:text-destructive transition-colors">&times;</button>
+                                </div>
+                            </div>
+                            {# Row 2: acceptance criteria / compliance reference / verification method #}
+                            <div class="grid grid-cols-12 gap-2 items-center">
+                                <div class="col-span-5">
+                                    <input type="text" x-model="nfr.acceptance_criteria"
+                                           placeholder="Acceptance criteria (testable success condition)"
+                                           class="w-full px-3 py-2 border border-border rounded-md bg-muted/30 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                                </div>
+                                <div class="col-span-4">
+                                    <input type="text" x-model="nfr.compliance_reference"
+                                           placeholder="Compliance ref (e.g. GDPR Art. 25)"
+                                           class="w-full px-3 py-2 border border-border rounded-md bg-muted/30 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                                </div>
+                                <div class="col-span-3">
+                                    <select x-model="nfr.verification_method" aria-label="NFR verification method"
+                                            class="w-full px-3 py-2 border border-border rounded-md bg-muted/30 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                                        <option value="">Verification method</option>
+                                        <option value="automated_test">Automated test</option>
+                                        <option value="performance_test">Performance test</option>
+                                        <option value="penetration_test">Penetration test</option>
+                                        <option value="load_test">Load test</option>
+                                        <option value="dr_test">DR / failover test</option>
+                                        <option value="code_review">Code review</option>
+                                        <option value="manual_review">Manual review</option>
+                                        <option value="api_contract_test">API contract test</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+                <button @click="structuredIntake.nfrs.push({type:'availability', target:'', priority:'must', acceptance_criteria:'', compliance_reference:'', verification_method:''})" type="button"
+                        class="text-sm text-primary hover:underline">+ Add NFR</button>
+            </div>
+
+            {# Technology Constraints (dynamic list) #}
+            <div class="space-y-2">
+                <label class="text-sm font-medium">Technology Constraints</label>
+                <div class="space-y-2">
+                    <template x-for="(tc, idx) in structuredIntake.tech_constraints" :key="idx">
+                        <div class="grid grid-cols-12 gap-2 items-center">
+                            <div class="col-span-5">
+                                <select x-model="tc.type" aria-label="Constraint type"
+                                        class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                                    <option value="must_use">Must Use</option>
+                                    <option value="cannot_use">Cannot Use</option>
+                                    <option value="preferred">Preferred</option>
+                                </select>
+                            </div>
+                            <div class="col-span-6">
+                                <input type="text" x-model="tc.technology" placeholder="Technology name (e.g. Azure, PostgreSQL)"
+                                       class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                            </div>
+                            <div class="col-span-1 flex justify-center">
+                                <button @click="structuredIntake.tech_constraints.splice(idx, 1)" type="button"
+                                        class="text-muted-foreground hover:text-destructive transition-colors">&times;</button>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+                <button @click="structuredIntake.tech_constraints.push({type:'must_use', technology:''})" type="button"
+                        class="text-sm text-primary hover:underline">+ Add Constraint</button>
+            </div>
+
+            {# Business Drivers (dynamic list) #}
+            <div class="space-y-2">
+                <label class="text-sm font-medium">Business Drivers</label>
+                <div class="space-y-2">
+                    <template x-for="(driver, idx) in structuredIntake.drivers" :key="idx">
+                        <div class="grid grid-cols-12 gap-2 items-center">
+                            <div class="col-span-4">
+                                <input type="text" x-model="driver.name" placeholder="Driver name"
+                                       class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                            </div>
+                            <div class="col-span-4">
+                                <select x-model="driver.type" aria-label="Driver type"
+                                        class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                                    <option value="technology">Technology Change</option>
+                                    <option value="stakeholder">Stakeholder Demand</option>
+                                    <option value="external">External (Regulatory/Market)</option>
+                                    <option value="internal">Internal Business Need</option>
+                                </select>
+                            </div>
+                            <div class="col-span-3">
+                                <select x-model="driver.urgency" aria-label="Driver urgency"
+                                        class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                                    <option value="1">Critical</option>
+                                    <option value="2">High</option>
+                                    <option value="3">Medium</option>
+                                    <option value="4">Low</option>
+                                </select>
+                            </div>
+                            <div class="col-span-1 flex justify-center">
+                                <button @click="structuredIntake.drivers.splice(idx, 1)" type="button"
+                                        class="text-muted-foreground hover:text-destructive transition-colors">&times;</button>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+                <button @click="structuredIntake.drivers.push({name:'', type:'internal', urgency:'3'})" type="button"
+                        class="text-sm text-primary hover:underline">+ Add Driver</button>
+            </div>
+        </div>
+
+        {# ── Sub-step navigation (requirements) ── #}
+        <div class="flex justify-between mt-6 pt-4 border-t border-border">
+            <button type="button" @click="step1Phase = prevStep1Phase()"
+                    class="px-4 py-2 text-sm border border-border rounded-md hover:bg-muted">Back</button>
+            <button type="button" @click="step1Phase = nextStep1Phase()"
+                    class="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90">
+                Next
+            </button>
+        </div>
+    </div>
+
+    {# ══════════════════════════════════════════════════════════
+       SUB-STEP 1C: Current State
+       ══════════════════════════════════════════════════════════ #}
+    <div x-show="step1Phase === 'current_state'" x-cloak class="space-y-6">
+
+        <div class="border border-border rounded-lg p-4 bg-card space-y-5">
+            <div>
+                <h3 class="text-lg font-semibold text-foreground">Current State</h3>
+                <p class="text-sm text-muted-foreground">Identify applications in scope, integration targets, and current pain points.</p>
+            </div>
+
+            {# Existing Applications (entity picker — search from portfolio) #}
+            <div class="space-y-2">
+                <label class="text-sm font-medium">Applications in Scope</label>
+                <p class="text-xs text-muted-foreground">Select existing applications affected by this solution</p>
+                <input type="text" x-model="appSearchQuery" @input.debounce.300ms="searchApps()"
+                       placeholder="Search applications..."
+                       class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                {# Search results dropdown #}
+                <div x-show="appSearchResults.length > 0" x-cloak
+                     class="border border-border rounded-md max-h-40 overflow-y-auto bg-background shadow-md">
+                    <template x-for="app in appSearchResults" :key="app.id">
+                        <div @click="addScopeApp(app)"
+                             class="px-3 py-2 hover:bg-muted cursor-pointer text-sm border-b border-border last:border-0">
+                            <span x-text="app.name"></span>
+                            <span class="text-muted-foreground ml-2 text-xs" x-text="app.lifecycle_status || ''"></span>
+                        </div>
+                    </template>
+                </div>
+                {# Selected apps #}
+                <div class="flex flex-wrap gap-2 mt-2">
+                    <template x-for="app in structuredIntake.in_scope_apps" :key="app.id">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30">
+                            <span x-text="app.name"></span>
+                            <button @click="removeScopeApp(app.id)" type="button"
+                                    class="ml-1 text-muted-foreground hover:text-destructive">&times;</button>
+                        </span>
+                    </template>
+                </div>
+            </div>
+
+            {# Integration Requirements (entity picker for target systems) #}
+            <div class="space-y-2">
+                <label class="text-sm font-medium">Systems to Integrate With</label>
+                <input type="text" x-model="integrationSearchQuery" @input.debounce.300ms="searchIntegrations()"
+                       placeholder="Search systems..."
+                       class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                <div x-show="integrationSearchResults.length > 0" x-cloak
+                     class="border border-border rounded-md max-h-40 overflow-y-auto bg-background shadow-md">
+                    <template x-for="sys in integrationSearchResults" :key="sys.id">
+                        <div @click="addIntegration(sys)"
+                             class="px-3 py-2 hover:bg-muted cursor-pointer text-sm border-b border-border last:border-0">
+                            <span x-text="sys.name"></span>
+                        </div>
+                    </template>
+                </div>
+                <div class="flex flex-wrap gap-2 mt-2">
+                    <template x-for="sys in structuredIntake.integration_systems" :key="sys.id">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-blue-500/10 text-primary border border-blue-500/30">
+                            <span x-text="sys.name"></span>
+                            <button @click="removeIntegration(sys.id)" type="button"
+                                    class="ml-1 text-muted-foreground hover:text-destructive">&times;</button>
+                        </span>
+                    </template>
+                </div>
+            </div>
+
+            {# Pain Points (free text list) #}
+            <div class="space-y-2">
+                <label class="text-sm font-medium">Current Pain Points</label>
+                <div class="space-y-2">
+                    <template x-for="(pain, idx) in structuredIntake.pain_points" :key="idx">
+                        <div class="flex gap-2">
+                            <input type="text" x-model="structuredIntake.pain_points[idx]" placeholder="Describe a pain point"
+                                   class="flex-1 px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                            <button @click="structuredIntake.pain_points.splice(idx, 1)" type="button"
+                                    class="text-muted-foreground hover:text-destructive">&times;</button>
+                        </div>
+                    </template>
+                </div>
+                <button @click="structuredIntake.pain_points.push('')" type="button"
+                        class="text-sm text-primary hover:underline">+ Add Pain Point</button>
+            </div>
+        </div>
+
+        {# ── Sub-step navigation (current_state) ── #}
+        <div class="flex justify-between mt-6 pt-4 border-t border-border">
+            <button type="button" @click="step1Phase = prevStep1Phase()"
+                    class="px-4 py-2 text-sm border border-border rounded-md hover:bg-muted">Back</button>
+            <button type="button" @click="step1Phase = 'motivation'"
+                    class="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90">
+                Next
+            </button>
+        </div>
+    </div>
+
+    {# ══════════════════════════════════════════════════════════
+       SUB-STEP 1D: Motivation — Stakeholders, Drivers, Goals, Constraints
+       ArchiMate 3.2 Motivation Layer capture — the BA defines WHY.
+       ══════════════════════════════════════════════════════════ #}
+    <div x-show="step1Phase === 'motivation'" x-cloak class="space-y-6">
+
+        <div class="border border-border rounded-lg p-4 bg-card space-y-2">
+            <h3 class="text-lg font-semibold text-foreground">Motivation</h3>
+            <p class="text-sm text-muted-foreground">
+                Define <strong>who</strong> cares about this solution, <strong>why</strong> it's needed,
+                <strong>what</strong> success looks like, and <strong>what constraints</strong> apply.
+                This feeds directly into your architecture blueprint and generated code documentation.
+            </p>
+        </div>
+
+        {# ── Stakeholders ── #}
+        <div class="border border-border rounded-lg p-4 bg-card space-y-3">
+            <h4 class="text-sm font-semibold text-foreground flex items-center gap-2">
+                <i data-lucide="users" class="w-4 h-4 text-muted-foreground" aria-hidden="true"></i>
+                Stakeholders
+            </h4>
+            <p class="text-xs text-muted-foreground">Who has a stake in this solution? (e.g., CFO, Sales Team, IT Operations, Compliance Officer)</p>
+            <div class="flex gap-2">
+                <input type="text" x-model="_motivationNewStakeholder" placeholder="Stakeholder name..."
+                       @keydown.enter.prevent="addMotivationItem('motivationStakeholders', _motivationNewStakeholder); _motivationNewStakeholder = ''"
+                       class="flex-1 px-3 py-2 text-sm bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring">
+                <button type="button" @click="addMotivationItem('motivationStakeholders', _motivationNewStakeholder); _motivationNewStakeholder = ''"
+                        class="px-3 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90">Add</button>
+            </div>
+            <template x-for="(s, i) in motivationStakeholders" :key="i">
+                <div class="flex items-center gap-2 p-2 border border-border rounded-md bg-muted/30">
+                    <span class="text-sm font-medium text-foreground flex-1" x-text="s.name"></span>
+                    <button type="button" @click="removeMotivationItem('motivationStakeholders', i)" class="text-xs text-destructive hover:text-destructive/80">&times;</button>
+                </div>
+            </template>
+        </div>
+
+        {# ── Drivers ── #}
+        <div class="border border-border rounded-lg p-4 bg-card space-y-3">
+            <h4 class="text-sm font-semibold text-foreground flex items-center gap-2">
+                <i data-lucide="trending-up" class="w-4 h-4 text-muted-foreground" aria-hidden="true"></i>
+                Business Drivers
+            </h4>
+            <p class="text-xs text-muted-foreground">What's driving this initiative? (e.g., Cost reduction, Compliance requirement, Customer demand, Competitive pressure)</p>
+            <div class="flex gap-2">
+                <input type="text" x-model="_motivationNewDriver" placeholder="Business driver..."
+                       @keydown.enter.prevent="addMotivationItem('motivationDrivers', _motivationNewDriver); _motivationNewDriver = ''"
+                       class="flex-1 px-3 py-2 text-sm bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring">
+                <button type="button" @click="addMotivationItem('motivationDrivers', _motivationNewDriver); _motivationNewDriver = ''"
+                        class="px-3 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90">Add</button>
+            </div>
+            <template x-for="(d, i) in motivationDrivers" :key="i">
+                <div class="flex items-center gap-2 p-2 border border-border rounded-md bg-muted/30">
+                    <span class="text-sm font-medium text-foreground flex-1" x-text="d.name"></span>
+                    <button type="button" @click="removeMotivationItem('motivationDrivers', i)" class="text-xs text-destructive hover:text-destructive/80">&times;</button>
+                </div>
+            </template>
+        </div>
+
+        {# ── Goals ── #}
+        <div class="border border-border rounded-lg p-4 bg-card space-y-3">
+            <h4 class="text-sm font-semibold text-foreground flex items-center gap-2">
+                <i data-lucide="target" class="w-4 h-4 text-muted-foreground" aria-hidden="true"></i>
+                Goals & Success Criteria
+            </h4>
+            <p class="text-xs text-muted-foreground">What does success look like? Be specific and measurable. (e.g., Reduce processing time from 15 min to 2 min)</p>
+            <div class="flex gap-2">
+                <input type="text" x-model="_motivationNewGoal" placeholder="Goal or success metric..."
+                       @keydown.enter.prevent="addMotivationItem('motivationGoals', _motivationNewGoal); _motivationNewGoal = ''"
+                       class="flex-1 px-3 py-2 text-sm bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring">
+                <button type="button" @click="addMotivationItem('motivationGoals', _motivationNewGoal); _motivationNewGoal = ''"
+                        class="px-3 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90">Add</button>
+            </div>
+            <template x-for="(g, i) in motivationGoals" :key="i">
+                <div class="flex items-center gap-2 p-2 border border-border rounded-md bg-muted/30">
+                    <span class="text-sm font-medium text-foreground flex-1" x-text="g.name"></span>
+                    <button type="button" @click="removeMotivationItem('motivationGoals', i)" class="text-xs text-destructive hover:text-destructive/80">&times;</button>
+                </div>
+            </template>
+        </div>
+
+        {# ── Constraints ── #}
+        <div class="border border-border rounded-lg p-4 bg-card space-y-3">
+            <h4 class="text-sm font-semibold text-foreground flex items-center gap-2">
+                <i data-lucide="shield-alert" class="w-4 h-4 text-muted-foreground" aria-hidden="true"></i>
+                Constraints
+            </h4>
+            <p class="text-xs text-muted-foreground">What must NOT be violated? (e.g., GDPR compliance, Budget cap of $50K, Must integrate with SAP, No cloud hosting)</p>
+            <div class="flex gap-2">
+                <input type="text" x-model="_motivationNewConstraint" placeholder="Constraint..."
+                       @keydown.enter.prevent="addMotivationItem('motivationConstraints', _motivationNewConstraint); _motivationNewConstraint = ''"
+                       class="flex-1 px-3 py-2 text-sm bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring">
+                <button type="button" @click="addMotivationItem('motivationConstraints', _motivationNewConstraint); _motivationNewConstraint = ''"
+                        class="px-3 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90">Add</button>
+            </div>
+            <template x-for="(c, i) in motivationConstraints" :key="i">
+                <div class="flex items-center gap-2 p-2 border border-border rounded-md bg-muted/30">
+                    <span class="text-sm font-medium text-foreground flex-1" x-text="c.name"></span>
+                    <button type="button" @click="removeMotivationItem('motivationConstraints', i)" class="text-xs text-destructive hover:text-destructive/80">&times;</button>
+                </div>
+            </template>
+        </div>
+
+        <div class="p-3 bg-muted/50 rounded-lg text-xs text-muted-foreground">
+            <strong>Optional but valuable:</strong> Stakeholders, drivers, goals, and constraints you define here become ArchiMate Motivation elements in your architecture. They appear in the generated ARCHITECTURE.md so any developer (or AI) working on the code understands <em>why</em> it was built this way.
+        </div>
+
+        {# ── Sub-step navigation (motivation) ── #}
+        <div class="flex justify-between mt-6 pt-4 border-t border-border">
+            <button type="button" @click="step1Phase = 'current_state'"
+                    class="px-4 py-2 text-sm border border-border rounded-md hover:bg-muted">Back</button>
+            <button type="button" @click="saveStructuredIntake().then(() => nextStep())"
+                    class="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90">
+                Save &amp; Continue to Step 2
+            </button>
+        </div>
+    </div>
+</div>

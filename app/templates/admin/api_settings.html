@@ -1,0 +1,470 @@
+{% extends 'layouts/admin_base.html' %}
+{% from 'components/page_header.html' import page_header %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+    {{ page_header(
+        title='API Settings',
+        description='Configure API keys and settings for LLM providers (Anthropic, OpenAI, Gemini, Azure, Hugging Face, DeepSeek, OpenRouter), custom web APIs, and other services.',
+        breadcrumbs=[
+            {'label': 'Home', 'href': url_for('main.index')},
+            {'label': 'Admin', 'href': url_for('admin.index')},
+            {'label': 'API Settings'}
+        ]
+    ) }}
+
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div class="mb-6 space-y-2">
+                {% for category, message in messages %}
+                    <div class="rounded-md border p-4 {% if category == 'success' %}bg-success/5 border-success/20 text-success{% elif category == 'error' %}bg-destructive/5 border-destructive/20 text-destructive{% else %}bg-primary/5 border-primary/20 text-primary{% endif %}">
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+
+    <!-- Load from .env Button -->
+    <div class="mb-6">
+        <button type="button" id="load-env-btn"
+                class="inline-flex items-center gap-2 rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2 transition-colors" aria-label="Load API keys from environment file">
+            <i data-lucide="download" class="w-4 h-4" aria-hidden="true"></i>
+            Load Keys from .env
+        </button>
+    </div>
+
+    <!-- Load from .env Modal -->
+    <div id="env-modal" hidden role="dialog" aria-modal="true" aria-labelledby="env-modal-title" class="modal-root fixed inset-0 z-50">
+        <div class="modal-backdrop fixed inset-0 bg-black/50" id="env-modal-backdrop" aria-hidden="true"></div>
+        <div class="flex items-center justify-center p-4 fixed inset-0" >
+            <div class="bg-card rounded-xl border shadow-lg w-full max-w-lg max-h-[80vh] overflow-auto">
+                <div class="p-6 border-b">
+                    <div class="flex items-center justify-between">
+                        <h3 class="text-lg font-semibold">Import API Keys from .env</h3>
+                        <button type="button" id="env-modal-close" class="p-1 rounded-md hover:bg-accent" aria-label="Close environment import dialog">
+                            <i data-lucide="x" class="w-5 h-5" aria-hidden="true"></i>
+                        </button>
+                    </div>
+                    <p class="text-sm text-muted-foreground mt-1">Select which environment variable keys to import into the database.</p>
+                </div>
+                <div class="p-6" id="env-keys-body">
+                    <div class="flex items-center justify-center py-8 text-muted-foreground">
+                        <i data-lucide="loader-2" class="w-5 h-5 animate-spin mr-2" aria-hidden="true"></i>
+                        Scanning environment variables...
+                    </div>
+                </div>
+                <div class="p-4 border-t flex items-center justify-between">
+                    <label class="flex items-center gap-2 text-sm">
+                        <input type="checkbox" id="env-update-existing" class="h-4 w-4 rounded border-border">
+                        Update existing providers
+                    </label>
+                    <div class="flex gap-2">
+                        <button type="button" id="env-modal-cancel"
+                                class="inline-flex items-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent h-9 px-3 transition-colors" aria-label="Cancel environment import">
+                            Cancel
+                        </button>
+                        <button type="button" id="env-import-btn"
+                                class="inline-flex items-center rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-3 transition-colors" aria-label="Import selected environment variables">
+                            Import Selected
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- OpenRouter Model Browser Modal (standalone, accessible from sidebar) -->
+    <div id="or-modal" hidden role="dialog" aria-modal="true" aria-labelledby="or-modal-title" class="modal-root fixed inset-0 z-50">
+        <div class="modal-backdrop fixed inset-0 bg-black/50" id="or-modal-backdrop" aria-hidden="true"></div>
+        <div class="flex items-center justify-center p-4 fixed inset-0" >
+            <div class="bg-card rounded-xl border shadow-lg w-full max-w-xl max-h-[85vh] flex flex-col">
+                <div class="p-6 border-b shrink-0">
+                    <div class="flex items-center justify-between">
+                        <h3 class="text-lg font-semibold">OpenRouter Model Browser</h3>
+                        <button type="button" id="or-modal-close" class="p-1 rounded-md hover:bg-accent" aria-label="Close OpenRouter model browser dialog">
+                            <i data-lucide="x" class="w-5 h-5" aria-hidden="true"></i>
+                        </button>
+                    </div>
+                    <p class="text-sm text-muted-foreground mt-1">Select up to 5 models. First is primary; others are backups if it fails.</p>
+                    <div class="flex items-center gap-3 mt-4">
+                        <div class="flex-1">
+                            <input type="text" id="or-modal-search" placeholder="Search models (e.g. llama, gemini, gpt)..."
+                                   class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm">
+                        </div>
+                        <label class="flex items-center gap-1.5 text-sm shrink-0">
+                            <input type="checkbox" id="or-modal-free-only" class="h-4 w-4 rounded border-border" checked>
+                            Free only
+                        </label>
+                    </div>
+                </div>
+                <div class="flex-1 overflow-y-auto p-4" id="or-modal-models-body">
+                    <p class="text-sm text-muted-foreground text-center py-8">Click the search icon or type to load models.</p>
+                </div>
+                <div class="p-4 border-t shrink-0">
+                    <!-- Selected models chips (multi-select) -->
+                    <div id="or-modal-selected" class="hidden mb-3">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-xs font-medium text-muted-foreground">Selected models (drag to reorder priority):</span>
+                            <span class="text-xs text-muted-foreground" id="or-modal-selected-count">0/5</span>
+                        </div>
+                        <div id="or-modal-selected-chips" class="flex flex-wrap gap-1.5">
+                        </div>
+                    </div>
+                    <div class="flex gap-2 justify-end">
+                        <button type="button" id="or-modal-cancel"
+                                class="inline-flex items-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent h-9 px-3 transition-colors" aria-label="Cancel OpenRouter model selection">
+                            Cancel
+                        </button>
+                        <button type="button" id="or-modal-save" disabled
+                                class="inline-flex items-center rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 transition-colors disabled:opacity-50 disabled:pointer-events-none" aria-label="Save selected OpenRouter models">
+                            Save Models
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Settings List -->
+        <div class="lg:col-span-1">
+            <div data-slot="card" class="rounded-xl border-2 border-input bg-card">
+                <div class="p-4 sm:p-6 border-b">
+                    <h3 class="text-lg font-semibold">Configured Providers</h3>
+                </div>
+                <div class="p-2">
+                    {% if all_settings %}
+                        <div class="space-y-1">
+                            {% for settings in all_settings %}
+                                <div class="flex items-center justify-between p-3 rounded-md hover:bg-accent transition-colors">
+                                    <div class="flex-1">
+                                        <div class="flex items-center gap-2">
+                                            <span class="font-medium">{{ settings.provider|title }}</span>
+                                            {% if settings.key_label %}
+                                                <span class="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground border border-border font-mono">{{ settings.key_label }}</span>
+                                            {% endif %}
+                                            {% if settings.enabled %}
+                                                <span class="text-xs px-2 py-0.5 rounded-full bg-success/10 text-success dark:bg-success dark:text-success">Enabled</span>
+                                            {% else %}
+                                                <span class="text-xs px-2 py-0.5 rounded-full bg-muted text-foreground dark:bg-foreground dark:text-muted-foreground/50">Disabled</span>
+                                            {% endif %}
+                                        </div>
+                                        {% if settings.default_model %}
+                                            {% if settings.provider == 'openrouter' and ',' in settings.default_model %}
+                                                {% set model_list = settings.default_model.split(',') %}
+                                                <p class="text-xs text-muted-foreground mt-1" title="{{ settings.default_model }}">
+                                                    {{ model_list[0]|trim }} <span class="text-primary">+{{ model_list|length - 1 }} backup{{ 's' if model_list|length - 1 > 1 }}</span>
+                                                </p>
+                                            {% else %}
+                                                <p class="text-xs text-muted-foreground mt-1">{{ settings.default_model }}</p>
+                                            {% endif %}
+                                        {% endif %}
+                                        {% if settings.test_status %}
+                                            <p class="text-xs mt-1">
+                                                {% if settings.test_status == 'success' %}
+                                                    <span class="text-success">✓ Tested</span>
+                                                {% elif settings.test_status == 'failed' %}
+                                                    <span class="text-destructive">✗ Failed</span>
+                                                {% else %}
+                                                    <span class="text-muted-foreground">Pending</span>
+                                                {% endif %}
+                                            </p>
+                                        {% endif %}
+                                    </div>
+                                    <div class="flex items-center gap-1">
+                                        {% if settings.provider == 'openrouter' %}
+                                            <button type="button"
+                                                    class="p-1.5 rounded-md hover:bg-background transition-colors or-change-model-btn"
+                                                    title="Browse & Change Model">
+                                                <i data-lucide="layers" class="w-4 h-4" aria-hidden="true"></i>
+                                            </button>
+                                        {% endif %}
+                                        <a href="{{ url_for('admin.api_settings', edit=settings.id) }}"
+                                           class="p-1.5 rounded-md hover:bg-background transition-colors"
+                                           title="Edit">
+                                            <i data-lucide="edit" class="w-4 h-4" aria-hidden="true"></i>
+                                        </a>
+                                        <form method="POST" action="{{ url_for('admin.test_api_settings', settings_id=settings.id) }}" class="inline">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                            <button type="submit"
+                                                    class="p-1.5 rounded-md hover:bg-background transition-colors"
+                                                    title="Test Connection">
+                                                <i data-lucide="wifi" class="w-4 h-4" aria-hidden="true"></i>
+                                            </button>
+                                        </form>
+                                        <form method="POST" action="{{ url_for('admin.delete_api_settings', settings_id=settings.id) }}"
+                                              class="inline"
+                                              @submit="if(!confirm('Delete {{ settings.provider }}{% if settings.key_label %} ({{ settings.key_label }}){% endif %}? This cannot be undone.')) $event.preventDefault()">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                            <button type="submit"
+                                                    class="p-1.5 rounded-md hover:bg-background transition-colors text-destructive"
+                                                    title="Delete">
+                                                <i data-lucide="trash-2" class="w-4 h-4" aria-hidden="true"></i>
+                                            </button>
+                                        </form>
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <p class="text-sm text-muted-foreground p-4 text-center">No API settings configured yet.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Settings Form -->
+        <div class="lg:col-span-2">
+            <div data-slot="card" class="rounded-xl border-2 border-input bg-card">
+                <div class="p-4 sm:p-6">
+                    <h3 class="text-lg font-semibold mb-6">
+                        {% if edit_id %}
+                            Edit {{ edit_settings.provider|title }}{% if edit_settings and edit_settings.key_label %} — {{ edit_settings.key_label }}{% endif %} Settings
+                        {% else %}
+                            Add New API Settings
+                        {% endif %}
+                    </h3>
+
+                    <form method="POST" action="{{ url_for('admin.api_settings') }}">
+                        {{ form.hidden_tag() }}
+                        
+                        <div class="space-y-4">
+                            <!-- Provider -->
+                            <div>
+                                {{ form.provider.label(class="block text-sm font-medium mb-2") }}
+                                {{ form.provider(class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2") }}
+                                {% if form.provider.errors %}
+                                    <p class="text-sm text-destructive mt-1">{{ form.provider.errors[0] }}</p>
+                                {% endif %}
+                            </div>
+
+                            <!-- Key Label -->
+                            <div>
+                                {{ form.key_label.label(class="block text-sm font-medium mb-2") }}
+                                {{ form.key_label(class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2", placeholder="e.g. Production, Dev, Fallback — leave blank for primary") }}
+                                {% if form.key_label.errors %}
+                                    <p class="text-sm text-destructive mt-1">{{ form.key_label.errors[0] }}</p>
+                                {% endif %}
+                                <p class="text-xs text-muted-foreground mt-1">Optional. Use a label to store multiple keys for the same provider (e.g. Production vs Dev).</p>
+                            </div>
+
+                            <!-- API Key -->
+                            <div>
+                                {{ form.api_key.label(class="block text-sm font-medium mb-2") }}
+                                {{ form.api_key(class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2") }}
+                                {% if form.api_key.errors %}
+                                    <p class="text-sm text-destructive mt-1">{{ form.api_key.errors[0] }}</p>
+                                {% endif %}
+                                <p class="text-xs text-muted-foreground mt-1">
+                                    {% if edit_id %}
+                                        Leave blank to keep existing key, or enter new key to update.
+                                    {% else %}
+                                        Enter your API key for this provider.
+                                    {% endif %}
+                                </p>
+                            </div>
+
+                            <!-- Enabled -->
+                            <div class="flex items-center gap-2">
+                                {{ form.enabled(class="h-4 w-4 rounded border-border") }}
+                                {{ form.enabled.label(class="text-sm font-medium") }}
+                            </div>
+
+                            <!-- Default Model -->
+                            <div>
+                                {{ form.default_model.label(class="block text-sm font-medium mb-2") }}
+                                {{ form.default_model(class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2") }}
+                                {% if form.default_model.errors %}
+                                    <p class="text-sm text-destructive mt-1">{{ form.default_model.errors[0] }}</p>
+                                {% endif %}
+                                <p class="text-xs text-muted-foreground mt-1">
+                                    Examples: claude-3-5-sonnet-20241022, gpt-4o, gemini-2.0-flash, deepseek-chat. For OpenRouter, use the model browser to select up to 5 models (comma-separated, first is primary).
+                                </p>
+                            </div>
+
+                            <!-- Max Tokens and Temperature -->
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    {{ form.max_tokens.label(class="block text-sm font-medium mb-2") }}
+                                    {{ form.max_tokens(class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2") }}
+                                    {% if form.max_tokens.errors %}
+                                        <p class="text-sm text-destructive mt-1">{{ form.max_tokens.errors[0] }}</p>
+                                    {% endif %}
+                                </div>
+                                <div>
+                                    {{ form.temperature.label(class="block text-sm font-medium mb-2") }}
+                                    {{ form.temperature(class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2") }}
+                                    {% if form.temperature.errors %}
+                                        <p class="text-sm text-destructive mt-1">{{ form.temperature.errors[0] }}</p>
+                                    {% endif %}
+                                </div>
+                            </div>
+
+                            <!-- JIRA Fields (only show for JIRA provider) -->
+                            <div id="jira-fields" class="hidden" >
+                                <div>
+                                    {{ form.jira_url.label(class="block text-sm font-medium mb-2") }}
+                                    {{ form.jira_url(class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2") }}
+                                    {% if form.jira_url.errors %}
+                                        <p class="text-sm text-destructive mt-1">{{ form.jira_url.errors[0] }}</p>
+                                    {% endif %}
+                                </div>
+                                <div>
+                                    {{ form.jira_email.label(class="block text-sm font-medium mb-2") }}
+                                    {{ form.jira_email(class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2") }}
+                                    {% if form.jira_email.errors %}
+                                        <p class="text-sm text-destructive mt-1">{{ form.jira_email.errors[0] }}</p>
+                                    {% endif %}
+                                </div>
+                            </div>
+
+                            <!-- Hugging Face Fields (only show for Hugging Face provider) -->
+                            <div id="huggingface-fields" class="hidden" >
+                                <div>
+                                    {{ form.hf_model_id.label(class="block text-sm font-medium mb-2") }}
+                                    {{ form.hf_model_id(class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2") }}
+                                    {% if form.hf_model_id.errors %}
+                                        <p class="text-sm text-destructive mt-1">{{ form.hf_model_id.errors[0] }}</p>
+                                    {% endif %}
+                                    <p class="text-xs text-muted-foreground mt-1">
+                                        Popular models: meta-llama/Llama-3.1-8B-Instruct, mistralai/Mistral-7B-Instruct-v0.2, google/gemma-2-9b-it, microsoft/Phi-3.5-mini-instruct
+                                    </p>
+                                </div>
+                                <div>
+                                    {{ form.hf_endpoint_url.label(class="block text-sm font-medium mb-2") }}
+                                    {{ form.hf_endpoint_url(class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2") }}
+                                    {% if form.hf_endpoint_url.errors %}
+                                        <p class="text-sm text-destructive mt-1">{{ form.hf_endpoint_url.errors[0] }}</p>
+                                    {% endif %}
+                                    <p class="text-xs text-muted-foreground mt-1">
+                                        Optional: Custom endpoint URL (e.g., https://api-inference.huggingface.co/models/your-model)
+                                    </p>
+                                </div>
+                            </div>
+
+                            <!-- OpenRouter Fields (only show for OpenRouter provider) -->
+                            <div id="openrouter-fields" class="hidden" >
+                                <div class="rounded-md border bg-muted/50 p-4 mb-4">
+                                    <div class="flex items-center justify-between mb-3">
+                                        <h4 class="font-medium text-sm">OpenRouter Model Browser</h4>
+                                        <div class="flex items-center gap-2">
+                                            <label class="flex items-center gap-1.5 text-xs">
+                                                <input type="checkbox" id="or-free-only" class="h-3.5 w-3.5 rounded border-border" checked>
+                                                Free models only
+                                            </label>
+                                            <button type="button" id="or-browse-btn"
+                                                    class="inline-flex items-center gap-1 rounded-md text-xs font-medium border border-input bg-background hover:bg-accent h-7 px-2 transition-colors" aria-label="Browse available OpenRouter models">
+                                                <i data-lucide="search" class="w-3 h-3" aria-hidden="true"></i>
+                                                Browse Models
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="relative mb-2">
+                                        <input type="text" id="or-search" placeholder="Search models (e.g. llama, gemini, gpt)..."
+                                               class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm">
+                                    </div>
+                                    <div id="or-models-list" class="max-h-48 overflow-y-auto space-y-1 hidden">
+                                    </div>
+                                    <p class="text-xs text-muted-foreground mt-2">
+                                        Click "Browse Models" to fetch available models. Select up to 5 models — first is primary, others are backups.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <!-- Custom API Fields (only show for Custom API provider) -->
+                            <div id="custom-api-fields" class="hidden" >
+                                <div>
+                                    {{ form.custom_endpoint_url.label(class="block text-sm font-medium mb-2") }}
+                                    {{ form.custom_endpoint_url(class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2") }}
+                                    {% if form.custom_endpoint_url.errors %}
+                                        <p class="text-sm text-destructive mt-1">{{ form.custom_endpoint_url.errors[0] }}</p>
+                                    {% endif %}
+                                    <p class="text-xs text-muted-foreground mt-1">
+                                        The full URL to your API endpoint (e.g., https://api.example.com/v1/data)
+                                    </p>
+                                </div>
+                                <div>
+                                    {{ form.custom_auth_method.label(class="block text-sm font-medium mb-2") }}
+                                    {{ form.custom_auth_method(class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2") }}
+                                    {% if form.custom_auth_method.errors %}
+                                        <p class="text-sm text-destructive mt-1">{{ form.custom_auth_method.errors[0] }}</p>
+                                    {% endif %}
+                                    <p class="text-xs text-muted-foreground mt-1">
+                                        Choose how to authenticate with your API
+                                    </p>
+                                </div>
+                                <div>
+                                    {{ form.custom_headers.label(class="block text-sm font-medium mb-2") }}
+                                    {{ form.custom_headers(class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 min-h-[80px]") }}
+                                    {% if form.custom_headers.errors %}
+                                        <p class="text-sm text-destructive mt-1">{{ form.custom_headers.errors[0] }}</p>
+                                    {% endif %}
+                                    <p class="text-xs text-muted-foreground mt-1">
+                                        Optional: Additional headers in JSON format (e.g., {"Content-Type": "application/json", "X-Custom-Header": "value"})
+                                    </p>
+                                </div>
+                            </div>
+
+                            <!-- Submit Buttons -->
+                            <div class="flex gap-3 pt-4">
+                                {{ form.submit(class="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2") }}
+                                {{ form.test(class="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2") }}
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Help Section -->
+            <div class="mt-6 rounded-md border bg-muted/50 p-4">
+                <h4 class="font-semibold mb-2">Provider Information</h4>
+                <div class="text-sm text-muted-foreground space-y-2">
+                    <p><strong>Anthropic:</strong> Get your API key from <a href="https://console.anthropic.com/" target="_blank" class="text-primary underline">console.anthropic.com</a></p>
+                    <p><strong>OpenAI:</strong> Get your API key from <a href="https://platform.openai.com/api-keys" target="_blank" class="text-primary underline">platform.openai.com</a></p>
+                    <p><strong>Gemini:</strong> Get your API key from <a href="https://makersuite.google.com/app/apikey" target="_blank" class="text-primary underline">Google AI Studio</a></p>
+                    <p><strong>Azure:</strong> Configure through Azure Portal and set endpoint via environment variable</p>
+                    <p><strong>Hugging Face:</strong> Get your API key from <a href="https://huggingface.co/settings/tokens" target="_blank" class="text-primary underline">huggingface.co/settings/tokens</a>. Choose from thousands of models including Llama, Mistral, Gemma, and more.</p>
+                    <p><strong>DeepSeek:</strong> Get your API key from <a href="https://platform.deepseek.com/" target="_blank" class="text-primary underline">platform.deepseek.com</a>. Access powerful reasoning and coding models.</p>
+                    <p><strong>OpenRouter:</strong> Get your API key from <a href="https://openrouter.ai/keys" target="_blank" class="text-primary underline">openrouter.ai/keys</a>. Access 65+ models from multiple providers through a single API key, including free models.</p>
+                    <p><strong>Custom API:</strong> Connect to any REST API with flexible authentication options (Bearer token, API key header, Basic auth, or no auth).</p>
+                    <p><strong>JIRA:</strong> Configure JIRA integration for project management</p>
+                </div>
+                
+                <div class="mt-4 pt-4 border-t border-border">
+                    <h5 class="font-semibold mb-2">Popular Models</h5>
+                    <div class="text-sm text-muted-foreground space-y-1">
+                        <p><strong>Claude:</strong> claude-3-5-sonnet-20241022, claude-3-haiku-20240307</p>
+                        <p><strong>OpenAI:</strong> gpt-4o, gpt-4-turbo, gpt-3.5-turbo</p>
+                        <p><strong>Gemini:</strong> gemini-2.0-flash, gemini-2.0-flash-lite, gemini-1.5-pro</p>
+                        <p><strong>Hugging Face:</strong> meta-llama/Llama-3.1-8B-Instruct, mistralai/Mistral-7B-Instruct-v0.2, google/gemma-2-9b-it</p>
+                        <p><strong>DeepSeek:</strong> deepseek-chat, deepseek-coder</p>
+                        <p><strong>OpenRouter:</strong> google/gemini-2.5-flash-preview:free, meta-llama/llama-3-8b-instruct:free, mistralai/mistral-7b-instruct:free</p>
+                    </div>
+                </div>
+                
+                <div class="mt-4 pt-4 border-t border-border">
+                    <h5 class="font-semibold mb-2">Custom API Examples</h5>
+                    <div class="text-sm text-muted-foreground space-y-1">
+                        <p><strong>Weather API:</strong> https://api.openweathermap.org/data/2.5/weather</p>
+                        <p><strong>Payment API:</strong> https://api.stripe.com/v1/charges</p>
+                        <p><strong>Analytics API:</strong> https://analytics.example.com/api/v1/events</p>
+                        <p><strong>Internal API:</strong> https://your-company.com/api/v1/data</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+window.__PAGE_CONFIG__ = {
+    csrfToken: {{ csrf_token() | tojson }},
+    formProviderId: {{ form.provider.id | tojson }},
+    formDefaultModelId: {{ form.default_model.id | tojson }}
+};
+</script>
+<script src="{{ url_for('static', filename='js/admin/api_settings_inline.js') }}"></script>
+{% endblock %}
+

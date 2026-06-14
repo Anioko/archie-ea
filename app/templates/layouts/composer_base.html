@@ -1,0 +1,179 @@
+{# Layout: composer_base.html — Full-bleed layout for tool pages (no sidebar, no padding).
+   Usage: Composer, diagram editors, full-screen tools that need maximum canvas area.
+   Inherits: same <head>, Alpine stores, Platform JS as admin_base.html.
+   Omits: sidebar, header, container padding.
+#}
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    {% include 'partials/_head.html' %}
+    <title>{% block title %}{{ config.APP_NAME }}{% endblock %}</title>
+    <script>
+        (function() {
+            let stored = localStorage.getItem('theme');
+            if (stored === 'dark' || (!stored && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                document.documentElement.classList.add('dark');
+            }
+        })();
+    </script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/accessibility.css') }}">
+    <style>[x-cloak] { display: none !important; }</style>
+    {% block extra_css %}{% endblock %}
+    {% block head %}{% endblock %}
+    {% block extra_head %}{% endblock %}
+
+    <!-- Platform Core -->
+    <script src="{{ url_for('static', filename='js/core/00-namespace.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/core/01-logger.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/core/02-sanitize.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/core/03-fetch.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/core/04-toast.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/core/05-error.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/core/06-session-timeout.js') }}"></script>
+
+    <!-- Platform UI -->
+    <script src="{{ url_for('static', filename='js/ui/modal.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/shared/debounce.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/alpine-architecture.js') }}?v=2"></script>
+
+    {% block extra_head_js %}{% endblock %}
+</head>
+<body class="h-full bg-background antialiased overflow-hidden">
+    <a href="#main-content"
+       class="skip-link sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-primary focus:text-primary-foreground focus:rounded-md">
+        Skip to main content
+    </a>
+    <a href="#sidebar-nav"
+       class="skip-link sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-primary focus:text-primary-foreground focus:rounded-md">
+        Skip to sidebar navigation
+    </a>
+
+    <div class="flex h-screen overflow-hidden"
+         x-data="{
+            isDesktop: window.innerWidth >= 1024,
+            init() {
+                this.isDesktop = window.innerWidth >= 1024;
+                window.addEventListener('resize', () => {
+                    this.isDesktop = window.innerWidth >= 1024;
+                    if (this.isDesktop) {
+                        $store.sidebar.open = false;
+                    }
+                });
+            }
+         }">
+        <button x-show="!isDesktop && !$store.sidebar.open" x-cloak
+                @click="$store.sidebar.open = true"
+                class="fixed top-4 left-4 z-[60] lg:hidden inline-flex h-10 w-10 items-center justify-center rounded-lg border border-input bg-background text-foreground shadow-sm hover:bg-accent transition-colors"
+                aria-controls="admin-sidebar"
+                aria-label="Open sidebar">
+            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"></path>
+            </svg>
+        </button>
+
+        <div x-show="$store.sidebar.open && !isDesktop" x-cloak
+             @click="$store.sidebar.open = false"
+             x-transition:enter="transition-opacity ease-out duration-200"
+             x-transition:enter-start="opacity-0"
+             x-transition:enter-end="opacity-100"
+             x-transition:leave="transition-opacity ease-in duration-150"
+             x-transition:leave-start="opacity-100"
+             x-transition:leave-end="opacity-0"
+             class="fixed inset-0 z-40 bg-black/50 lg:hidden"
+             aria-hidden="true"></div>
+
+        {% include 'components/admin_sidebar.html' %}
+
+        {# Full-bleed composer canvas with canonical platform sidebar + header. #}
+        <div class="flex-1 min-w-0 flex flex-col h-full w-full">
+            {% block header %}
+            {% include 'components/admin_header.html' %}
+            {% endblock %}
+            <main id="main-content" class="flex-1 min-w-0 h-full w-full overflow-hidden" role="main">
+                {% block content %}{% endblock %}
+            </main>
+        </div>
+    </div>
+
+    {# Modal portal #}
+    {% block modals %}{% endblock %}
+
+    {# Page Guide drawer (same as admin_base) #}
+    {% set resolved_page_guide_context = page_guide_context | default({'enabled': false, 'supported': false}, true) %}
+    {% if resolved_page_guide_context.enabled %}
+        <script>window.pageGuideContext = {{ resolved_page_guide_context | tojson }};</script>
+        {% include 'components/page_guide_drawer.html' %}
+    {% endif %}
+
+    {# Accessibility live regions #}
+    <div x-data aria-live="polite" aria-atomic="true" role="status" class="sr-only"
+         x-text="$store.announcer ? $store.announcer.message : ''"></div>
+    <div x-data aria-live="assertive" aria-atomic="true" role="alert" class="sr-only"
+         x-text="$store.announcer ? $store.announcer.alert : ''"></div>
+
+    {% include 'components/toast-container.html' %}
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+
+    <script>
+        window.pageGuideContext = {{ resolved_page_guide_context | tojson }};
+        document.addEventListener('alpine:init', () => {
+            Alpine.store('sidebar', { open: false });
+
+            Alpine.store('loading', {
+                active: false, count: 0,
+                start() { this.count++; this.active = true; },
+                stop()  { this.count = Math.max(0, this.count - 1); if (this.count === 0) this.active = false; }
+            });
+
+            Alpine.store('theme', {
+                dark: document.documentElement.classList.contains('dark'),
+                toggle() {
+                    this.dark = !this.dark;
+                    document.documentElement.classList.toggle('dark', this.dark);
+                    localStorage.setItem('theme', this.dark ? 'dark' : 'light');
+                }
+            });
+
+            /* Modal store is defined in admin_base and ui/modal.js; do not redefine here. */
+
+            Alpine.store('announcer', {
+                message: '', alert: '',
+                announce(text) { this.message = ''; requestAnimationFrame(() => { this.message = text; }); },
+                assertive(text) { this.alert = ''; requestAnimationFrame(() => { this.alert = text; }); }
+            });
+
+            Alpine.store('a11y', {
+                prefersReducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+                init() {
+                    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+                    const handler = (e) => { this.prefersReducedMotion = e.matches; };
+                    if (mq.addEventListener) mq.addEventListener('change', handler);
+                    else mq.addListener(handler);
+                }
+            });
+            Alpine.store('a11y').init();
+
+            Alpine.store('user', {
+                role: '{{ current_user.role_name if current_user.is_authenticated else "anonymous" }}',
+                isAdmin: {{ 'true' if current_user.is_authenticated and current_user.is_admin() else 'false' }},
+                isAuthenticated: {{ 'true' if current_user.is_authenticated else 'false' }},
+                displayName: '{{ current_user.full_name() if current_user.is_authenticated else "" }}',
+                featureFlags: {{ user_feature_flags | tojson if user_feature_flags else '{}' }}
+            });
+
+            Alpine.store('headerMenu', {
+                active: null,
+                open(name) { this.active = (this.active === name) ? null : name; },
+                close() { this.active = null; },
+                isOpen(name) { return this.active === name; }
+            });
+        });
+    </script>
+
+    {% include 'partials/_scripts_common.html' %}
+    <script src="{{ url_for('static', filename='js/shared/export-utils.js') }}"></script>
+
+    {% block extra_js %}{% endblock %}
+    {% block scripts %}{% endblock %}
+</body>
+</html>

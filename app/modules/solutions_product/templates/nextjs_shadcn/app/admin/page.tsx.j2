@@ -1,0 +1,183 @@
+{# app/admin/page.tsx — Admin dashboard with entity stats, health, roles #}
+{# Context: solution_name, modules, roles, auth #}
+"use client"
+
+import { useQuery } from "@tanstack/react-query"
+import {
+  Activity,
+  Database,
+  Shield,
+  AlertTriangle,
+  CheckCircle2,
+  BarChart3,
+{% set all_icons = [] %}
+{% for mod in modules %}
+{% if mod.icon | default("Box") not in all_icons %}
+{% set _ = all_icons.append(mod.icon | default("Box")) %}
+{% endif %}
+{% endfor %}
+{% for icon in all_icons %}
+  {{ icon }},
+{% endfor %}
+} from "lucide-react"
+import Link from "next/link"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Separator } from "@/components/ui/separator"
+import { Skeleton } from "@/components/ui/skeleton"
+import { api } from "@/lib/api"
+
+function useEntityCount(path: string) {
+  return useQuery({
+    queryKey: [path, "admin-count"],
+    queryFn: () => api.get<any>(path),
+    // API returns either an array or a paginated { items, total } object
+    select: (data: any) =>
+      Array.isArray(data)
+        ? data.length
+        : (data?.total ?? data?.items?.length ?? 0),
+  })
+}
+
+export default function AdminDashboard() {
+  const health = useQuery({
+    queryKey: ["health"],
+    queryFn: () => api.get<{ status: string }>("/health"),
+  })
+
+  const entityCounts: Record<string, ReturnType<typeof useEntityCount>> = {
+{% for mod in modules %}
+    "{{ mod.slug }}": useEntityCount("/api/{{ mod.slug }}s"),
+{% endfor %}
+  }
+
+  return (
+    <div className="space-y-8">
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight">Administration</h1>
+        <p className="text-muted-foreground">{{ solution_name }} system overview and management</p>
+      </div>
+
+      {/* System Health */}
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">System Status</CardTitle>
+            <Activity className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            {health.isLoading ? (
+              <Skeleton className="h-6 w-20" />
+            ) : health.data?.status === "ok" ? (
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+                <span className="text-lg font-semibold text-emerald-600">Healthy</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5 text-amber-500" />
+                <span className="text-lg font-semibold text-amber-600">Degraded</span>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Authentication</CardTitle>
+            <Shield className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-lg font-semibold">{{ "JWT Local" if auth == "jwt-local" else "OIDC / Keycloak" }}</div>
+            <p className="text-xs text-muted-foreground">{{ roles | length }} roles configured</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Database</CardTitle>
+            <Database className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-lg font-semibold">PostgreSQL</div>
+            <p className="text-xs text-muted-foreground">{{ modules | length }} entity tables</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Entity Overview */}
+      <div>
+        <h2 className="text-lg font-semibold mb-4">Entity Overview</h2>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+{% for mod in modules %}
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium">{{ mod.display_name_plural }}</CardTitle>
+              <{{ mod.icon | default("Box") }} className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-between">
+                <div>
+                  {entityCounts["{{ mod.slug }}"]?.isLoading ? (
+                    <Skeleton className="h-8 w-12" />
+                  ) : (
+                    <div className="text-2xl font-bold">{entityCounts["{{ mod.slug }}"]?.data ?? 0}</div>
+                  )}
+                  <p className="text-xs text-muted-foreground">total records</p>
+                </div>
+                <Link href="/{{ mod.slug }}">
+                  <Button variant="outline" size="sm">View all</Button>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
+{% endfor %}
+        </div>
+      </div>
+
+      <Separator />
+
+      {/* Roles */}
+      <div>
+        <h2 className="text-lg font-semibold mb-4">Configured Roles</h2>
+        <div className="flex flex-wrap gap-2">
+{% for role in roles %}
+          <Badge variant="secondary" className="text-sm">{{ role }}</Badge>
+{% endfor %}
+        </div>
+      </div>
+
+      {/* Quick Links */}
+      <div>
+        <h2 className="text-lg font-semibold mb-4">Quick Links</h2>
+        <div className="grid gap-3 md:grid-cols-3">
+          <Link href="/docs">
+            <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+              <CardContent className="flex items-center gap-3 p-4">
+                <BarChart3 className="h-5 w-5 text-muted-foreground" />
+                <div>
+                  <p className="text-sm font-medium">API Documentation</p>
+                  <p className="text-xs text-muted-foreground">Swagger / OpenAPI</p>
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
+{% for mod in modules[:4] %}
+          <Link href="/{{ mod.slug }}/new">
+            <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+              <CardContent className="flex items-center gap-3 p-4">
+                <{{ mod.icon | default("Box") }} className="h-5 w-5 text-muted-foreground" />
+                <div>
+                  <p className="text-sm font-medium">New {{ mod.display_name }}</p>
+                  <p className="text-xs text-muted-foreground">Create record</p>
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
+{% endfor %}
+        </div>
+      </div>
+    </div>
+  )
+}

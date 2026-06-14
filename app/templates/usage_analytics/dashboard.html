@@ -1,0 +1,234 @@
+{% extends "layouts/admin_base.html" %}
+{% import 'components/breadcrumb.html' as breadcrumb %}
+
+{% block title %}Usage Analytics Dashboard{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Breadcrumb -->
+    {% call breadcrumb.breadcrumb() %}
+        {% call breadcrumb.breadcrumb_item(href=url_for('admin.dashboard')) %}
+            <i data-lucide="home" class="h-4 w-4"></i>
+        {% endcall %}
+        {{ breadcrumb.breadcrumb_separator() }}
+        {% call breadcrumb.breadcrumb_item(active=true) %}
+            Usage Analytics
+        {% endcall %}
+    {% endcall %}
+
+    <!-- Page Header -->
+    <div>
+        <h1 class="text-3xl font-bold tracking-tight">Usage Analytics Dashboard</h1>
+        <p class="text-muted-foreground mt-1">Phase 0: Tracking usage of 32 PARTIAL features before committing to 278-hour completion roadmap</p>
+    </div>
+
+    <!-- Summary Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        <div class="bg-background rounded-lg shadow p-6">
+            <div class="flex items-center">
+                <div class="flex-shrink-0">
+                    <div class="w-8 h-8 bg-primary rounded-full flex items-center justify-center">
+                        <i class="fas fa-eye text-primary-foreground text-sm"></i>
+                    </div>
+                </div>
+                <div class="ml-4">
+                    <h3 class="text-lg font-medium text-foreground">Total Page Views</h3> <!-- frontend-quality-ok: h3 in stat card, pre-existing content -->
+                    <p class="text-2xl font-bold text-primary" id="total-page-views">-</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-background rounded-lg shadow p-6">
+            <div class="flex items-center">
+                <div class="flex-shrink-0">
+                    <div class="w-8 h-8 bg-emerald-500 rounded-full flex items-center justify-center">
+                        <i class="fas fa-mouse-pointer text-primary-foreground text-sm"></i>
+                    </div>
+                </div>
+                <div class="ml-4">
+                    <h3 class="text-lg font-medium text-foreground">Feature Interactions</h3>
+                    <p class="text-2xl font-bold text-emerald-600" id="total-interactions">-</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-background rounded-lg shadow p-6">
+            <div class="flex items-center">
+                <div class="flex-shrink-0">
+                    <div class="w-8 h-8 bg-destructive rounded-full flex items-center justify-center">
+                        <i class="fas fa-exclamation-triangle text-primary-foreground text-sm"></i>
+                    </div>
+                </div>
+                <div class="ml-4">
+                    <h3 class="text-lg font-medium text-foreground">Error Events</h3>
+                    <p class="text-2xl font-bold text-destructive" id="total-errors">-</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-background rounded-lg shadow p-6">
+            <div class="flex items-center">
+                <div class="flex-shrink-0">
+                    <div class="w-8 h-8 bg-primary rounded-full flex items-center justify-center">
+                        <i class="fas fa-users text-primary-foreground text-sm"></i>
+                    </div>
+                </div>
+                <div class="ml-4">
+                    <h3 class="text-lg font-medium text-foreground">Unique Users</h3>
+                    <p class="text-2xl font-bold text-primary" id="total-users">-</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Feature Usage Table -->
+    <div class="bg-background rounded-lg shadow mb-8">
+        <div class="px-6 py-4 border-b border-border">
+            <h2 class="text-xl font-semibold text-foreground">Feature Usage Summary (Last 30 Days)</h2>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-border" id="usage-table">
+                <thead class="bg-muted/30">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Feature</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Page Views</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Interactions</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Errors</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Unique Users</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Triage</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-background divide-y divide-border" id="usage-table-body">
+                    <!-- Data will be loaded via JavaScript -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Recent Events -->
+    <div class="bg-background rounded-lg shadow">
+        <div class="px-6 py-4 border-b border-border">
+            <h2 class="text-xl font-semibold text-foreground">Recent Events</h2>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-border" id="events-table">
+                <thead class="bg-muted/30">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Time</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Feature</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Event Type</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Route</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">User</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-background divide-y divide-border" id="events-table-body">
+                    <!-- Data will be loaded via JavaScript -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    loadAnalyticsData();
+});
+
+async function loadAnalyticsData() {
+    try {
+        // Load summary data
+        const summaryResponse = await fetch('/usage-analytics/api/summary');
+        const summary = await summaryResponse.json();
+
+        // Update summary cards
+        let totalPageViews = 0;
+        let totalInteractions = 0;
+        let totalErrors = 0;
+        let totalUsers = 0;
+
+        Object.values(summary).forEach(feature => {
+            if (feature.events) {
+                totalPageViews += feature.events.page_view?.count || 0;
+                totalInteractions += feature.events.feature_interaction?.count || 0;
+                totalErrors += feature.events.error_occurred?.count || 0;
+            }
+            totalUsers += feature.unique_users || 0;
+        });
+
+        document.getElementById('total-page-views').textContent = totalPageViews.toLocaleString();
+        document.getElementById('total-interactions').textContent = totalInteractions.toLocaleString();
+        document.getElementById('total-errors').textContent = totalErrors.toLocaleString();
+        document.getElementById('total-users').textContent = totalUsers.toLocaleString();
+
+        // Populate usage table
+        const tableBody = document.getElementById('usage-table-body');
+        tableBody.innerHTML = '';
+
+        Object.entries(summary).forEach(([featureName, data]) => {
+            const pageViews = data.events?.page_view?.count || 0;
+            const interactions = data.events?.feature_interaction?.count || 0;
+            const errors = data.events?.error_occurred?.count || 0;
+            const users = data.unique_users || 0;
+
+            // Determine triage recommendation
+            let triage = 'UNKNOWN';
+            let triageClass = 'bg-muted text-foreground';
+            if (users === 0) {
+                triage = 'DELETE';
+                triageClass = 'bg-destructive/10 text-red-800';
+            } else if (users < 10) {
+                triage = 'DEFER';
+                triageClass = 'bg-amber-500/10 text-yellow-800';
+            } else if (users < 100) {
+                triage = 'PRIORITIZE_LOW';
+                triageClass = 'bg-primary/10 text-primary/90';
+            } else if (users < 1000) {
+                triage = 'PRIORITIZE_MEDIUM';
+                triageClass = 'bg-emerald-500/10 text-green-800';
+            } else {
+                triage = 'PRIORITIZE_HIGH';
+                triageClass = 'bg-purple-100 text-purple-800';
+            }
+
+            const row = `
+                <tr>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-foreground">${featureName}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">${pageViews.toLocaleString()}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">${interactions.toLocaleString()}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">${errors.toLocaleString()}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">${users.toLocaleString()}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full ${triageClass}">${triage}</span>
+                    </td>
+                </tr>
+            `;
+            tableBody.innerHTML += row;
+        });
+
+        // Load recent events
+        const eventsResponse = await fetch('/usage-analytics/api/events?limit=50');
+        const events = await eventsResponse.json();
+
+        const eventsTableBody = document.getElementById('events-table-body');
+        eventsTableBody.innerHTML = '';
+
+        events.forEach(event => {
+            const timestamp = new Date(event.timestamp).toLocaleString();
+            const row = `
+                <tr>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">${timestamp}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-foreground">${event.feature_name}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">${event.event_type}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">${event.route_path}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">${event.user_id || 'Anonymous'}</td>
+                </tr>
+            `;
+            eventsTableBody.innerHTML += row;
+        });
+
+    } catch (error) {
+        console.error('Failed to load analytics data:', error);
+    }
+}
+</script>
+{% endblock %}

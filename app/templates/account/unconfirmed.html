@@ -1,0 +1,28 @@
+{% extends 'layouts/public_base.html' %}
+{% import 'macros/form_macros.html' as f %}
+
+{% block content %}
+    <div class="flex justify-center">
+        <div class="w-full max-w-2xl">
+            <div class="rounded-lg border bg-card text-card-foreground shadow-sm">
+                <div class="p-6">
+                    <h3 class="text-xl font-semibold mb-4">You need to confirm your account before continuing.</h3>
+
+                    <p class="text-sm text-muted-foreground mb-6">
+                        When you created an account, you should have received an email from us at {{ current_user.email }}
+                        with a link to confirm your email address.
+                    </p>
+
+                    <div class="border-t border-border my-6"></div>
+
+                    <h3 class="text-xl font-semibold mb-4">I didn't receive an email!</h3>
+
+                    <p class="text-sm text-muted-foreground mb-4">No problem! Just click the button below and we'll send you another one.</p>
+                    <a href="{{ url_for('account.confirm_request') }}" class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 py-2">
+                        Resend confirmation email
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}

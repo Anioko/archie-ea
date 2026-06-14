@@ -1,0 +1,329 @@
+{% extends "layouts/admin_base.html" %}
+<!-- modal-a11y-ok -->
+
+{% block title %}Product Roadmap{% endblock %}
+
+{% block content %}
+<div
+  class="p-6 max-w-7xl mx-auto"
+  x-data="productRoadmap()"
+  x-init="init()"
+>
+  <!-- Header -->
+  <div class="flex items-center justify-between mb-6">
+    <div>
+      <h1 class="text-2xl font-bold text-foreground">Product Roadmap</h1>
+      <p class="text-sm text-muted-foreground mt-1">Epics across Now &middot; Next &middot; Later horizons</p>
+    </div>
+    <div class="flex items-center gap-3">
+      <span class="text-xs text-muted-foreground">On Track (Now):</span>
+      <span
+        class="px-3 py-1 rounded-full text-sm font-semibold"
+        :class="onTrackPct >= 70 ? 'bg-emerald-500/10 text-emerald-700' : onTrackPct >= 40 ? 'bg-amber-500/10 text-amber-700' : 'bg-destructive/10 text-destructive'"
+        x-text="onTrackPct + '%'"
+      ></span>
+      <span class="text-xs text-muted-foreground/60" x-text="'Total epics: ' + totalEpics"></span>
+    </div>
+  </div>
+
+  <!-- Error banner -->
+  <div x-show="error" x-cloak class="mb-4 p-3 bg-destructive/5 border border-destructive/20 rounded text-destructive text-sm" x-text="error"></div>
+
+  <!-- 3-column kanban + unscheduled -->
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+
+    <!-- NOW -->
+    <div
+      class="bg-background border-2 border-primary/30 rounded-xl shadow-sm flex flex-col"
+      @dragover.prevent
+      @drop="dropEpic($event, 'now')"
+    >
+      <div class="px-4 py-3 bg-primary/5 border-b border-primary/20 rounded-t-xl flex items-center gap-2">
+        <span class="w-2.5 h-2.5 rounded-full bg-primary"></span>
+        <h2 class="text-sm font-bold text-primary/90 uppercase tracking-wide">Now</h2>
+        <span class="ml-auto text-xs text-primary" x-text="horizons.now.epics.length + ' epics'"></span>
+      </div>
+      <!-- Sprint badges -->
+      <div class="px-4 py-2 flex flex-wrap gap-1 border-b border-primary/10">
+        <template x-for="sp in horizons.now.sprints" :key="sp.id">
+          <span class="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded" x-text="sp.name"></span>
+        </template>
+        <span x-show="horizons.now.sprints.length === 0" x-cloak class="text-xs text-muted-foreground/60 italic">No sprints assigned</span>
+      </div>
+      <!-- Epic cards -->
+      <div class="p-3 flex-1 space-y-2 min-h-24">
+        <template x-for="epic in horizons.now.epics" :key="epic.id">
+          <div
+            class="p-3 bg-primary/5 border border-primary/20 rounded-lg cursor-grab active:cursor-grabbing"
+            draggable="true"
+            @dragstart="dragStart($event, epic)"
+          >
+            <p class="text-sm font-medium text-foreground mb-1" x-text="epic.title"></p>
+            <div class="flex items-center gap-2 mb-2">
+              <span class="text-xs text-muted-foreground" x-text="epic.stories_count + ' stories'"></span>
+              <span class="text-xs text-muted-foreground">&middot;</span>
+              <span class="text-xs text-muted-foreground" x-text="epic.completed_points + '/' + epic.total_points + ' pts'"></span>
+            </div>
+            <div class="w-full bg-muted rounded-full h-1.5">
+              <div
+                class="h-1.5 rounded-full transition-all"
+                :class="epic.pct_done >= 70 ? 'bg-emerald-500' : epic.pct_done >= 30 ? 'bg-amber-500' : 'bg-primary'"
+                :style="'width:' + epic.pct_done + '%'"
+              ></div>
+            </div>
+            <p class="text-xs text-right text-muted-foreground/60 mt-0.5" x-text="epic.pct_done + '% done'"></p>
+          </div>
+        </template>
+        <p x-show="horizons.now.epics.length === 0" x-cloak class="text-xs text-center text-muted-foreground/60 italic py-4">
+          No epics &mdash; drag one here
+        </p>
+      </div>
+    </div>
+
+    <!-- NEXT -->
+    <div
+      class="bg-background border-2 border-primary/20 rounded-xl shadow-sm flex flex-col"
+      @dragover.prevent
+      @drop="dropEpic($event, 'next')"
+    >
+      <div class="px-4 py-3 bg-primary/5 border-b border-primary/10 rounded-t-xl flex items-center gap-2">
+        <span class="w-2.5 h-2.5 rounded-full bg-primary/70"></span>
+        <h2 class="text-sm font-bold text-foreground uppercase tracking-wide">Next</h2>
+        <span class="ml-auto text-xs text-muted-foreground" x-text="horizons.next.epics.length + ' epics'"></span>
+      </div>
+      <div class="px-4 py-2 flex flex-wrap gap-1 border-b border-border/50">
+        <template x-for="sp in horizons.next.sprints" :key="sp.id">
+          <span class="text-xs bg-muted text-muted-foreground px-2 py-0.5 rounded" x-text="sp.name"></span>
+        </template>
+        <span x-show="horizons.next.sprints.length === 0" x-cloak class="text-xs text-muted-foreground/60 italic">No sprints assigned</span>
+      </div>
+      <div class="p-3 flex-1 space-y-2 min-h-24">
+        <template x-for="epic in horizons.next.epics" :key="epic.id">
+          <div
+            class="p-3 bg-muted/30 border border-border rounded-lg cursor-grab active:cursor-grabbing"
+            draggable="true"
+            @dragstart="dragStart($event, epic)"
+          >
+            <p class="text-sm font-medium text-foreground mb-1" x-text="epic.title"></p>
+            <div class="flex items-center gap-2 mb-2">
+              <span class="text-xs text-muted-foreground" x-text="epic.stories_count + ' stories'"></span>
+              <span class="text-xs text-muted-foreground">&middot;</span>
+              <span class="text-xs text-muted-foreground" x-text="epic.completed_points + '/' + epic.total_points + ' pts'"></span>
+            </div>
+            <div class="w-full bg-muted rounded-full h-1.5">
+              <div
+                class="h-1.5 rounded-full transition-all"
+                :class="epic.pct_done >= 70 ? 'bg-emerald-500' : epic.pct_done >= 30 ? 'bg-amber-500' : 'bg-primary/70'"
+                :style="'width:' + epic.pct_done + '%'"
+              ></div>
+            </div>
+            <p class="text-xs text-right text-muted-foreground/60 mt-0.5" x-text="epic.pct_done + '% done'"></p>
+          </div>
+        </template>
+        <p x-show="horizons.next.epics.length === 0" x-cloak class="text-xs text-center text-muted-foreground/60 italic py-4">
+          No epics &mdash; drag one here
+        </p>
+      </div>
+    </div>
+
+    <!-- LATER -->
+    <div
+      class="bg-card border-2 border-border rounded-xl shadow-sm flex flex-col"
+      @dragover.prevent
+      @drop="dropEpic($event, 'later')"
+    >
+      <div class="px-4 py-3 bg-muted/30 border-b border-border rounded-t-xl flex items-center gap-2">
+        <span class="w-2.5 h-2.5 rounded-full bg-muted/70"></span>
+        <h2 class="text-sm font-bold text-foreground uppercase tracking-wide">Later</h2>
+        <span class="ml-auto text-xs text-muted-foreground" x-text="horizons.later.epics.length + ' epics'"></span>
+      </div>
+      <div class="px-4 py-2 flex flex-wrap gap-1 border-b border-border/50">
+        <template x-for="sp in horizons.later.sprints" :key="sp.id">
+          <span class="text-xs bg-muted text-muted-foreground px-2 py-0.5 rounded" x-text="sp.name"></span>
+        </template>
+        <span x-show="horizons.later.sprints.length === 0" x-cloak class="text-xs text-muted-foreground/60 italic">No sprints assigned</span>
+      </div>
+      <div class="p-3 flex-1 space-y-2 min-h-24">
+        <template x-for="epic in horizons.later.epics" :key="epic.id">
+          <div
+            class="p-3 bg-muted/30 border border-border rounded-lg cursor-grab active:cursor-grabbing"
+            draggable="true"
+            @dragstart="dragStart($event, epic)"
+          >
+            <p class="text-sm font-medium text-foreground mb-1" x-text="epic.title"></p>
+            <div class="flex items-center gap-2 mb-2">
+              <span class="text-xs text-muted-foreground" x-text="epic.stories_count + ' stories'"></span>
+              <span class="text-xs text-muted-foreground">&middot;</span>
+              <span class="text-xs text-muted-foreground" x-text="epic.completed_points + '/' + epic.total_points + ' pts'"></span>
+            </div>
+            <div class="w-full bg-muted rounded-full h-1.5">
+              <div
+                class="h-1.5 rounded-full bg-muted/70 transition-all"
+                :style="'width:' + epic.pct_done + '%'"
+              ></div>
+            </div>
+            <p class="text-xs text-right text-muted-foreground/60 mt-0.5" x-text="epic.pct_done + '% done'"></p>
+          </div>
+        </template>
+        <p x-show="horizons.later.epics.length === 0" x-cloak class="text-xs text-center text-muted-foreground/60 italic py-4">
+          No epics &mdash; drag one here
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Unscheduled -->
+  <div
+    class="bg-background border border-dashed border-border rounded-xl shadow-sm mb-8"
+    @dragover.prevent
+    @drop="dropEpic($event, '')"
+  >
+    <div class="px-4 py-3 border-b border-border flex items-center gap-2">
+      <h2 class="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Unscheduled</h2>
+      <span class="ml-auto text-xs text-muted-foreground/60" x-text="unscheduled.length + ' epics'"></span>
+    </div>
+    <div class="p-3 flex flex-wrap gap-2">
+      <template x-for="epic in unscheduled" :key="epic.id">
+        <div
+          class="px-3 py-2 bg-muted/30 border border-border rounded-lg cursor-grab active:cursor-grabbing text-sm text-foreground"
+          draggable="true"
+          @dragstart="dragStart($event, epic)"
+          x-text="epic.title"
+        ></div>
+      </template>
+      <p x-show="unscheduled.length === 0" x-cloak class="text-xs text-muted-foreground/60 italic py-2">All epics are scheduled</p>
+    </div>
+  </div>
+
+  <!-- Sprint timeline strip -->
+  <div class="bg-card border border-border rounded-xl shadow-sm p-4">
+    <h2 class="text-sm font-semibold text-foreground mb-3">Sprint Timeline</h2>
+    <div class="overflow-x-auto">
+      <div class="flex gap-2 min-w-max">
+        <template x-for="(group, label) in timelineGroups()" :key="label">
+          <div class="flex flex-col gap-1">
+            <span class="text-xs font-semibold uppercase tracking-wide px-2 text-muted-foreground" x-text="label"></span>
+            <div class="flex gap-1">
+              <template x-for="sp in group" :key="sp.id">
+                <div
+                  class="px-3 py-2 rounded-lg text-xs text-center min-w-28"
+                  :class="sp.status === 'active' ? 'bg-primary/10 border border-primary/30 text-primary/90 font-semibold' : 'bg-muted border border-border text-muted-foreground'"
+                >
+                  <p class="font-medium" x-text="sp.name"></p>
+                  <p class="text-muted-foreground/60 mt-0.5" x-text="sp.start_date ? sp.start_date + ' \u2192 ' + (sp.end_date || '?') : 'No dates'"></p>
+                </div>
+              </template>
+            </div>
+          </div>
+        </template>
+        <p x-show="allSprints().length === 0" x-cloak class="text-xs text-muted-foreground/60 italic">No sprints found</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function productRoadmap() {
+  return {
+    horizons: { now: { epics: [], sprints: [] }, next: { epics: [], sprints: [] }, later: { epics: [], sprints: [] } },
+    unscheduled: [],
+    totalEpics: 0,
+    onTrackPct: 100,
+    error: '',
+    _dragging: null,
+
+    async init() {
+      try {
+        const res = await fetch('/api/product-roadmap');
+        if (!res.ok) { this.error = 'Failed to load roadmap'; return; }
+        const data = await res.json();
+        this.horizons = data.horizons || this.horizons;
+        this.unscheduled = data.unscheduled || [];
+        this.totalEpics = data.total_epics || 0;
+        this.onTrackPct = typeof data.on_track_pct === 'number' ? data.on_track_pct : 100;
+      } catch (e) {
+        this.error = 'Error loading roadmap: ' + e.message;
+      }
+    },
+
+    dragStart(event, epic) {
+      this._dragging = epic;
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', String(epic.id));
+    },
+
+    async dropEpic(event, targetHorizon) {
+      event.preventDefault();
+      const epic = this._dragging;
+      if (!epic) return;
+      this._dragging = null;
+
+      const prevHorizon = epic.horizon || '';
+
+      // Optimistic UI update
+      this._removeEpicFromAll(epic.id);
+      epic.horizon = targetHorizon || null;
+      if (targetHorizon && this.horizons[targetHorizon]) {
+        this.horizons[targetHorizon].epics.push(epic);
+      } else {
+        this.unscheduled.push(epic);
+      }
+
+      // Persist
+      try {
+        const res = await fetch(`/api/product-roadmap/epics/${epic.id}/horizon`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ horizon: targetHorizon || '' }),
+        });
+        if (!res.ok) {
+          this.error = 'Failed to save horizon assignment';
+          // Revert optimistic update
+          this._removeEpicFromAll(epic.id);
+          epic.horizon = prevHorizon || null;
+          if (prevHorizon && this.horizons[prevHorizon]) {
+            this.horizons[prevHorizon].epics.push(epic);
+          } else {
+            this.unscheduled.push(epic);
+          }
+        } else {
+          this._recalcOnTrack();
+        }
+      } catch (e) {
+        this.error = 'Network error: ' + e.message;
+      }
+    },
+
+    _removeEpicFromAll(epicId) {
+      ['now', 'next', 'later'].forEach(h => {
+        this.horizons[h].epics = this.horizons[h].epics.filter(e => e.id !== epicId);
+      });
+      this.unscheduled = this.unscheduled.filter(e => e.id !== epicId);
+    },
+
+    _recalcOnTrack() {
+      const nowEpics = this.horizons.now.epics;
+      if (!nowEpics.length) { this.onTrackPct = 100; return; }
+      const onTrack = nowEpics.filter(e => e.pct_done > 50).length;
+      this.onTrackPct = Math.round(onTrack / nowEpics.length * 100 * 10) / 10;
+    },
+
+    allSprints() {
+      return [
+        ...this.horizons.now.sprints,
+        ...this.horizons.next.sprints,
+        ...this.horizons.later.sprints,
+      ];
+    },
+
+    timelineGroups() {
+      return {
+        now: this.horizons.now.sprints,
+        next: this.horizons.next.sprints,
+        later: this.horizons.later.sprints,
+      };
+    },
+  };
+}
+</script>
+{% endblock %}

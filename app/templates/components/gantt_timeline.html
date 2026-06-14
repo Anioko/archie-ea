@@ -1,0 +1,685 @@
+{#
+  Gantt Timeline Component — Reusable macro (v2)
+  Usage: {% from 'components/gantt_timeline.html' import gantt_timeline %}
+         {{ gantt_timeline(endpoint='/api/your-endpoint', container_id='my-gantt') }}
+
+  Requires: ui/gantt.js, components/gantt_timeline.js loaded in admin_base.html
+  Layout: Split-panel (fixed left labels, scrolling timeline, slide-in detail panel)
+  Positioning: Per-day precision (not column-snapping)
+#}
+
+{% macro gantt_timeline(endpoint, container_id='gantt-timeline', title='', subtitle='', crud_endpoint='', secondary_crud_endpoint='', secondary_crud_label='') %}
+<div id="{{ container_id }}"
+     x-data="ganttTimeline({ endpoint: '{{ endpoint }}', containerId: '{{ container_id }}', crudEndpoint: '{{ crud_endpoint }}', secondaryCrudEndpoint: '{{ secondary_crud_endpoint }}', secondaryCrudLabel: '{{ secondary_crud_label }}' })"
+     @gantt:reload.window="reload($event.detail)"
+     role="region"
+     aria-label="Gantt timeline: {{ title or 'Timeline' }}"
+     class="relative bg-card border border-border rounded-lg overflow-hidden">
+
+    {# ── ARIA live region ─────────────────────────────────────────────── #}
+    <span class="sr-only" role="status" aria-live="polite" x-text="ariaAnnouncement"></span>
+
+    {# ═══════════════════════════════════════════════════════════════════ #}
+    {# HEADER BAR                                                         #}
+    {# ═══════════════════════════════════════════════════════════════════ #}
+    <div class="flex items-center justify-between px-4 py-3 border-b border-border bg-card">
+        <div class="flex items-center gap-3">
+            {% if title %}
+            <div>
+                <h3 class="text-sm font-semibold text-foreground">{{ title }}</h3>
+                {% if subtitle %}
+                <p class="text-xs text-muted-foreground mt-0.5">{{ subtitle }}</p>
+                {% endif %}
+            </div>
+            {% endif %}
+            <span x-show="!loading && tasks.length > 0" x-cloak
+                  class="text-xs text-muted-foreground tabular-nums">
+                <span x-text="getFilteredTaskCount()"></span>
+                <span x-show="getHasActiveFilters()" x-cloak> of <span x-text="tasks.length"></span></span>
+                items
+            </span>
+        </div>
+
+        <div class="flex items-center gap-2" x-show="!loading && tasks.length > 0" x-cloak>
+            {# Filter toggle #}
+            <button @click="showFilters = !showFilters"
+                    :class="getHasActiveFilters() ? 'bg-primary/10 text-primary border-primary/30' : 'text-muted-foreground hover:bg-accent border-input'"
+                    class="px-2 py-1 text-xs rounded-md border transition-colors"
+                    aria-label="Toggle filters">
+                <svg class="inline w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z"/>
+                </svg>
+            </button>
+
+            {# Collapse / Expand all #}
+            <button @click="toggleAllGroups()"
+                    class="px-2 py-1 text-xs rounded-md border border-input text-muted-foreground hover:bg-accent transition-colors"
+                    :aria-label="allCollapsed ? 'Expand all groups' : 'Collapse all groups'"
+                    :title="allCollapsed ? 'Expand all' : 'Collapse all'">
+                <svg class="inline w-3.5 h-3.5 transition-transform" :class="allCollapsed ? '' : 'rotate-90'"
+                     fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/>
+                </svg>
+            </button>
+
+            {# Zoom controls #}
+            <div class="flex items-center gap-0 bg-muted rounded-md p-0.5">
+                <template x-for="z in ['weeks', 'months', 'quarters', 'years']" :key="z">
+                    <button @click="setZoom(z)"
+                            :class="zoom === z
+                                ? 'bg-card shadow-sm text-foreground'
+                                : 'text-muted-foreground hover:text-foreground'"
+                            class="px-2 py-1 text-xs rounded font-medium transition-all capitalize"
+                            x-text="z">
+                    </button>
+                </template>
+            </div>
+
+            {# Today button #}
+            <button @click="jumpToToday()"
+                    x-show="todayX >= 0" x-cloak
+                    class="px-2 py-1 text-xs rounded-md border border-input text-muted-foreground hover:bg-accent transition-colors"
+                    aria-label="Scroll to today">
+                Today
+            </button>
+
+            {# Export CSV #}
+            <button x-show="canExport('csv')" x-cloak @click="exportCSV()"
+                    class="px-2 py-1 text-xs rounded-md border border-input text-muted-foreground hover:bg-accent transition-colors"
+                    aria-label="Export as CSV">
+                <svg class="inline w-3.5 h-3.5 mr-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                </svg>
+                CSV
+            </button>
+
+            {# Add item (CRUD) #}
+            <button x-show="hasCrud()" x-cloak @click="openCreateForm()"
+                    class="px-2 py-1 text-xs rounded border border-primary/30 bg-primary/10 text-primary hover:bg-primary/20 transition-colors">
+                <svg class="inline w-3.5 h-3.5 mr-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/>
+                </svg>
+                Add
+            </button>
+        </div>
+    </div>
+
+    {# ═══════════════════════════════════════════════════════════════════ #}
+    {# FILTER BAR                                                         #}
+    {# ═══════════════════════════════════════════════════════════════════ #}
+    <div x-show="showFilters" x-cloak
+         x-transition:enter="transition ease-out duration-150"
+         x-transition:enter-start="opacity-0 -translate-y-1"
+         x-transition:enter-end="opacity-100 translate-y-0"
+         x-transition:leave="transition ease-in duration-100"
+         x-transition:leave-start="opacity-100 translate-y-0"
+         x-transition:leave-end="opacity-0 -translate-y-1"
+         class="flex items-center gap-3 px-4 py-2 border-b border-border bg-muted/30">
+        <input type="text"
+               placeholder="Search tasks..."
+               x-model="filterText"
+               @input.debounce.300ms="_recompute()"
+               class="h-7 px-2 text-xs bg-card border border-border rounded text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary w-48">
+        <select x-model="filterStatus"
+                @change="$nextTick(() => _recompute())"
+                class="h-7 px-2 text-xs bg-card border border-border rounded text-foreground focus:outline-none focus:ring-1 focus:ring-primary">
+            <option value="">All statuses</option>
+            <template x-for="s in getDistinctStatuses()" :key="s">
+                <option :value="s" x-text="formatStatus(s)"></option>
+            </template>
+        </select>
+        <button x-show="getHasActiveFilters()" x-cloak
+                @click="clearFilters()"
+                class="h-7 px-2 text-xs rounded-md border border-input text-muted-foreground hover:bg-accent transition-colors">
+            Clear
+        </button>
+        <span class="text-xs text-muted-foreground ml-auto" x-show="getHasActiveFilters()" x-cloak>
+            <span x-text="getFilteredTaskCount()"></span> of <span x-text="tasks.length"></span> items
+        </span>
+    </div>
+
+    {# ═══════════════════════════════════════════════════════════════════ #}
+    {# STATS BAR (optional — shown when stats array is provided)          #}
+    {# ═══════════════════════════════════════════════════════════════════ #}
+    <div x-show="stats && stats.length > 0" x-cloak
+         class="flex border-b border-border bg-muted/30">
+        <template x-for="stat in stats" :key="stat.label">
+            <div class="flex-1 px-4 py-2 text-center border-r border-border last:border-r-0">
+                <div class="text-lg font-bold tabular-nums"
+                     :class="stat.colorClass || 'text-foreground'"
+                     x-text="stat.value"></div>
+                <div class="text-[10px] text-muted-foreground uppercase tracking-wider mt-0.5"
+                     x-text="stat.label"></div>
+            </div>
+        </template>
+    </div>
+
+    {# ═══════════════════════════════════════════════════════════════════ #}
+    {# LOADING STATE                                                       #}
+    {# ═══════════════════════════════════════════════════════════════════ #}
+    <div x-show="loading" x-cloak class="p-12 text-center">
+        <div class="inline-flex items-center gap-2 text-muted-foreground">
+            <svg class="animate-spin h-5 w-5" viewBox="0 0 24 24" fill="none">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+            </svg>
+            <span class="text-sm">Loading timeline...</span>
+        </div>
+    </div>
+
+    {# ═══════════════════════════════════════════════════════════════════ #}
+    {# ERROR STATE                                                         #}
+    {# ═══════════════════════════════════════════════════════════════════ #}
+    <div x-show="error" x-cloak class="p-12 text-center">
+        <div class="text-destructive mb-2">
+            <svg class="inline w-8 h-8" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"/>
+            </svg>
+        </div>
+        <p class="text-sm text-destructive" x-text="error"></p>
+        <button @click="reload()" class="mt-3 text-xs text-primary hover:underline">Retry</button>
+    </div>
+
+    {# ═══════════════════════════════════════════════════════════════════ #}
+    {# EMPTY STATE — no data                                               #}
+    {# ═══════════════════════════════════════════════════════════════════ #}
+    <div x-show="!loading && !error && tasks.length === 0" x-cloak class="p-12 text-center">
+        <svg class="inline w-10 h-10 text-muted-foreground/40 mb-3" fill="none" stroke="currentColor" stroke-width="1" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6z"/>
+        </svg>
+        <p class="text-sm text-muted-foreground">No timeline items found</p>
+        <button x-show="hasCrud()" x-cloak @click="openCreateForm()"
+                class="mt-3 px-3 py-1.5 text-xs rounded border border-primary/30 bg-primary/10 text-primary hover:bg-primary/20 transition-colors">
+            Add first item
+        </button>
+    </div>
+
+    {# ═══════════════════════════════════════════════════════════════════ #}
+    {# EMPTY STATE — filters active but no matches                         #}
+    {# ═══════════════════════════════════════════════════════════════════ #}
+    <div x-show="!loading && !error && tasks.length > 0 && visibleRows.length === 0" x-cloak
+         class="p-12 text-center">
+        <svg class="inline w-10 h-10 text-muted-foreground/40 mb-3" fill="none" stroke="currentColor" stroke-width="1" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"/>
+        </svg>
+        <p class="text-sm text-muted-foreground">No tasks match the current filters</p>
+        <button @click="clearFilters()"
+                class="mt-3 text-xs text-primary hover:underline">Clear filters</button>
+    </div>
+
+    {# ═══════════════════════════════════════════════════════════════════ #}
+    {# MAIN 3-PANEL LAYOUT                                                #}
+    {# Left labels | Timeline (header + body) | Detail panel               #}
+    {# ═══════════════════════════════════════════════════════════════════ #}
+    <div x-show="!loading && !error && visibleRows.length > 0" x-cloak
+         class="flex"
+         style="height: 540px; min-height: 300px;"> <!-- inline-style-ok -->
+
+        {# ── LEFT LABELS PANEL ──────────────────────────────────────── #}
+        <div class="flex flex-col bg-card border-r border-border flex-shrink-0"
+             :style="'width: ' + LABEL_WIDTH + 'px; min-width: ' + LABEL_WIDTH + 'px'">
+            {# Label column header #}
+            <div class="flex items-center px-4 border-b border-border bg-muted/50 flex-shrink-0"
+                 :style="'height: ' + HEADER_HEIGHT + 'px'">
+                <span class="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide"
+                      x-text="getGroupLabel()"></span>
+            </div>
+            {# Scrollable label rows #}
+            <div class="flex-1 overflow-y-auto overflow-x-hidden"
+                 x-ref="labelScroll"
+                 @scroll="syncScroll('label')">
+                <template x-for="(row, ri) in visibleRows" :key="'l-' + row.id">
+                    <div>
+                        {# ── Group header ── #}
+                        <template x-if="row.type === 'group'">
+                            <div class="flex items-center gap-2 px-3 bg-muted/50 border-b border-border/50 cursor-pointer select-none hover:bg-muted/80 transition-colors"
+                                 :style="'height: ' + GROUP_HEIGHT + 'px'"
+                                 @click="toggleGroup(row.id)"
+                                 role="button"
+                                 :aria-expanded="!row.collapsed"
+                                 :aria-label="getRowAriaLabel(row)">
+                                <svg class="w-3 h-3 text-muted-foreground transition-transform flex-shrink-0"
+                                     :class="row.collapsed ? '' : 'rotate-90'"
+                                     fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/>
+                                </svg>
+                                <span class="text-xs font-semibold text-foreground truncate flex-1"
+                                      x-text="row.label"></span>
+                                <span class="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-muted text-muted-foreground flex-shrink-0"
+                                      x-text="row.taskCount"></span>
+                            </div>
+                        </template>
+                        {# ── Task row ── #}
+                        <template x-if="row.type === 'task'">
+                            <div class="flex items-center gap-2 px-3 border-b border-border/30 cursor-pointer transition-colors"
+                                 :class="selectedTaskId === row.data.id ? 'bg-primary/5' : 'hover:bg-muted/30'"
+                                 :style="'height: ' + ROW_HEIGHT + 'px; padding-left: 28px'"
+                                 @click="selectTask(row.data.id)"
+                                 role="button"
+                                 :aria-label="getRowAriaLabel(row)"
+                                 :tabindex="_focusedRowIndex === ri ? '0' : '-1'">
+                                {# Status dot #}
+                                <div class="w-[7px] h-[7px] rounded-full flex-shrink-0"
+                                     :style="'background-color: ' + getAccentColor(row.data)"></div>
+                                {# Task name #}
+                                <span class="text-xs text-foreground truncate flex-1"
+                                      x-text="row.data.name"
+                                      :title="row.data.name"></span>
+                                {# Progress (inline) #}
+                                <span x-show="row.data.progress > 0 && row.data.progress < 100" x-cloak
+                                      class="text-[10px] text-muted-foreground tabular-nums flex-shrink-0"
+                                      x-text="row.data.progress + '%'"></span>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        {# ── TIMELINE PANEL ─────────────────────────────────────────── #}
+        <div class="flex-1 flex flex-col overflow-hidden">
+            {# Timeline header (synced horizontal scroll) #}
+            <div class="overflow-hidden border-b border-border bg-muted/50 flex-shrink-0 relative"
+                 x-ref="timelineHeader"
+                 :style="'height: ' + HEADER_HEIGHT + 'px'">
+                <div class="relative h-full"
+                     :style="'width: ' + timelineWidth + 'px'">
+                    {# Period labels (hidden when overlapping Today badge) #}
+                    <template x-for="(pl, pi) in periodLabels" :key="pi">
+                        <span x-show="!pl.hidden" x-cloak
+                              class="absolute bottom-2 text-[10px] font-semibold text-muted-foreground whitespace-nowrap pointer-events-none"
+                              :style="'left: ' + pl.x + 'px'"
+                              x-text="pl.label"></span>
+                    </template>
+                    {# Milestone diamonds in header #}
+                    <template x-for="ms in milestonePositions" :key="'mh-' + ms.id">
+                        <div class="absolute" :style="'left: ' + ms.x + 'px'">
+                            <div class="absolute w-[10px] h-[10px] bg-primary rotate-45 rounded-[1px]"
+                                 style="top: 2px; margin-left: -5px;"
+                                 :title="ms.label + ' (' + formatDate(ms.date) + ')'"></div>
+                            <span x-show="zoom !== 'years'" x-cloak
+                                  class="absolute text-[8px] font-semibold text-primary whitespace-nowrap pointer-events-none"
+                                  style="top: -2px; transform: translateX(-50%); margin-left: 0;"
+                                  x-text="ms.label"></span>
+                        </div>
+                    </template>
+                    {# Today badge in header #}
+                    <div x-show="todayX >= 0" x-cloak
+                         class="absolute pointer-events-none"
+                         :style="'left: ' + todayX + 'px; bottom: 2px; transform: translateX(-50%)'">
+                        <span class="bg-primary text-primary-foreground text-[9px] font-bold px-1.5 py-0.5 rounded whitespace-nowrap">Today</span>
+                    </div>
+                </div>
+            </div>
+
+            {# Timeline body (main scroll area) #}
+            <div class="flex-1 overflow-auto"
+                 x-ref="timelineScroll"
+                 @scroll="syncScroll('timeline')"
+                 tabindex="0"
+                 @keydown="_handleKeyDown($event)"
+                 aria-label="Timeline rows">
+                <div class="relative"
+                     :style="'width: ' + timelineWidth + 'px; height: ' + canvasHeight + 'px'">
+
+                    {# Grid lines #}
+                    <template x-for="(gl, gi) in gridLines" :key="'gl-' + gi">
+                        <div class="absolute top-0 bottom-0 w-px bg-border/30 pointer-events-none"
+                             :style="'left: ' + gl + 'px'"></div>
+                    </template>
+
+                    {# Today marker line #}
+                    <div x-show="todayX >= 0" x-cloak
+                         class="absolute top-0 bottom-0 pointer-events-none"
+                         :style="'left: ' + todayX + 'px; width: 2px; background: hsl(var(--primary)); opacity: 0.5; z-index: 5'"></div>
+
+                    {# Milestone lines #}
+                    <template x-for="ms in milestonePositions" :key="'ml-' + ms.id">
+                        <div class="absolute top-0 bottom-0 pointer-events-none"
+                             :style="'left: ' + ms.x + 'px; border-left: 2px dashed hsl(var(--primary)); opacity: 0.3; z-index: 2'"></div>
+                    </template>
+
+                    {# Rows (groups + task bars) #}
+                    <template x-for="(row, ri) in visibleRows" :key="'t-' + row.id">
+                        <div :style="'position: absolute; top: ' + getRowY(ri) + 'px; left: 0; right: 0; height: ' + (row.type === 'group' ? GROUP_HEIGHT : ROW_HEIGHT) + 'px'">
+                            {# Group header row (background stripe) #}
+                            <template x-if="row.type === 'group'">
+                                <div class="w-full h-full bg-muted/30 border-b border-border/30"></div>
+                            </template>
+                            {# Task bar row #}
+                            <template x-if="row.type === 'task'">
+                                <div class="w-full h-full border-b border-border/20 relative"
+                                     :class="selectedTaskId === row.data.id ? 'bg-primary/[0.02]' : ''">
+                                    {# Unscheduled: no-dates chip #}
+                                    <template x-if="row.data.unscheduled">
+                                        <div class="absolute inset-y-0 left-4 flex items-center"
+                                             @click.stop="selectTask(row.data.id)">
+                                            <span class="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium rounded border border-dashed border-border text-muted-foreground bg-muted/40 cursor-pointer hover:bg-muted transition-colors"
+                                                  x-text="row.data.name + ' — no dates set'"></span>
+                                        </div>
+                                    </template>
+                                    {# Scheduled: normal bar #}
+                                    <template x-if="!row.data.unscheduled">
+                                        <div :style="getTaskBarStyle(row.data)"
+                                             class="flex items-center overflow-hidden group"
+                                             @click.stop="selectTask(row.data.id)"
+                                             @mouseenter="showTooltip(row.data.id, $event)"
+                                             @mousemove="moveTooltip($event)"
+                                             @mouseleave="hideTooltip()">
+                                            {# Progress fill #}
+                                            <div :style="getProgressBarStyle(row.data)"></div>
+                                            {# Bar label #}
+                                            <span x-show="isBarWideEnough(row.data)" x-cloak
+                                                  class="relative z-10 text-[11px] font-medium px-2 truncate"
+                                                  :style="getTaskTextColor(row.data)"
+                                                  x-text="row.data.name"></span>
+                                        </div>
+                                    </template>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+
+                    {# SVG dependency arrows #}
+                    <svg x-show="dependencyPaths.length > 0" x-cloak
+                         :width="timelineWidth" :height="canvasHeight"
+                         class="absolute top-0 left-0 pointer-events-none"
+                         style="z-index: 4;"> <!-- inline-style-ok -->
+                        <defs>
+                            <marker id="gantt-arrow-{{ container_id }}" markerWidth="7" markerHeight="5"
+                                    refX="7" refY="2.5" orient="auto">
+                                <polygon points="0 0, 7 2.5, 0 5" class="fill-muted-foreground" opacity="0.5"/>
+                            </marker>
+                        </defs>
+                        <template x-for="dep in dependencyPaths" :key="dep.id">
+                            <g>
+                                <path :d="dep.d" fill="none"
+                                      class="stroke-muted-foreground"
+                                      stroke-width="1.5" stroke-dasharray="4 3"
+                                      marker-end="url(#gantt-arrow-{{ container_id }})" opacity="0.4"/>
+                            </g>
+                        </template>
+                    </svg>
+                </div>
+            </div>
+        </div>
+
+        {# ── DETAIL PANEL (slide-in right) ──────────────────────────── #}
+        <div x-show="selectedTaskId" x-cloak
+             x-transition:enter="transition ease-out duration-200"
+             x-transition:enter-start="translate-x-4 opacity-0"
+             x-transition:enter-end="translate-x-0 opacity-100"
+             x-transition:leave="transition ease-in duration-150"
+             x-transition:leave-start="translate-x-0 opacity-100"
+             x-transition:leave-end="translate-x-4 opacity-0"
+             @click.outside="closeDetailPanel()"
+             @keydown.escape.window="if (!crudFormOpen) closeDetailPanel()"
+             class="border-l border-border bg-card overflow-y-auto flex-shrink-0"
+             :style="'width: ' + DETAIL_PANEL_WIDTH + 'px'">
+
+            <template x-if="getSelectedTask()">
+                <div class="p-4 space-y-4">
+                    {# Close + title #}
+                    <div class="flex items-start justify-between gap-2">
+                        <h4 class="text-sm font-semibold text-foreground leading-tight"
+                            x-text="getSelectedTask().name"></h4>
+                        <button @click="closeDetailPanel()"
+                                class="flex-shrink-0 p-1 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+                                aria-label="Close detail panel">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+                            </svg>
+                        </button>
+                    </div>
+
+                    {# Status badge + group #}
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium"
+                              :class="getStatusBadgeClass(getSelectedTask().status)"
+                              x-text="formatStatus(getSelectedTask().status)"></span>
+                        <span class="text-[10px] text-muted-foreground"
+                              x-text="getGroupLabelById(getSelectedTask().group)"></span>
+                    </div>
+
+                    {# Progress bar #}
+                    <template x-if="hasFeature('progress')">
+                        <div>
+                            <div class="flex items-center justify-between text-xs mb-1">
+                                <span class="text-muted-foreground">Progress</span>
+                                <span class="font-semibold text-foreground tabular-nums"
+                                      x-text="(getSelectedTask().progress || 0) + '%'"></span>
+                            </div>
+                            <div class="w-full h-1.5 bg-muted rounded-full overflow-hidden">
+                                <div class="h-full rounded-full transition-all"
+                                     :style="'width: ' + (getSelectedTask().progress || 0) + '%; background-color: ' + getAccentColor(getSelectedTask())"></div>
+                            </div>
+                        </div>
+                    </template>
+
+                    {# Date range + duration #}
+                    <div class="grid grid-cols-2 gap-3 pt-2 border-t border-border">
+                        <div>
+                            <div class="text-[10px] text-muted-foreground uppercase tracking-wide">Start</div>
+                            <div class="text-xs font-semibold text-foreground mt-0.5"
+                                 x-text="formatDate(getSelectedTask().start_date)"></div>
+                        </div>
+                        <div>
+                            <div class="text-[10px] text-muted-foreground uppercase tracking-wide">End</div>
+                            <div class="text-xs font-semibold text-foreground mt-0.5"
+                                 x-text="formatDate(getSelectedTask().end_date)"></div>
+                        </div>
+                        <div>
+                            <div class="text-[10px] text-muted-foreground uppercase tracking-wide">Duration</div>
+                            <div class="text-xs font-semibold text-foreground mt-0.5"
+                                 x-text="calcDuration(getSelectedTask().start_date, getSelectedTask().end_date)"></div>
+                        </div>
+                        <div>
+                            <div class="text-[10px] text-muted-foreground uppercase tracking-wide">Remaining</div>
+                            <div class="text-xs font-semibold mt-0.5"
+                                 :class="calcRemaining(getSelectedTask().end_date).indexOf('overdue') > -1 ? 'text-destructive' : 'text-foreground'"
+                                 x-text="calcRemaining(getSelectedTask().end_date)"></div>
+                        </div>
+                    </div>
+
+                    {# Metadata fields #}
+                    <div class="space-y-1 pt-2 border-t border-border">
+                        <template x-for="field in getDetailFields(getSelectedTask())" :key="field.label">
+                            <div class="flex items-center justify-between gap-2 py-1">
+                                <span class="text-xs text-muted-foreground flex-shrink-0" x-text="field.label"></span>
+                                <span class="text-xs text-right tabular-nums"
+                                      :class="field.isNull
+                                          ? 'text-muted-foreground italic'
+                                          : (field.highlight === 'green' ? 'text-emerald-600 font-semibold' : 'text-foreground font-medium')"
+                                      x-text="field.value"></span>
+                            </div>
+                        </template>
+                    </div>
+
+                    {# Dependencies: Depends On #}
+                    <template x-if="getTaskDependencies(getSelectedTask()).length > 0">
+                        <div class="pt-2 border-t border-border">
+                            <p class="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">Depends On</p>
+                            <template x-for="dep in getTaskDependencies(getSelectedTask())" :key="dep.id">
+                                <button @click="selectTaskById(dep.id)"
+                                        class="block w-full text-left text-xs text-primary hover:underline truncate py-0.5"
+                                        x-text="dep.name"></button>
+                            </template>
+                        </div>
+                    </template>
+
+                    {# Dependencies: Blocks #}
+                    <template x-if="getTaskDependents(getSelectedTask()).length > 0">
+                        <div class="pt-2 border-t border-border">
+                            <p class="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">Blocks</p>
+                            <template x-for="dep in getTaskDependents(getSelectedTask())" :key="dep.id">
+                                <button @click="selectTaskById(dep.id)"
+                                        class="block w-full text-left text-xs text-primary hover:underline truncate py-0.5"
+                                        x-text="dep.name"></button>
+                            </template>
+                        </div>
+                    </template>
+
+                    {# Milestones #}
+                    <template x-if="hasFeature('milestones') && getTaskMilestones(getSelectedTask()).length > 0">
+                        <div class="pt-2 border-t border-border">
+                            <p class="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">Milestones</p>
+                            <template x-for="ms in getTaskMilestones(getSelectedTask())" :key="ms.id">
+                                <div class="flex items-center gap-1.5 py-0.5">
+                                    <div class="w-2 h-2 bg-primary rotate-45 rounded-[1px] flex-shrink-0"></div>
+                                    <span class="text-xs text-foreground truncate" x-text="ms.label"></span>
+                                    <span class="text-[10px] text-muted-foreground ml-auto flex-shrink-0"
+                                          x-text="formatDate(ms.date)"></span>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+
+                    {# CRUD actions — Edit/Delete only for DB-backed items (integer IDs) #}
+                    <template x-if="hasCrud()">
+                        <div class="pt-2 border-t border-border space-y-1.5">
+                            <div class="flex gap-1.5" x-show="getSelectedTask() && !isNaN(Number(getSelectedTask().id))" x-cloak>
+                                <button @click="openEditForm(getSelectedTask())"
+                                        class="flex-1 px-2 py-1.5 text-xs font-medium rounded-md border border-input text-foreground hover:bg-accent transition-colors">
+                                    Edit
+                                </button>
+                                <button @click="confirmDelete(getSelectedTask())"
+                                        class="px-2 py-1.5 text-xs font-medium rounded-md border border-destructive/30 text-destructive hover:bg-destructive/10 transition-colors">
+                                    Delete
+                                </button>
+                            </div>
+                            <p x-show="getSelectedTask() && isNaN(Number(getSelectedTask().id))" x-cloak
+                               class="text-xs text-muted-foreground italic">
+                                Computed gap — use Create to add editable items
+                            </p>
+                            <template x-if="hasSecondaryCrud()">
+                                <button @click="openSecondaryCreateForm(getSelectedTask())"
+                                        class="w-full px-2 py-1.5 text-xs font-medium rounded border border-primary/30 bg-primary/5 text-primary hover:bg-primary/10 transition-colors">
+                                    <span x-text="getSecondaryCrudLabel()"></span>
+                                </button>
+                            </template>
+                        </div>
+                    </template>
+
+                    {# Custom actions (non-CRUD) #}
+                    <template x-if="!hasCrud() && getDetailPanelActions().length > 0">
+                        <div class="pt-2 border-t border-border flex flex-wrap gap-1.5">
+                            <template x-for="action in getDetailPanelActions()" :key="action.label">
+                                <button @click="action.handler && action.handler(getSelectedTask())"
+                                        class="px-2 py-1 text-xs font-medium rounded-md border border-input text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                                        x-text="action.label"></button>
+                            </template>
+                        </div>
+                    </template>
+                </div>
+            </template>
+        </div>
+    </div>
+
+    {# ═══════════════════════════════════════════════════════════════════ #}
+    {# CRUD FORM MODAL                                                     #}
+    {# ═══════════════════════════════════════════════════════════════════ #}
+    <div x-show="crudFormOpen" x-cloak <!-- modal-a11y-ok -->
+         @keydown.escape.window="closeCrudForm()"
+         class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+         role="dialog" aria-modal="true" :aria-label="crudEditingId ? 'Edit Item' : 'Add Item'">
+        <div @click.outside="closeCrudForm()"
+             class="bg-card border border-border rounded-lg shadow-xl w-full max-w-md mx-4 p-5 space-y-4">
+            <h4 class="text-sm font-semibold text-foreground"
+                x-text="crudEditingId ? 'Edit Item' : 'Add Item'"></h4>
+            <div class="space-y-3">
+                <div>
+                    <label class="block text-xs font-medium text-foreground mb-1">Name *</label>
+                    <input type="text" x-model="crudForm.name" required
+                           class="w-full h-8 px-2 text-xs bg-background border border-border rounded text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                           placeholder="Item name">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-medium text-foreground mb-1">Status</label>
+                        <select x-model="crudForm.status"
+                                class="w-full h-8 px-2 text-xs bg-background border border-border rounded text-foreground">
+                            <template x-for="s in getAvailableStatuses()" :key="s">
+                                <option :value="s" x-text="formatStatus(s)"></option>
+                            </template>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-foreground mb-1">Priority</label>
+                        <select x-model="crudForm.priority"
+                                class="w-full h-8 px-2 text-xs bg-background border border-border rounded text-foreground">
+                            <option value="low">Low</option>
+                            <option value="medium">Medium</option>
+                            <option value="high">High</option>
+                            <option value="critical">Critical</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-medium text-foreground mb-1">Start Date</label>
+                        <input type="date" x-model="crudForm.start_date"
+                               class="w-full h-8 px-2 text-xs bg-background border border-border rounded text-foreground">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-foreground mb-1">End Date</label>
+                        <input type="date" x-model="crudForm.end_date"
+                               class="w-full h-8 px-2 text-xs bg-background border border-border rounded text-foreground">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-foreground mb-1">Description</label>
+                    <textarea x-model="crudForm.description" rows="2"
+                              class="w-full px-2 py-1.5 text-xs bg-background border border-border rounded text-foreground resize-none focus:outline-none focus:ring-1 focus:ring-primary"
+                              placeholder="Optional description"></textarea>
+                </div>
+            </div>
+            <div class="flex justify-end gap-2 pt-2 border-t border-border">
+                <button @click="closeCrudForm()"
+                        class="px-3 py-1.5 text-xs rounded-md border border-input text-muted-foreground hover:bg-accent">
+                    Cancel
+                </button>
+                <button @click="submitCrudForm()"
+                        :disabled="crudSubmitting || !crudForm.name.trim()"
+                        class="px-3 py-1.5 text-xs rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                    <span x-show="!crudSubmitting" x-text="crudEditingId ? 'Save' : 'Create'"></span> <!-- alpine-scope-ok -->
+                    <span x-show="crudSubmitting" x-cloak>Saving...</span>
+                </button>
+            </div>
+            <p x-show="crudError" x-cloak x-text="crudError" class="text-xs text-destructive mt-1"></p>
+        </div>
+    </div>
+
+    {# ═══════════════════════════════════════════════════════════════════ #}
+    {# TOOLTIP                                                             #}
+    {# ═══════════════════════════════════════════════════════════════════ #}
+    <div x-show="hoveredTaskId && !selectedTaskId" x-cloak
+         class="fixed z-50 bg-popover text-popover-foreground shadow-lg rounded-lg px-3 py-2.5 pointer-events-none max-w-xs border border-border"
+         :style="'left: ' + tooltipPos.x + 'px; top: ' + tooltipPos.y + 'px'">
+        <template x-if="getTooltipTask()">
+            <div class="space-y-1">
+                <p class="text-xs font-semibold" x-text="getTooltipTask().name"></p>
+                <div class="flex items-center gap-2">
+                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
+                          :class="getStatusBadgeClass(getTooltipTask().status)"
+                          x-text="formatStatus(getTooltipTask().status)"></span>
+                    <span x-show="hasFeature('progress')" x-cloak
+                          class="text-[10px] text-muted-foreground tabular-nums"
+                          x-text="(getTooltipTask().progress || 0) + '%'"></span>
+                </div>
+                <p class="text-[10px] text-muted-foreground">
+                    <span x-text="formatDate(getTooltipTask().start_date)"></span>
+                    <span class="mx-0.5">&rarr;</span>
+                    <span x-text="formatDate(getTooltipTask().end_date)"></span>
+                    <span class="mx-0.5">&middot;</span>
+                    <span x-text="calcDuration(getTooltipTask().start_date, getTooltipTask().end_date)"></span>
+                </p>
+                <p x-show="resolveField(getTooltipTask(), 'meta.business_owner') || resolveField(getTooltipTask(), 'meta.owner')" x-cloak
+                   class="text-[10px] text-muted-foreground">
+                    Owner: <span class="font-medium text-foreground"
+                                 x-text="resolveField(getTooltipTask(), 'meta.business_owner') || resolveField(getTooltipTask(), 'meta.owner') || ''"></span>
+                </p>
+            </div>
+        </template>
+    </div>
+</div>
+{% endmacro %}

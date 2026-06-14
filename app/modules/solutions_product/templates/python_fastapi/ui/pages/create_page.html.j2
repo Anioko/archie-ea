@@ -1,0 +1,194 @@
+{# create_page.html.j2 — Create/edit form for an entity.
+   Context (from ARCHIE): entity (dict with fields, view_create_fields) #}
+{% raw %}{% extends "layout.html" %}
+
+{% block title %}{% endraw %}{% raw %}{{ 'Edit' if edit_mode else 'New' }}{% endraw %} {{ entity.name_display }}{% raw %}{% endblock %}
+
+{% block breadcrumb %}
+<nav class="flex items-center gap-1.5 text-sm text-zinc-500">
+    <a href="/" class="hover:text-zinc-700">Home</a>
+    <span>/</span>
+    <a href="/{% endraw %}{{ entity.name_snake }}{% raw %}s" class="hover:text-zinc-700">{% endraw %}{{ entity.name_display }}{% raw %}</a>
+    <span>/</span>
+    <span class="text-zinc-900 font-medium">{% endraw %}{% raw %}{{ 'Edit' if edit_mode else 'New' }}{% endraw %}{% raw %}</span>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div x-data="formPage()" x-init="init()">
+    <div class="max-w-2xl">
+        <div class="flex items-center gap-3 mb-6">
+            <a href="/{% endraw %}{{ entity.name_snake }}{% raw %}s" class="text-zinc-400 hover:text-zinc-600">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+            </a>
+            <h1 class="text-xl font-semibold text-zinc-900" x-text="editMode ? 'Edit {% endraw %}{{ entity.name_display }}{% raw %}' : 'New {% endraw %}{{ entity.name_display }}{% raw %}'"></h1>
+        </div>
+
+        {# Server-side errors #}
+        <div x-show="globalError" x-cloak class="mb-4 px-4 py-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg" x-text="globalError"></div>
+
+        <form @submit.prevent="save()" class="bg-white border border-zinc-200 rounded-lg">
+            <div class="p-6 space-y-5">
+{% endraw %}
+{% set form_fields = entity.view_create_fields if entity.view_create_fields else entity.fields %}
+{% for field in form_fields %}
+{% if not field.is_auto and field.name != 'id' and field.name != 'deleted_at' and field.name != 'created_at' and field.name != 'updated_at' %}
+                <div>
+                    <label for="f-{{ field.name }}" class="block text-sm font-medium text-zinc-700 mb-1.5">
+                        {{ field.display_name }}{% if field.required %} <span class="text-red-500">*</span>{% endif %}
+                    </label>
+{% if field.type == 'boolean' %}
+                    <label class="relative inline-flex items-center cursor-pointer" {% raw %}x-data="{ on: formData.{% endraw %}{{ field.name }}{% raw %} || false }" x-init="$watch('on', v => formData.{% endraw %}{{ field.name }}{% raw %} = v)"{% endraw %}>
+                        <input type="hidden" name="{{ field.name }}" {% raw %}:value="on ? 'true' : 'false'"{% endraw %}>
+                        <button type="button" {% raw %}@click="on = !on" :class="on ? 'bg-blue-600' : 'bg-zinc-300'"{% endraw %}
+                                class="relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full transition-colors">
+                            <span {% raw %}:class="on ? 'translate-x-5' : 'translate-x-0.5'"{% endraw %}
+                                  class="pointer-events-none mt-0.5 inline-block h-5 w-5 rounded-full bg-white shadow transition-transform"></span>
+                        </button>
+                    </label>
+{% elif field.type == 'text' %}
+                    <textarea id="f-{{ field.name }}" {% raw %}x-model="formData.{% endraw %}{{ field.name }}{% raw %}"{% endraw %} rows="3"
+                              {% if field.required %}required{% endif %}
+                              class="w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none resize-y"></textarea>
+{% elif field.type in ('integer', 'number', 'decimal', 'float') %}
+                    <input type="number" id="f-{{ field.name }}" {% raw %}x-model="formData.{% endraw %}{{ field.name }}{% raw %}"{% endraw %}
+                           {% if field.required %}required{% endif %}
+                           {% if field.type in ('number', 'decimal', 'float') %}step="any"{% endif %}
+                           class="w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+{% elif field.enum_values %}
+                    <select id="f-{{ field.name }}" {% raw %}x-model="formData.{% endraw %}{{ field.name }}{% raw %}"{% endraw %}
+                            {% if field.required %}required{% endif %}
+                            class="w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+                        <option value="">Select...</option>
+{% for val in field.enum_values %}
+                        <option value="{{ val }}">{{ val | replace('_', ' ') | title }}</option>
+{% endfor %}
+                    </select>
+{% elif field.format == 'email' %}
+                    <input type="email" id="f-{{ field.name }}" {% raw %}x-model="formData.{% endraw %}{{ field.name }}{% raw %}"{% endraw %}
+                           {% if field.required %}required{% endif %} placeholder="name@example.com"
+                           class="w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+{% elif field.format == 'url' %}
+                    <input type="url" id="f-{{ field.name }}" {% raw %}x-model="formData.{% endraw %}{{ field.name }}{% raw %}"{% endraw %}
+                           {% if field.required %}required{% endif %} placeholder="https://..."
+                           class="w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+{% elif field.format == 'phone' %}
+                    <input type="tel" id="f-{{ field.name }}" {% raw %}x-model="formData.{% endraw %}{{ field.name }}{% raw %}"{% endraw %}
+                           {% if field.required %}required{% endif %}
+                           class="w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+{% elif field.type == 'datetime' or field.format == 'date-time' %}
+                    <input type="datetime-local" id="f-{{ field.name }}" {% raw %}x-model="formData.{% endraw %}{{ field.name }}{% raw %}"{% endraw %}
+                           {% if field.required %}required{% endif %}
+                           class="w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+{% elif field.type == 'date' or field.format == 'date' %}
+                    <input type="date" id="f-{{ field.name }}" {% raw %}x-model="formData.{% endraw %}{{ field.name }}{% raw %}"{% endraw %}
+                           {% if field.required %}required{% endif %}
+                           class="w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+{% elif field.is_fk %}
+                    <div {% raw %}x-data="fkPicker('{% endraw %}{{ field.fk_api_path }}{% raw %}', formData.{% endraw %}{{ field.name }}{% raw %})" x-init="$watch('selectedId', v => formData.{% endraw %}{{ field.name }}{% raw %} = v)"{% endraw %} class="relative">
+                        <input type="text" {% raw %}x-model="query" @input.debounce.300ms="search()" @focus="open = true" @click.away="open = false"{% endraw %}
+                               placeholder="Search {{ field.fk_entity_display }}..."
+                               class="w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+                        <div {% raw %}x-show="open && results.length" x-cloak{% endraw %}
+                             class="absolute z-10 mt-1 w-full bg-white border border-zinc-200 rounded-md shadow-lg max-h-48 overflow-y-auto">
+                            {% raw %}<template x-for="r in results" :key="r.id">
+                                <button type="button" @click="select(r)" class="w-full text-left px-3 py-2 text-sm hover:bg-zinc-50 transition"
+                                        x-text="r.{% endraw %}{{ field.fk_label_field }}{% raw %} || r.name || r.id"></button>
+                            </template>{% endraw %}
+                        </div>
+                    </div>
+{% else %}
+                    <input type="text" id="f-{{ field.name }}" {% raw %}x-model="formData.{% endraw %}{{ field.name }}{% raw %}"{% endraw %}
+                           {% if field.required %}required{% endif %}
+                           {% if field.max_length %}maxlength="{{ field.max_length }}"{% endif %}
+                           class="w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+{% endif %}
+{% raw %}
+                    <template x-if="errors['{% endraw %}{{ field.name }}{% raw %}']">
+                        <p class="mt-1 text-xs text-red-500" x-text="errors['{% endraw %}{{ field.name }}{% raw %}']"></p>
+                    </template>
+{% endraw %}
+                </div>
+{% endif %}
+{% endfor %}
+            </div>
+
+            <div class="px-6 py-4 bg-zinc-50 border-t border-zinc-200 rounded-b-lg flex gap-2">
+                <button type="submit" {% raw %}:disabled="saving"{% endraw %}
+                        class="px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition">
+                    {% raw %}<span x-show="!saving" x-text="editMode ? 'Save Changes' : 'Create {% endraw %}{{ entity.name_display }}{% raw %}'"></span>{% endraw %}
+                    {% raw %}<span x-show="saving">Saving...</span>{% endraw %}
+                </button>
+                <a href="/{{ entity.name_snake }}s"
+                   class="px-4 py-2 text-sm font-medium border border-zinc-200 text-zinc-700 rounded-lg hover:bg-zinc-50 transition">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% raw %}
+<script>
+function fkPicker(apiPath, initialId) {
+    return {
+        query: '', results: [], selectedId: initialId || '', open: false,
+        async search() {
+            if (this.query.length < 1) { this.results = []; return; }
+            const h = localStorage.getItem('archie_token') ? {'Authorization': 'Bearer ' + localStorage.getItem('archie_token')} : {};
+            const r = await fetch(apiPath + '?limit=20', { headers: h });
+            if (r.ok) {
+                const data = await r.json();
+                const items = Array.isArray(data) ? data : (data.items || []);
+                const q = this.query.toLowerCase();
+                this.results = items.filter(i => Object.values(i).some(v => v && String(v).toLowerCase().includes(q))).slice(0, 10);
+            }
+        },
+        select(r) { this.selectedId = r.id; this.query = r.name || r.id; this.open = false; }
+    };
+}
+
+function formPage() {
+    return {
+        formData: {}, errors: {}, globalError: '', saving: false, editMode: false,
+
+        async init() {
+            const parts = window.location.pathname.split('/').filter(Boolean);
+            const isEdit = parts.includes('edit');
+            if (isEdit) {
+                this.editMode = true;
+                const id = parts[parts.length - 2];
+                const h = localStorage.getItem('archie_token') ? {'Authorization': 'Bearer ' + localStorage.getItem('archie_token')} : {};
+                const r = await fetch('{% endraw %}{{ entity.api_path }}{% raw %}/' + id, { headers: h });
+                if (r.ok) this.formData = await r.json();
+            }
+        },
+
+        async save() {
+            this.saving = true; this.errors = {}; this.globalError = '';
+            const h = localStorage.getItem('archie_token')
+                ? {'Authorization': 'Bearer ' + localStorage.getItem('archie_token'), 'Content-Type': 'application/json'}
+                : {'Content-Type': 'application/json'};
+            const url = this.editMode ? '{% endraw %}{{ entity.api_path }}{% raw %}/' + this.formData.id : '{% endraw %}{{ entity.api_path }}{% raw %}';
+            const method = this.editMode ? 'PUT' : 'POST';
+            try {
+                const r = await fetch(url, { method, headers: h, body: JSON.stringify(this.formData) });
+                if (r.ok) {
+                    const data = await r.json();
+                    window.location = '/{% endraw %}{{ entity.name_snake }}{% raw %}s/' + data.id;
+                } else {
+                    const d = await r.json().catch(() => ({}));
+                    if (d.detail && typeof d.detail === 'object' && d.detail.validation_errors) {
+                        for (const err of d.detail.validation_errors) {
+                            this.errors[err.field || 'global'] = err.message || err;
+                        }
+                    } else {
+                        this.globalError = d.detail || JSON.stringify(d) || 'Save failed';
+                    }
+                }
+            } catch (e) { this.globalError = e.message; }
+            this.saving = false;
+        },
+    };
+}
+</script>
+{% endblock %}
+{% endraw %}

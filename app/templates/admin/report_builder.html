@@ -1,0 +1,144 @@
+{% extends "layouts/admin_base.html" %}
+{% from "components/page_header.html" import page_header %}
+
+{% block title %}Application Report Builder{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 sm:px-6 lg:px-8 py-6 max-w-7xl">
+    {{ page_header(
+        title='Application Report Builder',
+        description='Filter and export application data for portfolio analysis',
+        breadcrumbs=[
+            {'label': 'Dashboard', 'href': url_for('main.index')},
+            {'label': 'Admin', 'href': url_for('admin.dashboard')},
+            {'label': 'Reports'}
+        ]
+    ) }}
+
+    <!-- Filters -->
+    <form method="get" action="{{ url_for('admin.report_builder') }}" class="mt-6 rounded-xl border bg-card p-4">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
+            <div>
+                <label for="q" class="block text-xs font-medium text-muted-foreground mb-1">Search</label>
+                <input type="text" id="q" name="q" value="{{ search_q }}" placeholder="Name or description..."
+                       class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm">
+            </div>
+            <div>
+                <label for="lifecycle" class="block text-xs font-medium text-muted-foreground mb-1">Lifecycle Stage</label>
+                <select id="lifecycle" name="lifecycle"
+                        class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm">
+                    <option value="">All Stages</option>
+                    {% for lc in lifecycle_options %}
+                    <option value="{{ lc }}" {{ 'selected' if lifecycle == lc else '' }}>{{ lc }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="date_from" class="block text-xs font-medium text-muted-foreground mb-1">Created From</label>
+                <input type="date" id="date_from" name="date_from" value="{{ date_from }}"
+                       class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm">
+            </div>
+            <div>
+                <label for="date_to" class="block text-xs font-medium text-muted-foreground mb-1">Created To</label>
+                <input type="date" id="date_to" name="date_to" value="{{ date_to }}"
+                       class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm">
+            </div>
+            <div>
+                <label for="vendor" class="block text-xs font-medium text-muted-foreground mb-1">Vendor Name</label>
+                <!-- entity-picker-ok: search filter, not entity creation -->
+                <input type="text" id="vendor" name="vendor" value="{{ vendor_filter }}" placeholder="Filter by vendor..."
+                       class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm">
+            </div>
+        </div>
+        <div class="flex items-center gap-3 mt-3">
+            <button type="submit"
+                    class="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
+                <i data-lucide="search" class="h-4 w-4 mr-1.5"></i> Filter
+            </button>
+            <a href="{{ url_for('admin.report_builder') }}"
+               class="inline-flex items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-accent transition-colors">
+                Clear
+            </a>
+            <a href="{{ url_for('admin.report_builder', q=search_q, lifecycle=lifecycle, date_from=date_from, date_to=date_to, vendor=vendor_filter, export='csv') }}"
+               class="inline-flex items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-accent transition-colors ml-auto">
+                <i data-lucide="download" class="h-4 w-4 mr-1.5"></i> Export CSV
+            </a>
+        </div>
+    </form>
+
+    <!-- Results summary -->
+    <div class="flex items-center justify-between mt-6 mb-3">
+        <p class="text-sm text-muted-foreground">
+            {{ total }} application{{ 's' if total != 1 else '' }} found
+            {% if page > 1 %} (page {{ page }} of {{ total_pages }}){% endif %}
+        </p>
+    </div>
+
+    <!-- Results table -->
+    <div class="rounded-xl border bg-card overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b bg-muted/50">
+                        <th class="px-4 py-3 text-left font-medium text-muted-foreground">Name</th>
+                        <th class="px-4 py-3 text-left font-medium text-muted-foreground">Lifecycle</th>
+                        <th class="px-4 py-3 text-left font-medium text-muted-foreground">Technology</th>
+                        <th class="px-4 py-3 text-left font-medium text-muted-foreground">Created</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-border">
+                    {% for app in apps %}
+                    <tr class="hover:bg-muted/30 transition-colors">
+                        <td class="px-4 py-3">
+                            <div class="font-medium">{{ app.name or '-' }}</div>
+                            {% if app.description %}
+                            <div class="text-xs text-muted-foreground mt-0.5 truncate max-w-xs">{{ app.description[:100] }}</div>
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-3">
+                            {% if app.lifecycle_status %}
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground border border-border">
+                                {{ app.lifecycle_status }}
+                            </span>
+                            {% else %}-{% endif %}
+                        </td>
+                        <td class="px-4 py-3 text-muted-foreground max-w-xs truncate">
+                            {{ app.technology_stack or '-' }}
+                        </td>
+                        <td class="px-4 py-3 whitespace-nowrap text-muted-foreground">
+                            {{ app.created_at.strftime('%Y-%m-%d') if app.created_at else '-' }}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="4" class="px-4 py-12 text-center text-muted-foreground">
+                            <i data-lucide="file-search" class="h-8 w-8 mx-auto mb-2 opacity-50"></i>
+                            <p>No matching applications found.</p>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Pagination -->
+    {% if total_pages > 1 %}
+    <nav class="flex items-center justify-center gap-1 mt-6" aria-label="Report pagination">
+        {% if page > 1 %}
+        <a href="{{ url_for('admin.report_builder', page=page-1, q=search_q, lifecycle=lifecycle, date_from=date_from, date_to=date_to, vendor=vendor_filter) }}"
+           class="inline-flex items-center justify-center rounded-md border border-input bg-background px-3 py-1.5 text-sm hover:bg-accent transition-colors">
+            Previous
+        </a>
+        {% endif %}
+        <span class="px-3 py-1.5 text-sm text-muted-foreground">Page {{ page }} of {{ total_pages }}</span>
+        {% if page < total_pages %}
+        <a href="{{ url_for('admin.report_builder', page=page+1, q=search_q, lifecycle=lifecycle, date_from=date_from, date_to=date_to, vendor=vendor_filter) }}"
+           class="inline-flex items-center justify-center rounded-md border border-input bg-background px-3 py-1.5 text-sm hover:bg-accent transition-colors">
+            Next
+        </a>
+        {% endif %}
+    </nav>
+    {% endif %}
+</div>
+{% endblock %}

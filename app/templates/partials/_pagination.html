@@ -1,0 +1,107 @@
+{#
+  Pagination Partial
+
+  Displays pagination controls with page numbers and navigation buttons.
+
+  Parameters:
+    - pagination: Flask-SQLAlchemy pagination object
+    - endpoint: The endpoint name for URL generation
+    - item_label: Label for items (e.g., "vendor", "application")
+    - per_page: Current items per page (optional, defaults to 25)
+    - extra_params: Dictionary of extra URL parameters to preserve (optional)
+
+  Usage:
+    {% set endpoint = "unified_applications.vendors" %}
+    {% set item_label = "vendor" %}
+    {% include 'partials/_pagination.html' %}
+#}
+
+{% if pagination %}
+<div class="p-4 sm:p-6 border-t bg-muted/30">
+  <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    {# Results count #}
+    <div class="text-sm text-muted-foreground">
+      {% set start = (pagination.page - 1) * pagination.per_page + 1 %}
+      {% set end = [pagination.page * pagination.per_page, pagination.total]|min %}
+      Showing {{ start }}-{{ end }} of {{ pagination.total }} {{ item_label }}{{ 's' if pagination.total != 1 else '' }}
+    </div>
+
+    {# Pagination controls #}
+    <div class="flex items-center gap-2">
+      {# Per page selector #}
+      <div class="flex items-center gap-2 mr-4">
+        <label class="text-sm text-muted-foreground">Show:</label>
+        <select id="per-page-select" @change="changePerPage(this.value)" class="h-8 w-16 rounded-md border border-input bg-background px-2 py-1 text-sm">
+          {% for size in [10, 25, 50, 100] %}
+          <option value="{{ size }}" {{ 'selected' if (per_page or 25) == size else '' }}>{{ size }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      {# Previous button #}
+      {% if pagination.has_prev %}
+      <a href="{{ url_for(endpoint, page=pagination.prev_num, per_page=per_page or 25, search=search_query, vendor_type=vendor_type_filter) }}"
+         class="inline-flex items-center justify-center h-8 px-3 rounded-md border border-input bg-background hover:bg-muted text-sm font-medium transition-colors">
+        <i data-lucide="chevron-left" class="h-4 w-4 mr-1"></i>
+        Previous
+      </a>
+      {% else %}
+      <span class="inline-flex items-center justify-center h-8 px-3 rounded-md border border-input bg-muted/50 text-muted-foreground text-sm font-medium cursor-not-allowed">
+        <i data-lucide="chevron-left" class="h-4 w-4 mr-1"></i>
+        Previous
+      </span>
+      {% endif %}
+
+      {# Page numbers #}
+      <div class="flex items-center gap-1">
+        {% for page_num in pagination.iter_pages(left_edge=1, left_current=1, right_current=2, right_edge=1) %}
+          {% if page_num %}
+            {% if page_num == pagination.page %}
+            <span class="inline-flex items-center justify-center h-8 w-8 rounded-md bg-primary text-primary-foreground text-sm font-medium">
+              {{ page_num }}
+            </span>
+            {% else %}
+            <a href="{{ url_for(endpoint, page=page_num, per_page=per_page or 25, search=search_query, vendor_type=vendor_type_filter) }}"
+               class="inline-flex items-center justify-center h-8 w-8 rounded-md border border-input bg-background hover:bg-muted text-sm font-medium transition-colors">
+              {{ page_num }}
+            </a>
+            {% endif %}
+          {% else %}
+            <span class="inline-flex items-center justify-center h-8 w-8 text-muted-foreground">...</span>
+          {% endif %}
+        {% endfor %}
+      </div>
+
+      {# Next button #}
+      {% if pagination.has_next %}
+      <a href="{{ url_for(endpoint, page=pagination.next_num, per_page=per_page or 25, search=search_query, vendor_type=vendor_type_filter) }}"
+         class="inline-flex items-center justify-center h-8 px-3 rounded-md border border-input bg-background hover:bg-muted text-sm font-medium transition-colors">
+        Next
+        <i data-lucide="chevron-right" class="h-4 w-4 ml-1"></i>
+      </a>
+      {% else %}
+      <span class="inline-flex items-center justify-center h-8 px-3 rounded-md border border-input bg-muted/50 text-muted-foreground text-sm font-medium cursor-not-allowed">
+        Next
+        <i data-lucide="chevron-right" class="h-4 w-4 ml-1"></i>
+      </span>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<script>
+function changePerPage(value) {
+  const url = new URL(window.location.href);
+  url.searchParams.set('per_page', value);
+  url.searchParams.set('page', '1'); // Reset to page 1 when changing per_page
+  window.location.href = url.toString();
+}
+</script>
+{% else %}
+{# Fallback for non-paginated results #}
+<div class="p-4 sm:p-6 border-t bg-muted/30">
+  <p class="text-sm text-muted-foreground">
+    Showing {{ vendors|length if vendors is defined else 0 }} {{ item_label }}{{ 's' if (vendors|length if vendors is defined else 0) != 1 else '' }}
+  </p>
+</div>
+{% endif %}

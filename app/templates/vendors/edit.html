@@ -1,0 +1,89 @@
+{% extends 'layouts/admin_base.html' %}
+{% from 'components/page_header.html' import page_header %}
+
+{% block title %}Edit Vendor{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <div class="max-w-4xl mx-auto">
+        {{ page_header(
+            title='Edit Vendor',
+            description='Update vendor organization information',
+            actions=[
+                {'text': 'Back to Vendors', 'icon': 'arrow-left', 'href': url_for('application_mgmt.vendors_dashboard'), 'variant': 'outline'}
+            ]
+        ) }}
+
+        <!-- Edit Form -->
+        <div class="bg-card rounded-lg border p-6">
+            <form method="POST">
+                {{ form.hidden_tag() }}
+                
+                <!-- Vendor Name -->
+                <div class="mb-6">
+                    {{ form.name.label(class="block text-sm font-medium text-foreground mb-2") }}
+                    {{ form.name(class="w-full px-3 py-2 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring focus:border-ring") }}
+                    {% if form.name.errors %}
+                        <div class="mt-1 text-sm text-destructive">
+                            {% for error in form.name.errors %}
+                                {{ error }}
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+
+                <!-- Description -->
+                <div class="mb-6">
+                    {{ form.description.label(class="block text-sm font-medium text-foreground mb-2") }}
+                    {{ form.description(class="w-full px-3 py-2 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring focus:border-ring", rows="4") }}
+                    {% if form.description.errors %}
+                        <div class="mt-1 text-sm text-destructive">
+                            {% for error in form.description.errors %}
+                                {{ error }}
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+
+                <!-- Website -->
+                <div class="mb-6">
+                    {{ form.website.label(class="block text-sm font-medium text-foreground mb-2") }}
+                    {{ form.website(class="w-full px-3 py-2 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring focus:border-ring") }}
+                    {% if form.website.errors %}
+                        <div class="mt-1 text-sm text-destructive">
+                            {% for error in form.website.errors %}
+                                {{ error }}
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+
+                <!-- Contact Email -->
+                <div class="mb-6">
+                    {{ form.contact_email.label(class="block text-sm font-medium text-foreground mb-2") }}
+                    {{ form.contact_email(class="w-full px-3 py-2 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring focus:border-ring") }}
+                    {% if form.contact_email.errors %}
+                        <div class="mt-1 text-sm text-destructive">
+                            {% for error in form.contact_email.errors %}
+                                {{ error }}
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+
+                <!-- Submit Buttons -->
+                <div class="flex items-center justify-end space-x-4">
+                    <a href="{{ url_for('application_mgmt.vendors_dashboard') }}"
+                       class="px-4 py-2 border border-input rounded-md shadow-sm text-sm font-medium text-muted-foreground bg-card hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-ring">
+                        Cancel
+                    </a>
+                    <button type="submit"
+                            class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-primary-foreground bg-primary hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-ring" aria-label="Submit">
+                        Update Vendor
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

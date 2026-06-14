@@ -1,0 +1,19 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'components/page_header.html' import page_header %}
+
+{% block title %}Work Package Gantt Chart{% endblock %}
+
+{% block content %}
+{{ page_header(
+    title='Work Package Gantt Chart',
+    description='Interactive timeline of all implementation work packages. Fetches live data from the implementation planning registry.',
+    breadcrumbs=[
+        {'label': 'Tools', 'url': '#'},
+        {'label': 'Gantt Chart', 'url': None}
+    ]
+) }}
+
+<div class="mt-6">
+  {% include 'components/gantt_chart.html' %}
+</div>
+{% endblock %}

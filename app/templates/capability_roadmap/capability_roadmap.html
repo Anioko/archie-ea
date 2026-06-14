@@ -1,0 +1,1261 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'components/page_header.html' import page_header %}
+{% from 'components/card.html' import card, card_header, card_title, card_content %}
+{% from 'components/badge.html' import badge %}
+
+{% block title %}Enterprise Capability Roadmap{% endblock %}
+
+{% block breadcrumb %}
+{% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
+{{ breadcrumb_nav(items=[
+    {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
+    {'text': 'Business Layer', 'href': url_for('archimate_crud.dashboard') + '#business'},
+    {'text': 'Capabilities', 'href': url_for('capability_map.index')},
+    {'text': 'Capability Roadmap', 'current': true}
+]) }}
+{% endblock %}
+
+{% block extra_css %}
+<style>
+/* ── Work Package Timeline Gantt ── */
+/* token-migration-ok: chart colours are intentional, not in token map */
+.rdm-gantt-wrap{margin:1.5rem 0;border:1px solid var(--border);border-radius:.5rem;overflow:hidden;background:var(--card)}
+.rdm-gantt-hdr{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);padding:.875rem 1.25rem}
+.rdm-gantt-hdr-title{font-size:.9375rem;font-weight:600;color:var(--foreground)}
+.rdm-gantt-legend{display:flex;align-items:center;gap:1rem;font-size:.75rem;color:var(--muted-foreground)}
+.rdm-gantt-legend span{display:flex;align-items:center;gap:.375rem}
+.rdm-gantt-legend-dot{display:inline-block;width:10px;height:10px;border-radius:3px}
+.rdm-gantt-col-hdr{display:grid;grid-template-columns:300px 80px 1fr;border-bottom:1px solid var(--border);background:var(--muted);position:sticky;top:0;z-index:10}
+.rdm-gantt-col-hdr div{padding:.625rem 1rem;font-size:.8125rem;font-weight:600;color:var(--muted-foreground)}
+.rdm-gantt-col-hdr .rdm-gantt-dur-hdr{padding:.625rem .5rem}
+.rdm-gantt-months-hdr{padding:.625rem 1rem;overflow-x:auto}
+.rdm-gantt-months-row{display:flex}
+.rdm-gantt-month{flex:0 0 120px;text-align:center;font-size:.75rem;font-weight:600;color:var(--muted-foreground)}
+.rdm-gantt-section{border-bottom:1px solid var(--border)}
+.rdm-gantt-section:last-child{border-bottom:none}
+.rdm-gantt-section-hdr{padding:.625rem 1rem;background:var(--muted);font-size:.8125rem;font-weight:600;color:var(--foreground)}
+.rdm-gantt-row{display:grid;grid-template-columns:300px 80px 1fr;border-bottom:1px solid var(--border);min-height:48px}
+.rdm-gantt-row:last-child{border-bottom:none}
+.rdm-gantt-name-cell{padding:.625rem 1rem;display:flex;align-items:center;gap:.5rem;font-size:.8125rem}
+.rdm-gantt-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.rdm-gantt-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--foreground)}
+.rdm-gantt-dur-cell{padding:.625rem .5rem;font-size:.75rem;color:var(--muted-foreground);display:flex;align-items:center}
+.rdm-gantt-timeline-cell{padding:.625rem 1rem;overflow-x:auto;display:flex;align-items:center;min-width:0}
+.rdm-gantt-track{position:relative;height:28px;display:flex}
+.rdm-gantt-cell{flex:0 0 120px;height:100%;border-right:1px solid var(--border)}
+.rdm-gantt-legend-ip{background:#5B91F5}.rdm-gantt-legend-done{background:#22C55E}.rdm-gantt-legend-hold{background:#F59E0B}.rdm-gantt-legend-plan{background:#94A3B8}
+.rdm-gantt-bar{position:absolute;height:24px;top:2px;border-radius:.375rem;display:flex;align-items:center;padding:0 .5rem;font-size:.7rem;font-weight:500;color:#fff;white-space:nowrap;overflow:hidden;cursor:default;transition:filter .15s}
+.rdm-gantt-bar:hover{filter:brightness(1.12)}
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="capability-roadmap-app"
+     x-data="enterpriseCapabilityRoadmap()"
+     x-init="init()"
+     class="space-y-6">
+
+  <input type="hidden" id="rdm-csrf-token" value="{{ csrf_token() }}">
+
+  {# ── Page Header ── #}
+  <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+    {{ page_header(
+      title='Enterprise Capability Roadmap',
+      description='ArchiMate 3.2 Implementation & Migration — Plateaus, Gaps, and Work Packages',
+      breadcrumbs=[
+        {'label': 'Dashboard', 'href': url_for('main.index')},
+        {'label': 'Capability Map', 'href': url_for('unified_low_priority.capability_map_dashboard', tab='roadmap')},
+        {'label': 'Enterprise Capability Roadmap'}
+      ]
+    ) }}
+    <div class="flex flex-wrap items-center gap-2">
+      <button type="button"
+        class="inline-flex items-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm font-medium hover:bg-muted"
+        @click="detectGaps()"
+        :disabled="isDetecting">
+        <i data-lucide="scan-search" class="h-4 w-4"></i>
+        <span x-show="!isDetecting" x-cloak>Detect Gaps</span>
+        <span x-show="isDetecting" x-cloak>Detecting…</span>
+      </button>
+      <button type="button"
+        class="inline-flex items-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm font-medium hover:bg-muted"
+        @click="openCreatePlateauModal()">
+        <i data-lucide="layers" class="h-4 w-4"></i>
+        Add Plateau
+      </button>
+      <button type="button"
+        class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
+        @click="openCreateGapModal()">
+        <i data-lucide="plus" class="h-4 w-4"></i>
+        Add Gap
+      </button>
+    </div>
+  </div>
+
+  {# ── Metrics Row ── #}
+  <div class="grid grid-cols-2 gap-4 md:grid-cols-6">
+    <div data-slot="card" class="rounded-xl border bg-card shadow-sm p-4">
+      <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Total Gaps</p>
+      <p class="mt-2 text-2xl font-semibold text-foreground" x-text="metrics.total_gaps"></p>
+    </div>
+    <div data-slot="card" class="rounded-xl border bg-card shadow-sm p-4">
+      <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Plateaus</p>
+      <p class="mt-2 text-2xl font-semibold text-foreground" x-text="metrics.total_plateaus"></p>
+    </div>
+    <div data-slot="card" class="rounded-xl border bg-card shadow-sm p-4">
+      <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Work Packages</p>
+      <p class="mt-2 text-2xl font-semibold text-foreground" x-text="metrics.total_wps"></p>
+    </div>
+    <div data-slot="card" class="rounded-xl border bg-card shadow-sm p-4">
+      <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">AI Generated</p>
+      <p class="mt-2 text-2xl font-semibold text-foreground" x-text="metrics.ai_generated"></p>
+    </div>
+    <div data-slot="card" class="rounded-xl border bg-card shadow-sm p-4">
+      <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Capabilities</p>
+      <p class="mt-2 text-2xl font-semibold text-foreground">{{ capability_count }}</p>
+    </div>
+    <div data-slot="card" class="rounded-xl border bg-card shadow-sm p-4">
+      <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Domains</p>
+      <p class="mt-2 text-2xl font-semibold text-foreground">{{ domain_count }}</p>
+    </div>
+  </div>
+
+  {# ── Plateau Timeline ── #}
+  <div data-slot="card" class="rounded-xl border bg-card shadow-sm">
+    <div class="flex items-center justify-between border-b px-6 py-4">
+      <h2 class="text-base font-semibold text-foreground">Plateaus — Implementation Timeline</h2>
+      <span class="text-xs text-muted-foreground">ArchiMate 3.2 Implementation &amp; Migration Layer</span>
+    </div>
+    <div class="p-6">
+      <template x-if="plateaus.length === 0">
+        <div class="flex flex-col items-center justify-center py-10 text-center">
+          <i data-lucide="layers" class="mb-3 h-10 w-10 text-muted-foreground/40"></i>
+          <p class="text-sm font-medium text-foreground">No plateaus defined</p>
+          <p class="mt-1 text-xs text-muted-foreground">Add a plateau to define your implementation timeline phases.</p>
+          <button type="button"
+            class="mt-4 inline-flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
+            @click="openCreatePlateauModal()">
+            <i data-lucide="plus" class="h-4 w-4"></i>
+            Add First Plateau
+          </button>
+        </div>
+      </template>
+      <template x-if="plateaus.length > 0">
+        <div class="grid gap-4" :class="plateaus.length === 1 ? 'grid-cols-1' : plateaus.length === 2 ? 'grid-cols-2' : 'grid-cols-3'">
+          <template x-for="plateau in plateaus" :key="plateau.id">
+            <div class="rounded-lg border border-border bg-muted/30 p-4">
+              <div class="flex items-start justify-between">
+                <div>
+                  <p class="text-sm font-semibold text-foreground" x-text="plateau.name"></p>
+                  <p class="mt-0.5 text-xs text-muted-foreground" x-text="plateau.description || 'No description'"></p>
+                </div>
+                <span class="inline-flex rounded-full border border-border bg-background px-2 py-0.5 text-xs text-muted-foreground"
+                  x-text="plateau.target_date ? formatDate(plateau.target_date) : 'No target date'"></span>
+              </div>
+              <div class="mt-3 border-t border-border pt-3">
+                <p class="text-xs text-muted-foreground">
+                  <span x-text="gapsForPlateau(plateau.id).length"></span> gap(s) assigned
+                </p>
+              </div>
+            </div>
+          </template>
+        </div>
+      </template>
+    </div>
+  </div>
+
+  {# ── Work Package Timeline (Gantt) ── #}
+  <div id="rdm-gantt-chart"></div>
+
+  {# ── Work Packages Table ── #}
+  <div data-slot="card" class="rounded-xl border bg-card shadow-sm">
+    <div class="flex items-center justify-between border-b px-6 py-4">
+      <h2 class="text-base font-semibold text-foreground">Work Packages</h2>
+      <div class="flex items-center gap-3">
+        <template x-if="selectedGapIds.length > 0">
+          <button type="button"
+            class="inline-flex items-center gap-2 rounded-md border border-input bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted"
+            @click="openAiGenerateModal()">
+            <i data-lucide="sparkles" class="h-3.5 w-3.5"></i>
+            AI Generate (<span x-text="selectedGapIds.length"></span> gaps)
+          </button>
+        </template>
+        <button type="button"
+          class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90"
+          @click="openCreateWorkPackageModal(null)">
+          <i data-lucide="plus" class="h-3.5 w-3.5"></i>
+          Add Work Package
+        </button>
+      </div>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="min-w-full text-sm">
+        <thead class="bg-muted/50">
+          <tr>
+            <th class="w-8 px-4 py-3">
+              <input type="checkbox" class="rounded border-input"
+                @change="toggleAllGaps($event)"
+                :checked="selectedGapIds.length === filteredGaps.length && filteredGaps.length > 0">
+            </th>
+            <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">Work Package</th>
+            <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">Status</th>
+            <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">Priority</th>
+            <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">Timeline</th>
+            <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">Gap</th>
+            <th class="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-muted-foreground">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-if="workPackages.length === 0">
+            <tr>
+              <td colspan="7" class="px-4 py-10 text-center text-sm text-muted-foreground">
+                No work packages yet. Add a gap first, then create work packages to resolve it.
+              </td>
+            </tr>
+          </template>
+          <template x-for="wp in workPackages" :key="wp.id">
+            <tr class="border-t border-border hover:bg-muted/30">
+              <td class="px-4 py-3">
+                <input type="checkbox" class="rounded border-input"
+                  :value="wp.gap_id"
+                  x-model="selectedGapIds">
+              </td>
+              <td class="px-4 py-3 align-top">
+                <p class="font-medium text-foreground" x-text="wp.name"></p>
+                <p class="mt-0.5 text-xs text-muted-foreground" x-text="wp.element_type || 'WorkPackage'"></p>
+              </td>
+              <td class="px-4 py-3 align-top">
+                <span class="inline-flex rounded-full border px-2 py-0.5 text-xs capitalize"
+                  :class="statusClass(wp.status)"
+                  x-text="(wp.status || 'planned').replaceAll('_', ' ')"></span>
+              </td>
+              <td class="px-4 py-3 align-top">
+                <span class="inline-flex rounded-full border px-2 py-0.5 text-xs capitalize"
+                  :class="priorityClass(wp.priority)"
+                  x-text="wp.priority || 'medium'"></span>
+              </td>
+              <td class="px-4 py-3 align-top text-xs text-muted-foreground">
+                <span x-text="formatDate(wp.start_date)"></span>
+                <span class="mx-1 text-muted-foreground/50">→</span>
+                <span x-text="formatDate(wp.end_date || wp.target_date)"></span>
+              </td>
+              <td class="px-4 py-3 align-top text-xs text-muted-foreground"
+                x-text="gapNameForWp(wp.gap_id) || '—'"></td>
+              <td class="px-4 py-3 align-top text-right">
+                <div class="inline-flex items-center gap-2">
+                  <button type="button"
+                    class="rounded-md border border-input px-2.5 py-1.5 text-xs hover:bg-muted"
+                    @click="openEditWorkPackageModal(wp)">
+                    Edit
+                  </button>
+                  <button type="button"
+                    class="rounded-md border border-destructive/30 px-2.5 py-1.5 text-xs text-destructive hover:bg-destructive/10"
+                    @click="deleteWorkPackage(wp)">
+                    Delete
+                  </button>
+                </div>
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {# ── Error Banner ── #}
+  <template x-if="errorMessage">
+    <div class="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+      x-text="errorMessage"></div>
+  </template>
+
+</div>
+
+{# ════════════════════════════════════════════════════════════
+   MODALS — all use Platform.modal + hidden attribute (AP-11 compliant)
+   ════════════════════════════════════════════════════════════ #}
+
+{# Create / Edit Gap Modal #}
+<div id="rdm-create-gap-modal"
+     hidden
+     role="dialog" aria-modal="true" aria-labelledby="rdm-gap-modal-title"
+     class="fixed inset-0 z-50 items-center justify-center bg-black/50 p-4">
+  <div class="w-full max-w-lg rounded-xl border bg-card shadow-xl flex flex-col max-h-[90vh]"
+       x-data="rdmGapModalForm()"
+       x-init="initFromGlobal()">
+    <div class="flex shrink-0 items-center justify-between border-b px-6 py-4">
+      <h3 id="rdm-gap-modal-title" class="text-base font-semibold text-foreground"
+        x-text="isEditing ? 'Edit Gap' : 'Create Gap'"></h3>
+      <button type="button"
+        class="rounded-md border border-input px-2 py-1 text-sm hover:bg-muted"
+        data-modal-close="rdm-create-gap-modal">Close</button>
+    </div>
+    <form class="space-y-4 p-6 overflow-y-auto flex-1 min-h-0" @submit.prevent="submitGapForm()">
+      <div>
+        <label class="mb-1 block text-sm font-medium text-foreground">Gap Name <span class="text-destructive">*</span></label>
+        <input type="text" x-model="form.name" required
+          class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+      </div>
+      <div class="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label class="mb-1 block text-sm font-medium text-foreground">Gap Type</label>
+          <select x-model="form.gap_type"
+            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+            <option value="coverage">Coverage</option>
+            <option value="quality">Quality</option>
+            <option value="retirement">Retirement</option>
+            <option value="modernization">Modernization</option>
+            <option value="custom">Custom</option>
+          </select>
+        </div>
+        <div>
+          <label class="mb-1 block text-sm font-medium text-foreground">Priority</label>
+          <select x-model="form.priority"
+            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+            <option value="critical">Critical</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label class="mb-1 block text-sm font-medium text-foreground">Description</label>
+        <textarea x-model="form.description" rows="3"
+          class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"></textarea>
+      </div>
+      <div class="flex items-center justify-end gap-2 border-t pt-4">
+        <button type="button"
+          class="rounded-md border border-input px-4 py-2 text-sm hover:bg-muted"
+          data-modal-close="rdm-create-gap-modal">Cancel</button>
+        <button type="submit"
+          class="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
+          :disabled="isSubmitting">
+          <span x-show="!isSubmitting" x-cloak x-text="isEditing ? 'Save Changes' : 'Create Gap'"></span>
+          <span x-show="isSubmitting" x-cloak>Saving…</span>
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{# Create Plateau Modal #}
+<div id="rdm-create-plateau-modal"
+     hidden
+     role="dialog" aria-modal="true" aria-labelledby="rdm-plateau-modal-title"
+     class="fixed inset-0 z-50 items-center justify-center bg-black/50 p-4">
+  <div class="w-full max-w-md rounded-xl border bg-card shadow-xl flex flex-col max-h-[90vh]"
+       x-data="rdmPlateauModalForm()"
+       x-init="initFromGlobal()">
+    <div class="flex shrink-0 items-center justify-between border-b px-6 py-4">
+      <h3 id="rdm-plateau-modal-title" class="text-base font-semibold text-foreground">Add Plateau</h3>
+      <button type="button"
+        class="rounded-md border border-input px-2 py-1 text-sm hover:bg-muted"
+        data-modal-close="rdm-create-plateau-modal">Close</button>
+    </div>
+    <form class="space-y-4 p-6 overflow-y-auto flex-1 min-h-0" @submit.prevent="submitPlateauForm()">
+      <div>
+        <label class="mb-1 block text-sm font-medium text-foreground">Plateau Name <span class="text-destructive">*</span></label>
+        <input type="text" x-model="form.name" required
+          placeholder="e.g. Plateau 1 — Foundation"
+          class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+      </div>
+      <div class="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label class="mb-1 block text-sm font-medium text-foreground">Sequence Order <span class="text-destructive">*</span></label>
+          <input type="number" min="1" x-model.number="form.sequence_order" required
+            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+        </div>
+        <div>
+          <label class="mb-1 block text-sm font-medium text-foreground">Target Date</label>
+          <input type="date" x-model="form.target_date"
+            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+        </div>
+      </div>
+      <div>
+        <label class="mb-1 block text-sm font-medium text-foreground">Description</label>
+        <textarea x-model="form.description" rows="2"
+          class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"></textarea>
+      </div>
+      <div class="flex items-center justify-end gap-2 border-t pt-4">
+        <button type="button"
+          class="rounded-md border border-input px-4 py-2 text-sm hover:bg-muted"
+          data-modal-close="rdm-create-plateau-modal">Cancel</button>
+        <button type="submit"
+          class="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
+          :disabled="isSubmitting">
+          <span x-show="!isSubmitting" x-cloak>Create Plateau</span>
+          <span x-show="isSubmitting" x-cloak>Saving…</span>
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{# Create / Edit Work Package Modal #}
+<div id="rdm-create-wp-modal"
+     hidden
+     role="dialog" aria-modal="true" aria-labelledby="rdm-wp-modal-title"
+     class="fixed inset-0 z-50 items-center justify-center bg-black/50 p-4">
+  <div class="w-full max-w-2xl rounded-xl border bg-card shadow-xl flex flex-col max-h-[90vh]"
+       x-data="rdmWpModalForm()"
+       x-init="initFromGlobal()">
+    <div class="flex shrink-0 items-center justify-between border-b px-6 py-4">
+      <h3 id="rdm-wp-modal-title" class="text-base font-semibold text-foreground"
+        x-text="isEditing ? 'Edit Work Package' : 'Create Work Package'"></h3>
+      <button type="button"
+        class="rounded-md border border-input px-2 py-1 text-sm hover:bg-muted"
+        data-modal-close="rdm-create-wp-modal">Close</button>
+    </div>
+    <form class="space-y-4 p-6 overflow-y-auto flex-1 min-h-0" @submit.prevent="submitWpForm()">
+      <div>
+        <label class="mb-1 block text-sm font-medium text-foreground">Name <span class="text-destructive">*</span></label>
+        <input type="text" x-model="form.name" required
+          class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+      </div>
+      <div class="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label class="mb-1 block text-sm font-medium text-foreground">Status</label>
+          <select x-model="form.status"
+            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+            <option value="planned">Planned</option>
+            <option value="in_progress">In Progress</option>
+            <option value="completed">Completed</option>
+            <option value="on_hold">On Hold</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+        </div>
+        <div>
+          <label class="mb-1 block text-sm font-medium text-foreground">Priority</label>
+          <select x-model="form.priority"
+            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+            <option value="critical">Critical</option>
+          </select>
+        </div>
+        <div>
+          <label class="mb-1 block text-sm font-medium text-foreground">Start Date <span class="text-destructive">*</span></label>
+          <input type="date" x-model="form.start_date" required
+            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+        </div>
+        <div>
+          <label class="mb-1 block text-sm font-medium text-foreground">Target Date <span class="text-destructive">*</span></label>
+          <input type="date" x-model="form.target_date" required
+            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+        </div>
+        <div>
+          <label class="mb-1 block text-sm font-medium text-foreground">Linked Gap</label>
+          <select x-model.number="form.gap_id"
+            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+            <option :value="null">— None —</option>
+            <template x-for="gap in $store.rdm.gaps" :key="gap.id">
+              <option :value="gap.id" x-text="gap.name"></option>
+            </template>
+          </select>
+        </div>
+        <div>
+          <label class="mb-1 block text-sm font-medium text-foreground">Target Plateau</label>
+          <select x-model.number="form.plateau_id"
+            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+            <option :value="null">— None —</option>
+            <template x-for="p in $store.rdm.plateaus" :key="p.id">
+              <option :value="p.id" x-text="p.name"></option>
+            </template>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label class="mb-1 block text-sm font-medium text-foreground">Description</label>
+        <textarea x-model="form.description" rows="3"
+          class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"></textarea>
+      </div>
+      <div class="flex items-center justify-end gap-2 border-t pt-4">
+        <button type="button"
+          class="rounded-md border border-input px-4 py-2 text-sm hover:bg-muted"
+          data-modal-close="rdm-create-wp-modal">Cancel</button>
+        <button type="submit"
+          class="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
+          :disabled="isSubmitting">
+          <span x-show="!isSubmitting" x-cloak x-text="isEditing ? 'Save Changes' : 'Create Work Package'"></span>
+          <span x-show="isSubmitting" x-cloak>Saving…</span>
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{# AI Generate Preview Modal #}
+<div id="rdm-ai-generate-modal"
+     hidden
+     role="dialog" aria-modal="true" aria-labelledby="rdm-ai-modal-title"
+     class="fixed inset-0 z-50 items-center justify-center bg-black/50 p-4">
+  <div class="w-full max-w-2xl rounded-xl border bg-card shadow-xl flex flex-col max-h-[90vh]"
+       x-data="rdmAiModalForm()"
+       x-init="initFromGlobal()">
+    <div class="flex shrink-0 items-center justify-between border-b px-6 py-4">
+      <div>
+        <h3 id="rdm-ai-modal-title" class="text-base font-semibold text-foreground">AI Roadmap Generation Preview</h3>
+        <p class="mt-0.5 text-xs text-muted-foreground">Review suggested work packages before confirming. No changes are saved until you click Confirm.</p>
+      </div>
+      <button type="button"
+        class="rounded-md border border-input px-2 py-1 text-sm hover:bg-muted"
+        data-modal-close="rdm-ai-generate-modal">Close</button>
+    </div>
+    <div class="flex-1 min-h-0 overflow-y-auto p-6">
+      <template x-if="isLoading">
+        <div class="flex items-center justify-center py-10">
+          <div class="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>
+          <span class="ml-3 text-sm text-muted-foreground">Generating preview…</span>
+        </div>
+      </template>
+      <template x-if="!isLoading && preview.length === 0">
+        <p class="text-center text-sm text-muted-foreground py-6">No preview available. Select gaps and try again.</p>
+      </template>
+      <template x-if="!isLoading && preview.length > 0">
+        <div class="space-y-3">
+          <template x-for="item in preview" :key="item.gap_id">
+            <div class="rounded-lg border border-border bg-muted/30 p-4">
+              <div class="flex items-start justify-between">
+                <div>
+                  <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Gap</p>
+                  <p class="text-sm font-semibold text-foreground" x-text="item.gap_name"></p>
+                </div>
+                <span class="inline-flex rounded-full border px-2 py-0.5 text-xs capitalize"
+                  :class="priorityClass(item.gap_priority)"
+                  x-text="item.gap_priority"></span>
+              </div>
+              <div class="mt-3 border-t border-border pt-3 grid grid-cols-2 gap-3 text-xs">
+                <div>
+                  <p class="font-medium text-muted-foreground">Suggested Work Package</p>
+                  <p class="text-foreground" x-text="item.suggested_work_package.name"></p>
+                </div>
+                <div>
+                  <p class="font-medium text-muted-foreground">Target Plateau</p>
+                  <p class="text-foreground" x-text="item.suggested_plateau"></p>
+                </div>
+                <div>
+                  <p class="font-medium text-muted-foreground">Start Date</p>
+                  <p class="text-foreground" x-text="formatDate(item.suggested_work_package.estimated_start_date)"></p>
+                </div>
+                <div>
+                  <p class="font-medium text-muted-foreground">Target Date</p>
+                  <p class="text-foreground" x-text="formatDate(item.suggested_work_package.target_resolution_date)"></p>
+                </div>
+              </div>
+            </div>
+          </template>
+        </div>
+      </template>
+    </div>
+    <div class="flex items-center justify-end gap-2 border-t px-6 py-4">
+      <button type="button"
+        class="rounded-md border border-input px-4 py-2 text-sm hover:bg-muted"
+        data-modal-close="rdm-ai-generate-modal">Discard</button>
+      <button type="button"
+        class="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
+        :disabled="isConfirming || preview.length === 0"
+        @click="confirmAiGeneration()">
+        <span x-show="!isConfirming" x-cloak>Confirm &amp; Create Work Packages</span>
+        <span x-show="isConfirming" x-cloak>Creating…</span>
+      </button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  'use strict';
+
+  const CSRF = () => document.getElementById('rdm-csrf-token')?.value || '';
+
+  // ── Alpine Store: shared state between page and modal sub-components ──
+  document.addEventListener('alpine:init', () => {
+    Alpine.store('rdm', {
+      gaps: [],
+      plateaus: [],
+      workPackages: [],
+      editingGap: null,
+      editingWp: null,
+      pendingGapForWp: null,
+      pendingGapIds: [],
+    });
+  });
+
+  // ── Main page component ──
+  window.enterpriseCapabilityRoadmap = function () {
+    return {
+      gaps: [],
+      plateaus: [],
+      workPackages: [],
+      gapFilter: { priority: '', type: '' },
+      selectedGapIds: [],
+      isDetecting: false,
+      errorMessage: '',
+
+      get filteredGaps() {
+        return this.gaps.filter(g => {
+          if (this.gapFilter.priority && g.priority !== this.gapFilter.priority) return false;
+          if (this.gapFilter.type && g.gap_type !== this.gapFilter.type) return false;
+          return true;
+        });
+      },
+
+      get metrics() {
+        return {
+          total_gaps: this.gaps.length,
+          total_plateaus: this.plateaus.length,
+          total_wps: this.workPackages.length,
+          ai_generated: this.gaps.filter(g => g.auto_generated).length,
+        };
+      },
+
+      gapsForPlateau(plateauId) {
+        return this.workPackages.filter(wp => wp.plateau_id === plateauId);
+      },
+
+      gapNameForWp(gapId) {
+        if (!gapId) return null;
+        const gap = this.gaps.find(g => g.id === gapId);
+        return gap ? gap.name : null;
+      },
+
+      async init() {
+        await Promise.all([this.loadGaps(), this.loadPlateaus(), this.loadWorkPackages()]);
+      },
+
+      async loadGaps() {
+        try {
+          const r = await fetch('/capability-map/api/roadmap/gaps');
+          const d = await r.json();
+          this.gaps = d.gaps || [];
+          Alpine.store('rdm').gaps = this.gaps;
+        } catch {
+          this.errorMessage = 'Failed to load gaps.';
+        }
+      },
+
+      async loadPlateaus() {
+        try {
+          const r = await fetch('/capability-map/api/roadmap/plateaus');
+          const d = await r.json();
+          this.plateaus = d.plateaus || [];
+          Alpine.store('rdm').plateaus = this.plateaus;
+        } catch {
+          this.errorMessage = 'Failed to load plateaus.';
+        }
+      },
+
+      async loadWorkPackages() {
+        try {
+          const r = await fetch('/capability-map/api/roadmap/work-packages');
+          const d = await r.json();
+          this.workPackages = d.work_packages || [];
+          Alpine.store('rdm').workPackages = this.workPackages;
+        } catch {
+          this.errorMessage = 'Failed to load work packages.';
+        }
+      },
+
+      async detectGaps() {
+        if (!window.confirm('Auto-detect gaps from capability maturity data? This will create or update Gap records.')) return;
+        this.isDetecting = true;
+        this.errorMessage = '';
+        try {
+          const r = await fetch('/capability-map/api/roadmap/gaps/detect', {
+            method: 'POST',
+            headers: { 'X-CSRFToken': CSRF(), 'Content-Type': 'application/json' },
+          });
+          const d = await r.json();
+          if (!r.ok || !d.success) throw new Error(d.error || 'Detection failed');
+          await this.loadGaps();
+          window.alert(`Detection complete: ${d.created} gap(s) created, ${d.updated} updated.`);
+        } catch (e) {
+          this.errorMessage = e.message || 'Gap detection failed.';
+        } finally {
+          this.isDetecting = false;
+        }
+      },
+
+      openCreateGapModal() {
+        Alpine.store('rdm').editingGap = null;
+        Platform.modal.open('rdm-create-gap-modal');
+      },
+
+      openEditGapModal(gap) {
+        Alpine.store('rdm').editingGap = gap;
+        Platform.modal.open('rdm-create-gap-modal');
+      },
+
+      openCreatePlateauModal() {
+        Platform.modal.open('rdm-create-plateau-modal');
+      },
+
+      openCreateWorkPackageModal(gap) {
+        Alpine.store('rdm').editingWp = null;
+        Alpine.store('rdm').pendingGapForWp = gap;
+        Platform.modal.open('rdm-create-wp-modal');
+      },
+
+      openEditWorkPackageModal(wp) {
+        Alpine.store('rdm').editingWp = wp;
+        Alpine.store('rdm').pendingGapForWp = null;
+        Platform.modal.open('rdm-create-wp-modal');
+      },
+
+      openAiGenerateModal() {
+        Alpine.store('rdm').pendingGapIds = [...this.selectedGapIds];
+        Platform.modal.open('rdm-ai-generate-modal');
+      },
+
+      toggleAllGaps(event) {
+        if (event.target.checked) {
+          this.selectedGapIds = this.filteredGaps.map(g => g.id);
+        } else {
+          this.selectedGapIds = [];
+        }
+      },
+
+      async deleteGap(gap) {
+        if (!window.confirm(`Delete gap "${gap.name}"?`)) return;
+        try {
+          const r = await fetch(`/capability-map/api/roadmap/gaps/${gap.id}`, {
+            method: 'DELETE',
+            headers: { 'X-CSRFToken': CSRF() },
+          });
+          const d = await r.json();
+          if (!r.ok || !d.success) throw new Error(d.error || 'Delete failed');
+          this.gaps = this.gaps.filter(g => g.id !== gap.id);
+          Alpine.store('rdm').gaps = this.gaps;
+        } catch (e) {
+          this.errorMessage = e.message || 'Failed to delete gap.';
+        }
+      },
+
+      async deleteWorkPackage(wp) {
+        if (!window.confirm(`Delete work package "${wp.name}"?`)) return;
+        try {
+          const r = await fetch(`/capability-map/api/roadmap/work-packages/${wp.id}`, {
+            method: 'DELETE',
+            headers: { 'X-CSRFToken': CSRF() },
+          });
+          const d = await r.json();
+          if (!r.ok || !d.success) throw new Error(d.error || 'Delete failed');
+          this.workPackages = this.workPackages.filter(w => w.id !== wp.id);
+          Alpine.store('rdm').workPackages = this.workPackages;
+        } catch (e) {
+          this.errorMessage = e.message || 'Failed to delete work package.';
+        }
+      },
+
+      formatDate(value) {
+        if (!value) return 'N/A';
+        const d = new Date(value);
+        if (Number.isNaN(d.getTime())) return value;
+        return d.toLocaleDateString();
+      },
+
+      priorityClass(priority) {
+        switch ((priority || '').toLowerCase()) {
+          case 'critical': return 'border-destructive/30 bg-destructive/10 text-destructive';
+          case 'high': return 'border-warning/30 bg-warning/10 text-warning-foreground';
+          case 'medium': return 'border-border bg-muted/50 text-muted-foreground';
+          default: return 'border-border bg-muted text-muted-foreground';
+        }
+      },
+
+      statusClass(status) {
+        switch ((status || '').toLowerCase()) {
+          case 'completed': return 'border-success/30 bg-success/10 text-success-foreground';
+          case 'in_progress': return 'border-primary/30 bg-primary/10 text-primary';
+          case 'on_hold': return 'border-warning/30 bg-warning/10 text-warning-foreground';
+          case 'cancelled': return 'border-destructive/30 bg-destructive/10 text-destructive';
+          default: return 'border-border bg-muted text-muted-foreground';
+        }
+      },
+
+      gapTypeClass(type) {
+        switch ((type || '').toLowerCase()) {
+          case 'retirement': return 'border-destructive/30 bg-destructive/10 text-destructive';
+          case 'modernization': return 'border-primary/30 bg-primary/10 text-primary';
+          case 'quality': return 'border-warning/30 bg-warning/10 text-warning-foreground';
+          case 'coverage': return 'border-border bg-muted text-muted-foreground';
+          default: return 'border-secondary/30 bg-secondary/10 text-secondary-foreground';
+        }
+      },
+
+      // ── Gantt helpers removed — standalone rdmGantt() handles rendering ──
+    };
+  };
+
+  // ── Gap modal sub-component ──
+  window.rdmGapModalForm = function () {
+    return {
+      isEditing: false,
+      isSubmitting: false,
+      form: { name: '', gap_type: 'coverage', priority: 'medium', description: '' },
+
+      initFromGlobal() {
+        this.$watch('$store.rdm.editingGap', (gap) => {
+          if (gap) {
+            this.isEditing = true;
+            this.form = { name: gap.name, gap_type: gap.gap_type || 'coverage', priority: gap.priority || 'medium', description: gap.description || '' };
+          } else {
+            this.isEditing = false;
+            this.form = { name: '', gap_type: 'coverage', priority: 'medium', description: '' };
+          }
+        });
+      },
+
+      async submitGapForm() {
+        if (!this.form.name) return;
+        this.isSubmitting = true;
+        const editing = Alpine.store('rdm').editingGap;
+        const method = editing ? 'PUT' : 'POST';
+        const url = editing
+          ? `/capability-map/api/roadmap/gaps/${editing.id}`
+          : '/capability-map/api/roadmap/gaps';
+        try {
+          const r = await fetch(url, {
+            method,
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF() },
+            body: JSON.stringify({
+              name: this.form.name,
+              gap_type: this.form.gap_type,
+              priority: this.form.priority,
+              description: this.form.description,
+            }),
+          });
+          const d = await r.json();
+          if (!r.ok || (!d.success && !d.gap)) throw new Error(d.error || 'Save failed');
+          const saved = d.gap;
+          const store = Alpine.store('rdm');
+          if (editing) {
+            store.gaps = store.gaps.map(g => g.id === saved.id ? saved : g);
+          } else {
+            store.gaps = [saved, ...store.gaps];
+          }
+          Platform.modal.close('rdm-create-gap-modal');
+        } catch (e) {
+          window.alert(e.message || 'Failed to save gap.');
+        } finally {
+          this.isSubmitting = false;
+        }
+      },
+    };
+  };
+
+  // ── Plateau modal sub-component ──
+  window.rdmPlateauModalForm = function () {
+    return {
+      isSubmitting: false,
+      form: { name: '', sequence_order: 1, target_date: '', description: '' },
+      initFromGlobal() {},
+
+      async submitPlateauForm() {
+        if (!this.form.name || !this.form.sequence_order) return;
+        this.isSubmitting = true;
+        try {
+          const r = await fetch('/capability-map/api/roadmap/plateaus', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF() },
+            body: JSON.stringify(this.form),
+          });
+          const d = await r.json();
+          if (!r.ok || !d.success) throw new Error(d.error || 'Save failed');
+          const store = Alpine.store('rdm');
+          store.plateaus = [...store.plateaus, d.plateau].sort((a, b) => a.sequence_order - b.sequence_order);
+          this.form = { name: '', sequence_order: store.plateaus.length + 1, target_date: '', description: '' };
+          Platform.modal.close('rdm-create-plateau-modal');
+        } catch (e) {
+          window.alert(e.message || 'Failed to create plateau.');
+        } finally {
+          this.isSubmitting = false;
+        }
+      },
+    };
+  };
+
+  // ── Work Package modal sub-component ──
+  window.rdmWpModalForm = function () {
+    return {
+      isEditing: false,
+      isSubmitting: false,
+      form: { name: '', status: 'planned', priority: 'medium', start_date: '', target_date: '', description: '', gap_id: null, plateau_id: null },
+
+      initFromGlobal() {
+        this.$watch('$store.rdm.editingWp', (wp) => {
+          if (wp) {
+            this.isEditing = true;
+            this.form = {
+              id: wp.id,
+              name: wp.name || '',
+              status: wp.status || 'planned',
+              priority: wp.priority || 'medium',
+              start_date: (wp.start_date || '').slice(0, 10),
+              target_date: (wp.end_date || wp.target_date || '').slice(0, 10),
+              description: wp.description || '',
+              gap_id: wp.gap_id || null,
+              plateau_id: wp.plateau_id || null,
+            };
+          } else {
+            this.isEditing = false;
+            const pending = Alpine.store('rdm').pendingGapForWp;
+            this.form = {
+              name: pending ? `Resolve: ${pending.name}` : '',
+              status: 'planned',
+              priority: pending?.priority || 'medium',
+              start_date: '',
+              target_date: '',
+              description: '',
+              gap_id: pending?.id || null,
+              plateau_id: null,
+            };
+          }
+        });
+      },
+
+      async submitWpForm() {
+        if (!this.form.name || !this.form.start_date || !this.form.target_date) {
+          window.alert('Name, start date, and target date are required.');
+          return;
+        }
+        this.isSubmitting = true;
+        const editing = Alpine.store('rdm').editingWp;
+        const method = editing ? 'PUT' : 'POST';
+        const url = editing
+          ? `/capability-map/api/roadmap/work-packages/${editing.id}`
+          : (this.form.gap_id
+              ? `/capability-map/api/roadmap/gaps/${this.form.gap_id}/work-packages`
+              : '/capability-map/api/roadmap/work-packages');
+        try {
+          const r = await fetch(url, {
+            method,
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF() },
+            body: JSON.stringify({
+              name: this.form.name,
+              status: this.form.status,
+              priority: this.form.priority,
+              start_date: this.form.start_date,
+              target_date: this.form.target_date,
+              description: this.form.description,
+              gap_id: this.form.gap_id,
+              plateau_id: this.form.plateau_id,
+              business_capability: 'Enterprise',
+            }),
+          });
+          const d = await r.json();
+          if (!r.ok || (!d.success && !d.work_package)) throw new Error(d.error || 'Save failed');
+          const saved = d.work_package;
+          const store = Alpine.store('rdm');
+          if (editing) {
+            store.workPackages = store.workPackages.map(w => w.id === saved.id ? saved : w);
+          } else {
+            store.workPackages = [saved, ...store.workPackages];
+          }
+          Platform.modal.close('rdm-create-wp-modal');
+        } catch (e) {
+          window.alert(e.message || 'Failed to save work package.');
+        } finally {
+          this.isSubmitting = false;
+        }
+      },
+    };
+  };
+
+  // ── AI Generate modal sub-component ──
+  window.rdmAiModalForm = function () {
+    return {
+      isLoading: false,
+      isConfirming: false,
+      preview: [],
+
+      initFromGlobal() {
+        document.addEventListener('platform:modal:opened', async (e) => {
+          if (e.detail?.id !== 'rdm-ai-generate-modal') return;
+          const gapIds = Alpine.store('rdm').pendingGapIds;
+          if (!gapIds.length) return;
+          this.isLoading = true;
+          this.preview = [];
+          try {
+            const r = await fetch('/capability-map/api/roadmap/ai-generate', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF() },
+              body: JSON.stringify({ gap_ids: gapIds }),
+            });
+            const d = await r.json();
+            if (!r.ok || !d.success) throw new Error(d.error || 'Generation failed');
+            this.preview = d.preview || [];
+          } catch (e) {
+            window.alert(e.message || 'AI generation failed.');
+          } finally {
+            this.isLoading = false;
+          }
+        });
+      },
+
+      async confirmAiGeneration() {
+        if (!this.preview.length) return;
+        this.isConfirming = true;
+        try {
+          const created = [];
+          for (const item of this.preview) {
+            const wp = item.suggested_work_package;
+            const url = item.gap_id
+              ? `/capability-map/api/roadmap/gaps/${item.gap_id}/work-packages`
+              : '/capability-map/api/roadmap/work-packages';
+            const r = await fetch(url, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF() },
+              body: JSON.stringify({
+                name: wp.name,
+                description: wp.description,
+                priority: wp.priority,
+                start_date: wp.estimated_start_date,
+                target_date: wp.target_resolution_date,
+                business_capability: 'Enterprise',
+                source_type: 'ai',
+              }),
+            });
+            const d = await r.json();
+            if (d.work_package || d.success) created.push(d.work_package);
+          }
+          const store = Alpine.store('rdm');
+          store.workPackages = [...created.filter(Boolean), ...store.workPackages];
+          Platform.modal.close('rdm-ai-generate-modal');
+          window.alert(`${created.length} work package(s) created from AI suggestions.`);
+        } catch (e) {
+          window.alert(e.message || 'Failed to create work packages.');
+        } finally {
+          this.isConfirming = false;
+        }
+      },
+
+      formatDate(value) {
+        if (!value) return 'N/A';
+        const d = new Date(value);
+        if (Number.isNaN(d.getTime())) return value;
+        return d.toLocaleDateString();
+      },
+
+      priorityClass(priority) {
+        switch ((priority || '').toLowerCase()) {
+          case 'critical': return 'border-destructive/30 bg-destructive/10 text-destructive';
+          case 'high': return 'border-warning/30 bg-warning/10 text-warning-foreground';
+          case 'medium': return 'border-border bg-muted/50 text-muted-foreground';
+          default: return 'border-border bg-muted text-muted-foreground';
+        }
+      },
+    };
+  };
+}());
+
+/* ── Work Package Timeline Gantt ── */
+(function () {
+  'use strict';
+
+  const MONTH_WIDTH = 120; // px per month
+
+  /* --- colour map by status --- */
+  /* token-migration-ok: chart-specific colours not in token map */
+  const STATUS_COLOUR = {
+    completed:   '#22C55E',
+    in_progress: '#5B91F5',
+    on_hold:     '#F59E0B',
+    cancelled:   '#EF4444',
+  };
+  function barColour(status) {
+    return STATUS_COLOUR[(status || '').toLowerCase()] || '#94A3B8';
+  }
+
+  /* --- timeline helpers (identical logic to docs/layout.html reference) --- */
+  function getTimelineRange(tasks) {
+    const dates = tasks.flatMap(t => [new Date(t.startDate), new Date(t.endDate)]);
+    const minDate = new Date(Math.min(...dates));
+    const maxDate = new Date(Math.max(...dates));
+    minDate.setDate(1);
+    maxDate.setMonth(maxDate.getMonth() + 1, 1);
+    return { minDate, maxDate };
+  }
+
+  function getMonthsBetween(start, end) {
+    const months = [];
+    const cur = new Date(start);
+    while (cur < end) { months.push(new Date(cur)); cur.setMonth(cur.getMonth() + 1); }
+    return months;
+  }
+
+  function getBarPosition(task, minDate) {
+    const s = new Date(task.startDate), e = new Date(task.endDate);
+    const startMonths = (s.getFullYear() - minDate.getFullYear()) * 12 + (s.getMonth() - minDate.getMonth());
+    const endMonths   = (e.getFullYear() - minDate.getFullYear()) * 12 + (e.getMonth() - minDate.getMonth());
+    const dayOffset   = (s.getDate() - 1) / 30;
+    return {
+      left:  (startMonths + dayOffset) * MONTH_WIDTH,
+      width: Math.max(((endMonths - startMonths) + (e.getDate() / 30)) * MONTH_WIDTH, 6),
+    };
+  }
+
+  function getDuration(startDate, endDate) {
+    const days   = Math.ceil(Math.abs(new Date(endDate) - new Date(startDate)) / 86400000);
+    const months = Math.round(days / 30);
+    return `${months} mo`;
+  }
+
+  function formatMonth(date) {
+    return date.toLocaleDateString(undefined, { month: 'short', year: '2-digit' });
+  }
+
+  /* --- render --- */
+  function renderGantt(groups, tasks) {
+    const container = document.getElementById('rdm-gantt-chart');
+    if (!container) return;
+    if (!tasks.length) { container.innerHTML = ''; return; }
+
+    const { minDate, maxDate } = getTimelineRange(tasks);
+    const months     = getMonthsBetween(minDate, maxDate);
+    const totalWidth = months.length * MONTH_WIDTH;
+
+    const monthHeaderCells = months.map(m =>
+      `<div class="rdm-gantt-month">${formatMonth(m)}</div>`
+    ).join('');
+
+    let sections = '';
+    groups.forEach(group => {
+      const groupTasks = tasks.filter(t => t.group === group.id);
+      if (!groupTasks.length) return;
+
+      const rows = groupTasks.map(task => {
+        const { left, width } = getBarPosition(task, minDate);
+        const colour   = barColour(task.status);
+        const showText = width > 80;
+        const timelineCells = months.map(() =>
+          `<div class="rdm-gantt-cell"></div>`
+        ).join('');
+
+        return `
+          <div class="rdm-gantt-row">
+            <div class="rdm-gantt-name-cell">
+              <span class="rdm-gantt-dot" style="background:${colour}"></span> <!-- inline-style-ok ratchet-ok -->
+              <span class="rdm-gantt-name" title="${task.name}">${task.name}</span>
+            </div>
+            <div class="rdm-gantt-dur-cell">${getDuration(task.startDate, task.endDate)}</div>
+            <div class="rdm-gantt-timeline-cell">
+              <div class="rdm-gantt-track" style="min-width:${totalWidth}px"> <!-- inline-style-ok ratchet-ok -->
+                ${timelineCells}
+                <div class="rdm-gantt-bar"
+                     style="background:${colour};left:${left}px;width:${width}px"
+                     title="${task.name} · ${task.startDate} → ${task.endDate}"
+                >${showText ? task.name : ''}</div>
+              </div>
+            </div>
+          </div>`;
+      }).join('');
+
+      sections += `
+        <div class="rdm-gantt-section">
+          <div class="rdm-gantt-section-hdr">${group.name}</div>
+          ${rows}
+        </div>`;
+    });
+
+    container.innerHTML = `
+      <div class="rdm-gantt-wrap">
+        <div class="rdm-gantt-hdr">
+          <span class="rdm-gantt-hdr-title">Work Package Timeline</span>
+          <div class="rdm-gantt-legend">
+            <span><span class="rdm-gantt-legend-dot rdm-gantt-legend-ip"></span>In Progress</span>
+            <span><span class="rdm-gantt-legend-dot rdm-gantt-legend-done"></span>Completed</span>
+            <span><span class="rdm-gantt-legend-dot rdm-gantt-legend-hold"></span>On Hold</span>
+            <span><span class="rdm-gantt-legend-dot rdm-gantt-legend-plan"></span>Planned</span>
+          </div>
+        </div>
+        <div class="rdm-gantt-col-hdr">
+          <div>Work Package</div>
+          <div class="rdm-gantt-dur-hdr">Duration</div>
+          <div class="rdm-gantt-months-hdr">
+            <div class="rdm-gantt-months-row" style="min-width:${totalWidth}px">${monthHeaderCells}</div> <!-- inline-style-ok ratchet-ok -->
+          </div>
+        </div>
+        ${sections}
+      </div>`;
+  }
+
+  /* --- data loading --- */
+  async function loadAndRender() {
+    try {
+      const [wpRes, gapRes, plateauRes] = await Promise.all([
+        fetch('/capability-map/api/roadmap/work-packages'),
+        fetch('/capability-map/api/roadmap/gaps'),
+        fetch('/capability-map/api/roadmap/plateaus'),
+      ]);
+      const workPackages = ((await wpRes.json()).work_packages || [])
+        .filter(wp => wp.start_date && (wp.end_date || wp.target_date));
+      const gaps    = (await gapRes.json()).gaps     || [];
+      const plateaus = (await plateauRes.json()).plateaus || [];
+
+      if (!workPackages.length) {
+        document.getElementById('rdm-gantt-chart').innerHTML = `
+          <div class="rounded-xl border bg-card shadow-sm">
+            <div class="flex items-center justify-between border-b px-6 py-4">
+              <h2 class="text-base font-semibold text-foreground">Work Package Timeline</h2>
+            </div>
+            <div class="flex flex-col items-center justify-center py-10 text-center">
+              <i data-lucide="calendar-x" class="mb-3 h-10 w-10 text-muted-foreground/40"></i>
+              <p class="text-sm font-medium text-foreground">No timeline data</p>
+              <p class="mt-1 text-xs text-muted-foreground">Work packages need start and target dates to appear on the timeline.</p>
+            </div>
+          </div>`;
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+        return;
+      }
+
+      let groups, tasks;
+
+      if (plateaus.length) {
+        /* group by plateau */
+        const seenGroups = new Set(workPackages.map(wp => wp.plateau_id || '__none__'));
+        groups = plateaus
+          .filter(p => seenGroups.has(p.id))
+          .map(p => ({ id: p.id, name: p.name }));
+        if (seenGroups.has('__none__')) groups.push({ id: '__none__', name: 'Unassigned' });
+        tasks = workPackages.map(wp => ({
+          name:      wp.name,
+          startDate: wp.start_date,
+          endDate:   wp.end_date || wp.target_date,
+          group:     wp.plateau_id || '__none__',
+          status:    wp.status,
+        }));
+      } else {
+        /* group by gap_type */
+        const gapMap  = Object.fromEntries(gaps.map(g => [g.id, g.gap_type || 'coverage']));
+        const typeLabels = { coverage: 'Coverage Gaps', quality: 'Quality Gaps', modernization: 'Modernization Gaps', retirement: 'Retirement Gaps' };
+        const seenTypes  = new Set(workPackages.map(wp => gapMap[wp.gap_id] || 'coverage'));
+        groups = Object.entries(typeLabels)
+          .filter(([k]) => seenTypes.has(k))
+          .map(([id, name]) => ({ id, name }));
+        tasks = workPackages.map(wp => ({
+          name:      wp.name,
+          startDate: wp.start_date,
+          endDate:   wp.end_date || wp.target_date,
+          group:     gapMap[wp.gap_id] || 'coverage',
+          status:    wp.status,
+        }));
+      }
+
+      renderGantt(groups, tasks);
+    } catch (e) {
+      console.error('[rdm-gantt] load failed:', e);
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', loadAndRender);
+  } else {
+    loadAndRender();
+  }
+}());
+</script>
+{% endblock %}

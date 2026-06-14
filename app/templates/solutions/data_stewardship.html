@@ -1,0 +1,94 @@
+{% extends "layouts/admin_base.html" %}
+{% from "components/page_header.html" import page_header %}
+{% from "components/arb_escalate_button.html" import arb_escalate %}
+
+{% block title %}Data Stewardship{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 sm:px-6 lg:px-8 py-6 max-w-5xl">
+    {{ page_header(
+        title='Data Architecture Stewardship',
+        description='The AI Data Architect reviews the data layer for a coherent canonical model, classified sensitive data, and traceable lineage — read live across the DataObject catalogue, application classifications and integration flows.',
+        breadcrumbs=[
+            {'label': 'Dashboard', 'href': url_for('main.index')},
+            {'label': 'Data Stewardship'}
+        ]
+    ) }}
+
+    <div class="flex items-center gap-2 mt-4 mb-6">
+        <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30">
+            <i data-lucide="shield-check" class="h-3.5 w-3.5"></i> AI Data Architect · live · evidence-grounded
+        </span>
+    </div>
+
+    {# ── Summary ───────────────────────────────────────────────────── #}
+    <div class="border border-border rounded-xl bg-card p-6 mb-6 flex items-start gap-3">
+        <span class="shrink-0 inline-flex h-10 w-10 items-center justify-center rounded-lg
+            {% if review.flagged %}bg-amber-500/10 text-amber-600{% else %}bg-emerald-500/10 text-emerald-600{% endif %}">
+            <i data-lucide="{{ 'alert-triangle' if review.flagged else 'check-circle' }}" class="h-5 w-5"></i>
+        </span>
+        <div class="min-w-0">
+            <h2 class="text-base font-semibold text-foreground">
+                {% if review.flagged %}{{ review.flagged }} item{{ '' if review.flagged == 1 else 's' }} need{{ 's' if review.flagged == 1 else '' }} attention{% else %}Data layer coherent{% endif %}
+            </h2>
+            <p class="text-sm text-muted-foreground mt-1">{{ review.summary }}</p>
+            <div class="flex items-center gap-4 mt-3 text-xs">
+                <span class="text-foreground"><strong>{{ review.finding_count }}</strong> finding{{ '' if review.finding_count == 1 else 's' }}</span>
+                <span class="{% if review.flagged %}text-amber-600{% else %}text-muted-foreground{% endif %}"><strong>{{ review.flagged }}</strong> need attention</span>
+            </div>
+        </div>
+    </div>
+
+    {# ── Findings ──────────────────────────────────────────────────── #}
+    {% if review.findings %}
+    <div class="space-y-3">
+        {% for f in review.findings %}
+        <div class="border border-border rounded-xl bg-card p-4 flex items-start gap-3">
+            <span class="shrink-0 mt-0.5 inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide
+                {% if f.severity == 'critical' %}bg-destructive/10 text-destructive border border-destructive/30
+                {% elif f.severity == 'high' %}bg-amber-500/10 text-amber-600 border border-amber-500/30
+                {% else %}bg-muted text-muted-foreground border border-border{% endif %}">{{ f.severity }}</span>
+            <div class="min-w-0 flex-1">
+                <span class="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">{{ f.category }}</span>
+                <h3 class="text-sm font-semibold text-foreground mt-0.5">{{ f.title }}</h3>
+                <p class="text-xs text-muted-foreground mt-1">{{ f.detail }}</p>
+                <div class="flex items-center justify-between mt-2 gap-2">
+                    <span class="text-[11px] text-muted-foreground/80 inline-flex items-center gap-1 min-w-0"><i data-lucide="database" class="h-3 w-3 shrink-0"></i> {{ f.evidence }}</span>
+                    <div class="flex items-center gap-2 shrink-0">
+                        {% if f.writeback == 'classify_baseline' %}
+                        <span x-data="{ busy:false, done:false, msg:'',
+                            async fix(){ this.busy=true;
+                                try { const csrf=document.querySelector('meta[name=csrf-token]')?.content||'';
+                                    const r=await fetch('/solutions/data-stewardship/classify-baseline',{method:'POST',headers:{'X-CSRFToken':csrf}});
+                                    const d=await r.json();
+                                    if(r.ok&&d.success){ this.done=true; this.msg=d.classified+' classified ('+d.confidential+' confidential, '+d.internal+' internal)'; }
+                                } finally { this.busy=false; } } }">
+                            <button x-show="!done" @click="fix()" :disabled="busy"
+                                    class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                                <i data-lucide="wand-2" class="h-3 w-3"></i>
+                                <span x-text="busy ? 'Classifying…' : 'Auto-classify (PII→Confidential)'"></span>
+                            </button>
+                            <span x-show="done" x-cloak class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30">
+                                <i data-lucide="check" class="h-3 w-3"></i> <span x-text="msg"></span>
+                            </span>
+                        </span>
+                        {% endif %}
+                        {{ arb_escalate(f) }}
+                        {% if f.action_url %}
+                        <a href="{{ f.action_url }}" class="text-xs font-medium text-primary hover:underline inline-flex items-center gap-1">{{ f.action_label }} <i data-lucide="arrow-right" class="h-3 w-3"></i></a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="border border-emerald-500/30 bg-emerald-500/5 rounded-xl p-8 text-center">
+        <span class="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600 mb-3"><i data-lucide="database" class="h-6 w-6"></i></span>
+        <p class="text-sm font-medium text-foreground">Data layer is coherent</p>
+        <p class="text-xs text-muted-foreground mt-1">No canonical, classification or lineage gaps found.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

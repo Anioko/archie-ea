@@ -1,0 +1,280 @@
+{% extends "layouts/admin_base.html" %}
+
+{% block title %}Edit Capability Maturity{% endblock %}
+
+{% block breadcrumb %}
+{% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
+{{ breadcrumb_nav(items=[
+    {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
+    {'text': 'Business Layer', 'href': url_for('archimate_crud.dashboard') + '#business'},
+    {'text': 'Capabilities', 'href': url_for('capability_map.index')},
+    {'text': 'Edit Maturity', 'current': true}
+]) }}
+{% endblock %}
+
+{% block content %}
+<div class="mx-auto px-4 py-6">
+    <!-- Header -->
+    <div class="mb-8">
+        <div class="flex items-center justify-between">
+            <div>
+                <h1 class="text-3xl font-bold text-foreground mb-2">Edit Capability Maturity</h1>
+                <p class="text-muted-foreground">Update maturity levels for: {{ capability.name }}</p>
+            </div>
+            <div class="flex space-x-4">
+                <a href="{{ url_for('maturity_management.search_capabilities') }}" 
+                   class="inline-flex items-center gap-2 rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground transition-colors">
+                    ← Back to Search
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Capability Details -->
+    <div class="bg-card rounded-lg shadow mb-6">
+        <div class="p-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <h2 class="text-lg font-semibold text-foreground mb-4">Capability Information</h2>
+                    <dl class="space-y-2">
+                        <div class="flex justify-between">
+                            <dt class="text-sm font-medium text-muted-foreground">Name:</dt>
+                            <dd class="text-sm text-foreground">{{ capability.name }}</dd>
+                        </div>
+                        <div class="flex justify-between">
+                            <dt class="text-sm font-medium text-muted-foreground">Domain:</dt>
+                            <dd class="text-sm text-foreground">{{ capability.domain or 'Not Set' }}</dd>
+                        </div>
+                        <div class="flex justify-between">
+                            <dt class="text-sm font-medium text-muted-foreground">Business Owner:</dt>
+                            <dd class="text-sm text-foreground">{{ capability.business_owner or 'Not Assigned' }}</dd>
+                        </div>
+                        <div class="flex justify-between">
+                            <dt class="text-sm font-medium text-muted-foreground">Strategic Importance:</dt>
+                            <dd class="text-sm text-foreground">
+                                {% if capability.strategic_importance %}
+                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium 
+                                        {% if capability.strategic_importance == 'critical' %}bg-destructive/10 text-destructive
+                                        {% elif capability.strategic_importance == 'high' %}bg-warning/10 text-warning dark:text-warning/80
+                                        {% elif capability.strategic_importance == 'medium' %}bg-warning/10 text-warning dark:text-warning/60
+                                        {% else %}bg-muted text-foreground{% endif %}">
+                                        {{ capability.strategic_importance }}
+                                    </span>
+                                {% else %}
+                                    Not Set
+                                {% endif %}
+                            </dd>
+                        </div>
+                        {% if capability.description %}
+                        <div>
+                            <dt class="text-sm font-medium text-muted-foreground">Description:</dt>
+                            <dd class="text-sm text-foreground mt-1">{{ capability.description }}</dd>
+                        </div>
+                        {% endif %}
+                    </dl>
+                </div>
+                
+                <div>
+                    <h3 class="text-lg font-semibold text-foreground mb-4">Current Maturity Status</h3>
+                    <dl class="space-y-2">
+                        <div class="flex justify-between">
+                            <dt class="text-sm font-medium text-muted-foreground">Current Level:</dt>
+                            <dd class="text-sm text-foreground">
+                                {% if capability.current_maturity_level %}
+                                    Level {{ capability.current_maturity_level }}
+                                {% else %}
+                                    Not Set
+                                {% endif %}
+                            </dd>
+                        </div>
+                        <div class="flex justify-between">
+                            <dt class="text-sm font-medium text-muted-foreground">Target Level:</dt>
+                            <dd class="text-sm text-foreground">
+                                {% if capability.target_maturity_level %}
+                                    Level {{ capability.target_maturity_level }}
+                                {% else %}
+                                    Not Set
+                                {% endif %}
+                            </dd>
+                        </div>
+                        <div class="flex justify-between">
+                            <dt class="text-sm font-medium text-muted-foreground">Maturity Gap:</dt>
+                            <dd class="text-sm text-foreground">
+                                {% if capability.maturity_gap and capability.maturity_gap > 0 %}
+                                    {{ capability.maturity_gap }}
+                                {% else %}
+                                    No Gap
+                                {% endif %}
+                            </dd>
+                        </div>
+                        {% if capability.maturity_assessment_date %}
+                        <div class="flex justify-between">
+                            <dt class="text-sm font-medium text-muted-foreground">Last Assessment:</dt>
+                            <dd class="text-sm text-foreground">{{ capability.maturity_assessment_date.strftime('%Y-%m-%d') }}</dd>
+                        </div>
+                        {% endif %}
+                    </dl>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Form -->
+    <div class="bg-card rounded-lg shadow">
+        <div class="px-6 py-4 border-b border-border">
+            <h2 class="text-lg font-semibold text-foreground">Update Maturity Levels</h2>
+        </div>
+        <div class="p-6">
+            <form method="POST" class="space-y-6">
+                {{ csrf_token() }}
+                <!-- Maturity Level Reference -->
+                <div class="bg-primary/5 border border-primary/20 rounded-lg p-4">
+                    <h3 class="text-sm font-semibold text-foreground mb-2">Maturity Level Reference</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-5 gap-2 text-xs">
+                        <div class="text-center">
+                            <div class="font-medium text-destructive">Level 1</div>
+                            <div class="text-muted-foreground">Initial/Ad Hoc</div>
+                        </div>
+                        <div class="text-center">
+                            <div class="font-medium text-foreground">Level 2</div>
+                            <div class="text-muted-foreground">Repeatable</div>
+                        </div>
+                        <div class="text-center">
+                            <div class="font-medium text-foreground">Level 3</div>
+                            <div class="text-muted-foreground">Defined</div>
+                        </div>
+                        <div class="text-center">
+                            <div class="font-medium text-foreground">Level 4</div>
+                            <div class="text-muted-foreground">Managed</div>
+                        </div>
+                        <div class="text-center">
+                            <div class="font-medium text-primary">Level 5</div>
+                            <div class="text-muted-foreground">Optimizing</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Form Fields -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <label for="current_maturity_level" class="block text-sm font-medium text-foreground mb-2">
+                            Current Maturity Level <span class="text-muted-foreground">(1-5)</span>
+                        </label>
+                        <select id="current_maturity_level" 
+                                name="current_maturity_level" 
+                                class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                            <option value="">Not Set</option>
+                            {% for level in range(1, 6) %}
+                            <option value="{{ level }}" 
+                                    {% if capability.current_maturity_level == level %}selected{% endif %}>
+                                Level {{ level }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <p class="mt-1 text-xs text-muted-foreground">Current state of the capability</p>
+                    </div>
+                    
+                    <div>
+                        <label for="target_maturity_level" class="block text-sm font-medium text-foreground mb-2">
+                            Target Maturity Level <span class="text-muted-foreground">(1-5)</span>
+                        </label>
+                        <select id="target_maturity_level" 
+                                name="target_maturity_level" 
+                                class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                            <option value="">Not Set</option>
+                            {% for level in range(1, 6) %}
+                            <option value="{{ level }}" 
+                                    {% if capability.target_maturity_level == level %}selected{% endif %}>
+                                Level {{ level }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <p class="mt-1 text-xs text-muted-foreground">Desired future state</p>
+                    </div>
+                </div>
+
+                <div>
+                    <label for="assessment_notes" class="block text-sm font-medium text-foreground mb-2">
+                        Assessment Notes
+                    </label>
+                    <textarea id="assessment_notes" 
+                              name="assessment_notes" 
+                              rows="4"
+                              class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                              placeholder="Add notes about this maturity assessment...">{{ capability.maturity_assessment_notes or '' }}</textarea>
+                    <p class="mt-1 text-xs text-muted-foreground">Document the reasoning behind this assessment</p>
+                </div>
+
+                <!-- Preview Gap Calculation -->
+                <div id="gap-preview" class="hidden bg-muted/50 border border-border rounded-lg p-4">
+                    <h3 class="text-sm font-semibold text-foreground mb-2">Preview: Maturity Gap</h3>
+                    <div class="text-lg font-medium text-foreground">
+                        Gap: <span id="gap-value">0</span> levels
+                    </div>
+                </div>
+
+                <!-- Form Actions -->
+                <div class="flex justify-end space-x-4">
+                    <a href="{{ url_for('maturity_management.search_capabilities') }}" 
+                       class="inline-flex items-center gap-2 rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground transition-colors">
+                        Cancel
+                    </a>
+                    <button type="submit" 
+                            class="inline-flex items-center gap-2 rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm font-medium hover:bg-primary/90 transition-colors" aria-label="Submit">
+                        Save Changes
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="mb-4 p-4 rounded-lg {% if category == 'error' %}bg-destructive/10 border border-destructive/20 text-destructive{% else %}bg-primary/10 border border-primary/20 text-foreground{% endif %}">
+                    {{ message }}
+                </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+</div>
+
+<script>
+// Live gap calculation
+document.addEventListener('DOMContentLoaded', function() {
+    const currentSelect = document.getElementById('current_maturity_level');
+    const targetSelect = document.getElementById('target_maturity_level');
+    const gapPreview = document.getElementById('gap-preview');
+    const gapValue = document.getElementById('gap-value');
+    
+    function calculateGap() {
+        const current = parseInt(currentSelect.value) || 0;
+        const target = parseInt(targetSelect.value) || 0;
+        
+        if (current > 0 && target > 0) {
+            const gap = target - current;
+            gapValue.textContent = gap;
+            gapPreview.classList.remove('hidden');
+            
+            // Color code the gap
+            if (gap > 2) {
+                gapValue.className = 'font-bold text-destructive';
+            } else if (gap > 0) {
+                gapValue.className = 'font-bold text-foreground';
+            } else {
+                gapValue.className = 'font-bold text-primary';
+            }
+        } else {
+            gapPreview.classList.add('hidden');
+        }
+    }
+    
+    currentSelect.addEventListener('change', calculateGap);
+    targetSelect.addEventListener('change', calculateGap);
+    
+    // Initial calculation
+    calculateGap();
+});
+</script>
+{% endblock %}

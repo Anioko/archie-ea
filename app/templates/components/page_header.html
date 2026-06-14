@@ -1,0 +1,94 @@
+{# Page Header Component
+
+   Consistent page header with title, description, breadcrumbs, and action buttons.
+
+   Usage:
+   {% from 'components/page_header.html' import page_header %}
+
+   {{ page_header(
+       title='Applications',
+       description='Manage your application portfolio',
+       breadcrumbs=[
+           {'label': 'Home', 'href': '/'},
+           {'label': 'Applications'}
+       ],
+       actions=[
+           {'text': 'Create Application', 'icon': 'plus', 'onclick': 'openCreateDrawer()', 'variant': 'default'},
+           {'text': 'Export', 'icon': 'download', 'href': '/export', 'variant': 'outline'}
+       ]
+   ) }}
+#}
+
+{% macro page_header(
+    title='',
+    description='',
+    subtitle='',
+    breadcrumbs=[],
+    actions=[],
+    class=''
+) %}
+<div class="mb-6 {{ class }}">
+    <!-- Breadcrumbs -->
+    {% if breadcrumbs %}
+    <nav aria-label="Breadcrumb" class="mb-3">
+        <ol class="flex items-center gap-1.5 text-sm text-muted-foreground">
+            {% for crumb in breadcrumbs %}
+            <li class="flex items-center gap-1.5"{% if loop.last %} aria-current="page"{% endif %}>
+                {% if loop.last %}
+                    {# Last item — bold, no link, no separator #}
+                    <span class="text-foreground font-medium">{{ crumb.label }}</span>
+                {% elif crumb.href %}
+                    {# Middle item with link #}
+                    <a href="{{ crumb.href }}" class="hover:text-foreground transition-colors">{{ crumb.label }}</a>
+                    <i data-lucide="chevron-right" class="w-3.5 h-3.5 shrink-0" aria-hidden="true"></i>
+                {% else %}
+                    {# Middle item without link — still needs a separator after it #}
+                    <span>{{ crumb.label }}</span>
+                    <i data-lucide="chevron-right" class="w-3.5 h-3.5 shrink-0" aria-hidden="true"></i>
+                {% endif %}
+            </li>
+            {% endfor %}
+        </ol>
+    </nav>
+    {% endif %}
+
+    <!-- Title Row -->
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+            <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">{{ title }}</h1>
+            {% if description %}
+            <p class="mt-1 text-sm text-muted-foreground">{{ description or subtitle }}</p>
+            {% endif %}
+        </div>
+
+        {% if actions %}
+        <div class="flex flex-wrap items-center gap-2 shrink-0">
+            {% for action in actions %}
+                {% set variant = action.variant or 'default' %}
+                {% set btn_classes = {
+                    'default': 'bg-primary text-primary-foreground hover:bg-primary/90',
+                    'outline': 'border border-input bg-background hover:bg-accent hover:text-accent-foreground',
+                    'secondary': 'bg-secondary text-secondary-foreground hover:bg-secondary/80',
+                    'ghost': 'hover:bg-accent hover:text-accent-foreground',
+                    'destructive': 'bg-destructive text-destructive-foreground hover:bg-destructive/90',
+                    'link': 'text-primary underline-offset-4 hover:underline'
+                } %}
+                {% if action.href %}
+                <a href="{{ action.href }}"
+                   class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium h-10 px-4 py-2 ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 {{ btn_classes[variant] }}">
+                    {% if action.icon %}<i data-lucide="{{ action.icon }}" class="w-4 h-4 mr-2" aria-hidden="true"></i>{% endif %}
+                    {{ action.text }}
+                </a>
+                {% elif action.onclick %}
+                <button type="button" @click="{{ action.onclick }}"
+                        class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium h-10 px-4 py-2 ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 {{ btn_classes[variant] }}" aria-label="{{ action.text }}">
+                    {% if action.icon %}<i data-lucide="{{ action.icon }}" class="w-4 h-4 mr-2" aria-hidden="true"></i>{% endif %}
+                    {{ action.text }}
+                </button>
+                {% endif %}
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endmacro %}

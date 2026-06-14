@@ -1,0 +1,473 @@
+{# shadcn/ui Data Table — Tasks pattern clone (shadcnexamples.com/tasks)
+   Full-featured data table with search, faceted filters, sorting, row selection,
+   pagination with rows-per-page, and row actions dropdown.
+
+   Alpine.js implementation of TanStack Table patterns.
+
+   Usage:
+     {% from 'components/data_table.html' import data_table, data_table_faceted_filter %}
+
+     {{ data_table(
+         id='requirements-table',
+         columns=[
+           {key: 'requirement_id', label: 'ID', class: 'w-[100px] font-mono text-xs'},
+           {key: 'name', label: 'Requirement', sortable: true},
+           {key: 'requirement_type', label: 'Type', type: 'badge'},
+           {key: 'status', label: 'Status', type: 'status'},
+           {key: 'moscow_priority', label: 'Priority', type: 'priority'},
+         ],
+         rows_expr='requirements',
+         searchable=true,
+         search_key='name',
+         search_placeholder='Filter requirements...',
+         sortable=true,
+         pagination=true,
+         per_page=10,
+         row_selection=true,
+         actions=true,
+         empty_icon='clipboard-list',
+         empty_text='No requirements found.'
+     ) }}
+#}
+
+{# ── Script-only macro: call this OUTSIDE any <template x-if/x-for> ── #}
+{% macro data_table_script() %}
+<script>
+if (!window._dataTableEngine) {
+    window._dataTableEngine = true;
+    window.dataTableEngine = function(config) {
+        return {
+            allRows: config.rows || [],
+            search: '',
+            searchKey: config.searchKey || '',
+            sortKey: '',
+            sortOrder: 'asc',
+            currentPage: 1,
+            perPage: config.perPage || 10,
+            selectedRows: new Set(),
+            facetFilters: {},
+            _filterOpen: {},
+
+            get filteredRows() {
+                let self = this;
+                let rows = self.allRows;
+                if (self.search && self.searchKey) {
+                    let q = self.search.toLowerCase();
+                    rows = rows.filter(function(r) {
+                        const val = r[self.searchKey];
+                        return val && String(val).toLowerCase().indexOf(q) !== -1;
+                    });
+                } else if (self.search) {
+                    let q = self.search.toLowerCase();
+                    rows = rows.filter(function(r) {
+                        return Object.values(r).some(function(v) {
+                            return v && String(v).toLowerCase().indexOf(q) !== -1;
+                        });
+                    });
+                }
+                const filterKeys = Object.keys(self.facetFilters);
+                for (let i = 0; i < filterKeys.length; i++) {
+                    const key = filterKeys[i];
+                    const vals = self.facetFilters[key];
+                    if (vals && vals.size > 0) {
+                        rows = rows.filter(function(r) {
+                            return vals.has(String(r[key] || '').toLowerCase());
+                        });
+                    }
+                }
+                if (self.sortKey) {
+                    rows = rows.slice().sort(function(a, b) {
+                        const av = a[self.sortKey], bv = b[self.sortKey];
+                        if (av == null) return 1;
+                        if (bv == null) return -1;
+                        const cmp = String(av).localeCompare(String(bv), undefined, {numeric: true});
+                        return self.sortOrder === 'asc' ? cmp : -cmp;
+                    });
+                }
+                return rows;
+            },
+
+            get totalPages() { return Math.max(1, Math.ceil(this.filteredRows.length / this.perPage)); },
+            get paginatedRows() {
+                const start = (this.currentPage - 1) * this.perPage;
+                return this.filteredRows.slice(start, start + this.perPage);
+            },
+            get allSelected() {
+                return this.paginatedRows.length > 0 && this.paginatedRows.every(function(r) { return this.selectedRows.has(r.id); }.bind(this));
+            },
+            get hasActiveFilters() {
+                if (this.search) return true;
+                const keys = Object.keys(this.facetFilters);
+                for (let i = 0; i < keys.length; i++) {
+                    if (this.facetFilters[keys[i]] && this.facetFilters[keys[i]].size > 0) return true;
+                }
+                return false;
+            },
+
+            sortBy(key) {
+                if (this.sortKey === key) { this.sortOrder = this.sortOrder === 'asc' ? 'desc' : 'asc'; }
+                else { this.sortKey = key; this.sortOrder = 'asc'; }
+                this.currentPage = 1;
+            },
+            toggleSelect(id) {
+                if (this.selectedRows.has(id)) this.selectedRows.delete(id);
+                else this.selectedRows.add(id);
+                this.selectedRows = new Set(this.selectedRows);
+            },
+            toggleSelectAll() {
+                let self = this;
+                if (self.allSelected) {
+                    self.paginatedRows.forEach(function(r) { self.selectedRows.delete(r.id); });
+                } else {
+                    self.paginatedRows.forEach(function(r) { self.selectedRows.add(r.id); });
+                }
+                self.selectedRows = new Set(self.selectedRows);
+            },
+            toggleFacet(columnKey, value) {
+                if (!this.facetFilters[columnKey]) this.facetFilters[columnKey] = new Set();
+                let v = String(value).toLowerCase();
+                if (this.facetFilters[columnKey].has(v)) this.facetFilters[columnKey].delete(v);
+                else this.facetFilters[columnKey].add(v);
+                this.facetFilters = Object.assign({}, this.facetFilters);
+                this.currentPage = 1;
+            },
+            isFacetActive(columnKey, value) {
+                return this.facetFilters[columnKey] && this.facetFilters[columnKey].has(String(value).toLowerCase());
+            },
+            facetCount(columnKey, value) {
+                let v = String(value).toLowerCase();
+                return this.allRows.filter(function(r) { return String(r[columnKey] || '').toLowerCase() === v; }).length;
+            },
+            clearFilters() {
+                this.search = '';
+                this.facetFilters = {};
+                this.currentPage = 1;
+            },
+            setPerPage(n) { this.perPage = n; this.currentPage = 1; },
+            firstPage() { this.currentPage = 1; },
+            lastPage() { this.currentPage = this.totalPages; },
+            nextPage() { if (this.currentPage < this.totalPages) this.currentPage++; },
+            previousPage() { if (this.currentPage > 1) this.currentPage--; },
+        };
+    };
+}
+</script>
+{% endmacro %}
+
+
+{% macro data_table(
+    id='data-table',
+    columns=[],
+    rows_expr='[]',
+    searchable=false,
+    search_key='',
+    search_placeholder='Filter...',
+    sortable=false,
+    pagination=false,
+    per_page=10,
+    row_selection=false,
+    actions=false,
+    on_edit='',
+    on_delete='',
+    on_view='',
+    empty_icon='inbox',
+    empty_text='No results.',
+    class='',
+    filters=[]
+) %}
+<div class="w-full {{ class }}"
+     x-data="dataTableEngine({rows: [], searchKey: '{{ search_key }}', perPage: {{ per_page }}})"
+     x-effect="allRows = {{ rows_expr }} || []"
+     x-init="$nextTick(function() { if (typeof lucide !== 'undefined') lucide.createIcons(); })"
+     id="{{ id }}">
+
+    {# ══════════════════════════════════════════════════════════════ #}
+    {# TOOLBAR — search + faceted filters + reset                    #}
+    {# ══════════════════════════════════════════════════════════════ #}
+    {% if searchable or filters %}
+    <div class="flex items-center justify-between gap-2 py-4">
+        <div class="flex items-center gap-2 flex-1">
+            {% if searchable %}
+            <input type="text" x-model="search" @input="currentPage = 1"
+                   placeholder="{{ search_placeholder }}"
+                   class="flex h-8 w-full max-w-sm rounded-md border border-input bg-background px-3 py-1 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+            {% endif %}
+
+            {# Faceted filter buttons #}
+            {% for filter in filters %}
+            <div class="relative" x-data="facetFilterDropdown()" @click.outside="open = false" @keydown.escape.window="open = false">
+                <button type="button" @click="open = !open"
+                        class="inline-flex items-center gap-1.5 rounded-md border border-dashed border-input px-3 h-8 text-xs font-medium text-foreground hover:bg-accent transition-colors">
+                    <i data-lucide="plus-circle" class="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true"></i>
+                    {{ filter.label }}
+                    {# Selected count badge #}
+                    <template x-if="facetFilters['{{ filter.key }}'] && facetFilters['{{ filter.key }}'].size > 0">
+                        <span class="flex items-center gap-1">
+                            <span class="mx-1 h-4 w-px bg-border"></span>
+                            <span class="inline-flex items-center rounded-sm bg-muted px-1.5 py-0.5 text-[10px] font-medium"
+                                  x-text="facetFilters['{{ filter.key }}'].size + ' selected'"></span>
+                        </span>
+                    </template>
+                </button>
+                {# Filter dropdown — Command-style #}
+                <!-- modal-a11y-ok -->
+                <div x-show="open" x-cloak x-transition
+                     class="absolute left-0 top-full mt-1 z-50 w-52 rounded-md border border-border bg-popover shadow-lg">
+                    <div class="p-1.5">
+                        <input type="text" placeholder="{{ filter.label }}..."
+                               class="flex h-8 w-full rounded-md bg-transparent px-2 py-1 text-sm placeholder:text-muted-foreground outline-none">
+                    </div>
+                    <div class="border-t border-border max-h-48 overflow-y-auto p-1">
+                        {% for opt in filter.options %}
+                        <button type="button" @click="toggleFacet('{{ filter.key }}', '{{ opt.value }}')"
+                                class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-foreground hover:bg-accent transition-colors cursor-pointer">
+                            <span class="flex h-4 w-4 items-center justify-center rounded-sm border border-input"
+                                  :class="isFacetActive('{{ filter.key }}', '{{ opt.value }}') ? 'bg-primary border-primary text-primary-foreground' : ''">
+                                <svg x-show="isFacetActive('{{ filter.key }}', '{{ opt.value }}')" x-cloak class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                            </span>
+                            {% if opt.icon %}
+                            <i data-lucide="{{ opt.icon }}" class="h-3.5 w-3.5 text-muted-foreground shrink-0" aria-hidden="true"></i>
+                            {% endif %}
+                            <span class="flex-1 text-left">{{ opt.label }}</span>
+                            <span class="ml-auto text-xs text-muted-foreground tabular-nums"
+                                  x-text="facetCount('{{ filter.key }}', '{{ opt.value }}')"></span>
+                        </button>
+                        {% endfor %}
+                    </div>
+                    <template x-if="facetFilters['{{ filter.key }}'] && facetFilters['{{ filter.key }}'].size > 0">
+                        <div class="border-t border-border p-1">
+                            <button type="button" @click="facetFilters['{{ filter.key }}'] = new Set(); facetFilters = Object.assign({}, facetFilters); currentPage = 1;"
+                                    class="flex w-full items-center justify-center rounded-sm px-2 py-1.5 text-xs font-medium text-foreground hover:bg-accent transition-colors">
+                                Clear filters
+                            </button>
+                        </div>
+                    </template>
+                </div>
+            </div>
+            {% endfor %}
+
+            {# Reset all filters #}
+            <template x-if="hasActiveFilters">
+                <button type="button" @click="clearFilters()"
+                        class="inline-flex items-center gap-1 rounded-md px-2.5 h-8 text-xs font-medium text-foreground hover:bg-accent transition-colors">
+                    Reset
+                    <i data-lucide="x" class="h-3.5 w-3.5" aria-hidden="true"></i>
+                </button>
+            </template>
+        </div>
+    </div>
+    {% endif %}
+
+    {# ══════════════════════════════════════════════════════════════ #}
+    {# TABLE                                                         #}
+    {# ══════════════════════════════════════════════════════════════ #}
+    <div class="overflow-hidden rounded-md border border-border">
+        <table class="w-full caption-bottom text-sm" role="table">
+            <thead class="[&_tr]:border-b">
+                <tr class="border-b border-border bg-muted/50">
+                    {% if row_selection %}
+                    <th class="h-10 w-10 px-3 align-middle">
+                        <span class="flex h-4 w-4 items-center justify-center rounded-sm border border-input cursor-pointer"
+                              :class="allSelected ? 'bg-primary border-primary text-primary-foreground' : ''"
+                              @click="toggleSelectAll()" role="checkbox" :aria-checked="allSelected" tabindex="0">
+                            <svg x-show="allSelected" x-cloak class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                        </span>
+                    </th>
+                    {% endif %}
+                    {% for col in columns %}
+                    <th class="h-10 px-3 text-left align-middle font-medium text-muted-foreground text-xs {{ col.get('class', '') }}">
+                        {% if sortable and col.get('sortable', false) %}
+                        <button type="button" @click="sortBy('{{ col.key }}')"
+                                class="inline-flex items-center gap-1.5 -ml-2 h-8 px-2 rounded-md hover:bg-accent transition-colors data-[state=open]:bg-accent"
+                                :data-state="sortKey === '{{ col.key }}' ? 'open' : ''">
+                            <span>{{ col.label }}</span>
+                            <template x-if="sortKey === '{{ col.key }}' && sortOrder === 'asc'">
+                                <i data-lucide="arrow-up" class="h-3.5 w-3.5" aria-hidden="true"></i>
+                            </template>
+                            <template x-if="sortKey === '{{ col.key }}' && sortOrder === 'desc'">
+                                <i data-lucide="arrow-down" class="h-3.5 w-3.5" aria-hidden="true"></i>
+                            </template>
+                            <template x-if="sortKey !== '{{ col.key }}'">
+                                <i data-lucide="chevrons-up-down" class="h-3.5 w-3.5 text-muted-foreground/50" aria-hidden="true"></i>
+                            </template>
+                        </button>
+                        {% else %}
+                        {{ col.label }}
+                        {% endif %}
+                    </th>
+                    {% endfor %}
+                    {% if actions %}
+                    <th class="h-10 w-10 px-3 text-right align-middle font-medium text-muted-foreground text-xs">
+                        <span class="sr-only">Actions</span>
+                    </th>
+                    {% endif %}
+                </tr>
+            </thead>
+            <tbody class="[&_tr:last-child]:border-0">
+                {# Empty state #}
+                <tr x-show="filteredRows.length === 0" x-cloak>
+                    <td colspan="99" class="h-24 text-center">
+                        <div class="flex flex-col items-center gap-2 py-8">
+                            <i data-lucide="{{ empty_icon }}" class="h-8 w-8 text-muted-foreground/30" aria-hidden="true"></i>
+                            <p class="text-sm text-muted-foreground">{{ empty_text }}</p>
+                        </div>
+                    </td>
+                </tr>
+                {# Rows #}
+                <template x-for="row in paginatedRows" :key="row.id">
+                    <tr class="border-b border-border transition-colors hover:bg-muted/50"
+                        :class="selectedRows.has(row.id) ? 'bg-muted/50' : ''">
+                        {% if row_selection %}
+                        <td class="w-10 px-3 py-2 align-middle">
+                            <span class="flex h-4 w-4 items-center justify-center rounded-sm border border-input cursor-pointer"
+                                  :class="selectedRows.has(row.id) ? 'bg-primary border-primary text-primary-foreground' : ''"
+                                  @click="toggleSelect(row.id)" role="checkbox" :aria-checked="selectedRows.has(row.id)" tabindex="0">
+                                <svg x-show="selectedRows.has(row.id)" x-cloak class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                            </span>
+                        </td>
+                        {% endif %}
+                        {% for col in columns %}
+                        <td class="px-3 py-2 align-middle {{ col.get('class', '') }}">
+                            {% if col.get('type') == 'badge' %}
+                            <span class="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium border bg-muted/50 text-foreground border-border capitalize"
+                                  x-text="(row['{{ col.key }}'] || '').replace(/_/g, ' ')"></span>
+                            {% elif col.get('type') == 'status' %}
+                            <div class="flex items-center gap-2">
+                                <span class="h-2 w-2 rounded-full"
+                                      :class="{
+                                          'bg-emerald-500': row['{{ col.key }}'] === 'approved' || row['{{ col.key }}'] === 'done',
+                                          'bg-blue-500': row['{{ col.key }}'] === 'in_review' || row['{{ col.key }}'] === 'in_progress',
+                                          'bg-amber-500': row['{{ col.key }}'] === 'draft' || row['{{ col.key }}'] === 'todo',
+                                          'bg-red-500': row['{{ col.key }}'] === 'rejected' || row['{{ col.key }}'] === 'cancelled',
+                                          'bg-muted-foreground': row['{{ col.key }}'] === 'open' || row['{{ col.key }}'] === 'backlog' || row['{{ col.key }}'] === 'deferred'
+                                      }"></span>
+                                <span class="text-sm capitalize" x-text="(row['{{ col.key }}'] || '').replace(/_/g, ' ')"></span>
+                            </div>
+                            {% elif col.get('type') == 'priority' %}
+                            <div class="flex items-center gap-2">
+                                <template x-if="row['{{ col.key }}'] === 'MUST' || row['{{ col.key }}'] === 'high'">
+                                    <i data-lucide="arrow-up" class="h-3.5 w-3.5 text-red-500" aria-hidden="true"></i>
+                                </template>
+                                <template x-if="row['{{ col.key }}'] === 'SHOULD' || row['{{ col.key }}'] === 'medium'">
+                                    <i data-lucide="arrow-right" class="h-3.5 w-3.5 text-amber-500" aria-hidden="true"></i>
+                                </template>
+                                <template x-if="row['{{ col.key }}'] === 'COULD' || row['{{ col.key }}'] === 'low'">
+                                    <i data-lucide="arrow-down" class="h-3.5 w-3.5 text-blue-500" aria-hidden="true"></i>
+                                </template>
+                                <template x-if="row['{{ col.key }}'] === 'WONT'">
+                                    <i data-lucide="minus" class="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true"></i>
+                                </template>
+                                <span class="text-sm" x-text="row['{{ col.key }}'] || '—'"></span>
+                            </div>
+                            {% elif col.get('type') == 'boolean' %}
+                            <span x-show="row['{{ col.key }}']" class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-destructive/10 text-destructive border border-destructive/20">Required</span>
+                            <span x-show="!row['{{ col.key }}']" class="text-muted-foreground">—</span>
+                            {% elif col.get('type') == 'truncate' %}
+                            <span class="line-clamp-1 max-w-[300px]" x-text="row['{{ col.key }}'] || '—'" :title="row['{{ col.key }}']"></span>
+                            {% else %}
+                            <span x-text="row['{{ col.key }}'] || '—'"></span>
+                            {% endif %}
+                        </td>
+                        {% endfor %}
+                        {% if actions %}
+                        <td class="w-10 px-3 py-2 align-middle text-right">
+                            <div x-data="{ menuOpen: false }" @click.outside="menuOpen = false" class="relative inline-block">
+                                <button type="button" @click="menuOpen = !menuOpen"
+                                        class="inline-flex items-center justify-center rounded-md h-8 w-8 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                                        aria-label="Row actions">
+                                    <i data-lucide="more-horizontal" class="h-4 w-4" aria-hidden="true"></i>
+                                </button>
+                                <!-- modal-a11y-ok -->
+                                <div x-show="menuOpen" x-cloak x-transition
+                                     class="absolute right-0 z-50 mt-1 w-40 rounded-md border border-border bg-popover shadow-lg p-1 text-sm">
+                                    {% if on_view %}
+                                    <button type="button" @click="{{ on_view }}; menuOpen = false"
+                                            class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-foreground hover:bg-accent transition-colors">
+                                        <i data-lucide="eye" class="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true"></i> View
+                                    </button>
+                                    {% endif %}
+                                    {% if on_edit %}
+                                    <button type="button" @click="{{ on_edit }}; menuOpen = false"
+                                            class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-foreground hover:bg-accent transition-colors">
+                                        <i data-lucide="pencil" class="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true"></i> Edit
+                                    </button>
+                                    {% endif %}
+                                    {% if on_delete %}
+                                    <div class="my-1 h-px bg-border"></div>
+                                    <button type="button" @click="{{ on_delete }}; menuOpen = false"
+                                            class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-destructive hover:bg-destructive/10 transition-colors">
+                                        <i data-lucide="trash-2" class="h-3.5 w-3.5" aria-hidden="true"></i> Delete
+                                    </button>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </td>
+                        {% endif %}
+                    </tr>
+                </template>
+            </tbody>
+        </table>
+    </div>
+
+    {# ══════════════════════════════════════════════════════════════ #}
+    {# PAGINATION                                                    #}
+    {# ══════════════════════════════════════════════════════════════ #}
+    {% if pagination %}
+    <div class="flex items-center justify-between px-2 py-4">
+        {# Selected rows count #}
+        {% if row_selection %}
+        <div class="flex-1 text-sm text-muted-foreground">
+            <span x-text="selectedRows.size"></span> of <span x-text="filteredRows.length"></span> row(s) selected.
+        </div>
+        {% else %}
+        <div class="flex-1 text-sm text-muted-foreground">
+            <span x-text="filteredRows.length"></span> row(s) total.
+        </div>
+        {% endif %}
+
+        <div class="flex items-center gap-6 lg:gap-8">
+            {# Rows per page #}
+            <div class="flex items-center gap-2">
+                <p class="text-sm font-medium text-muted-foreground hidden sm:block">Rows per page</p>
+                <select x-model.number="perPage" @change="currentPage = 1"
+                        class="flex h-8 w-[70px] items-center justify-between rounded-md border border-input bg-background px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring">
+                    <option value="10">10</option>
+                    <option value="20">20</option>
+                    <option value="30">30</option>
+                    <option value="50">50</option>
+                </select>
+            </div>
+
+            {# Page indicator #}
+            <div class="flex w-[100px] items-center justify-center text-sm font-medium text-foreground">
+                Page <span x-text="currentPage" class="mx-1"></span> of <span x-text="totalPages" class="ml-1"></span>
+            </div>
+
+            {# Navigation buttons #}
+            <div class="flex items-center gap-1">
+                <button type="button" @click="firstPage()" :disabled="currentPage <= 1"
+                        class="hidden lg:inline-flex items-center justify-center rounded-md border border-input bg-background h-8 w-8 hover:bg-accent transition-colors disabled:opacity-50 disabled:pointer-events-none">
+                    <i data-lucide="chevrons-left" class="h-4 w-4" aria-hidden="true"></i>
+                </button>
+                <button type="button" @click="previousPage()" :disabled="currentPage <= 1"
+                        class="inline-flex items-center justify-center rounded-md border border-input bg-background h-8 w-8 hover:bg-accent transition-colors disabled:opacity-50 disabled:pointer-events-none">
+                    <i data-lucide="chevron-left" class="h-4 w-4" aria-hidden="true"></i>
+                </button>
+                <button type="button" @click="nextPage()" :disabled="currentPage >= totalPages"
+                        class="inline-flex items-center justify-center rounded-md border border-input bg-background h-8 w-8 hover:bg-accent transition-colors disabled:opacity-50 disabled:pointer-events-none">
+                    <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
+                </button>
+                <button type="button" @click="lastPage()" :disabled="currentPage >= totalPages"
+                        class="hidden lg:inline-flex items-center justify-center rounded-md border border-input bg-background h-8 w-8 hover:bg-accent transition-colors disabled:opacity-50 disabled:pointer-events-none">
+                    <i data-lucide="chevrons-right" class="h-4 w-4" aria-hidden="true"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+</div>
+<script>
+function facetFilterDropdown() { return { open: false }; }
+</script>
+{% endmacro %}

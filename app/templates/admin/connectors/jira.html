@@ -1,0 +1,154 @@
+{% extends 'layouts/admin_base.html' %}
+{% from 'components/page_header.html' import page_header %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+    {{ page_header(
+        title='Jira ALM Connector',
+        description='Configure bidirectional Jira integration — ARB decisions create Jira epics; backlog items are imported as requirements.',
+        breadcrumbs=[
+            {'label': 'Admin', 'href': url_for('admin.index')},
+            {'label': 'Jira Connector'}
+        ]
+    ) }}
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div class="mb-6 space-y-2">
+                {% for category, message in messages %}
+                    <div class="rounded-md border p-4 {% if category == 'success' %}bg-primary/10 border-primary/20 text-foreground{% elif category == 'error' %}bg-destructive/10 border-destructive/20 text-destructive{% else %}bg-accent border-border text-foreground{% endif %}">
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+
+    <form method="POST" action="{{ url_for('m365_connector.jira_config_save') }}" class="space-y-6">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <!-- Jira Connection -->
+        <div data-slot="card" class="rounded-xl border-2 border-input bg-card">
+            <div class="p-4 sm:p-6 border-b">
+                <h3 class="text-lg font-semibold">Jira Connection</h3>
+                <p class="text-sm text-muted-foreground mt-1">
+                    Jira Cloud or Server credentials. Create an API token at
+                    <a href="https://id.atlassian.com/manage-profile/security/api-tokens" target="_blank" class="underline text-primary">id.atlassian.com</a>.
+                </p>
+            </div>
+            <div class="p-4 sm:p-6 space-y-4">
+                <div>
+                    <label for="instance_url" class="block text-sm font-medium mb-1">Jira Instance URL</label>
+                    <input
+                        type="url"
+                        id="instance_url"
+                        name="instance_url"
+                        value="{{ cfg.get('instance_url', '') }}"
+                        placeholder="https://yourcompany.atlassian.net"
+                        required
+                        class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring font-mono"
+                    >
+                </div>
+                <div>
+                    <label for="email" class="block text-sm font-medium mb-1">Jira Account Email</label>
+                    <input
+                        type="email"
+                        id="email"
+                        name="email"
+                        value="{{ cfg.get('email', '') }}"
+                        placeholder="your.name@company.com"
+                        required
+                        class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    >
+                </div>
+                <div>
+                    <label for="api_token" class="block text-sm font-medium mb-1">API Token</label>
+                    <input
+                        type="password"
+                        id="api_token"
+                        name="api_token"
+                        autocomplete="off"
+                        placeholder="Leave blank to keep existing token"
+                        class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring font-mono"
+                    >
+                    {% if cfg.get('api_token_encrypted') %}
+                    <p class="text-xs text-muted-foreground mt-1">✓ Token stored (encrypted). Enter a new value to replace it.</p>
+                    {% endif %}
+                </div>
+                <div>
+                    <label for="default_project_key" class="block text-sm font-medium mb-1">Default Project Key</label>
+                    <input
+                        type="text"
+                        id="default_project_key"
+                        name="default_project_key"
+                        value="{{ cfg.get('default_project_key', 'ARCH') }}"
+                        placeholder="ARCH"
+                        class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring font-mono uppercase"
+                    >
+                    <p class="text-xs text-muted-foreground mt-1">ARB decisions will create epics in this project.</p>
+                </div>
+                <div class="flex items-center gap-3">
+                    <input type="checkbox" id="enabled" name="enabled" {% if cfg.get('enabled') %}checked{% endif %}
+                        class="h-4 w-4 rounded border-input text-primary focus:ring-ring">
+                    <label for="enabled" class="text-sm font-medium">Enable Jira integration</label>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-3">
+            <button type="submit"
+                class="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
+                Save Configuration
+            </button>
+            <button type="button" id="test-jira-btn"
+                class="inline-flex items-center gap-2 rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-accent transition-colors">
+                Test Connection
+            </button>
+        </div>
+
+        <div id="jira-test-result" class="hidden rounded-md border p-4 text-sm"></div>
+    </form>
+</div>
+
+<script>
+function testJiraConnection() {
+    const result = document.getElementById('jira-test-result');
+    const btn = document.getElementById('test-jira-btn');
+    btn.disabled = true;
+    btn.textContent = 'Testing…';
+    result.className = 'rounded-md border p-4 text-sm bg-accent border-border';
+    result.classList.remove('hidden');
+    result.textContent = 'Connecting to Jira…';
+
+    const data = {
+        instance_url: document.getElementById('instance_url').value,
+        email: document.getElementById('email').value,
+        api_token: document.getElementById('api_token').value
+    };
+    fetch("{{ url_for('m365_connector.jira_config_test') }}", {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+    })
+    .then(r => r.json())
+    .then(res => {
+        result.textContent = res.message || JSON.stringify(res);
+        result.className = 'rounded-md border p-4 text-sm ' + (res.status === 'ok'
+            ? 'bg-primary/10 border-primary/20 text-foreground'
+            : 'bg-destructive/10 border-destructive/20 text-destructive');
+    })
+    .catch(e => {
+        result.textContent = 'Request failed: ' + e;
+        result.className = 'rounded-md border p-4 text-sm bg-destructive/10 border-destructive/20 text-destructive';
+    })
+    .finally(() => {
+        btn.disabled = false;
+        btn.textContent = 'Test Connection';
+    });
+}
+(function() {
+    let _testBtn = document.getElementById('test-jira-btn');
+    if (_testBtn) _testBtn.addEventListener('click', testJiraConnection);
+})();
+</script>
+{% endblock %}

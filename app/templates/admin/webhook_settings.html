@@ -1,0 +1,255 @@
+{% extends 'layouts/admin_base.html' %}
+{% from 'components/page_header.html' import page_header %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+    {{ page_header(
+        title='Webhook Settings',
+        description='Configure Slack and Microsoft Teams webhook integrations for real-time event notifications.',
+        breadcrumbs=[
+            {'label': 'Admin', 'href': url_for('admin.index')},
+            {'label': 'Webhook Settings'}
+        ]
+    ) }}
+
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div class="mb-6 space-y-2">
+                {% for category, message in messages %}
+                    <div class="rounded-md border p-4 {% if category == 'success' %}bg-primary/10 border-primary/20 text-foreground{% elif category == 'error' %}bg-destructive/10 border-destructive/20 text-destructive{% else %}bg-accent border-border text-foreground{% endif %}">
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+        <!-- Active Subscriptions -->
+        <div class="lg:col-span-1">
+            <div data-slot="card" class="rounded-xl border-2 border-input bg-card">
+                <div class="p-4 sm:p-6 border-b">
+                    <h3 class="text-lg font-semibold">Active Subscriptions</h3>
+                </div>
+                <div class="p-2">
+                    {% if subscriptions %}
+                        <div class="space-y-1">
+                            {% for sub in subscriptions %}
+                                <div class="flex items-start justify-between p-3 rounded-md hover:bg-accent transition-colors gap-2">
+                                    <div class="flex-1 min-w-0">
+                                        <div class="flex items-center gap-2 flex-wrap">
+                                            <!-- webhook_type badge -->
+                                            {% set wtype = sub.webhook_type if sub.webhook_type else 'generic' %}
+                                            {% if wtype == 'teams' %}
+                                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30"><!-- token-migration-ok -->Teams</span>
+                                            {% elif wtype == 'slack' %}
+                                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-success/10 text-success border border-success/30"><!-- token-migration-ok -->Slack</span>
+                                            {% else %}
+                                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground border border-border">Generic</span>
+                                            {% endif %}
+                                            <span class="text-xs text-muted-foreground font-mono truncate max-w-[160px]" title="{{ sub.url }}">{{ sub.url }}</span>
+                                        </div>
+                                        {% if sub.description %}
+                                            <p class="text-xs text-muted-foreground mt-1 truncate">{{ sub.description }}</p>
+                                        {% endif %}
+                                        <p class="text-xs text-muted-foreground mt-1">
+                                            Events: {{ (sub.events or ['*']) | join(', ') | truncate(60) }}
+                                        </p>
+                                    </div>
+                                    <div class="flex items-center gap-1 shrink-0">
+                                        <!-- Test button -->
+                                        <form method="POST" action="{{ url_for('admin.webhook_settings_test', subscription_id=sub.id) }}" class="inline">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                            <button type="submit"
+                                                    class="p-1.5 rounded-md hover:bg-background transition-colors"
+                                                    title="Send test payload"
+                                                    aria-label="Send test payload to {{ sub.url }}">
+                                                <i data-lucide="wifi" class="w-4 h-4" aria-hidden="true"></i>
+                                            </button>
+                                        </form>
+                                        <!-- Delete button -->
+                                        <form method="POST" action="{{ url_for('admin.webhook_settings') }}" class="inline"
+                                              @submit="if(!confirm('Delete this webhook subscription? This cannot be undone.')) $event.preventDefault()">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                            <input type="hidden" name="action" value="delete"/>
+                                            <input type="hidden" name="subscription_id" value="{{ sub.id }}"/>
+                                            <button type="submit"
+                                                    class="p-1.5 rounded-md hover:bg-background transition-colors text-destructive"
+                                                    title="Delete"
+                                                    aria-label="Delete webhook subscription">
+                                                <i data-lucide="trash-2" class="w-4 h-4" aria-hidden="true"></i>
+                                            </button>
+                                        </form>
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <p class="text-sm text-muted-foreground p-4 text-center">No webhook subscriptions configured yet.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Add Subscription Form -->
+        <div class="lg:col-span-2">
+            <div data-slot="card" class="rounded-xl border-2 border-input bg-card">
+                <div class="p-4 sm:p-6 border-b">
+                    <h3 class="text-lg font-semibold">Add Webhook Subscription</h3>
+                </div>
+                <form method="POST" action="{{ url_for('admin.webhook_settings') }}" class="p-4 sm:p-6">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <input type="hidden" name="action" value="create"/>
+
+                    <div class="space-y-5">
+
+                        <!-- Webhook Type -->
+                        <div>
+                            <label for="webhook_type" class="block text-sm font-medium mb-2">
+                                Webhook Type <span class="text-destructive">*</span>
+                            </label>
+                            <select id="webhook_type"
+                                    name="webhook_type"
+                                    class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                    required
+                                    aria-required="true">
+                                <option value="generic">Generic (raw JSON)</option>
+                                <option value="teams">Microsoft Teams (Adaptive Card)</option>
+                                <option value="slack">Slack (Block Kit)</option>
+                            </select>
+                            <p class="text-xs text-muted-foreground mt-1">
+                                Teams and Slack payloads are formatted automatically with rich cards.
+                            </p>
+                        </div>
+
+                        <!-- Webhook URL -->
+                        <div>
+                            <label for="url" class="block text-sm font-medium mb-2">
+                                Webhook URL <span class="text-destructive">*</span>
+                            </label>
+                            <input type="url"
+                                   id="url"
+                                   name="url"
+                                   placeholder="https://hooks.slack.com/services/... or https://outlook.office.com/webhook/..."
+                                   class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                   required
+                                   aria-required="true">
+                            <p class="text-xs text-muted-foreground mt-1">
+                                The incoming webhook URL from your Slack channel or Teams channel connector.
+                            </p>
+                        </div>
+
+                        <!-- Description -->
+                        <div>
+                            <label for="description" class="block text-sm font-medium mb-2">
+                                Description
+                            </label>
+                            <input type="text"
+                                   id="description"
+                                   name="description"
+                                   placeholder="e.g. #architecture-alerts Slack channel"
+                                   class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                        </div>
+
+                        <!-- Secret -->
+                        <div>
+                            <label for="secret" class="block text-sm font-medium mb-2">
+                                Signing Secret <span class="text-muted-foreground text-xs font-normal">(optional)</span>
+                            </label>
+                            <input type="password"
+                                   id="secret"
+                                   name="secret"
+                                   placeholder="Leave blank to skip HMAC signing"
+                                   class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                   autocomplete="new-password">
+                            <p class="text-xs text-muted-foreground mt-1">
+                                When set, each request is signed with HMAC-SHA256 and sent as
+                                <code class="bg-muted px-1 rounded text-xs">X-Webhook-Signature</code>.
+                            </p>
+                        </div>
+
+                        <!-- Events -->
+                        <div>
+                            <label class="block text-sm font-medium mb-2">
+                                Events to subscribe to
+                            </label>
+                            <p class="text-xs text-muted-foreground mb-3">
+                                Select the events that should trigger this webhook. Leave all unchecked to receive all events (<code class="bg-muted px-1 rounded">*</code>).
+                            </p>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                {% for event in valid_events %}
+                                    <label class="flex items-center gap-2 p-2 rounded-md border border-input hover:bg-accent transition-colors cursor-pointer">
+                                        <input type="checkbox"
+                                               name="events"
+                                               value="{{ event }}"
+                                               class="h-4 w-4 rounded border-border">
+                                        <span class="text-sm font-mono">{{ event }}</span>
+                                    </label>
+                                {% endfor %}
+                            </div>
+                        </div>
+
+                        <!-- Submit -->
+                        <div class="flex items-center gap-3 pt-2 border-t">
+                            <button type="submit"
+                                    class="inline-flex items-center gap-2 rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm font-medium hover:bg-primary/90 transition-colors"
+                                    aria-label="Save webhook subscription">
+                                <i data-lucide="save" class="w-4 h-4" aria-hidden="true"></i>
+                                Save Subscription
+                            </button>
+                            <a href="{{ url_for('admin.index') }}"
+                               class="inline-flex items-center gap-2 rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground transition-colors">
+                                Cancel
+                            </a>
+                        </div>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Setup Guide -->
+            <div class="mt-6 rounded-xl border-2 border-input bg-card p-4 sm:p-6">
+                <h3 class="text-lg font-semibold mb-4">Setup Instructions</h3>
+                <div class="space-y-4 text-sm text-muted-foreground">
+                    <div>
+                        <h4 class="font-medium text-foreground mb-1">Microsoft Teams</h4>
+                        <ol class="list-decimal ml-5 space-y-1">
+                            <li>Open the channel you want to post notifications to.</li>
+                            <li>Click <strong>···</strong> → <strong>Connectors</strong> → search <strong>Incoming Webhook</strong>.</li>
+                            <li>Click <strong>Configure</strong>, give it a name, then click <strong>Create</strong>.</li>
+                            <li>Copy the generated URL and paste it into the <em>Webhook URL</em> field above.</li>
+                        </ol>
+                    </div>
+                    <div>
+                        <h4 class="font-medium text-foreground mb-1">Slack</h4>
+                        <ol class="list-decimal ml-5 space-y-1">
+                            <li>Go to <a href="https://api.slack.com/apps" target="_blank" class="text-primary hover:underline">api.slack.com/apps</a> and create or select your app.</li>
+                            <li>Navigate to <strong>Features → Incoming Webhooks</strong> and enable it.</li>
+                            <li>Click <strong>Add New Webhook to Workspace</strong> and select a channel.</li>
+                            <li>Copy the <strong>Webhook URL</strong> and paste it above.</li>
+                        </ol>
+                    </div>
+                    <div>
+                        <h4 class="font-medium text-foreground mb-1">Payload Formats</h4>
+                        <p>
+                            <strong>Teams</strong> subscriptions send Adaptive Card v1.4 messages with a bold event title, structured field list, and timestamp.
+                        </p>
+                        <p class="mt-1">
+                            <strong>Slack</strong> subscriptions send Block Kit messages with a header block, mrkdwn section, and context block timestamp.
+                        </p>
+                        <p class="mt-1">
+                            <strong>Generic</strong> subscriptions send the raw event JSON payload as-is.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script>
+    lucide.createIcons();
+</script>
+{% endblock %}

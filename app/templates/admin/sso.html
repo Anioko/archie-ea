@@ -1,0 +1,200 @@
+{% extends 'layouts/admin_base.html' %}
+{% from 'components/page_header.html' import page_header %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+
+    {{ page_header(
+        title='SSO / Identity Federation',
+        description='Configure SAML 2.0 or OIDC single-sign-on for your organisation. Once enabled, users with a matching email domain are redirected to your Identity Provider at login.',
+        breadcrumbs=[
+            {'label': 'Admin', 'href': url_for('admin.index')},
+            {'label': 'SSO Configuration'}
+        ]
+    ) }}
+
+    {# Flash messages #}
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div class="mb-6 space-y-2">
+                {% for category, message in messages %}
+                    <div class="rounded-md border p-4
+                        {% if category == 'success' %}bg-primary/10 border-primary/20 text-foreground
+                        {% elif category == 'error' %}bg-destructive/10 border-destructive/20 text-destructive
+                        {% else %}bg-muted border-border text-foreground{% endif %}">
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+
+    <div class="bg-card border border-border rounded-lg shadow-sm p-6">
+
+        <form method="POST" action="{{ url_for('sso.admin_sso') }}" class="space-y-6">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+            {# Protocol selector #}
+            <div>
+                <label class="block text-sm font-medium text-foreground mb-1" for="protocol">
+                    Protocol
+                </label>
+                <select id="protocol" name="protocol"
+                        class="w-full rounded-md border border-border bg-background text-foreground px-3 py-2 text-sm focus:ring-2 focus:ring-primary/50"
+                        onchange="toggleProtocolFields(this.value)">
+                    <option value="oidc" {% if not config or config.protocol == 'oidc' %}selected{% endif %}>
+                        OIDC / OpenID Connect (recommended)
+                    </option>
+                    <option value="saml" {% if config and config.protocol == 'saml' %}selected{% endif %}>
+                        SAML 2.0
+                    </option>
+                </select>
+                <p class="mt-1 text-xs text-muted-foreground">
+                    OIDC works with Entra ID, Okta, Google Workspace, and any standards-compliant IdP.
+                    SAML 2.0 support is coming soon.
+                </p>
+            </div>
+
+            {# Email domain #}
+            <div>
+                <label class="block text-sm font-medium text-foreground mb-1" for="email_domain">
+                    Email Domain(s)
+                </label>
+                <input type="text" id="email_domain" name="email_domain"
+                       value="{{ config.email_domain if config else '' }}"
+                       placeholder="acme.com  or  acme.com,acme.co.uk"
+                       class="w-full rounded-md border border-border bg-background text-foreground px-3 py-2 text-sm focus:ring-2 focus:ring-primary/50">
+                <p class="mt-1 text-xs text-muted-foreground">
+                    Users with these email domains are redirected to your IdP at login.
+                    Separate multiple domains with commas.
+                </p>
+            </div>
+
+            {# OIDC fields #}
+            <div id="oidc-fields" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-foreground mb-1" for="idp_metadata_url">
+                        IdP Discovery URL
+                        <span class="text-muted-foreground font-normal">(OpenID Connect discovery document)</span>
+                    </label>
+                    <input type="url" id="idp_metadata_url" name="idp_metadata_url"
+                           value="{{ config.idp_metadata_url if config else '' }}"
+                           placeholder="https://login.microsoftonline.com/{tenant}/v2.0/.well-known/openid-configuration"
+                           class="w-full rounded-md border border-border bg-background text-foreground px-3 py-2 text-sm focus:ring-2 focus:ring-primary/50">
+                    <p class="mt-1 text-xs text-muted-foreground">
+                        Entra ID example:
+                        <code class="bg-muted px-1 rounded text-xs">https://login.microsoftonline.com/&lt;tenant-id&gt;/v2.0/.well-known/openid-configuration</code>
+                    </p>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-foreground mb-1" for="client_id">
+                        Client ID
+                    </label>
+                    {# entity-picker-ok: IdP OAuth client ID (external credential), not a platform application reference #}
+                    <input type="text" id="client_id" name="client_id"
+                           value="{{ config.client_id if config else '' }}"
+                           placeholder="Application (client) ID from your IdP"<!-- entity-picker-ok -->
+                           class="w-full rounded-md border border-border bg-background text-foreground px-3 py-2 text-sm focus:ring-2 focus:ring-primary/50">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-foreground mb-1" for="client_secret">
+                        Client Secret
+                        {% if config and config._client_secret_encrypted %}
+                            <span class="ml-2 text-xs text-primary font-normal">&#x2713; Secret stored</span>
+                        {% endif %}
+                    </label>
+                    <input type="password" id="client_secret" name="client_secret"
+                           placeholder="{{ 'Leave blank to keep existing secret' if config and config._client_secret_encrypted else 'Paste client secret' }}"
+                           autocomplete="new-password"
+                           class="w-full rounded-md border border-border bg-background text-foreground px-3 py-2 text-sm focus:ring-2 focus:ring-primary/50">
+                    <p class="mt-1 text-xs text-muted-foreground">
+                        Stored encrypted with Fernet (FERNET_KEY env var). Never logged.
+                    </p>
+                </div>
+            </div>
+
+            {# SAML fields (hidden by default) #}
+            <div id="saml-fields" class="hidden space-y-4">
+                <div class="rounded-md border border-border bg-amber-500/5 p-4 text-sm text-foreground">
+                    <strong>SAML 2.0 support is coming soon.</strong>
+                    SAML federation requires the <code>python3-saml</code> library.
+                    For now, please use OIDC.
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-foreground mb-1" for="idp_metadata_url_saml">
+                        IdP Metadata URL
+                    </label>
+                    <input type="url" id="idp_metadata_url_saml" name="idp_metadata_url"
+                           value="{{ config.idp_metadata_url if config else '' }}"
+                           placeholder="https://idp.example.com/saml/metadata"
+                           class="w-full rounded-md border border-border bg-background text-foreground px-3 py-2 text-sm focus:ring-2 focus:ring-primary/50">
+                </div>
+            </div>
+
+            {# Enabled toggle #}
+            <div class="flex items-center gap-3">
+                <input type="checkbox" id="enabled" name="enabled"
+                       {% if config and config.enabled %}checked{% endif %}
+                       class="h-4 w-4 rounded border-border text-primary focus:ring-primary/50">
+                <label for="enabled" class="text-sm font-medium text-foreground">
+                    Enable SSO for this organisation
+                </label>
+            </div>
+
+            {# Action buttons #}
+            <div class="flex items-center gap-3 pt-2">
+                <button type="submit"
+                        class="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 focus:ring-2 focus:ring-primary/50">
+                    Save Configuration
+                </button>
+
+                {% if config and config.email_domain %}
+                    <a href="{{ url_for('sso.sso_initiate', email='test@' + config.email_domains[0]) }}"
+                       target="_blank"
+                       class="rounded-md border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-muted">
+                        Test SSO →
+                    </a>
+                {% endif %}
+            </div>
+        </form>
+    </div>
+
+    {# Info card: callback URLs for IdP registration #}
+    {% if config %}
+    <div class="mt-6 bg-card border border-border rounded-lg p-5">
+        <h3 class="text-sm font-semibold text-foreground mb-3">Register these URLs in your IdP</h3>
+        <dl class="space-y-2 text-sm">
+            <div class="flex gap-2">
+                <dt class="text-muted-foreground w-40 shrink-0">OIDC Callback URL</dt>
+                <dd class="text-foreground font-mono text-xs break-all">
+                    {{ request.host_url.rstrip('/') }}/auth/sso/callback/oidc
+                </dd>
+            </div>
+            <div class="flex gap-2">
+                <dt class="text-muted-foreground w-40 shrink-0">SAML ACS URL</dt>
+                <dd class="text-foreground font-mono text-xs break-all">
+                    {{ request.host_url.rstrip('/') }}/auth/sso/callback/saml
+                </dd>
+            </div>
+        </dl>
+    </div>
+    {% endif %}
+
+</div>
+
+<script>
+function toggleProtocolFields(protocol) {
+    let oidc = document.getElementById('oidc-fields');
+    let saml = document.getElementById('saml-fields');
+    if (protocol === 'saml') {
+        oidc.classList.add('hidden');
+        saml.classList.remove('hidden');
+    } else {
+        oidc.classList.remove('hidden');
+        saml.classList.add('hidden');
+    }
+}
+// Apply on page load
+toggleProtocolFields(document.getElementById('protocol').value);
+</script>
+{% endblock %}

@@ -1,0 +1,105 @@
+"""
+Application Capability Mapping Seed Data
+
+Example mappings showing how applications implement business capabilities using technical capabilities.
+Pattern: Business Capability → Application → Technical Capability
+"""
+
+APPLICATION_CAPABILITY_MAPPINGS = [
+    {
+        "code": "APP-CAP-SAP-ERP-OPS",
+        "name": "SAP ERP - Operations",
+        "description": "SAP implements operations business capabilities using enterprise application services",
+        "application_code": "SAP-ERP - 1",  # Will be resolved to application_id
+        "business_capability_code": "OPER - 001",  # Will be resolved to unified_capability_id
+        "technical_capability_code": "APP-SRV - 01",  # Will be resolved to technical_capability_id
+        "coverage_percentage": 85,
+        "support_level": "strong",
+        "implementation_pattern": "REST API",
+        "status": "active",
+    },
+    {
+        "code": "APP-CAP-SALESFORCE-CRM",
+        "name": "Salesforce - Customer Management",
+        "description": "Salesforce implements customer management capabilities using cloud application services",
+        "application_code": "SALESFORCE - 1",
+        "business_capability_code": "CUST - 001",
+        "technical_capability_code": "APP-SRV - 02",
+        "coverage_percentage": 95,
+        "support_level": "strong",
+        "implementation_pattern": "REST API",
+        "status": "active",
+    },
+    {
+        "code": "APP-CAP-POSTGRES-DATA",
+        "name": "PostgreSQL - Data Storage",
+        "description": "PostgreSQL implements data storage capabilities for business processes",
+        "application_code": "POSTGRES-MAIN",
+        "business_capability_code": "DATA - 001",
+        "technical_capability_code": "DATA-STOR - 01",
+        "coverage_percentage": 100,
+        "support_level": "strong",
+        "implementation_pattern": "Database Connection",
+        "status": "active",
+    },
+    {
+        "code": "APP-CAP-KAFKA-MESSAGING",
+        "name": "Apache Kafka - Event Streaming",
+        "description": "Kafka implements messaging and integration capabilities for real-time data flow",
+        "application_code": "KAFKA-CLUSTER",
+        "business_capability_code": "OPER - 002",
+        "technical_capability_code": "COMM - 01",
+        "coverage_percentage": 80,
+        "support_level": "strong",
+        "implementation_pattern": "Message Queue",
+        "status": "active",
+    },
+    {
+        "code": "APP-CAP-AUTH0 - SECURITY",
+        "name": "Auth0 - Identity Management",
+        "description": "Auth0 implements security and identity capabilities across applications",
+        "application_code": "AUTH0 - 1",
+        "business_capability_code": "INFRA - 001",
+        "technical_capability_code": "SEC-ID - 01",
+        "coverage_percentage": 90,
+        "support_level": "strong",
+        "implementation_pattern": "OAuth 2.0",
+        "status": "active",
+    },
+    {
+        "code": "APP-CAP-JENKINS-DEVOPS",
+        "name": "Jenkins - CI/CD Pipeline",
+        "description": "Jenkins implements DevOps and deployment capabilities for continuous delivery",
+        "application_code": "JENKINS - 1",
+        "business_capability_code": "INFRA - 002",
+        "technical_capability_code": "DEVOPS - 01",
+        "coverage_percentage": 75,
+        "support_level": "strong",
+        "implementation_pattern": "CI/CD Pipeline",
+        "status": "active",
+    },
+    {
+        "code": "APP-CAP-TABLEAU-ANALYTICS",
+        "name": "Tableau - Business Analytics",
+        "description": "Tableau implements analytics and reporting capabilities for business insights",
+        "application_code": "TABLEAU - 1",
+        "business_capability_code": "DATA - 002",
+        "technical_capability_code": "AI-ANAL - 01",
+        "coverage_percentage": 70,
+        "support_level": "medium",
+        "implementation_pattern": "REST API",
+        "status": "active",
+    },
+    {
+        "code": "APP-CAP-REACT-UI",
+        "name": "React Application - Web UI",
+        "description": "React implements user experience and web interface capabilities",
+        "application_code": "REACT-APP - 1",
+        "business_capability_code": "CUST - 002",
+        "technical_capability_code": "UX - 01",
+        "coverage_percentage": 60,
+        "support_level": "medium",
+        "implementation_pattern": "REST API",
+        "status": "active",
+    },
+]

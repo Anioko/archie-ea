@@ -1,0 +1,78 @@
+{#
+  Application Stats Grid Component
+  
+  A reusable component for displaying application portfolio metrics in a responsive grid.
+  Each metric is shown in a card with an icon, value, and subtitle.
+  
+  Usage:
+    {% from 'components/app_stats_grid.html' import app_stats_grid %}
+    {{ app_stats_grid(stats=stats, applications=applications) }}
+  
+  Parameters:
+    - stats: dict with keys: total, production, development, critical (optional, calculated if not provided)
+    - applications: list of application objects (used for fallback counts if stats not provided)
+  
+  Example:
+    {{ app_stats_grid(stats={'total': 150, 'production': 120, 'development': 25, 'critical': 5}) }}
+#}
+
+{% macro app_stats_grid(stats=None, applications=None) %}
+<!-- Metrics Grid - Shadcn Enterprise Style -->
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-6">
+  <!-- Total Applications -->
+  <div class="rounded-xl border border-input bg-background hover:border-primary/50 hover:shadow-sm transition-all duration-200 p-5">
+    <div class="flex items-start gap-4">
+      <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-primary">
+        <i data-lucide="layout-grid" class="h-5 w-5 text-primary-foreground"></i>
+      </div>
+      <div class="flex-1 min-w-0">
+        <p class="text-sm font-medium text-muted-foreground">Total Applications</p>
+        <p class="text-2xl font-bold tracking-tight mt-1">{{ stats.total if stats else (applications|length if applications else 0) }}</p>
+        <p class="text-xs text-muted-foreground mt-1">In portfolio</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Production -->
+  <div class="rounded-xl border border-input bg-background hover:border-primary/50 hover:shadow-sm transition-all duration-200 p-5">
+    <div class="flex items-start gap-4">
+      <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-emerald-500">
+        <i data-lucide="check-circle" class="h-5 w-5 text-primary-foreground"></i>
+      </div>
+      <div class="flex-1 min-w-0">
+        <p class="text-sm font-medium text-muted-foreground">Production</p>
+        <p class="text-2xl font-bold tracking-tight mt-1">{{ stats.production if stats else 0 }}</p>
+        <p class="text-xs text-muted-foreground mt-1">Live systems</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Development -->
+  <div class="rounded-xl border border-input bg-background hover:border-primary/50 hover:shadow-sm transition-all duration-200 p-5">
+    <div class="flex items-start gap-4">
+      <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-amber-500">
+        <i data-lucide="code" class="h-5 w-5 text-primary-foreground"></i>
+      </div>
+      <div class="flex-1 min-w-0">
+        <p class="text-sm font-medium text-muted-foreground">Development</p>
+        <p class="text-2xl font-bold tracking-tight mt-1">{{ stats.development if stats else 0 }}</p>
+        <p class="text-xs text-muted-foreground mt-1">In progress</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Critical -->
+  <div class="rounded-xl border border-input bg-background hover:border-primary/50 hover:shadow-sm transition-all duration-200 p-5">
+    <div class="flex items-start gap-4">
+      <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-destructive">
+        <i data-lucide="alert-triangle" class="h-5 w-5 text-primary-foreground"></i>
+      </div>
+      <div class="flex-1 min-w-0">
+        <p class="text-sm font-medium text-muted-foreground">Critical</p>
+        <p class="text-2xl font-bold tracking-tight mt-1">{{ stats.critical if stats else 0 }}</p>
+        <p class="text-xs text-muted-foreground mt-1">Needs attention</p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endmacro %}

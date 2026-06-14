@@ -1,0 +1,114 @@
+{# Step 5: Implementation Roadmap (TOGAF Phase F) #}
+<div class="space-y-6 px-4">
+  <div class="flex items-center justify-between">
+    <div>
+      <h2 class="text-lg font-semibold text-foreground">Implementation Roadmap</h2>
+      <p class="text-sm text-muted-foreground mt-1">TOGAF Phase F — Define transition plateaus and work packages.</p>
+    </div>
+    <div class="flex items-center gap-2">
+      <button @click="autoSequence()" type="button"
+        :disabled="roadmap.workPackages.length === 0"
+        class="inline-flex items-center gap-2 h-9 px-4 rounded-md text-sm font-medium border border-input bg-background hover:bg-accent disabled:opacity-50 disabled:pointer-events-none">
+        <i data-lucide="git-branch" class="h-4 w-4"></i> Auto-sequence
+      </button>
+      <button @click="generateRoadmap()" type="button"
+        :disabled="!selectedOptionId || roadmapLoading"
+        class="inline-flex items-center gap-2 h-9 px-4 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:pointer-events-none">
+        <i data-lucide="sparkles" class="h-4 w-4" x-show="!roadmapLoading" x-cloak></i>
+        <i data-lucide="loader-2" class="h-4 w-4 animate-spin" x-show="roadmapLoading" x-cloak></i>
+        <span x-text="roadmapLoading ? 'Generating...' : 'Generate Roadmap'"></span>
+      </button>
+    </div>
+  </div>
+
+  {# Loading state #}
+  <div x-show="roadmapLoading" x-cloak class="text-center py-8">
+    <i data-lucide="loader-2" class="h-8 w-8 animate-spin text-muted-foreground mx-auto"></i>
+    <p class="text-sm text-muted-foreground mt-2">Generating implementation roadmap...</p>
+  </div>
+
+  {# Plateau timeline #}
+  <div x-show="roadmap.plateaus.length > 0 && !roadmapLoading" x-cloak>
+    <div class="flex items-center gap-2 mb-3">
+      <span class="text-sm font-medium text-foreground">Transition Plateaus</span>
+      {# ENH-006: AI Generated badge for roadmap #}
+      <span x-show="roadmap._ai_generated" x-cloak
+        class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-500/10 text-primary border border-purple-500/30">
+        <i data-lucide="sparkles" class="h-3 w-3 mr-0.5"></i> AI Generated
+      </span>
+    </div>
+    <div class="flex items-center gap-2 overflow-x-auto pb-2">
+      <div class="rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-center whitespace-nowrap">
+        <div class="font-medium">Current State</div>
+      </div>
+      <template x-for="(plateau, idx) in roadmap.plateaus" :key="plateau.id || idx">
+        <div class="flex items-center gap-2">
+          <i data-lucide="arrow-right" class="h-4 w-4 text-muted-foreground shrink-0"></i>
+          <div class="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-xs text-center whitespace-nowrap">
+            <div class="font-medium" x-text="plateau.name"></div>
+            <div class="text-muted-foreground" x-text="plateau.duration || ''"></div>
+          </div>
+        </div>
+      </template>
+      <div class="flex items-center gap-2">
+        <i data-lucide="arrow-right" class="h-4 w-4 text-muted-foreground shrink-0"></i>
+        <div class="rounded-md border border-emerald-500/30 bg-emerald-500/5 px-3 py-2 text-xs text-center whitespace-nowrap">
+          <div class="font-medium text-emerald-600">Target State</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# Work packages grouped by plateau #}
+  <div x-show="roadmap.workPackages.length > 0 && !roadmapLoading" x-cloak>
+    <div class="flex items-center justify-between mb-3">
+      <span class="text-sm font-medium text-foreground">Work Packages (<span x-text="roadmap.workPackages.length"></span>)</span>
+      <button @click="addWorkPackage()" type="button"
+        class="inline-flex items-center gap-1 h-7 px-2 rounded-md text-xs font-medium border border-input bg-background hover:bg-accent">
+        <i data-lucide="plus" class="h-3 w-3"></i> Add
+      </button>
+    </div>
+    <div class="space-y-2">
+      <template x-for="(wp, idx) in roadmap.workPackages" :key="wp.id || idx">
+        <div class="rounded-md border border-border p-3">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span x-text="wp.name" class="text-sm font-medium"></span>
+              <span x-show="wp.plateau" x-cloak
+                class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-primary/10 text-primary border border-primary/30"
+                x-text="wp.plateau"></span>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="text-xs text-muted-foreground" x-text="wp.duration || ''"></span>
+              <button aria-label="Remove" @click="removeWorkPackage(idx)" type="button" class="text-muted-foreground hover:text-destructive">
+                <i data-lucide="x" class="h-4 w-4"></i>
+              </button>
+            </div>
+          </div>
+          <div class="mt-2" x-show="wp.dependencies && wp.dependencies.length > 0" x-cloak>
+            <span class="text-xs text-muted-foreground">Depends on: </span>
+            <template x-for="dep in (wp.dependencies || [])" :key="dep">
+              <span class="text-xs text-primary" x-text="dep + ' '"></span>
+            </template>
+          </div>
+        </div>
+      </template>
+    </div>
+  </div>
+
+  {# Add plateau button #}
+  <div x-show="!roadmapLoading" x-cloak class="flex gap-2">
+    <button @click="addPlateau()" type="button"
+      class="inline-flex items-center gap-1 h-8 px-3 rounded-md text-xs font-medium border border-dashed border-border hover:bg-accent">
+      <i data-lucide="plus" class="h-3 w-3"></i> Add Plateau
+    </button>
+  </div>
+
+  {# Empty state #}
+  <div x-show="roadmap.workPackages.length === 0 && roadmap.plateaus.length === 0 && !roadmapLoading" x-cloak
+    class="rounded-md border border-dashed border-border p-8 text-center">
+    <i data-lucide="milestone" class="h-8 w-8 text-muted-foreground mx-auto mb-2"></i>
+    <p class="text-sm text-muted-foreground">No roadmap defined yet.</p>
+    <p class="text-xs text-muted-foreground mt-1">Select a solution option in Step 4, then generate a roadmap or add work packages manually.</p>
+  </div>
+</div>

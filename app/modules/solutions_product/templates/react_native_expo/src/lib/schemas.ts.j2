@@ -1,0 +1,26 @@
+/**
+ * Auto-generated Zod schemas from confirmed field specs.
+ * DO NOT EDIT — regenerate via the Code Workbench.
+ */
+import { z } from "zod"
+
+{% for cls in classes %}
+export const {{ cls.name }}Schema = z.object({
+{% for field in cls.fields %}{% if field.name != 'id' %}
+  {{ field.name }}: {% if field.enum %}z.enum([{{ field.enum | map('tojson') | join(', ') }}] as [string, ...string[]])
+  {%- elif field.type == "boolean" %}z.boolean()
+  {%- elif field.type == "number" %}z.coerce.number()
+  {%- elif field.type == "object" %}z.record(z.unknown())
+  {%- else %}z.string()
+    {%- if field.format == "email" %}.email("Invalid email address"){% endif %}
+    {%- if field.name.endswith('_url') or field.name == 'url' or field.name == 'website' %}.url("Must be a valid URL (include https://)"){% endif %}
+    {%- if field.maxLength %}.max({{ field.maxLength }}, "{{ field.name | replace('_', ' ') | title }} cannot exceed {{ field.maxLength }} characters"){% endif %}
+    {%- if field.required %}.min(1, "{{ field.name | replace('_', ' ') | title }} is required"){% endif %}
+  {%- endif %}{% if not field.required %}.optional(){% endif %},
+{% endif %}{% endfor %}
+})
+
+export type {{ cls.name }}Input = z.infer<typeof {{ cls.name }}Schema>
+export type {{ cls.name }} = {{ cls.name }}Input & { id: number | string }
+
+{% endfor %}

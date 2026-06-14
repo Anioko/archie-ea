@@ -1,0 +1,236 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'components/modal.html' import modal %}
+{% from 'components/page_header.html' import page_header %}
+{% from 'components/empty_state.html' import empty_state %}
+
+{% block title %}ADM Kanban Boards{% endblock %}
+
+{% block content %}
+<div x-data="kanbanBoardModal()">
+<div class="container mx-auto px-4 sm:px-6 lg:px-8 py-6 max-w-7xl">
+    {{ page_header(
+        title='ADM Kanban Boards',
+        description='Manage TOGAF ADM phases and track architectural activities using kanban boards',
+        breadcrumbs=[
+            {'label': 'Dashboard', 'href': url_for('main.index')},
+            {'label': 'Architecture'},
+            {'label': 'Kanban Boards'}
+        ],
+        actions=[
+            {'text': 'New Board', 'icon': 'plus', 'onclick': 'Platform.modal.open("create-kanban-board")', 'variant': 'default'}
+        ]
+    ) }}
+
+    <!-- Boards Grid -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {% for board in boards %}
+        <div data-slot="card" class="rounded-xl border bg-card text-card-foreground shadow-sm hover:shadow-md transition-shadow">
+            <div class="p-6">
+                <div class="flex items-start justify-between mb-4">
+                    <div class="flex-1 min-w-0">
+                        <h3 class="text-lg font-semibold truncate">
+                            <a href="{{ url_for('adm_kanban_view.index') }}"
+                               class="hover:text-primary transition-colors">
+                                {{ board.name }}
+                            </a>
+                        </h3>
+                        {% if board.description %}
+                        <p class="text-sm text-muted-foreground mt-1 line-clamp-2">
+                            {{ board.description }}
+                        </p>
+                        {% endif %}
+                    </div>
+                    <div class="flex items-center gap-2 ml-4">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary">
+                            {{ board.cards|length }} cards
+                        </span>
+                    </div>
+                </div>
+
+                <div class="flex items-center justify-between text-sm text-muted-foreground">
+                    <div class="flex items-center gap-1">
+                        <i data-lucide="user" class="h-4 w-4" aria-hidden="true"></i>
+                        <span>{{ board.created_by.full_name() if board.created_by else 'Unknown' }}</span>
+                    </div>
+                    <div class="flex items-center gap-1">
+                        <i data-lucide="calendar" class="h-4 w-4" aria-hidden="true"></i>
+                        <span>{{ board.created_at.strftime('%b %d, %Y') if board.created_at else 'N/A' }}</span>
+                    </div>
+                </div>
+
+                {% if board.current_adm_phase %}
+                <div class="mt-4 pt-4 border-t">
+                    <div class="flex items-center gap-2 text-sm">
+                        <span class="text-muted-foreground">Current Phase:</span>
+                        <span class="font-medium">{{ board.current_adm_phase }}</span>
+                    </div>
+                </div>
+                {% endif %}
+
+                <div class="mt-4 flex gap-2">
+                    <a href="{{ url_for('adm_kanban_view.index') }}"
+                       class="flex-1 inline-flex items-center justify-center gap-2 bg-primary text-primary-foreground px-3 py-2 rounded-md text-sm hover:bg-primary/90 transition-colors">
+                        <i data-lucide="eye" class="h-4 w-4" aria-hidden="true"></i>
+                        View Board
+                    </a>
+                    <button type="button" @click="showBoardMenu({{ board.id }})"
+                            class="inline-flex items-center justify-center gap-2 border border-border bg-background px-3 py-2 rounded-md text-sm hover:bg-accent transition-colors" aria-label="Board actions for {{ board.name }}">
+                        <i data-lucide="more-vertical" class="h-4 w-4" aria-hidden="true"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    {% if not boards %}
+    <!-- Empty State -->
+    {{ empty_state(icon='trello', title='No Kanban Boards Yet',
+                   description='Create your first TOGAF ADM kanban board to start tracking architectural activities and phases.') }}
+    <div class="flex justify-center mt-4">
+        <button type="button" data-modal-open="create-kanban-board"
+                class="inline-flex items-center gap-2 bg-primary text-primary-foreground px-6 py-3 rounded-md hover:bg-primary/90 transition-colors" aria-label="Create your first kanban board">
+            <i data-lucide="plus" class="h-5 w-5" aria-hidden="true"></i>
+            Create Your First Board
+        </button>
+    </div>
+    {% endif %}
+</div>
+
+{% call modal(id='create-kanban-board', title='Create Kanban Board', description='Set up a new TOGAF ADM kanban board', size='default') %}
+<form @submit.prevent="submitCreateBoard()" class="space-y-4">
+    <div>
+        <label for="ckb-name" class="block text-sm font-medium mb-1">Board Name <span class="text-destructive">*</span></label>
+        <input type="text" id="ckb-name" x-model="formData.name" required maxlength="200"
+               class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+               placeholder="Enter board name">
+    </div>
+    <div>
+        <label for="ckb-description" class="block text-sm font-medium mb-1">Description</label>
+        <textarea id="ckb-description" x-model="formData.description" rows="3" maxlength="1000"
+                  class="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  placeholder="Describe the purpose and scope of this board"></textarea>
+    </div>
+    <div>
+        <label for="ckb-project" class="block text-sm font-medium mb-1">Project Name</label>
+        <input type="text" id="ckb-project" x-model="formData.project_name" maxlength="200"
+               class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+               placeholder="Associate with a specific project (optional)">
+    </div>
+    <div x-cloak
+                    x-show="errorMsg" class="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-sm text-destructive" x-text="errorMsg"></div>
+    <div class="flex justify-end gap-3 pt-2 border-t border-border">
+        <button type="button" data-modal-close="create-kanban-board"
+                class="px-4 py-2 text-sm font-medium rounded-md border border-input bg-background hover:bg-accent" aria-label="Cancel board creation">Cancel</button>
+        <button type="submit" :disabled="submitting"
+                class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50" aria-label="Create board">
+            <i data-lucide="loader-2" class="h-4 w-4 animate-spin" x-cloak
+                    x-show="submitting"></i>
+            <span x-text="submitting ? 'Creating...' : 'Create Board'"></span>
+        </button>
+    </div>
+</form>
+{% endcall %}
+
+<!-- Board Menu Modal -->
+<div x-data="{ menuBoardId: null, showMenu: false, showDeleteConfirm: false }" x-cloak>
+    <div x-cloak
+                    x-show="showMenu" @keydown.escape.window="showMenu = false" class="fixed inset-0 z-50">
+        <div @click="showMenu = false" class="absolute inset-0 bg-black/60"
+             x-transition:enter="transition ease-out duration-150" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100"
+             x-transition:leave="transition ease-in duration-100" x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0"></div>
+        <div class="flex items-center justify-center p-4 fixed inset-0">
+            <div class="bg-background rounded-lg shadow-xl max-w-sm w-full border" x-cloak
+                    x-show="showMenu" x-transition @click.stop
+                 role="dialog" aria-modal="true" aria-label="Board actions">
+                <div class="p-5">
+                    <h3 class="text-lg font-semibold mb-3">Board Actions</h3>
+                    <div class="space-y-1">
+                        <a :href="'/adm-kanban/boards/' + menuBoardId"
+                           class="flex items-center gap-3 w-full px-3 py-2.5 rounded-md hover:bg-accent transition-colors text-sm">
+                            <i data-lucide="eye" class="h-4 w-4" aria-hidden="true"></i>View Board
+                        </a>
+                        <a :href="'/adm-kanban/boards/' + menuBoardId + '/settings'"
+                           class="flex items-center gap-3 w-full px-3 py-2.5 rounded-md hover:bg-accent transition-colors text-sm">
+                            <i data-lucide="settings" class="h-4 w-4" aria-hidden="true"></i>Board Settings
+                        </a>
+                        <button type="button" @click="showMenu = false; showDeleteConfirm = true"
+                                class="flex items-center gap-3 w-full px-3 py-2.5 rounded-md hover:bg-destructive/10 text-destructive transition-colors text-sm" aria-label="Delete this board">
+                            <i data-lucide="trash-2" class="h-4 w-4" aria-hidden="true"></i>Delete Board
+                        </button>
+                    </div>
+                    <div class="mt-3 pt-3 border-t">
+                        <button type="button" @click="showMenu = false" class="w-full px-3 py-2 rounded-md text-sm text-muted-foreground hover:bg-accent transition-colors" aria-label="Close menu">Cancel</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div x-cloak
+                    x-show="showDeleteConfirm" @keydown.escape.window="showDeleteConfirm = false" class="fixed inset-0 z-50">
+        <div @click="showDeleteConfirm = false" class="absolute inset-0 bg-black/60" x-transition></div>
+        <div class="flex items-center justify-center p-4 fixed inset-0">
+            <div class="bg-background rounded-lg shadow-xl max-w-sm w-full border p-6" x-cloak
+                    x-show="showDeleteConfirm" x-transition @click.stop
+                 role="alertdialog" aria-modal="true" aria-label="Confirm board deletion">
+                <h3 class="text-lg font-semibold text-destructive mb-2">Delete Board</h3>
+                <p class="text-sm text-muted-foreground mb-4">This action cannot be undone. All cards and associated data will be permanently removed.</p>
+                <div class="flex gap-3">
+                    <button type="button" @click="showDeleteConfirm = false" class="flex-1 px-4 py-2 text-sm rounded-md border border-input bg-background hover:bg-accent" aria-label="Cancel deletion">Cancel</button>
+                    <button type="button" @click="
+                        Platform.fetch('/api/adm-kanban/boards/' + menuBoardId, { method: 'DELETE' })
+                            .then(function() { Platform.toast.success('Board deleted'); setTimeout(function(){ location.reload(); }, 600); })
+                            .catch(function(err) { Platform.toast.error('Delete failed: ' + (err.message || 'Unknown error')); });
+                        showDeleteConfirm = false;
+                    " class="flex-1 px-4 py-2 text-sm rounded-md bg-destructive text-destructive-foreground hover:bg-destructive/90 font-medium" aria-label="Confirm deletion">Delete</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function showBoardMenu(boardId) {
+    const menuScope = document.querySelector('[x-data*="menuBoardId"]');
+    if (menuScope && window.Alpine) {
+        const data = Alpine.$data(menuScope);
+        data.menuBoardId = boardId;
+        data.showMenu = true;
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+});
+
+function kanbanBoardModal() {
+    return {
+        formData: { name: '', description: '', project_name: '' },
+        submitting: false,
+        errorMsg: '',
+        submitCreateBoard: function() {
+            if (!this.formData.name.trim()) { this.errorMsg = 'Board name is required.'; return; }
+            this.submitting = true;
+            this.errorMsg = '';
+            const self = this;
+            Platform.fetch('{{ url_for("adm_kanban.create_board") }}', {
+                method: 'POST',
+                body: this.formData
+            })
+            .then(function(data) {
+                self.submitting = false;
+                Platform.modal.close('create-kanban-board');
+                Platform.toast.success('Board created successfully');
+                setTimeout(function() { window.location.reload(); }, 800);
+            })
+            .catch(function(err) {
+                self.submitting = false;
+                self.errorMsg = err.message || 'An error occurred. Please try again.';
+            });
+        }
+    };
+}
+</script>
+</div>
+{% endblock %}

@@ -1,0 +1,329 @@
+{% extends "layouts/admin_base.html" %}
+{% from "components/page_header.html" import page_header %}
+{% from "components/status_badge.html" import status_badge_auto %}
+
+{% block title %}API Registry{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 sm:px-6 lg:px-8 py-6 max-w-7xl" x-data="apiRegistry()">
+    {{ page_header(
+        title='API Registry',
+        description='Enterprise-wide catalog of published API contracts generated from solution blueprints.',
+        breadcrumbs=[
+            {'label': 'Dashboard', 'href': url_for('main.index')},
+            {'label': 'API Registry'}
+        ]
+    ) }}
+
+    <!-- Filter Bar -->
+    <div class="mb-6 flex flex-col sm:flex-row gap-3">
+        <div class="relative flex-1">
+            <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" aria-hidden="true"></i>
+            <input
+                type="text"
+                placeholder="Search by solution name or spec title…"
+                x-model="searchQuery"
+                class="w-full pl-9 pr-4 py-2 rounded-md border border-input bg-background text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                aria-label="Search API specs"
+            >
+        </div>
+        <div class="flex gap-2">
+            <select
+                x-model="statusFilter"
+                class="rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                aria-label="Filter by status"
+            >
+                <option value="published">Published</option>
+                <option value="draft">Draft</option>
+                <option value="deprecated">Deprecated</option>
+                <option value="">All Statuses</option>
+            </select>
+            <select
+                x-model="typeFilter"
+                class="rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                aria-label="Filter by spec type"
+            >
+                <option value="">All Types</option>
+                <option value="openapi">OpenAPI</option>
+                <option value="asyncapi">AsyncAPI</option>
+            </select>
+            <button
+                type="button"
+                x-on:click="loadSpecs()"
+                class="inline-flex items-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground transition-colors"
+                aria-label="Refresh spec list"
+            >
+                <i data-lucide="refresh-cw" class="w-4 h-4" x-bind:class="loading ? 'animate-spin' : ''" aria-hidden="true"></i>
+                Refresh
+            </button>
+        </div>
+    </div>
+
+    <!-- Loading State -->
+    <div x-show="loading" class="flex items-center justify-center py-16 text-muted-foreground" role="status" aria-live="polite">
+        <i data-lucide="loader-2" class="w-5 h-5 animate-spin mr-2" aria-hidden="true"></i>
+        Loading API specs…
+    </div>
+
+    <!-- Empty State -->
+    <div x-show="!loading && filteredSpecs.length === 0" class="flex flex-col items-center justify-center py-16 text-center">
+        <i data-lucide="file-code-2" class="w-12 h-12 text-muted-foreground mb-4" aria-hidden="true"></i>
+        <h3 class="text-base font-medium text-foreground mb-1">No API specs found</h3>
+        <p class="text-sm text-muted-foreground max-w-sm">
+            Publish an API spec from a solution blueprint to see it here.
+        </p>
+    </div>
+
+    <!-- Spec Table -->
+    <div x-show="!loading && filteredSpecs.length > 0" class="rounded-lg border border-border overflow-hidden">
+        <table class="w-full text-sm">
+            <thead class="bg-muted/40 border-b border-border">
+                <tr>
+                    <th class="text-left px-4 py-3 font-medium text-muted-foreground">Solution</th>
+                    <th class="text-left px-4 py-3 font-medium text-muted-foreground">Spec Title</th>
+                    <th class="text-left px-4 py-3 font-medium text-muted-foreground">Type</th>
+                    <th class="text-left px-4 py-3 font-medium text-muted-foreground">Version</th>
+                    <th class="text-left px-4 py-3 font-medium text-muted-foreground">Endpoints</th>
+                    <th class="text-left px-4 py-3 font-medium text-muted-foreground">Published</th>
+                    <th class="text-left px-4 py-3 font-medium text-muted-foreground">Status</th>
+                    <th class="px-4 py-3"></th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-border">
+                <template x-for="spec in filteredSpecs" x-bind:key="spec.id">
+                    <tr>
+                        <!-- Main row -->
+                        <td class="px-4 py-3 font-medium text-foreground" x-text="spec.solution_name || '—'"></td>
+                        <td class="px-4 py-3 text-foreground" x-text="spec.title || 'Untitled'"></td>
+                        <td class="px-4 py-3">
+                            <span
+                                class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
+                                x-bind:class="spec.spec_type === 'openapi'
+                                    ? 'bg-blue-500/10 text-blue-600 border border-blue-500/30'
+                                    : 'bg-purple-500/10 text-purple-600 border border-purple-500/30'"
+                                x-text="spec.spec_type || '—'"
+                            ></span>
+                        </td>
+                        <td class="px-4 py-3 text-muted-foreground font-mono text-xs" x-text="spec.spec_version || '—'"></td>
+                        <td class="px-4 py-3 text-muted-foreground" x-text="spec.endpoint_count ?? '—'"></td>
+                        <td class="px-4 py-3 text-muted-foreground text-xs" x-text="formatDate(spec.published_at)"></td>
+                        <td class="px-4 py-3">
+                            <span
+                                class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium border"
+                                x-bind:class="{
+                                    'bg-success/10 text-success border-success/30': spec.status === 'published',
+                                    'bg-warning/10 text-warning border-warning/30': spec.status === 'draft',
+                                    'bg-muted/50 text-muted-foreground border-border': spec.status === 'deprecated'
+                                }"
+                                x-text="spec.status"
+                            ></span>
+                        </td>
+                        <td class="px-4 py-3">
+                            <div class="flex items-center gap-1">
+                                <button
+                                    type="button"
+                                    x-on:click="toggleExpand(spec.id)"
+                                    class="inline-flex items-center gap-1 rounded px-2 py-1 text-xs border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors"
+                                    x-bind:aria-expanded="expandedId === spec.id"
+                                    aria-label="Toggle endpoint details"
+                                >
+                                    <i data-lucide="chevron-down" class="w-3 h-3 transition-transform" x-bind:class="expandedId === spec.id ? 'rotate-180' : ''" aria-hidden="true"></i>
+                                    <span x-text="expandedId === spec.id ? 'Hide' : 'Endpoints'"></span>
+                                </button>
+                                <a
+                                    x-bind:href="`/solutions/api/registry/specs/${spec.id}/openapi`"
+                                    class="inline-flex items-center gap-1 rounded px-2 py-1 text-xs border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors"
+                                    aria-label="Download OpenAPI JSON"
+                                    download
+                                >
+                                    <i data-lucide="download" class="w-3 h-3" aria-hidden="true"></i>
+                                    JSON
+                                </a>
+                            </div>
+                        </td>
+                    </tr>
+                    <!-- Expanded endpoints row -->
+                    <tr x-show="expandedId === spec.id" x-transition>
+                        <td colspan="8" class="px-4 pb-4 pt-0 bg-muted/20">
+                            <div class="rounded-md border border-border bg-background p-4">
+                                <div class="flex items-center justify-between mb-3">
+                                    <h4 class="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Endpoints</h4>
+                                    <span class="text-xs text-muted-foreground" x-text="`${endpointList(spec).length} endpoint(s)`"></span>
+                                </div>
+                                <template x-if="endpointList(spec).length === 0">
+                                    <p class="text-sm text-muted-foreground italic">No endpoints found in spec content.</p>
+                                </template>
+                                <div class="space-y-1 max-h-64 overflow-y-auto">
+                                    <template x-for="ep in endpointList(spec)" x-bind:key="ep.key">
+                                        <div class="flex items-center gap-2 py-1 border-b border-border/50 last:border-0">
+                                            <span
+                                                class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-mono font-bold w-14 justify-center"
+                                                x-bind:class="{
+                                                    'bg-green-500/10 text-green-600': ep.method === 'GET',
+                                                    'bg-blue-500/10 text-blue-600': ep.method === 'POST',
+                                                    'bg-yellow-500/10 text-yellow-600': ep.method === 'PUT' || ep.method === 'PATCH',
+                                                    'bg-red-500/10 text-red-600': ep.method === 'DELETE',
+                                                }"
+                                                x-text="ep.method"
+                                            ></span>
+                                            <span class="font-mono text-xs text-foreground" x-text="ep.path"></span>
+                                            <span class="text-xs text-muted-foreground ml-auto truncate max-w-xs" x-text="ep.summary || ''"></span>
+                                        </div>
+                                    </template>
+                                </div>
+                                <!-- Description -->
+                                <template x-if="spec.description">
+                                    <p class="mt-3 text-sm text-muted-foreground border-t border-border pt-3" x-text="spec.description"></p>
+                                </template>
+                            </div>
+                        </td>
+                    </tr>
+                </template>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Pagination summary -->
+    <div x-show="!loading && total > 0" class="mt-4 flex items-center justify-between text-sm text-muted-foreground">
+        <span x-text="`Showing ${filteredSpecs.length} of ${total} spec(s)`"></span>
+        <button
+            type="button"
+            x-show="filteredSpecs.length < total"
+            x-on:click="loadMore()"
+            class="inline-flex items-center gap-1 rounded px-3 py-1.5 border border-input bg-background hover:bg-accent hover:text-accent-foreground text-sm transition-colors"
+        >
+            Load more
+        </button>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function apiRegistry() {
+    return {
+        specs: [],
+        loading: false,
+        searchQuery: '',
+        statusFilter: 'published',
+        typeFilter: '',
+        expandedId: null,
+        total: 0,
+        page: 1,
+        perPage: 50,
+        expandedContent: {},
+
+        get filteredSpecs() {
+            const q = this.searchQuery.toLowerCase().trim();
+            if (!q) return this.specs;
+            return this.specs.filter(s =>
+                (s.solution_name || '').toLowerCase().includes(q) ||
+                (s.title || '').toLowerCase().includes(q)
+            );
+        },
+
+        async loadSpecs() {
+            this.loading = true;
+            this.page = 1;
+            this.specs = [];
+            try {
+                const params = new URLSearchParams({
+                    page: this.page,
+                    per_page: this.perPage,
+                });
+                if (this.statusFilter) params.set('status', this.statusFilter);
+                if (this.typeFilter) params.set('type', this.typeFilter);
+
+                const res = await fetch(`/solutions/api/registry/specs?${params}`);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+                this.specs = data.data || [];
+                this.total = data.total || 0;
+            } catch (err) {
+                console.error('Failed to load API specs:', err);
+            } finally {
+                this.loading = false;
+            }
+        },
+
+        async loadMore() {
+            this.page += 1;
+            const params = new URLSearchParams({
+                page: this.page,
+                per_page: this.perPage,
+            });
+            if (this.statusFilter) params.set('status', this.statusFilter);
+            if (this.typeFilter) params.set('type', this.typeFilter);
+
+            try {
+                const res = await fetch(`/solutions/api/registry/specs?${params}`);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+                this.specs = this.specs.concat(data.data || []);
+            } catch (err) {
+                console.error('Failed to load more specs:', err);
+            }
+        },
+
+        async toggleExpand(specId) {
+            if (this.expandedId === specId) {
+                this.expandedId = null;
+                return;
+            }
+            this.expandedId = specId;
+            // Fetch full spec content if not already loaded
+            const spec = this.specs.find(s => s.id === specId);
+            if (spec && !spec.spec_content) {
+                try {
+                    const res = await fetch(`/solutions/api/registry/specs/${specId}`);
+                    if (res.ok) {
+                        const data = await res.json();
+                        spec.spec_content = data.data.spec_content;
+                        spec.description = spec.description || data.data.description;
+                    }
+                } catch (err) {
+                    console.error('Failed to load spec detail:', err);
+                }
+            }
+        },
+
+        endpointList(spec) {
+            if (!spec.spec_content || typeof spec.spec_content !== 'object') return [];
+            const paths = spec.spec_content.paths || {};
+            const endpoints = [];
+            const httpMethods = ['get', 'post', 'put', 'patch', 'delete', 'options', 'head'];
+            for (const [path, methods] of Object.entries(paths)) {
+                for (const method of httpMethods) {
+                    if (methods[method]) {
+                        endpoints.push({
+                            key: `${method}-${path}`,
+                            method: method.toUpperCase(),
+                            path,
+                            summary: methods[method].summary || '',
+                        });
+                    }
+                }
+            }
+            return endpoints;
+        },
+
+        formatDate(iso) {
+            if (!iso) return '—';
+            try {
+                return new Date(iso).toLocaleDateString('en-GB', {
+                    day: '2-digit', month: 'short', year: 'numeric'
+                });
+            } catch {
+                return iso;
+            }
+        },
+
+        init() {
+            this.loadSpecs();
+            this.$watch('statusFilter', () => this.loadSpecs());
+            this.$watch('typeFilter', () => this.loadSpecs());
+        }
+    };
+}
+</script>
+{% endblock %}

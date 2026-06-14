@@ -1,0 +1,67 @@
+{% extends "layouts/admin_base.html" %}
+{% from "components/page_header.html" import page_header %}
+{% from 'components/status_badge.html' import status_badge %}
+{% from 'components/empty_state.html' import empty_state %}
+
+{% block title %}Governance Standards - ARB{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    {{ page_header(
+        title='Governance Standards',
+        description='Architecture standards and compliance requirements',
+        breadcrumbs=[
+            {'label': 'ARB', 'href': url_for('arb.dashboard')},
+            {'label': 'Governance Standards'}
+        ]
+    ) }}
+
+    <!-- Standards List -->
+    <div data-slot="card" class="rounded-xl border bg-card">
+        {% if standards %}
+        <div class="divide-y">
+            {% for standard in standards %}
+            <div class="p-6 hover:bg-muted/30 transition-colors">
+                <div class="flex items-start justify-between gap-4">
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-3 mb-2">
+                            <span class="text-sm font-mono text-primary font-semibold bg-primary/10 px-2 py-1 rounded">{{ standard.code }}</span>
+                            {% if standard.mandatory %}
+                            {{ status_badge('Mandatory', 'error') }}
+                            {% else %}
+                            {{ status_badge('Optional', 'neutral') }}
+                            {% endif %}
+                            {{ status_badge(standard.category.replace('_', ' ').title() if standard.category else 'General', 'info') }}
+                        </div>
+                        <h3 class="text-lg font-semibold text-foreground">{{ standard.name }}</h3>
+                        {% if standard.description %}
+                        <p class="text-sm text-muted-foreground mt-1 line-clamp-2">{{ standard.description }}</p>
+                        {% endif %}
+                        <div class="flex items-center gap-4 mt-3 text-xs text-muted-foreground">
+                            {% if standard.checklist_items %}
+                            <span class="inline-flex items-center gap-1">
+                                <i data-lucide="check-square" class="w-3 h-3" aria-hidden="true"></i>
+                                {{ standard.checklist_items|length }} checklist items
+                            </span>
+                            {% endif %}
+                            <span class="inline-flex items-center gap-1">
+                                <i data-lucide="{% if standard.status == 'active' %}check-circle{% else %}pause-circle{% endif %}" class="w-3 h-3" aria-hidden="true"></i>
+                                {{ standard.status.title() if standard.status else 'Active' }}
+                            </span>
+                        </div>
+                    </div>
+                    <a href="{{ url_for('arb.standard_detail', id=standard.id) }}"
+                       class="inline-flex items-center h-9 px-4 rounded-lg text-sm font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80">
+                        View
+                    </a>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        {{ empty_state(icon='book-open', title='No governance standards defined',
+                        description='Create standards to enforce architecture governance') }}
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

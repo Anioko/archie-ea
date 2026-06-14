@@ -1,0 +1,41 @@
+<!-- Step 8: Governance Checkpoints -->
+<div>
+  <h3 class="text-lg font-semibold text-foreground mb-4">Governance Checkpoints</h3>
+  <p class="text-sm text-muted-foreground mb-6">Track formal approval status for each TOGAF ADM phase.</p>
+
+  <div class="space-y-3">
+    <template x-for="(cp, idx) in governanceCheckpoints" :key="idx">
+      <div class="flex items-center gap-4 p-3 rounded-lg border border-border bg-card">
+        <div class="w-16 text-center">
+          <span class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary font-semibold text-sm" x-text="cp.phase"></span>
+        </div>
+        <div class="flex-1">
+          <div class="text-sm font-medium text-foreground" x-text="phaseLabel(cp.phase)"></div>
+          <input type="text"
+                 class="mt-1 w-full text-xs border border-border rounded px-2 py-1 bg-background text-foreground"
+                 placeholder="Notes..."
+                 x-model="cp.notes">
+        </div>
+        <div>
+          <select class="text-xs border border-border rounded px-2 py-1 bg-background text-foreground"
+                  x-model="cp.status">
+            <option value="not_started">Not Started</option>
+            <option value="pending">Pending</option>
+            <option value="approved">Approved</option>
+            <option value="blocked">Blocked</option>
+          </select>
+        </div>
+        <div>
+          <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium"
+                :class="{
+                    'bg-green-500/10 text-emerald-600 border border-green-500/30': cp.status === 'approved',
+                    'bg-yellow-500/10 text-amber-600 border border-yellow-500/30': cp.status === 'pending',
+                    'bg-red-500/10 text-destructive border border-red-500/30': cp.status === 'blocked',
+                    'bg-muted text-muted-foreground border border-border': cp.status === 'not_started'
+                }"
+                x-text="cp.status.replace('_', ' ')"></span>
+        </div>
+      </div>
+    </template>
+  </div>
+</div>

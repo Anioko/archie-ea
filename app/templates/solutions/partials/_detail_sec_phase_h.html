@@ -1,0 +1,230 @@
+{# WARNING: THIS FILE IS NOT REGISTERED #}
+{# Phase H — Operational Readiness content (sec-9)
+   Included via {% call section_shell(...) %} — content only, no shell. #}
+
+                        {# Success Metrics (also shown in Delivery for context) #}
+                        
+                        {# FRAG-032: Outcomes Tracking #}
+                        <div x-data="{ outData: null, outLoading: true }" x-init="
+                            fetch(apiBase + '/api/outcomes')
+                                .then(r => r.json())
+                                .then(d => { outData = d.data; outLoading = false; })
+                                .catch(() => { outLoading = false; })
+                        ">
+                        <template x-if="outData">
+                            <div class="rounded-xl border border-border bg-card p-5 mb-6">
+                                <h4 class="text-sm font-semibold text-foreground mb-3">Benefits Realization</h4>
+                                <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                    <template x-for="(val, key) in outData" :key="key">
+                                        <template x-if="typeof val !== 'object'">
+                                            <div class="rounded-lg border border-border bg-background p-3">
+                                                <p class="text-xs text-muted-foreground capitalize" x-text="key.replace(/_/g, ' ')"></p>
+                                                <p class="text-lg font-bold text-foreground" x-text="typeof val === 'number' ? val.toLocaleString() : val"></p>
+                                            </div>
+                                        </template>
+                                    </template>
+                                </div>
+                            </div>
+                        </template>
+                        </div>
+
+<div :class="{'hidden': metrics.length === 0}">
+                            <div class="flex items-center gap-3 mb-4">
+                                <div class="w-1 h-5 rounded-full bg-emerald-500"></div>
+                                <p class="text-sm font-semibold text-foreground">Success Metrics &amp; KPIs</p>
+                                <span class="text-xs text-muted-foreground" x-text="'(' + metrics.length + ')'"></span>
+                            </div>
+                            <div class="rounded-xl border border-border bg-card overflow-hidden">
+                            <table class="w-full text-sm">
+                                <thead><tr class="border-b border-border bg-muted/30">
+                                    <th class="text-left px-5 py-2 text-xs font-medium text-muted-foreground">Metric</th>
+                                    <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground w-[100px]">Baseline</th>
+                                    <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground w-[100px]">Target</th>
+                                    <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground w-[100px]">Actual</th>
+                                    <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground w-[100px]">Status</th>
+                                </tr></thead>
+                                <tbody class="divide-y divide-border">
+                                    <template x-for="m in metrics" :key="'ph-' + m.id">
+                                        <tr class="hover:bg-muted/20 group">
+                                            <td class="px-5 py-2.5 text-foreground" x-text="m.name"></td>
+                                            <td class="px-3 py-2.5 text-muted-foreground font-mono text-xs" x-text="m.baseline_value || '\u2014'"></td>
+                                            <td class="px-3 py-2.5 text-foreground font-mono text-xs font-medium" x-text="m.target_value || '\u2014'"></td>
+                                            <td class="px-3 py-2.5 font-mono text-xs" :class="m.actual_value ? 'text-foreground font-medium' : 'text-muted-foreground'" x-text="m.actual_value || '\u2014'"></td>
+                                            <td class="px-3 py-2.5">
+                                                <span class="text-[10px] font-medium px-1.5 py-0.5 rounded"
+                                                      :class="m.status === 'achieved' ? 'bg-emerald-500/10 text-emerald-400'
+                                                            : m.status === 'on_track' ? 'bg-blue-500/10 text-primary'
+                                                            : m.status === 'at_risk' ? 'bg-amber-500/10 text-amber-400'
+                                                            : 'bg-muted text-muted-foreground'"
+                                                      x-text="(m.status || 'not_measured').replace(/_/g, ' ')"></span>
+                                            </td>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                            </div>
+                        </div>
+
+                        <p x-show="metrics.length === 0" class="text-sm text-muted-foreground py-4">No success metrics defined.</p>
+
+                        {# Benefits & Organization Impact (inlined from _benefit_realization.html) #}
+                        <div class="mt-7">
+                            <div class="flex items-center justify-between mb-3">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-1 h-5 rounded-full bg-emerald-500"></div>
+                                    <p class="text-sm font-semibold text-foreground">Benefits &amp; Organization Impact</p>
+                                </div>
+                                <div class="flex gap-2">
+                                    <button @click="openEntityModal('benefit_realization')" class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+                                        <i data-lucide="plus" class="w-3 h-3"></i> Benefit
+                                    </button>
+                                    <button @click="openEntityModal('org_impact')" class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+                                        <i data-lucide="plus" class="w-3 h-3"></i> Org Impact
+                                    </button>
+                                </div>
+                            </div>
+
+                            {# Benefit Realizations table #}
+                            <template x-if="sadBenefitRealizations.length > 0">
+                                <div class="mb-4">
+                                    <h4 class="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Benefit Realization</h4>
+                                    <div class="rounded-xl border border-border bg-card overflow-hidden">
+                                    <table class="w-full text-sm">
+                                        <thead><tr class="border-b border-border bg-muted/30">
+                                            <th class="text-left px-5 py-2 text-xs font-medium text-muted-foreground">Benefit</th>
+                                            <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground">Type</th>
+                                            <th class="text-right px-3 py-2 text-xs font-medium text-muted-foreground">Baseline</th>
+                                            <th class="text-right px-3 py-2 text-xs font-medium text-muted-foreground">Target</th>
+                                            <th class="text-right px-3 py-2 text-xs font-medium text-muted-foreground">Current</th>
+                                            <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground w-[80px]">Status</th>
+                                            <th class="text-right px-3 py-2 text-xs font-medium text-muted-foreground w-[70px]">Actions</th>
+                                        </tr></thead>
+                                        <tbody class="divide-y divide-border">
+                                            <template x-for="item in sadBenefitRealizations" :key="item.id">
+                                                <tr class="hover:bg-muted/20 group">
+                                                    <td class="px-5 py-2.5 font-medium text-foreground" x-text="item.benefit_name"></td>
+                                                    <td class="px-3 py-2.5">
+                                                        <span class="text-[10px] font-medium text-emerald-400 px-1.5 py-0.5 rounded bg-emerald-500/10" x-text="item.benefit_type"></span>
+                                                    </td>
+                                                    <td class="px-3 py-2.5 text-right font-mono text-xs text-muted-foreground" x-text="item.baseline_value != null ? Number(item.baseline_value).toLocaleString() : '\u2014'"></td>
+                                                    <td class="py-2 pr-4 text-right font-mono text-xs text-muted-foreground" x-text="item.target_value != null ? Number(item.target_value).toLocaleString() : '\u2014'"></td>
+                                                    <td class="py-2 pr-4 text-right font-mono text-xs" :class="{'text-emerald-600 font-medium': item.current_value >= item.target_value, 'text-foreground': item.current_value < item.target_value}" x-text="item.current_value != null ? Number(item.current_value).toLocaleString() : '\u2014'"></td>
+                                                    <td class="py-2 pr-4">
+                                                        <span class="text-xs font-medium"
+                                                              :class="{'text-emerald-600': item.status === 'on_track', 'text-destructive': item.status === 'at_risk', 'text-muted-foreground': item.status === 'not_started'}"
+                                                              x-text="item.status?.replace('_', ' ')"></span>
+                                                    </td>
+                                                    <td class="py-2 text-right">
+                                                        <div class="flex items-center justify-end gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                            <button type="button" @click="openEntityModal('benefit_realization', item)" class="text-muted-foreground hover:text-foreground p-1 rounded-md" title="Edit">
+                                                                <i data-lucide="pencil" class="w-3 h-3" aria-hidden="true"></i>
+                                                            </button>
+                                                            <button type="button" @click="confirmDeleteEntity('benefit_realization', item)" class="text-muted-foreground hover:text-destructive p-1 rounded-md" title="Delete">
+                                                                <i data-lucide="trash-2" class="w-3 h-3" aria-hidden="true"></i>
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            </template>
+                                        </tbody>
+                                    </table>
+                                    </div>
+                                </div>
+                            </template>
+
+                            {# Org Impacts table #}
+                            <template x-if="sadOrgImpacts.length > 0">
+                                <div class="mb-4">
+                                    <h4 class="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Organization Impacts</h4>
+                                    <div class="overflow-x-auto">
+                                    <table class="w-full text-sm border-collapse">
+                                        <thead>
+                                            <tr class="border-b border-border">
+                                                <th class="text-left py-2 pr-4 text-xs font-semibold text-muted-foreground">Impact Area</th>
+                                                <th class="text-left py-2 pr-4 text-xs font-semibold text-muted-foreground">Description</th>
+                                                <th class="text-left py-2 pr-4 text-xs font-semibold text-muted-foreground w-[90px]">Headcount</th>
+                                                <th class="text-left py-2 pr-4 text-xs font-semibold text-muted-foreground w-[100px]">Readiness</th>
+                                                <th class="text-right py-2 text-xs font-semibold text-muted-foreground w-[70px]">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <template x-for="item in sadOrgImpacts" :key="item.id">
+                                                <tr class="border-b border-border/40 hover:bg-muted/20 transition-colors group">
+                                                    <td class="py-2 pr-4">
+                                                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-orange-500/10 text-orange-600 border border-orange-500/30" x-text="item.impact_area?.replace('_', ' ')"></span>
+                                                    </td>
+                                                    <td class="py-2 pr-4 text-muted-foreground text-xs" x-text="item.description?.substring(0, 100)"></td>
+                                                    <td class="py-2 pr-4 text-xs text-muted-foreground" x-text="item.headcount_delta !== 0 ? (item.headcount_delta > 0 ? '+' : '') + item.headcount_delta : '\u2014'"></td>
+                                                    <td class="py-2 pr-4">
+                                                        <span class="text-xs font-medium"
+                                                              :class="{'text-emerald-600': item.change_readiness === 'ready', 'text-amber-600': item.change_readiness === 'partially_ready', 'text-destructive': item.change_readiness === 'not_ready', 'text-muted-foreground': item.change_readiness === 'unknown'}"
+                                                              x-text="item.change_readiness?.replace('_', ' ')"></span>
+                                                    </td>
+                                                    <td class="py-2 text-right">
+                                                        <div class="flex items-center justify-end gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                            <button type="button" @click="openEntityModal('org_impact', item)" class="text-muted-foreground hover:text-foreground p-1 rounded-md" title="Edit">
+                                                                <i data-lucide="pencil" class="w-3 h-3" aria-hidden="true"></i>
+                                                            </button>
+                                                            <button type="button" @click="confirmDeleteEntity('org_impact', item)" class="text-muted-foreground hover:text-destructive p-1 rounded-md" title="Delete">
+                                                                <i data-lucide="trash-2" class="w-3 h-3" aria-hidden="true"></i>
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            </template>
+                                        </tbody>
+                                    </table>
+                                    </div>
+                                </div>
+                            </template>
+
+                            <p x-show="sadBenefitRealizations.length === 0 && sadOrgImpacts.length === 0" class="text-sm text-muted-foreground py-4">No benefits or organization impacts recorded.</p>
+                        </div>
+
+                        {# Lessons Learned (inlined from _lessons_learned.html) #}
+                        <div class="mt-7">
+                            <div class="flex items-center justify-between mb-3">
+                                <h3 class="text-sm font-semibold text-foreground">Lessons Learned</h3>
+                                <button @click="openEntityModal('lesson_learned')" class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+                                    <i data-lucide="plus" class="w-3 h-3"></i> Add
+                                </button>
+                            </div>
+                            <template x-if="sadLessonsLearned.length > 0">
+                                <div class="overflow-x-auto">
+                                <table class="w-full text-sm border-collapse">
+                                    <thead>
+                                        <tr class="border-b border-border">
+                                            <th class="text-left py-2 pr-4 text-xs font-semibold text-muted-foreground">Category</th>
+                                            <th class="text-left py-2 pr-4 text-xs font-semibold text-muted-foreground">Phase</th>
+                                            <th class="text-left py-2 pr-4 text-xs font-semibold text-muted-foreground">Title</th>
+                                            <th class="text-left py-2 pr-4 text-xs font-semibold text-muted-foreground">Recommendation</th>
+                                            <th class="text-right py-2 text-xs font-semibold text-muted-foreground w-[70px]">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <template x-for="item in sadLessonsLearned" :key="item.id">
+                                            <tr class="border-b border-border/40 hover:bg-muted/20 transition-colors group">
+                                                <td class="py-2 pr-4">
+                                                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-teal-500/10 text-teal-600 border border-teal-500/30" x-text="item.category"></span>
+                                                </td>
+                                                <td class="py-2 pr-4 text-xs text-muted-foreground" x-text="item.adm_phase ? 'Phase ' + item.adm_phase : '\u2014'"></td>
+                                                <td class="py-2 pr-4 font-medium text-foreground" x-text="item.title"></td>
+                                                <td class="py-2 pr-4 text-xs text-muted-foreground" x-text="item.recommendation?.substring(0, 100)"></td>
+                                                <td class="py-2 text-right">
+                                                    <div class="flex items-center justify-end gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <button type="button" @click="openEntityModal('lesson_learned', item)" class="text-muted-foreground hover:text-foreground p-1 rounded-md" title="Edit">
+                                                            <i data-lucide="pencil" class="w-3 h-3" aria-hidden="true"></i>
+                                                        </button>
+                                                        <button type="button" @click="confirmDeleteEntity('lesson_learned', item)" class="text-muted-foreground hover:text-destructive p-1 rounded-md" title="Delete">
+                                                            <i data-lucide="trash-2" class="w-3 h-3" aria-hidden="true"></i>
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        </template>
+                                    </tbody>
+                                </table>
+                                </div>
+                            </template>
+                            <p x-show="sadLessonsLearned.length === 0" class="text-sm text-muted-foreground py-4">No lessons learned recorded.</p>
+                        </div>

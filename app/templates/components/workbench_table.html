@@ -1,0 +1,249 @@
+{# Workbench Table Component — Standard table skeleton for Platform.dataTable pages
+
+   Provides the HTML boilerplate (toolbar, table, loading/error/empty states,
+   pagination) that every list page needs. Pages only define column headers
+   and cell templates via the caller block.
+
+   Requires: Platform.dataTable (js/components/data_table.js)
+   The calling page must wrap this in an x-data component that uses
+   Platform.dataTable.mixin() or provides the same Alpine interface.
+
+   Usage:
+   {% from 'components/workbench_table.html' import workbench_table %}
+
+   <div x-data="myPageTable()" x-cloak>
+     {% call workbench_table(
+         columns=[
+             {'key': 'name', 'label': 'Name', 'sortable': true},
+             {'key': 'type', 'label': 'Type'},
+             {'key': 'status', 'label': 'Status'},
+             {'label': 'Actions', 'align': 'right'},
+         ],
+         filters=[
+             {'key': 'type', 'label': 'Type', 'options': [
+                 {'value': 'software', 'label': 'Software'},
+                 {'value': 'saas', 'label': 'SaaS'},
+             ]},
+         ],
+         selectable=true,
+         search_placeholder='Search vendors...'
+     ) %}
+       <td class="px-4 py-3" x-text="row.name"></td>
+       <td class="px-4 py-3" x-text="row.type"></td>
+       <td class="px-4 py-3">
+         <span :class="statusClass(row.status)" x-text="formatStatus(row.status)"
+               class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"></span>
+       </td>
+       <td class="px-4 py-3 text-right" @click.stop>
+         <button type="button" @click="window.location.href='/items/'+row.id"
+                 class="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium border border-input bg-background hover:bg-accent transition-colors">
+           <i data-lucide="eye" class="h-3 w-3"></i> View
+         </button>
+       </td>
+     {% endcall %}
+   </div>
+
+   Alpine interface expected (provided by Platform.dataTable.mixin):
+     setSearch(query), setFilter(key, value), setSort(key), setPerPage(n)
+     items, loading, errorMsg, totalItems, pageSize, pageStart, pageEnd
+     hasPrev, hasNext, prevPage(), nextPage(), getVisiblePages(), goToPage(n)
+     page (current page number)
+     _selectedIds, selectAllState, isSelected(id), toggleSelectAll()
+     handleRowCheckboxClick(event, index), clearSelection(), selectionCount()
+#}
+
+{% macro workbench_table(
+    columns=[],
+    filters=[],
+    selectable=false,
+    search_placeholder='Search...',
+    empty_icon='inbox',
+    empty_message='No items found',
+    empty_description='',
+    per_page_options=[10, 25, 50, 100],
+    per_page_default=25,
+    show_per_page=true,
+    class=''
+) %}
+{% set col_count = columns|length + (1 if selectable else 0) %}
+<div data-slot="card" class="rounded-xl border bg-card shadow-sm {{ class }}">
+
+    {# ── Toolbar ──────────────────────────────────────────────────────── #}
+    <div class="flex flex-col gap-3 p-4 border-b sm:flex-row sm:items-center sm:justify-between">
+        <div class="flex flex-wrap gap-3 flex-1">
+            {# Search #}
+            <div class="relative flex-1 max-w-sm">
+                <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" aria-hidden="true"></i>
+                <input type="search"
+                       placeholder="{{ search_placeholder }}"
+                       @input.debounce.300ms="setSearch($event.target.value)"
+                       class="flex h-9 w-full rounded-md border border-input bg-background pl-9 pr-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                       aria-label="{{ search_placeholder }}">
+            </div>
+            {# Filter dropdowns #}
+            {% for filter in filters %}
+            <select class="h-9 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    @change="setFilter('{{ filter.key }}', $event.target.value)"
+                    aria-label="Filter by {{ filter.label }}">
+                <option value="">All {{ filter.label }}</option>
+                {% for opt in filter.options %}
+                <option value="{{ opt.value }}">{{ opt.label }}</option>
+                {% endfor %}
+            </select>
+            {% endfor %}
+        </div>
+        {% if show_per_page %}
+        <div class="flex items-center gap-2 shrink-0">
+            <select class="h-9 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    @change="setPerPage($event.target.value)"
+                    aria-label="Items per page">
+                {% for size in per_page_options %}
+                <option value="{{ size }}" {{ 'selected' if size == per_page_default else '' }}>{{ size }} / page</option>
+                {% endfor %}
+            </select>
+        </div>
+        {% endif %}
+    </div>
+
+    {# ── Bulk action bar ──────────────────────────────────────────────── #}
+    {% if selectable %}
+    <div x-show="_selectedIds.length > 0 || selectAllState === 'cross-page'" x-cloak
+         x-transition:enter="transition ease-out duration-150"
+         x-transition:enter-start="opacity-0 -translate-y-1"
+         x-transition:enter-end="opacity-100 translate-y-0"
+         class="flex items-center gap-3 px-4 py-2 bg-primary/5 border-b text-sm"
+         role="status" aria-live="polite">
+        <span class="font-medium" x-text="selectionCount() + ' selected'"></span>
+        <div class="h-4 w-px bg-border"></div>
+        <button type="button" @click="if (typeof confirmBulkDelete === 'function') confirmBulkDelete(); else console.warn('confirmBulkDelete not defined')"
+                class="inline-flex items-center gap-1.5 text-destructive hover:text-destructive/80 font-medium transition-colors">
+            <i data-lucide="trash-2" class="h-4 w-4" aria-hidden="true"></i>
+            Delete selected
+        </button>
+        <button type="button" @click="clearSelection()"
+                class="ml-auto inline-flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors"
+                aria-label="Clear selection">
+            <i data-lucide="x" class="h-3.5 w-3.5" aria-hidden="true"></i>
+            Clear
+        </button>
+    </div>
+
+    {# Cross-page select-all banner #}
+    <div x-show="selectAllState === 'page' && totalItems > pageSize" x-cloak
+         class="px-4 py-2 bg-primary/5 border-b text-sm text-center">
+        <span x-text="items.length + ' on this page selected.'"></span>
+        <button type="button" @click="selectAllCrossPage()"
+                class="ml-1 font-medium text-primary hover:underline">
+            Select all <span x-text="totalItems"></span> items
+        </button>
+    </div>
+    {% endif %}
+
+    {# ── Table ────────────────────────────────────────────────────────── #}
+    <div class="overflow-x-auto" aria-live="polite" aria-atomic="false">
+        <table class="w-full caption-bottom text-sm" role="grid">
+            <thead class="border-b bg-muted/40">
+                <tr>
+                    {% if selectable %}
+                    <th class="w-10 h-12 px-3 align-middle" scope="col">
+                        <input type="checkbox"
+                               class="h-4 w-4 rounded border-input text-primary focus:ring-ring cursor-pointer"
+                               :checked="items.length > 0 && items.every(function(r){ return _selectedIds.indexOf(r.id) !== -1; })"
+                               @change="toggleSelectAll()"
+                               aria-label="Select all on this page">
+                    </th>
+                    {% endif %}
+                    {% for col in columns %}
+                    <th class="h-12 px-4 {{ 'text-right' if col.align == 'right' else 'text-left' }} align-middle font-medium text-muted-foreground" scope="col">
+                        {% if col.sortable %}
+                        <button type="button" class="inline-flex items-center gap-1 hover:text-foreground transition-colors"
+                                @click="setSort('{{ col.key }}')"
+                                aria-label="Sort by {{ col.label }}">
+                            {{ col.label }}
+                            <i data-lucide="arrow-up-down" class="h-3.5 w-3.5" aria-hidden="true"></i>
+                        </button>
+                        {% else %}
+                        {{ col.label }}
+                        {% endif %}
+                    </th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody class="[&_tr:last-child]:border-0">
+                {# Loading state #}
+                <tr x-show="loading" x-cloak>
+                    <td colspan="{{ col_count }}" class="px-4 py-12 text-center">
+                        <div class="flex flex-col items-center gap-2">
+                            <i data-lucide="loader-2" class="h-6 w-6 text-muted-foreground animate-spin" aria-hidden="true"></i>
+                            <p class="text-sm text-muted-foreground">Loading&hellip;</p>
+                        </div>
+                    </td>
+                </tr>
+                {# Error state #}
+                <tr x-show="!loading && errorMsg" x-cloak>
+                    <td colspan="{{ col_count }}" class="px-4 py-12 text-center text-sm text-destructive" x-text="errorMsg"></td>
+                </tr>
+                {# Empty state #}
+                <tr x-show="!loading && !errorMsg && items.length === 0" x-cloak>
+                    <td colspan="{{ col_count }}" class="px-4 py-12 text-center">
+                        <div class="flex flex-col items-center gap-2">
+                            <i data-lucide="{{ empty_icon }}" class="h-8 w-8 text-muted-foreground/40" aria-hidden="true"></i>
+                            <p class="text-sm font-medium text-foreground">{{ empty_message }}</p>
+                            {% if empty_description %}
+                            <p class="text-xs text-muted-foreground">{{ empty_description }}</p>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {# Data rows — caller() provides the <td> elements #}
+                <template x-for="(row, rowIdx) in items" :key="row.id">
+                    <tr class="border-b transition-colors hover:bg-muted/50"
+                        {% if selectable %}:class="isSelected(row.id) ? 'bg-primary/5' : ''"{% endif %}>
+                        {% if selectable %}
+                        <td class="w-10 px-3 align-middle" @click.stop>
+                            <input type="checkbox"
+                                   class="h-4 w-4 rounded border-input text-primary focus:ring-ring cursor-pointer"
+                                   :checked="isSelected(row.id)"
+                                   @change="handleRowCheckboxClick($event, rowIdx)"
+                                   aria-label="Select row">
+                        </td>
+                        {% endif %}
+                        {{ caller() }}
+                    </tr>
+                </template>
+            </tbody>
+        </table>
+    </div>
+
+    {# ── Pagination ───────────────────────────────────────────────────── #}
+    <div x-show="totalItems > pageSize" x-cloak
+         class="border-t px-4 py-3 bg-muted/30 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <p class="text-sm text-muted-foreground" aria-live="polite">
+            Showing
+            <span class="font-medium text-foreground" x-text="pageStart"></span>&ndash;<span class="font-medium text-foreground" x-text="pageEnd"></span>
+            of <span class="font-medium text-foreground" x-text="totalItems"></span> items
+        </p>
+        <nav class="flex items-center gap-1" aria-label="Pagination">
+            <button type="button" class="inline-flex items-center justify-center h-8 px-2.5 rounded-md border border-input bg-background hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    :disabled="!hasPrev" @click="prevPage()" aria-label="Previous page">
+                <i data-lucide="chevron-left" class="h-4 w-4" aria-hidden="true"></i>
+            </button>
+            <template x-for="(pg, idx) in getVisiblePages()" :key="'pg-' + idx">
+                <span>
+                    <button type="button" x-show="pg !== '...'" x-cloak
+                            class="min-w-[2rem] h-8 rounded-md text-sm font-medium transition-colors"
+                            :class="pg === page ? 'bg-primary text-primary-foreground' : 'hover:bg-muted text-muted-foreground'"
+                            @click="goToPage(pg)" x-text="pg"></button>
+                    <span x-show="pg === '...'" x-cloak
+                          class="min-w-[2rem] h-8 inline-flex items-center justify-center text-sm text-muted-foreground">&hellip;</span>
+                </span>
+            </template>
+            <button type="button" class="inline-flex items-center justify-center h-8 px-2.5 rounded-md border border-input bg-background hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    :disabled="!hasNext" @click="nextPage()" aria-label="Next page">
+                <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
+            </button>
+        </nav>
+    </div>
+
+</div>
+{% endmacro %}

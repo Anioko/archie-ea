@@ -1,0 +1,292 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'components/page_header.html' import page_header %}
+{% from 'components/metrics_card.html' import metrics_card %}
+{% from 'components/badge.html' import badge %}
+{% from 'components/alert.html' import alert, alert_title, alert_description %}
+
+{% block title %}Architecture Intelligence{% endblock %}
+
+{% block breadcrumb %}
+{% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
+{{ breadcrumb_nav(items=[
+    {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
+    {'text': 'Enterprise Architecture'},
+    {'text': 'Enterprise', 'current': true}
+]) }}
+{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+    {{ page_header(
+        title='Architecture Intelligence',
+        description='AI-driven insights to optimize your portfolio, resolve gaps, and manage application lifecycles.'
+    ) }}
+
+    {# ─ Onboarding Banner ─ #}
+    {% call alert(variant='default', icon='info', dismissible=true, class='bg-primary/5/50 dark:bg-primary/10 border-primary/20 dark:border-primary') %}
+        {% call alert_title(class='text-primary dark:text-primary/60') %}Welcome to Architecture Intelligence{% endcall %}
+        {% call alert_description(class='text-primary dark:text-primary/80 mt-1') %}
+            This dashboard continuously scans your application portfolio to identify architectural gaps, highlight redundancies, and recommend structural improvements. Start by reviewing your top priorities below.
+        {% endcall %}
+    {% endcall %}
+
+    {# ─ Top Priorities / Quick Actions ─ #}
+    {% set has_priorities = gaps_by_severity.critical > 0 or gaps_by_severity.high > 0 or apps_needing_review|length > 0 %}
+    {% if has_priorities %}
+    <div class="rounded-lg border bg-card shadow-sm border-warning/20 dark:border-orange-900/50">
+        <div class="border-b border-orange-100 dark:border-orange-900/50 bg-warning/5/50 dark:bg-warning/10 p-4">
+            <h2 class="text-lg font-semibold flex items-center gap-2 text-warning dark:text-warning/60">
+                <i data-lucide="target" class="h-5 w-5" aria-hidden="true"></i>
+                Top Priorities
+            </h2>
+        </div>
+        <div class="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+            {% if gaps_by_severity.critical > 0 or gaps_by_severity.high > 0 %}
+            <div class="flex items-center justify-between p-3 rounded-lg border bg-background">
+                <div class="flex items-center gap-3">
+                    <div class="p-2 bg-destructive/10 dark:bg-destructive/30 rounded-full">
+                        <i data-lucide="alert-triangle" class="h-4 w-4 text-destructive dark:text-destructive/80" aria-hidden="true"></i>
+                    </div>
+                    <div>
+                        <p class="font-medium">Critical & High Gaps</p>
+                        <p class="text-sm text-muted-foreground">{{ gaps_by_severity.critical + gaps_by_severity.high }} gaps require immediate attention</p>
+                    </div>
+                </div>
+                <a href="{{ url_for('enterprise.gap_analysis') }}" class="px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors whitespace-nowrap">
+                    Review Gaps
+                </a>
+            </div>
+            {% endif %}
+            
+            {% if apps_needing_review|length > 0 %}
+            <div class="flex items-center justify-between p-3 rounded-lg border bg-background">
+                <div class="flex items-center gap-3">
+                    <div class="p-2 bg-primary/10 dark:bg-primary/30 rounded-full">
+                        <i data-lucide="clipboard-check" class="h-4 w-4 text-primary dark:text-primary/80" aria-hidden="true"></i>
+                    </div>
+                    <div>
+                        <p class="font-medium">Lifecycle Reviews</p>
+                        <p class="text-sm text-muted-foreground">{{ apps_needing_review|length }} applications pending review</p>
+                    </div>
+                </div>
+                <a href="{{ url_for('unified_applications.application_list') }}?status=under_review" class="px-3 py-1.5 text-sm bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/80 transition-colors whitespace-nowrap">
+                    View Applications
+                </a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    {# ─ Summary Metrics ─ #}
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {{ metrics_card(title='Total Recommendations', value=total_recommendations, icon='lightbulb') }}
+        {{ metrics_card(title='Open Gaps (Critical)', value=gaps_by_severity.critical, icon='alert-triangle', icon_class='!text-destructive', value_class='text-destructive') }}
+        {{ metrics_card(title='Open Gaps (High)', value=gaps_by_severity.high, icon='alert-circle', icon_class='!text-warning', value_class='text-warning') }}
+        {{ metrics_card(title='Apps Under Review', value=apps_needing_review|length, icon='hourglass') }}
+    </div>
+
+    {# ─ Recent AI Recommendations ─ #}
+    <div class="rounded-lg border bg-card shadow-sm">
+        <div class="border-b p-4 flex items-center justify-between">
+            <h2 class="text-lg font-semibold flex items-center gap-2">
+                <i data-lucide="sparkles" class="h-5 w-5 text-primary" aria-hidden="true"></i>
+                AI Recommendations
+                <span class="relative group cursor-help ml-1">
+                    <i data-lucide="help-circle" class="h-4 w-4 text-muted-foreground" aria-hidden="true"></i>
+                    <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-2 bg-popover text-popover-foreground text-xs rounded shadow-lg border hidden group-hover:block z-10">
+                        Generated automatically by analyzing capability overlap, technological alignment, and architectural patterns in your portfolio.
+                    </div>
+                </span>
+            </h2>
+        </div>
+        <div class="p-4">
+            {% if ai_recommendations %}
+            <div class="space-y-3">
+                {% for rec in ai_recommendations %}
+                <div class="flex items-start gap-3 p-3 rounded-lg border bg-background hover:bg-accent/50 transition-colors">
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2 mb-1">
+                            {% call badge('default') %}{{ rec.recommendation_type|replace('_', ' ')|title }}{% endcall %}
+                            <span class="text-sm text-muted-foreground">Option ID: {{ rec.option_id }}</span>
+                        </div>
+                        {% if rec.evidence_links %}
+                        <p class="text-sm text-muted-foreground mt-1">
+                            <i data-lucide="link" class="h-3 w-3 inline" aria-hidden="true"></i>
+                            {{ rec.evidence_links|length }} evidence link(s)
+                        </p>
+                        {% endif %}
+                        {% if rec.validation_result %}
+                        <div class="mt-1">
+                            {% call badge('success') %}{{ 'Validated' }}{% endcall %}
+                        </div>
+                        {% endif %}
+                    </div>
+                    <div class="text-xs text-muted-foreground whitespace-nowrap">
+                        {{ rec.created_at.strftime('%Y-%m-%d') }}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="text-center py-12 px-4 rounded-lg border border-dashed">
+                <div class="mx-auto w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
+                    <i data-lucide="sparkles" class="h-8 w-8 text-muted-foreground" aria-hidden="true"></i>
+                </div>
+                <h3 class="text-lg font-medium text-foreground mb-1">No AI recommendations yet</h3>
+                <p class="text-sm text-muted-foreground max-w-sm mx-auto mb-4">
+                    We haven't generated any architectural recommendations for your portfolio. This typically requires more application mapping data.
+                </p>
+                <div class="flex items-center justify-center gap-3">
+                    <button id="startAnalysisEmpty" class="px-4 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors inline-flex items-center gap-2" aria-label="Action">
+                        <i data-lucide="play" class="w-4 h-4" aria-hidden="true"></i> Run Discovery Scan
+                    </button>
+                    <a href="{{ url_for('unified_applications.application_list') }}" class="px-4 py-2 text-sm font-medium bg-secondary text-secondary-foreground rounded-lg hover:bg-secondary/80 transition-colors inline-flex items-center gap-2">
+                        <i data-lucide="plus" class="w-4 h-4" aria-hidden="true"></i> Add Applications
+                    </a>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    {# ─ Open Gaps by Severity ─ #}
+    <div class="rounded-lg border bg-card shadow-sm">
+        <div class="border-b p-4">
+            <h2 class="text-lg font-semibold flex items-center gap-2">
+                <i data-lucide="flag" class="h-5 w-5 text-warning" aria-hidden="true"></i>
+                Architecture Gaps
+                <span class="relative group cursor-help ml-1">
+                    <i data-lucide="help-circle" class="h-4 w-4 text-muted-foreground" aria-hidden="true"></i>
+                    <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-2 bg-popover text-popover-foreground text-xs rounded shadow-lg border hidden group-hover:block z-10">
+                        Identified differences between the current baseline architecture and the target architecture.
+                    </div>
+                </span>
+            </h2>
+        </div>
+        <div class="p-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {% if total_gaps > 0 %}
+                    {% for severity, count in [('critical', gaps_by_severity.critical), ('high', gaps_by_severity.high), ('medium', gaps_by_severity.medium), ('low', gaps_by_severity.low)] %}
+                    {% if count > 0 %}
+                    <div class="rounded-lg border p-4">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-sm font-medium">{{ severity|title }} Severity</span>
+                            {% if severity == 'critical' %}
+                            {% call badge('destructive') %}{{ count|string }}{% endcall %}
+                            {% elif severity == 'high' %}
+                            {% call badge('warning') %}{{ count|string }}{% endcall %}
+                            {% else %}
+                            {% call badge('default') %}{{ count|string }}{% endcall %}
+                            {% endif %}
+                        </div>
+                        <a href="{{ url_for('enterprise.gap_analysis') }}"
+                           class="text-sm text-primary hover:underline">
+                            View gaps →
+                        </a>
+                    </div>
+                    {% endif %}
+                    {% endfor %}
+                {% else %}
+                <div class="col-span-1 md:col-span-2 text-center py-10 px-4 rounded-lg border border-dashed">
+                    <div class="mx-auto w-12 h-12 bg-success/5 dark:bg-success/20 rounded-full flex items-center justify-center mb-3">
+                        <i data-lucide="check-circle-2" class="h-6 w-6 text-success dark:text-success" aria-hidden="true"></i>
+                    </div>
+                    <h3 class="text-lg font-medium text-foreground mb-1">Architecture is Aligned</h3>
+                    <p class="text-sm text-muted-foreground max-w-sm mx-auto">
+                        No open architecture gaps have been identified. Your baseline and target architectures appear to be in sync.
+                    </p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    {# ─ Applications Under Review ─ #}
+    <div class="rounded-lg border bg-card shadow-sm">
+        <div class="border-b p-4">
+            <h2 class="text-lg font-semibold flex items-center gap-2">
+                <i data-lucide="eye" class="h-5 w-5 text-primary" aria-hidden="true"></i>
+                Applications Under Review
+                <span class="relative group cursor-help ml-1">
+                    <i data-lucide="help-circle" class="h-4 w-4 text-muted-foreground" aria-hidden="true"></i>
+                    <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-2 bg-popover text-popover-foreground text-xs rounded shadow-lg border hidden group-hover:block z-10">
+                        Applications flagged by the portfolio manager or architecture board for lifecycle assessment or disposition planning.
+                    </div>
+                </span>
+            </h2>
+        </div>
+        <div class="p-4">
+            {% if apps_needing_review %}
+            <div class="space-y-2">
+                {% for app in apps_needing_review %}
+                <div class="flex items-center justify-between p-3 rounded-lg border bg-background hover:bg-accent/50 transition-colors">
+                    <div class="flex items-center gap-3 min-w-0 flex-1">
+                        <i data-lucide="package" class="h-4 w-4 text-muted-foreground shrink-0" aria-hidden="true"></i>
+                        <div class="min-w-0">
+                            <a href="{{ url_for('unified_applications.application_detail', id=app.id) }}" 
+                               class="font-medium hover:underline">
+                                {{ app.name }}
+                            </a>
+                            {% if app.application_type %}
+                            <span class="text-sm text-muted-foreground ml-2">{{ app.application_type }}</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% call badge('warning') %}{{ app.lifecycle_status|replace('_', ' ')|title }}{% endcall %}
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="text-center py-10 px-4 rounded-lg border border-dashed">
+                <div class="mx-auto w-12 h-12 bg-muted rounded-full flex items-center justify-center mb-3">
+                    <i data-lucide="layers" class="h-6 w-6 text-muted-foreground" aria-hidden="true"></i>
+                </div>
+                <h3 class="text-lg font-medium text-foreground mb-1">Portfolio Up to Date</h3>
+                <p class="text-sm text-muted-foreground max-w-sm mx-auto mb-4">
+                    There are no applications currently marked for lifecycle review or disposition.
+                </p>
+                <a href="{{ url_for('unified_applications.application_list') }}" class="text-sm text-primary hover:underline inline-flex items-center gap-1">
+                    Browse Portfolio <i data-lucide="arrow-right" class="w-4 h-4" aria-hidden="true"></i>
+                </a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    {# ─ Analysis Trigger (Placeholder for Future Feature) ─ #}
+    <div class="rounded-lg border bg-card p-6 text-center">
+        <div class="rounded-lg bg-primary/10 p-3 inline-block mb-3">
+            <i data-lucide="brain" class="w-8 h-8 text-primary" aria-hidden="true"></i>
+        </div>
+        <h3 class="text-lg font-semibold mb-2">On-Demand Analysis</h3>
+        <p class="text-sm text-muted-foreground mb-4">Trigger a new AI-powered analysis of your architecture</p>
+        <button id="startAnalysis" 
+                class="px-4 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors" aria-label="Action">
+            Start Analysis
+        </button>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    // Initialize Lucide icons if not already done
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
+    
+    // Bind buttons
+    const triggerAnalysis = () => Platform.toast.success('Analysis queued \u2014 results will appear here when complete');
+    
+    const startButton = document.getElementById('startAnalysis');
+    if (startButton) {
+        startButton.addEventListener('click', triggerAnalysis);
+    }
+    
+    const startButtonEmpty = document.getElementById('startAnalysisEmpty');
+    if (startButtonEmpty) {
+        startButtonEmpty.addEventListener('click', triggerAnalysis);
+    }
+});
+</script>
+{% endblock %}

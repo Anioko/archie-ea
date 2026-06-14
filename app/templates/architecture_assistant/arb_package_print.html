@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ARB Package — {{ solution.name }}</title>
+<style>
+  body { font-family: 'Segoe UI', Arial, sans-serif; color: #111; margin: 0; padding: 2rem; font-size: 13px; }
+  h1 { font-size: 1.4rem; font-weight: 700; margin: 0 0 0.25rem; }
+  h2 { font-size: 1rem; font-weight: 600; margin: 1.5rem 0 0.5rem; border-bottom: 1px solid #e5e7eb; padding-bottom: 0.25rem; }
+  h3 { font-size: 0.9rem; font-weight: 600; margin: 0.75rem 0 0.25rem; }
+  .meta { color: #6b7280; font-size: 0.8rem; margin-bottom: 1.5rem; }
+  .badge { display: inline-block; padding: 0.1rem 0.4rem; border-radius: 4px; font-size: 0.7rem; font-weight: 600; background: #f3f4f6; border: 1px solid #e5e7eb; }
+  .badge-green { background: #ecfdf5; border-color: #a7f3d0; color: #065f46; }
+  .badge-amber { background: #fffbeb; border-color: #fcd34d; color: #92400e; }
+  .badge-red { background: #fef2f2; border-color: #fca5a5; color: #991b1b; }
+  table { width: 100%; border-collapse: collapse; margin: 0.5rem 0; }
+  th { background: #f9fafb; font-weight: 600; text-align: left; padding: 0.4rem 0.6rem; border: 1px solid #e5e7eb; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.03em; }
+  td { padding: 0.35rem 0.6rem; border: 1px solid #e5e7eb; vertical-align: top; }
+  .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.75rem; margin: 0.75rem 0; }
+  .summary-card { border: 1px solid #e5e7eb; border-radius: 6px; padding: 0.6rem; text-align: center; }
+  .summary-card .value { font-size: 1.5rem; font-weight: 700; }
+  .summary-card .label { font-size: 0.7rem; color: #6b7280; margin-top: 0.1rem; }
+  .progress { height: 6px; background: #e5e7eb; border-radius: 3px; overflow: hidden; margin-top: 2px; }
+  .progress-bar { height: 100%; border-radius: 3px; }
+  .green { background: #10b981; }
+  .amber { background: #f59e0b; }
+  .red { background: #ef4444; }
+  @media print {
+    body { padding: 0.75rem; }
+    @page { margin: 1cm; size: A4; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Architecture Review Board Package</h1>
+<p class="meta">
+  Solution: <strong>{{ solution.name }}</strong>
+  &nbsp;·&nbsp; ID: {{ solution.id }}
+  &nbsp;·&nbsp; Status: <span class="badge badge-amber">{{ package.solution.governance_status if package.solution else 'draft' }}</span>
+  &nbsp;·&nbsp; Generated: <span id="ts"></span>
+</p>
+<script>document.getElementById('ts').textContent = new Date().toLocaleString();</script>
+
+{% if package.summary %}
+<div class="summary-grid">
+  <div class="summary-card"><div class="value">{{ package.summary.total_elements or 0 }}</div><div class="label">Total Elements</div></div>
+  <div class="summary-card"><div class="value">{{ package.summary.domain_coverage or '0/7' }}</div><div class="label">Domain Coverage</div></div>
+  <div class="summary-card"><div class="value">{{ package.summary.total_nfrs or 0 }}</div><div class="label">NFR Requirements</div></div>
+  <div class="summary-card"><div class="value">{{ package.summary.total_waivers or 0 }}</div><div class="label">Waivers</div></div>
+</div>
+{% endif %}
+
+{% if package.domains %}
+<h2>Domain Coverage</h2>
+<table>
+  <thead>
+    <tr><th>Domain</th><th>Status</th><th>Elements</th><th>Property Coverage</th><th>NFRs</th><th>Waivers</th></tr>
+  </thead>
+  <tbody>
+  {% for code in ['UX','APP','DATA','SEC','DEV','AI','COM'] %}
+    {% if package.domains and package.domains[code] %}
+    {% set d = package.domains[code] %}
+    <tr>
+      <td><strong>{{ code }}</strong></td>
+      <td>
+        <span class="badge {% if d.status == 'confirmed' %}badge-green{% elif d.status == 'not_applicable' %}badge-amber{% else %}badge-red{% endif %}">
+          {{ d.status }}
+        </span>
+      </td>
+      <td>{{ d.element_count or 0 }}</td>
+      <td>
+        <div>{{ d.property_coverage or 0 }}%</div>
+        <div class="progress"><div class="progress-bar {% if (d.property_coverage or 0) >= 80 %}green{% elif (d.property_coverage or 0) >= 60 %}amber{% else %}red{% endif %}" style="width:{{ d.property_coverage or 0 }}%"></div></div>
+      </td>
+      <td>{{ d.nfr_count or 0 }}</td>
+      <td>{{ (d.waivers or [])|length }}</td>
+    </tr>
+    {% if d.waivers %}
+    <tr>
+      <td colspan="6" style="background:#fffbeb; font-size:0.75rem; color:#92400e;">
+        <strong>Waivers:</strong>
+        {% for w in d.waivers %}{{ w.name }}{% if w.reason %} — {{ w.reason }}{% endif %}{% if not loop.last %}; {% endif %}{% endfor %}
+      </td>
+    </tr>
+    {% endif %}
+    {% if d.status == 'not_applicable' and d.justification %}
+    <tr>
+      <td colspan="6" style="font-size:0.75rem; color:#6b7280;">
+        <strong>N/A Justification:</strong> {{ d.justification }}
+      </td>
+    </tr>
+    {% endif %}
+    {% endif %}
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+{% if package.summary and package.summary.layer_counts %}
+<h2>ArchiMate Layer Coverage</h2>
+<table>
+  <thead><tr>{% for layer in ['motivation','strategy','business','application','technology','implementation'] %}<th>{{ layer|capitalize }}</th>{% endfor %}</tr></thead>
+  <tbody>
+  <tr>
+    {% for layer in ['motivation','strategy','business','application','technology','implementation'] %}
+    <td style="text-align:center; font-weight:600;">{{ package.summary.layer_counts.get(layer, 0) }}</td>
+    {% endfor %}
+  </tr>
+  </tbody>
+</table>
+{% endif %}
+
+{% if package.elements_by_domain %}
+<h2>Element Inventory</h2>
+{% for domain_code, elements in package.elements_by_domain.items() %}
+<h3>{{ domain_code }}</h3>
+<table>
+  <thead><tr><th>Name</th><th>Type</th><th>Layer</th><th>Build/Buy</th><th>Deployment</th><th>Availability</th></tr></thead>
+  <tbody>
+  {% for el in elements %}
+  <tr>
+    <td>{{ el.name }}</td>
+    <td>{{ el.archimate_type }}</td>
+    <td>{{ el.layer }}</td>
+    <td>{{ (el.acm_properties or {}).get('build_or_buy', {}).get('value', '—') }}</td>
+    <td>{{ (el.acm_properties or {}).get('deployment_model', {}).get('value', '—') }}</td>
+    <td>{{ (el.acm_properties or {}).get('availability_target', {}).get('value', '—') }}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endfor %}
+{% endif %}
+
+{% if package.nfrs %}
+<h2>Non-Functional Requirements</h2>
+<table>
+  <thead><tr><th>Type</th><th>Target</th><th>Priority</th><th>Domain</th></tr></thead>
+  <tbody>
+  {% for nfr in package.nfrs %}
+  <tr>
+    <td>{{ nfr.type }}</td>
+    <td>{{ nfr.target }}</td>
+    <td>{{ nfr.priority }}</td>
+    <td>{{ nfr.domain or '—' }}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+</body>
+</html>

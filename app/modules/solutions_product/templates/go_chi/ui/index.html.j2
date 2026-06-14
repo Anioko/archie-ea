@@ -1,0 +1,157 @@
+{# App shell + SPA router — served as ui/index.html #}
+{# Context: solution_id, bundle_id, solution_name, project_name, entities, workflows, navigation, roles #}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ project_name }}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+    tailwind.config = {
+        darkMode: 'class',
+        theme: { extend: { colors: { primary: { 600: '#2563eb', 700: '#1d4ed8' } } } }
+    };
+    </script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <link rel="stylesheet" href="/static/styles.css">
+    <style>[x-cloak] { display: none !important; }</style>
+</head>
+<body class="bg-zinc-950 text-zinc-100 min-h-screen dark">
+
+<div x-data="appShell()" x-init="init()" class="flex h-screen overflow-hidden">
+    <!-- Sidebar -->
+    <aside class="w-60 flex-shrink-0 border-r border-zinc-800 bg-zinc-900/50 flex flex-col">
+        <div class="p-4 border-b border-zinc-800">
+            <h1 class="text-sm font-bold tracking-tight truncate">{{ project_name }}</h1>
+            <p class="text-[10px] text-zinc-500 mt-0.5">Solution #{{ solution_id }}</p>
+        </div>
+        <nav class="flex-1 overflow-y-auto py-2 px-2 space-y-0.5">
+            <a href="#/" @click="navigate('/')"
+               :class="currentRoute === '/' ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'"
+               class="flex items-center gap-2 px-3 py-2 text-sm rounded-md transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0h4"></path></svg>
+                Dashboard
+            </a>
+{% for nav in navigation %}
+{% if nav.type == 'entity' %}
+            <a href="#/{{ nav.path }}" @click="navigate('/{{ nav.path }}')"
+{% if nav.roles %}               x-show="hasRole([{{ nav.roles | map('tojson') | join(', ') }}])"{% endif %}
+               :class="currentRoute.startsWith('/{{ nav.path }}') ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'"
+               class="flex items-center gap-2 px-3 py-2 text-sm rounded-md transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path></svg>
+                {{ nav.label }}
+            </a>
+{% elif nav.type == 'workflow' %}
+            <a href="#/workflow/{{ nav.path }}" @click="navigate('/workflow/{{ nav.path }}')"
+{% if nav.roles %}               x-show="hasRole([{{ nav.roles | map('tojson') | join(', ') }}])"{% endif %}
+               :class="currentRoute.startsWith('/workflow/{{ nav.path }}') ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'"
+               class="flex items-center gap-2 px-3 py-2 text-sm rounded-md transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                {{ nav.label }}
+            </a>
+{% endif %}
+{% endfor %}
+        </nav>
+        <div class="p-3 border-t border-zinc-800">
+            <div class="flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full" :class="healthOk ? 'bg-emerald-500' : 'bg-red-500'"></span>
+                <span class="text-xs text-zinc-500" x-text="healthOk ? 'Healthy' : 'Unhealthy'"></span>
+            </div>
+            <div class="flex items-center gap-2 mt-2" x-show="userRole">
+                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-blue-500/10 text-blue-400 border border-blue-500/30" x-text="userRole"></span>
+            </div>
+            <div class="flex gap-2 mt-2">
+                <a href="/docs" target="_blank" class="text-[10px] text-zinc-500 hover:text-zinc-300">API Docs</a>
+                <a href="/health" target="_blank" class="text-[10px] text-zinc-500 hover:text-zinc-300">Health</a>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main content area -->
+    <main class="flex-1 overflow-y-auto">
+        <!-- Top bar -->
+        <header class="sticky top-0 z-30 border-b border-zinc-800 bg-zinc-950/80 backdrop-blur-sm px-6 py-3 flex items-center justify-between">
+            <div class="flex items-center gap-2">
+                <nav class="flex items-center gap-1 text-sm text-zinc-500">
+                    <template x-for="(crumb, i) in breadcrumbs" :key="i">
+                        <span class="flex items-center gap-1">
+                            <span x-show="i > 0" class="text-zinc-600">/</span>
+                            <span :class="i === breadcrumbs.length - 1 ? 'text-zinc-200' : ''" x-text="crumb"></span>
+                        </span>
+                    </template>
+                </nav>
+            </div>
+            <div class="flex items-center gap-3">
+                <span class="text-xs text-zinc-600">{{ bundle_id }}</span>
+            </div>
+        </header>
+
+        <!-- Page content (routed) -->
+        <div class="p-6" id="page-content">
+            <!-- Dashboard -->
+            <div x-show="currentRoute === '/'" x-cloak>
+                {% include 'ui/dashboard_section.html.j2' %}
+            </div>
+
+{% for entity in entities %}
+            <!-- {{ entity.name_display }} list -->
+            <div x-show="currentRoute === '/{{ entity.name_snake }}s'" x-cloak>
+                {% with ent=entity %}{% include 'ui/entity_list_section.html.j2' %}{% endwith %}
+            </div>
+
+            <!-- {{ entity.name_display }} detail -->
+            <div x-show="currentRoute.match(/^\/{{ entity.name_snake }}s\/\d+$/)" x-cloak>
+                {% with ent=entity %}{% include 'ui/entity_detail_section.html.j2' %}{% endwith %}
+            </div>
+{% endfor %}
+
+{% for workflow in workflows %}
+            <!-- {{ workflow.name_display }} workflow -->
+            <div x-show="currentRoute === '/workflow/{{ workflow.name_snake }}'" x-cloak>
+                {% with wf=workflow %}{% include 'ui/workflow_section.html.j2' %}{% endwith %}
+            </div>
+{% endfor %}
+        </div>
+    </main>
+
+    <!-- Slide-over panel for create/edit forms -->
+    <div x-show="formPanel.open" x-cloak class="fixed inset-0 z-50 flex justify-end" @keydown.escape.window="formPanel.open = false">
+        <div class="absolute inset-0 bg-black/50" @click="formPanel.open = false"></div>
+        <div class="relative w-full max-w-lg bg-zinc-900 border-l border-zinc-800 overflow-y-auto" @click.stop>
+            <div class="sticky top-0 bg-zinc-900 border-b border-zinc-800 px-6 py-4 flex items-center justify-between">
+                <h3 class="text-lg font-semibold" x-text="formPanel.title"></h3>
+                <button @click="formPanel.open = false" class="text-zinc-500 hover:text-zinc-300">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            <div class="p-6" id="form-container"></div>
+        </div>
+    </div>
+
+    <!-- Toast container -->
+    <div class="fixed top-4 right-4 z-[70] space-y-2">
+        <template x-for="t in toasts" :key="t.id">
+            <div x-transition class="px-4 py-2 rounded-lg text-sm font-medium shadow-lg"
+                 :class="t.type === 'error' ? 'bg-red-600 text-white' : t.type === 'warning' ? 'bg-amber-600 text-white' : 'bg-emerald-600 text-white'"
+                 x-text="t.message"></div>
+        </template>
+    </div>
+
+    <!-- Confirm dialog -->
+    <div x-show="confirmDlg.open" x-cloak class="fixed inset-0 z-[80] flex items-center justify-center">
+        <div class="absolute inset-0 bg-black/50" @click="confirmDlg.cancel()"></div>
+        <div class="relative bg-zinc-900 border border-zinc-800 rounded-lg p-6 max-w-sm w-full mx-4" @click.stop>
+            <h3 class="text-lg font-semibold mb-2" x-text="confirmDlg.title"></h3>
+            <p class="text-zinc-400 text-sm mb-4" x-text="confirmDlg.message"></p>
+            <div class="flex gap-2 justify-end">
+                <button @click="confirmDlg.cancel()" class="px-3 py-1.5 text-sm rounded-md border border-zinc-700 text-zinc-400 hover:text-zinc-100 transition-colors">Cancel</button>
+                <button @click="confirmDlg.accept()" class="px-3 py-1.5 text-sm font-medium rounded-md bg-red-600 text-white hover:bg-red-700 transition-colors">Confirm</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,109 @@
+{# CMP-053: Landscape map view #}
+<div x-show="landscapeViewOpen" x-cloak x-transition
+     class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-filter backdrop-blur-sm"
+     role="dialog" aria-modal="true" aria-label="Landscape Map"
+     @keydown.escape.window="closeLandscapeView()"
+     @keydown.tab.prevent>
+    <div class="bg-background border border-border rounded-xl shadow-2xl flex flex-col"
+         style="width: 90vw; max-width: 1200px; max-height: 85vh;"
+         @click.outside="closeLandscapeView()">
+
+        {# Header #}
+        <div class="flex items-center gap-3 p-4 border-b border-border">
+            <i data-lucide="grid-3x3" class="w-5 h-5 text-primary"></i>
+            <span class="font-semibold">Landscape Map</span>
+            <div class="flex-1"></div>
+            <button aria-label="Close" @click="closeLandscapeView()" class="p-1 rounded hover:bg-muted transition-colors">
+                <i data-lucide="x" class="w-4 h-4"></i>
+            </button>
+        </div>
+
+        {# Dimension selectors #}
+        <div class="flex items-center gap-4 px-4 py-3 border-b border-border bg-muted/30">
+            <label class="text-xs font-medium text-muted-foreground">Rows:</label>
+            <select x-model="landscapeRowType" @change="loadLandscapeData()"
+                    class="text-xs px-2 py-1 rounded border border-border bg-background">
+                <option value="Capability">Capability</option>
+                <option value="BusinessProcess">Business Process</option>
+                <option value="BusinessService">Business Service</option>
+                <option value="BusinessFunction">Business Function</option>
+                <option value="Goal">Goal</option>
+                <option value="Requirement">Requirement</option>
+                <option value="ValueStream">Value Stream</option>
+            </select>
+            <label class="text-xs font-medium text-muted-foreground">Columns:</label>
+            <select x-model="landscapeColType" @change="loadLandscapeData()"
+                    class="text-xs px-2 py-1 rounded border border-border bg-background">
+                <option value="ApplicationComponent">Application Component</option>
+                <option value="ApplicationService">Application Service</option>
+                <option value="Node">Node</option>
+                <option value="TechnologyService">Technology Service</option>
+                <option value="BusinessProcess">Business Process</option>
+                <option value="DataObject">Data Object</option>
+            </select>
+            <span x-show="landscapeLoading" x-cloak class="text-xs text-muted-foreground animate-pulse">Loading...</span>
+
+            {# Legend #}
+            <div class="ml-auto flex items-center gap-2 text-[10px]">
+                <span class="px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/30 border border-emerald-200">1</span>
+                <span class="px-1.5 py-0.5 rounded bg-primary/10 dark:bg-blue-900/30 border border-primary/20">2</span>
+                <span class="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 border border-amber-200">3-4</span>
+                <span class="px-1.5 py-0.5 rounded bg-rose-100 dark:bg-rose-900/30 border border-rose-200">5+</span>
+                <span class="text-muted-foreground">relationships</span>
+            </div>
+        </div>
+
+        {# Grid #}
+        <div class="flex-1 overflow-auto p-4">
+            <template x-if="landscapeData && landscapeData.rows && landscapeData.columns">
+                <div class="overflow-x-auto">
+                    <table class="text-xs border-collapse w-full">
+                        <thead>
+                            <tr>
+                                <th class="sticky left-0 z-10 bg-background border border-border px-2 py-1.5 text-left font-semibold min-w-[160px]"
+                                    x-text="landscapeRowType + ' \\ ' + landscapeColType"></th>
+                                <template x-for="col in landscapeData.columns" :key="col.id">
+                                    <th class="border border-border px-2 py-1.5 text-center font-medium min-w-[90px] max-w-[130px]"
+                                        style="writing-mode: vertical-lr; text-orientation: mixed; height: 120px;"
+                                        :title="col.name" x-text="col.name"></th>
+                                </template>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <template x-for="row in landscapeData.rows" :key="row.id">
+                                <tr>
+                                    <td class="sticky left-0 z-10 bg-background border border-border px-2 py-1.5 font-medium truncate max-w-[200px]"
+                                        :title="row.name" x-text="row.name"></td>
+                                    <template x-for="col in landscapeData.columns" :key="col.id">
+                                        <td class="border border-border px-1 py-1 text-center"
+                                            :class="landscapeCell(row.id, col.id) ? landscapeHeatColor(landscapeCell(row.id, col.id).count) : ''">
+                                            <template x-if="landscapeCell(row.id, col.id)">
+                                                <span class="text-[10px] font-bold"
+                                                      :title="(landscapeCell(row.id, col.id).types || []).join(', ')"
+                                                      x-text="landscapeCell(row.id, col.id).count"></span>
+                                            </template>
+                                        </td>
+                                    </template>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                    <template x-if="landscapeData.rows.length === 0 || landscapeData.columns.length === 0">
+                        <p class="text-xs text-muted-foreground mt-4 text-center">No elements found. Add elements to the model first.</p>
+                    </template>
+                </div>
+            </template>
+        </div>
+
+        {# Footer #}
+        <div class="px-4 py-2 border-t border-border text-xs text-muted-foreground flex items-center gap-4">
+            <template x-if="landscapeData">
+                <div class="flex items-center gap-4">
+                    <span x-text="(landscapeData.rows || []).length + ' rows'"></span>
+                    <span x-text="(landscapeData.columns || []).length + ' columns'"></span>
+                    <span x-text="Object.keys(landscapeData.cells || {}).length + ' intersections'"></span>
+                </div>
+            </template>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,127 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'components/page_header.html' import page_header %}
+
+{% block title %}{{ framework.industry_name }} - Industry APQC{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Breadcrumbs -->
+    <nav class="flex items-center gap-2 text-sm text-muted-foreground mb-6">
+        <a href="{{ url_for('main.index') }}" class="hover:text-foreground transition-colors">Dashboard</a>
+        <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
+        <a href="{{ url_for('main.industry_apqc_dashboard') }}" class="hover:text-foreground transition-colors">Industry APQC</a>
+        <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
+        <span class="text-foreground font-medium">{{ framework.industry_name }}</span>
+    </nav>
+
+    <!-- Page Header -->
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+        <div>
+            {{ page_header(title='{{ framework.industry_name }}') }}
+            <p class="text-muted-foreground mt-2">{{ framework.description or 'Industry-specific APQC process framework' }}</p>
+        </div>
+    </div>
+
+    <!-- Statistics Cards -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-8">
+        <div class="rounded-xl border-2 border-input bg-background p-5">
+            <p class="text-sm font-medium text-muted-foreground">Total Processes</p>
+            <p class="text-2xl font-bold tracking-tight mt-1">{{ stats.total_processes or 0 }}</p>
+        </div>
+        <div class="rounded-xl border-2 border-input bg-background p-5">
+            <p class="text-sm font-medium text-muted-foreground">Industry Unique</p>
+            <p class="text-2xl font-bold tracking-tight mt-1">{{ stats.unique_processes or 0 }}</p>
+        </div>
+        <div class="rounded-xl border-2 border-input bg-background p-5">
+            <p class="text-sm font-medium text-muted-foreground">Regulatory</p>
+            <p class="text-2xl font-bold tracking-tight mt-1">{{ stats.regulatory_processes or 0 }}</p>
+        </div>
+        <div class="rounded-xl border-2 border-input bg-background p-5">
+            <p class="text-sm font-medium text-muted-foreground">Maturity Target</p>
+            <p class="text-2xl font-bold tracking-tight mt-1">{{ stats.digital_maturity_typical or 3 }}/5</p>
+        </div>
+    </div>
+
+    <!-- Framework Details -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+        <div class="lg:col-span-2 rounded-xl border-2 border-input bg-background p-6">
+            <h2 class="text-xl font-semibold mb-4">Processes by Category</h2>
+            {% if stats.processes_by_category %}
+            <div class="space-y-3">
+                {% for category, count in stats.processes_by_category.items() %}
+                <div class="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                    <span class="font-medium">{{ category }}</span>
+                    <span class="text-sm text-muted-foreground">{{ count }} processes</span>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="text-muted-foreground">No processes mapped yet.</p>
+            {% endif %}
+        </div>
+
+        <div class="rounded-xl border-2 border-input bg-background p-6">
+            <h2 class="text-xl font-semibold mb-4">Framework Info</h2>
+            <dl class="space-y-3">
+                <div>
+                    <dt class="text-sm text-muted-foreground">PCF Version</dt>
+                    <dd class="font-medium">{{ framework.pcf_version or 'Not specified' }}</dd>
+                </div>
+                <div>
+                    <dt class="text-sm text-muted-foreground">Regulatory Intensity</dt>
+                    <dd class="font-medium">{{ stats.regulatory_intensity or 'Medium' }}</dd>
+                </div>
+                <div>
+                    <dt class="text-sm text-muted-foreground">Process Complexity</dt>
+                    <dd class="font-medium">{{ stats.process_complexity or 'Moderate' }}</dd>
+                </div>
+                <div>
+                    <dt class="text-sm text-muted-foreground">Status</dt>
+                    <dd>
+                        <span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium
+                            {% if framework.is_active %}bg-success/10 text-success{% else %}bg-muted text-foreground/80{% endif %}">
+                            {{ 'Active' if framework.is_active else 'Inactive' }}
+                        </span>
+                    </dd>
+                </div>
+            </dl>
+        </div>
+    </div>
+
+    <!-- Process Lists -->
+    {% if processes %}
+    <div class="rounded-xl border-2 border-input bg-background p-6 mb-6">
+        <h2 class="text-xl font-semibold mb-4">All Processes ({{ processes|length }})</h2>
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead>
+                    <tr class="border-b">
+                        <th class="text-left py-3 px-4 font-medium text-muted-foreground">Code</th>
+                        <th class="text-left py-3 px-4 font-medium text-muted-foreground">Name</th>
+                        <th class="text-left py-3 px-4 font-medium text-muted-foreground">Category</th>
+                        <th class="text-center py-3 px-4 font-medium text-muted-foreground">Status</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y">
+                    {% for process in processes[:20] %}
+                    <tr class="border-b hover:bg-muted/50">
+                        <td class="py-3 px-4 font-mono text-sm">{{ process.industry_process_code }}</td>
+                        <td class="py-3 px-4">{{ process.industry_process_name }}</td>
+                        <td class="py-3 px-4 text-muted-foreground">{{ process.industry_category_1 or '-' }}</td>
+                        <td class="text-center py-3 px-4">
+                            <span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium bg-success/10 text-success">
+                                Active
+                            </span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% if processes|length > 20 %}
+        <p class="text-sm text-muted-foreground mt-4">Showing 20 of {{ processes|length }} processes</p>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

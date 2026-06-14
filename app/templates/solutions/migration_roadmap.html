@@ -1,0 +1,127 @@
+{% extends "layouts/admin_base.html" %}
+{% from "components/page_header.html" import page_header %}
+
+{% block title %}Migration Roadmap — {{ solution.name }}{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 sm:px-6 lg:px-8 py-6 max-w-5xl"
+     x-data="migrationRoadmap({{ solution.id }}, {{ (roadmap.id if roadmap else 'null') }})">
+    {{ page_header(
+        title='Migration Roadmap',
+        description='The AI Solution Architect sequences delivery into TOGAF Phase F transition plateaus — stable interim architectures with the work packages that move between them, grounded in this solution\'s context.',
+        breadcrumbs=[
+            {'label': 'Dashboard', 'href': url_for('main.index')},
+            {'label': 'Solutions', 'href': url_for('solution_design.list_solutions')},
+            {'label': solution.name, 'href': '/solutions/' ~ solution.id},
+            {'label': 'Migration Roadmap'}
+        ]
+    ) }}
+
+    <div class="flex items-center justify-between mt-4 mb-6">
+        <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30">
+            <i data-lucide="route" class="h-3.5 w-3.5"></i> AI Solution Architect · TOGAF Phase F · grounded in solution context
+        </span>
+        <button type="button" @click="generate()" :disabled="busy"
+                class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+            <i data-lucide="sparkles" class="h-4 w-4" :class="busy && 'animate-pulse'"></i>
+            <span x-text="busy ? 'Generating…' : (hasRoadmap ? 'Regenerate roadmap' : 'Generate migration roadmap')"></span>
+        </button>
+    </div>
+
+    <div x-cloak x-show="error" class="mb-6 rounded-md border border-destructive/30 bg-destructive/10 text-destructive p-3 text-sm" x-text="error"></div>
+    <div x-cloak x-show="busy" class="mb-6 rounded-md border border-border bg-muted/30 p-4 text-sm text-muted-foreground flex items-center gap-2">
+        <i data-lucide="loader" class="h-4 w-4 animate-spin"></i> The Solution Architect is sequencing the plateaus — this takes a few seconds.
+    </div>
+
+    {% if not roadmap %}
+    <div x-show="!busy" class="border border-border rounded-xl bg-card p-10 text-center">
+        <span class="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary mb-3"><i data-lucide="route" class="h-6 w-6"></i></span>
+        <p class="text-sm font-medium text-foreground">No migration roadmap yet</p>
+        <p class="text-xs text-muted-foreground mt-1 mb-4 max-w-md mx-auto">Generate a Phase F roadmap — 2-4 transition plateaus with objectives, horizons, and the work packages that move the estate to the target state.</p>
+        <button type="button" @click="generate()" :disabled="busy"
+                class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+            <span x-text="busy ? 'Generating…' : 'Generate migration roadmap'"></span>
+        </button>
+    </div>
+    {% else %}
+
+    {# ── Roadmap header ────────────────────────────────────────────── #}
+    <div class="border border-border rounded-xl bg-card p-5 mb-6">
+        <div class="flex items-start justify-between gap-4">
+            <div>
+                <h2 class="text-base font-semibold text-foreground">{{ roadmap.headline }}</h2>
+                {% if roadmap.summary %}<p class="text-sm text-muted-foreground mt-1 leading-relaxed">{{ roadmap.summary }}</p>{% endif %}
+            </div>
+            <div class="shrink-0 text-right">
+                <p class="text-2xl font-bold text-foreground">{{ roadmap.plateau_count }}</p>
+                <p class="text-[10px] uppercase tracking-wider text-muted-foreground">plateaus{% if roadmap.horizon_months %} · {{ roadmap.horizon_months }} mo{% endif %}</p>
+            </div>
+        </div>
+    </div>
+
+    {# ── Plateaus (transition architectures) ───────────────────────── #}
+    <ol class="relative border-l-2 border-border ml-3 space-y-6">
+        {% for p in roadmap.plateaus %}
+        <li class="ml-6">
+            <span class="absolute -left-[0.7rem] flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-[11px] font-bold ring-4 ring-background">{{ p.sequence }}</span>
+            <div class="border border-border rounded-xl bg-card overflow-hidden">
+                <div class="px-5 py-3 border-b border-border flex items-center justify-between bg-muted/20">
+                    <h3 class="text-sm font-semibold text-foreground">{{ p.name }}</h3>
+                    {% if p.horizon_months %}<span class="inline-flex items-center gap-1 text-[11px] text-muted-foreground"><i data-lucide="clock" class="h-3 w-3"></i> ~{{ p.horizon_months }} mo</span>{% endif %}
+                </div>
+                <div class="p-5 space-y-3">
+                    {% if p.objective %}<div><p class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Objective</p><p class="text-sm text-foreground mt-0.5">{{ p.objective }}</p></div>{% endif %}
+                    {% if p.target_state %}<div><p class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Target state</p><p class="text-sm text-muted-foreground mt-0.5">{{ p.target_state }}</p></div>{% endif %}
+                    {% if p.work_packages %}
+                    <div>
+                        <p class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Work packages</p>
+                        <div class="space-y-1.5">
+                            {% for wp in p.work_packages %}
+                            <div class="flex items-start gap-2 text-xs border border-border rounded-md px-3 py-2 bg-background">
+                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-muted text-muted-foreground shrink-0">{{ wp.effort or '—' }}</span>
+                                <div class="min-w-0">
+                                    <p class="text-foreground font-medium">{{ wp.name }}</p>
+                                    {% if wp.touches %}<p class="text-[11px] text-muted-foreground mt-0.5">Touches: {{ wp.touches }}</p>{% endif %}
+                                    {% if wp.depends_on %}<p class="text-[11px] text-muted-foreground mt-0.5">Depends on: {{ wp.depends_on | join(', ') }}</p>{% endif %}
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </li>
+        {% endfor %}
+    </ol>
+
+    <p class="text-[11px] text-muted-foreground mt-6">Generated by the AI Solution Architect · regenerate to re-sequence as the design evolves.</p>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_head_js %}
+<script>
+    function migrationRoadmap(solutionId, roadmapId) {
+        return {
+            solutionId: solutionId,
+            hasRoadmap: !!roadmapId,
+            busy: false,
+            error: '',
+            _csrf() { return document.querySelector('meta[name=csrf-token]')?.content || ''; },
+            async generate() {
+                this.busy = true; this.error = '';
+                try {
+                    const r = await fetch('/solutions/' + this.solutionId + '/migration-roadmap/generate', {
+                        method: 'POST', headers: { 'X-CSRFToken': this._csrf() },
+                    });
+                    const d = await r.json();
+                    if (!r.ok || !d.success) { this.error = d.error || 'Generation failed.'; return; }
+                    window.location.reload();
+                } catch (e) { this.error = 'Network error during generation.'; }
+                finally { this.busy = false; }
+            },
+        };
+    }
+</script>
+{% endblock %}

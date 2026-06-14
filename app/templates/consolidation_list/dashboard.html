@@ -1,0 +1,667 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'components/page_header.html' import page_header %}
+{% from "components/filter_bar.html" import filter_bar %}
+
+{% block title %}Consolidation List Dashboard{% endblock %}
+
+{% block custom_head_tags %}
+{{ super() }}
+<meta name="csrf-token" content="{{ csrf_token() }}">
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6" x-data="consolidationTable()" x-cloak>
+    {{ page_header(
+        title='Consolidation List',
+        description='Plan and manage application consolidation, decommissioning, and retirement',
+        actions=[
+            {'text': 'Candidates', 'icon': 'users', 'href': url_for('unified_low_priority.consolidation_candidates'), 'variant': 'outline'},
+            {'text': 'Opportunities', 'icon': 'lightbulb', 'href': url_for('unified_low_priority.consolidation_opportunities'), 'variant': 'outline'},
+            {'text': 'Back to Applications', 'href': '/applications/', 'variant': 'outline'}
+        ]
+    ) }}
+
+    {# ── Summary Statistics (6-card grid) ── #}
+    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+        <template x-for="(card, ci) in summaryCards()" :key="ci">
+            <div class="bg-card rounded-lg p-4 border">
+                <p class="text-xs font-medium text-muted-foreground" x-text="card.label"></p>
+                <p class="text-xl font-bold mt-1" :class="card.color" x-text="card.value"></p>
+                <p class="text-xs text-muted-foreground mt-0.5" x-show="card.subtitle" x-text="card.subtitle" x-cloak></p>
+            </div>
+        </template>
+    </div>
+
+    {# ── Filters and Actions ── #}
+    <div data-slot="card" class="rounded-xl border bg-card shadow-sm mb-6">
+        {{ filter_bar(
+            search_id='consolidation-search',
+            search_placeholder='Search by name, owner...',
+            filters=[
+                {'id': 'filter-status', 'label': 'Status', 'options': [
+                    {'value': 'identified', 'label': 'Identified'},
+                    {'value': 'under_review', 'label': 'Under Review'},
+                    {'value': 'impact_assessed', 'label': 'Impact Assessed'},
+                    {'value': 'migration_planned', 'label': 'Migration Planned'},
+                    {'value': 'approved', 'label': 'Approved'},
+                    {'value': 'in_progress', 'label': 'In Progress'},
+                    {'value': 'completed', 'label': 'Completed'}
+                ]},
+                {'id': 'filter-action', 'label': 'Action', 'options': [
+                    {'value': 'pending_review', 'label': 'Pending Review'},
+                    {'value': 'decommission', 'label': 'Decommission'},
+                    {'value': 'retire', 'label': 'Retire'},
+                    {'value': 'merge', 'label': 'Merge'},
+                    {'value': 'add_to_roadmap', 'label': 'Add to Roadmap'}
+                ]}
+            ]
+        ) }}
+        <div class="px-4 pb-4 flex flex-wrap items-center gap-2">
+            <button type="button" @click="openAddApps()" class="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 text-sm font-medium transition-colors" aria-label="Add Applications">
+                <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i> Add Applications
+            </button>
+            <button type="button" @click="scoreAll()" :disabled="scoringInProgress" class="inline-flex items-center gap-2 px-4 py-2 rounded-md border border-primary bg-primary/10 hover:bg-primary/20 text-primary text-sm font-medium transition-colors disabled:opacity-50" aria-label="Score all entries using TIME framework">
+                <i data-lucide="bar-chart-3" class="h-4 w-4" aria-hidden="true"></i>
+                <span x-text="scoringInProgress ? 'Scoring...' : 'Score All (TIME)'"></span>
+            </button>
+            <button type="button" @click="recalculateSavings()" :disabled="recalcInProgress" class="inline-flex items-center gap-2 px-4 py-2 rounded-md border border-emerald-500 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 text-sm font-medium transition-colors disabled:opacity-50" aria-label="Recalculate savings for all entries">
+                <i data-lucide="calculator" class="h-4 w-4" aria-hidden="true"></i>
+                <span x-text="recalcInProgress ? 'Recalculating...' : 'Recalculate Savings'"></span>
+            </button>
+            <button type="button" @click="bulkAction('decommission')" class="inline-flex items-center gap-2 px-4 py-2 rounded-md border border-input bg-background hover:bg-accent text-sm font-medium transition-colors" aria-label="Bulk decommission selected entries">
+                Bulk: Decommission
+            </button>
+            <button type="button" @click="bulkAction('retire')" class="inline-flex items-center gap-2 px-4 py-2 rounded-md border border-input bg-background hover:bg-accent text-sm font-medium transition-colors" aria-label="Bulk retire selected entries">
+                Bulk: Retire
+            </button>
+            <button type="button" @click="bulkAction('add_to_roadmap')" class="inline-flex items-center gap-2 px-4 py-2 rounded-md border border-input bg-background hover:bg-accent text-sm font-medium transition-colors" aria-label="Bulk add selected entries to roadmap">
+                Bulk: Add to Roadmap
+            </button>
+            <button type="button" @click="bulkAction('set_wave')" class="inline-flex items-center gap-2 px-4 py-2 rounded-md border border-input bg-background hover:bg-accent text-sm font-medium transition-colors" aria-label="Set wave for selected entries">
+                Bulk: Set Wave
+            </button>
+            <button type="button" @click="bulkAction('assign_owner')" class="inline-flex items-center gap-2 px-4 py-2 rounded-md border border-input bg-background hover:bg-accent text-sm font-medium transition-colors" aria-label="Assign owner to selected entries">
+                Bulk: Assign Owner
+            </button>
+            <div class="flex items-center gap-2 ml-auto">
+                <select x-model="filters.wave" @change="setFilter('wave', $event.target.value)" class="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm" aria-label="Filter by wave">
+                    <option value="">All Waves</option>
+                    <option value="1">Wave 1</option>
+                    <option value="2">Wave 2</option>
+                    <option value="3">Wave 3</option>
+                    <option value="4">Wave 4</option>
+                    <option value="5">Wave 5</option>
+                </select>
+                <span class="text-xs text-muted-foreground" x-text="selectedCount + ' selected'" aria-live="polite"></span>
+            </div>
+        </div>
+    </div>
+
+    {# ── Status Pipeline ── #}
+    <div class="mb-6 bg-card rounded-lg border p-4">
+        <div class="flex items-center justify-between mb-2">
+            <h3 class="text-sm font-semibold text-foreground">Pipeline</h3>
+            <button type="button" x-show="pipelineStatusFilter" x-cloak @click="clearPipelineFilter()" class="text-xs text-muted-foreground hover:text-foreground">Clear filter</button>
+        </div>
+        <div class="flex h-8 rounded-md overflow-hidden bg-muted/30">
+            <template x-if="pipelineSegments().length === 0">
+                <div class="w-full h-full flex items-center justify-center text-xs text-muted-foreground">No entries</div>
+            </template>
+            <template x-for="seg in pipelineSegments()" :key="seg.status">
+                <button type="button"
+                    class="h-full hover:opacity-80 transition-opacity cursor-pointer relative"
+                    :class="seg.color"
+                    :style="'width:' + seg.pct.toFixed(1) + '%'"
+                    :title="seg.label + ': ' + seg.count"
+                    @click="filterByPipelineStatus(seg.status)"
+                >
+                    <span class="absolute inset-0 flex items-center justify-center text-primary-foreground text-xs font-medium"
+                          x-show="seg.pct > 8" x-cloak x-text="seg.count"></span>
+                </button>
+            </template>
+        </div>
+        <div class="flex mt-1 text-xs text-muted-foreground">
+            <template x-for="seg in pipelineSegments()" :key="'lbl-' + seg.status">
+                <span :style="'width:' + seg.pct.toFixed(1) + '%'" class="text-center truncate" x-text="seg.label"></span>
+            </template>
+        </div>
+    </div>
+
+    {# ── Consolidation List Table ── #}
+    <div class="bg-card rounded-lg border overflow-hidden">
+
+        {# Cross-page selection banner #}
+        <div class="bg-muted/50 text-center py-2 text-sm border-b"
+             x-show="allPageSelected && selectAllState !== 'cross-page' && totalItems > pageSize" x-cloak>
+            All <span x-text="pageSize"></span> items on this page are selected.
+            <button type="button" class="text-primary hover:underline font-medium" @click="selectAllCrossPage()">
+                Select all <span x-text="totalItems"></span> items
+            </button>
+        </div>
+        <div class="bg-muted/50 text-center py-2 text-sm border-b"
+             x-show="selectAllState === 'cross-page'" x-cloak>
+            All <span x-text="totalItems"></span> items selected.
+            <button type="button" class="text-primary hover:underline font-medium" @click="clearSelection()">Clear selection</button>
+        </div>
+
+        {# Bulk action bar #}
+        <div class="bg-primary/5 border-b px-4 py-2 flex items-center gap-3"
+             x-show="hasSelection" x-cloak
+             x-transition:enter="transition ease-out duration-150"
+             x-transition:enter-start="opacity-0 -translate-y-1"
+             x-transition:enter-end="opacity-100 translate-y-0"
+             x-transition:leave="transition ease-in duration-100"
+             x-transition:leave-start="opacity-100"
+             x-transition:leave-end="opacity-0">
+            <span class="text-sm font-medium" x-text="selectedCount + ' selected'" aria-live="polite"></span>
+            <div class="h-4 w-px bg-border"></div>
+            <button type="button" class="text-sm font-medium text-destructive hover:text-destructive/80 transition-colors" @click="bulkAction('decommission')">Decommission</button>
+            <button type="button" class="text-sm font-medium text-foreground hover:text-primary transition-colors" @click="bulkAction('set_wave')">Set Wave</button>
+            <button type="button" class="text-sm font-medium text-foreground hover:text-primary transition-colors" @click="bulkAction('assign_owner')">Assign Owner</button>
+            <div class="h-4 w-px bg-border"></div>
+            <button type="button" class="text-sm text-muted-foreground hover:text-foreground transition-colors" @click="clearSelection()">Cancel</button>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="w-full" role="grid">
+                <thead>
+                    <tr class="border-b bg-muted/50">
+                        <th class="w-12 px-4 py-3">
+                            <input type="checkbox"
+                                   class="rounded border-input focus:ring-2 focus:ring-ring"
+                                   :checked="allPageSelected"
+                                   :indeterminate="hasSelection && !allPageSelected"
+                                   @change="toggleSelectAll()"
+                                   aria-label="Select all entries" />
+                        </th>
+                        <th class="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider select-none cursor-pointer hover:text-foreground transition-colors" @click="setSort('name')">
+                            <div class="flex items-center gap-1">Application
+                                <i :data-lucide="sortField === 'name' ? (sortDir === 'asc' ? 'chevron-up' : 'chevron-down') : 'chevrons-up-down'" class="h-3.5 w-3.5" :class="sortField !== 'name' && 'text-muted-foreground/40'" aria-hidden="true"></i>
+                            </div>
+                        </th>
+                        <th class="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">Action</th>
+                        <th class="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">TIME</th>
+                        <th class="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider hidden md:table-cell">Criticality</th>
+                        <th class="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider hidden lg:table-cell">Dependencies</th>
+                        <th class="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider select-none cursor-pointer hover:text-foreground transition-colors hidden md:table-cell" @click="setSort('savings')">
+                            <div class="flex items-center gap-1">Annual Saving
+                                <i :data-lucide="sortField === 'savings' ? (sortDir === 'asc' ? 'chevron-up' : 'chevron-down') : 'chevrons-up-down'" class="h-3.5 w-3.5" :class="sortField !== 'savings' && 'text-muted-foreground/40'" aria-hidden="true"></i>
+                            </div>
+                        </th>
+                        <th class="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider hidden lg:table-cell">Migration Cost</th>
+                        <th class="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider hidden lg:table-cell">Complexity</th>
+                        <th class="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
+                        <th class="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider hidden sm:table-cell">Wave</th>
+                        <th class="w-24 px-4 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider"><span class="sr-only">Actions</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {# ── Loading state: skeleton rows ── #}
+                    <template x-if="loading && items.length === 0">
+                        <tr><!-- Wrapper for x-if -->
+                        </tr>
+                    </template>
+                    <template x-for="i in (loading && items.length === 0 ? 5 : 0)" :key="'skel-' + i">
+                        <tr class="border-b">
+                            <td class="px-4 py-3"><div class="h-4 w-4 rounded bg-muted animate-pulse"></div></td>
+                            <td class="px-4 py-3"><div class="h-4 w-3/5 rounded bg-muted animate-pulse"></div></td>
+                            <td class="px-4 py-3"><div class="h-5 w-20 rounded-md bg-muted animate-pulse"></div></td>
+                            <td class="px-4 py-3"><div class="h-5 w-20 rounded-md bg-muted animate-pulse"></div></td>
+                            <td class="px-4 py-3 hidden md:table-cell"><div class="h-4 w-12 rounded bg-muted animate-pulse"></div></td>
+                            <td class="px-4 py-3 hidden lg:table-cell"><div class="h-4 w-16 rounded bg-muted animate-pulse"></div></td>
+                            <td class="px-4 py-3 hidden md:table-cell"><div class="h-4 w-16 rounded bg-muted animate-pulse"></div></td>
+                            <td class="px-4 py-3 hidden lg:table-cell"><div class="h-4 w-16 rounded bg-muted animate-pulse"></div></td>
+                            <td class="px-4 py-3 hidden lg:table-cell"><div class="h-5 w-14 rounded-md bg-muted animate-pulse"></div></td>
+                            <td class="px-4 py-3"><div class="flex gap-1"><div class="w-2 h-2 rounded-full bg-muted animate-pulse"></div><div class="w-2 h-2 rounded-full bg-muted animate-pulse"></div><div class="w-2 h-2 rounded-full bg-muted animate-pulse"></div></div></td>
+                            <td class="px-4 py-3 hidden sm:table-cell"><div class="h-6 w-6 rounded-full bg-muted animate-pulse"></div></td>
+                            <td class="px-4 py-3"><div class="h-4 w-16 rounded bg-muted animate-pulse ml-auto"></div></td>
+                        </tr>
+                    </template>
+
+                    {# ── Error state ── #}
+                    <template x-if="errorMsg && !loading">
+                        <tr>
+                            <td colspan="12" class="text-center py-12">
+                                <div class="flex flex-col items-center gap-2">
+                                    <i data-lucide="alert-circle" class="h-10 w-10 text-destructive/50" aria-hidden="true"></i>
+                                    <p class="text-sm text-destructive" x-text="errorMsg"></p>
+                                    <button type="button" class="mt-1 text-sm text-primary hover:underline" @click="refresh()">Try again</button>
+                                </div>
+                            </td>
+                        </tr>
+                    </template>
+
+                    {# ── Empty: no data yet ── #}
+                    <template x-if="!loading && !errorMsg && items.length === 0 && !hasActiveFilters">
+                        <tr>
+                            <td colspan="12" class="text-center py-16">
+                                <div class="flex flex-col items-center gap-3">
+                                    <i data-lucide="inbox" class="h-12 w-12 text-muted-foreground/50" aria-hidden="true"></i>
+                                    <div>
+                                        <p class="text-sm font-medium text-foreground">No consolidation entries yet</p>
+                                        <p class="text-sm text-muted-foreground mt-1">Run duplicate detection to find consolidation candidates, or add applications manually.</p>
+                                    </div>
+                                    <button type="button" class="mt-2 inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                                            @click="openAddApps()">
+                                        <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i> Add Applications
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    </template>
+
+                    {# ── Empty: filter returns nothing ── #}
+                    <template x-if="!loading && !errorMsg && items.length === 0 && hasActiveFilters">
+                        <tr>
+                            <td colspan="12" class="text-center py-12">
+                                <div class="flex flex-col items-center gap-2">
+                                    <i data-lucide="search-x" class="h-10 w-10 text-muted-foreground/50" aria-hidden="true"></i>
+                                    <p class="text-sm text-muted-foreground">No entries match your current filters</p>
+                                    <button type="button" class="text-sm text-primary hover:underline" @click="clearFilters(); clearPipelineFilter();">Clear all filters</button>
+                                </div>
+                            </td>
+                        </tr>
+                    </template>
+
+                    {# ── Data rows ── #}
+                    <template x-for="(entry, index) in items" :key="entry.id">
+                        <tr class="border-b transition-colors"
+                            :class="isSelected(entry.id) ? 'bg-primary/5' : 'hover:bg-muted/50 cursor-pointer'"
+                            @click="toggleExpand(entry.id)">
+                            {# Checkbox #}
+                            <td class="w-12 px-4 py-3" @click.stop>
+                                <input type="checkbox"
+                                       class="rounded border-input focus:ring-2 focus:ring-ring"
+                                       :checked="isSelected(entry.id)"
+                                       @click.stop="handleRowCheckboxClick($event, index)"
+                                       :aria-label="'Select ' + entry.application_name" />
+                            </td>
+                            {# Application name #}
+                            <td class="px-4 py-3">
+                                <div class="font-medium text-sm" x-text="entry.application_name"></div>
+                                <div class="text-xs text-muted-foreground">
+                                    <span x-text="entry.application_owner || ''"></span>
+                                    <span x-show="entry.business_domain" x-text="' · ' + entry.business_domain" x-cloak></span>
+                                    <span x-show="entry.user_count" x-text="' · ' + entry.user_count + ' users'" x-cloak></span>
+                                </div>
+                            </td>
+                            {# Action badge #}
+                            <td class="px-4 py-3">
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border"
+                                      :class="actionBadgeClass(entry.recommended_action)"
+                                      x-text="formatStatus(entry.recommended_action || 'pending_review')"></span>
+                            </td>
+                            {# TIME badge #}
+                            <td class="px-4 py-3">
+                                <template x-if="entry.time_action">
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border"
+                                          :class="timeBadgeClass(entry.time_action)"
+                                          x-text="formatTimeAction(entry.time_action, entry.time_score)"></span>
+                                </template>
+                                <span x-show="!entry.time_action" class="text-muted-foreground text-xs" x-cloak>&mdash;</span>
+                            </td>
+                            {# Criticality #}
+                            <td class="px-4 py-3 hidden md:table-cell">
+                                <div class="flex items-end gap-0.5" :title="entry.business_criticality || 'Unknown'">
+                                    <template x-for="bar in 4" :key="'crit-' + bar">
+                                        <div class="w-1.5 rounded-sm"
+                                             :class="bar <= criticalityLevel(entry.business_criticality) ? criticalityColor(entry.business_criticality) : 'bg-muted'"
+                                             :style="'height:' + (5 + bar * 3) + 'px'"></div>
+                                    </template>
+                                </div>
+                            </td>
+                            {# Dependencies #}
+                            <td class="px-4 py-3 hidden lg:table-cell">
+                                <span class="text-xs text-muted-foreground" x-text="((entry.dependencies && entry.dependencies.inbound) || 0) + ' in / ' + ((entry.dependencies && entry.dependencies.outbound) || 0) + ' out'"></span>
+                            </td>
+                            {# Annual Saving #}
+                            <td class="px-4 py-3 hidden md:table-cell">
+                                <div class="text-sm font-medium tabular-nums"
+                                     :class="entry.estimated_savings != null ? 'text-emerald-600' : 'text-muted-foreground italic'"
+                                     x-text="entry.estimated_savings != null ? fmt.currency(entry.estimated_savings) : '\u2014'"></div>
+                            </td>
+                            {# Migration Cost #}
+                            <td class="px-4 py-3 hidden lg:table-cell">
+                                <span class="text-sm tabular-nums"
+                                      :class="entry.migration_cost != null ? '' : 'text-muted-foreground italic'"
+                                      x-text="entry.migration_cost != null ? fmt.currency(entry.migration_cost) : '\u2014'"></span>
+                            </td>
+                            {# Complexity #}
+                            <td class="px-4 py-3 hidden lg:table-cell">
+                                <template x-if="entry.migration_complexity">
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border"
+                                          :class="complexityBadgeClass(entry.migration_complexity)"
+                                          x-text="entry.migration_complexity"></span>
+                                </template>
+                                <span x-show="!entry.migration_complexity" class="text-muted-foreground text-xs" x-cloak>&mdash;</span>
+                            </td>
+                            {# Status dots #}
+                            <td class="px-4 py-3">
+                                <div class="flex items-center gap-1">
+                                    <template x-for="s in STATUSES" :key="'dot-' + s">
+                                        <div class="w-2 h-2 rounded-full"
+                                             :class="statusDotFilled(entry.status, s) ? (STATUS_COLORS[s] || 'bg-muted/70') : 'bg-muted'"
+                                             :title="STATUS_LABELS[s] || s"></div>
+                                    </template>
+                                </div>
+                            </td>
+                            {# Wave #}
+                            <td class="px-4 py-3 hidden sm:table-cell">
+                                <template x-if="entry.wave">
+                                    <span class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-primary/10 text-primary text-xs font-semibold border border-primary/20" x-text="entry.wave"></span>
+                                </template>
+                                <span x-show="!entry.wave" class="text-muted-foreground text-xs" x-cloak>&mdash;</span>
+                            </td>
+                            {# Actions #}
+                            <td class="px-4 py-3 text-right" @click.stop>
+                                <div class="flex items-center justify-end gap-1.5">
+                                    <button type="button" class="text-primary hover:text-primary/90 text-xs" @click="openEditEntry(entry.id)" title="Edit">Edit</button>
+                                    <button type="button" x-show="entry.recommended_action !== 'add_to_roadmap'" x-cloak class="text-emerald-600 hover:text-emerald-800 text-xs" @click="openRoadmapConfig(entry.id)" title="Add to roadmap">Roadmap</button>
+                                    <button type="button" class="text-destructive hover:text-destructive/90 text-xs" @click="removeEntry(entry.id)" title="Remove">Remove</button>
+                                </div>
+                            </td>
+                        </tr>
+                    </template>
+
+                    {# ── Expansion detail rows (rendered after each data row via separate loop) ── #}
+                    {# Note: Alpine x-for doesn't support inserting sibling rows, so expansion
+                       is handled via a second tbody or via CSS. We use a conditional row approach. #}
+                </tbody>
+            </table>
+        </div>
+
+        {# ── Expanded detail panels (outside table for clean rendering) ── #}
+        <template x-for="entry in items.filter(e => isExpanded(e.id))" :key="'detail-' + entry.id">
+            <div class="border-t bg-muted/20 px-6 py-4" x-show="isExpanded(entry.id)" x-cloak>
+                <div class="flex items-center gap-2 mb-3">
+                    <h4 class="text-sm font-semibold text-foreground" x-text="entry.application_name + ' — Details'"></h4>
+                    <button type="button" class="text-xs text-muted-foreground hover:text-foreground" @click="toggleExpand(entry.id)">Close</button>
+                </div>
+
+                {# Loading detail #}
+                <div x-show="!getDetail(entry.id)" x-cloak class="flex items-center gap-2 text-sm text-muted-foreground">
+                    <div class="w-4 h-4 border-2 border-border border-t-primary rounded-full animate-spin"></div> Loading details...
+                </div>
+
+                {# Error loading detail #}
+                <div x-show="detailHasError(entry.id)" x-cloak class="text-sm text-destructive">
+                    Failed to load details.
+                    <button type="button" class="text-primary hover:underline ml-1" @click="loadDetail(entry.id)">Retry</button>
+                </div>
+
+                {# Detail content #}
+                <template x-if="getDetail(entry.id) && !detailHasError(entry.id)">
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        {# Financial #}
+                        <div>
+                            <h5 class="text-xs font-semibold text-muted-foreground uppercase mb-2">Financial Breakdown</h5>
+                            <dl class="space-y-1">
+                                <div class="flex justify-between text-xs">
+                                    <dt class="text-muted-foreground">License Cost</dt>
+                                    <dd class="tabular-nums" x-text="fmt.currency((getDetail(entry.id).financial || {}).license_cost) || '\u2014'"></dd>
+                                </div>
+                                <div class="flex justify-between text-xs">
+                                    <dt class="text-muted-foreground">Support Cost</dt>
+                                    <dd class="tabular-nums" x-text="fmt.currency((getDetail(entry.id).financial || {}).support_cost) || '\u2014'"></dd>
+                                </div>
+                                <div class="flex justify-between text-xs">
+                                    <dt class="text-muted-foreground">Infrastructure</dt>
+                                    <dd class="tabular-nums" x-text="fmt.currency((getDetail(entry.id).financial || {}).infrastructure_cost) || '\u2014'"></dd>
+                                </div>
+                                <div class="flex justify-between text-xs">
+                                    <dt class="text-muted-foreground">Maintenance</dt>
+                                    <dd class="tabular-nums" x-text="fmt.currency((getDetail(entry.id).financial || {}).maintenance_cost) || '\u2014'"></dd>
+                                </div>
+                                <div class="flex justify-between text-xs font-medium border-t border-border/50 pt-1">
+                                    <dt>Total Annual</dt>
+                                    <dd class="tabular-nums" x-text="fmt.currency((getDetail(entry.id).financial || {}).total_annual_cost) || '\u2014'"></dd>
+                                </div>
+                            </dl>
+                        </div>
+
+                        {# Capabilities #}
+                        <div>
+                            <h5 class="text-xs font-semibold text-muted-foreground uppercase mb-2">Capabilities Supported</h5>
+                            <template x-if="(getDetail(entry.id).capabilities || []).length === 0">
+                                <p class="text-xs text-muted-foreground">No capabilities mapped</p>
+                            </template>
+                            <ul class="space-y-1">
+                                <template x-for="cap in (getDetail(entry.id).capabilities || [])" :key="cap.name">
+                                    <li class="text-xs flex items-center">
+                                        <span class="inline-block w-2 h-2 rounded-full mr-1.5"
+                                              :class="cap.is_critical ? 'bg-destructive' : 'bg-muted'"></span>
+                                        <span x-text="cap.name"></span>
+                                        <span x-show="cap.level" x-cloak class="text-muted-foreground ml-1" x-text="'(' + cap.level + ')'"></span>
+                                    </li>
+                                </template>
+                            </ul>
+                            <template x-if="getDetail(entry.id).target_application">
+                                <div class="mt-2 pt-2 border-t border-border/50 text-xs">
+                                    <span class="text-muted-foreground">Target: </span>
+                                    <span class="font-medium" x-text="getDetail(entry.id).target_application.name || 'Unknown'"></span>
+                                </div>
+                            </template>
+                        </div>
+
+                        {# Risk & Compliance #}
+                        <div>
+                            <h5 class="text-xs font-semibold text-muted-foreground uppercase mb-2">Risk &amp; Compliance</h5>
+                            <template x-if="(getDetail(entry.id).risk || {}).migration_complexity">
+                                <div class="mb-1">
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border"
+                                          :class="complexityBadgeClass((getDetail(entry.id).risk || {}).migration_complexity)"
+                                          x-text="(getDetail(entry.id).risk || {}).migration_complexity"></span>
+                                </div>
+                            </template>
+                            <template x-if="(getDetail(entry.id).risk || {}).data_disposition">
+                                <div class="text-xs mb-1">
+                                    <span class="text-muted-foreground">Data: </span>
+                                    <span x-text="(getDetail(entry.id).risk || {}).data_disposition"></span>
+                                </div>
+                            </template>
+                            <template x-if="(getDetail(entry.id).risk || {}).risk_assessment">
+                                <p class="text-xs text-muted-foreground mt-2" x-text="(getDetail(entry.id).risk || {}).risk_assessment"></p>
+                            </template>
+                        </div>
+
+                        {# Actions / Links #}
+                        <div>
+                            <h5 class="text-xs font-semibold text-muted-foreground uppercase mb-2">Actions</h5>
+                            <div class="space-y-1.5">
+                                <template x-if="(getDetail(entry.id).links || {}).app_detail">
+                                    <a :href="(getDetail(entry.id).links || {}).app_detail" class="flex items-center gap-1.5 text-xs text-primary hover:underline">
+                                        <i data-lucide="external-link" class="h-3 w-3" aria-hidden="true"></i> View Application Profile
+                                    </a>
+                                </template>
+                                <a :href="(getDetail(entry.id).links || {}).architecture_assistant || '/architecture-assistant/'" class="flex items-center gap-1.5 text-xs text-primary hover:underline">
+                                    <i data-lucide="bot" class="h-3 w-3" aria-hidden="true"></i> Architecture Assistant
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+
+                    {# ── Quick Edit (missing fields) ── #}
+                    <template x-if="getMissingFields(entry).length > 0">
+                        <div class="mt-4 pt-4 border-t border-border/50" :data-quick-edit="entry.id">
+                            <div class="flex items-center justify-between mb-3">
+                                <h5 class="text-xs font-semibold text-amber-600 uppercase flex items-center gap-1.5">
+                                    <i data-lucide="alert-circle" class="h-3.5 w-3.5" aria-hidden="true"></i>
+                                    <span x-text="getMissingFields(entry).length + ' Missing Field' + (getMissingFields(entry).length !== 1 ? 's' : '')"></span>
+                                </h5>
+                                <button type="button" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
+                                        :disabled="isQuickSaving(entry.id)"
+                                        @click="quickSave(entry.id)">
+                                    <i data-lucide="save" class="h-3 w-3" aria-hidden="true"></i>
+                                    <span x-text="isQuickSaving(entry.id) ? 'Saving...' : 'Quick Save'"></span>
+                                </button>
+                            </div>
+                            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                <template x-for="field in getMissingFields(entry)" :key="field.key">
+                                    <div>
+                                        <label class="block text-xs font-medium text-muted-foreground mb-1" x-text="field.label"></label>
+                                        <template x-if="field.type === 'currency'">
+                                            <input type="number" step="0.01" min="0"
+                                                   :data-field="field.key"
+                                                   class="w-full h-8 px-2 py-1 text-sm border border-input rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-ring"
+                                                   :placeholder="'0.00'" @click.stop>
+                                        </template>
+                                        <template x-if="field.type === 'date'">
+                                            <input type="date"
+                                                   :data-field="field.key"
+                                                   class="w-full h-8 px-2 py-1 text-sm border border-input rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-ring"
+                                                   @click.stop>
+                                        </template>
+                                        <template x-if="field.type === 'text'">
+                                            <input type="text"
+                                                   :data-field="field.key"
+                                                   class="w-full h-8 px-2 py-1 text-sm border border-input rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-ring"
+                                                   :placeholder="field.label" @click.stop>
+                                        </template>
+                                        <template x-if="field.type === 'textarea'">
+                                            <textarea rows="2"
+                                                      :data-field="field.key"
+                                                      class="w-full px-2 py-1 text-sm border border-input rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+                                                      :placeholder="field.label" @click.stop></textarea>
+                                        </template>
+                                        <template x-if="field.type === 'select'">
+                                            <select :data-field="field.key"
+                                                    class="w-full h-8 px-2 py-1 text-sm border border-input rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-ring"
+                                                    @click.stop>
+                                                <template x-for="opt in field.options" :key="opt.value">
+                                                    <option :value="opt.value" x-text="opt.label"></option>
+                                                </template>
+                                            </select>
+                                        </template>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+                </template>
+            </div>
+        </template>
+
+        {# ── Pagination ── #}
+        <div class="border-t px-4 py-3 bg-muted/30 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <p class="text-sm text-muted-foreground" aria-live="polite">
+                Showing <span class="font-medium text-foreground" x-text="pageStart"></span>–<span class="font-medium text-foreground" x-text="pageEnd"></span>
+                of <span class="font-medium text-foreground" x-text="totalItems"></span> entries
+            </p>
+            <div class="flex items-center gap-2">
+                <label class="text-sm text-muted-foreground">Show:</label>
+                <select :value="pageSize" @change="setPerPage($event.target.value)" class="h-8 w-16 rounded-md border border-input bg-background px-2 py-1 text-sm">
+                    <option value="10">10</option>
+                    <option value="25">25</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                </select>
+
+                <nav class="flex items-center gap-1" aria-label="Pagination">
+                    <button type="button" class="inline-flex items-center justify-center h-8 px-2.5 rounded-md border border-input bg-background hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed"
+                            :disabled="!hasPrev" @click="prevPage()" aria-label="Previous page">
+                        <i data-lucide="chevron-left" class="h-4 w-4" aria-hidden="true"></i>
+                    </button>
+
+                    <template x-for="(pg, idx) in getVisiblePages()" :key="'pg-' + idx">
+                        <span>
+                            <button type="button" x-show="pg !== '...'" x-cloak
+                                    class="min-w-[2rem] h-8 rounded-md text-sm font-medium transition-colors"
+                                    :class="pg === page ? 'bg-primary text-primary-foreground' : 'hover:bg-muted text-muted-foreground'"
+                                    @click="goToPage(pg)" x-text="pg"></button>
+                            <span x-show="pg === '...'" x-cloak class="min-w-[2rem] h-8 inline-flex items-center justify-center text-sm text-muted-foreground">&hellip;</span>
+                        </span>
+                    </template>
+
+                    <button type="button" class="inline-flex items-center justify-center h-8 px-2.5 rounded-md border border-input bg-background hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed"
+                            :disabled="!hasNext" @click="nextPage()" aria-label="Next page">
+                        <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
+                    </button>
+                </nav>
+            </div>
+        </div>
+    </div>
+
+    {# ── Warning Footer ── #}
+    <div x-show="warningMessages().length > 0" x-cloak class="mt-4 p-4 rounded-lg bg-amber-500/10 border border-amber-500/30">
+        <div class="flex items-start gap-3">
+            <i data-lucide="alert-triangle" class="h-5 w-5 text-amber-600 mt-0.5 shrink-0" aria-hidden="true"></i>
+            <div>
+                <div class="flex items-center gap-2 flex-wrap">
+                    <p class="text-sm font-medium text-amber-800">Items Require Attention</p>
+                    <button type="button" x-show="missingFilter" x-cloak @click="clearMissingFilter()" class="text-xs text-amber-600 hover:text-amber-800 underline">Clear filter</button>
+                </div>
+                <div class="flex flex-wrap gap-x-2 gap-y-1 mt-1">
+                    <template x-if="(summary.no_roadmap_count || 0) > 0">
+                        <button type="button" class="text-sm text-amber-700 hover:text-amber-900 hover:underline transition-colors"
+                                @click="setMissingFilter('no_roadmap')"
+                                x-text="summary.no_roadmap_count + ' without roadmap link'"></button>
+                    </template>
+                    <template x-if="(summary.no_owner_count || 0) > 0">
+                        <span x-show="(summary.no_roadmap_count || 0) > 0" x-cloak class="text-amber-500" aria-hidden="true">&middot;</span>
+                        <button type="button" class="text-sm text-amber-700 hover:text-amber-900 hover:underline transition-colors"
+                                @click="setMissingFilter('no_owner')"
+                                x-text="summary.no_owner_count + ' without assigned owner'"></button>
+                    </template>
+                    <template x-if="(summary.no_target_date_count || 0) > 0">
+                        <span x-show="(summary.no_roadmap_count || 0) > 0 || (summary.no_owner_count || 0) > 0" x-cloak class="text-amber-500" aria-hidden="true">&middot;</span>
+                        <button type="button" class="text-sm text-amber-700 hover:text-amber-900 hover:underline transition-colors"
+                                @click="setMissingFilter('no_target_date')"
+                                x-text="summary.no_target_date_count + ' without target date'"></button>
+                    </template>
+                </div>
+                <p class="text-xs text-amber-600 mt-2">Click a category to filter. These items require attention before the next ARB governance review.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Wire filter_bar elements to Alpine component
+document.addEventListener('DOMContentLoaded', function() {
+    // Close any open modal on page load
+    if (window.Platform && window.Platform.modal) {
+        window.Platform.modal.close('add-applications-modal');
+    }
+    const addAppsModal = document.getElementById('add-applications-modal');
+    if (addAppsModal) addAppsModal.setAttribute('hidden', 'hidden');
+
+    // Bridge filter_bar search input to Alpine
+    const searchEl = document.getElementById('consolidation-search');
+    if (searchEl) {
+        searchEl.addEventListener('input', function() {
+            const el = document.querySelector('[x-data*="consolidationTable"]');
+            if (el && el._x_dataStack) {
+                clearTimeout(window._consSearchTimer);
+                const val = searchEl.value;
+                window._consSearchTimer = setTimeout(function() {
+                    el._x_dataStack[0].setSearch(val);
+                }, 300);
+            }
+        });
+    }
+
+    // Bridge filter_bar select elements to Alpine
+    ['filter-status', 'filter-action'].forEach(function(filterId) {
+        const sel = document.getElementById(filterId);
+        if (sel) {
+            sel.addEventListener('change', function() {
+                const el = document.querySelector('[x-data*="consolidationTable"]');
+                if (el && el._x_dataStack) {
+                    let key = filterId.replace('filter-', '');
+                    el._x_dataStack[0].setFilter(key, sel.value);
+                }
+            });
+        }
+    });
+});
+</script>
+
+<script src="{{ url_for('static', filename='js/consolidation_list/dashboard.js') }}?v=6"></script>
+
+{% endblock %}
+
+{% block modals %}
+{% include "consolidation_list/add_applications_modal.html" %}
+{% include "consolidation_list/edit_entry_modal.html" %}
+{% include "consolidation_list/roadmap_config_modal.html" %}
+{% endblock %}

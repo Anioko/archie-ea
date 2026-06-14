@@ -1,0 +1,210 @@
+{# Global Search Modal Component (Ctrl+K)
+   
+   A command palette-style global search modal that searches across:
+   - Applications (850+)
+   - Solutions (199+)
+   - Capabilities (516+)
+   - ArchiMate Elements (3,143+)
+   - Workflows
+   
+   Keyboard shortcut: Ctrl+K (Mac: Cmd+K)
+   API Endpoint: /api/sidebar/search
+#}
+
+<!-- Global Search Modal -->
+<div 
+    x-data="{
+        open: false,
+        query: '',
+        results: [],
+        loading: false,
+        selectedIndex: 0,
+        
+        openSearch() {
+            this.open = true;
+            this.query = '';
+            this.results = [];
+            this.selectedIndex = 0;
+            this.$nextTick(() => {
+                this.$refs.searchInput.focus();
+            });
+        },
+        
+        closeSearch() {
+            this.open = false;
+            this.query = '';
+            this.results = [];
+        },
+        
+        async search() {
+            if (this.query.length < 2) {
+                this.results = [];
+                return;
+            }
+            
+            this.loading = true;
+            try {
+                const response = await fetch(`/api/sidebar/search?q=${encodeURIComponent(this.query)}`);
+                const data = await response.json();
+                this.results = data.results || [];
+                this.selectedIndex = 0;
+            } catch (error) {
+                console.error('Search error:', error);
+                this.results = [];
+            } finally {
+                this.loading = false;
+            }
+        },
+        
+        navigateDown() {
+            this.selectedIndex = Math.min(this.selectedIndex + 1, this.results.length - 1);
+        },
+        
+        navigateUp() {
+            this.selectedIndex = Math.max(this.selectedIndex - 1, 0);
+        },
+        
+        selectResult() {
+            if (this.results[this.selectedIndex]) {
+                window.location.href = this.results[this.selectedIndex].url;
+            }
+        }
+    }"
+    x-init="
+        $watch('open', value => {
+            if (value) {
+                document.body.style.overflow = 'hidden';
+            } else {
+                document.body.style.overflow = '';
+            }
+        });
+    "
+    @keydown.window="if ((event.ctrlKey || event.metaKey) && event.key === 'k') { event.preventDefault(); open = true; }"
+    @keydown.escape.window="if (open) { open = false; }"
+    x-cloak
+>
+    <!-- Backdrop -->
+    <div 
+        x-show="open"
+        x-transition:enter="transition ease-out duration-200"
+        x-transition:enter-start="opacity-0"
+        x-transition:enter-end="opacity-100"
+        x-transition:leave="transition ease-in duration-150"
+        x-transition:leave-start="opacity-100"
+        x-transition:leave-end="opacity-0"
+        @click="open = false"
+        class="fixed inset-0 bg-black/50 z-50"
+        style="display: none;"
+        :style="open ? 'display: block;' : 'display: none;'"
+    ></div>
+    
+    <!-- Modal -->
+    <div 
+        x-show="open"
+        x-transition:enter="transition ease-out duration-200"
+        x-transition:enter-start="opacity-0 scale-95"
+        x-transition:enter-end="opacity-100 scale-100"
+        x-transition:leave="transition ease-in duration-150"
+        x-transition:leave-start="opacity-100 scale-100"
+        x-transition:leave-end="opacity-0 scale-95"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Global search"
+        class="fixed top-[15vh] left-1/2 -translate-x-1/2 w-full max-w-2xl z-50 px-4"
+        style="display: none;"
+        :style="open ? 'display: block;' : 'display: none;'"
+    >
+        <div class="cmd-palette overflow-hidden">
+            <!-- Search Input -->
+            <div class="cmd-palette-input-wrap flex items-center gap-3 px-4 py-3">
+                <i data-lucide="search" class="h-5 w-5 text-muted-foreground flex-shrink-0"></i>
+                <input 
+                    x-ref="searchInput"
+                    x-model="query"
+                    @input.debounce.300ms="search()"
+                    @keydown.down.prevent="navigateDown()"
+                    @keydown.up.prevent="navigateUp()"
+                    @keydown.enter.prevent="selectResult()"
+                    type="text"
+                    placeholder="Search applications, solutions, capabilities, elements..."
+                    class="flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
+                    autocomplete="off"
+                />
+                <kbd class="hidden sm:inline-flex items-center px-2 py-1 text-xs font-mono bg-muted border border-border rounded text-muted-foreground">
+                    ESC
+                </kbd>
+            </div>
+            
+            <!-- Results -->
+            <div class="cmd-palette-results max-h-[28rem] overflow-y-auto">
+                <!-- Loading State -->
+                <div x-show="loading" class="px-4 py-10 text-center text-muted-foreground">
+                    <i data-lucide="loader-2" class="h-5 w-5 animate-spin mx-auto mb-2"></i>
+                    <p class="text-sm">Searching...</p>
+                </div>
+                
+                <!-- No Results -->
+                <div x-show="!loading && query.length >= 2 && results.length === 0" class="px-4 py-10 text-center text-muted-foreground">
+                    <i data-lucide="search-x" class="h-5 w-5 mx-auto mb-2"></i>
+                    <p class="text-sm">No results found for "<span x-text="query" class="text-foreground font-medium"></span>"</p>
+                </div>
+                
+                <!-- Empty State -->
+                <div x-show="!loading && query.length < 2" class="px-4 py-10 text-center text-muted-foreground">
+                    <i data-lucide="sparkles" class="h-5 w-5 mx-auto mb-2 text-primary/60"></i>
+                    <p class="text-sm font-medium text-foreground">Start searching</p>
+                    <p class="text-xs mt-1">Applications · Solutions · Capabilities · ArchiMate Elements</p>
+                </div>
+                
+                <!-- Results List -->
+                <div x-show="!loading && results.length > 0" class="py-1">
+                    <template x-for="(result, index) in results" :key="result.id">
+                        <a 
+                            :href="result.url"
+                            @mouseenter="selectedIndex = index"
+                            :class="selectedIndex === index ? 'bg-accent text-accent-foreground' : ''"
+                            class="cmd-palette-result-item flex items-center gap-3 px-4 py-2.5 transition-colors"
+                        >
+                            <!-- Type badge icon -->
+                            <div 
+                                :class="{
+                                    'bg-blue-500/10 text-primary':   result.type === 'application',
+                                    'bg-violet-500/10 text-violet-600': result.type === 'solution',
+                                    'bg-emerald-500/10 text-emerald-600': result.type === 'capability',
+                                    'bg-amber-500/10 text-amber-600': result.type === 'archimate_element',
+                                    'bg-muted text-muted-foreground': !['application','solution','capability','archimate_element'].includes(result.type)
+                                }"
+                                class="flex-shrink-0 w-8 h-8 rounded-md flex items-center justify-center text-xs font-bold"
+                            >
+                                <span x-text="result.type.substring(0, 2).toUpperCase()"></span>
+                            </div>
+                            
+                            <div class="flex-1 min-w-0">
+                                <div class="text-sm font-medium text-foreground truncate" x-text="result.name"></div>
+                                <div class="text-xs text-muted-foreground truncate" x-text="result.description || result.domain || result.type"></div>
+                            </div>
+                            
+                            <i data-lucide="arrow-right" class="h-3.5 w-3.5 text-muted-foreground flex-shrink-0"></i>
+                        </a>
+                    </template>
+                </div>
+            </div>
+            
+            <!-- Footer -->
+            <div class="cmd-palette-footer flex items-center justify-between px-4 py-2 text-xs text-muted-foreground">
+                <div class="flex items-center gap-3">
+                    <span class="flex items-center gap-1">
+                        <kbd class="px-1.5 py-0.5 bg-background border border-border rounded font-mono text-[10px]">↑</kbd>
+                        <kbd class="px-1.5 py-0.5 bg-background border border-border rounded font-mono text-[10px]">↓</kbd>
+                        Navigate
+                    </span>
+                    <span class="flex items-center gap-1">
+                        <kbd class="px-1.5 py-0.5 bg-background border border-border rounded font-mono text-[10px]">↵</kbd>
+                        Open
+                    </span>
+                </div>
+                <span x-show="results.length > 0" x-text="`${results.length} result${results.length === 1 ? '' : 's'}`"></span>
+            </div>
+        </div>
+    </div>
+</div>

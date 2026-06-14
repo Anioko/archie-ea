@@ -1,0 +1,146 @@
+{% extends 'layouts/admin_base.html' %}
+{% block title %}Roadmap Impact{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-6">
+    <div class="flex items-center justify-between mb-6">
+        <div>
+            <h1 class="text-2xl font-bold">Roadmap Impact</h1>
+            <p class="text-muted-foreground">Upcoming changes affecting your applications</p>
+        </div>
+        <a href="{{ url_for('my_applications.dashboard') }}"
+           class="inline-flex items-center gap-2 px-4 py-2 rounded-md border border-border hover:bg-accent transition-colors">
+            <i data-lucide="arrow-left" class="w-4 h-4"></i>
+            Back to Dashboard
+        </a>
+    </div>
+
+    <!-- Summary -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <div class="bg-card border border-border rounded-lg p-4">
+            <div class="flex items-center gap-3 mb-2">
+                <div class="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
+                    <i data-lucide="package" class="w-5 h-5 text-primary"></i>
+                </div>
+                <div class="text-sm text-muted-foreground">Total Apps</div>
+            </div>
+            <div class="text-3xl font-bold">{{ ownership_summary.total }}</div>
+        </div>
+        <div class="bg-card border border-amber-500/50 rounded-lg p-4">
+            <div class="flex items-center gap-3 mb-2">
+                <div class="w-10 h-10 bg-amber-500/10 rounded-lg flex items-center justify-center">
+                    <i data-lucide="calendar" class="w-5 h-5 text-amber-600"></i>
+                </div>
+                <div class="text-sm text-muted-foreground">Impacts</div>
+            </div>
+            <div class="text-3xl font-bold text-amber-600">{{ impacts|length }}</div>
+        </div>
+        <div class="bg-card border border-border rounded-lg p-4">
+            <div class="flex items-center gap-3 mb-2">
+                <div class="w-10 h-10 bg-blue-500/10 rounded-lg flex items-center justify-center">
+                    <i data-lucide="user" class="w-5 h-5 text-blue-600"></i>
+                </div>
+                <div class="text-sm text-muted-foreground">Primary Owner</div>
+            </div>
+            <div class="text-3xl font-bold text-blue-600">{{ ownership_summary.primary }}</div>
+        </div>
+        <div class="bg-card border border-border rounded-lg p-4">
+            <div class="flex items-center gap-3 mb-2">
+                <div class="w-10 h-10 bg-muted rounded-lg flex items-center justify-center">
+                    <i data-lucide="users" class="w-5 h-5 text-muted-foreground"></i>
+                </div>
+                <div class="text-sm text-muted-foreground">Backup Owner</div>
+            </div>
+            <div class="text-3xl font-bold">{{ ownership_summary.backup }}</div>
+        </div>
+    </div>
+
+    <!-- Impact Timeline -->
+    {% if impacts %}
+    <div class="bg-card border border-border rounded-lg overflow-hidden">
+        <div class="px-6 py-4 border-b border-border">
+            <h2 class="text-lg font-semibold">Upcoming Impacts</h2>
+        </div>
+        <div class="divide-y divide-border">
+            {% for impact in impacts %}
+            <div class="p-4 hover:bg-muted/30 transition-colors">
+                <div class="flex items-start gap-4">
+                    <!-- Impact Icon -->
+                    <div class="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0
+                        {% if impact.impact_type == 'sunset' %}bg-amber-100 text-amber-600
+                        {% elif impact.impact_type == 'lifecycle_change' %}bg-blue-100 text-blue-600
+                        {% else %}bg-muted text-muted-foreground{% endif %}">
+                        <i data-lucide="{% if impact.impact_type == 'sunset' %}sunset{% elif impact.impact_type == 'lifecycle_change' %}refresh-cw{% else %}calendar{% endif %}" class="w-6 h-6"></i>
+                    </div>
+
+                    <!-- Impact Details -->
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-start justify-between">
+                            <div>
+                                <h3 class="font-medium">{{ impact.application.name }}</h3>
+                                <p class="text-sm text-muted-foreground mt-1">{{ impact.description }}</p>
+                            </div>
+                            {% if impact.date %}
+                            <div class="text-right flex-shrink-0 ml-4">
+                                <div class="text-sm font-medium">{{ impact.date.strftime('%d %b %Y') }}</div>
+                                {% set days_until = (impact.date - today).days if today else none %}
+                                {% if days_until is not none %}
+                                <div class="text-xs
+                                    {% if days_until < 0 %}text-red-600
+                                    {% elif days_until < 30 %}text-amber-600
+                                    {% elif days_until < 90 %}text-yellow-600
+                                    {% else %}text-muted-foreground{% endif %}">
+                                    {% if days_until < 0 %}{{ -days_until }} days ago
+                                    {% elif days_until == 0 %}Today
+                                    {% else %}In {{ days_until }} days{% endif %}
+                                </div>
+                                {% endif %}
+                            </div>
+                            {% endif %}
+                        </div>
+
+                        <!-- Tags -->
+                        <div class="flex items-center gap-2 mt-3">
+                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs
+                                {% if impact.impact_type == 'sunset' %}bg-amber-100 text-amber-700
+                                {% elif impact.impact_type == 'lifecycle_change' %}bg-blue-100 text-blue-700
+                                {% else %}bg-gray-100 text-gray-700{% endif %}">
+                                {{ impact.impact_type|replace('_', ' ')|title }}
+                            </span>
+                            <a href="{{ url_for('my_applications.app_detail', app_id=impact.application.id) }}"
+                               class="text-primary hover:underline text-xs">View Application →</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% else %}
+    <!-- No Impacts -->
+    <div class="bg-card border border-border rounded-lg p-12 text-center">
+        <div class="w-16 h-16 mx-auto mb-4 bg-green-100 rounded-full flex items-center justify-center">
+            <i data-lucide="check-circle" class="w-8 h-8 text-green-600"></i>
+        </div>
+        <h3 class="text-lg font-medium mb-2">No Roadmap Impacts</h3>
+        <p class="text-muted-foreground">Great news! None of your applications have upcoming roadmap impacts.</p>
+        <a href="{{ url_for('my_applications.app_list') }}" class="text-primary hover:underline mt-4 inline-block">
+            View All Applications
+        </a>
+    </div>
+    {% endif %}
+
+    <!-- Info Box -->
+    <div class="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <div class="flex items-start gap-3">
+            <i data-lucide="info" class="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5"></i>
+            <div class="text-sm text-blue-800">
+                <p class="font-medium">About Roadmap Impacts</p>
+                <p class="mt-1">This page shows scheduled changes affecting your applications, including sunset dates and lifecycle transitions. Plan ahead to ensure business continuity.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>if (typeof lucide !== 'undefined') lucide.createIcons();</script>
+{% endblock %}

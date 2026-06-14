@@ -1,0 +1,829 @@
+{% extends "layouts/admin_base.html" %}
+{% from "components/page_header.html" import page_header %}
+{% from 'components/status_badge.html' import status_badge %}
+
+{% block title %}{{ review.review_number }}: {{ review.title }}{% endblock %}
+
+{% block extra_css %}
+<style>
+.detail-section {
+    @apply bg-card rounded-lg shadow p-6 border border-border mb-6;
+}
+.detail-section h2 {
+    @apply text-lg font-semibold text-foreground mb-4;
+}
+.status-badge {
+    @apply px-3 py-1 text-sm font-medium rounded-full;
+}
+.status-badge.draft {
+    @apply bg-muted text-foreground;
+}
+.status-badge.submitted {
+    @apply bg-primary/10 text-primary;
+}
+.status-badge.under_review {
+    @apply bg-warning/10 text-warning;
+}
+.status-badge.approved {
+    @apply bg-success/10 text-success;
+}
+.status-badge.approved_with_conditions {
+    @apply bg-success/10 text-success;
+}
+.status-badge.rejected {
+    @apply bg-destructive/10 text-destructive;
+}
+.status-badge.deferred {
+    @apply bg-warning/10 text-warning;
+}
+.priority-badge {
+    @apply px-2 py-1 text-xs font-medium rounded-full;
+}
+.priority-badge.critical {
+    @apply bg-destructive/10 text-destructive;
+}
+.priority-badge.high {
+    @apply bg-warning/10 text-warning;
+}
+.priority-badge.medium {
+    @apply bg-muted text-foreground;
+}
+.priority-badge.low {
+    @apply bg-muted text-muted-foreground;
+}
+.score-card {
+    @apply bg-muted rounded-lg p-4 border border-border;
+}
+.score-value {
+    @apply text-2xl font-bold text-foreground;
+}
+.score-label {
+    @apply text-sm text-muted-foreground;
+}
+.checklist-item {
+    @apply flex items-center justify-between py-2 border-b border-border last:border-b-0;
+}
+.checklist-item.completed {
+    @apply bg-success/5;
+}
+.comment-card {
+    @apply bg-muted rounded-lg p-4 border border-border;
+}
+.comment-type {
+    @apply px-2 py-1 text-xs font-medium rounded-full;
+}
+.comment-type.general {
+    @apply bg-muted text-foreground;
+}
+.comment-type.concern {
+    @apply bg-destructive/10 text-destructive;
+}
+.comment-type.recommendation {
+    @apply bg-primary/10 text-primary;
+}
+.comment-type.condition {
+    @apply bg-warning/10 text-warning;
+}
+.comment-type.approval {
+    @apply bg-success/10 text-success;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    {{ page_header(
+        title=review.title,
+        description=review.review_number
+    ) }}
+
+    <!-- SLA Status Banner (ARB-101) -->
+    {% if sla_info %}
+    <div class="{{ sla_info.bg }} border rounded-lg p-4 mb-6">
+        <div class="flex items-center gap-3">
+            <svg class="h-5 w-5 flex-shrink-0 {{ sla_info.icon }}" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd" />
+            </svg>
+            <p class="text-sm">
+                <span class="font-semibold">SLA:</span>
+                This <span class="font-medium">{{ sla_info.priority }}</span> priority review has been pending for
+                <strong>{{ sla_info.days_pending }} day{% if sla_info.days_pending != 1 %}s{% endif %}</strong>
+                (target: {{ sla_info.sla_days }} days) — <strong>{{ sla_info.txt }}</strong>.
+            </p>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Quick Actions -->
+    {% if review.status == 'draft' %}
+    <div class="bg-primary/5 border border-primary/20 rounded-lg p-4 mb-6">
+        <div class="flex">
+            <div class="flex-shrink-0">
+                <svg class="h-5 w-5 text-primary/80" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" />
+                </svg>
+            </div>
+            <div class="ml-3">
+                <p class="text-sm text-primary">
+                    This review is in draft status. Submit it for ARB consideration when ready.
+                </p>
+                <div class="mt-3">
+                    <form method="POST" action="{{ url_for('arb.submit_review', id=review.id) }}" class="inline">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                        <button type="submit" class="px-4 py-2 border border-transparent rounded-md text-sm font-medium text-primary-foreground bg-primary hover:bg-primary" aria-label="Submit">
+                            Submit for Review
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Approve / Reject Decision Bar -->
+    {% if review.status in ['submitted', 'under_review', 'pending_info'] and not review.decision %}
+    <div x-data="{ showDecisionForm: false, selectedDecision: '' }" class="bg-card border border-border rounded-lg p-4 mb-6">
+        <div class="flex items-center justify-between">
+            <div>
+                <h3 class="text-sm font-semibold text-foreground">ARB Decision Required</h3>
+                <p class="text-xs text-muted-foreground mt-0.5">This review is awaiting an architecture board decision.</p>
+            </div>
+            <div class="flex items-center gap-2" x-show="!showDecisionForm" x-cloak>
+                <button type="button"
+                    @click="selectedDecision = 'approved'; showDecisionForm = true"
+                    class="inline-flex items-center px-4 py-2 rounded-md text-sm font-medium bg-success/10 text-success border border-success/30 hover:bg-success/20 transition-colors"
+                    aria-label="Approve this review">
+                    <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                    Approve
+                </button>
+                <button type="button"
+                    @click="selectedDecision = 'rejected'; showDecisionForm = true"
+                    class="inline-flex items-center px-4 py-2 rounded-md text-sm font-medium bg-destructive/10 text-destructive border border-destructive/30 hover:bg-destructive/20 transition-colors"
+                    aria-label="Reject this review">
+                    <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                    Reject
+                </button>
+                <button type="button"
+                    @click="selectedDecision = 'approved_with_conditions'; showDecisionForm = true"
+                    class="inline-flex items-center px-4 py-2 rounded-md text-sm font-medium bg-warning/10 text-warning border border-warning/30 hover:bg-warning/20 transition-colors"
+                    aria-label="Approve with conditions">
+                    <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    Approve with Conditions
+                </button>
+                <button type="button"
+                    @click="selectedDecision = 'deferred'; showDecisionForm = true"
+                    class="inline-flex items-center px-4 py-2 rounded-md text-sm font-medium bg-muted text-muted-foreground border border-border hover:bg-muted/80 transition-colors"
+                    aria-label="Defer this review">
+                    Defer
+                </button>
+            </div>
+        </div>
+
+        <!-- Inline decision form -->
+        <div x-show="showDecisionForm" x-cloak class="mt-4 pt-4 border-t border-border">
+            <form method="POST" action="{{ url_for('arb.record_decision', id=review.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <input type="hidden" name="decision" :value="selectedDecision"/>
+                <div class="mb-3">
+                    <label class="block text-sm font-medium text-foreground/80 mb-1">
+                        Decision: <span class="font-semibold" x-text="selectedDecision.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())"></span>
+                    </label>
+                </div>
+                <div class="mb-3">
+                    <label for="decision_rationale" class="block text-sm font-medium text-foreground/80 mb-1">Rationale</label>
+                    <textarea id="decision_rationale" name="rationale" rows="3" required
+                        class="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                        placeholder="Explain the reasoning behind this decision..."></textarea>
+                </div>
+                <div x-show="selectedDecision === 'approved_with_conditions'" x-cloak class="mb-3">
+                    <label for="decision_conditions" class="block text-sm font-medium text-foreground/80 mb-1">Conditions (one per line)</label>
+                    <textarea id="decision_conditions" name="conditions" rows="2"
+                        class="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                        placeholder="Enter conditions that must be met..."></textarea>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button type="submit"
+                        class="inline-flex items-center px-4 py-2 rounded-md text-sm font-medium text-primary-foreground bg-primary hover:bg-primary/90 transition-colors"
+                        aria-label="Confirm decision">
+                        Confirm Decision
+                    </button>
+                    <button type="button" @click="showDecisionForm = false"
+                        class="inline-flex items-center px-4 py-2 rounded-md text-sm font-medium text-foreground/80 bg-muted border border-border hover:bg-muted/80 transition-colors"
+                        aria-label="Cancel">
+                        Cancel
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if review.decision == 'approved_with_conditions' and conditions_with_flags %}
+    <!-- ARB-102: Conditions Tracker -->
+    <div x-data="conditionsTracker({{ conditions_with_flags | tojson }}, {{ review.id }})"
+         class="mb-6 rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30">
+        <div class="flex items-center justify-between px-4 py-3 border-b border-amber-200 dark:border-amber-800">
+            <div class="flex items-center gap-2">
+                <i data-lucide="list-checks" class="h-4 w-4 text-amber-600"></i>
+                <h3 class="font-semibold text-sm text-amber-800 dark:text-amber-200">Approval Conditions</h3>
+                <span class="text-xs px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300"
+                      x-text="conditions.filter(c=>c.status!=='done').length + ' open'"></span>
+            </div>
+            <span class="text-xs text-amber-600 dark:text-amber-400">All conditions must be met before approval takes full effect</span>
+        </div>
+        <div class="divide-y divide-amber-100 dark:divide-amber-900">
+            <template x-for="(cond, idx) in conditions" :key="idx">
+                <div class="px-4 py-3 flex flex-col sm:flex-row sm:items-start gap-3"
+                     :class="cond.overdue ? 'border-l-4 border-destructive' : ''">
+                    <!-- Condition text -->
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm text-foreground font-medium" x-text="cond.condition"></p>
+                        <div class="mt-1 flex flex-wrap items-center gap-2">
+                            <span x-show="cond.overdue"
+                                  class="text-xs px-2 py-0.5 rounded-full bg-destructive/10 text-destructive font-medium">
+                                ⚠ Overdue
+                            </span>
+                            <span x-show="cond.due_date" class="text-xs text-muted-foreground"
+                                  x-text="'Due: ' + (cond.due_date || '')"></span>
+                            <span x-show="cond.evidence_url" class="text-xs">
+                                <a :href="cond.evidence_url" target="_blank"
+                                   class="text-primary hover:underline text-xs">Evidence ↗</a>
+                            </span>
+                        </div>
+                    </div>
+                    <!-- Status select -->
+                    <div class="flex items-center gap-2 flex-shrink-0">
+                        <select class="text-xs border rounded px-2 py-1 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                                :class="{
+                                    'text-emerald-700 border-green-300': cond.status === 'done',
+                                    'text-amber-700 border-amber-300': cond.status === 'in_progress',
+                                    'text-muted-foreground border-border': cond.status === 'open'
+                                }"
+                                @change="patch(idx, 'status', $event.target.value)">
+                            <option value="open" :selected="cond.status === 'open'">Open</option>
+                            <option value="in_progress" :selected="cond.status === 'in_progress'">In Progress</option>
+                            <option value="done" :selected="cond.status === 'done'">Done</option>
+                        </select>
+                        <!-- Due date -->
+                        <input type="date" class="text-xs border rounded px-2 py-1 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                               :value="cond.due_date || ''"
+                               @change="patch(idx, 'due_date', $event.target.value)">
+                        <!-- Evidence URL -->
+                        <input type="url" placeholder="Evidence URL" title="Evidence URL"
+                               class="hidden sm:block text-xs border rounded px-2 py-1 bg-background w-32 focus:outline-none focus:ring-1 focus:ring-primary"
+                               :value="cond.evidence_url || ''"
+                               @blur="patch(idx, 'evidence_url', $event.target.value)">
+                    </div>
+                </div>
+            </template>
+        </div>
+        <!-- Progress bar -->
+        <div class="px-4 py-2 border-t border-amber-200 dark:border-amber-800 flex items-center gap-3">
+            <div class="flex-1 bg-amber-100 dark:bg-amber-900 rounded-full h-1.5">
+                <div class="bg-emerald-500 h-1.5 rounded-full transition-all duration-300"
+                     :style="'width:' + (conditions.filter(c=>c.status==='done').length / conditions.length * 100) + '%'"></div>
+            </div>
+            <span class="text-xs text-amber-700 dark:text-amber-300"
+                  x-text="conditions.filter(c=>c.status==='done').length + '/' + conditions.length + ' done'"></span>
+            <span x-show="saveMsg" x-text="saveMsg"
+                  class="text-xs text-emerald-600 dark:text-green-400 transition-opacity"></span>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Main Content -->
+        <div class="lg:col-span-2 space-y-6">
+            <!-- Basic Information -->
+            <div class="detail-section">
+                <h2>Review Information</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="text-sm font-medium text-foreground/80">Review Type</label>
+                        <p class="text-foreground">{{ review.review_type.replace('_', ' ').title() }}</p>
+                    </div>
+                    <div>
+                        <label class="text-sm font-medium text-foreground/80">Business Impact</label>
+                        <p class="text-foreground">{{ review.business_impact.title() if review.business_impact else 'Not specified' }}</p>
+                    </div>
+                    <div>
+                        <label class="text-sm font-medium text-foreground/80">TOGAF Phase</label>
+                        <p class="text-foreground">{{ review.togaf_phase.replace('_', ' ').title() if review.togaf_phase else 'Not specified' }}</p>
+                    </div>
+                    <div>
+                        <label class="text-sm font-medium text-foreground/80">ArchiMate Layer</label>
+                        <p class="text-foreground">{{ review.archimate_layer.title() if review.archimate_layer else 'Not specified' }}</p>
+                    </div>
+                    <div>
+                        <label class="text-sm font-medium text-foreground/80">Estimated Effort</label>
+                        <p class="text-foreground">{{ review.estimated_effort.title() if review.estimated_effort else 'Not specified' }}</p>
+                    </div>
+                    <div>
+                        <label class="text-sm font-medium text-foreground/80">Submitted By</label>
+                        <p class="text-foreground">{{ review.submitter.first_name }} {{ review.submitter.last_name }}</p>
+                    </div>
+                </div>
+
+                {% if review.description %}
+                <div class="mt-4">
+                    <label class="text-sm font-medium text-foreground/80">Description</label>
+                    <div class="mt-1 text-foreground whitespace-pre-wrap">{{ review.description }}</div>
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Governance / Submission Context -->
+            {% set cap_impacts = review.capability_impacts if review.capability_impacts is mapping else {} %}
+            {% if cap_impacts.get('decision_sought') or cap_impacts.get('alternatives_considered') or application_names %}
+            <div class="detail-section">
+                <h2>Submission Context</h2>
+                <div class="space-y-4">
+                    {% if cap_impacts.get('decision_sought') %}
+                    <div>
+                        <label class="text-sm font-medium text-foreground/80">Decision Sought</label>
+                        <p class="mt-1 text-foreground">{{ cap_impacts.decision_sought }}</p>
+                    </div>
+                    {% endif %}
+                    {% if cap_impacts.get('alternatives_considered') %}
+                    <div>
+                        <label class="text-sm font-medium text-foreground/80">Alternatives Considered</label>
+                        <div class="mt-1 text-foreground whitespace-pre-wrap">{{ cap_impacts.alternatives_considered }}</div>
+                    </div>
+                    {% endif %}
+                    {% if application_names %}
+                    <div>
+                        <label class="text-sm font-medium text-foreground/80">Applications Affected</label>
+                        <p class="mt-1 text-foreground">{{ application_names|join(', ') }}</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Linked Entities -->
+            <div class="detail-section">
+                <h2>Linked Architecture Entities</h2>
+                <div class="space-y-3">
+                    {% if review.solution %}
+                    <div class="flex items-center justify-between p-3 bg-muted rounded-lg">
+                        <div>
+                            <span class="text-sm font-medium text-foreground/80">Solution:</span>
+                            <span class="ml-2 text-foreground">{{ review.solution.name }}</span>
+                        </div>
+                        <a href="{{ url_for('solution_design.view_solution', solution_id=review.solution.id) }}" class="text-primary hover:text-primary/80 text-sm">View Solution →</a>
+                    </div>
+                    {% endif %}
+
+                    {% if review.adr %}
+                    <div class="flex items-center justify-between p-3 bg-muted rounded-lg">
+                        <div>
+                            <span class="text-sm font-medium text-foreground/80">ADR:</span>
+                            <span class="ml-2 text-foreground">ADR-{{ review.adr.adr_number }}: {{ review.adr.title }}</span>
+                        </div>
+                        <span class="text-muted-foreground text-sm">ADR Management (coming soon)</span>
+                    </div>
+                    {% endif %}
+
+                    {% if review.architecture_model %}
+                    <div class="flex items-center justify-between p-3 bg-muted rounded-lg">
+                        <div>
+                            <span class="text-sm font-medium text-foreground/80">Architecture Model:</span>
+                            <span class="ml-2 text-foreground">{{ review.architecture_model.name }}</span>
+                        </div>
+                        <span class="text-muted-foreground text-sm">View Model →</span>
+                    </div>
+                    {% endif %}
+
+                    {% if not review.solution and not review.adr and not review.architecture_model %}
+                    <p class="text-muted-foreground text-center py-4">No linked entities</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Architecture Principles -->
+            <div class="detail-section">
+                <h2>Architecture Principles</h2>
+                {% if applicable_principles %}
+                <div class="space-y-2">
+                    {% for principle in applicable_principles %}
+                    <div class="flex items-center justify-between p-3 bg-muted rounded-lg">
+                        <div class="min-w-0 flex-1">
+                            <span class="text-sm font-medium text-foreground">{{ principle.name }}</span>
+                            {% if principle.category %}
+                            <span class="ml-2 text-xs text-muted-foreground">({{ principle.category }})</span>
+                            {% endif %}
+                            {% if principle.enforcement_level %}
+                            <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium
+                                {% if principle.enforcement_level|upper == 'MUST' %}bg-destructive/10 text-destructive border border-destructive/30
+                                {% elif principle.enforcement_level|upper == 'SHOULD' %}bg-warning/10 text-warning border border-warning/30
+                                {% else %}bg-muted text-muted-foreground border border-border{% endif %}">
+                                {{ principle.enforcement_level|upper }}
+                            </span>
+                            {% endif %}
+                        </div>
+                        <span class="ml-3 text-xs text-muted-foreground flex-shrink-0">{{ principle.status | title }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-muted-foreground text-center py-4">No approved architecture principles found</p>
+                {% endif %}
+            </div>
+
+            <!-- Capability Impacts -->
+            <div class="detail-section">
+                <h2>Capability Impact Analysis</h2>
+                {% if review.capability_links %}
+                <div class="space-y-2">
+                    {% for impact in review.capability_links %}
+                    <div class="flex items-center justify-between p-3 bg-muted rounded-lg">
+                        <div>
+                            <span class="text-sm font-medium text-foreground">{{ impact.capability.name }}</span>
+                            {% if impact.capability.level %}
+                            <span class="ml-2 text-xs text-muted-foreground">({{ impact.capability.level }})</span>
+                            {% endif %}
+                            <div class="text-xs text-muted-foreground mt-1">
+                                Impact: {{ impact.impact_type.replace('_', ' ').title() }} • {{ impact.impact_level.title() }}
+                            </div>
+                        </div>
+                        {{ status_badge(impact.impact_type.replace('_', ' ').title(), 'info') }}
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-muted-foreground text-center py-4">No capability impacts identified</p>
+                {% endif %}
+            </div>
+
+            <!-- Decision & Conditions -->
+            {% if review.decision %}
+            <div class="detail-section">
+                <h2>ARB Decision</h2>
+                <div class="bg-muted rounded-lg p-4">
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="status-badge {{ review.decision }}">{{ review.decision.replace('_', ' ').title() }}</span>
+                        {% if review.decision_date %}
+                        <span class="text-sm text-muted-foreground">{{ review.decision_date.strftime('%Y-%m-%d') if review.decision_date else '' }}</span>
+                        {% endif %}
+                    </div>
+
+                    {% if review.decision_rationale %}
+                    <div class="mb-4">
+                        <label class="text-sm font-medium text-foreground/80">Decision Rationale</label>
+                        <div class="mt-1 text-foreground whitespace-pre-wrap">{{ review.decision_rationale }}</div>
+                    </div>
+                    {% endif %}
+
+                    {% if review.conditions %}
+                    <div>
+                        <label class="text-sm font-medium text-foreground/80">Conditions</label>
+                        <div class="mt-2 space-y-2">
+                            {% for condition in review.conditions %}
+                            <div class="flex items-start p-2 bg-card rounded border border-border">
+                                <svg class="w-4 h-4 text-warning mt-0.5 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+                                </svg>
+                                <div class="flex-1">
+                                    <p class="text-sm text-foreground">{{ condition.condition }}</p>
+                                    {% if condition.due_date %}
+                                    <p class="text-xs text-muted-foreground mt-1">Due: {{ condition.due_date[:10] }}</p>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    {% if review.decided_by %}
+                    <div class="mt-4 pt-4 border-t border-border">
+                        <p class="text-sm text-muted-foreground">
+                            Decided by: {{ review.decided_by.first_name }} {{ review.decided_by.last_name }}
+                        </p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Comments -->
+            <div class="detail-section">
+                <h2>Review Comments</h2>
+                {% if review.comments %}
+                <div class="space-y-4">
+                    {% for comment in review.comments %}
+                    <div class="comment-card">
+                        <div class="flex items-start justify-between mb-2">
+                            <div class="flex items-center">
+                                <span class="comment-type {{ comment.comment_type }}">{{ comment.comment_type.title() }}</span>
+                                <span class="ml-2 text-sm font-medium text-foreground">
+                                    {{ comment.user.first_name }} {{ comment.user.last_name }}
+                                </span>
+                            </div>
+                            <span class="text-xs text-muted-foreground">{{ comment.created_at.strftime('%Y-%m-%d') if comment.created_at else '' }}</span>
+                        </div>
+                        <div class="text-foreground whitespace-pre-wrap">{{ comment.content }}</div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-muted-foreground text-center py-4">No comments yet</p>
+                {% endif %}
+
+                <!-- Add Comment Form -->
+                <div class="mt-6 pt-6 border-t border-border">
+                    <form method="POST" action="{{ url_for('arb.add_comment', id=review.id) }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                        <div class="mb-4">
+                            <label for="comment_type" class="block text-sm font-medium text-foreground/80 mb-1">Comment Type</label>
+                            <select id="comment_type" name="comment_type" class="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary">
+                                <option value="general">General</option>
+                                <option value="concern">Concern</option>
+                                <option value="recommendation">Recommendation</option>
+                                <option value="condition">Condition</option>
+                                <option value="approval">Approval</option>
+                            </select>
+                        </div>
+                        <div class="mb-4">
+                            <label for="content" class="block text-sm font-medium text-foreground/80 mb-1">Comment</label>
+                            <textarea id="content" name="content" rows="3" class="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary" placeholder="Add your comment..."></textarea>
+                        </div>
+                        <button type="submit" class="px-4 py-2 border border-transparent rounded-md text-sm font-medium text-primary-foreground bg-primary hover:bg-primary" aria-label="Submit">
+                            Add Comment
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sidebar -->
+        <div class="space-y-6">
+            <!-- Governance Scores -->
+            <div class="detail-section">
+                <h2>Governance Assessment</h2>
+                <div class="space-y-3">
+                    <div class="score-card">
+                        <div class="score-value">{{ "%.1f"|format(review.overall_score or 0) }}%</div>
+                        <div class="score-label">Overall Score</div>
+                    </div>
+                    <div class="score-card">
+                        <div class="score-value">{{ "%.1f"|format(review.compliance_score or 0) }}%</div>
+                        <div class="score-label">Compliance</div>
+                    </div>
+                    <div class="score-card">
+                        <div class="score-value">{{ "%.1f"|format(review.risk_score or 0) }}%</div>
+                        <div class="score-label">Risk (lower is better)</div>
+                    </div>
+                    <div class="score-card">
+                        <div class="score-value">{{ "%.1f"|format(review.quality_score or 0) }}%</div>
+                        <div class="score-label">Quality</div>
+                    </div>
+                </div>
+
+                <button type="button" @click="assessReview()" class="w-full mt-4 px-4 py-2 border border-border rounded-md text-sm font-medium text-foreground/80 bg-card hover:bg-muted" aria-label="Action">
+                    Reassess Scores
+                </button>
+            </div>
+
+            <!-- Governance Checklist -->
+            <div class="detail-section">
+                <h2>Governance Checklist</h2>
+                {% if review.governance_checklist %}
+                <div class="space-y-2 max-h-96 overflow-y-auto">
+                    {% for item_key, completed in review.governance_checklist.items() %}
+                    <div class="checklist-item {% if completed %}completed{% endif %}">
+                        <span class="text-sm text-foreground/80">{{ item_key.replace('std_', '').replace('_', ' ').title() }}</span>
+                        <span class="text-sm">
+                            {% if completed %}
+                            <svg class="w-4 h-4 text-success" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
+                            </svg>
+                            {% else %}
+                            <svg class="w-4 h-4 text-muted-foreground" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                            </svg>
+                            {% endif %}
+                        </span>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-muted-foreground text-center py-4">No checklist items</p>
+                {% endif %}
+            </div>
+
+            <!-- Actions -->
+            {% if review.status in ['submitted', 'under_review', 'pending_info'] %}
+            <div class="detail-section">
+                <h2>Review Actions</h2>
+                <div class="space-y-3">
+                    {% if not review.arb_session_id %}
+                    <form method="POST" action="{{ url_for('arb.assign_to_session', id=review.id) }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                        <div class="mb-3">
+                            <label for="arb_session_id" class="block text-sm font-medium text-foreground/80 mb-1">Assign to ARB Session</label>
+                            <select id="arb_session_id" name="arb_session_id" class="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary">
+                                <option value="">Select ARB session...</option>
+                                <!-- Options would be populated dynamically -->
+                            </select>
+                        </div>
+                        <button type="submit" class="w-full px-4 py-2 border border-transparent rounded-md text-sm font-medium text-primary-foreground bg-primary hover:bg-primary" aria-label="Submit">
+                            Assign to Session
+                        </button>
+                    </form>
+                    {% endif %}
+
+                    <form method="POST" action="{{ url_for('arb.record_decision', id=review.id) }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                        <div class="mb-3">
+                            <label for="decision" class="block text-sm font-medium text-foreground/80 mb-1">Decision</label>
+                            <select id="decision" name="decision" class="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary">
+                                <option value="approved">Approved</option>
+                                <option value="approved_with_conditions">Approved with Conditions</option>
+                                <option value="rejected">Rejected</option>
+                                <option value="deferred">Deferred</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="rationale" class="block text-sm font-medium text-foreground/80 mb-1">Rationale</label>
+                            <textarea id="rationale" name="rationale" rows="3" class="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary" placeholder="Explain the decision..."></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label for="conditions" class="block text-sm font-medium text-foreground/80 mb-1">Conditions (if approved with conditions)</label>
+                            <textarea id="conditions" name="conditions" rows="2" class="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary" placeholder="One condition per line..."></textarea>
+                        </div>
+                        <button type="submit" class="w-full px-4 py-2 border border-transparent rounded-md text-sm font-medium text-primary-foreground bg-success hover:bg-success" aria-label="Submit">
+                            Record Decision
+                        </button>
+                    </form>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     Supporting Documents Panel
+     Allows ARB members and reviewers to attach and view evidence documents.
+     ══════════════════════════════════════════════════════════════════ -->
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-10"
+     x-data="arbDocPanel('review-item', {{ review.id }})"
+     x-init="loadDocuments()">
+
+    <div class="bg-card border border-border rounded-lg">
+        <div class="flex items-center justify-between px-5 py-4 border-b border-border">
+            <div class="flex items-center gap-2">
+                <i data-lucide="paperclip" class="w-4 h-4 text-muted-foreground"></i>
+                <h3 class="text-sm font-semibold text-foreground">Supporting Documents</h3>
+                <span x-show="documents.length > 0" x-cloak
+                      class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground"
+                      x-text="documents.length"></span>
+            </div>
+            <label class="inline-flex items-center gap-1.5 cursor-pointer rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted transition-colors">
+                <i data-lucide="upload" class="w-3.5 h-3.5"></i>
+                <span x-show="!uploading" x-cloak>Attach Document</span>
+                <span x-show="uploading" x-cloak>Uploading…</span>
+                <input type="file" class="sr-only" :disabled="uploading"
+                       @change="uploadFile($event)"
+                       accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.txt,.md,.png,.jpg,.jpeg,.gif,.zip">
+            </label>
+        </div>
+
+        <!-- Doc type selector -->
+        <div x-show="documents.length === 0 && !uploading" x-cloak
+             class="px-5 py-8 text-center text-sm text-muted-foreground">
+            No documents attached. Upload supporting evidence, decision records, or meeting minutes.
+        </div>
+
+        <ul x-show="documents.length > 0" x-cloak class="divide-y divide-border">
+            <template x-for="doc in documents" :key="doc.id">
+                <li class="flex items-center gap-3 px-5 py-3">
+                    <i data-lucide="file-text" class="w-4 h-4 text-muted-foreground flex-shrink-0"></i>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm font-medium text-foreground truncate" x-text="doc.original_name"></p>
+                        <p class="text-xs text-muted-foreground">
+                            <span x-text="doc.document_type" class="capitalize"></span>
+                            &bull; <span x-text="doc.uploaded_by || 'unknown'"></span>
+                            &bull; <span x-text="formatDate(doc.uploaded_at)"></span>
+                        </p>
+                    </div>
+                    <a :href="`/arb/api/documents/${doc.id}/download`"
+                       class="inline-flex items-center gap-1 text-xs text-primary hover:underline flex-shrink-0">
+                        <i data-lucide="download" class="w-3 h-3"></i> Download
+                    </a>
+                </li>
+            </template>
+        </ul>
+
+        <div x-show="error" x-cloak class="px-5 py-2 text-xs text-destructive" x-text="error"></div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_head_js %}
+<script>
+  window.__ARB_CONFIG__ = window.__ARB_CONFIG__ || {};
+  window.__ARB_CONFIG__.assessReviewUrl = '/arb/api/reviews/{{ review.id }}/assess';
+</script>
+<script src="{{ url_for('static', filename='js/arb/review_detail.js') }}"></script>
+<script>
+function arbDocPanel(parentType, parentId) {
+    return {
+        documents: [],
+        uploading: false,
+        error: null,
+        docType: 'supporting',
+
+        listUrl() {
+            if (parentType === 'review-item') return `/arb/api/review-items/${parentId}/documents`;
+            return `/arb/api/change-requests/${parentId}/documents`;
+        },
+        uploadUrl() { return this.listUrl(); },
+
+        async loadDocuments() {
+            try {
+                const r = await fetch(this.listUrl());
+                if (r.ok) { const d = await r.json(); this.documents = d.documents || []; }
+            } catch(e) { this.error = 'Failed to load documents'; }
+        },
+
+        async uploadFile(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            this.uploading = true;
+            this.error = null;
+            const fd = new FormData();
+            fd.append('file', file);
+            fd.append('document_type', this.docType);
+            const csrf = document.querySelector('meta[name=csrf-token]')?.content || '';
+            try {
+                const r = await fetch(this.uploadUrl(), {
+                    method: 'POST', headers: {'X-CSRFToken': csrf}, body: fd
+                });
+                const d = await r.json();
+                if (r.ok && d.success) {
+                    this.documents.unshift(d.document);
+                } else {
+                    this.error = d.error || 'Upload failed';
+                }
+            } catch(e) {
+                this.error = 'Upload failed';
+            } finally {
+                this.uploading = false;
+                event.target.value = '';
+                if (window.lucide) lucide.createIcons();
+            }
+        },
+
+        formatDate(iso) {
+            if (!iso) return '';
+            try { return new Date(iso).toLocaleDateString(); } catch(e) { return iso; }
+        }
+    };
+}
+</script>
+
+<script>
+/* ARB-102: conditions tracker Alpine component */
+function conditionsTracker(initialConditions, reviewId) {
+    return {
+        conditions: initialConditions || [],
+        reviewId: reviewId,
+        saveMsg: '',
+        _saveTimer: null,
+
+        async patch(idx, field, value) {
+            const csrf = document.querySelector('meta[name=csrf-token]')?.content || '';
+            try {
+                const r = await fetch(`/arb/api/reviews/${this.reviewId}/conditions/${idx}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
+                    body: JSON.stringify({ field, value: value || null })
+                });
+                const d = await r.json();
+                if (r.ok && d.success) {
+                    this.conditions[idx][field] = value || null;
+                    const today = new Date().toISOString().slice(0, 10);
+                    const c = this.conditions[idx];
+                    c.overdue = !!(c.due_date && c.status !== 'done' && c.due_date < today);
+                    this.conditions = [...this.conditions];
+                    this._flash('Saved');
+                } else {
+                    this._flash('Error: ' + (d.error || 'save failed'));
+                }
+            } catch(e) {
+                this._flash('Network error');
+            }
+        },
+
+        _flash(msg) {
+            this.saveMsg = msg;
+            clearTimeout(this._saveTimer);
+            this._saveTimer = setTimeout(() => { this.saveMsg = ''; }, 2500);
+        }
+    };
+}
+</script>
+{% endblock %}

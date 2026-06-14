@@ -1,0 +1,219 @@
+{# _components.html.j2 — Reusable Jinja2 macros for the generated FastAPI app's UI.
+   ARCHIE renders this once; the output is a Jinja2 template that the generated app uses at runtime.
+   Context (from ARCHIE): entities, state_machines, identity_provider #}
+{% raw %}
+{# ── Field Input Macro ── #}
+{% macro field_input(field, value='', errors={}) %}
+{% set err = errors.get(field.name, '') %}
+{% set base_cls = "w-full rounded-md border bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" %}
+{% set err_cls = "border-destructive" if err else "border-input" %}
+<div>
+    <label for="field-{{ field.name }}" class="block text-sm font-medium text-foreground mb-1.5">
+        {{ field.display_name }}{% if field.required %} <span class="text-destructive">*</span>{% endif %}
+    </label>
+    {% if field.type == 'boolean' %}
+    <label class="relative inline-flex items-center cursor-pointer" x-data="{ on: {{ 'true' if value else 'false' }} }">
+        <input type="hidden" name="{{ field.name }}" :value="on ? 'true' : 'false'">
+        <button type="button" @click="on = !on" :class="on ? 'bg-blue-600' : 'bg-zinc-300 dark:bg-zinc-600'"
+                class="relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full transition-colors">
+            <span :class="on ? 'translate-x-5' : 'translate-x-0.5'"
+                  class="pointer-events-none mt-0.5 inline-block h-5 w-5 rounded-full bg-white shadow transition-transform"></span>
+        </button>
+    </label>
+    {% elif field.type == 'text' %}
+    <textarea id="field-{{ field.name }}" name="{{ field.name }}" rows="3"
+              {% if field.required %}required{% endif %}
+              class="{{ base_cls }} {{ err_cls }} resize-y">{{ value }}</textarea>
+    {% elif field.type in ('integer', 'number', 'decimal', 'float') %}
+    <input type="number" id="field-{{ field.name }}" name="{{ field.name }}" value="{{ value }}"
+           {% if field.required %}required{% endif %}
+           {% if field.type in ('number', 'decimal', 'float') %}step="any"{% endif %}
+           {% if field.constraints and field.constraints.minimum is defined %}min="{{ field.constraints.minimum }}"{% endif %}
+           {% if field.constraints and field.constraints.maximum is defined %}max="{{ field.constraints.maximum }}"{% endif %}
+           class="{{ base_cls }} {{ err_cls }}">
+    {% elif field.enum_values %}
+    <select id="field-{{ field.name }}" name="{{ field.name }}"
+            {% if field.required %}required{% endif %}
+            class="{{ base_cls }} {{ err_cls }}">
+        <option value="">Select...</option>
+        {% for val in field.enum_values %}
+        <option value="{{ val }}" {{ 'selected' if value == val else '' }}>{{ val | replace('_', ' ') | title }}</option>
+        {% endfor %}
+    </select>
+    {% elif field.format == 'email' %}
+    <input type="email" id="field-{{ field.name }}" name="{{ field.name }}" value="{{ value }}"
+           {% if field.required %}required{% endif %} placeholder="name@example.com"
+           class="{{ base_cls }} {{ err_cls }}">
+    {% elif field.format == 'url' %}
+    <input type="url" id="field-{{ field.name }}" name="{{ field.name }}" value="{{ value }}"
+           {% if field.required %}required{% endif %} placeholder="https://..."
+           class="{{ base_cls }} {{ err_cls }}">
+    {% elif field.format == 'phone' %}
+    <input type="tel" id="field-{{ field.name }}" name="{{ field.name }}" value="{{ value }}"
+           {% if field.required %}required{% endif %}
+           class="{{ base_cls }} {{ err_cls }}">
+    {% elif field.type == 'datetime' or field.format == 'date-time' %}
+    <input type="datetime-local" id="field-{{ field.name }}" name="{{ field.name }}" value="{{ value }}"
+           {% if field.required %}required{% endif %}
+           class="{{ base_cls }} {{ err_cls }}">
+    {% elif field.type == 'date' or field.format == 'date' %}
+    <input type="date" id="field-{{ field.name }}" name="{{ field.name }}" value="{{ value }}"
+           {% if field.required %}required{% endif %}
+           class="{{ base_cls }} {{ err_cls }}">
+    {% elif field.is_fk %}
+    <div x-data="fkPicker('{{ field.fk_api_path }}', '{{ value }}')" class="relative">
+        <input type="hidden" name="{{ field.name }}" :value="selectedId">
+        <input type="text" x-model="query" @input.debounce.300ms="search()" @focus="open = true" @click.away="open = false"
+               placeholder="Search {{ field.fk_entity_display }}..."
+               class="{{ base_cls }} {{ err_cls }}">
+        <div x-show="open && results.length" x-cloak
+             class="absolute z-10 mt-1 w-full bg-background border border-input rounded-md shadow-lg max-h-48 overflow-y-auto">
+            <template x-for="r in results" :key="r.id">
+                <button type="button" @click="select(r)" class="w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors"
+                        x-text="r.{{ field.fk_label_field }} || r.name || r.id"></button>
+            </template>
+        </div>
+    </div>
+    {% else %}
+    <input type="text" id="field-{{ field.name }}" name="{{ field.name }}" value="{{ value }}"
+           {% if field.required %}required{% endif %}
+           {% if field.max_length %}maxlength="{{ field.max_length }}"{% endif %}
+           class="{{ base_cls }} {{ err_cls }}">
+    {% endif %}
+    {% if err %}
+    <p class="mt-1 text-xs text-destructive">{{ err }}</p>
+    {% endif %}
+</div>
+{% endmacro %}
+
+{# ── Status Badge ── #}
+{% macro status_badge(status) %}
+{% set s = (status or '') | lower | replace(' ', '_') %}
+{% if s in ('active', 'approved', 'completed', 'verified', 'resolved') %}
+{% set color = 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30' %}
+{% elif s in ('pending', 'submitted', 'in_progress', 'processing', 'under_review', 'open') %}
+{% set color = 'bg-amber-500/10 text-amber-600 border-amber-500/30' %}
+{% elif s in ('rejected', 'failed', 'cancelled', 'expired', 'blocked') %}
+{% set color = 'bg-red-500/10 text-red-600 border-red-500/30' %}
+{% else %}
+{% set color = 'bg-zinc-500/10 text-zinc-600 border-zinc-500/30' %}
+{% endif %}
+<span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium border {{ color }}">
+    {{ (status or 'N/A') | replace('_', ' ') | title }}
+</span>
+{% endmacro %}
+
+{# ── Action Button (state machine transition) ── #}
+{% macro action_button(trigger, entity_id, entity_slug) %}
+<form method="POST" action="/{{ entity_slug }}/{{ entity_id }}/{{ trigger }}" class="inline"
+      x-data="{ confirming: false }">
+    <button type="button" @click="confirming = true"
+            class="px-2.5 py-1 text-xs font-medium rounded-md bg-blue-600/10 text-blue-600 border border-blue-600/30 hover:bg-blue-600/20 transition-colors">
+        {{ trigger | replace('_', ' ') | title }}
+    </button>
+    <div x-show="confirming" x-cloak class="fixed inset-0 z-50 flex items-center justify-center" @keydown.escape.window="confirming = false">
+        <div class="absolute inset-0 bg-black/20" @click="confirming = false"></div>
+        <div class="relative bg-background border border-input rounded-xl shadow-xl p-6 max-w-sm w-full mx-4" @click.stop>
+            <h3 class="text-base font-semibold">Confirm {{ trigger | replace('_', ' ') | title }}?</h3>
+            <p class="text-sm text-muted-foreground mt-1">This will change the status of this record.</p>
+            <div class="flex gap-2 justify-end mt-5">
+                <button type="button" @click="confirming = false"
+                        class="px-4 py-2 text-sm font-medium border border-input rounded-lg hover:bg-accent transition">Cancel</button>
+                <button type="submit"
+                        class="px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">Confirm</button>
+            </div>
+        </div>
+    </div>
+</form>
+{% endmacro %}
+
+{# ── Pagination ── #}
+{% macro pagination(page, total, limit) %}
+{% set total_pages = (total + limit - 1) // limit %}
+{% if total_pages > 1 %}
+<nav class="flex items-center justify-between border-t border-input pt-4 mt-4">
+    <p class="text-sm text-muted-foreground">
+        Showing {{ (page - 1) * limit + 1 }}–{{ [page * limit, total] | min }} of {{ total }}
+    </p>
+    <div class="flex gap-1">
+        {% if page > 1 %}
+        <a href="?page={{ page - 1 }}&limit={{ limit }}"
+           class="px-3 py-1.5 text-sm border border-input rounded-md hover:bg-accent transition">Previous</a>
+        {% endif %}
+        {% for p in range(1, total_pages + 1) %}
+        {% if p == page %}
+        <span class="px-3 py-1.5 text-sm border border-blue-600 bg-blue-600 text-white rounded-md">{{ p }}</span>
+        {% elif p <= 3 or p >= total_pages - 1 or (p >= page - 1 and p <= page + 1) %}
+        <a href="?page={{ p }}&limit={{ limit }}"
+           class="px-3 py-1.5 text-sm border border-input rounded-md hover:bg-accent transition">{{ p }}</a>
+        {% elif p == 4 or p == total_pages - 2 %}
+        <span class="px-3 py-1.5 text-sm text-muted-foreground">...</span>
+        {% endif %}
+        {% endfor %}
+        {% if page < total_pages %}
+        <a href="?page={{ page + 1 }}&limit={{ limit }}"
+           class="px-3 py-1.5 text-sm border border-input rounded-md hover:bg-accent transition">Next</a>
+        {% endif %}
+    </div>
+</nav>
+{% endif %}
+{% endmacro %}
+
+{# ── Empty State ── #}
+{% macro empty_state(entity_name, create_url) %}
+<div class="text-center py-16">
+    <div class="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
+        <svg class="w-8 h-8 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"></path>
+        </svg>
+    </div>
+    <p class="text-sm font-medium text-foreground">No {{ entity_name }} found</p>
+    <p class="text-xs text-muted-foreground mt-1">Get started by creating your first record.</p>
+    {% if create_url %}
+    <a href="{{ create_url }}" class="mt-4 inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
+        <span class="text-lg leading-none">+</span> Create {{ entity_name }}
+    </a>
+    {% endif %}
+</div>
+{% endmacro %}
+
+{# ── Breadcrumbs ── #}
+{% macro breadcrumbs(items) %}
+<nav class="flex items-center gap-1.5 text-sm text-muted-foreground mb-4">
+    <a href="/" class="hover:text-foreground transition-colors">Home</a>
+    {% for item in items %}
+    <span>/</span>
+    {% if item.url %}
+    <a href="{{ item.url }}" class="hover:text-foreground transition-colors">{{ item.label }}</a>
+    {% else %}
+    <span class="text-foreground font-medium">{{ item.label }}</span>
+    {% endif %}
+    {% endfor %}
+</nav>
+{% endmacro %}
+
+{# ── Confirm Modal ── #}
+{% macro confirm_modal(action_url, title, message, method='POST') %}
+<div x-data="{ open: false }" class="inline">
+    <button type="button" @click="open = true"
+            class="px-3 py-1.5 text-sm font-medium rounded-md text-destructive border border-destructive/30 hover:bg-destructive/10 transition">
+        {{ title }}
+    </button>
+    <div x-show="open" x-cloak class="fixed inset-0 z-50 flex items-center justify-center" @keydown.escape.window="open = false">
+        <div class="absolute inset-0 bg-black/20" @click="open = false"></div>
+        <div class="relative bg-background border border-input rounded-xl shadow-xl p-6 max-w-sm w-full mx-4" @click.stop>
+            <h3 class="text-base font-semibold text-foreground">{{ title }}</h3>
+            <p class="text-sm text-muted-foreground mt-1">{{ message }}</p>
+            <div class="flex gap-2 justify-end mt-5">
+                <button type="button" @click="open = false"
+                        class="px-4 py-2 text-sm font-medium border border-input rounded-lg hover:bg-accent transition">Cancel</button>
+                <form method="POST" action="{{ action_url }}">
+                    <button type="submit"
+                            class="px-4 py-2 text-sm font-medium bg-destructive text-destructive-foreground rounded-lg hover:opacity-90 transition">Confirm</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endmacro %}
+{% endraw %}

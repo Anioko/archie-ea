@@ -1,0 +1,214 @@
+{% extends "layouts/admin_base.html" %}
+{% from "components/page_header.html" import page_header %}
+
+{% block title %}{% if decision %}Edit {{ decision.decision_id }}{% else %}New Architecture Decision{% endif %}{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8"
+     x-data="elementPicker()">
+
+    {{ page_header(
+        title=('Edit ' ~ decision.decision_id) if decision else 'New Architecture Decision',
+        breadcrumbs=[
+            {'label': 'Dashboard', 'href': url_for('main.index')},
+            {'label': 'Architecture Decisions', 'href': url_for('arch_decisions.list_decisions')},
+            {'label': 'Edit' if decision else 'New'}
+        ]
+    ) }}
+
+    <form method="POST"
+          action="{{ url_for('arch_decisions.edit_decision', decision_id=decision.id) if decision else url_for('arch_decisions.create_decision') }}"
+          class="space-y-6">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <!-- Title -->
+        <div class="bg-card border border-border rounded-lg p-6 space-y-5">
+            <div>
+                <label class="block text-sm font-medium text-foreground mb-1.5" for="title">Title <span class="text-destructive">*</span></label>
+                <input type="text" id="title" name="title" required
+                       value="{{ decision.title if decision else '' }}"
+                       placeholder="e.g. Adopt microservices for order management domain"
+                       class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" autofocus>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+                <!-- Status -->
+                <div>
+                    <label class="block text-sm font-medium text-foreground mb-1.5" for="status">Status</label>
+                    <select id="status" name="status"
+                            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                        {% for val, label in [('proposed','Proposed'),('accepted','Accepted'),('deprecated','Deprecated'),('superseded','Superseded')] %}
+                        <option value="{{ val }}" {% if decision and decision.status == val %}selected{% elif not decision and val == 'proposed' %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- ADM Phase -->
+                <div>
+                    <label class="block text-sm font-medium text-foreground mb-1.5" for="adm_phase">TOGAF ADM Phase</label>
+                    <select id="adm_phase" name="adm_phase"
+                            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                        <option value="">— None —</option>
+                        {% for ph, label in [
+                            ('A','Phase A: Architecture Vision'),
+                            ('B','Phase B: Business Architecture'),
+                            ('C','Phase C: Information Systems'),
+                            ('D','Phase D: Technology Architecture'),
+                            ('E','Phase E: Opportunities & Solutions'),
+                            ('F','Phase F: Migration Planning'),
+                            ('G','Phase G: Implementation Governance'),
+                            ('H','Phase H: Change Management')
+                        ] %}
+                        <option value="{{ ph }}" {% if decision and decision.adm_phase == ph %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- Content sections -->
+        <div class="bg-card border border-border rounded-lg p-6 space-y-5">
+            <div>
+                <label class="block text-sm font-medium text-foreground mb-1.5" for="context">Context</label>
+                <p class="text-xs text-muted-foreground mb-2">Why was this decision needed? What forces or constraints drove it?</p>
+                <textarea id="context" name="context" rows="4"
+                          class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-y font-mono"
+                          placeholder="Describe the situation and context...">{{ decision.context if decision else '' }}</textarea>
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-foreground mb-1.5" for="decision">Decision <span class="text-destructive">*</span></label>
+                <p class="text-xs text-muted-foreground mb-2">What was decided? Be specific and unambiguous.</p>
+                <textarea id="decision" name="decision" rows="4"
+                          class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-y font-mono"
+                          placeholder="We will...">{{ decision.decision if decision else '' }}</textarea>
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-foreground mb-1.5" for="consequences">Consequences</label>
+                <p class="text-xs text-muted-foreground mb-2">What are the resulting context, trade-offs, and implications?</p>
+                <textarea id="consequences" name="consequences" rows="4"
+                          class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-y font-mono"
+                          placeholder="Positive: ...\nNegative: ...\nRisks: ...">{{ decision.consequences if decision else '' }}</textarea>
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-foreground mb-1.5" for="alternatives">Alternatives Considered</label>
+                <p class="text-xs text-muted-foreground mb-2">What other options were evaluated and why were they rejected?</p>
+                <textarea id="alternatives" name="alternatives" rows="4"
+                          class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-y font-mono"
+                          placeholder="Option A: ...\nOption B: ...">{{ decision.alternatives if decision else '' }}</textarea>
+            </div>
+        </div>
+
+        <!-- ArchiMate Element Picker -->
+        <div class="bg-card border border-border rounded-lg p-6">
+            <h3 class="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
+                <i data-lucide="share-2" class="h-4 w-4 text-muted-foreground"></i>
+                Impacted ArchiMate Elements
+            </h3>
+
+            <!-- Hidden field with selected IDs -->
+            <input type="hidden" name="archimate_element_ids" :value="JSON.stringify(selectedIds)">
+
+            <!-- Selected elements -->
+            <div class="flex flex-wrap gap-2 mb-3 min-h-[2rem]" x-show="selectedElements.length > 0" x-cloak>
+                <template x-for="el in selectedElements" :key="el.id">
+                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-primary/10 text-primary border border-primary/20">
+                        <span x-text="el.name"></span>
+                        <button aria-label="Remove" type="button" @click="removeElement(el.id)" class="hover:text-destructive ml-0.5">
+                            <i data-lucide="x" class="h-3 w-3"></i>
+                        </button>
+                    </span>
+                </template>
+            </div>
+
+            <!-- Search input -->
+            <div class="relative">
+                <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"></i>
+                <input type="text" x-model="searchQuery" @input.debounce.300ms="searchElements()"
+                       placeholder="Search ArchiMate elements..."
+                       class="w-full pl-9 pr-3 py-2 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+            </div>
+
+            <!-- Search results dropdown -->
+            <div x-show="searchResults.length > 0" x-cloak class="mt-1 border border-border rounded-md bg-popover shadow-md divide-y divide-border max-h-48 overflow-y-auto">
+                <template x-for="el in searchResults" :key="el.id">
+                    <button type="button" @click="addElement(el)"
+                            class="w-full text-left flex items-center justify-between px-3 py-2 text-sm hover:bg-accent transition-colors">
+                        <span x-text="el.name" class="font-medium text-foreground"></span>
+                        <div class="flex gap-1.5">
+                            <span x-show="el.layer" x-cloak x-text="el.layer" class="text-xs px-1.5 py-0.5 rounded bg-secondary text-secondary-foreground"></span>
+                            <span x-show="el.element_type" x-cloak x-text="el.element_type" class="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground"></span>
+                        </div>
+                    </button>
+                </template>
+            </div>
+        </div>
+
+        <!-- Submit -->
+        <div class="flex items-center justify-between">
+            <a href="{{ url_for('arch_decisions.list_decisions') }}"
+               class="inline-flex items-center gap-2 px-4 py-2 rounded-md border border-input bg-background text-sm font-medium hover:bg-accent transition-colors">
+                Cancel
+            </a>
+            <button type="submit"
+                    class="inline-flex items-center gap-2 px-5 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors">
+                <i data-lucide="save" class="h-4 w-4"></i>
+                {% if decision %}Save Changes{% else %}Create Decision{% endif %}
+            </button>
+        </div>
+    </form>
+</div>
+
+<script>
+function elementPicker() {
+    return {
+        searchQuery: '',
+        searchResults: [],
+        selectedElements: {{ (selected_elements | map(attribute='id') | list | tojson) if selected_elements else '[]' }}.map ? [] : [],
+
+        init() {
+            {% if selected_elements %}
+            this.selectedElements = [
+                {% for el in selected_elements %}
+                { id: {{ el.id }}, name: {{ el.name | tojson }}, layer: {{ (el.layer or '') | tojson }}, element_type: {{ (el.element_type or '') | tojson }} }{% if not loop.last %},{% endif %}
+                {% endfor %}
+            ];
+            {% endif %}
+        },
+
+        get selectedIds() {
+            return this.selectedElements.map(e => e.id);
+        },
+
+        async searchElements() {
+            if (this.searchQuery.length < 2) { this.searchResults = []; return; }
+            try {
+                // Canonical element search (the old /architecture/decisions/api/element-search route no longer exists)
+                const resp = await fetch(`/archimate/api/elements/search?q=${encodeURIComponent(this.searchQuery)}&limit=20`);
+                const payload = await resp.json();
+                const data = Array.isArray(payload) ? payload : (payload.data || []);
+                this.searchResults = data
+                    .map(el => ({ id: el.id, name: el.name, layer: el.layer || '', element_type: el.element_type || el.type || '' }))
+                    .filter(el => !this.selectedIds.includes(el.id));
+            } catch (e) {
+                this.searchResults = [];
+            }
+        },
+
+        addElement(el) {
+            if (!this.selectedIds.includes(el.id)) {
+                this.selectedElements.push(el);
+            }
+            this.searchResults = [];
+            this.searchQuery = '';
+        },
+
+        removeElement(id) {
+            this.selectedElements = this.selectedElements.filter(e => e.id !== id);
+        }
+    };
+}
+</script>
+{% endblock %}

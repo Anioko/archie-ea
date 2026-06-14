@@ -1,0 +1,160 @@
+genome_version: "1.0.0"
+solution_id: 0
+solution_name: "Project Management"
+generated_at: "2026-04-01T00:00:00Z"
+language: "python-fastapi"
+
+problem:
+  statement: "Teams track work across spreadsheets, chat threads, and email — no single source of truth for project status, no time tracking, and retrospectives are undocumented."
+  success_metrics:
+    - "100% of tasks tracked in a single system"
+    - "Reduce status meeting time by 50% through real-time dashboards"
+    - "Achieve accurate time tracking for 90% of billable work"
+  constraints:
+    - "Must support agile (sprints) and kanban workflows"
+    - "Must integrate with git repositories for commit linking"
+  business_domain: "Technology"
+  _rationale: "Project management tools are the most competitive SaaS category, but enterprise teams still need customizable workflows that commercial tools don't support. The genome approach lets us generate a tailored PM tool in hours."
+
+modules:
+  projects:
+    _rationale: "Projects are the top-level container. Budget and timeline tracking happen at this level."
+    aggregate_root: "Project"
+    entities: ["Project"]
+    fields:
+      Project:
+        - {name: "name", type: "string", max_length: 255, required: true}
+        - {name: "description", type: "text", required: false}
+        - {name: "owner_id", type: "integer", required: true, foreign_key: "TeamMember.id"}
+        - {name: "start_date", type: "date", required: true}
+        - {name: "target_end_date", type: "date", required: false}
+        - {name: "budget", type: "decimal", required: false}
+        - {name: "is_archived", type: "boolean", required: false}
+    archimate_element_ids: [501]
+
+  tasks:
+    _rationale: "Tasks are the atomic unit of work. The state machine enforces the review-before-done workflow that prevents silent scope drift."
+    aggregate_root: "Task"
+    entities: ["Task"]
+    fields:
+      Task:
+        - {name: "project_id", type: "integer", required: true, foreign_key: "Project.id"}
+        - {name: "sprint_id", type: "integer", required: false, foreign_key: "Sprint.id"}
+        - {name: "assignee_id", type: "integer", required: false, foreign_key: "TeamMember.id"}
+        - {name: "title", type: "string", max_length: 255, required: true}
+        - {name: "description", type: "text", required: false}
+        - {name: "priority", type: "enum", enum_values: ["low", "medium", "high", "critical"]}
+        - {name: "story_points", type: "integer", required: false}
+        - {name: "due_date", type: "date", required: false}
+        - {name: "labels", type: "json", required: false}
+    state_machine:
+      field: "status"
+      states: ["backlog", "todo", "in_progress", "review", "done"]
+      initial_state: "backlog"
+      transitions:
+        - {from: "backlog", to: "todo", trigger: "plan"}
+        - {from: "todo", to: "in_progress", trigger: "start"}
+        - {from: "in_progress", to: "review", trigger: "submit_for_review"}
+        - {from: "review", to: "done", trigger: "approve"}
+        - {from: "review", to: "in_progress", trigger: "request_changes"}
+        - {from: ["backlog", "todo", "in_progress"], to: "done", trigger: "close"}
+    operations:
+      create_task:
+        type: "command"
+        input: "TaskDraft"
+        output: "TaskId"
+        authorization: ["project_manager", "developer", "admin"]
+        validation:
+          - {field: "project_id", rule: "must reference active project"}
+          - {field: "title", rule: "minimum 3 characters"}
+      list_tasks:
+        type: "query"
+        output: "Page<TaskSummary>"
+        cache: {ttl: "10s"}
+    views:
+      list:
+        columns: ["id", "title", "assignee_id", "status", "priority", "story_points"]
+        filters: ["status", "priority", "assignee_id", "sprint_id"]
+        default_sort: {field: "priority", dir: "desc"}
+      detail:
+        sections: ["summary", "comments", "time_logs", "history"]
+      create:
+        fields: ["project_id", "title", "description", "priority", "assignee_id"]
+    archimate_element_ids: [502]
+
+  team_members:
+    _rationale: "Team members have roles that determine what they can do — project managers assign, developers execute, viewers observe."
+    aggregate_root: "TeamMember"
+    entities: ["TeamMember"]
+    fields:
+      TeamMember:
+        - {name: "name", type: "string", max_length: 255, required: true}
+        - {name: "email", type: "string", format: "email", required: true, unique: true}
+        - {name: "role", type: "enum", enum_values: ["project_manager", "developer", "designer", "qa", "viewer"]}
+        - {name: "avatar_url", type: "string", required: false}
+    archimate_element_ids: [503]
+
+  sprints:
+    _rationale: "Sprints provide time-boxed iteration boundaries. Velocity tracking across sprints informs capacity planning."
+    aggregate_root: "Sprint"
+    entities: ["Sprint"]
+    fields:
+      Sprint:
+        - {name: "project_id", type: "integer", required: true, foreign_key: "Project.id"}
+        - {name: "name", type: "string", max_length: 100, required: true}
+        - {name: "goal", type: "text", required: false}
+        - {name: "start_date", type: "date", required: true}
+        - {name: "end_date", type: "date", required: true}
+        - {name: "velocity", type: "integer", required: false}
+    archimate_element_ids: [504]
+
+  time_logs:
+    _rationale: "Time tracking per task enables accurate billing and helps identify estimation blind spots."
+    aggregate_root: "TimeLog"
+    entities: ["TimeLog"]
+    fields:
+      TimeLog:
+        - {name: "task_id", type: "integer", required: true, foreign_key: "Task.id"}
+        - {name: "member_id", type: "integer", required: true, foreign_key: "TeamMember.id"}
+        - {name: "hours", type: "float", required: true}
+        - {name: "description", type: "text", required: false}
+        - {name: "logged_date", type: "date", required: true}
+    archimate_element_ids: [505]
+
+  comments:
+    _rationale: "Comments on tasks create a discussion thread — replacing email chains and chat messages that get lost."
+    aggregate_root: "Comment"
+    entities: ["Comment"]
+    fields:
+      Comment:
+        - {name: "task_id", type: "integer", required: true, foreign_key: "Task.id"}
+        - {name: "author_id", type: "integer", required: true, foreign_key: "TeamMember.id"}
+        - {name: "body", type: "text", required: true}
+    archimate_element_ids: [506]
+
+infrastructure:
+  database: "postgresql"
+  cache: "redis"
+  auth: "jwt_local"
+  observability: "opentelemetry"
+
+security:
+  mfa: "none"
+  api_keys: true
+  rate_limiting: {default: "200/min", authenticated: "2000/min"}
+  encryption_at_rest: false
+  multi_tenancy: true
+
+deployment:
+  target: "docker_compose"
+  environments: ["staging", "production"]
+  ci_cd: {provider: "github_actions", registry: "ghcr"}
+
+identity_provider:
+  type: "jwt-local"
+  roles: ["admin", "project_manager", "developer", "viewer"]
+
+compliance:
+  frameworks: ["soc2"]
+  audit_logging: "all_mutations"
+  data_retention_years: 5

@@ -1,0 +1,103 @@
+{# components/layout/topbar.tsx.j2 — Top navigation bar with breadcrumbs and user menu #}
+{# Context: solution_name, auth (jwt-local or oidc) #}
+"use client"
+
+import { usePathname } from "next/navigation"
+import Link from "next/link"
+import { Bell, Search, LogOut } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+
+{% if base_path %}
+const BASE_PATH = "{{ base_path }}"
+{% else %}
+const BASE_PATH = ""
+{% endif %}
+
+function useBreadcrumbs() {
+  const pathname = usePathname()
+  const parts = pathname.split("/").filter(Boolean)
+  const crumbs = [{ label: "Home", href: "/" }]
+  let href = ""
+  for (const part of parts) {
+    href += "/" + part
+    crumbs.push({ label: part.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()), href })
+  }
+  return crumbs
+}
+
+export function Topbar() {
+  const crumbs = useBreadcrumbs()
+
+  return (
+    <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b bg-background/95 px-6 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      {/* Breadcrumbs */}
+      <nav className="flex items-center gap-1.5 text-sm text-muted-foreground">
+        {crumbs.map((crumb, i) => (
+          <span key={crumb.href} className="flex items-center gap-1.5">
+            {i > 0 && <span className="text-muted-foreground/50">/</span>}
+            {i === crumbs.length - 1 ? (
+              <span className="font-medium text-foreground">{crumb.label}</span>
+            ) : (
+              <Link href={crumb.href} className="hover:text-foreground transition-colors">
+                {crumb.label}
+              </Link>
+            )}
+          </span>
+        ))}
+      </nav>
+
+      <div className="ml-auto flex items-center gap-2">
+        {/* Search */}
+        <Button variant="ghost" size="icon" className="text-muted-foreground">
+          <Search className="h-4 w-4" />
+          <span className="sr-only">Search</span>
+        </Button>
+
+        {/* Notifications */}
+        <Button variant="ghost" size="icon" className="text-muted-foreground">
+          <Bell className="h-4 w-4" />
+          <span className="sr-only">Notifications</span>
+        </Button>
+
+        {/* User menu */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" className="relative h-8 w-8 rounded-full">
+              <Avatar className="h-8 w-8">
+                <AvatarFallback className="text-xs">U</AvatarFallback>
+              </Avatar>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent className="w-56" align="end" forceMount>
+            <DropdownMenuLabel className="font-normal">
+              <div className="flex flex-col space-y-1">
+                <p className="text-sm font-medium leading-none">Account</p>
+              </div>
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              className="text-destructive focus:text-destructive cursor-pointer"
+              onClick={() => {
+                localStorage.removeItem("token")
+                document.cookie = "token=; max-age=0; path=/"
+                window.location.href = BASE_PATH + "/login"
+              }}
+            >
+              <LogOut className="mr-2 h-4 w-4" />
+              Log out
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </header>
+  )
+}

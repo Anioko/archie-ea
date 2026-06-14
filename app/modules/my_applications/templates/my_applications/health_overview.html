@@ -1,0 +1,222 @@
+{% extends 'layouts/admin_base.html' %}
+{% block title %}Health Overview{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-6">
+    <div class="flex items-center justify-between mb-6">
+        <div>
+            <h1 class="text-2xl font-bold">Application Health Overview</h1>
+            <p class="text-muted-foreground">Health status of your applications</p>
+        </div>
+        <a href="{{ url_for('my_applications.dashboard') }}"
+           class="inline-flex items-center gap-2 px-4 py-2 rounded-md border border-border hover:bg-accent transition-colors">
+            <i data-lucide="arrow-left" class="w-4 h-4"></i>
+            Back to Dashboard
+        </a>
+    </div>
+
+    <!-- Summary Cards -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <div class="bg-card border border-border rounded-lg p-4">
+            <div class="flex items-center gap-3 mb-2">
+                <div class="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
+                    <i data-lucide="package" class="w-5 h-5 text-primary"></i>
+                </div>
+                <div class="text-sm text-muted-foreground">Total</div>
+            </div>
+            <div class="text-3xl font-bold">{{ health_summary.total }}</div>
+        </div>
+        <div class="bg-card border border-green-500/50 rounded-lg p-4">
+            <div class="flex items-center gap-3 mb-2">
+                <div class="w-10 h-10 bg-green-500/10 rounded-lg flex items-center justify-center">
+                    <i data-lucide="check-circle" class="w-5 h-5 text-green-600"></i>
+                </div>
+                <div class="text-sm text-muted-foreground">Healthy</div>
+            </div>
+            <div class="text-3xl font-bold text-green-600">{{ health_summary.healthy }}</div>
+        </div>
+        <div class="bg-card border border-amber-500/50 rounded-lg p-4">
+            <div class="flex items-center gap-3 mb-2">
+                <div class="w-10 h-10 bg-amber-500/10 rounded-lg flex items-center justify-center">
+                    <i data-lucide="alert-triangle" class="w-5 h-5 text-amber-600"></i>
+                </div>
+                <div class="text-sm text-muted-foreground">At Risk</div>
+            </div>
+            <div class="text-3xl font-bold text-amber-600">{{ health_summary.at_risk }}</div>
+        </div>
+        <div class="bg-card border border-red-500/50 rounded-lg p-4">
+            <div class="flex items-center gap-3 mb-2">
+                <div class="w-10 h-10 bg-red-500/10 rounded-lg flex items-center justify-center">
+                    <i data-lucide="alert-circle" class="w-5 h-5 text-red-600"></i>
+                </div>
+                <div class="text-sm text-muted-foreground">Critical</div>
+            </div>
+            <div class="text-3xl font-bold text-red-600">{{ health_summary.critical }}</div>
+        </div>
+    </div>
+
+    <!-- Health Categories -->
+    <div class="space-y-6">
+        <!-- Critical Applications -->
+        {% if critical %}
+        <div class="bg-card border border-red-500/50 rounded-lg overflow-hidden">
+            <div class="bg-red-500/10 px-6 py-4 border-b border-red-500/30">
+                <div class="flex items-center gap-3">
+                    <i data-lucide="alert-circle" class="w-5 h-5 text-red-600"></i>
+                    <h2 class="text-lg font-semibold text-red-700">Critical ({{ critical|length }})</h2>
+                </div>
+                <p class="text-sm text-red-600 mt-1">Applications that are decommissioned or retired</p>
+            </div>
+            <div class="divide-y divide-border">
+                {% for item in critical %}
+                <div class="p-4 hover:bg-muted/30 transition-colors">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center">
+                                <i data-lucide="package" class="w-5 h-5 text-red-600"></i>
+                            </div>
+                            <div>
+                                <div class="font-medium">{{ item.application.name }}</div>
+                                <div class="text-sm text-muted-foreground">{{ item.ownership_type or 'Owner' }}</div>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <span class="inline-flex items-center px-2 py-1 rounded text-xs bg-red-100 text-red-700">
+                                {{ item.application.lifecycle_status or 'unknown' }}
+                            </span>
+                            <a href="{{ url_for('my_applications.app_detail', app_id=item.application.id) }}"
+                               class="text-primary hover:underline text-sm">View</a>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- At Risk Applications -->
+        {% if at_risk %}
+        <div class="bg-card border border-amber-500/50 rounded-lg overflow-hidden">
+            <div class="bg-amber-500/10 px-6 py-4 border-b border-amber-500/30">
+                <div class="flex items-center gap-3">
+                    <i data-lucide="alert-triangle" class="w-5 h-5 text-amber-600"></i>
+                    <h2 class="text-lg font-semibold text-amber-700">At Risk ({{ at_risk|length }})</h2>
+                </div>
+                <p class="text-sm text-amber-600 mt-1">Applications in sunset or retiring phase</p>
+            </div>
+            <div class="divide-y divide-border">
+                {% for item in at_risk %}
+                <div class="p-4 hover:bg-muted/30 transition-colors">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 bg-amber-100 rounded-lg flex items-center justify-center">
+                                <i data-lucide="package" class="w-5 h-5 text-amber-600"></i>
+                            </div>
+                            <div>
+                                <div class="font-medium">{{ item.application.name }}</div>
+                                <div class="text-sm text-muted-foreground">{{ item.ownership_type or 'Owner' }}</div>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <span class="inline-flex items-center px-2 py-1 rounded text-xs bg-amber-100 text-amber-700">
+                                {{ item.application.lifecycle_status or 'unknown' }}
+                            </span>
+                            <a href="{{ url_for('my_applications.app_detail', app_id=item.application.id) }}"
+                               class="text-primary hover:underline text-sm">View</a>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Healthy Applications -->
+        {% if healthy %}
+        <div class="bg-card border border-green-500/50 rounded-lg overflow-hidden">
+            <div class="bg-green-500/10 px-6 py-4 border-b border-green-500/30">
+                <div class="flex items-center gap-3">
+                    <i data-lucide="check-circle" class="w-5 h-5 text-green-600"></i>
+                    <h2 class="text-lg font-semibold text-green-700">Healthy ({{ healthy|length }})</h2>
+                </div>
+                <p class="text-sm text-green-600 mt-1">Applications in active or production status</p>
+            </div>
+            <div class="divide-y divide-border">
+                {% for item in healthy %}
+                <div class="p-4 hover:bg-muted/30 transition-colors">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+                                <i data-lucide="package" class="w-5 h-5 text-green-600"></i>
+                            </div>
+                            <div>
+                                <div class="font-medium">{{ item.application.name }}</div>
+                                <div class="text-sm text-muted-foreground">{{ item.ownership_type or 'Owner' }}</div>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <span class="inline-flex items-center px-2 py-1 rounded text-xs bg-green-100 text-green-700">
+                                {{ item.application.lifecycle_status or 'active' }}
+                            </span>
+                            <a href="{{ url_for('my_applications.app_detail', app_id=item.application.id) }}"
+                               class="text-primary hover:underline text-sm">View</a>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Unknown Status Applications -->
+        {% if unknown %}
+        <div class="bg-card border border-border rounded-lg overflow-hidden">
+            <div class="bg-muted/50 px-6 py-4 border-b border-border">
+                <div class="flex items-center gap-3">
+                    <i data-lucide="help-circle" class="w-5 h-5 text-muted-foreground"></i>
+                    <h2 class="text-lg font-semibold">Unknown Status ({{ unknown|length }})</h2>
+                </div>
+                <p class="text-sm text-muted-foreground mt-1">Applications with undefined lifecycle status</p>
+            </div>
+            <div class="divide-y divide-border">
+                {% for item in unknown %}
+                <div class="p-4 hover:bg-muted/30 transition-colors">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 bg-muted rounded-lg flex items-center justify-center">
+                                <i data-lucide="package" class="w-5 h-5 text-muted-foreground"></i>
+                            </div>
+                            <div>
+                                <div class="font-medium">{{ item.application.name }}</div>
+                                <div class="text-sm text-muted-foreground">{{ item.ownership_type or 'Owner' }}</div>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <span class="inline-flex items-center px-2 py-1 rounded text-xs bg-gray-100 text-gray-700">
+                                unknown
+                            </span>
+                            <a href="{{ url_for('my_applications.app_detail', app_id=item.application.id) }}"
+                               class="text-primary hover:underline text-sm">View</a>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- No Applications -->
+        {% if not healthy and not at_risk and not critical and not unknown %}
+        <div class="bg-card border border-border rounded-lg p-12 text-center">
+            <div class="w-16 h-16 mx-auto mb-4 bg-muted rounded-full flex items-center justify-center">
+                <i data-lucide="package" class="w-8 h-8 text-muted-foreground"></i>
+            </div>
+            <h3 class="text-lg font-medium mb-2">No applications found</h3>
+            <p class="text-muted-foreground">You don't have any applications assigned to you yet.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>if (typeof lucide !== 'undefined') lucide.createIcons();</script>
+{% endblock %}

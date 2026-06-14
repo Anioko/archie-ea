@@ -1,0 +1,147 @@
+{# WARNING: THIS FILE IS NOT REGISTERED #}
+{# Traceability — Evidence content (sec-10)
+   Included via {% call section_shell(...) %} — content only, no shell.
+   Prototype: Governance tab → Traceability horizontal progress bars (Dashboard pattern). #}
+
+                    {# Lazy-load traceability data when section scrolls into view #}
+                    <div x-intersect.once="loadTraceability()">
+                    </div>
+
+                    {# BIZBOK: Layered Viewpoint — cross-layer traceability with relationships #}
+                    <div class="rounded-xl border border-border bg-card overflow-hidden mb-4">
+                        <div class="bg-muted/20 px-5 py-2 border-b border-border flex items-center justify-between">
+                            <span class="text-xs font-medium text-muted-foreground">Layered Traceability Viewpoint</span>
+                            <span class="text-[10px] text-muted-foreground">All layers</span>
+                        </div>
+                        <div id="viewpoint-diagram-governance" class="w-full" style="min-height:350px;"></div>
+                    </div>
+
+                    {# Legacy Traceability Diagram — ComposerRenderer (sectionCanvasData, layered viewpoint) #}
+                    <div x-show="sectionCanvasData['T'] && sectionCanvasData['T'].length > 0" x-cloak class="mb-4">
+                        <div class="rounded-xl border border-border bg-card overflow-hidden">
+                            <div class="bg-muted/20 px-5 py-2 border-b border-border flex items-center justify-between">
+                                <span class="text-xs font-medium text-muted-foreground">Layered Traceability Viewpoint</span>
+                                <span class="text-[10px] text-muted-foreground" x-text="(sectionCanvasData['T'] || []).length + ' elements'"></span>
+                            </div>
+                            <div x-init="$nextTick(() => {
+                                if (typeof ComposerRenderer !== 'undefined' && sectionCanvasData['T'] && sectionCanvasData['T'].length > 0) {
+                                    const r = ComposerRenderer.create($el, {mode: 'view', width: '100%', height: 300});
+                                    r.loadElements(sectionCanvasData['T'], []);
+                                    r.fitToContent();
+                                }
+                            })" class="w-full" style="height: 300px;"></div>
+                        </div>
+                    </div>
+
+                    {# Loading state #}
+                    <template x-if="traceabilityLoading">
+                        <div class="flex items-center gap-2 text-muted-foreground py-8">
+                            <i data-lucide="loader-circle" class="w-4 h-4 animate-spin" aria-hidden="true"></i>
+                            <span class="text-sm">Loading traceability evidence...</span>
+                        </div>
+                    </template>
+
+                    {# Error state #}
+                    <template x-if="traceabilityError && !traceabilityLoading">
+                        <div class="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
+                            <span x-text="traceabilityError"></span>
+                            <button type="button" @click="loadTraceability(true)" class="ml-2 underline">Retry</button>
+                        </div>
+                    </template>
+
+                    {# Traceability chains — horizontal progress bars (prototype pattern) #}
+                    <template x-if="traceabilityData && !traceabilityLoading && !traceabilityError">
+                        <div>
+                            {# Summary line #}
+                            <div class="flex items-center gap-3 mb-4" x-show="traceabilityData.chains && traceabilityData.chains.length > 0">
+                                <span class="text-xs text-muted-foreground"
+                                      x-text="(traceabilityData.chains || []).filter(c => c.pct >= 100).length + ' of ' + (traceabilityData.chains || []).length + ' chains complete'"></span>
+                            </div>
+
+                            {# Progress bars card #}
+                            <div class="rounded-xl border border-border bg-card overflow-hidden divide-y divide-border"
+                                 x-show="traceabilityData.chains && traceabilityData.chains.length > 0">
+                                <template x-for="(chain, idx) in (traceabilityData.chains || [])" :key="'chain-' + idx">
+                                    <div class="px-5 py-3" :class="chain.pct < 50 ? 'bg-red-500/5' : ''">
+                                        <div class="flex items-center justify-between mb-1.5">
+                                            <span class="text-sm" x-text="chain.label"></span>
+                                            <span class="text-xs font-medium"
+                                                  :class="chain.pct >= 100 ? 'text-emerald-400' : chain.pct >= 50 ? 'text-amber-400' : 'text-red-400'"
+                                                  x-text="chain.pct + '%'"></span>
+                                        </div>
+                                        <div class="w-full bg-muted rounded-full h-1.5">
+                                            <div class="h-1.5 rounded-full transition-all"
+                                                 :class="chain.pct >= 100 ? 'bg-emerald-400' : chain.pct >= 50 ? 'bg-amber-400' : 'bg-red-400'"
+                                                 :style="'width:' + Math.min(chain.pct, 100) + '%'"></div>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+
+                            {# Fallback: if no chains array, show the legacy table #}
+                            <div x-show="!traceabilityData.chains || traceabilityData.chains.length === 0">
+                                {# Summary badges #}
+                                <div class="flex flex-wrap gap-3 mb-6" x-show="traceabilityData">
+                                    <div class="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2">
+                                        <span class="text-xs text-muted-foreground">Drivers</span>
+                                        <span class="text-sm font-semibold text-foreground" x-text="traceabilitySummaryValue('drivers')">0</span>
+                                    </div>
+                                    <div class="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2">
+                                        <span class="text-xs text-muted-foreground">Goals</span>
+                                        <span class="text-sm font-semibold text-foreground" x-text="traceabilitySummaryValue('goals')">0</span>
+                                    </div>
+                                    <div class="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2">
+                                        <span class="text-xs text-muted-foreground">Requirements</span>
+                                        <span class="text-sm font-semibold text-foreground" x-text="traceabilitySummaryValue('requirements')">0</span>
+                                    </div>
+                                    <div class="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2">
+                                        <span class="text-xs text-muted-foreground">Capabilities</span>
+                                        <span class="text-sm font-semibold text-foreground" x-text="traceabilitySummaryValue('capabilities')">0</span>
+                                    </div>
+                                    <div class="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2">
+                                        <span class="text-xs text-muted-foreground">Elements</span>
+                                        <span class="text-sm font-semibold text-foreground" x-text="traceabilitySummaryValue('archimate_elements')">0</span>
+                                    </div>
+                                </div>
+
+                                {# Traceability table (legacy format) #}
+                                <template x-if="traceabilityPreviewRows && traceabilityPreviewRows.length > 0">
+                                    <div class="rounded-xl border border-border bg-card overflow-hidden">
+                                        <table class="w-full text-sm">
+                                            <thead><tr class="border-b border-border bg-muted/30">
+                                                <th class="text-left px-5 py-2 text-xs font-medium text-muted-foreground">Driver / Goal</th>
+                                                <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground">Requirement</th>
+                                                <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground">Capability</th>
+                                                <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground">ArchiMate Element</th>
+                                                <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground w-[80px]">Status</th>
+                                            </tr></thead>
+                                            <tbody class="divide-y divide-border">
+                                                <template x-for="row in traceabilityPreviewRows" :key="JSON.stringify(row)">
+                                                    <tr class="hover:bg-muted/20">
+                                                        <td class="px-5 py-2.5 text-foreground" x-text="formatTraceabilityCell(row.driver || row.goal)"></td>
+                                                        <td class="px-3 py-2.5 text-foreground" x-text="formatTraceabilityCell(row.requirement)"></td>
+                                                        <td class="px-3 py-2.5 text-foreground" x-text="formatTraceabilityCell(row.capability)"></td>
+                                                        <td class="px-3 py-2.5 text-foreground" x-text="formatTraceabilityCell(row.archimate_element)"></td>
+                                                        <td class="px-3 py-2.5">
+                                                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
+                                                                  :class="row.status === 'complete' ? 'bg-emerald-500/10 text-emerald-400' : row.status === 'partial' ? 'bg-amber-500/10 text-amber-400' : 'bg-red-500/10 text-red-400'"
+                                                                  x-text="row.status || 'gap'"></span>
+                                                        </td>
+                                                    </tr>
+                                                </template>
+                                            </tbody>
+                                        </table>
+                                        <div class="py-3 px-5 border-t border-border text-xs text-muted-foreground flex items-center justify-between">
+                                            <span>Showing first 5 of <span x-text="(traceabilityData.rows || []).length">0</span> traced paths</span>
+                                            <a :href="'/solutions/' + {{ solution.id }} + '/traceability'"
+                                               class="text-primary hover:underline font-medium">View full matrix &rarr;</a>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+
+                    {# Empty state #}
+                    <p x-show="traceabilityLoaded && (!traceabilityData || ((!traceabilityData.chains || traceabilityData.chains.length === 0) && traceabilityPreviewRows.length === 0)) && !traceabilityError"
+                       class="text-sm text-muted-foreground py-4">No traceability evidence recorded.</p>

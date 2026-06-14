@@ -1,0 +1,85 @@
+{# shadcn/ui Pagination Controls Component
+
+   Pagination controls for tables and lists.
+   
+   Usage:
+   {% from 'components/pagination_controls.html' import pagination_controls %}
+   
+   {{ pagination_controls(
+       current_page_model='currentPage',
+       total_pages_model='totalPages',
+       total_items_model='totalItems'
+   ) }}
+#}
+
+{% macro pagination_controls(
+    current_page_model='currentPage',
+    total_pages_model='totalPages',
+    total_items_model='totalItems',
+    page_size_model='pageSize',
+    class=''
+) %}
+<div class="flex flex-col sm:flex-row items-center justify-between gap-4 px-2 py-4 {{ class }}">
+    <!-- Results Summary -->
+    <div class="text-sm text-muted-foreground">
+        <span>Showing </span>
+        <span x-text="(({{ current_page_model }} - 1) * {{ page_size_model }}) + 1"></span>
+        <span> to </span>
+        <span x-text="Math.min({{ current_page_model }} * {{ page_size_model }}, {{ total_items_model }})"></span>
+        <span> of </span>
+        <span x-text="{{ total_items_model }}"></span>
+        <span> results</span>
+    </div>
+    
+    <!-- Page Controls -->
+    <div class="flex items-center gap-2">
+        <!-- First Page -->
+        <button 
+            @click="{{ current_page_model }} = 1"
+            :disabled="{{ current_page_model }} === 1"
+            class="inline-flex items-center justify-center h-9 w-9 rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50 transition-colors"
+            aria-label="First page"
+        >
+            <i data-lucide="chevrons-left" class="h-4 w-4"></i>
+        </button>
+        
+        <!-- Previous Page -->
+        <button 
+            @click="{{ current_page_model }}--"
+            :disabled="{{ current_page_model }} === 1"
+            class="inline-flex items-center justify-center h-9 w-9 rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50 transition-colors"
+            aria-label="Previous page"
+        >
+            <i data-lucide="chevron-left" class="h-4 w-4"></i>
+        </button>
+        
+        <!-- Page Numbers -->
+        <div class="flex items-center gap-1">
+            <span class="text-sm text-muted-foreground">Page</span>
+            <span class="text-sm font-medium" x-text="{{ current_page_model }}"></span>
+            <span class="text-sm text-muted-foreground">of</span>
+            <span class="text-sm font-medium" x-text="{{ total_pages_model }}"></span>
+        </div>
+        
+        <!-- Next Page -->
+        <button 
+            @click="{{ current_page_model }}++"
+            :disabled="{{ current_page_model }} === {{ total_pages_model }}"
+            class="inline-flex items-center justify-center h-9 w-9 rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50 transition-colors"
+            aria-label="Next page"
+        >
+            <i data-lucide="chevron-right" class="h-4 w-4"></i>
+        </button>
+        
+        <!-- Last Page -->
+        <button 
+            @click="{{ current_page_model }} = {{ total_pages_model }}"
+            :disabled="{{ current_page_model }} === {{ total_pages_model }}"
+            class="inline-flex items-center justify-center h-9 w-9 rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50 transition-colors"
+            aria-label="Last page"
+        >
+            <i data-lucide="chevrons-right" class="h-4 w-4"></i>
+        </button>
+    </div>
+</div>
+{% endmacro %}

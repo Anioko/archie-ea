@@ -1,0 +1,20 @@
+[bandit]
+# Bandit security scanner configuration
+# Run: bandit -r app/ -c .bandit
+
+# Skip test files — test helpers intentionally use weak patterns
+exclude_dirs = tests,venv,.venv,node_modules
+
+# Skip low-confidence findings — report medium+ severity
+# Severity: LOW, MEDIUM, HIGH  |  Confidence: LOW, MEDIUM, HIGH
+level = MEDIUM
+confidence = MEDIUM
+
+# Skip specific tests that produce false positives in generated code:
+#   B101 - assert_used: asserts used in test helpers only
+#   B311 - random: pseudo-random OK for non-security uses (e.g., IDs)
+#   B404 - import_subprocess: only in management commands
+skips = B101,B311,B404
+
+# Output format for CI: json produces machine-readable results
+# Usage in CI: bandit -r app/ -c .bandit -f json -o bandit-report.json

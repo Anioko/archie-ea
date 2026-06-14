@@ -1,0 +1,385 @@
+{% extends "layouts/admin_base.html" %}
+
+{% block title %}Capability Consolidation - Abacus Integration{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8" x-data="consolidationManager()">
+    <!-- Header -->
+    <div class="mb-8">
+        <h1 class="text-3xl font-bold text-foreground mb-2">Capability Consolidation</h1>
+        <p class="text-muted-foreground">Review and merge duplicate capabilities from Abacus and manual sources</p>
+    </div>
+
+    <!-- Statistics Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        <div class="bg-background rounded-lg shadow p-6">
+            <div class="text-sm text-muted-foreground mb-1">Total Capabilities</div>
+            <div class="text-3xl font-bold text-foreground">{{ total_capabilities }}</div>
+        </div>
+
+        <div class="bg-primary/5 rounded-lg shadow p-6">
+            <div class="text-sm text-primary mb-1">From Abacus</div>
+            <div class="text-3xl font-bold text-primary">{{ abacus_capabilities }}</div>
+        </div>
+
+        <div class="bg-success/5 rounded-lg shadow p-6">
+            <div class="text-sm text-success mb-1">Manual Entries</div>
+            <div class="text-3xl font-bold text-success">{{ manual_capabilities }}</div>
+        </div>
+
+        <div class="bg-warning/5 rounded-lg shadow p-6">
+            <div class="text-sm text-warning mb-1">Potential Duplicates</div>
+            <div class="text-3xl font-bold text-warning" x-text="duplicates.length">{{ duplicate_candidates|length }}</div>
+        </div>
+    </div>
+
+    <!-- Controls -->
+    <div class="bg-background rounded-lg shadow p-6 mb-6">
+        <div class="flex flex-wrap gap-4 items-end">
+            <!-- Similarity Threshold -->
+            <div class="flex-1 min-w-[200px]">
+                <label class="block text-sm font-medium text-foreground/80 mb-2">
+                    Similarity Threshold: <span x-text="threshold + '%'"></span>
+                </label>
+                <input
+                    type="range"
+                    min="60"
+                    max="100"
+                    x-model="threshold"
+                    @change="loadCandidates()"
+                    class="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer"
+                 aria-label="Similarity threshold percentage">
+                <div class="flex justify-between text-xs text-muted-foreground mt-1">
+                    <span>60% (More matches)</span>
+                    <span>100% (Exact only)</span>
+                </div>
+            </div>
+
+            <!-- Merge Strategy -->
+            <div class="flex-1 min-w-[200px]">
+                <label class="block text-sm font-medium text-foreground/80 mb-2">
+                    Merge Strategy
+                </label>
+                <select
+                    x-model="mergeStrategy"
+                    class="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                >
+                    <option value="keep_target">Keep Manual (Migrate Abacus)</option>
+                    <option value="keep_source">Keep Abacus (Migrate Manual)</option>
+                    <option value="merge_fields">Smart Merge (Field-level)</option>
+                </select>
+            </div>
+
+            <!-- Actions -->
+            <div class="flex gap-2">
+                <button
+                    @click="bulkMergeSelected()"
+                    :disabled="selectedPairs.length === 0"
+                    class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary disabled:bg-muted disabled:cursor-not-allowed"
+                >
+                    Merge Selected (<span x-text="selectedPairs.length"></span>)
+                </button>
+
+                <button
+                    @click="autoMergeHighConfidence()"
+                    class="px-4 py-2 bg-success text-primary-foreground rounded-md hover:bg-success"
+                >
+                    Auto-Merge (>95%)
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Duplicate Candidates Table -->
+    <div class="bg-background rounded-lg shadow overflow-hidden">
+        <div class="px-6 py-4 border-b border-border">
+            <h2 class="text-lg font-semibold text-foreground">Duplicate Candidates</h2>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-border">
+                <thead class="bg-muted">
+                    <tr>
+                        <th class="px-6 py-3 text-left">
+                            <input
+                                type="checkbox"
+                                @change="toggleSelectAll($event)"
+                                class="rounded border-border"
+                             aria-label="Select all duplicate candidates">
+                        </th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
+                            Similarity
+                        </th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
+                            Abacus Capability
+                        </th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
+                            Manual Capability
+                        </th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
+                            Code Match
+                        </th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
+                            Actions
+                        </th>
+                    </tr>
+                </thead>
+                <tbody class="bg-background divide-y divide-border">
+                    <template x-for="candidate in duplicates" :key="`${candidate.abacus_id}-${candidate.manual_id}`">
+                        <tr :class="{'bg-success/5': candidate.similarity > 95, 'bg-warning/5': candidate.similarity > 90 && candidate.similarity <= 95}">
+                            <!-- Checkbox -->
+                            <td class="px-6 py-4">
+                                <input
+                                    type="checkbox"
+                                    :value="`${candidate.abacus_id}-${candidate.manual_id}`"
+                                    x-model="selectedPairs"
+                                    class="rounded border-border"
+                                 aria-label="Select duplicate candidate pair">
+                            </td>
+
+                            <!-- Similarity Score -->
+                            <td class="px-6 py-4">
+                                <div class="flex items-center gap-2">
+                                    <div class="text-2xl font-bold"
+                                         :class="{
+                                             'text-success': candidate.similarity > 95,
+                                             'text-warning': candidate.similarity > 85 && candidate.similarity <= 95,
+                                             'text-muted-foreground': candidate.similarity <= 85
+                                         }"
+                                         x-text="candidate.similarity + '%'">
+                                    </div>
+                                    <template x-if="candidate.similarity > 95">
+                                        <span class="px-2 py-1 text-xs font-semibold text-success bg-success/10 rounded-full">
+                                            Auto
+                                        </span>
+                                    </template>
+                                </div>
+                            </td>
+
+                            <!-- Abacus Capability -->
+                            <td class="px-6 py-4">
+                                <div class="text-sm font-medium text-foreground" x-text="candidate.abacus_name"></div>
+                                <div class="text-xs text-muted-foreground" x-text="candidate.abacus_code"></div>
+                                <div class="text-xs text-muted-foreground mt-1 line-clamp-2" x-text="candidate.abacus_description"></div>
+                            </td>
+
+                            <!-- Manual Capability -->
+                            <td class="px-6 py-4">
+                                <div class="text-sm font-medium text-foreground" x-text="candidate.manual_name"></div>
+                                <div class="text-xs text-muted-foreground" x-text="candidate.manual_code"></div>
+                                <div class="text-xs text-muted-foreground mt-1 line-clamp-2" x-text="candidate.manual_description"></div>
+                            </td>
+
+                            <!-- Code Match -->
+                            <td class="px-6 py-4">
+                                <template x-if="candidate.code_match">
+                                    <span class="px-2 py-1 text-xs font-semibold text-success bg-success/10 rounded-full">
+                                        ✓ Match
+                                    </span>
+                                </template>
+                                <template x-if="!candidate.code_match">
+                                    <span class="px-2 py-1 text-xs font-semibold text-muted-foreground bg-muted rounded-full">
+                                        Different
+                                    </span>
+                                </template>
+                            </td>
+
+                            <!-- Actions -->
+                            <td class="px-6 py-4">
+                                <div class="flex gap-2">
+                                    <a
+                                        :href="`/admin/abacus/consolidation/compare/${candidate.abacus_id}/${candidate.manual_id}`"
+                                        class="text-primary hover:text-primary text-sm font-medium"
+                                    >
+                                        Compare
+                                    </a>
+                                    <button
+                                        @click="mergePair(candidate.abacus_id, candidate.manual_id)"
+                                        class="text-success hover:text-success text-sm font-medium"
+                                    >
+                                        Merge
+                                    </button>
+                                    <button
+                                        @click="rejectPair(candidate.abacus_id, candidate.manual_id)"
+                                        class="text-destructive hover:text-destructive text-sm font-medium"
+                                     aria-label="Reject">
+                                        Reject
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Empty State -->
+        <div x-show="duplicates.length === 0" x-cloak class="px-6 py-12 text-center">
+            <svg class="mx-auto h-12 w-12 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <h3 class="mt-2 text-sm font-medium text-foreground">No duplicates found</h3>
+            <p class="mt-1 text-sm text-muted-foreground">
+                Try lowering the similarity threshold to find more potential matches.
+            </p>
+        </div>
+    </div>
+
+    <!-- Status Messages -->
+    <div x-show="statusMessage" x-cloak
+         x-transition
+         :class="{
+             'bg-success/5 border-success/20': statusType === 'success',
+             'bg-destructive/5 border-destructive/20': statusType === 'error'
+         }"
+         class="fixed bottom-4 right-4 max-w-md rounded-lg border-2 p-4 shadow-lg">
+        <div class="flex items-start">
+            <div class="flex-shrink-0">
+                <template x-if="statusType === 'success'">
+                    <svg class="h-5 w-5 text-success/80" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                    </svg>
+                </template>
+                <template x-if="statusType === 'error'">
+                    <svg class="h-5 w-5 text-destructive/80" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/>
+                    </svg>
+                </template>
+            </div>
+            <div class="ml-3">
+                <p class="text-sm font-medium"
+                   :class="{'text-success': statusType === 'success', 'text-destructive': statusType === 'error'}"
+                   x-text="statusMessage">
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function consolidationManager() {
+    return {
+        threshold: 80,
+        mergeStrategy: 'keep_target',
+        duplicates: {{ duplicate_candidates | tojson }},
+        selectedPairs: [],
+        statusMessage: '',
+        statusType: 'success',
+
+        loadCandidates() {
+            fetch('{{ url_for("abacus_consolidation.get_candidates") }}?threshold=' + this.threshold)
+                .then(res => res.json())
+                .then(data => {
+                    this.duplicates = data.candidates;
+                });
+        },
+
+        toggleSelectAll(event) {
+            if (event.target.checked) {
+                this.selectedPairs = this.duplicates.map(d => `${d.abacus_id}-${d.manual_id}`);
+            } else {
+                this.selectedPairs = [];
+            }
+        },
+
+        async mergePair(abacusId, manualId) {
+            if (!(await Platform.modal.confirm('Are you sure you want to merge these capabilities?'))) return;
+
+            try {
+                const response = await fetch('{{ url_for("abacus_consolidation.merge_capabilities") }}', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''},
+                    body: JSON.stringify({
+                        source_id: abacusId,
+                        target_id: manualId,
+                        strategy: this.mergeStrategy
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    this.showStatus(result.message, 'success');
+                    this.duplicates = this.duplicates.filter(
+                        d => !(d.abacus_id === abacusId && d.manual_id === manualId)
+                    );
+                } else {
+                    this.showStatus(result.error, 'error');
+                }
+            } catch (error) {
+                this.showStatus('Merge failed: ' + error.message, 'error');
+            }
+        },
+
+        async bulkMergeSelected() {
+            if (this.selectedPairs.length === 0) return;
+
+            if (!(await Platform.modal.confirm(`Merge ${this.selectedPairs.length} capability pairs?`))) return;
+
+            const pairs = this.selectedPairs.map(pair => {
+                const [abacus_id, manual_id] = pair.split('-').map(Number);
+                return { source_id: abacus_id, target_id: manual_id };
+            });
+
+            try {
+                const response = await fetch('{{ url_for("abacus_consolidation.bulk_merge") }}', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''},
+                    body: JSON.stringify({
+                        pairs: pairs,
+                        strategy: this.mergeStrategy
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    this.showStatus(`Successfully merged ${result.merged} pairs`, 'success');
+                    this.loadCandidates();
+                    this.selectedPairs = [];
+                } else {
+                    this.showStatus(`Errors: ${result.errors.join(', ')}`, 'error');
+                }
+            } catch (error) {
+                this.showStatus('Bulk merge failed: ' + error.message, 'error');
+            }
+        },
+
+        async autoMergeHighConfidence() {
+            const highConfidence = this.duplicates.filter(d => d.similarity > 95);
+
+            if (highConfidence.length === 0) {
+                this.showStatus('No high-confidence matches found (>95%)', 'error');
+                return;
+            }
+
+            if (!(await Platform.modal.confirm(`Auto-merge ${highConfidence.length} high-confidence pairs?`))) return;
+
+            this.selectedPairs = highConfidence.map(d => `${d.abacus_id}-${d.manual_id}`);
+            await this.bulkMergeSelected();
+        },
+
+        async rejectPair(abacusId, manualId) {
+            const rejectUrlTemplate = '{{ url_for("abacus_consolidation.reject_merge", abacus_id=0, manual_id=0) }}';
+            const response = await fetch(rejectUrlTemplate.replace('/0/0', '/' + abacusId + '/' + manualId), {
+                method: 'POST',
+                headers: {'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''}
+            });
+
+            if (response.ok) {
+                this.duplicates = this.duplicates.filter(
+                    d => !(d.abacus_id === abacusId && d.manual_id === manualId)
+                );
+                this.showStatus('Marked as not a duplicate', 'success');
+            }
+        },
+
+        showStatus(message, type) {
+            this.statusMessage = message;
+            this.statusType = type;
+            setTimeout(() => this.statusMessage = '', 5000);
+        }
+    }
+}
+</script>
+{% endblock %}

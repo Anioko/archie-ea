@@ -1,0 +1,150 @@
+{% extends 'layouts/admin_base.html' %}
+{% block title %}Renewal Alerts{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-6">
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-6">
+        <div>
+            <h1 class="text-2xl font-bold">Renewal Alerts</h1>
+            <p class="text-muted-foreground">Track upcoming contract renewals and expirations</p>
+        </div>
+        <a href="{{ url_for('procurement.contracts_list') }}"
+           class="inline-flex items-center gap-2 px-4 py-2 rounded-md border border-border hover:bg-accent transition-colors">
+            <i data-lucide="list" class="w-4 h-4"></i>
+            All Contracts
+        </a>
+    </div>
+
+    <!-- Summary Cards -->
+    <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 mb-6">
+        <div class="bg-card border border-border rounded-lg p-4">
+            <div class="text-sm text-muted-foreground mb-1">Total Active</div>
+            <div class="text-2xl font-bold">{{ summary.total }}</div>
+        </div>
+        <div class="bg-card border border-red-500/50 rounded-lg p-4">
+            <div class="flex items-center gap-2 text-sm text-red-600 dark:text-red-400 mb-1">
+                <i data-lucide="alert-circle" class="w-4 h-4"></i>
+                Critical (&lt;30d)
+            </div>
+            <div class="text-2xl font-bold text-red-600 dark:text-red-400">{{ summary.critical }}</div>
+        </div>
+        <div class="bg-card border border-amber-500/50 rounded-lg p-4">
+            <div class="flex items-center gap-2 text-sm text-amber-600 dark:text-amber-400 mb-1">
+                <i data-lucide="alert-triangle" class="w-4 h-4"></i>
+                Warning (&lt;90d)
+            </div>
+            <div class="text-2xl font-bold text-amber-600 dark:text-amber-400">{{ summary.warning }}</div>
+        </div>
+        <div class="bg-card border border-blue-500/50 rounded-lg p-4">
+            <div class="flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400 mb-1">
+                <i data-lucide="clock" class="w-4 h-4"></i>
+                Upcoming (&lt;180d)
+            </div>
+            <div class="text-2xl font-bold text-blue-600 dark:text-blue-400">{{ summary.upcoming }}</div>
+        </div>
+        <div class="bg-card border border-green-500/50 rounded-lg p-4">
+            <div class="flex items-center gap-2 text-sm text-green-600 dark:text-green-400 mb-1">
+                <i data-lucide="check-circle" class="w-4 h-4"></i>
+                OK (&gt;180d)
+            </div>
+            <div class="text-2xl font-bold text-green-600 dark:text-green-400">{{ summary.ok }}</div>
+        </div>
+        <div class="bg-card border border-border rounded-lg p-4">
+            <div class="flex items-center gap-2 text-sm text-muted-foreground mb-1">
+                <i data-lucide="help-circle" class="w-4 h-4"></i>
+                No Date
+            </div>
+            <div class="text-2xl font-bold">{{ summary.unknown }}</div>
+        </div>
+    </div>
+
+    <!-- Filter -->
+    <div class="bg-card border border-border rounded-lg p-4 mb-6">
+        <form method="get" class="flex items-center gap-4">
+            <label class="text-sm text-muted-foreground">Show contracts expiring within:</label>
+            <select name="days" onchange="this.form.submit()"
+                    class="px-3 py-2 rounded-md border border-input bg-background text-sm">
+                <option value="30" {{ 'selected' if days_filter == 30 }}>30 days</option>
+                <option value="60" {{ 'selected' if days_filter == 60 }}>60 days</option>
+                <option value="90" {{ 'selected' if days_filter == 90 }}>90 days</option>
+                <option value="180" {{ 'selected' if days_filter == 180 }}>180 days</option>
+                <option value="365" {{ 'selected' if days_filter == 365 }}>1 year</option>
+            </select>
+        </form>
+    </div>
+
+    <!-- Expiring Contracts -->
+    {% if contracts %}
+    <div class="space-y-4">
+        {% for item in contracts %}
+        <div class="bg-card border rounded-lg p-4 hover:border-primary/50 transition-colors
+            {% if item.urgency == 'critical' %}border-red-500/50
+            {% elif item.urgency == 'warning' %}border-amber-500/50
+            {% elif item.urgency == 'expired' %}border-red-500
+            {% else %}border-border{% endif %}">
+            <div class="flex items-start justify-between">
+                <div class="flex-1">
+                    <div class="flex items-center gap-3 mb-2">
+                        <h3 class="font-medium">{{ item.contract.contract_name }}</h3>
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium
+                            {% if item.urgency == 'critical' %}bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400
+                            {% elif item.urgency == 'warning' %}bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400
+                            {% elif item.urgency == 'expired' %}bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400
+                            {% else %}bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400{% endif %}">
+                            {% if item.urgency == 'expired' %}EXPIRED
+                            {% elif item.urgency == 'critical' %}CRITICAL
+                            {% elif item.urgency == 'warning' %}WARNING
+                            {% else %}UPCOMING{% endif %}
+                        </span>
+                    </div>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                        <div>
+                            <span class="text-muted-foreground">Vendor:</span>
+                            <span class="ml-1">{{ item.contract.vendor.name if item.contract.vendor else 'N/A' }}</span>
+                        </div>
+                        <div>
+                            <span class="text-muted-foreground">Contract #:</span>
+                            <span class="ml-1">{{ item.contract.contract_number or 'N/A' }}</span>
+                        </div>
+                        <div>
+                            <span class="text-muted-foreground">Annual Cost:</span>
+                            <span class="ml-1">{{ "${:,.0f}".format(item.contract.annual_cost) if item.contract.annual_cost else 'N/A' }}</span>
+                        </div>
+                        <div>
+                            <span class="text-muted-foreground">Renewal Date:</span>
+                            <span class="ml-1">{{ (item.contract.renewal_date or item.contract.end_date).strftime('%d %b %Y') if (item.contract.renewal_date or item.contract.end_date) else 'N/A' }}</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex flex-col items-end gap-2 ml-4">
+                    <div class="text-2xl font-bold
+                        {% if item.urgency == 'critical' or item.urgency == 'expired' %}text-red-600 dark:text-red-400
+                        {% elif item.urgency == 'warning' %}text-amber-600 dark:text-amber-400
+                        {% else %}text-blue-600 dark:text-blue-400{% endif %}">
+                        {% if item.urgency == 'expired' %}Expired
+                        {% else %}{{ item.days_until_renewal }}d{% endif %}
+                    </div>
+                    <a href="{{ url_for('procurement.contract_detail', contract_id=item.contract.id) }}"
+                       class="text-sm text-primary hover:underline">View Details</a>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <!-- Empty State -->
+    <div class="bg-card border border-border rounded-lg p-12 text-center">
+        <div class="w-16 h-16 mx-auto mb-4 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center">
+            <i data-lucide="check-circle" class="w-8 h-8 text-green-600 dark:text-green-400"></i>
+        </div>
+        <h3 class="text-lg font-medium mb-2">No expiring contracts</h3>
+        <p class="text-muted-foreground">
+            No contracts are expiring within the next {{ days_filter }} days.
+        </p>
+    </div>
+    {% endif %}
+</div>
+
+<script>if (typeof lucide !== 'undefined') lucide.createIcons();</script>
+{% endblock %}

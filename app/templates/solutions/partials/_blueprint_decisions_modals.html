@@ -1,0 +1,600 @@
+{# ══════════════════════════════════════════════════════════════════════════ #}
+{# GOV-02 — Architecture Decisions — Modals + Alpine component               #}
+{# Included inside {% block modals %} in blueprint.html                      #}
+{# ══════════════════════════════════════════════════════════════════════════ #}
+{% from 'components/modal.html' import modal %}
+
+{# ── Create / Edit Decision Modal ── #}
+{% call modal(id='decisions-form-modal', size='lg',
+              labelledby='decisions-form-modal-heading') %}
+    <h2 id="decisions-form-modal-heading"
+        class="text-lg font-semibold leading-none tracking-tight mb-4 pr-8"
+        x-data
+        x-text="(window._decisionsSection && window._decisionsSection.editingDecision) ? 'Edit Decision' : 'New Architecture Decision'">
+        New Architecture Decision
+    </h2>
+
+    <form id="decisions-form"
+          x-data
+          @submit.prevent="window._decisionsSection && window._decisionsSection.submitDecisionForm()"
+          class="space-y-4">
+
+        {# Title #}
+        <div>
+            <label class="block text-xs font-medium text-foreground mb-1.5" for="adr-title">
+                Title <span class="text-destructive" aria-hidden="true">*</span>
+            </label>
+            <input id="adr-title" type="text"
+                   x-data
+                   :value="window._decisionsSection ? window._decisionsSection.form.title : ''"
+                   @input="if(window._decisionsSection) window._decisionsSection.form.title = $event.target.value"
+                   placeholder="e.g. Adopt event-driven messaging for integration layer"
+                   required
+                   class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring">
+        </div>
+
+        {# Decision Type #}
+        <div>
+            <label class="block text-xs font-medium text-foreground mb-1.5" for="adr-type">Decision Type</label>
+            <select id="adr-type"
+                    x-data
+                    :value="window._decisionsSection ? window._decisionsSection.form.decision_type : ''"
+                    @change="if(window._decisionsSection) window._decisionsSection.form.decision_type = $event.target.value"
+                    class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring">
+                <option value="">— select type —</option>
+                <option value="technology_choice">Technology Choice</option>
+                <option value="vendor_selection">Vendor Selection</option>
+                <option value="pattern_selection">Pattern Selection</option>
+                <option value="integration_approach">Integration Approach</option>
+            </select>
+        </div>
+
+        {# Context #}
+        <div>
+            <label class="block text-xs font-medium text-foreground mb-1.5" for="adr-context">Context</label>
+            <p class="text-[11px] text-muted-foreground mb-1">Why was this decision needed? What forces are at play?</p>
+            <textarea id="adr-context"
+                      x-data
+                      :value="window._decisionsSection ? window._decisionsSection.form.context : ''"
+                      @input="if(window._decisionsSection) window._decisionsSection.form.context = $event.target.value"
+                      rows="3"
+                      placeholder="Describe the architectural situation requiring a decision..."
+                      class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-y"></textarea>
+        </div>
+
+        {# Decision #}
+        <div>
+            <label class="block text-xs font-medium text-foreground mb-1.5" for="adr-decision">
+                Decision <span class="text-destructive" aria-hidden="true">*</span>
+            </label>
+            <p class="text-[11px] text-muted-foreground mb-1">What was decided? State it clearly and unambiguously.</p>
+            <textarea id="adr-decision"
+                      x-data
+                      :value="window._decisionsSection ? window._decisionsSection.form.decision : ''"
+                      @input="if(window._decisionsSection) window._decisionsSection.form.decision = $event.target.value"
+                      rows="3"
+                      required
+                      placeholder="We will / We will not..."
+                      class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-y"></textarea>
+        </div>
+
+        {# Rationale #}
+        <div>
+            <label class="block text-xs font-medium text-foreground mb-1.5" for="adr-rationale">Rationale</label>
+            <p class="text-[11px] text-muted-foreground mb-1">Why was this option chosen over the alternatives?</p>
+            <textarea id="adr-rationale"
+                      x-data
+                      :value="window._decisionsSection ? window._decisionsSection.form.rationale : ''"
+                      @input="if(window._decisionsSection) window._decisionsSection.form.rationale = $event.target.value"
+                      rows="3"
+                      placeholder="Justify the chosen option..."
+                      class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-y"></textarea>
+        </div>
+
+        {# Consequences #}
+        <div>
+            <label class="block text-xs font-medium text-foreground mb-1.5" for="adr-consequences">Consequences</label>
+            <textarea id="adr-consequences"
+                      x-data
+                      :value="window._decisionsSection ? window._decisionsSection.form.consequences : ''"
+                      @input="if(window._decisionsSection) window._decisionsSection.form.consequences = $event.target.value"
+                      rows="2"
+                      placeholder="What are the resulting context and side-effects..."
+                      class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-y"></textarea>
+        </div>
+
+        {# Alternatives — dynamic list driven by decisionsSection #}
+        <div x-data="{ get _s() { return window._decisionsSection || { form: { alternatives: [] }, addAlternative() {}, removeAlternative() {} }; } }">
+            <div class="flex items-center justify-between mb-2">
+                <label class="text-xs font-medium text-foreground">Alternatives Considered</label>
+                <button type="button"
+                        @click="_s.addAlternative()"
+                        class="inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:text-primary/80 transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+                    Add option
+                </button>
+            </div>
+            <div class="space-y-3">
+                <template x-for="(alt, idx) in _s.form.alternatives" :key="idx">
+                    <div class="rounded-md border border-border bg-muted/30 p-3 space-y-2">
+                        <div class="flex items-center gap-2">
+                            <input type="text"
+                                   x-model="alt.name"
+                                   :placeholder="'Option ' + (idx + 1) + ' name'"
+                                   class="flex-1 rounded-md border border-input bg-background px-2 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring">
+                            <button type="button"
+                                    @click="_s.removeAlternative(idx)"
+                                    class="text-muted-foreground hover:text-destructive transition-colors">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                            </button>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="block text-[10px] font-medium text-emerald-600 mb-1">Pros</label>
+                                <textarea x-model="alt.pros" rows="2"
+                                          placeholder="Advantages..."
+                                          class="w-full rounded-md border border-input bg-background px-2 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-none"></textarea>
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-medium text-destructive mb-1">Cons</label>
+                                <textarea x-model="alt.cons" rows="2"
+                                          placeholder="Disadvantages..."
+                                          class="w-full rounded-md border border-input bg-background px-2 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-none"></textarea>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+                <p x-show="_s.form.alternatives.length === 0" x-cloak
+                   class="text-xs text-muted-foreground italic">No alternatives added yet.</p>
+            </div>
+        </div>
+
+        {# Form error #}
+        <div x-data
+             x-show="window._decisionsSection && window._decisionsSection.formError" x-cloak
+             class="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive"
+             x-text="window._decisionsSection ? window._decisionsSection.formError : ''"></div>
+
+        {# Actions #}
+        <div class="flex items-center justify-end gap-2 pt-2 border-t border-border">
+            <button type="button"
+                    data-modal-close="decisions-form-modal"
+                    class="inline-flex items-center px-3 py-1.5 rounded-md text-sm font-medium border border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors">
+                Cancel
+            </button>
+            <button type="submit"
+                    x-data
+                    :disabled="window._decisionsSection && window._decisionsSection.submitting"
+                    class="inline-flex items-center px-4 py-1.5 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50">
+                <svg x-show="window._decisionsSection && window._decisionsSection.submitting"
+                     class="animate-spin h-3.5 w-3.5 mr-1.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 22 6.477 22 12h-4z"></path>
+                </svg>
+                <span x-data
+                      x-text="(window._decisionsSection && window._decisionsSection.editingDecision) ? 'Save Changes' : 'Create Decision'">
+                    Create Decision
+                </span>
+            </button>
+        </div>
+    </form>
+{% endcall %}
+
+{# ── Reject Decision Modal ── #}
+{% call modal(id='decisions-reject-modal', title='Reject Decision', size='sm',
+              description='Provide a reason for rejecting this decision. This will be recorded permanently.') %}
+    <form x-data
+          @submit.prevent="window._decisionsSection && window._decisionsSection.submitReject()"
+          class="space-y-4">
+        <div>
+            <label class="block text-xs font-medium text-foreground mb-1.5" for="adr-reject-reason">
+                Rejection Reason <span class="text-destructive" aria-hidden="true">*</span>
+            </label>
+            <textarea id="adr-reject-reason"
+                      :value="window._decisionsSection ? window._decisionsSection.rejectReason : ''"
+                      @input="if(window._decisionsSection) window._decisionsSection.rejectReason = $event.target.value"
+                      rows="4"
+                      required
+                      placeholder="Explain why this decision is being rejected..."
+                      class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-y"></textarea>
+        </div>
+
+        <div x-show="window._decisionsSection && window._decisionsSection.rejectError" x-cloak
+             class="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive"
+             x-text="window._decisionsSection ? window._decisionsSection.rejectError : ''"></div>
+
+        <div class="flex items-center justify-end gap-2 pt-2 border-t border-border">
+            <button type="button"
+                    data-modal-close="decisions-reject-modal"
+                    class="inline-flex items-center px-3 py-1.5 rounded-md text-sm font-medium border border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors">
+                Cancel
+            </button>
+            <button type="submit"
+                    :disabled="window._decisionsSection && window._decisionsSection.submitting"
+                    class="inline-flex items-center px-4 py-1.5 rounded-md text-sm font-medium bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors disabled:opacity-50">
+                <span x-text="(window._decisionsSection && window._decisionsSection.submitting) ? 'Rejecting…' : 'Confirm Reject'">
+                    Confirm Reject
+                </span>
+            </button>
+        </div>
+    </form>
+{% endcall %}
+
+{# ── Alpine component registration ── #}
+<script>
+(function () {
+    'use strict';
+
+    function decisionsSection() {
+        const cfg        = window.__BLUEPRINT_CONFIG__ || {};
+        const solutionId = cfg.solutionId;
+        const csrfToken  = cfg.csrfToken
+                           || document.querySelector('meta[name="csrf-token"]')?.content
+                           || '';
+        const baseUrl    = '/solutions/' + solutionId + '/decisions';
+
+        function emptyForm() {
+            return {
+                title:         '',
+                decision_type: '',
+                context:       '',
+                decision:      '',
+                rationale:     '',
+                consequences:  '',
+                alternatives:  [],
+            };
+        }
+
+        function openModal(id) {
+            if (window.Platform?.modal) {
+                Platform.modal.open(id);
+            } else {
+                const el = document.getElementById(id);
+                if (el) el.removeAttribute('hidden');
+            }
+        }
+
+        function closeModal(id) {
+            if (window.Platform?.modal) {
+                Platform.modal.close(id);
+            } else {
+                const el = document.getElementById(id);
+                if (el) el.setAttribute('hidden', '');
+            }
+        }
+
+        const component = {
+            // ── state ──────────────────────────────────────────────────
+            decisions:            [],
+            loading:              true,
+            error:                null,
+            activeFilter:         'all',
+            expandedAlternatives: {},
+            actionLoading:        {},
+
+            // create/edit modal
+            form:             emptyForm(),
+            editingDecision:  null,
+            submitting:       false,
+            formError:        null,
+
+            // reject modal
+            rejectingDecision: null,
+            rejectReason:      '',
+            rejectError:       null,
+
+            // ── section narrative ──────────────────────────────────────
+            narrative:          '',
+            generatingNarrative: false,
+            narrativeSaving:    'idle',
+
+            // ── computed ───────────────────────────────────────────────
+            get filterTabs() {
+                return [
+                    { key: 'all',      label: 'All',      count: () => this.decisions.length },
+                    { key: 'proposed', label: 'Proposed', count: () => this.decisions.filter(d => d.status === 'proposed').length },
+                    { key: 'approved', label: 'Approved', count: () => this.decisions.filter(d => d.status === 'approved').length },
+                    { key: 'rejected', label: 'Rejected', count: () => this.decisions.filter(d => d.status === 'rejected').length },
+                ];
+            },
+
+            get filteredDecisions() {
+                if (this.activeFilter === 'all') return this.decisions;
+                return this.decisions.filter(d => d.status === this.activeFilter);
+            },
+
+            // ── lifecycle ──────────────────────────────────────────────
+            init() {
+                // Expose on window so modal forms in the separate partial can bind
+                window._decisionsSection = this;
+                this.fetchDecisions();
+                this.loadNarrative();
+            },
+
+            async loadNarrative() {
+                try {
+                    const resp = await fetch(
+                        '/solutions/' + solutionId + '/api/section-narratives/architecture_decisions',
+                        { headers: { 'X-CSRFToken': csrfToken, 'Accept': 'application/json' } }
+                    );
+                    if (!resp.ok) return;
+                    const json = await resp.json();
+                    this.narrative = json.narrative || '';
+                } catch (_) {}
+            },
+
+            async autoSave(value) {
+                this.narrativeSaving = 'saving';
+                try {
+                    await fetch(
+                        '/solutions/' + solutionId + '/api/section-narratives/architecture_decisions',
+                        {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+                            body: JSON.stringify({ narrative: value !== undefined ? value : this.narrative }),
+                        }
+                    );
+                    this.narrativeSaving = 'saved';
+                    setTimeout(() => { if (this.narrativeSaving === 'saved') this.narrativeSaving = 'idle'; }, 2000);
+                } catch (_) { this.narrativeSaving = 'idle'; }
+            },
+
+            async generateNarrative() {
+                if (this.generatingNarrative) return;
+                this.generatingNarrative = true;
+                try {
+                    const resp = await fetch(
+                        '/solutions/' + solutionId + '/api/blueprint/architecture_decisions/generate',
+                        {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+                            body: JSON.stringify({ force_regenerate: false }),
+                        }
+                    );
+                    const json = await resp.json();
+                    if (!resp.ok) throw new Error(json.error || 'Generate failed');
+                    this.narrative = json.narrative || this.narrative;
+                    await this.autoSave();
+                } catch (e) {
+                    alert('Could not generate narrative: ' + e.message);
+                } finally {
+                    this.generatingNarrative = false;
+                }
+            },
+
+            // ── data fetching ──────────────────────────────────────────
+            async fetchDecisions() {
+                this.loading = true;
+                this.error   = null;
+                try {
+                    const resp = await fetch(baseUrl, {
+                        headers: {
+                            'X-CSRFToken': csrfToken,
+                            'Accept':      'application/json',
+                        },
+                    });
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                    const json = await resp.json();
+                    if (!json.success) throw new Error(json.error || 'Load failed');
+                    this.decisions = json.data || [];
+                } catch (e) {
+                    this.error = 'Could not load decisions: ' + e.message;
+                } finally {
+                    this.loading = false;
+                }
+            },
+
+            // ── helpers ────────────────────────────────────────────────
+            parsedAlternatives(d) {
+                if (!d.alternatives) return null;
+                if (Array.isArray(d.alternatives)) return d.alternatives;
+                if (typeof d.alternatives === 'object') return null;
+                try { return JSON.parse(d.alternatives); } catch (_) { return null; }
+            },
+
+            toggleAlternatives(id) {
+                this.expandedAlternatives = {
+                    ...this.expandedAlternatives,
+                    [id]: !this.expandedAlternatives[id],
+                };
+            },
+
+            formatDate(iso) {
+                if (!iso) return '';
+                try {
+                    return new Date(iso).toLocaleDateString('en-GB', {
+                        day: 'numeric', month: 'short', year: 'numeric',
+                    });
+                } catch (_) { return iso; }
+            },
+
+            addAlternative() {
+                this.form.alternatives = [
+                    ...this.form.alternatives,
+                    { name: '', pros: '', cons: '' },
+                ];
+            },
+
+            removeAlternative(idx) {
+                this.form.alternatives = this.form.alternatives.filter((_, i) => i !== idx);
+            },
+
+            // ── create / edit ──────────────────────────────────────────
+            openCreateModal() {
+                this.editingDecision = null;
+                this.form            = emptyForm();
+                this.formError       = null;
+                this.submitting      = false;
+                openModal('decisions-form-modal');
+            },
+
+            openEditModal(d) {
+                this.editingDecision = d;
+                this.formError       = null;
+                this.submitting      = false;
+
+                let alts = [];
+                if (d.alternatives) {
+                    if (Array.isArray(d.alternatives)) {
+                        alts = d.alternatives;
+                    } else if (typeof d.alternatives === 'string') {
+                        try { alts = JSON.parse(d.alternatives); } catch (_) { alts = []; }
+                    }
+                }
+
+                this.form = {
+                    title:         d.title         || '',
+                    decision_type: d.decision_type || '',
+                    context:       d.context       || '',
+                    decision:      d.decision      || '',
+                    rationale:     d.rationale     || '',
+                    consequences:  d.consequences  || '',
+                    alternatives:  alts,
+                };
+                openModal('decisions-form-modal');
+            },
+
+            async submitDecisionForm() {
+                this.formError  = null;
+                this.submitting = true;
+                try {
+                    const payload = {
+                        title:         this.form.title.trim(),
+                        decision_type: this.form.decision_type || null,
+                        context:       this.form.context.trim()      || null,
+                        decision:      this.form.decision.trim()     || null,
+                        rationale:     this.form.rationale.trim()    || null,
+                        consequences:  this.form.consequences.trim() || null,
+                        alternatives:  this.form.alternatives.length
+                                           ? JSON.stringify(this.form.alternatives)
+                                           : null,
+                    };
+
+                    const url    = this.editingDecision
+                        ? baseUrl + '/' + this.editingDecision.id
+                        : baseUrl;
+                    const method = this.editingDecision ? 'PUT' : 'POST';
+
+                    const resp = await fetch(url, {
+                        method,
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken':  csrfToken,
+                            'Accept':       'application/json',
+                        },
+                        body: JSON.stringify(payload),
+                    });
+                    const json = await resp.json();
+                    if (!json.success) throw new Error(json.error || 'Save failed');
+
+                    // Patch local list in-place
+                    if (this.editingDecision) {
+                        const idx = this.decisions.findIndex(d => d.id === json.data.id);
+                        if (idx >= 0) {
+                            this.decisions = [
+                                ...this.decisions.slice(0, idx),
+                                json.data,
+                                ...this.decisions.slice(idx + 1),
+                            ];
+                        }
+                    } else {
+                        this.decisions = [json.data, ...this.decisions];
+                    }
+
+                    closeModal('decisions-form-modal');
+                    this.form            = emptyForm();
+                    this.editingDecision = null;
+                } catch (e) {
+                    this.formError = e.message;
+                } finally {
+                    this.submitting = false;
+                }
+            },
+
+            // ── approve ────────────────────────────────────────────────
+            async approveDecision(id) {
+                this.actionLoading = { ...this.actionLoading, [id]: true };
+                try {
+                    const resp = await fetch(baseUrl + '/' + id + '/approve', {
+                        method:  'POST',
+                        headers: {
+                            'X-CSRFToken': csrfToken,
+                            'Accept':      'application/json',
+                        },
+                    });
+                    const json = await resp.json();
+                    if (!json.success) throw new Error(json.error || 'Approve failed');
+                    const idx = this.decisions.findIndex(d => d.id === id);
+                    if (idx >= 0) {
+                        this.decisions = [
+                            ...this.decisions.slice(0, idx),
+                            json.data,
+                            ...this.decisions.slice(idx + 1),
+                        ];
+                    }
+                } catch (e) {
+                    alert('Could not approve: ' + e.message);
+                } finally {
+                    this.actionLoading = { ...this.actionLoading, [id]: false };
+                }
+            },
+
+            // ── reject ─────────────────────────────────────────────────
+            openRejectModal(d) {
+                this.rejectingDecision = d;
+                this.rejectReason      = '';
+                this.rejectError       = null;
+                this.submitting        = false;
+                openModal('decisions-reject-modal');
+            },
+
+            async submitReject() {
+                this.rejectError  = null;
+                this.submitting   = true;
+                try {
+                    const id   = this.rejectingDecision.id;
+                    const resp = await fetch(baseUrl + '/' + id + '/reject', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken':  csrfToken,
+                            'Accept':       'application/json',
+                        },
+                        body: JSON.stringify({ reason: this.rejectReason.trim() }),
+                    });
+                    const json = await resp.json();
+                    if (!json.success) throw new Error(json.error || 'Reject failed');
+
+                    const idx = this.decisions.findIndex(d => d.id === id);
+                    if (idx >= 0) {
+                        this.decisions = [
+                            ...this.decisions.slice(0, idx),
+                            json.data,
+                            ...this.decisions.slice(idx + 1),
+                        ];
+                    }
+
+                    closeModal('decisions-reject-modal');
+                    this.rejectingDecision = null;
+                    this.rejectReason      = '';
+                } catch (e) {
+                    this.rejectError = e.message;
+                } finally {
+                    this.submitting = false;
+                }
+            },
+        };
+
+        return component;
+    }
+
+    // Register with Alpine — defer if not yet initialised
+    if (window.Alpine) {
+        Alpine.data('decisionsSection', decisionsSection);
+    } else {
+        document.addEventListener('alpine:init', () => {
+            Alpine.data('decisionsSection', decisionsSection);
+        });
+    }
+}());
+</script>

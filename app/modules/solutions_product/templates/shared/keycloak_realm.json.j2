@@ -1,0 +1,248 @@
+{# shared/keycloak_realm.json.j2 #}
+{# Generates a Keycloak realm import JSON with MFA policies, roles, and client config. #}
+{# Context: solution_id, solution_name, identity_provider (dict), nfr_mfa (str) #}
+{%- set slug = solution_name | lower | replace(' ', '-') | replace('_', '-') -%}
+{%- set realm_name = slug -%}
+{%- set client_id = slug + '-app' -%}
+{%- set roles = identity_provider.get('roles', ['admin', 'user', 'viewer']) if identity_provider else ['admin', 'user', 'viewer'] -%}
+{%- set mfa_policy = identity_provider.get('mfa', 'none') if identity_provider else 'none' -%}
+{
+  "realm": "{{ realm_name }}",
+  "enabled": true,
+  "displayName": "{{ solution_name }}",
+  "registrationAllowed": true,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": true,
+  "permanentLockout": false,
+  "maxFailureWaitSeconds": 900,
+  "minimumQuickLoginWaitSeconds": 60,
+  "waitIncrementSeconds": 60,
+  "quickLoginCheckMilliSeconds": 1000,
+  "maxDeltaTimeSeconds": 43200,
+  "failureFactor": 5,
+  "sslRequired": "external",
+  "defaultSignatureAlgorithm": "RS256",
+  "accessTokenLifespan": 900,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 36000,
+  "offlineSessionIdleTimeout": 2592000,
+  "accessCodeLifespan": 60,
+  "accessCodeLifespanUserAction": 300,
+  "accessCodeLifespanLogin": 1800,
+
+  "roles": {
+    "realm": [
+      {% for role in roles %}
+      {
+        "name": "{{ role }}",
+        "description": "{{ role | capitalize }} role for {{ solution_name }}",
+        "composite": false,
+        "clientRole": false
+      }{% if not loop.last %},{% endif %}
+      {% endfor %}
+    ]
+  },
+
+  "defaultRoles": ["user"],
+
+  "requiredCredentials": ["password"],
+
+  {% if mfa_policy != 'none' %}
+  "otpPolicyType": "totp",
+  "otpPolicyAlgorithm": "HmacSHA1",
+  "otpPolicyDigits": 6,
+  "otpPolicyPeriod": 30,
+  "otpPolicyInitialCounter": 0,
+  "otpPolicyLookAheadWindow": 1,
+  {% endif %}
+
+  "browserFlow": "browser",
+  "registrationFlow": "registration",
+  "directGrantFlow": "direct grant",
+  "resetCredentialsFlow": "reset credentials",
+
+  "authenticationFlows": [
+    {
+      "alias": "browser",
+      "description": "Browser based authentication",
+      "providerId": "basic-flow",
+      "topLevel": true,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "auth-cookie",
+          "requirement": "ALTERNATIVE",
+          "priority": 10
+        },
+        {
+          "authenticator": "auth-username-password-form",
+          "requirement": "REQUIRED",
+          "priority": 20
+        }
+        {% if mfa_policy != 'none' %}
+        ,{
+          "authenticator": "auth-otp-form",
+          {% if mfa_policy == 'required_for_all' %}
+          "requirement": "REQUIRED",
+          {% else %}
+          "requirement": "CONDITIONAL",
+          {% endif %}
+          "priority": 30
+        }
+        {% endif %}
+      ]
+    }
+  ],
+
+  {% if mfa_policy == 'required_for_admin' %}
+  "authenticationFlows": [
+    {
+      "alias": "browser",
+      "description": "Browser based authentication with conditional OTP for admins",
+      "providerId": "basic-flow",
+      "topLevel": true,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "auth-cookie",
+          "requirement": "ALTERNATIVE",
+          "priority": 10
+        },
+        {
+          "authenticator": "auth-username-password-form",
+          "requirement": "REQUIRED",
+          "priority": 20
+        },
+        {
+          "flowAlias": "conditional-otp-admin",
+          "requirement": "CONDITIONAL",
+          "priority": 30
+        }
+      ]
+    },
+    {
+      "alias": "conditional-otp-admin",
+      "description": "OTP required for admin role",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "conditional-user-role",
+          "requirement": "REQUIRED",
+          "priority": 10,
+          "authenticatorConfig": {
+            "alias": "admin-role-condition",
+            "config": {
+              "condUserRole": "admin"
+            }
+          }
+        },
+        {
+          "authenticator": "auth-otp-form",
+          "requirement": "REQUIRED",
+          "priority": 20
+        }
+      ]
+    }
+  ],
+  {% endif %}
+
+  "clients": [
+    {
+      "clientId": "{{ client_id }}",
+      "name": "{{ solution_name }}",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "protocol": "openid-connect",
+      "rootUrl": "${APP_URL}",
+      "baseUrl": "/",
+      "redirectUris": [
+        "${APP_URL}/*",
+        "http://localhost:3000/*",
+        "http://localhost:8000/*",
+        "exp://localhost:8081/*"
+      ],
+      "webOrigins": [
+        "${APP_URL}",
+        "http://localhost:3000",
+        "http://localhost:8000"
+      ],
+      "defaultClientScopes": [
+        "openid",
+        "profile",
+        "email",
+        "roles"
+      ],
+      "protocolMappers": [
+        {
+          "name": "realm-roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "multivalued": "true",
+            "userinfo.token.claim": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "realm_access.roles",
+            "jsonType.label": "String"
+          }
+        },
+        {
+          "name": "org-mapper",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "organization_id",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "org",
+            "jsonType.label": "String"
+          }
+        }
+      ]
+    }
+  ],
+
+  "clientScopes": [
+    {
+      "name": "roles",
+      "description": "OpenID Connect scope for roles",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      }
+    }
+  ],
+
+  "passwordPolicy": "length(8) and upperCase(1) and lowerCase(1) and digits(1) and specialChars(1) and notUsername()",
+
+  "smtpServer": {},
+
+  "eventsConfig": {
+    "eventsEnabled": true,
+    "eventsListeners": ["jboss-logging"],
+    "enabledEventTypes": [
+      "LOGIN",
+      "LOGIN_ERROR",
+      "LOGOUT",
+      "REGISTER",
+      "UPDATE_PASSWORD",
+      "SEND_RESET_PASSWORD",
+      "CLIENT_LOGIN",
+      "CLIENT_LOGIN_ERROR"
+    ],
+    "adminEventsEnabled": true,
+    "adminEventsDetailsEnabled": true
+  }
+}

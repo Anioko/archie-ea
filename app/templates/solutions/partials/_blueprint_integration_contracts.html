@@ -1,0 +1,120 @@
+{# Integration Contracts — collapsible cards per element relationship
+   Included inside Data & Information section of blueprint.html
+   Requires Alpine.js data context with integrationContractsMixin merged in #}
+
+<div class="mt-6 space-y-3">
+    <h4 class="text-sm font-semibold text-foreground flex items-center gap-2">
+        <span class="w-2 h-2 rounded-full bg-violet-500 inline-block"></span>
+        Integration Contracts
+    </h4>
+
+    <template x-for="elem in (sectionElements['data_information'] || [])" :key="elem.element_id || elem.id">
+        <div class="border border-border rounded-lg overflow-hidden">
+            {# Header: collapsible #}
+            <button
+                class="w-full flex items-center justify-between px-4 py-3 bg-muted/30 hover:bg-muted/50 transition-colors text-left"
+                x-on:click="toggleContractExpanded(elem.element_id || elem.id)"
+            >
+                <div class="flex items-center gap-2">
+                    <svg class="w-4 h-4 text-muted-foreground transition-transform"
+                         :class="contractExpanded[elem.element_id || elem.id] ? 'rotate-90' : ''"
+                         xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                    </svg>
+                    <span class="text-sm font-medium text-foreground" x-text="elem.element_name || elem.name"></span>
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-muted text-muted-foreground"
+                          x-text="elem.element_type || elem.type"></span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <template x-if="integrationContracts[elem.element_id || elem.id] && integrationContracts[elem.element_id || elem.id].contracts">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-violet-500/10 text-violet-600 border border-violet-500/30"
+                              x-text="Object.keys(integrationContracts[elem.element_id || elem.id].contracts).length + ' contract(s)'"></span>
+                    </template>
+                    <template x-if="!integrationContracts[elem.element_id || elem.id] || !integrationContracts[elem.element_id || elem.id].contracts || Object.keys(integrationContracts[elem.element_id || elem.id].contracts || {}).length === 0">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground border border-border">No Contracts</span>
+                    </template>
+                </div>
+            </button>
+
+            {# Body: contracts list #}
+            <div x-show="contractExpanded[elem.element_id || elem.id]" x-collapse class="border-t border-border p-4">
+                <div class="flex justify-between items-center mb-3">
+                    <span class="text-xs text-muted-foreground">Integration contracts with other elements</span>
+                    <button class="inline-flex items-center px-3 py-1 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 rounded-md transition-colors"
+                            x-on:click="suggestIntegrationContract(elem.element_id || elem.id)"
+                            :disabled="contractLoading[elem.element_id || elem.id]">
+                        <span x-show="!contractLoading[elem.element_id || elem.id]">Suggest Contracts</span>
+                        <span x-show="contractLoading[elem.element_id || elem.id]">Suggesting...</span>
+                    </button>
+                </div>
+
+                {# Contracts table #}
+                <template x-if="integrationContracts[elem.element_id || elem.id] && integrationContracts[elem.element_id || elem.id].contracts && Object.keys(integrationContracts[elem.element_id || elem.id].contracts).length > 0">
+                    <div class="space-y-3">
+                        <template x-for="targetId in Object.keys(integrationContracts[elem.element_id || elem.id].contracts)" :key="targetId">
+                            <div class="rounded-lg border border-border bg-muted/20 p-3">
+                                <div class="flex items-center justify-between mb-2">
+                                    <div class="flex items-center gap-2">
+                                        <svg class="w-3.5 h-3.5 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
+                                        </svg>
+                                        <span class="text-xs font-medium text-foreground"
+                                              x-text="'Target: ' + targetId"></span>
+                                    </div>
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium"
+                                          :class="integrationContracts[elem.element_id || elem.id].contracts[targetId].status === 'confirmed' ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/30' :
+                                                  integrationContracts[elem.element_id || elem.id].contracts[targetId].status === 'proposed' ? 'bg-amber-500/10 text-amber-600 border border-amber-500/30' :
+                                                  'bg-muted text-muted-foreground border border-border'"
+                                          x-text="integrationContracts[elem.element_id || elem.id].contracts[targetId].status || 'draft'"></span>
+                                </div>
+
+                                {# Contract details #}
+                                <div class="grid grid-cols-2 gap-2 text-xs">
+                                    <template x-if="integrationContracts[elem.element_id || elem.id].contracts[targetId].protocol">
+                                        <div>
+                                            <span class="text-muted-foreground">Protocol: </span>
+                                            <span class="text-foreground" x-text="integrationContracts[elem.element_id || elem.id].contracts[targetId].protocol"></span>
+                                        </div>
+                                    </template>
+                                    <template x-if="integrationContracts[elem.element_id || elem.id].contracts[targetId].data_format">
+                                        <div>
+                                            <span class="text-muted-foreground">Format: </span>
+                                            <span class="text-foreground" x-text="integrationContracts[elem.element_id || elem.id].contracts[targetId].data_format"></span>
+                                        </div>
+                                    </template>
+                                    <template x-if="integrationContracts[elem.element_id || elem.id].contracts[targetId].frequency">
+                                        <div>
+                                            <span class="text-muted-foreground">Frequency: </span>
+                                            <span class="text-foreground" x-text="integrationContracts[elem.element_id || elem.id].contracts[targetId].frequency"></span>
+                                        </div>
+                                    </template>
+                                    <template x-if="integrationContracts[elem.element_id || elem.id].contracts[targetId].sla">
+                                        <div>
+                                            <span class="text-muted-foreground">SLA: </span>
+                                            <span class="text-foreground" x-text="integrationContracts[elem.element_id || elem.id].contracts[targetId].sla"></span>
+                                        </div>
+                                    </template>
+                                </div>
+
+                                {# Description #}
+                                <template x-if="integrationContracts[elem.element_id || elem.id].contracts[targetId].description">
+                                    <p class="mt-2 text-xs text-muted-foreground"
+                                       x-text="integrationContracts[elem.element_id || elem.id].contracts[targetId].description"></p>
+                                </template>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+
+                <template x-if="!integrationContracts[elem.element_id || elem.id] || !integrationContracts[elem.element_id || elem.id].contracts || Object.keys(integrationContracts[elem.element_id || elem.id].contracts || {}).length === 0">
+                    <p class="text-xs text-muted-foreground/60 italic">No integration contracts defined. Click "Suggest Contracts" to generate from ArchiMate relationships.</p>
+                </template>
+            </div>
+        </div>
+    </template>
+
+    {# Empty state when no elements in section #}
+    <template x-if="!(sectionElements['data_information'] || []).length">
+        <p class="text-xs text-muted-foreground/60 italic">Link data elements to this section to define integration contracts.</p>
+    </template>
+</div>

@@ -1,0 +1,560 @@
+{# Layout: admin_base.html — PRIMARY layout for all authenticated admin/dashboard pages.
+   Usage: DEFAULT for new templates. Includes sidebar, header, modal portal, Platform JS.
+   Categories: admin/*, dashboard/*, applications/*, solutions/*, vendors/*, architecture/*,
+               capabilities/*, ea_workflows/*, archimate_crud/*, consolidation_list/*,
+               strategic/*, governance/*, and all other authenticated pages.
+   See also: public_base.html (unauthenticated), base.html (legacy, avoid).
+#}
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    {% include 'partials/_head.html' %}
+    <title>{% block title %}{{ config.APP_NAME }}{% endblock %}</title>
+    <script>
+        // Auth state — guards API calls in sidebar.js and llm_selector.html
+        window.__userAuthenticated = {{ current_user.is_authenticated | tojson }};
+    </script>
+    
+    <!-- Accessibility CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/accessibility.css') }}">
+    <!-- Sidebar collapsed mode CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles/shadcn-sidebar.css') }}">
+    <!-- Global component normalization (tables, badges, skeletons) -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles/shadcn-components.css') }}">
+    <!-- Card pattern normalization (bg-background legacy, .card, alerts, list-groups) -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles/shadcn-cards.css') }}">
+    
+    <!-- Alpine.js x-cloak prevention for modal epidemic -->
+    <style>
+    [x-cloak] { display: none !important; }
+
+    @media print {
+      .admin-sidebar, .admin-header, [x-data], button, .no-print { display: none !important; }
+      main { margin: 0 !important; padding: 0 !important; width: 100% !important; }
+      body { background: white !important; color: black !important; font-size: 12pt; }
+      table { border-collapse: collapse; width: 100%; }
+      th, td { border: 1px solid #ccc; padding: 4px; }
+    }
+    </style>
+    
+    {% block extra_css %}{% endblock %}
+    {# SYS-014: child templates may define any of the blocks below; Jinja2 silently discards
+       undefined blocks — declaring them here prevents silent content loss. #}
+    {% block head %}{% endblock %}
+    {% block custom_head_tags %}{% endblock %}
+    {% block extra_head %}{% endblock %}
+
+    <!-- ═══ Platform Core (load synchronously, before Alpine defer fires) ═══ -->
+    <script src="{{ url_for('static', filename='js/core/00-namespace.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/core/01-logger.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/core/02-sanitize.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/core/03-fetch.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/core/04-toast.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/core/05-error.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/core/06-session-timeout.js') }}"></script>
+
+    <!-- ═══ Platform UI modules ═══ -->
+    <script src="{{ url_for('static', filename='js/ui/modal.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/ui/pagination.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/ui/filter.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/ui/selection.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/ui/table.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/components/data_table.js') }}"></script>
+
+    <!-- ═══ Legacy shim layer (modal-system.js removed - ui/modal.js provides all shims) ═══ -->
+    <!-- NOTE: api-fetch.js removed — Platform.fetch (03-fetch.js) already provides window.apiFetch -->
+    <script src="{{ url_for('static', filename='js/shared/debounce.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/alpine-architecture.js') }}?v=2"></script>
+
+    <!-- Page-specific Alpine registrations (after Platform, before Alpine defer fires) -->
+    {% block extra_head_js %}{% endblock %}
+</head>
+<body class="h-full bg-background antialiased">
+    {% set resolved_page_guide_context = page_guide_context | default({'enabled': false, 'supported': false}, true) %}
+    <!-- Skip navigation links for keyboard users -->
+    <a href="#main-content"
+       class="skip-link sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-primary focus:text-primary-foreground focus:rounded-md">
+        Skip to main content
+    </a>
+    <a href="#sidebar-nav"
+       class="skip-link sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-primary focus:text-primary-foreground focus:rounded-md">
+        Skip to sidebar navigation
+    </a>
+    <a href="#search-modal-trigger"
+       class="skip-link sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-primary focus:text-primary-foreground focus:rounded-md">
+        Skip to search
+    </a>
+    
+    <div class="flex h-screen overflow-hidden"
+         @keydown.ctrl.b.window.prevent="$store.sidebar.toggle()"
+         x-data="{
+            isDesktop: window.innerWidth >= 1024,
+            init() {
+                this.isDesktop = window.innerWidth >= 1024;
+                window.addEventListener('resize', () => {
+                    this.isDesktop = window.innerWidth >= 1024;
+                    if (this.isDesktop) {
+                        $store.sidebar.open = false;
+                    }
+                });
+            }
+         }">
+        <!-- Global mobile sidebar opener (works even when pages override the header block) -->
+        <button x-show="!isDesktop && !$store.sidebar.open" x-cloak
+                @click="$store.sidebar.open = true"
+                class="fixed top-4 left-4 z-[60] lg:hidden inline-flex h-10 w-10 items-center justify-center rounded-lg border border-input bg-background text-foreground shadow-sm hover:bg-accent transition-colors"
+                aria-controls="admin-sidebar"
+                aria-label="Open sidebar">
+            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"></path>
+            </svg>
+        </button>
+
+        <!-- Mobile sidebar backdrop -->
+        <div x-show="$store.sidebar.open && !isDesktop" x-cloak
+             @click="$store.sidebar.open = false"
+             x-transition:enter="transition-opacity ease-out duration-200"
+             x-transition:enter-start="opacity-0"
+             x-transition:enter-end="opacity-100"
+             x-transition:leave="transition-opacity ease-in duration-150"
+             x-transition:leave-start="opacity-100"
+             x-transition:leave-end="opacity-0"
+             class="fixed inset-0 z-40 bg-black/50 lg:hidden" aria-hidden="true"
+             x-cloak></div>
+
+        <!-- Sidebar -->
+        {% include 'components/admin_sidebar_northstar_phase2.html' %}
+
+        <!-- Main Content -->
+        <div class="flex-1 flex flex-col overflow-x-hidden overflow-y-auto">
+            <!-- Header -->
+            {% block header %}
+            {% include 'components/admin_header.html' %}
+            {% endblock %}
+
+            <!-- Main Content Area -->
+            <main id="main-content"
+                  class="flex-1 bg-background"
+                  role="main">
+                <div class="container mx-auto px-6 py-8">
+                    {% block breadcrumb %}{% endblock %}
+                    {% include 'partials/_flashes.html' %}
+                    {# Inline page hints — templates fill this block with the inline_hint macro #}
+                    {% block page_hint %}{% endblock %}
+                    {% block content %}{% endblock %}
+                </div>
+            </main>
+        </div>
+    </div>
+
+    {# Modal portal — renders OUTSIDE the overflow-hidden layout so fixed modals are clickable #}
+    {% block modals %}{% endblock %}
+    
+    {# ENT-101: Global Search (Ctrl+K) — handled by admin_header.html unified command palette #}
+
+    {# PLT-040: First-login onboarding modal — shows once when onboarding_completed_at is NULL #}
+    {% if current_user.is_authenticated and not current_user.onboarding_completed_at %}
+    <div x-data="{
+            showOnboarding: true,
+            step: 1,
+            selectedRole: '{{ current_user.enterprise_role or 'solution_architect' }}',
+            roleCards: {
+                solution_architect: [
+                    {icon: 'compass', title: 'Architecture Journey', desc: 'Walk through TOGAF ADM phases with guided steps', href: '/architecture-journey/'},
+                    {icon: 'wrench', title: 'Solution Designer', desc: 'Create and manage solution architecture documents', href: '/solutions/'},
+                    {icon: 'pen-tool', title: 'ArchiMate Composer', desc: 'Build architecture diagrams visually', href: '/archimate/composer'},
+                ],
+                enterprise_architect: [
+                    {icon: 'package', title: 'Application Portfolio', desc: 'View and manage all applications in the estate', href: '/applications/'},
+                    {icon: 'map', title: 'Capability Map', desc: 'Explore business capability landscape', href: '/capability-map/'},
+                    {icon: 'table', title: 'ArchiMate Elements', desc: 'Browse and manage architecture elements', href: '/architecture/dashboard'},
+                ],
+                arb_member: [
+                    {icon: 'shield-check', title: 'ARB Dashboard', desc: 'Review pending architecture decisions', href: '/arb/dashboard'},
+                    {icon: 'wrench', title: 'Solutions', desc: 'Browse solution designs under review', href: '/solutions/'},
+                    {icon: 'git-branch', title: 'ARB Sessions', desc: 'View all governance review sessions', href: '/arb/sessions'},
+                ],
+                portfolio_manager: [
+                    {icon: 'git-merge', title: 'Rationalization', desc: 'Analyse application portfolio for optimization', href: '/dashboard/rationalization'},
+                    {icon: 'building-2', title: 'Vendor Dashboard', desc: 'Manage vendor relationships', href: '/vendors/'},
+                    {icon: 'package', title: 'Applications', desc: 'Browse the full application portfolio', href: '/applications/'},
+                ],
+                platform_admin: [
+                    {icon: 'building-2', title: 'Organizations', desc: 'Set up tenant organizations', href: '/admin/organizations'},
+                    {icon: 'users', title: 'Users', desc: 'Manage platform users and roles', href: '/admin/users'},
+                    {icon: 'key', title: 'API Settings', desc: 'Configure LLM and integration keys', href: '/admin/api-settings'},
+                ],
+                cto: [
+                    {icon: 'layout-dashboard', title: 'Architecture Health', desc: 'Monitor portfolio health and strategic alignment', href: '/dashboard/overview'},
+                    {icon: 'git-merge', title: 'Rationalization', desc: 'Application lifecycle and consolidation pipeline', href: '/dashboard/rationalization'},
+                    {icon: 'wrench', title: 'Solution Pipeline', desc: 'Track solutions from design to approval', href: '/solutions/'},
+                ],
+                application_manager: [
+                    {icon: 'package', title: 'Application Portfolio', desc: 'Manage all applications in the estate', href: '/applications/'},
+                    {icon: 'git-merge', title: 'Rationalization', desc: 'Analyse portfolio for consolidation opportunities', href: '/dashboard/rationalization'},
+                    {icon: 'building-2', title: 'Vendor Dashboard', desc: 'Track vendor relationships and contracts', href: '/vendors/'},
+                ],
+                procurement: [
+                    {icon: 'building-2', title: 'Vendor Dashboard', desc: 'Review vendor relationships and spend', href: '/vendors/'},
+                    {icon: 'package', title: 'Application Portfolio', desc: 'See which applications are in use', href: '/applications/'},
+                    {icon: 'git-merge', title: 'Rationalization', desc: 'Identify consolidation and cost-saving opportunities', href: '/dashboard/rationalization'},
+                ],
+            },
+            primaryCTA: {
+                solution_architect: {label: 'Start Architecture Journey', href: '/architecture-journey/'},
+                enterprise_architect: {label: 'View Application Portfolio', href: '/applications/'},
+                arb_member: {label: 'Go to ARB Dashboard', href: '/arb/dashboard'},
+                portfolio_manager: {label: 'Open Rationalization', href: '/dashboard/rationalization'},
+                platform_admin: {label: 'Manage Organizations', href: '/admin/organizations'},
+                cto: {label: 'View Architecture Health', href: '/dashboard/overview'},
+                application_manager: {label: 'View Application Portfolio', href: '/applications/'},
+                procurement: {label: 'Go to Vendor Dashboard', href: '/vendors/'},
+            },
+            roleLabels: {
+                solution_architect: 'Solution Architect',
+                enterprise_architect: 'Enterprise Architect',
+                arb_member: 'ARB Member',
+                portfolio_manager: 'Portfolio Manager',
+                cto: 'CTO / CIO',
+                application_manager: 'Application Manager',
+                procurement: 'Procurement',
+                platform_admin: 'Platform Admin',
+            },
+            async completeOnboarding() {
+                try {
+                    const _f = (window.Platform && window.Platform.fetch) || window.apiFetch || fetch;
+                    await _f('/dashboard/api/onboarding-complete', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''},
+                        body: JSON.stringify({enterprise_role: this.selectedRole}),
+                    });
+                } catch (_) {}
+                localStorage.setItem('archie_onboarding_ts', Date.now().toString());
+                this.showOnboarding = false;
+            }
+        }"
+        x-show="showOnboarding" x-cloak
+        class="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4"
+        @keydown.escape.window="completeOnboarding()"
+        @keydown.enter.prevent>
+        <div class="bg-card rounded-2xl border border-border shadow-2xl w-full max-w-lg overflow-hidden"
+             @click.away="completeOnboarding()">
+            {# Step 1: Welcome + Role Selection #}
+            <div x-show="step === 1" class="p-8 space-y-6">
+                <div class="text-center space-y-2">
+                    <div class="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center mx-auto mb-4">
+                        <i data-lucide="layout-dashboard" class="h-6 w-6 text-primary" aria-hidden="true"></i>
+                    </div>
+                    <h2 class="text-xl font-bold text-foreground">Welcome to A.R.C.H.I.E.</h2>
+                    <p class="text-sm text-muted-foreground">Your enterprise architecture platform. Let's personalize your experience.</p>
+                </div>
+                <div>
+                    <label class="text-sm font-medium text-foreground mb-3 block">What's your role?</label>
+                    <div class="space-y-2">
+                        <template x-for="(label, key) in roleLabels" :key="key">
+                            <label class="flex items-center gap-3 rounded-lg border p-3 cursor-pointer transition-colors"
+                                   :class="selectedRole === key ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/30'">
+                                <input type="radio" name="onboard_role" :value="key" x-model="selectedRole" class="accent-primary">
+                                <span class="text-sm font-medium text-foreground" x-text="label"></span>
+                            </label>
+                        </template>
+                    </div>
+                </div>
+                <button @click="step = 2"
+                        class="w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:opacity-90 transition-opacity">
+                    Continue
+                </button>
+            </div>
+            {# Step 2: Role-specific feature cards #}
+            <div x-show="step === 2" x-cloak class="p-8 space-y-6">
+                <div class="text-center space-y-1">
+                    <h2 class="text-lg font-bold text-foreground">Key features for you</h2>
+                    <p class="text-sm text-muted-foreground">As a <span class="font-medium text-foreground" x-text="roleLabels[selectedRole]"></span>, here's where to start:</p>
+                </div>
+                <div class="space-y-3">
+                    <template x-for="card in (roleCards[selectedRole] || [])" :key="card.title">
+                        <a :href="card.href" tabindex="-1" class="flex items-start gap-3 rounded-xl border border-border bg-background p-4 hover:border-primary/30 transition-colors block">
+                            <div class="shrink-0 w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
+                                <i :data-lucide="card.icon" class="h-4.5 w-4.5 text-primary" aria-hidden="true"></i>
+                            </div>
+                            <div>
+                                <p class="text-sm font-medium text-foreground" x-text="card.title"></p>
+                                <p class="text-xs text-muted-foreground mt-0.5" x-text="card.desc"></p>
+                            </div>
+                        </a>
+                    </template>
+                </div>
+                <div class="flex gap-3">
+                    <button @click="step = 1" class="rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-muted-foreground hover:bg-accent transition-colors">Back</button>
+                    <button @click="step = 3" class="flex-1 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:opacity-90 transition-opacity">Continue</button>
+                </div>
+            </div>
+            {# Step 3: You're all set #}
+            <div x-show="step === 3" x-cloak class="p-8 space-y-6 text-center">
+                <div class="w-14 h-14 rounded-full bg-emerald-500/10 flex items-center justify-center mx-auto">
+                    <i data-lucide="check-circle-2" class="h-7 w-7 text-emerald-600" aria-hidden="true"></i>
+                </div>
+                <div class="space-y-2">
+                    <h2 class="text-xl font-bold text-foreground">You're all set!</h2>
+                    <p class="text-sm text-muted-foreground">Your workspace has been personalized. You can always change your role in Settings.</p>
+                </div>
+                <button @click="completeOnboarding(); window.location.href = (primaryCTA[selectedRole]?.href || '/dashboard/overview')"
+                        class="inline-flex items-center justify-center w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:opacity-90 transition-opacity">
+                    <span x-text="primaryCTA[selectedRole]?.label || 'Go to Dashboard'"></span>
+                    <i data-lucide="arrow-right" class="h-4 w-4 ml-2" aria-hidden="true"></i>
+                </button>
+                <button @click="completeOnboarding()"
+                        class="text-xs text-muted-foreground hover:text-foreground transition-colors">
+                    Skip for now
+                </button>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    {% if resolved_page_guide_context.enabled %}
+        <script>window.pageGuideContext = {{ resolved_page_guide_context | tojson }};</script>
+        {% include 'components/page_guide_drawer.html' %}
+    {% endif %}
+
+    {# UXO-007: Guided Mode — pages inject step JSON via {% block guided_mode_steps %} #}
+    {% block guided_mode_steps %}{% endblock %}
+    <div x-data="{
+        steps: [],
+        open: false,
+        currentIndex: 0,
+        storageKey: 'archie_guide_step_' + window.location.pathname,
+        init() {
+            const el = document.getElementById('guided-mode-steps-data');
+            if (el) { try { this.steps = JSON.parse(el.textContent); } catch(_) {} }
+            const saved = parseInt(localStorage.getItem(this.storageKey) || '0');
+            this.currentIndex = (saved < this.steps.length) ? saved : 0;
+        },
+        get currentStep() { return this.steps[this.currentIndex] || null; },
+        next() {
+            if (this.currentIndex < this.steps.length - 1) {
+                this.currentIndex++;
+                localStorage.setItem(this.storageKey, this.currentIndex.toString());
+            } else { this.done(); }
+        },
+        done() {
+            localStorage.setItem(this.storageKey, this.steps.length.toString());
+            this.open = false;
+        },
+        exit() { this.open = false; }
+    }">
+        <button id="guided-mode-trigger"
+                x-show="steps.length > 0" x-cloak
+                @click="open = !open"
+                class="fixed bottom-6 right-6 z-40 flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg hover:opacity-90 transition-opacity"
+                title="Guided walkthrough"
+                aria-label="Open guided walkthrough">
+            <i data-lucide="help-circle" class="h-5 w-5" aria-hidden="true"></i>
+        </button>
+        <div id="guided-mode-panel"
+             x-show="open && steps.length > 0" x-cloak
+             x-transition:enter="transition ease-out duration-200"
+             x-transition:enter-start="opacity-0 translate-x-4"
+             x-transition:enter-end="opacity-100 translate-x-0"
+             x-transition:leave="transition ease-in duration-150"
+             x-transition:leave-start="opacity-100 translate-x-0"
+             x-transition:leave-end="opacity-0 translate-x-4"
+             class="fixed bottom-20 right-6 z-40 w-80 rounded-xl border border-border bg-card shadow-xl"
+             @keydown.escape.window="exit()">
+            <div class="flex items-center justify-between border-b border-border px-4 py-3">
+                <span class="text-sm font-semibold text-foreground">Guided Walkthrough</span>
+                <button @click="exit()" class="rounded p-1 text-muted-foreground hover:bg-accent transition-colors" aria-label="Close guide">
+                    <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
+                </button>
+            </div>
+            <div class="p-4 space-y-3" x-show="currentStep">
+                <p class="text-xs font-medium text-primary uppercase tracking-wide" x-text="currentStep?.title"></p>
+                <p class="text-sm text-foreground" x-text="currentStep?.text"></p>
+                <div class="flex items-center gap-1.5 pt-1">
+                    <template x-for="(_, i) in steps" :key="i">
+                        <span class="h-1.5 rounded-full transition-all"
+                              :class="i === currentIndex ? 'w-4 bg-primary' : 'w-1.5 bg-muted-foreground/30'"></span>
+                    </template>
+                </div>
+            </div>
+            <div class="flex items-center justify-between border-t border-border px-4 py-3">
+                <button @click="exit()" class="text-xs text-muted-foreground hover:text-foreground transition-colors">Exit</button>
+                <button @click="next()"
+                        class="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90 transition-opacity"
+                        x-text="currentIndex === steps.length - 1 ? 'Done' : 'Next'">
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Global Loading Indicator -->
+    <div x-data
+         x-show="$store.loading.active" x-cloak
+         x-transition:enter="transition ease-out duration-200"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         x-transition:leave="transition ease-in duration-150"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="opacity-0"
+         class="fixed top-0 left-0 right-0 z-50 h-1 bg-primary/20"
+         x-cloak>
+        <div class="h-full bg-primary animate-pulse"></div>
+    </div>
+
+    <!-- Accessibility: aria-live regions for dynamic announcements (T-042) -->
+    <div x-data aria-live="polite" aria-atomic="true" role="status"
+         class="sr-only"
+         x-text="$store.announcer.message">
+    </div>
+    <div x-data aria-live="assertive" aria-atomic="true" role="alert"
+         class="sr-only"
+         x-text="$store.announcer.alert">
+    </div>
+
+    {# Toast Notification System #}
+    {% include 'components/toast-container.html' %}
+
+    {# CSRF Protection - Global token for AJAX requests #}
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+
+    <script>
+        window.pageGuideContext = {{ resolved_page_guide_context | tojson }};
+        document.addEventListener('alpine:init', () => {
+            Alpine.store('sidebar', {
+                open: false,
+                collapsed: localStorage.getItem('archie_sidebar_collapsed') === '1',
+                toggle() {
+                    this.collapsed = !this.collapsed;
+                    localStorage.setItem('archie_sidebar_collapsed', this.collapsed ? '1' : '0');
+                }
+            });
+
+            Alpine.store('loading', {
+                active: false,
+                count: 0,
+                start() {
+                    this.count++;
+                    this.active = true;
+                },
+                stop() {
+                    this.count = Math.max(0, this.count - 1);
+                    if (this.count === 0) {
+                        this.active = false;
+                    }
+                }
+            });
+
+            Alpine.store('modal', {
+                _openIds: [],
+                isOpen: function(id) { return this._openIds.indexOf(id) > -1; },
+                open:    function(id, payload) {
+                    const m = (window.Platform && window.Platform.modal) || window.Modal;
+                    if (m) m.open(id, payload);
+                },
+                close:   function(id, result) {
+                    const m = (window.Platform && window.Platform.modal) || window.Modal;
+                    if (m) m.close(id, result);
+                },
+                resolve: function(id, result) {
+                    const m = (window.Platform && window.Platform.modal) || window.Modal;
+                    if (m) m.resolve(id, result);
+                },
+                getPayload: function(id) {
+                    const m = (window.Platform && window.Platform.modal) || window.Modal;
+                    return m ? m.getPayload(id) : null;
+                }
+            });
+
+            Alpine.store('announcer', {
+                message: '',
+                alert: '',
+                /** Announce to screen readers (polite — waits for current speech) */
+                announce(text) {
+                    this.message = '';
+                    requestAnimationFrame(() => { this.message = text; });
+                },
+                /** Alert screen readers (assertive — interrupts current speech) */
+                assertive(text) {
+                    this.alert = '';
+                    requestAnimationFrame(() => { this.alert = text; });
+                }
+            });
+
+            Alpine.store('a11y', {
+                prefersReducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+                init() {
+                    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+                    const handler = (e) => { this.prefersReducedMotion = e.matches; };
+                    if (mq.addEventListener) {
+                        mq.addEventListener('change', handler);
+                    } else {
+                        mq.addListener(handler); // Safari <14 fallback
+                    }
+                }
+            });
+            Alpine.store('a11y').init();
+
+            Alpine.store('user', {
+                role: '{{ current_user.role_name if current_user.is_authenticated else "anonymous" }}',
+                isAdmin: {{ 'true' if current_user.is_authenticated and current_user.is_admin() else 'false' }},
+                isAuthenticated: {{ 'true' if current_user.is_authenticated else 'false' }},
+                displayName: '{{ current_user.full_name() if current_user.is_authenticated else "" }}',
+                featureFlags: {{ user_feature_flags | tojson if user_feature_flags else '{}' }}
+            });
+
+            Alpine.store('headerMenu', {
+                active: null,
+                open(name)  { this.active = (this.active === name) ? null : name; },
+                close()     { this.active = null; },
+                isOpen(name){ return this.active === name; }
+            });
+
+            Alpine.store('notifications', {
+                count: 0,
+                items: [],
+                _pollTimer: null,
+                _pollInterval: 60000,
+                async poll() {
+                    try {
+                        const _f = (window.Platform && window.Platform.fetch) || window.apiFetch;
+                        const data = await _f('/api/notifications', { silent: true });
+                        this.count = data.unread_count ?? 0;
+                        this.items = data.items ?? [];
+                    } catch (_) {
+                        /* endpoint may not exist yet — fail silently */
+                    }
+                },
+                startPolling() {
+                    if (this._pollTimer) return;
+                    this.poll();
+                    this._pollTimer = setInterval(() => this.poll(), this._pollInterval);
+                },
+                stopPolling() {
+                    if (this._pollTimer) {
+                        clearInterval(this._pollTimer);
+                        this._pollTimer = null;
+                    }
+                },
+                markAllRead() {
+                    this.count = 0;
+                    this.items = this.items.map(n => ({ ...n, read: true }));
+                }
+            });
+
+            {% if current_user.is_authenticated %}
+            Alpine.store('notifications').startPolling();
+            {% endif %}
+        });
+    </script>
+
+    {% include 'partials/_scripts_common.html' %}
+
+    <!-- Export Utilities -->
+    <script src="{{ url_for('static', filename='js/shared/export-utils.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/ai_chat/page_guide.js') }}"></script>
+
+    {% block extra_js %}{% endblock %}
+    {% block scripts %}{% endblock %}{# alias for extra_js — legacy templates use this block name #}
+    <!-- page_title block catch: prevents silent drop from child templates using this block name -->
+    <span class="hidden" aria-hidden="true">{% block page_title %}{% endblock %}</span>
+</body>
+</html>

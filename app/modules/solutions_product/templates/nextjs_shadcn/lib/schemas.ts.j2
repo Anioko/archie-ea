@@ -1,0 +1,35 @@
+{# nextjs_shadcn/lib/schemas.ts.j2 — Zod schemas from confirmed fields.
+   Context: modules (list of dicts with name/slug/fields), solution_name #}
+/**
+ * Auto-generated Zod schemas for {{ solution_name }}.
+ * DO NOT EDIT — regenerate via the ARCHIE Code Workbench.
+ */
+import { z } from "zod"
+
+{% for mod in modules %}
+{% if mod.fields %}
+export const {{ mod.name }}Schema = z.object({
+{% for field in mod.fields %}
+{%- if not field.primary_key and field.name not in ('id', 'created_at', 'updated_at', 'deleted_at', 'createdAt', 'updatedAt', 'deletedAt') -%}
+{%- if field.ts_type == 'number' %}
+  {{ field.name }}: z.number(){% if not field.required %}.nullable().optional(){% endif %},
+{%- elif field.ts_type == 'boolean' %}
+  {{ field.name }}: z.boolean(){% if not field.required %}.nullable().optional(){% endif %},
+{%- elif field.type == 'enum' and field.enum_values %}
+  {{ field.name }}: z.enum([{% for v in field.enum_values %}"{{ v }}"{% if not loop.last %}, {% endif %}{% endfor %}]){% if not field.required %}.nullable().optional(){% endif %},
+{%- elif field.type == 'uuid' %}
+  {{ field.name }}: z.string().uuid(){% if not field.required %}.nullable().optional(){% endif %},
+{%- elif field.type == 'datetime' %}
+  {{ field.name }}: z.string().datetime({ offset: true }){% if not field.required %}.nullable().optional(){% endif %},
+{%- else %}
+  {{ field.name }}: z.string(){% if field.max_length %}.max({{ field.max_length }}){% endif %}{% if field.name == 'email' or field.name.endswith('_email') %}.email("Invalid email"){% endif %}{% if not field.required %}.nullable().optional(){% endif %},
+{%- endif %}
+{% endif -%}
+{% endfor %}
+})
+
+export type {{ mod.name }}Input = z.infer<typeof {{ mod.name }}Schema>
+export type {{ mod.name }} = {{ mod.name }}Input & { id: number | string; created_at?: string; updated_at?: string }
+
+{% endif %}
+{% endfor %}

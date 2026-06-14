@@ -1,0 +1,82 @@
+{# Generic Filter Bar Component
+
+   Reusable search + filter + sort controls with Alpine.js reactivity.
+   Unlike app_filter_bar.html (application-specific), this is generic.
+
+   Usage:
+   {% from 'components/filter_bar.html' import filter_bar %}
+
+   {{ filter_bar(
+       search_id='search-input',
+       search_placeholder='Search items...',
+       filters=[
+           {'id': 'status-filter', 'label': 'Status', 'options': [{'value': 'active', 'label': 'Active'}, {'value': 'archived', 'label': 'Archived'}]},
+           {'id': 'type-filter', 'label': 'Type', 'options': [{'value': 'app', 'label': 'Application'}, {'value': 'service', 'label': 'Service'}]}
+       ],
+       sort_options=[
+           {'value': 'name', 'label': 'Name'},
+           {'value': 'updated', 'label': 'Last Updated'}
+       ]
+   ) }}
+#}
+
+{% macro filter_bar(
+    search_id='search-input',
+    search_placeholder='Search...',
+    search_value='',
+    filters=[],
+    sort_id='sort-select',
+    sort_options=[],
+    sort_value='',
+    class=''
+) %}
+<div class="p-4 sm:p-6 border-b bg-muted/30 {{ class }}">
+    <div class="flex flex-col sm:flex-row gap-4">
+        <!-- Search -->
+        <div class="flex-1 min-w-0">
+            <label for="{{ search_id }}" class="block text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">Search</label>
+            <div class="relative">
+                <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" aria-hidden="true"></i>
+                <input
+                    type="text"
+                    id="{{ search_id }}"
+                    placeholder="{{ search_placeholder }}"
+                    value="{{ search_value }}"
+                    class="flex h-10 w-full rounded-md border border-input bg-background pl-9 pr-3 py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+            </div>
+        </div>
+
+        <!-- Filters -->
+        {% for filter in filters %}
+        <div class="sm:w-44">
+            <label for="{{ filter.id }}" class="block text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">{{ filter.label }}</label>
+            <select
+                id="{{ filter.id }}"
+                class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+                <option value="">All {{ filter.label }}</option>
+                {% for opt in filter.options %}
+                <option value="{{ opt.value }}" {{ 'selected' if opt.selected else '' }}>{{ opt.label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        {% endfor %}
+
+        <!-- Sort -->
+        {% if sort_options %}
+        <div class="sm:w-44">
+            <label for="{{ sort_id }}" class="block text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">Sort By</label>
+            <select
+                id="{{ sort_id }}"
+                class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+                {% for opt in sort_options %}
+                <option value="{{ opt.value }}" {{ 'selected' if sort_value == opt.value else '' }}>{{ opt.label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endmacro %}

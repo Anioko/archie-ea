@@ -1,0 +1,232 @@
+{# WARNING: THIS FILE IS NOT REGISTERED #}
+{# Phase E — Options & Financial Analysis content (sec-5)
+   Included via {% call section_shell(...) %} — content only, no shell. #}
+
+<div class="space-y-7">
+
+    {# ── Solution Options (Build / Buy / Reuse) — prototype: highlighted card + muted alternatives ── #}
+    <div>
+        <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-3">
+                <div class="w-1 h-5 rounded-full bg-sky-500"></div>
+                <p class="text-sm font-semibold text-foreground">Solution Options</p>
+            </div>
+            <button type="button" @click="openEntityModal('option')"
+                class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+                <i data-lucide="plus" class="w-3 h-3" aria-hidden="true"></i> Add
+            </button>
+        </div>
+        <template x-if="recommendations.length > 0">
+            <div class="space-y-3">
+                <template x-for="opt in recommendations" :key="opt.id">
+                    <div class="rounded-xl p-4 group"
+                         :class="opt.is_recommended ? 'border border-emerald-500/30 bg-emerald-500/5' : 'border border-border bg-card'">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-3">
+                                <span class="flex items-center justify-center w-8 h-8 rounded-full shrink-0"
+                                      :class="opt.is_recommended ? 'bg-emerald-500/15 text-emerald-400' : 'bg-muted text-muted-foreground'">
+                                    <template x-if="opt.is_recommended">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                                    </template>
+                                    <span x-show="!opt.is_recommended" class="text-xs font-bold" x-text="opt.rank || '#'"></span>
+                                </span>
+                                <div>
+                                    <p class="text-sm font-semibold text-foreground" x-text="opt.name || opt.option_type"></p>
+                                    <p class="text-xs mt-0.5"
+                                       :class="opt.is_recommended ? 'text-emerald-400 font-medium' : 'text-muted-foreground'"
+                                       x-text="opt.is_recommended ? 'Selected' + (opt.estimated_cost ? ' · $' + opt.estimated_cost.toLocaleString() : '') : (opt.description ? opt.description.substring(0, 80) : (opt.option_type || ''))"></p>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                                <button type="button" @click="openEntityModal('option', opt)" class="text-muted-foreground hover:text-foreground p-1 rounded-md" title="Edit">
+                                    <i data-lucide="pencil" class="w-3 h-3" aria-hidden="true"></i>
+                                </button>
+                                <button type="button" @click="confirmDeleteEntity('option', opt)" class="text-muted-foreground hover:text-destructive p-1 rounded-md" title="Delete">
+                                    <i data-lucide="trash-2" class="w-3 h-3" aria-hidden="true"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </template>
+        <p x-show="recommendations.length === 0" class="text-sm text-muted-foreground">No options evaluated yet.</p>
+    </div>
+
+    {# ── Architecture Decision Records ── #}
+    <div>
+        <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center gap-3">
+                <div class="w-1 h-5 rounded-full bg-sky-500"></div>
+                <p class="text-sm font-semibold text-foreground">Architecture Decisions</p>
+            </div>
+            <a href="{{ url_for('solution_design.edit_solution', solution_id=solution.id) }}#sec-4"
+               class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+                <i data-lucide="plus" class="w-3 h-3" aria-hidden="true"></i> Add ADR
+            </a>
+        </div>
+        <div x-show="linkedADRs.length > 0" class="rounded-xl border border-border bg-card overflow-hidden">
+            <table class="w-full text-sm">
+                <thead><tr class="border-b border-border bg-muted/30">
+                    <th class="text-left px-5 py-2 text-xs font-medium text-muted-foreground w-[80px]">ADR</th>
+                    <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground">Decision</th>
+                    <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground w-[90px]">Status</th>
+                </tr></thead>
+                <tbody class="divide-y divide-border">
+                    <template x-for="adr in linkedADRs" :key="adr.id">
+                        <tr class="hover:bg-muted/20">
+                            <td class="px-5 py-2.5 font-mono text-xs text-muted-foreground" x-text="adr.adr_number || 'ADR'"></td>
+                            <td class="px-3 py-2.5 text-foreground font-medium" x-text="adr.title"></td>
+                            <td class="px-3 py-2.5">
+                                <span class="text-[10px] font-medium px-1.5 py-0.5 rounded"
+                                      :class="adr.decision_status === 'accepted' ? 'bg-emerald-500/10 text-emerald-400' : adr.decision_status === 'superseded' ? 'bg-muted text-muted-foreground' : 'bg-amber-500/10 text-amber-400'"
+                                      x-text="adr.decision_status || 'proposed'"></span>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+        <p x-show="linkedADRs.length === 0" class="text-sm text-muted-foreground py-4">No architecture decisions recorded.</p>
+    </div>
+
+    {# ── Solution Options Analysis (MCDA scoring) ── #}
+    <div x-show="solutionOptions && solutionOptions.length > 0">
+        <div class="flex items-center gap-3 mb-3">
+            <div class="w-1 h-5 rounded-full bg-sky-500"></div>
+            <p class="text-sm font-semibold text-foreground">Options Analysis</p>
+        </div>
+        <div class="rounded-xl border border-border bg-card overflow-hidden">
+            <table class="w-full text-sm">
+                <thead><tr class="border-b border-border bg-muted/30">
+                    <th class="text-left px-5 py-2 text-xs font-medium text-muted-foreground">Option</th>
+                    <th class="text-right px-3 py-2 text-xs font-medium text-muted-foreground w-[80px]">Score</th>
+                    <th class="text-right px-3 py-2 text-xs font-medium text-muted-foreground w-[70px]">Rank</th>
+                    <th class="text-right px-3 py-2 text-xs font-medium text-muted-foreground w-[110px]">Est. Cost</th>
+                </tr></thead>
+                <tbody class="divide-y divide-border">
+                    <template x-for="opt in solutionOptions" :key="opt.id || opt.name">
+                        <tr class="hover:bg-muted/20">
+                            <td class="px-5 py-2.5 text-foreground font-medium" x-text="opt.name || opt.title || 'Option'"></td>
+                            <td class="px-3 py-2.5 text-right font-mono text-xs tabular-nums" x-text="opt.score != null ? opt.score.toFixed(2) : '—'"></td>
+                            <td class="px-3 py-2.5 text-right">
+                                <span class="inline-flex items-center justify-center w-6 h-6 rounded-full text-[10px] font-bold"
+                                      :class="opt.rank === 1 ? 'bg-emerald-500/10 text-emerald-400' : 'bg-muted text-muted-foreground'"
+                                      x-text="opt.rank || '—'"></span>
+                            </td>
+                            <td class="px-3 py-2.5 text-right font-mono text-xs tabular-nums text-muted-foreground"
+                                x-text="opt.estimated_cost ? '$' + opt.estimated_cost.toLocaleString() : '—'"></td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    {# ── Quality Attributes ── #}
+    <div>
+        <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center gap-3">
+                <div class="w-1 h-5 rounded-full bg-sky-500"></div>
+                <p class="text-sm font-semibold text-foreground">Quality Attributes</p>
+            </div>
+            <button @click="openEntityModal('quality_attribute')"
+                class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+                <i data-lucide="plus" class="w-3 h-3" aria-hidden="true"></i> Add
+            </button>
+        </div>
+        <div x-show="sadQualityAttributes.length > 0" class="rounded-xl border border-border bg-card overflow-hidden">
+            <table class="w-full text-sm">
+                <thead><tr class="border-b border-border bg-muted/30">
+                    <th class="text-left px-5 py-2 text-xs font-medium text-muted-foreground">Attribute</th>
+                    <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground w-[100px]">Type</th>
+                    <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground w-[90px]">Target</th>
+                    <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground w-[90px]">Current</th>
+                    <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground w-[90px]">Status</th>
+                </tr></thead>
+                <tbody class="divide-y divide-border">
+                    <template x-for="qa in sadQualityAttributes" :key="qa.id">
+                        <tr class="hover:bg-muted/20 group">
+                            <td class="px-5 py-2.5 text-foreground font-medium" x-text="qa.attribute_name"></td>
+                            <td class="px-3 py-2.5">
+                                <span class="text-[10px] font-medium text-primary px-1.5 py-0.5 rounded bg-primary/10" x-text="qa.attribute_type"></span>
+                            </td>
+                            <td class="px-3 py-2.5 font-mono text-xs text-muted-foreground" x-text="qa.target_value || '—'"></td>
+                            <td class="px-3 py-2.5 font-mono text-xs text-muted-foreground" x-text="qa.current_value || '—'"></td>
+                            <td class="px-3 py-2.5">
+                                <div class="flex items-center justify-between">
+                                    <span class="text-[10px] font-medium px-1.5 py-0.5 rounded"
+                                          :class="qa.test_status === 'passed' ? 'bg-emerald-500/10 text-emerald-400' : qa.test_status === 'failed' ? 'bg-destructive/10 text-destructive' : 'bg-muted text-muted-foreground'"
+                                          x-text="(qa.test_status || 'not tested').replace(/_/g, ' ')"></span>
+                                    <div class="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <button type="button" @click="openEntityModal('quality_attribute', qa)" class="text-muted-foreground hover:text-foreground p-1 rounded-md" title="Edit">
+                                            <i data-lucide="pencil" class="w-3 h-3" aria-hidden="true"></i>
+                                        </button>
+                                        <button type="button" @click="confirmDeleteEntity('quality_attribute', qa)" class="text-muted-foreground hover:text-destructive p-1 rounded-md" title="Delete">
+                                            <i data-lucide="trash-2" class="w-3 h-3" aria-hidden="true"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+        <p x-show="sadQualityAttributes.length === 0" class="text-sm text-muted-foreground py-4">No quality attributes defined.</p>
+    </div>
+
+    {# ── Service Level Agreements ── #}
+    <div>
+        <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center gap-3">
+                <div class="w-1 h-5 rounded-full bg-sky-500"></div>
+                <p class="text-sm font-semibold text-foreground">Service Level Agreements</p>
+            </div>
+            <button @click="openEntityModal('sla')"
+                class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+                <i data-lucide="plus" class="w-3 h-3" aria-hidden="true"></i> Add
+            </button>
+        </div>
+        <div x-show="sadSLAs.length > 0" class="rounded-xl border border-border bg-card overflow-hidden">
+            <table class="w-full text-sm">
+                <thead><tr class="border-b border-border bg-muted/30">
+                    <th class="text-left px-5 py-2 text-xs font-medium text-muted-foreground">SLA</th>
+                    <th class="text-center px-3 py-2 text-xs font-medium text-muted-foreground w-[90px]">Availability</th>
+                    <th class="text-center px-3 py-2 text-xs font-medium text-muted-foreground w-[90px]">Response</th>
+                    <th class="text-center px-3 py-2 text-xs font-medium text-muted-foreground w-[80px]">RTO</th>
+                    <th class="text-center px-3 py-2 text-xs font-medium text-muted-foreground w-[80px]">RPO</th>
+                    <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground w-[80px]">Status</th>
+                </tr></thead>
+                <tbody class="divide-y divide-border">
+                    <template x-for="sla in sadSLAs" :key="sla.id">
+                        <tr class="hover:bg-muted/20 group">
+                            <td class="px-5 py-2.5 text-foreground font-medium" x-text="sla.sla_name"></td>
+                            <td class="px-3 py-2.5 text-center font-mono text-xs" x-text="sla.availability_target ? sla.availability_target + '%' : '—'"></td>
+                            <td class="px-3 py-2.5 text-center font-mono text-xs" x-text="sla.response_time_ms ? sla.response_time_ms + 'ms' : '—'"></td>
+                            <td class="px-3 py-2.5 text-center font-mono text-xs" x-text="sla.rto_hours ? sla.rto_hours + 'h' : '—'"></td>
+                            <td class="px-3 py-2.5 text-center font-mono text-xs" x-text="sla.rpo_hours ? sla.rpo_hours + 'h' : '—'"></td>
+                            <td class="px-3 py-2.5">
+                                <div class="flex items-center justify-between">
+                                    <span class="text-[10px] font-medium px-1.5 py-0.5 rounded"
+                                          :class="sla.status === 'active' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-muted text-muted-foreground'"
+                                          x-text="sla.status || 'draft'"></span>
+                                    <div class="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <button type="button" @click="openEntityModal('sla', sla)" class="text-muted-foreground hover:text-foreground p-1 rounded-md" title="Edit">
+                                            <i data-lucide="pencil" class="w-3 h-3" aria-hidden="true"></i>
+                                        </button>
+                                        <button type="button" @click="confirmDeleteEntity('sla', sla)" class="text-muted-foreground hover:text-destructive p-1 rounded-md" title="Delete">
+                                            <i data-lucide="trash-2" class="w-3 h-3" aria-hidden="true"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+        <p x-show="sadSLAs.length === 0" class="text-sm text-muted-foreground py-4">No SLAs defined.</p>
+    </div>
+
+</div>

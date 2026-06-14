@@ -1,0 +1,283 @@
+{% extends 'layouts/admin_base.html' %}
+{% from 'components/page_header.html' import page_header %}
+{% from 'components/metrics_card.html' import metrics_card %}
+{% from 'components/card.html' import card, card_header, card_title, card_content %}
+
+{% block content %}
+<div class="space-y-6">
+    {{ page_header(
+        title='AI Extraction Corrections',
+        description='Review and confirm AI-generated ArchiMate elements to train the correction flywheel.',
+        breadcrumbs=[
+            {'label': 'Dashboard', 'href': url_for('main.index')},
+            {'label': 'Admin', 'href': url_for('admin.index')},
+            {'label': 'AI Corrections'}
+        ]
+    ) }}
+
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div class="mb-6 space-y-2">
+                {% for category, message in messages %}
+                    <div class="rounded-md border p-4 {% if category == 'success' %}bg-success/5 border-success/20 text-success{% elif category == 'error' %}bg-destructive/5 border-destructive/20 text-destructive{% else %}bg-primary/5 border-primary/20 text-primary{% endif %}">
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+
+    {# ── Stats Bar ─────────────────────────────────────────────────────────── #}
+    <div class="grid gap-4 md:grid-cols-3">
+        {{ metrics_card(
+            title='Elements Reviewed',
+            value=total_with_elements|string,
+            icon='layers',
+            description='Apps with AI-assigned ArchiMate elements'
+        ) }}
+        {{ metrics_card(
+            title='Corrections Logged',
+            value=correction_count|string,
+            icon='check-circle',
+            description='Total corrections submitted',
+            value_class='text-success' if correction_count > 0 else 'text-muted-foreground'
+        ) }}
+        {{ metrics_card(
+            title='Pending Review',
+            value=(total_with_elements - correction_count if total_with_elements > correction_count else 0)|string,
+            icon='clock',
+            description='Elements awaiting confirmation'
+        ) }}
+    </div>
+
+    {# ── Corrections Table ─────────────────────────────────────────────────── #}
+    {% call card() %}
+        {% call card_header() %}
+            {% call card_title() %}<i data-lucide="cpu" class="h-5 w-5 inline mr-2" aria-hidden="true"></i>AI-Generated Elements{% endcall %}
+        {% endcall %}
+        {% call card_content() %}
+            {% if rows %}
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm" id="corrections-table">
+                        <thead>
+                            <tr class="border-b border-border">
+                                <th class="text-left py-3 px-4 font-medium text-muted-foreground">Application</th>
+                                <th class="text-left py-3 px-4 font-medium text-muted-foreground">AI Element Name</th>
+                                <th class="text-left py-3 px-4 font-medium text-muted-foreground">AI Type</th>
+                                <th class="text-left py-3 px-4 font-medium text-muted-foreground">AI Layer</th>
+                                <th class="text-left py-3 px-4 font-medium text-muted-foreground">Completeness</th>
+                                <th class="text-left py-3 px-4 font-medium text-muted-foreground">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-border" id="corrections-tbody">
+                            {% for row in rows %}
+                            <tr class="hover:bg-muted/50 transition-colors" id="row-{{ row.element_id }}" data-element-id="{{ row.element_id }}">
+                                <td class="py-3 px-4">
+                                    <span class="font-medium text-foreground">{{ row.app_name }}</span>
+                                </td>
+                                <td class="py-3 px-4 text-foreground/80">{{ row.element_name or '—' }}</td>
+                                <td class="py-3 px-4">
+                                    {% if row.element_type %}
+                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30">
+                                            {{ row.element_type }}
+                                        </span>
+                                    {% else %}
+                                        <span class="text-muted-foreground">—</span>
+                                    {% endif %}
+                                </td>
+                                <td class="py-3 px-4">
+                                    {% if row.element_layer %}
+                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-secondary/10 text-secondary-foreground border border-border">
+                                            {{ row.element_layer }}
+                                        </span>
+                                    {% else %}
+                                        <span class="text-muted-foreground">—</span>
+                                    {% endif %}
+                                </td>
+                                <td class="py-3 px-4">
+                                    {% set score = row.completeness %}
+                                    <div class="flex items-center gap-2">
+                                        <div class="h-1.5 w-16 rounded-full bg-muted overflow-hidden">
+                                            <div class="h-full rounded-full {% if score >= 70 %}bg-success{% elif score >= 40 %}bg-warning{% else %}bg-destructive{% endif %}"
+                                                 style="width: {{ score | int }}%"></div>
+                                        </div>
+                                        <span class="text-xs text-muted-foreground">{{ score | int }}%</span>
+                                    </div>
+                                </td>
+                                <td class="py-3 px-4">
+                                    <div class="flex items-center gap-2" id="actions-{{ row.element_id }}">
+                                        <!-- Correct button -->
+                                        <button
+                                            type="button"
+                                            onclick="markCorrect({{ row.element_id }}, {{ row.app_id }})"
+                                            class="inline-flex items-center gap-1 rounded-md bg-success/10 border border-success/30 text-success px-2.5 py-1 text-xs font-medium hover:bg-success/20 transition-colors"
+                                            aria-label="Mark element {{ row.element_id }} as correct">
+                                            <i data-lucide="check" class="h-3 w-3" aria-hidden="true"></i>
+                                            Correct
+                                        </button>
+
+                                        <!-- Fix inline form -->
+                                        <button
+                                            type="button"
+                                            onclick="toggleFixForm({{ row.element_id }})"
+                                            class="inline-flex items-center gap-1 rounded-md bg-warning/10 border border-warning/30 text-warning px-2.5 py-1 text-xs font-medium hover:bg-warning/20 transition-colors"
+                                            aria-label="Fix element {{ row.element_id }}">
+                                            <i data-lucide="edit-2" class="h-3 w-3" aria-hidden="true"></i>
+                                            Fix
+                                        </button>
+                                    </div>
+
+                                    <!-- Inline fix form (hidden by default) -->
+                                    <div id="fix-form-{{ row.element_id }}" class="hidden mt-2">
+                                        <div class="rounded-md border border-border bg-muted/30 p-3 space-y-2">
+                                            <div class="grid grid-cols-2 gap-2">
+                                                <div>
+                                                    <label class="text-xs font-medium text-muted-foreground" for="fix-name-{{ row.element_id }}">Correct Name</label>
+                                                    <input
+                                                        id="fix-name-{{ row.element_id }}"
+                                                        type="text"
+                                                        placeholder="{{ row.element_name }}"
+                                                        class="mt-1 w-full rounded-md border border-input bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label class="text-xs font-medium text-muted-foreground" for="fix-type-{{ row.element_id }}">Correct Type</label>
+                                                    <input
+                                                        id="fix-type-{{ row.element_id }}"
+                                                        type="text"
+                                                        placeholder="{{ row.element_type }}"
+                                                        class="mt-1 w-full rounded-md border border-input bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div class="flex gap-2">
+                                                <button
+                                                    type="button"
+                                                    onclick="submitFix({{ row.element_id }}, {{ row.app_id }})"
+                                                    class="inline-flex items-center gap-1 rounded-md bg-primary text-primary-foreground px-2.5 py-1 text-xs font-medium hover:bg-primary/90 transition-colors"
+                                                    aria-label="Submit fix for element {{ row.element_id }}">
+                                                    Submit Fix
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onclick="toggleFixForm({{ row.element_id }})"
+                                                    class="inline-flex items-center gap-1 rounded-md border border-input bg-background px-2.5 py-1 text-xs font-medium hover:bg-accent transition-colors"
+                                                    aria-label="Cancel fix for element {{ row.element_id }}">
+                                                    Cancel
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <div class="rounded-xl border-2 border-dashed border-muted-foreground/25 p-12 text-center">
+                    <div class="flex justify-center mb-4">
+                        <div class="flex h-16 w-16 items-center justify-center rounded-full bg-muted">
+                            <i data-lucide="cpu" class="h-8 w-8 text-muted-foreground" aria-hidden="true"></i>
+                        </div>
+                    </div>
+                    <h3 class="text-lg font-semibold mb-2">No AI-Generated Elements Found</h3>
+                    <p class="text-muted-foreground text-sm max-w-md mx-auto">
+                        No applications have AI-assigned ArchiMate elements yet. Run an Abacus sync or use the ArchiMate inference engine to generate elements.
+                    </p>
+                </div>
+            {% endif %}
+        {% endcall %}
+    {% endcall %}
+</div>
+
+<script>
+const CSRF_TOKEN = "{{ csrf_token() }}";
+
+function markCorrect(elementId, appId) {
+    fetch(`/api/archimate-elements/${elementId}/correct`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': CSRF_TOKEN,
+        },
+        body: JSON.stringify({
+            app_id: appId,
+            correction_type: 'confirm',
+        }),
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success !== false) {
+            const row = document.getElementById(`row-${elementId}`);
+            if (row) {
+                row.classList.add('opacity-50');
+                const actionsEl = document.getElementById(`actions-${elementId}`);
+                if (actionsEl) {
+                    actionsEl.innerHTML = '<span class="inline-flex items-center gap-1 text-xs text-success font-medium"><i data-lucide="check-circle" class="h-3 w-3"></i>Confirmed</span>';
+                    if (window.lucide) { lucide.createIcons(); }
+                }
+            }
+        } else {
+            console.error('Correction failed:', data.error || data);
+        }
+    })
+    .catch(err => console.error('Request failed:', err));
+}
+
+function toggleFixForm(elementId) {
+    const form = document.getElementById(`fix-form-${elementId}`);
+    if (form) {
+        form.classList.toggle('hidden');
+    }
+}
+
+function submitFix(elementId, appId) {
+    const nameInput = document.getElementById(`fix-name-${elementId}`);
+    const typeInput = document.getElementById(`fix-type-${elementId}`);
+
+    const correctedName = (nameInput && nameInput.value.trim()) || null;
+    const correctedType = (typeInput && typeInput.value.trim()) || null;
+
+    if (!correctedName && !correctedType) {
+        return;
+    }
+
+    fetch(`/api/archimate-elements/${elementId}/correct`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': CSRF_TOKEN,
+        },
+        body: JSON.stringify({
+            app_id: appId,
+            correction_type: 'fix',
+            corrected_element: {
+                name: correctedName,
+                type: correctedType,
+            },
+        }),
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success !== false) {
+            const row = document.getElementById(`row-${elementId}`);
+            if (row) {
+                row.classList.add('bg-warning/5');
+                const actionsEl = document.getElementById(`actions-${elementId}`);
+                if (actionsEl) {
+                    actionsEl.innerHTML = '<span class="inline-flex items-center gap-1 text-xs text-warning font-medium"><i data-lucide="edit-2" class="h-3 w-3"></i>Corrected</span>';
+                    if (window.lucide) { lucide.createIcons(); }
+                }
+                const fixForm = document.getElementById(`fix-form-${elementId}`);
+                if (fixForm) { fixForm.classList.add('hidden'); }
+            }
+        } else {
+            console.error('Fix submission failed:', data.error || data);
+        }
+    })
+    .catch(err => console.error('Request failed:', err));
+}
+</script>
+{% endblock %}

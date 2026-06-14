@@ -1,0 +1,143 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'components/page_header.html' import page_header %}
+
+{% from 'components/button.html' import button %}
+{% from 'components/card.html' import card, card_header, card_title, card_content %}
+{% from 'components/badge.html' import badge %}
+
+{% block title %}Duplicate Detection{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    {{ page_header(
+        title='Duplicate Detection',
+        description='Unified duplicate detection service'
+    ) }}
+    
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Main Content -->
+        <div class="lg:col-span-2 space-y-6">
+            <!-- Detection Overview -->
+            {% call card() %}
+                {% call card_header() %}
+                    {% call card_title() %}Detection Overview{% endcall %}
+                {% endcall %}
+                {% call card_content() %}
+                    <p class="text-sm text-muted-foreground mb-6">Unified duplicate detection service combines enterprise-grade and simple detection methods.</p>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
+                        <div class="p-4 rounded-md border">
+                            <h4 class="text-lg font-semibold text-primary mb-2">Enterprise</h4>
+                            <p class="text-sm text-muted-foreground">Multi-criteria analysis with business process, capability, and technical similarity</p>
+                        </div>
+                        <div class="p-4 rounded-md border">
+                            <h4 class="text-lg font-semibold text-primary mb-2">Simple</h4>
+                            <p class="text-sm text-muted-foreground">Fast name/description similarity with hash-based exact matching</p>
+                        </div>
+                        <div class="p-4 rounded-md border">
+                            <h4 class="text-lg font-semibold text-success mb-2">Hybrid</h4>
+                            <p class="text-sm text-muted-foreground">Combined approach with both enterprise and simple methods</p>
+                        </div>
+                    </div>
+                {% endcall %}
+            {% endcall %}
+
+            <!-- Detection Methods -->
+            {% call card() %}
+                {% call card_header() %}
+                    {% call card_title() %}Detection Methods{% endcall %}
+                {% endcall %}
+                {% call card_content() %}
+                    <div class="space-y-3">
+                        <div class="p-4 rounded-md border hover:bg-accent transition-colors">
+                            <div class="flex justify-between items-start mb-2">
+                                <h5 class="font-semibold">Business Process Analysis</h5>
+                                <span class="text-xs text-muted-foreground">L0-L3 process alignment</span>
+                            </div>
+                            <p class="text-sm text-muted-foreground">Analyzes business process overlap between applications</p>
+                        </div>
+                        <div class="p-4 rounded-md border hover:bg-accent transition-colors">
+                            <div class="flex justify-between items-start mb-2">
+                                <h5 class="font-semibold">Capability Overlap</h5>
+                                <span class="text-xs text-muted-foreground">Business capability mapping</span>
+                            </div>
+                            <p class="text-sm text-muted-foreground">Identifies shared business capabilities between applications</p>
+                        </div>
+                        <div class="p-4 rounded-md border hover:bg-accent transition-colors">
+                            <div class="flex justify-between items-start mb-2">
+                                <h5 class="font-semibold">Technical Similarity</h5>
+                                <span class="text-xs text-muted-foreground">Technology stack analysis</span>
+                            </div>
+                            <p class="text-sm text-muted-foreground">Compares technology stacks and architectures</p>
+                        </div>
+                        <div class="p-4 rounded-md border hover:bg-accent transition-colors">
+                            <div class="flex justify-between items-start mb-2">
+                                <h5 class="font-semibold">Name/Description Analysis</h5>
+                                <span class="text-xs text-muted-foreground">Semantic similarity</span>
+                            </div>
+                            <p class="text-sm text-muted-foreground">Performs semantic analysis of names and descriptions</p>
+                        </div>
+                    </div>
+                {% endcall %}
+            {% endcall %}
+        </div>
+
+        <!-- Sidebar -->
+        <div class="space-y-6">
+            <!-- Quick Actions -->
+            {% call card() %}
+                {% call card_header() %}
+                    {% call card_title() %}Quick Actions{% endcall %}
+                {% endcall %}
+                {% call card_content() %}
+                    <div class="space-y-2">
+                        {{ button('Run Detection', variant='default', size='default', icon='search') }}
+                        {{ button('View Results', variant='outline', size='default', icon='chart-bar') }}
+                        {{ button('Export Report', variant='outline', size='default', icon='download') }}
+                        {{ button('Clear Data', variant='outline', size='default', icon='trash-2') }}
+                    </div>
+                {% endcall %}
+            {% endcall %}
+
+            <!-- Detection Status -->
+            {% call card() %}
+                {% call card_header() %}
+                    {% call card_title() %}Detection Status{% endcall %}
+                {% endcall %}
+                {% call card_content() %}
+                    <div class="space-y-4">
+                        <div>
+                            <label class="text-sm font-medium text-muted-foreground">Last Run</label>
+                            <p class="text-sm">Not run yet</p>
+                        </div>
+                        <div>
+                            <label class="text-sm font-medium text-muted-foreground">Applications Analyzed</label>
+                            <p class="text-sm">0 applications</p>
+                        </div>
+                        <div>
+                            <label class="text-sm font-medium text-muted-foreground">Duplicate Groups Found</label>
+                            <p class="text-sm">0 groups</p>
+                        </div>
+                        <div>
+                            <label class="text-sm font-medium text-muted-foreground">Potential Savings</label>
+                            <p class="text-sm">$0.00</p>
+                        </div>
+                    </div>
+                {% endcall %}
+            {% endcall %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    
+    // Initialize Lucide icons
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
+});
+</script>
+{% endblock %}

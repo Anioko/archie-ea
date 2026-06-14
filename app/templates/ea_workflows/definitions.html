@@ -1,0 +1,179 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'components/page_header.html' import page_header %}
+
+{% block title %}Workflow Definitions{% endblock %}
+
+{% block content %}
+<div class="space-y-6" x-data="{ search: '', sortBy: 'name' }">
+    <!-- Breadcrumbs -->
+    <nav class="flex items-center gap-2 text-sm text-muted-foreground mb-6" aria-label="Breadcrumb">
+        <a href="{{ url_for('main.index') }}" class="hover:text-foreground transition-colors">Dashboard</a>
+        <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
+        <a href="{{ url_for('main.ea_workflows_dashboard') }}" class="hover:text-foreground transition-colors">EA Workflows</a>
+        <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
+        <span class="text-foreground font-medium">Definitions</span>
+    </nav>
+
+    <!-- Page Header -->
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+        {{ page_header(
+        title='Workflow Definitions',
+        description='Manage automated EA workflow templates'
+    ) }}
+        <div class="relative w-full sm:w-64">
+            <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden="true"></i>
+            <input type="text" x-model="search" placeholder="Search definitions..."
+                   class="w-full pl-9 pr-3 py-2 rounded-lg border-2 border-input text-sm bg-background focus:border-primary focus:outline-none"
+                   aria-label="Search workflow definitions">
+        </div>
+    </div>
+
+    <!-- TOGAF ADM Phase Navigation -->
+    <div class="rounded-xl border-2 border-input bg-background p-4 mb-6">
+        <h2 class="text-sm font-semibold text-muted-foreground mb-3">TOGAF ADM Phases</h2>
+        <p class="text-xs text-muted-foreground mb-3">Architecture Development Method lifecycle. Click a phase to view related ArchiMate tasks and workflows.</p>
+        <div class="flex flex-wrap items-center gap-2">
+            <a href="{{ url_for('main.ea_workflows_definitions') }}{% if selected_category %}?category={{ selected_category }}{% endif %}"
+               class="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors
+                      {% if not selected_phase %}ring-2 ring-primary bg-primary text-primary-foreground{% else %}bg-muted hover:bg-muted/80 text-foreground{% endif %}"
+               aria-current="{% if not selected_phase %}page{% endif %}">
+                All
+            </a>
+            {% for phase_code, phase_name in togaf_phases %}
+            {% set count = phase_counts.get(phase_code, 0) %}
+            <a href="{{ url_for('main.ea_workflows_definitions', phase=phase_code) }}{% if selected_category %}&category={{ selected_category }}{% endif %}"
+               class="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors
+                      {% if selected_phase == phase_code %}ring-2 ring-primary bg-primary text-primary-foreground{% else %}bg-muted hover:bg-muted/80 text-foreground{% endif %}"
+               aria-current="{% if selected_phase == phase_code %}page{% endif %}"
+               title="{{ phase_name }}">
+                <span class="flex h-6 w-6 items-center justify-center rounded-full {% if selected_phase == phase_code %}bg-primary-foreground/20{% else %}bg-background/80{% endif %} text-xs font-bold">{{ phase_code }}</span>
+                <span class="hidden sm:inline">{{ phase_name }}</span>
+                {% if count > 0 %}
+                <span class="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full text-xs {% if selected_phase == phase_code %}bg-primary-foreground/20{% else %}bg-background/80{% endif %}">({{ count }})</span>
+                {% endif %}
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Category Filter -->
+    <div class="rounded-xl border-2 border-input bg-background p-4 mb-6">
+        <div class="flex flex-wrap items-center gap-2">
+            <span class="text-sm font-medium text-muted-foreground mr-2">Category:</span>
+            <a href="{{ url_for('main.ea_workflows_definitions') }}{% if selected_phase %}?phase={{ selected_phase }}{% endif %}"
+               class="px-3 py-1.5 rounded-lg text-sm transition-colors {% if not selected_category %}bg-primary text-primary-foreground{% else %}bg-muted hover:bg-muted/80{% endif %}">
+                All ({{ definitions|length }})
+            </a>
+            {% for cat in categories %}
+            <a href="{{ url_for('main.ea_workflows_definitions', category=cat) }}{% if selected_phase %}&phase={{ selected_phase }}{% endif %}"
+               class="px-3 py-1.5 rounded-lg text-sm transition-colors {% if selected_category == cat %}bg-primary text-primary-foreground{% else %}bg-muted hover:bg-muted/80{% endif %}">
+                {{ cat|replace('_', ' ')|title }}
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Workflow List -->
+    {% if definitions %}
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {% for defn in definitions %}
+        <div class="rounded-xl border-2 border-input bg-background p-6 hover:border-primary/50 hover:shadow-sm transition-all duration-200"
+             x-cloak
+             x-show="!search || '{{ defn.workflow_name|lower }}'.includes(search.toLowerCase()) || '{{ defn.workflow_code|lower }}'.includes(search.toLowerCase()) || '{{ (defn.workflow_description or '')|lower }}'.includes(search.toLowerCase())">
+            <div class="flex items-start justify-between mb-4">
+                <div class="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
+                    {% if defn.workflow_category == 'application_management' %}
+                    <i data-lucide="app-window" class="h-6 w-6 text-primary" aria-hidden="true"></i>
+                    {% elif defn.workflow_category == 'vendor_management' %}
+                    <i data-lucide="building" class="h-6 w-6 text-primary" aria-hidden="true"></i>
+                    {% elif defn.workflow_category == 'compliance' %}
+                    <i data-lucide="shield" class="h-6 w-6 text-primary" aria-hidden="true"></i>
+                    {% elif defn.workflow_category == 'gap_analysis' %}
+                    <i data-lucide="search" class="h-6 w-6 text-primary" aria-hidden="true"></i>
+                    {% elif defn.workflow_category == 'togaf_adm' %}
+                    <i data-lucide="landmark" class="h-6 w-6 text-primary" aria-hidden="true"></i>
+                    {% else %}
+                    <i data-lucide="workflow" class="h-6 w-6 text-primary" aria-hidden="true"></i>
+                    {% endif %}
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium
+                        {% if defn.is_active %}bg-emerald-500/10 text-emerald-700 dark:text-emerald-400{% else %}bg-muted text-foreground/80{% endif %}">
+                        {{ 'Active' if defn.is_active else 'Inactive' }}
+                    </span>
+                    <span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium
+                        {% if defn.automation_level == 'automated' %}bg-emerald-500/10 text-emerald-700 dark:text-emerald-400
+                        {% elif defn.automation_level == 'assisted' %}bg-primary/10 text-primary
+                        {% else %}bg-muted text-foreground/80{% endif %}">
+                        {{ defn.automation_level|title }}
+                    </span>
+                </div>
+            </div>
+
+            <h3 class="text-xl font-semibold mb-1">{{ defn.workflow_name }}</h3>
+            {% if defn.adm_phase %}
+            <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-primary/10 text-primary mb-2">
+                Phase {{ defn.adm_phase }}: {{ defn.adm_phase_name }}
+            </span>
+            {% endif %}
+            <p class="text-muted-foreground mb-4 line-clamp-2 text-sm">{{ defn.workflow_description }}</p>
+
+            <div class="grid grid-cols-2 gap-4 text-sm mb-4">
+                <div>
+                    <span class="text-muted-foreground">Category:</span>
+                    <span class="ml-1 font-medium">{{ defn.workflow_category|replace('_', ' ')|title }}</span>
+                </div>
+                <div>
+                    <span class="text-muted-foreground">Steps:</span>
+                    <span class="ml-1 font-medium">{{ defn.steps|length if defn.steps else 0 }}</span>
+                </div>
+                <div>
+                    <span class="text-muted-foreground">Executions:</span>
+                    <span class="ml-1 font-medium">{{ defn.execution_count or 0 }}</span>
+                </div>
+                <div>
+                    <span class="text-muted-foreground">Success Rate:</span>
+                    <span class="ml-1 font-medium">
+                        {% if defn.execution_count %}
+                        {{ ((defn.success_count or 0) / defn.execution_count * 100)|round(1) }}%
+                        {% else %}
+                        --
+                        {% endif %}
+                    </span>
+                </div>
+            </div>
+
+            {% if defn.last_executed_at %}
+            <p class="text-xs text-muted-foreground mb-3">Last run: {{ defn.last_executed_at.strftime('%b %d, %Y') }}</p>
+            {% endif %}
+
+            <div class="flex items-center justify-between pt-4 border-t border-input">
+                <a href="{{ url_for('main.ea_workflow_definition_detail', workflow_code=defn.workflow_code) }}"
+                   class="inline-flex items-center gap-1.5 text-sm text-primary hover:underline">
+                    <i data-lucide="info" class="h-3.5 w-3.5" aria-hidden="true"></i>
+                    View Details
+                </a>
+                <a href="{{ url_for('main.ea_workflows_dashboard') }}?start={{ defn.workflow_code }}"
+                   class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm hover:bg-primary/90 transition-colors font-medium"
+                   aria-label="Start {{ defn.workflow_name }}">
+                    <i data-lucide="play" class="h-3.5 w-3.5" aria-hidden="true"></i>
+                    Start
+                </a>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="rounded-xl border-2 border-input bg-background p-12 text-center">
+        <i data-lucide="workflow" class="h-12 w-12 text-muted-foreground mx-auto mb-4" aria-hidden="true"></i>
+        <h3 class="text-lg font-semibold mb-2">No Workflow Definitions</h3>
+        <p class="text-muted-foreground mb-4">Get started by seeding the default EA workflows.</p>
+        <a href="{{ url_for('main.ea_workflows_dashboard') }}"
+           class="inline-flex items-center gap-2 text-sm text-primary hover:underline">
+            <i data-lucide="arrow-left" class="h-4 w-4" aria-hidden="true"></i>
+            Go to Dashboard to Seed Defaults
+        </a>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

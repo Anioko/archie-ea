@@ -1,0 +1,52 @@
+# Screenshot Guide — {{ solution_name }}
+
+Required before submitting to App Store or Google Play.
+
+---
+
+## iOS — App Store Connect
+
+| Device | Resolution | Required |
+|---|---|---|
+| 6.9" iPhone (16 Plus, 16 Pro Max) | 1320 × 2868 px | Yes |
+| 6.5" iPhone (11 Pro Max, XS Max) | 1242 × 2688 px | Yes |
+| 12.9" iPad Pro (6th gen) | 2048 × 2732 px | Yes (if supportsTablet: true) |
+
+**Minimum:** 3 screenshots per device size, max 10.
+
+## Android — Google Play
+
+| Device | Resolution | Required |
+|---|---|---|
+| Phone | 1080 × 1920 px (min) | Yes |
+| 7" tablet | 1200 × 1920 px | Recommended |
+| 10" tablet | 1920 × 1200 px | Recommended |
+
+**Minimum:** 2 screenshots, max 8.
+
+---
+
+## Recommended Screens to Capture
+
+Capture these screens in order — they tell the story of the app:
+
+1. **Login screen** — First impression. Clean, branded.
+2. **Dashboard / Home** — Show real data in stat cards and module list.
+{% for cls in classes[:3] %}
+3. **{{ cls.name | replace('_', ' ') | title }} list** — Show populated list with status badges.
+4. **{{ cls.name | replace('_', ' ') | title }} detail** — Show a complete record with all fields.
+{% endfor %}
+5. **Create new record** — Show the form with an enum/date picker open.
+{% if has_biometric %}6. **Biometric lock screen** — Shows the Face ID / fingerprint prompt.{% endif %}
+{% if push_enabled %}7. **Push notification** — Show a notification on the lock screen.{% endif %}
+
+---
+
+## Screenshot Tips
+
+- Use a real device or a simulator at exact resolution — don't upscale.
+- Populate the app with realistic (but anonymised) data before taking screenshots.
+- Show the app in light mode (dark mode screenshots are optional extras).
+- Remove personal data — use names like "Acme Corp", "Jane S.", "Project Alpha".
+- On iOS: use `xcrun simctl io booted screenshot screenshot.png` to capture at exact resolution.
+- On Android: use `adb shell screencap -p /sdcard/shot.png && adb pull /sdcard/shot.png`.

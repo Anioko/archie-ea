@@ -1,0 +1,781 @@
+{% extends 'layouts/admin_base.html' %}
+{% from 'components/page_header.html' import page_header %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+    <!-- Breadcrumbs -->
+    <nav class="flex items-center gap-2 text-sm text-muted-foreground mb-6">
+        <a href="{{ url_for('main.index') }}" class="hover:text-foreground transition-colors">Dashboard</a>
+        <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
+        <a href="{{ url_for('admin.index') }}" class="hover:text-foreground transition-colors">Admin</a>
+        <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
+        <span class="text-foreground font-medium">Jira Push Settings</span>
+    </nav>
+
+    {{ page_header(
+        title='Jira Push Integration',
+        description='Push enriched application portfolio data to Jira for cross-team collaboration on architecture decisions.'
+    ) }}
+
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div class="mb-6 space-y-2">
+                {% for category, message in messages %}
+                    <div class="rounded-md border p-4 {% if category == 'success' %}bg-primary/10 border-primary/20 text-foreground{% elif category == 'error' %}bg-destructive/10 border-destructive/20 text-destructive{% else %}bg-accent border-border text-foreground{% endif %}">
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Status Panel -->
+        <div class="lg:col-span-1">
+            <div data-slot="card" class="rounded-xl border-2 border-input bg-card">
+                <div class="p-4 sm:p-6 border-b">
+                    <h3 class="text-lg font-semibold">Connection Status</h3>
+                </div>
+                <div class="p-4 sm:p-6 space-y-4">
+                    {% if jira_config %}
+                        <div>
+                            <p class="text-sm text-muted-foreground mb-2">Status</p>
+                            <div class="flex items-center gap-2">
+                                {% if jira_config.connection_status == 'connected' %}
+                                    <div class="h-3 w-3 rounded-full bg-primary"></div>
+                                    <span class="font-medium text-foreground">Connected</span>
+                                {% elif jira_config.connection_status == 'error' %}
+                                    <div class="h-3 w-3 rounded-full bg-destructive"></div>
+                                    <span class="font-medium text-destructive">Error</span>
+                                {% else %}
+                                    <div class="h-3 w-3 rounded-full bg-muted-foreground"></div>
+                                    <span class="font-medium text-muted-foreground">Not Tested</span>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <div>
+                            <p class="text-sm text-muted-foreground mb-2">Last Push</p>
+                            <p class="font-medium">
+                                {% if jira_config.last_sync_at %}
+                                    {{ jira_config.last_sync_at.strftime('%Y-%m-%d %H:%M:%S') }}
+                                {% else %}
+                                    Never
+                                {% endif %}
+                            </p>
+                        </div>
+
+                        {% if jira_config.last_error %}
+                            <div class="p-3 bg-destructive/10 border border-destructive/20 rounded-md">
+                                <p class="text-sm text-destructive font-medium mb-1">Last Error:</p>
+                                <p class="text-xs text-destructive/80">{{ jira_config.last_error }}</p>
+                            </div>
+                        {% endif %}
+
+                        <!-- Manual Actions -->
+                        <div class="pt-4 border-t space-y-3">
+                            <button type="button" id="test-connection-btn"
+                                    class="w-full inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2"
+                                    aria-label="Test connection">
+                                <i data-lucide="wifi" class="w-4 h-4" aria-hidden="true"></i>
+                                Test Connection
+                            </button>
+                            <button type="button" id="push-btn"
+                                    class="w-full inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2"
+                                    {% if not jira_config.enabled %}disabled{% endif %}
+                                    aria-label="Push to Jira">
+                                <i data-lucide="upload" class="w-4 h-4" aria-hidden="true"></i>
+                                Push to Jira
+                            </button>
+                        </div>
+                    {% elif env_configured %}
+                        <div>
+                            <p class="text-sm text-muted-foreground mb-2">Status</p>
+                            <div class="flex items-center gap-2">
+                                <div class="h-3 w-3 rounded-full bg-amber-500"></div>
+                                <span class="font-medium text-foreground">Configured via .env</span>
+                            </div>
+                        </div>
+                        <div class="p-3 bg-amber-500/10 border border-amber-500/20 rounded-md">
+                            <p class="text-xs text-amber-700 dark:text-amber-400">Credentials loaded from environment variables. Save settings to persist to database for full management.</p>
+                        </div>
+                        <!-- Save to Database -->
+                        <div class="pt-4 border-t space-y-3">
+                            <form method="POST" action="{{ url_for('admin.save_env_jira_config') }}">
+                                {{ form.hidden_tag() }}
+                                <button type="submit"
+                                        class="w-full inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2"
+                                        aria-label="Save Jira configuration to database">
+                                    <i data-lucide="save" class="w-4 h-4" aria-hidden="true"></i>
+                                    Save to Database
+                                </button>
+                            </form>
+                            <button type="button" id="test-connection-btn"
+                                    class="w-full inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2"
+                                    aria-label="Test connection">
+                                <i data-lucide="wifi" class="w-4 h-4" aria-hidden="true"></i>
+                                Test Connection
+                            </button>
+                        </div>
+                    {% else %}
+                        <p class="text-sm text-muted-foreground">No Jira configuration found. Configure settings below to get started.</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Push Status Summary -->
+            <div data-slot="card" class="mt-6 rounded-xl border-2 border-input bg-card">
+                <div class="p-4 sm:p-6 border-b">
+                    <h3 class="text-lg font-semibold">Push Status</h3>
+                </div>
+                <div class="p-4 sm:p-6">
+                    <div id="push-status-panel">
+                        {% if push_status %}
+                        <div class="space-y-3">
+                            <div class="flex items-center justify-between">
+                                <span class="text-sm text-muted-foreground">Total Tracked</span>
+                                <span class="font-bold text-foreground" id="ps-total">{{ push_status.total_tracked }}</span>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <span class="text-sm text-muted-foreground">Pushed</span>
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30" id="ps-pushed">{{ push_status.pushed }}</span>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <span class="text-sm text-muted-foreground">Pending</span>
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-amber-500/10 text-amber-600 border border-yellow-500/30" id="ps-pending">{{ push_status.pending }}</span>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <span class="text-sm text-muted-foreground">Drift Detected</span>
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-orange-500/10 text-orange-600 border border-orange-500/30" id="ps-drift">{{ push_status.drift_detected }}</span>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <span class="text-sm text-muted-foreground">Failed</span>
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive border border-destructive/30" id="ps-failed">{{ push_status.failed }}</span>
+                            </div>
+                            {% if push_status.get('last_webhook_at') %}
+                            <div class="flex items-center justify-between">
+                                <span class="text-sm text-muted-foreground">Last Webhook</span>
+                                <span class="text-sm text-foreground">{{ push_status.last_webhook_at }}</span>
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% else %}
+                        <p class="text-sm text-muted-foreground">No push data available yet.</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Job Status -->
+            <div data-slot="card" class="mt-6 rounded-xl border-2 border-input bg-card">
+                <div class="p-4 sm:p-6 border-b">
+                    <h3 class="text-lg font-semibold">Latest Job</h3>
+                </div>
+                <div class="p-4 sm:p-6">
+                    <div id="job-status">
+                        <div class="flex items-center gap-2 mb-2">
+                            <div class="h-3 w-3 rounded-full bg-muted-foreground" id="job-indicator"></div>
+                            <span class="font-medium text-muted-foreground" id="job-text">Loading...</span>
+                        </div>
+                        <div class="text-xs text-muted-foreground" id="job-details">Checking...</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Kanban Tasks Push Status -->
+            <div data-slot="card" class="mt-6 rounded-xl border-2 border-input bg-card">
+                <div class="p-4 sm:p-6 border-b">
+                    <h3 class="text-lg font-semibold">Kanban Tasks</h3>
+                </div>
+                <div class="p-4 sm:p-6 space-y-4">
+                    <div id="kanban-push-status-panel">
+                        <div class="space-y-3">
+                            <div class="flex items-center justify-between">
+                                <span class="text-sm text-muted-foreground">Pushed</span>
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30" id="kps-pushed">—</span>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <span class="text-sm text-muted-foreground">Pending</span>
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-amber-500/10 text-amber-600 border border-yellow-500/30" id="kps-pending">—</span>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <span class="text-sm text-muted-foreground">Failed</span>
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive border border-destructive/30" id="kps-failed">—</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="pt-4 border-t space-y-2">
+                        <button type="button" id="kanban-push-btn"
+                                class="w-full inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2"
+                                {% if not jira_config and not env_configured %}disabled{% endif %}
+                                aria-label="Push Kanban Tasks to Jira">
+                            <i data-lucide="layers" class="w-4 h-4" aria-hidden="true"></i>
+                            Push Kanban Tasks
+                        </button>
+                        <button type="button" id="push-epics-btn"
+                                class="w-full inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2"
+                                {% if not push_status or push_status.pushed == 0 %}disabled{% endif %}
+                                aria-label="Push ADM Phase Epics to Jira as Plateaus">
+                            <i data-lucide="layers" class="w-4 h-4" aria-hidden="true"></i>
+                            Push Phase Epics
+                        </button>
+                        <button type="button" id="push-dependencies-btn"
+                                class="w-full inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2"
+                                {% if not push_status or push_status.pushed == 0 %}disabled{% endif %}
+                                aria-label="Push card dependencies as Jira Subtasks and Blocks links">
+                            <i data-lucide="git-merge" class="w-4 h-4" aria-hidden="true"></i>
+                            Push Dependencies
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Application Components Section -->
+            <div data-slot="card" class="mt-6 rounded-xl border-2 border-input bg-card">
+                <div class="p-4 sm:p-6 border-b">
+                    <h3 class="text-lg font-semibold">Application Components</h3>
+                    <p class="text-sm text-muted-foreground mt-1">ArchiMate Application Layer — Phase C/D</p>
+                </div>
+                <div class="p-4 sm:p-6">
+                    <div class="pt-4 border-t">
+                        <button type="button" id="push-applications-btn"
+                                class="w-full inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2"
+                                {% if not jira_config and not env_configured %}disabled{% endif %}
+                                aria-label="Push Application Components to Jira">
+                            <i data-lucide="cpu" class="w-4 h-4" aria-hidden="true"></i>
+                            Push Applications
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Configuration Form -->
+        <div class="lg:col-span-2">
+            <div data-slot="card" class="rounded-xl border-2 border-input bg-card">
+                <div class="p-4 sm:p-6 border-b">
+                    <h3 class="text-lg font-semibold">Configuration</h3>
+                </div>
+                <form method="POST" action="{{ url_for('admin.jira_settings') }}" class="p-4 sm:p-6">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+
+                    <div class="space-y-6">
+                        <!-- Connection Settings -->
+                        <div>
+                            <h4 class="text-sm font-medium mb-4">Connection Settings</h4>
+                            <div class="space-y-4">
+                                <div>
+                                    <label for="base_url" class="block text-sm font-medium mb-2">
+                                        Jira Base URL <span class="text-destructive">*</span>
+                                    </label>
+                                    <input type="text"
+                                           id="base_url"
+                                           name="base_url"
+                                           value="{{ form.base_url.data or '' }}"
+                                           placeholder="https://your-org.atlassian.net"
+                                           class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                           required>
+                                    <p class="text-xs text-muted-foreground mt-1">Your Jira Cloud or Data Center URL</p>
+                                </div>
+
+                                <div>
+                                    <label for="username" class="block text-sm font-medium mb-2">
+                                        Username / Email <span class="text-destructive">*</span>
+                                    </label>
+                                    <input type="text"
+                                           id="username"
+                                           name="username"
+                                           value="{{ form.username.data or '' }}"
+                                           placeholder="user@example.com"
+                                           class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                           required>
+                                    <p class="text-xs text-muted-foreground mt-1">Jira account email used for API authentication</p>
+                                </div>
+
+                                <div>
+                                    <label for="api_token" class="block text-sm font-medium mb-2">
+                                        API Token {% if not jira_config %}<span class="text-destructive">*</span>{% endif %}
+                                    </label>
+                                    <input type="password"
+                                           id="api_token"
+                                           name="api_token"
+                                           value=""
+                                           placeholder="{% if jira_config %}Leave blank to keep existing{% else %}Your Jira API token{% endif %}"
+                                           class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                           {% if not jira_config %}required{% endif %}>
+                                    <p class="text-xs text-muted-foreground mt-1">Generate at <a href="https://id.atlassian.com/manage-profile/security/api-tokens" target="_blank" rel="noopener" class="text-primary hover:underline">Atlassian API tokens</a></p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Project Settings -->
+                        <div>
+                            <h4 class="text-sm font-medium mb-4">Project Settings</h4>
+                            <div class="space-y-4">
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label for="project_key" class="block text-sm font-medium mb-2">
+                                            Project Key <span class="text-destructive">*</span>
+                                        </label>
+                                        <input type="text"
+                                               id="project_key"
+                                               name="project_key"
+                                               value="{{ form.project_key.data or '' }}"
+                                               placeholder="EA"
+                                               class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                               required>
+                                        <p class="text-xs text-muted-foreground mt-1">Jira project key to push issues to</p>
+                                    </div>
+                                    <div>
+                                        <label for="issue_type" class="block text-sm font-medium mb-2">
+                                            Issue Type
+                                        </label>
+                                        <input type="text"
+                                               id="issue_type"
+                                               name="issue_type"
+                                               value="{{ form.issue_type.data or 'Task' }}"
+                                               placeholder="Task"
+                                               class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                                        <p class="text-xs text-muted-foreground mt-1">Jira issue type (default: Task)</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Filter Settings -->
+                        <div>
+                            <h4 class="text-sm font-medium mb-4">Data Filters</h4>
+                            <div class="space-y-4">
+                                <div class="p-3 bg-accent/50 rounded-md space-y-3">
+                                    <div>
+                                        <label for="filter_countries" class="text-sm font-medium">Country Filter</label>
+                                        <p class="text-xs text-muted-foreground">Comma-separated list of countries to include in push scope</p>
+                                    </div>
+                                    <input type="text"
+                                           id="filter_countries"
+                                           name="filter_countries"
+                                           value="{{ form.filter_countries.data or '' }}"
+                                           placeholder="United Kingdom, Ireland"
+                                           class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Enable Toggle -->
+                        <div>
+                            <div class="flex items-center justify-between p-3 bg-accent/50 rounded-md">
+                                <div>
+                                    <label for="enabled" class="text-sm font-medium">Enable Integration</label>
+                                    <p class="text-xs text-muted-foreground">Allow pushing data to Jira</p>
+                                </div>
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox"
+                                           id="enabled"
+                                           name="enabled"
+                                           value="true"
+                                           {% if form.enabled.data or not jira_config %}checked{% endif %}
+                                           class="sr-only peer">
+                                    <div class="w-11 h-6 bg-muted peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-ring/30 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-background after:border-border after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Submit -->
+                        <div class="flex items-center gap-3 pt-4 border-t">
+                            <button type="submit" class="inline-flex items-center gap-2 rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm font-medium hover:bg-primary/90 transition-colors" aria-label="Save settings">
+                                <i data-lucide="save" class="w-4 h-4" aria-hidden="true"></i>
+                                Save Settings
+                            </button>
+                            <a href="{{ url_for('admin.index') }}" class="inline-flex items-center gap-2 rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground transition-colors">
+                                Cancel
+                            </a>
+                        </div>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Field Mapping Reference -->
+            <div data-slot="card" class="mt-6 rounded-xl border-2 border-input bg-card">
+                <div class="p-4 sm:p-6 border-b">
+                    <h3 class="text-lg font-semibold">Field Mapping</h3>
+                    <p class="text-sm text-muted-foreground mt-1">How A.R.C.I.E fields map to Jira issue fields</p>
+                </div>
+                <div class="p-4 sm:p-6">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="border-b">
+                                    <th class="text-left py-2 px-3 font-medium text-muted-foreground">A.R.C.I.E Field</th>
+                                    <th class="text-left py-2 px-3 font-medium text-muted-foreground">Jira Field</th>
+                                    <th class="text-left py-2 px-3 font-medium text-muted-foreground">Authority</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr class="border-b"><td class="py-2 px-3">name</td><td class="py-2 px-3">summary</td><td class="py-2 px-3"><span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30">Abacus</span></td></tr>
+                                <tr class="border-b"><td class="py-2 px-3">description</td><td class="py-2 px-3">description (ADF)</td><td class="py-2 px-3"><span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30">Abacus</span></td></tr>
+                                <tr class="border-b"><td class="py-2 px-3">business_criticality</td><td class="py-2 px-3">priority</td><td class="py-2 px-3"><span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30">A.R.C.I.E</span></td></tr>
+                                <tr class="border-b"><td class="py-2 px-3">lifecycle_status</td><td class="py-2 px-3">labels</td><td class="py-2 px-3"><span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30">Abacus</span></td></tr>
+                                <tr class="border-b"><td class="py-2 px-3">business_domain</td><td class="py-2 px-3">component</td><td class="py-2 px-3"><span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30">Abacus</span></td></tr>
+                                <tr class="border-b"><td class="py-2 px-3">business_owner</td><td class="py-2 px-3">custom field</td><td class="py-2 px-3"><span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30">Abacus</span></td></tr>
+                                <tr class="border-b"><td class="py-2 px-3">vendor_name</td><td class="py-2 px-3">custom field</td><td class="py-2 px-3"><span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30">A.R.C.I.E</span></td></tr>
+                                <tr><td class="py-2 px-3 text-muted-foreground" colspan="3">+ 8 more custom fields (TCO, rationalization score, etc.)</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="mt-4">
+                        <button type="button" id="discover-fields-btn"
+                                class="inline-flex items-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground transition-colors"
+                                aria-label="Discover Jira fields">
+                            <i data-lucide="search" class="w-4 h-4" aria-hidden="true"></i>
+                            Discover Jira Custom Fields
+                        </button>
+                        <div id="discovery-result" class="mt-2 text-sm text-muted-foreground hidden"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3-System Authority Info -->
+    <div class="mt-8">
+        <div data-slot="card" class="rounded-xl border-2 border-input bg-card p-4 sm:p-6">
+            <h3 class="text-lg font-semibold mb-4">3-System Authority Model</h3>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="p-4 rounded-md bg-primary/5 border border-primary/20">
+                    <h4 class="font-medium text-primary mb-2">Abacus Wins</h4>
+                    <p class="text-sm text-muted-foreground">Asset identity: name, description, lifecycle, owners, country, business domain</p>
+                </div>
+                <div class="p-4 rounded-md bg-primary/5 border border-primary/20">
+                    <h4 class="font-medium text-primary mb-2">A.R.C.I.E Wins</h4>
+                    <p class="text-sm text-muted-foreground">Enrichment: criticality, TCO, rationalization score, vendor, technology stack</p>
+                </div>
+                <div class="p-4 rounded-md bg-orange-500/5 border border-orange-500/20">
+                    <h4 class="font-medium text-orange-600 mb-2">Jira Wins</h4>
+                    <p class="text-sm text-muted-foreground">Workflow: status, assignee, sprint, resolution (never overwritten by push)</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Initialize Lucide & JS -->
+<script>
+    lucide.createIcons();
+
+    const csrfToken = '{{ csrf_token() }}';
+    let pollInterval = null;
+    let kanbanPollInterval = null;
+
+    // Test Connection
+    document.getElementById('test-connection-btn')?.addEventListener('click', function() {
+        const btn = this;
+        btn.disabled = true;
+        btn.textContent = 'Testing...';
+
+        fetch('{{ url_for("admin.jira_test_connection") }}', {
+            method: 'POST',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken,
+            },
+            credentials: 'same-origin',
+        })
+        .then(r => r.json())
+        .then(data => {
+            btn.disabled = false;
+            btn.innerHTML = '<i data-lucide="wifi" class="w-4 h-4"></i> Test Connection';
+            lucide.createIcons({attrs: {class: 'w-4 h-4'}});
+            if (data.success) {
+                Platform.toast.success('Connection successful');
+                location.reload();
+            } else {
+                Platform.toast.error('Connection failed: ' + data.message);
+            }
+        })
+        .catch(err => {
+            btn.disabled = false;
+            btn.innerHTML = '<i data-lucide="wifi" class="w-4 h-4"></i> Test Connection';
+            Platform.toast.error('Error: ' + err.message);
+        });
+    });
+
+    // Push to Jira
+    document.getElementById('push-btn')?.addEventListener('click', async function() {
+        if (!(await Platform.modal.confirm('Push all in-scope applications to Jira? This will create or update Jira issues.'))) return;
+
+        const btn = this;
+        btn.disabled = true;
+        btn.textContent = 'Pushing...';
+
+        fetch('{{ url_for("admin.jira_trigger_push") }}', {
+            method: 'POST',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken,
+            },
+            credentials: 'same-origin',
+            body: JSON.stringify({force: false}),
+        })
+        .then(r => r.json())
+        .then(data => {
+            btn.disabled = false;
+            btn.innerHTML = '<i data-lucide="upload" class="w-4 h-4"></i> Push to Jira';
+            lucide.createIcons({attrs: {class: 'w-4 h-4'}});
+            if (data.success) {
+                const r = data.result;
+                Platform.toast.info(`Push complete: ${r.created} created, ${r.updated} updated, ${r.skipped} skipped, ${r.failed} failed`);
+                refreshPushStatus();
+            } else {
+                Platform.toast.error('Push failed: ' + (data.error || 'Unknown error'));
+            }
+        })
+        .catch(err => {
+            btn.disabled = false;
+            btn.innerHTML = '<i data-lucide="upload" class="w-4 h-4"></i> Push to Jira';
+            Platform.toast.error('Error: ' + err.message);
+        });
+    });
+
+    // Discover Fields
+    document.getElementById('discover-fields-btn')?.addEventListener('click', function() {
+        const btn = this;
+        const resultDiv = document.getElementById('discovery-result');
+        btn.disabled = true;
+        btn.textContent = 'Discovering...';
+
+        fetch('{{ url_for("admin.jira_field_discovery") }}', {
+            headers: {'X-Requested-With': 'XMLHttpRequest'},
+        })
+        .then(r => r.json())
+        .then(data => {
+            btn.disabled = false;
+            btn.innerHTML = '<i data-lucide="search" class="w-4 h-4"></i> Discover Jira Custom Fields';
+            lucide.createIcons({attrs: {class: 'w-4 h-4'}});
+            resultDiv.classList.remove('hidden');
+            if (data.success && data.fields) {
+                resultDiv.innerHTML = '<strong>Found ' + data.fields.length + ' fields:</strong><br>' +
+                    data.fields.slice(0, 20).map(f => f.key + ' (' + (f.name || 'unnamed') + ')').join('<br>');
+            } else {
+                resultDiv.textContent = 'Discovery failed: ' + (data.message || 'Unknown');
+            }
+        })
+        .catch(err => {
+            btn.disabled = false;
+            resultDiv.classList.remove('hidden');
+            resultDiv.textContent = 'Error: ' + err.message;
+        });
+    });
+
+    // Kanban push status polling
+    function refreshKanbanStatus() {
+        fetch('{{ url_for("admin.jira_kanban_push_status") }}', {
+            headers: {'X-Requested-With': 'XMLHttpRequest'},
+        })
+        .then(r => r.json())
+        .then(data => {
+            const ks = (data.success && data.kanban_status) ? data.kanban_status : {};
+            const el = (id) => document.getElementById(id);
+            if (el('kps-pushed')) el('kps-pushed').textContent = ks.pushed !== undefined ? ks.pushed : '—';
+            if (el('kps-pending')) el('kps-pending').textContent = ks.pending !== undefined ? ks.pending : '—';
+            if (el('kps-failed')) el('kps-failed').textContent = ks.failed !== undefined ? ks.failed : '—';
+        })
+        .catch(() => {});
+    }
+
+    // Push Kanban Tasks button
+    document.getElementById('kanban-push-btn')?.addEventListener('click', async function() {
+        if (!(await Platform.modal.confirm('Push all un-synced ADM Kanban tasks to Jira?'))) return;
+        const btn = this;
+        btn.disabled = true;
+        btn.textContent = 'Pushing...';
+
+        fetch('{{ url_for("admin.jira_trigger_kanban_push") }}', {
+            method: 'POST',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken,
+            },
+            credentials: 'same-origin',
+            body: JSON.stringify({}),
+        })
+        .then(r => r.json())
+        .then(data => {
+            btn.disabled = false;
+            btn.innerHTML = '<i data-lucide="layers" class="w-4 h-4"></i> Push Kanban Tasks';
+            lucide.createIcons({attrs: {class: 'w-4 h-4'}});
+            if (data.success) {
+                Platform.toast.info(`Kanban push complete: ${data.pushed} pushed, ${data.failed} failed`);
+                refreshKanbanStatus();
+            } else {
+                Platform.toast.error('Push failed: ' + (data.error || 'Unknown error'));
+            }
+        })
+        .catch(err => {
+            btn.disabled = false;
+            btn.innerHTML = '<i data-lucide="layers" class="w-4 h-4"></i> Push Kanban Tasks';
+            Platform.toast.error('Error: ' + err.message);
+        });
+    });
+
+    // Push Phase Epics button
+    document.getElementById('push-epics-btn')?.addEventListener('click', async function() {
+        if (!(await Platform.modal.confirm('Create one Jira Epic per ADM phase as an ArchiMate Plateau?'))) return;
+        const btn = this;
+        btn.disabled = true;
+        btn.textContent = 'Pushing...';
+
+        fetch('{{ url_for("admin.jira_push_epics") }}', {
+            method: 'POST',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken,
+            },
+            credentials: 'same-origin',
+            body: JSON.stringify({}),
+        })
+        .then(r => r.json())
+        .then(data => {
+            btn.disabled = false;
+            btn.innerHTML = '<i data-lucide="layers" class="w-4 h-4"></i> Push Phase Epics';
+            lucide.createIcons({attrs: {class: 'w-4 h-4'}});
+            if (data.success) {
+                Platform.toast.info(`Phase Epics push complete: ${data.pushed} pushed, ${data.failed} failed`);
+            } else {
+                Platform.toast.error('Push failed: ' + (data.error || 'Unknown error'));
+            }
+        })
+        .catch(err => {
+            btn.disabled = false;
+            btn.innerHTML = '<i data-lucide="layers" class="w-4 h-4"></i> Push Phase Epics';
+            Platform.toast.error('Error: ' + err.message);
+        });
+    });
+
+    // Push Dependencies button (JIRA-008 — Subtasks + Blocks links)
+    document.getElementById('push-dependencies-btn')?.addEventListener('click', async function() {
+        if (!(await Platform.modal.confirm('Create Jira Subtasks from card depends_on and Blocks links from card blocks[]?'))) return;
+        const btn = this;
+        btn.disabled = true;
+        btn.textContent = 'Pushing...';
+        fetch('{{ url_for("admin.jira_push_dependencies") }}', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': document.querySelector('input[name=csrf_token]')?.value || '',
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+        })
+        .then(r => r.json())
+        .then(data => {
+            btn.disabled = false;
+            btn.innerHTML = '<i data-lucide="git-merge" class="w-4 h-4"></i> Push Dependencies';
+            lucide.createIcons({attrs: {class: 'w-4 h-4'}});
+            if (data.success) {
+                Platform.toast.info(`Dependencies push complete: ${data.linked} linked, ${data.failed} failed`);
+            } else {
+                Platform.toast.error('Push failed: ' + (data.error || 'Unknown error'));
+            }
+        })
+        .catch(err => {
+            btn.disabled = false;
+            btn.innerHTML = '<i data-lucide="git-merge" class="w-4 h-4"></i> Push Dependencies';
+            Platform.toast.error('Error: ' + err.message);
+        });
+    });
+
+    // Poll push status
+    function refreshPushStatus() {
+        fetch('{{ url_for("admin.jira_push_status") }}', {
+            headers: {'X-Requested-With': 'XMLHttpRequest'},
+        })
+        .then(r => r.json())
+        .then(data => {
+            const ps = data.push_status || {};
+            const el = (id) => document.getElementById(id);
+            if (el('ps-total')) el('ps-total').textContent = ps.total_tracked || 0;
+            if (el('ps-pushed')) el('ps-pushed').textContent = ps.pushed || 0;
+            if (el('ps-pending')) el('ps-pending').textContent = ps.pending || 0;
+            if (el('ps-drift')) el('ps-drift').textContent = ps.drift_detected || 0;
+            if (el('ps-failed')) el('ps-failed').textContent = ps.failed || 0;
+
+            const job = data.latest_job;
+            const ind = el('job-indicator');
+            const txt = el('job-text');
+            const det = el('job-details');
+            if (!job) {
+                if (txt) txt.textContent = 'No push jobs yet';
+                if (det) det.textContent = '';
+                return;
+            }
+            const statusColors = {
+                completed: 'bg-primary',
+                in_progress: 'bg-primary animate-pulse',
+                failed: 'bg-destructive',
+                pending: 'bg-amber-500',
+            };
+            if (ind) ind.className = 'h-3 w-3 rounded-full ' + (statusColors[job.status] || 'bg-muted-foreground');
+            if (txt) txt.textContent = (job.status || 'unknown').replace('_', ' ');
+            let detail = 'Job #' + job.id;
+            if (job.created_at) detail += ' | ' + new Date(job.created_at).toLocaleString();
+            if (job.result) {
+                const r = job.result;
+                detail += ` | Created: ${r.created || 0}, Updated: ${r.updated || 0}, Skipped: ${r.skipped || 0}, Failed: ${r.failed || 0}`;
+            }
+            if (job.error) detail += ' | Error: ' + job.error;
+            if (det) det.textContent = detail;
+        })
+        .catch(() => {});
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        refreshPushStatus();
+        refreshKanbanStatus();
+        pollInterval = setInterval(refreshPushStatus, 5000);
+        kanbanPollInterval = setInterval(refreshKanbanStatus, 5000);
+    });
+
+    // Push Application Components button
+    document.getElementById('push-applications-btn')?.addEventListener('click', async function() {
+        if (!(await Platform.modal.confirm('Push all ApplicationComponents (Phase C/D) to Jira?'))) return;
+        const btn = this;
+        btn.disabled = true;
+        btn.textContent = 'Pushing...';
+
+        fetch('{{ url_for("admin.jira_push_applications") }}', {
+            method: 'POST',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken,
+            },
+            credentials: 'same-origin',
+            body: JSON.stringify({}),
+        })
+        .then(r => r.json())
+        .then(data => {
+            btn.disabled = false;
+            btn.innerHTML = '<i data-lucide="cpu" class="w-4 h-4"></i> Push Applications';
+            lucide.createIcons({attrs: {class: 'w-4 h-4'}});
+            if (data.success) {
+                Platform.toast.info(`Applications push complete: ${data.created || 0} created, ${data.updated || 0} updated, ${data.failed || 0} failed`);
+            } else {
+                Platform.toast.error('Push failed: ' + (data.error || 'Unknown error'));
+            }
+        })
+        .catch(err => {
+            btn.disabled = false;
+            btn.innerHTML = '<i data-lucide="cpu" class="w-4 h-4"></i> Push Applications';
+            Platform.toast.error('Error: ' + err.message);
+        });
+    });
+
+    window.addEventListener('beforeunload', function() {
+        if (pollInterval) clearInterval(pollInterval);
+        if (kanbanPollInterval) clearInterval(kanbanPollInterval);
+    });
+</script>
+{% endblock %}

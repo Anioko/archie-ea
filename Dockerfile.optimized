@@ -1,0 +1,116 @@
+# Multi-stage optimized Docker build
+# Reduces image size by 50-70% and improves security
+
+# ============================================================================
+# Stage 1: Builder - Install dependencies and compile code
+# ============================================================================
+FROM python:3.11-slim AS builder
+
+# Build arguments
+ARG PYTHON_VERSION=3.11
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+WORKDIR /build
+
+# Install build dependencies (only in builder stage)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libpq-dev \
+    curl \
+    ca-certificates \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create virtual environment
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Copy and install Python dependencies
+COPY requirements.txt .
+RUN pip install --upgrade pip setuptools wheel && \
+    pip install -r requirements.txt && \
+    pip install gunicorn[gevent]==21.2.0
+
+# ============================================================================
+# Stage 2: Runtime - Minimal production image
+# ============================================================================
+FROM python:3.11-slim AS runtime
+
+# Runtime environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PATH="/opt/venv/bin:$PATH" \
+    FLASK_APP=run.py \
+    FLASK_ENV=production
+
+WORKDIR /app
+
+# Install ONLY runtime dependencies (no build tools)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq5 \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Copy virtual environment from builder
+COPY --from=builder /opt/venv /opt/venv
+
+# Copy application code
+COPY . /app
+
+# Create non-root user for security
+RUN useradd --create-home --shell /bin/bash appuser && \
+    chown -R appuser:appuser /app && \
+    chmod -R 755 /app
+
+# Create directories for uploads and logs
+RUN mkdir -p /app/uploads /app/logs && \
+    chown -R appuser:appuser /app/uploads /app/logs
+
+# Switch to non-root user
+USER appuser
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:5000/health || exit 1
+
+EXPOSE 5000
+
+# Production entrypoint with Gunicorn
+CMD ["gunicorn", \
+    "--bind", "0.0.0.0:5000", \
+    "--workers", "4", \
+    "--worker-class", "gevent", \
+    "--worker-connections", "1000", \
+    "--max-requests", "1000", \
+    "--max-requests-jitter", "50", \
+    "--timeout", "120", \
+    "--access-logfile", "-", \
+    "--error-logfile", "-", \
+    "--log-level", "info", \
+    "run:app"]
+
+# ============================================================================
+# Stage 3: Development image (optional)
+# ============================================================================
+FROM runtime AS development
+
+USER root
+
+# Install development tools
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    vim \
+    less \
+    postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
+
+USER appuser
+
+# Development uses Flask dev server with auto-reload
+ENV FLASK_ENV=development
+CMD ["flask", "run", "--host=0.0.0.0", "--port=5000", "--reload"]

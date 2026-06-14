@@ -1,0 +1,484 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'components/page_header.html' import page_header %}
+{% from 'components/metrics_card.html' import metrics_card %}
+
+{% block title %}{{ template_name|title }} Template - Dashboard{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    {{ page_header(
+        title=template_name|title ~ ' Template',
+        description='Framework template configuration and deployment',
+        actions=[
+            {'text': 'Apply Template', 'icon': 'play', 'onclick': 'applyTemplate()', 'variant': 'default'},
+            {'text': 'Customize', 'icon': 'pencil', 'onclick': 'customizeTemplate()', 'variant': 'outline'}
+        ]
+    ) }}
+
+    <!-- Template Info -->
+    <div class="bg-card rounded-lg p-6 border border-border mb-6">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div>
+                <h3 class="text-lg font-semibold text-foreground mb-2">Template Details</h3>
+                <div class="space-y-2">
+                    <div class="flex justify-between">
+                        <span class="text-muted-foreground">Category:</span>
+                        <span class="text-foreground" id="templateCategory">Loading...</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-muted-foreground">Type:</span>
+                        <span class="text-foreground" id="templateType">Loading...</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-muted-foreground">Organization Size:</span>
+                        <span class="text-foreground" id="orgSize">Loading...</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-muted-foreground">Complexity:</span>
+                        <span class="text-foreground" id="complexity">Loading...</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div>
+                <h3 class="text-lg font-semibold text-foreground mb-2">Performance Metrics</h3>
+                <div class="space-y-2">
+                    <div class="flex justify-between">
+                        <span class="text-muted-foreground">Usage Count:</span>
+                        <span class="text-foreground" id="usageCount">Loading...</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-muted-foreground">Success Rate:</span>
+                        <span class="text-foreground" id="successRate">Loading...</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-muted-foreground">Quality Score:</span>
+                        <div class="flex items-center">
+                            <div id="qualityScore" class="flex text-warning/80">
+                                <!-- Stars will be populated by JavaScript -->
+                            </div>
+                            <span class="text-foreground ml-1" id="qualityValue">Loading...</span>
+                        </div>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-muted-foreground">Avg. Implementation:</span>
+                        <span class="text-foreground" id="avgImplementation">Loading...</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div>
+                <h3 class="text-lg font-semibold text-foreground mb-2">Target Industries</h3>
+                <div class="space-y-2">
+                    <div id="targetIndustries">
+                        <!-- Industries will be populated by JavaScript -->
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-muted-foreground">Provider:</span>
+                        <span class="text-foreground" id="provider">Loading...</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-muted-foreground">Last Updated:</span>
+                        <span class="text-foreground" id="lastUpdated">Loading...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Template Description -->
+    <div class="bg-card rounded-lg p-6 border border-border mb-6">
+        <h3 class="text-lg font-semibold text-foreground mb-4">Template Description</h3>
+        <p class="text-muted-foreground" id="templateDescription">
+            Loading template description...
+        </p>
+    </div>
+
+    <!-- Template Components -->
+    <div class="bg-card rounded-lg p-6 border border-border mb-6">
+        <h3 class="text-lg font-semibold text-foreground mb-4">Template Components</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+                <h4 class="font-medium text-foreground mb-3">Included Capabilities</h4>
+                <div class="space-y-2" id="includedCapabilities">
+                    <!-- Capabilities will be populated by JavaScript -->
+                </div>
+            </div>
+            <div>
+                <h4 class="font-medium text-foreground mb-3">Pre-configured Extensions</h4>
+                <div class="space-y-2" id="preconfiguredExtensions">
+                    <!-- Extensions will be populated by JavaScript -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Implementation Steps -->
+    <div class="bg-card rounded-lg p-6 border border-border mb-6">
+        <h3 class="text-lg font-semibold text-foreground mb-4">Implementation Steps</h3>
+        <div class="space-y-4" id="implementationSteps">
+            <!-- Steps will be populated by JavaScript -->
+        </div>
+    </div>
+
+    <!-- Recent Deployments -->
+    <div class="bg-card rounded-lg p-6 border border-border">
+        <h3 class="text-lg font-semibold text-foreground mb-4">Recent Deployments</h3>
+        <div class="space-y-3" id="recentDeployments">
+            <!-- Deployments will be populated by JavaScript -->
+        </div>
+    </div>
+</div>
+
+<script>
+// Template Dashboard JavaScript
+const templateName = "{{ template_name }}";
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadTemplateData();
+    loadRecentDeployments();
+});
+
+function loadTemplateData() {
+    // Simulate loading template data
+    const templateData = getTemplateData(templateName);
+    
+    document.getElementById('templateCategory').textContent = templateData.category;
+    document.getElementById('templateType').textContent = templateData.type;
+    document.getElementById('orgSize').textContent = templateData.organizationSize;
+    document.getElementById('complexity').textContent = templateData.complexity;
+    document.getElementById('usageCount').textContent = templateData.usageCount;
+    document.getElementById('successRate').textContent = templateData.successRate + '%';
+    document.getElementById('qualityValue').textContent = templateData.qualityScore;
+    document.getElementById('avgImplementation').textContent = templateData.avgImplementation;
+    document.getElementById('provider').textContent = templateData.provider;
+    document.getElementById('lastUpdated').textContent = templateData.lastUpdated;
+    document.getElementById('templateDescription').textContent = templateData.description;
+    
+    // Render quality score stars
+    renderQualityStars(templateData.qualityScore);
+    
+    // Render target industries
+    renderTargetIndustries(templateData.targetIndustries);
+    
+    // Render capabilities and extensions
+    renderCapabilities(templateData.capabilities);
+    renderExtensions(templateData.extensions);
+    
+    // Render implementation steps
+    renderImplementationSteps(templateData.implementationSteps);
+}
+
+function getTemplateData(name) {
+    const templates = {
+        'small-enterprise': {
+            category: 'Manufacturing',
+            type: 'Business Framework',
+            organizationSize: 'Small (1-50 employees)',
+            complexity: 'Beginner',
+            usageCount: 234,
+            successRate: 94.2,
+            qualityScore: 4.3,
+            avgImplementation: '2-3 weeks',
+            provider: 'System',
+            lastUpdated: '2024-01-05',
+            targetIndustries: ['Manufacturing', 'Retail', 'Services'],
+            description: 'A streamlined framework template designed specifically for small enterprises. Provides essential manufacturing capabilities with simplified implementation and minimal overhead.',
+            capabilities: [
+                'Basic Production Planning',
+                'Quality Control Essentials',
+                'Inventory Management',
+                'Order Processing',
+                'Basic Reporting'
+            ],
+            extensions: [
+                'Manufacturing Basic Extension',
+                'Quality Management Tools'
+            ],
+            implementationSteps: [
+                'Initial assessment and planning',
+                'Core capability setup',
+                'Basic process configuration',
+                'User training and onboarding',
+                'Go-live and support'
+            ]
+        },
+        'large-enterprise': {
+            category: 'Manufacturing',
+            type: 'Enterprise Framework',
+            organizationSize: 'Large (500+ employees)',
+            complexity: 'Advanced',
+            usageCount: 156,
+            successRate: 91.8,
+            qualityScore: 4.6,
+            avgImplementation: '8-12 weeks',
+            provider: 'System',
+            lastUpdated: '2024-01-08',
+            targetIndustries: ['Manufacturing', 'Automotive', 'Aerospace', 'Pharmaceuticals'],
+            description: 'Comprehensive enterprise-grade framework template for large manufacturing organizations. Includes advanced capabilities, multi-site support, and enterprise integrations.',
+            capabilities: [
+                'Advanced Production Planning',
+                'Enterprise Quality Management',
+                'Multi-site Inventory Management',
+                'Supply Chain Integration',
+                'Advanced Analytics',
+                'Compliance Management',
+                'Digital Twin Support',
+                'IoT Integration'
+            ],
+            extensions: [
+                'Manufacturing Advanced Extension',
+                'Digital Transformation Extension',
+                'AI Analytics Extension'
+            ],
+            implementationSteps: [
+                'Enterprise assessment and roadmap',
+                'Infrastructure preparation',
+                'Core framework deployment',
+                'Advanced capability configuration',
+                'Integration setup',
+                'Multi-site rollout',
+                'Enterprise training',
+                'Go-live and optimization'
+            ]
+        },
+        'generic-business': {
+            category: 'General',
+            type: 'Business Framework',
+            organizationSize: 'Any size',
+            complexity: 'Intermediate',
+            usageCount: 412,
+            successRate: 89.5,
+            qualityScore: 4.1,
+            avgImplementation: '4-6 weeks',
+            provider: 'System',
+            lastUpdated: '2024-01-10',
+            targetIndustries: ['All Industries'],
+            description: 'A versatile business framework template suitable for organizations across various industries. Provides a solid foundation for business capability management with flexible customization options.',
+            capabilities: [
+                'Business Process Management',
+                'Quality Management',
+                'Resource Management',
+                'Performance Monitoring',
+                'Risk Management',
+                'Continuous Improvement'
+            ],
+            extensions: [
+                'Digital Transformation Extension',
+                'Analytics Extension'
+            ],
+            implementationSteps: [
+                'Business analysis and requirements gathering',
+                'Framework customization',
+                'Process configuration',
+                'User training',
+                'Pilot implementation',
+                'Full deployment',
+                'Continuous optimization'
+            ]
+        }
+    };
+    
+    return templates[name.replace('-', '-')] || templates['generic-business'];
+}
+
+function escapeHtml(str) {
+    if (str == null) return '';
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+function renderQualityStars(score) {
+    const scoreContainer = document.getElementById('qualityScore');
+    const fullStars = Math.floor(score);
+    const hasHalfStar = score % 1 !== 0;
+    const emptyStars = 5 - Math.ceil(score);
+    const starSvg = '<svg class="inline h-4 w-4 text-warning/80 fill-current" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>';
+    const halfSvg = '<svg class="inline h-4 w-4 text-warning/80 fill-current" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77V2z"/></svg>';
+    const emptySvg = '<svg class="inline h-4 w-4 text-muted-foreground" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>';
+    
+    let starsHTML = starSvg.repeat(fullStars);
+    if (hasHalfStar) starsHTML += halfSvg;
+    starsHTML += emptySvg.repeat(emptyStars);
+    
+    scoreContainer.innerHTML = starsHTML;
+}
+
+function renderTargetIndustries(industries) {
+    const container = document.getElementById('targetIndustries');
+    container.innerHTML = '';
+    
+    industries.forEach(industry => {
+        const badge = document.createElement('span');
+        badge.className = 'px-2 py-1 text-xs rounded-full bg-primary/10 text-primary mr-2 mb-2';
+        badge.textContent = industry;
+        container.appendChild(badge);
+    });
+}
+
+function renderCapabilities(capabilities) {
+    const container = document.getElementById('includedCapabilities');
+    container.innerHTML = '';
+    
+    capabilities.forEach(capability => {
+        const div = document.createElement('div');
+        div.className = 'flex items-center space-x-2 p-2 bg-muted rounded';
+        div.innerHTML = `
+            <svg class="h-4 w-4 text-success shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+            <span class="text-foreground">${escapeHtml(capability)}</span>
+        `;
+        container.appendChild(div);
+    });
+}
+
+function renderExtensions(extensions) {
+    const container = document.getElementById('preconfiguredExtensions');
+    container.innerHTML = '';
+    
+    extensions.forEach(extension => {
+        const div = document.createElement('div');
+        div.className = 'flex items-center space-x-2 p-2 bg-muted rounded';
+        div.innerHTML = `
+            <svg class="h-4 w-4 text-primary shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+            <span class="text-foreground">${escapeHtml(extension)}</span>
+        `;
+        container.appendChild(div);
+    });
+}
+
+function renderImplementationSteps(steps) {
+    const container = document.getElementById('implementationSteps');
+    container.innerHTML = '';
+    
+    steps.forEach((step, index) => {
+        const stepDiv = document.createElement('div');
+        stepDiv.className = 'flex items-start space-x-3';
+        stepDiv.innerHTML = `
+            <div class="bg-primary text-primary-foreground w-6 h-6 rounded-full flex items-center justify-center text-sm font-medium shrink-0">
+                ${index + 1}
+            </div>
+            <div class="flex-1">
+                <p class="text-foreground">${escapeHtml(step)}</p>
+            </div>
+        `;
+        container.appendChild(stepDiv);
+    });
+}
+
+function loadRecentDeployments() {
+    const deployments = [
+        { organization: 'Acme Manufacturing', date: '2024-01-12', status: 'Completed', progress: 100 },
+        { organization: 'Global Industries', date: '2024-01-10', status: 'In Progress', progress: 65 },
+        { organization: 'Tech Solutions Inc', date: '2024-01-08', status: 'Completed', progress: 100 },
+        { organization: 'Precision Engineering', date: '2024-01-05', status: 'Planning', progress: 15 }
+    ];
+    
+    const container = document.getElementById('recentDeployments');
+    container.innerHTML = '';
+    
+    deployments.forEach(deployment => {
+        const deploymentDiv = document.createElement('div');
+        deploymentDiv.className = 'flex items-center justify-between p-3 bg-muted rounded-md';
+        deploymentDiv.innerHTML = `
+            <div class="flex items-center space-x-3">
+                <div class="bg-primary/10 p-2 rounded-full">
+                    <svg class="h-4 w-4 text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                </div>
+                <div>
+                    <p class="font-medium text-foreground">${escapeHtml(deployment.organization)}</p>
+                    <p class="text-sm text-muted-foreground">${escapeHtml(deployment.date)}</p>
+                </div>
+            </div>
+            <div class="flex items-center space-x-3">
+                <div class="flex-1 w-24">
+                    <div class="bg-background rounded-full h-2">
+                        <div class="bg-primary h-2 rounded-full" style="width: ${parseFloat(deployment.progress) || 0}%"></div>  <!-- inline-style-ok -->
+                    </div>
+                </div>
+                <span class="px-2 py-1 text-xs rounded-full ${getStatusColor(deployment.status)}">${escapeHtml(deployment.status)}</span>
+            </div>
+        `;
+        container.appendChild(deploymentDiv);
+    });
+}
+
+function getStatusColor(status) {
+    const colors = {
+        'Completed': 'bg-success/10 text-success',
+        'In Progress': 'bg-warning/10 text-warning',
+        'Planning': 'bg-primary/10 text-primary',
+        'Delayed': 'bg-destructive/10 text-destructive'
+    };
+    return colors[status] || 'bg-muted text-foreground';
+}
+
+function applyTemplate() {
+    // Applying template
+    // Open apply template modal or navigate to apply page
+    const modal = document.createElement('div');
+    modal.id = 'apply-framework-template';
+    modal.className = 'fixed inset-0 bg-foreground bg-opacity-50 flex items-center justify-center z-50';
+    modal.innerHTML = `
+        <div class="bg-card rounded-xl shadow-xl p-6 max-w-md w-full mx-4 border">
+            <h3 class="text-lg font-semibold mb-4">Apply Template</h3>
+            <p class="text-sm text-muted-foreground mb-4">This will create a new framework configuration based on the {{ template_name|tojson }} template.</p>
+            <div class="space-y-4">
+                <div>
+                    <label for="configName" class="block text-sm font-medium mb-1">Configuration Name</label>
+                    <input type="text" id="configName" class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" placeholder="Enter configuration name">
+                </div>
+                <div>
+                    <label for="orgName" class="block text-sm font-medium mb-1">Organization Name</label>
+                    <input type="text" id="orgName" class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" placeholder="Enter organization name">
+                </div>
+                <div class="flex gap-2 pt-2">
+                    <button data-action="confirmApplyTemplate" class="inline-flex items-center justify-center h-10 px-4 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 text-sm font-medium" aria-label="Action">
+                        Apply Template
+                    </button>
+                    <button data-action="closeModal" class="inline-flex items-center justify-center h-10 px-4 rounded-lg border border-input bg-background hover:bg-accent text-sm font-medium" aria-label="Action">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+}
+
+function confirmApplyTemplate() {
+    const configName = document.getElementById('configName').value;
+    const orgName = document.getElementById('orgName').value;
+    
+    if (!configName || !orgName) {
+        Platform.toast.info('Please fill in all fields');
+        return;
+    }
+    
+    // API call to apply template
+    fetch('/framework-management/api/apply-template', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            template_name: templateName,
+            configuration_name: configName,
+            organization_name: orgName
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            const applyModal = document.getElementById('apply-framework-template');
+            if (applyModal) applyModal.remove();
+            Platform.toast.info('Template applied successfully!');
+            loadRecentDeployments();
+        }
+    });
+}
+
+function customizeTemplate() {
+    // Customizing template
+    // Navigate to customization page or open modal
+}
+</script>
+{% endblock %}

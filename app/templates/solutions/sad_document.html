@@ -1,0 +1,423 @@
+{% extends "layouts/admin_base.html" %}
+<!-- modal-a11y-ok -->
+
+{% block title %}Solution Architecture Document — {{ sad.solution.name }}{% endblock %}
+
+{% block extra_head %}
+<style>
+/* SAD document styles */
+.sad-toc { background: var(--card); border: 1px solid var(--border); border-radius: 0.5rem; padding: 1.5rem; margin-bottom: 2rem; }
+.sad-toc ol { margin: 0; padding-left: 1.5rem; }
+.sad-toc li { padding: 0.2rem 0; }
+.sad-toc a { color: var(--primary); text-decoration: none; font-size: 0.875rem; }
+.sad-toc a:hover { text-decoration: underline; }
+.sad-section { background: var(--card); border: 1px solid var(--border); border-radius: 0.5rem; padding: 1.5rem; margin-bottom: 1.5rem; }
+.sad-section h2 { font-size: 1.125rem; font-weight: 600; color: var(--foreground); margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border); }
+.sad-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; margin-top: 0.75rem; }
+.sad-table th { background: var(--muted); color: var(--muted-foreground); font-weight: 500; text-align: left; padding: 0.5rem 0.75rem; border: 1px solid var(--border); }
+.sad-table td { padding: 0.5rem 0.75rem; border: 1px solid var(--border); color: var(--foreground); vertical-align: top; }
+.sad-table tr:hover td { background: var(--muted)/50; }
+.sad-empty { color: var(--muted-foreground); font-size: 0.875rem; font-style: italic; padding: 0.75rem 0; }
+.sad-kv-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-top: 0.5rem; }
+.sad-kv-item { display: flex; flex-direction: column; gap: 0.2rem; }
+.sad-kv-label { font-size: 0.75rem; font-weight: 500; color: var(--muted-foreground); text-transform: uppercase; letter-spacing: 0.05em; }
+.sad-kv-value { font-size: 0.875rem; color: var(--foreground); }
+.sad-badge { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 9999px; font-size: 0.7rem; font-weight: 500; background: var(--secondary); color: var(--secondary-foreground); }
+.sad-layer-chip { display: inline-block; padding: 0.1rem 0.4rem; border-radius: 0.25rem; font-size: 0.7rem; font-weight: 600; margin-right: 0.25rem; }
+.chip-business { background: #FFFFB5; color: #6b5c00; }
+.chip-application { background: #B5E3FF; color: #003d5c; }
+.chip-technology { background: #C9E6B5; color: #1a4700; }
+.chip-motivation { background: #B3A2C7; color: #2e1a45; }
+
+@media print {
+  nav, .sidebar, .sidebar-wrapper, header, .topbar,
+  .print-hide, [data-sidebar], #sidebar {
+    display: none !important;
+  }
+  .sad-section { break-inside: avoid; border: 1px solid #ccc; }
+  body { background: white; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto py-6 px-4" id="sad-top">
+
+  {# ── Header bar ──────────────────────────────────────────────────────── #}
+  <div class="flex items-center justify-between mb-6 print-hide">
+    <div>
+      <h1 class="text-2xl font-bold text-foreground">Solution Architecture Document</h1>
+      <p class="text-sm text-muted-foreground mt-1">{{ sad.solution.name }}</p>
+    </div>
+    <div class="flex gap-2">
+      <a href="{{ url_for('solution_design.solution_sad_download', solution_id=sad.solution.id) }}"
+         class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md border border-border bg-card text-foreground hover:bg-muted transition-colors"
+         aria-label="Download SAD as HTML file">
+        <i data-lucide="download" class="w-4 h-4" aria-hidden="true"></i>
+        Download as HTML
+      </a>
+      <button x-data @click="window.print()"
+              class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md border border-border bg-card text-foreground hover:bg-muted transition-colors"
+              aria-label="Print this document">
+        <i data-lucide="printer" class="w-4 h-4" aria-hidden="true"></i>
+        Print
+      </button>
+      <a href="{{ url_for('solution_design.view_solution', solution_id=sad.solution.id) }}"
+         class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md border border-border bg-card text-foreground hover:bg-muted transition-colors"
+         aria-label="Back to solution detail">
+        <i data-lucide="arrow-left" class="w-4 h-4" aria-hidden="true"></i>
+        Back to Solution
+      </a>
+    </div>
+  </div>
+
+  {# ── Table of Contents ───────────────────────────────────────────────── #}
+  <nav class="sad-toc print-hide" aria-label="Table of Contents">
+    <p class="text-sm font-semibold text-foreground mb-2">Table of Contents</p>
+    <ol>
+      <li><a href="#sad-s1">1. Executive Summary</a></li>
+      <li><a href="#sad-s2">2. Business Context</a></li>
+      <li><a href="#sad-s3">3. Architecture Vision</a></li>
+      <li><a href="#sad-s4">4. Business Architecture</a></li>
+      <li><a href="#sad-s5">5. Application Architecture</a></li>
+      <li><a href="#sad-s6">6. Technology Architecture</a></li>
+      <li><a href="#sad-s7">7. Cross-layer Traceability</a></li>
+      <li><a href="#sad-s8">8. Gap Analysis</a></li>
+      <li><a href="#sad-s9">9. Implementation Roadmap</a></li>
+      <li><a href="#sad-s10">10. Risks and Constraints</a></li>
+    </ol>
+  </nav>
+
+  {# ── §1 Executive Summary ────────────────────────────────────────────── #}
+  {% set s = sad.sections[0] %}
+  <section class="sad-section" id="sad-s1" aria-labelledby="sad-s1-title">
+    <h2 id="sad-s1-title">{{ s.title }}</h2>
+    {% if s.content %}
+    <div class="sad-kv-grid">
+      {% for label, key in [
+          ("Solution Name", "name"), ("Status", "status"),
+          ("Deployment Status", "deployment_status"), ("Governance Status", "governance_status"),
+          ("Solution Type", "solution_type"), ("Business Domain", "business_domain"),
+          ("Complexity", "complexity_level"), ("ADM Phase", "adm_phase"),
+          ("Solution Owner", "solution_owner"), ("Business Sponsor", "business_sponsor"),
+          ("Technical Lead", "technical_lead")
+      ] %}
+      <div class="sad-kv-item">
+        <span class="sad-kv-label">{{ label }}</span>
+        <span class="sad-kv-value">{{ s.content.get(key) or '—' }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% if s.content.get("description") %}
+    <div class="mt-4">
+      <span class="sad-kv-label">Description</span>
+      <p class="text-sm text-foreground mt-1">{{ s.content.description }}</p>
+    </div>
+    {% endif %}
+    {% else %}
+    <p class="sad-empty">{{ s.empty_state }}</p>
+    {% endif %}
+  </section>
+
+  {# ── §2 Business Context ─────────────────────────────────────────────── #}
+  {% set s = sad.sections[1] %}
+  <section class="sad-section" id="sad-s2" aria-labelledby="sad-s2-title">
+    <h2 id="sad-s2-title">{{ s.title }}</h2>
+
+    {% if s.get("problem_description") %}
+    <p class="text-sm text-foreground mb-3">{{ s.problem_description }}</p>
+    {% endif %}
+
+    {# Drivers #}
+    <h3 class="text-sm font-semibold text-foreground mb-1 mt-3">Business Drivers</h3>
+    {% if s.drivers %}
+    <table class="sad-table" aria-label="Business Drivers">
+      <thead><tr><th>Driver</th><th>Type</th><th>Impact</th><th>Description</th></tr></thead>
+      <tbody>
+        {% for d in s.drivers %}
+        <tr><td>{{ d.name }}</td><td><span class="sad-badge">{{ d.type }}</span></td>
+            <td>{{ d.impact or '—' }}</td><td>{{ d.description or '—' }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}<p class="sad-empty">{{ s.empty_state }}</p>{% endif %}
+
+    {# Goals #}
+    <h3 class="text-sm font-semibold text-foreground mb-1 mt-4">Goals</h3>
+    {% if s.goals %}
+    <table class="sad-table" aria-label="Goals">
+      <thead><tr><th>Goal</th><th>Priority</th><th>Description</th></tr></thead>
+      <tbody>
+        {% for g in s.goals %}
+        <tr><td>{{ g.name }}</td><td>{{ g.priority or '—' }}</td><td>{{ g.description or '—' }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}<p class="sad-empty">{{ s.empty_state }}</p>{% endif %}
+
+    {# Requirements #}
+    <h3 class="text-sm font-semibold text-foreground mb-1 mt-4">Requirements</h3>
+    {% if s.requirements %}
+    <table class="sad-table" aria-label="Requirements">
+      <thead><tr><th>Requirement</th><th>Type</th><th>Priority</th><th>Mandatory</th></tr></thead>
+      <tbody>
+        {% for r in s.requirements %}
+        <tr>
+          <td>{{ r.name }}</td>
+          <td><span class="sad-badge">{{ r.type }}</span></td>
+          <td>{{ r.priority or '—' }}</td>
+          <td>{{ 'Yes' if r.mandatory else 'No' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}<p class="sad-empty">{{ s.empty_state }}</p>{% endif %}
+  </section>
+
+  {# ── §3 Architecture Vision ──────────────────────────────────────────── #}
+  {% set s = sad.sections[2] %}
+  <section class="sad-section" id="sad-s3" aria-labelledby="sad-s3-title">
+    <h2 id="sad-s3-title">{{ s.title }}</h2>
+    {% if s.content %}
+    <div class="sad-kv-grid">
+      <div class="sad-kv-item">
+        <span class="sad-kv-label">Current ADM Phase</span>
+        <span class="sad-kv-value">Phase {{ s.content.adm_phase or 'A' }}</span>
+      </div>
+      <div class="sad-kv-item">
+        <span class="sad-kv-label">Planned Start</span>
+        <span class="sad-kv-value">{{ s.content.planned_start_date or '—' }}</span>
+      </div>
+      <div class="sad-kv-item">
+        <span class="sad-kv-label">Planned End</span>
+        <span class="sad-kv-value">{{ s.content.planned_end_date or '—' }}</span>
+      </div>
+    </div>
+    {% if s.content.scope_description %}
+    <div class="mt-3">
+      <span class="sad-kv-label">Scope Description</span>
+      <p class="text-sm text-foreground mt-1">{{ s.content.scope_description }}</p>
+    </div>
+    {% endif %}
+    {% if s.content.scope_in %}
+    <div class="mt-2">
+      <span class="sad-kv-label">In Scope</span>
+      <p class="text-sm text-foreground mt-1">{{ s.content.scope_in }}</p>
+    </div>
+    {% endif %}
+    {% if s.content.scope_out %}
+    <div class="mt-2">
+      <span class="sad-kv-label">Out of Scope</span>
+      <p class="text-sm text-foreground mt-1">{{ s.content.scope_out }}</p>
+    </div>
+    {% endif %}
+    {% if s.content.business_value %}
+    <div class="mt-2">
+      <span class="sad-kv-label">Business Value</span>
+      <p class="text-sm text-foreground mt-1">{{ s.content.business_value }}</p>
+    </div>
+    {% endif %}
+    {% if s.content.target_outcomes %}
+    <div class="mt-2">
+      <span class="sad-kv-label">Target Outcomes</span>
+      <ul class="list-disc list-inside text-sm text-foreground mt-1">
+        {% for o in s.content.target_outcomes %}<li>{{ o }}</li>{% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+    {% else %}
+    <p class="sad-empty">{{ s.empty_state }}</p>
+    {% endif %}
+  </section>
+
+  {# ── Macro: ArchiMate element table ──────────────────────────────────── #}
+  {% macro archimate_table(elements, section_title, empty_state) %}
+    {% if elements %}
+    <table class="sad-table" aria-label="{{ section_title }} elements">
+      <thead>
+        <tr>
+          <th>Name</th><th>Type</th><th>Layer</th><th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for el in elements %}
+        <tr>
+          <td>{{ el.name }}</td>
+          <td><span class="sad-badge">{{ el.type }}</span></td>
+          <td>
+            <span class="sad-layer-chip chip-{{ el.layer | lower }}">{{ el.layer }}</span>
+          </td>
+          <td>{{ el.description or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="sad-empty">{{ empty_state }}</p>
+    {% endif %}
+  {% endmacro %}
+
+  {# ── §4 Business Architecture ────────────────────────────────────────── #}
+  {% set s = sad.sections[3] %}
+  <section class="sad-section" id="sad-s4" aria-labelledby="sad-s4-title">
+    <h2 id="sad-s4-title">{{ s.title }}</h2>
+    {{ archimate_table(s.elements, s.title, s.empty_state) }}
+  </section>
+
+  {# ── §5 Application Architecture ─────────────────────────────────────── #}
+  {% set s = sad.sections[4] %}
+  <section class="sad-section" id="sad-s5" aria-labelledby="sad-s5-title">
+    <h2 id="sad-s5-title">{{ s.title }}</h2>
+    {{ archimate_table(s.elements, s.title, s.empty_state) }}
+  </section>
+
+  {# ── §6 Technology Architecture ──────────────────────────────────────── #}
+  {% set s = sad.sections[5] %}
+  <section class="sad-section" id="sad-s6" aria-labelledby="sad-s6-title">
+    <h2 id="sad-s6-title">{{ s.title }}</h2>
+    {{ archimate_table(s.elements, s.title, s.empty_state) }}
+  </section>
+
+  {# ── §7 Cross-layer Traceability ─────────────────────────────────────── #}
+  {% set s = sad.sections[6] %}
+  <section class="sad-section" id="sad-s7" aria-labelledby="sad-s7-title">
+    <h2 id="sad-s7-title">{{ s.title }}</h2>
+    {% set layers_order = [
+      ("stakeholders", "Stakeholders"),
+      ("drivers", "Drivers"),
+      ("goals", "Goals"),
+      ("requirements", "Requirements"),
+      ("capabilities", "Capabilities"),
+      ("processes", "Processes"),
+      ("applications", "Applications"),
+      ("technology", "Technology"),
+    ] %}
+    {% set has_any = namespace(v=false) %}
+    {% for key, label in layers_order %}
+      {% if s.layers.get(key) %}{% set has_any.v = true %}{% endif %}
+    {% endfor %}
+    {% if has_any.v %}
+    <table class="sad-table" aria-label="Cross-layer traceability">
+      <thead><tr><th>Layer</th><th>Count</th><th>Sample Items</th></tr></thead>
+      <tbody>
+        {% for key, label in layers_order %}
+        {% set items = s.layers.get(key, []) %}
+        {% if items %}
+        <tr>
+          <td><strong>{{ label }}</strong></td>
+          <td>{{ items | length }}</td>
+          <td>
+            {% for item in items[:3] %}
+              <span class="sad-badge">{{ item.name }}</span>{% if not loop.last %} {% endif %}
+            {% endfor %}
+            {% if items | length > 3 %}<span class="text-muted-foreground text-xs"> +{{ items | length - 3 }} more</span>{% endif %}
+          </td>
+        </tr>
+        {% endif %}
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="sad-empty">{{ s.empty_state }}</p>
+    {% endif %}
+  </section>
+
+  {# ── §8 Gap Analysis ─────────────────────────────────────────────────── #}
+  {% set s = sad.sections[7] %}
+  <section class="sad-section" id="sad-s8" aria-labelledby="sad-s8-title">
+    <h2 id="sad-s8-title">{{ s.title }}</h2>
+    {% if s.get("scope_in") or s.get("scope_out") %}
+    <div class="sad-kv-grid mb-3">
+      {% if s.scope_in %}
+      <div class="sad-kv-item">
+        <span class="sad-kv-label">In Scope (Current)</span>
+        <span class="sad-kv-value text-sm">{{ s.scope_in }}</span>
+      </div>
+      {% endif %}
+      {% if s.scope_out %}
+      <div class="sad-kv-item">
+        <span class="sad-kv-label">Out of Scope (Gap)</span>
+        <span class="sad-kv-value text-sm">{{ s.scope_out }}</span>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+    {% if s.constraints %}
+    <h3 class="text-sm font-semibold text-foreground mb-1">Constraints</h3>
+    <table class="sad-table" aria-label="Constraints">
+      <thead><tr><th>Constraint</th><th>Type</th><th>Severity</th><th>Value</th><th>Description</th></tr></thead>
+      <tbody>
+        {% for c in s.constraints %}
+        <tr>
+          <td>{{ c.name }}</td>
+          <td><span class="sad-badge">{{ c.type }}</span></td>
+          <td>{{ c.severity or '—' }}</td>
+          <td>{{ c.value or '—' }}</td>
+          <td>{{ c.description or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="sad-empty">{{ s.empty_state }}</p>
+    {% endif %}
+  </section>
+
+  {# ── §9 Implementation Roadmap ───────────────────────────────────────── #}
+  {% set s = sad.sections[8] %}
+  <section class="sad-section" id="sad-s9" aria-labelledby="sad-s9-title">
+    <h2 id="sad-s9-title">{{ s.title }}</h2>
+    {% if s.work_packages %}
+    <table class="sad-table" aria-label="Work packages">
+      <thead><tr><th>#</th><th>Work Package</th><th>Status</th><th>Priority</th></tr></thead>
+      <tbody>
+        {% for wp in s.work_packages %}
+        <tr>
+          <td>{{ wp.id }}</td>
+          <td>{{ wp.title }}</td>
+          <td><span class="sad-badge">{{ wp.status }}</span></td>
+          <td>{{ wp.priority or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="sad-empty">{{ s.empty_state }}</p>
+    {% endif %}
+  </section>
+
+  {# ── §10 Risks and Constraints ───────────────────────────────────────── #}
+  {% set s = sad.sections[9] %}
+  <section class="sad-section" id="sad-s10" aria-labelledby="sad-s10-title">
+    <h2 id="sad-s10-title">{{ s.title }}</h2>
+    {% if s.risks %}
+    <table class="sad-table" aria-label="Risks">
+      <thead>
+        <tr>
+          <th>Risk</th><th>Likelihood</th><th>Impact</th><th>Status</th><th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in s.risks %}
+        <tr>
+          <td>{{ r.name }}</td>
+          <td><span class="sad-badge">{{ r.likelihood }}</span></td>
+          <td><span class="sad-badge">{{ r.impact }}</span></td>
+          <td><span class="sad-badge">{{ r.status }}</span></td>
+          <td>{{ r.description or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="sad-empty">{{ s.empty_state }}</p>
+    {% endif %}
+  </section>
+
+  {# ── Footer ──────────────────────────────────────────────────────────── #}
+  <div class="text-xs text-muted-foreground text-center mt-8 mb-4 print-hide">
+    Generated by A.R.C.H.I.E. · Solution Architecture Document · SA-004
+  </div>
+
+</div>
+{% endblock %}

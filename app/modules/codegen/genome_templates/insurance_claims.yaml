@@ -1,0 +1,156 @@
+genome_version: "1.0.0"
+solution_id: 0
+solution_name: "Insurance Claims Processing"
+generated_at: "2026-04-01T00:00:00Z"
+language: "python-fastapi"
+
+problem:
+  statement: "Claims processing takes 30+ days on average — manual document review, phone-based status updates, and disconnected assessment workflows cause claimant frustration and regulatory risk."
+  success_metrics:
+    - "Reduce average claims processing time from 30 days to 7 days"
+    - "Achieve 95% claimant satisfaction score"
+    - "100% regulatory-compliant data retention"
+  constraints:
+    - "Must retain all claims data for minimum 7 years"
+    - "Must support document upload (photos, PDFs) for evidence"
+    - "Must integrate with external payment gateway for disbursements"
+  business_domain: "Insurance"
+  _rationale: "Claims is the moment of truth for insurers — where brand promises meet reality. Speed and transparency directly impact customer retention and regulatory standing."
+
+modules:
+  claims:
+    _rationale: "The claim is the central business object. Its lifecycle drives every other process — assessments, payments, appeals."
+    aggregate_root: "Claim"
+    entities: ["Claim", "ClaimDocument"]
+    fields:
+      Claim:
+        - {name: "policy_id", type: "integer", required: true, foreign_key: "Policy.id"}
+        - {name: "claimant_id", type: "integer", required: true, foreign_key: "Claimant.id"}
+        - {name: "incident_date", type: "date", required: true}
+        - {name: "description", type: "text", required: true}
+        - {name: "claimed_amount", type: "decimal", required: true}
+        - {name: "approved_amount", type: "decimal", required: false}
+        - {name: "category", type: "enum", enum_values: ["property", "auto", "health", "life", "liability"]}
+        - {name: "priority", type: "enum", enum_values: ["low", "medium", "high", "urgent"]}
+      ClaimDocument:
+        - {name: "claim_id", type: "integer", required: true, foreign_key: "Claim.id"}
+        - {name: "filename", type: "string", max_length: 255, required: true}
+        - {name: "document_type", type: "enum", enum_values: ["photo", "receipt", "report", "correspondence"]}
+        - {name: "file_url", type: "string", required: true}
+    state_machine:
+      field: "status"
+      states: ["filed", "under_review", "approved", "denied", "appealed", "closed"]
+      initial_state: "filed"
+      transitions:
+        - {from: "filed", to: "under_review", trigger: "begin_review"}
+        - {from: "under_review", to: "approved", trigger: "approve", effect: "schedule_payment(claim)"}
+        - {from: "under_review", to: "denied", trigger: "deny"}
+        - {from: "denied", to: "appealed", trigger: "appeal"}
+        - {from: "appealed", to: "under_review", trigger: "reopen_review"}
+        - {from: ["approved", "denied"], to: "closed", trigger: "close"}
+    operations:
+      file_claim:
+        type: "command"
+        input: "ClaimFiling"
+        output: "ClaimId"
+        authorization: ["claimant", "adjuster", "admin"]
+        validation:
+          - {field: "policy_id", rule: "must reference active policy"}
+          - {field: "incident_date", rule: "must not be in the future"}
+    views:
+      list:
+        columns: ["id", "claimant_id", "status", "category", "claimed_amount", "incident_date"]
+        filters: ["status", "category", "priority"]
+        default_sort: {field: "incident_date", dir: "desc"}
+      detail:
+        sections: ["summary", "documents", "assessments", "payments", "history"]
+      create:
+        fields: ["policy_id", "incident_date", "description", "claimed_amount", "category"]
+    archimate_element_ids: [301, 302]
+
+  policies:
+    _rationale: "Every claim references a policy. Policy data determines coverage limits and eligibility."
+    aggregate_root: "Policy"
+    entities: ["Policy"]
+    fields:
+      Policy:
+        - {name: "policy_number", type: "string", max_length: 50, required: true, unique: true}
+        - {name: "holder_name", type: "string", max_length: 255, required: true}
+        - {name: "type", type: "enum", enum_values: ["property", "auto", "health", "life", "liability"]}
+        - {name: "coverage_limit", type: "decimal", required: true}
+        - {name: "deductible", type: "decimal", required: false}
+        - {name: "start_date", type: "date", required: true}
+        - {name: "end_date", type: "date", required: true}
+        - {name: "is_active", type: "boolean", required: false}
+    archimate_element_ids: [303]
+
+  claimants:
+    _rationale: "Claimant identity and contact info are needed for communication and fraud detection."
+    aggregate_root: "Claimant"
+    entities: ["Claimant"]
+    fields:
+      Claimant:
+        - {name: "name", type: "string", max_length: 255, required: true}
+        - {name: "email", type: "string", format: "email", required: true, unique: true}
+        - {name: "phone", type: "string", format: "phone", required: true}
+        - {name: "address", type: "text", required: false}
+        - {name: "date_of_birth", type: "date", required: false}
+    sensitive_fields:
+      - {field: "Claimant.date_of_birth", level: "pii"}
+      - {field: "Claimant.address", level: "pii"}
+    archimate_element_ids: [304]
+
+  assessments:
+    _rationale: "Assessments document the adjuster's evaluation — the evidence trail for approval/denial decisions."
+    aggregate_root: "Assessment"
+    entities: ["Assessment"]
+    fields:
+      Assessment:
+        - {name: "claim_id", type: "integer", required: true, foreign_key: "Claim.id"}
+        - {name: "assessor_name", type: "string", max_length: 255, required: true}
+        - {name: "findings", type: "text", required: true}
+        - {name: "recommended_amount", type: "decimal", required: false}
+        - {name: "fraud_risk_score", type: "float", required: false}
+        - {name: "assessed_at", type: "datetime", required: true}
+    archimate_element_ids: [305]
+
+  payments:
+    _rationale: "Payment records close the loop — connecting approved claims to actual disbursements."
+    aggregate_root: "Payment"
+    entities: ["Payment"]
+    fields:
+      Payment:
+        - {name: "claim_id", type: "integer", required: true, foreign_key: "Claim.id"}
+        - {name: "amount", type: "decimal", required: true}
+        - {name: "payment_method", type: "enum", enum_values: ["bank_transfer", "check", "digital_wallet"]}
+        - {name: "reference_number", type: "string", max_length: 100, required: false}
+        - {name: "paid_at", type: "datetime", required: false}
+    archimate_element_ids: [306]
+
+infrastructure:
+  database: "postgresql"
+  cache: "redis"
+  auth: "keycloak"
+  observability: "opentelemetry"
+
+security:
+  mfa: "required_for_admin"
+  api_keys: true
+  rate_limiting: {default: "100/min", authenticated: "1000/min"}
+  encryption_at_rest: true
+  multi_tenancy: true
+
+deployment:
+  target: "docker_compose"
+  environments: ["staging", "production"]
+  ci_cd: {provider: "github_actions", registry: "ghcr"}
+
+identity_provider:
+  type: "oidc"
+  preset: "keycloak"
+  roles: ["admin", "claimant", "adjuster", "underwriter"]
+
+compliance:
+  frameworks: ["soc2"]
+  audit_logging: "all_mutations"
+  data_retention_years: 7

@@ -1,0 +1,108 @@
+"""
+Application Configuration Module
+
+Contains configuration classes and navigation registry for the Flask application.
+Also includes technology to ArchiMate mapping for Phase 4.1 derivation
+and APQC to ArchiMate mapping rules for Phase 2.2 derivation.
+"""
+
+from .apqc_archimate_mapping_rules import (
+    AGGREGATION_BEHAVIORS,
+    APQC_CATEGORY_ELEMENT_PATTERNS,
+    APQC_LEVEL_MAPPING_RULES,
+    get_aggregation_behavior,
+    get_aggregation_behavior_details,
+    get_all_business_elements_for_category,
+    get_all_categories,
+    get_category_name,
+    get_category_type,
+    get_cross_layer_connections,
+    get_element_pattern_for_category,
+    get_extract_fields_for_level,
+    get_mapping_rule_for_level,
+    get_motivation_elements_for_category,
+    get_primary_element_type,
+    get_secondary_elements,
+    get_typical_objects_for_category,
+    get_typical_roles_for_category,
+    should_create_element,
+    should_derive_relationships,
+    validate_aggregation_behavior,
+    validate_apqc_category,
+    validate_apqc_level,
+)
+from .navigation_registry import (
+    NAVIGATION_REGISTRY,
+    ROUTE_MIGRATION_MAP,
+    get_breadcrumb_trail,
+    get_item_url,
+    get_navigation_sections,
+    is_item_active,
+    migrate_endpoint,
+    safe_url_for,
+)
+from .technology_archimate_mapping import (
+    ARCHIMATE_TECHNOLOGY_RELATIONSHIPS,
+    ELEMENT_TYPE_CATEGORIES,
+    RELATIONSHIP_SUGGESTIONS,
+    TECHNOLOGY_KEYWORD_MAP,
+    categorize_technology_stack,
+    extract_technology_elements,
+    generate_archimate_elements_from_stack,
+    get_all_keywords_for_element_type,
+    get_all_keywords_for_subtype,
+    get_archimate_element_for_technology,
+    get_element_type_info,
+    get_keywords_by_vendor,
+    get_suggested_relationships,
+)
+
+__all__ = [
+    # Navigation Registry
+    "NAVIGATION_REGISTRY",
+    "ROUTE_MIGRATION_MAP",
+    "get_navigation_sections",
+    "get_breadcrumb_trail",
+    "migrate_endpoint",
+    "safe_url_for",
+    "get_item_url",
+    "is_item_active",
+    # Technology to ArchiMate Mapping (Phase 4.1)
+    "TECHNOLOGY_KEYWORD_MAP",
+    "ARCHIMATE_TECHNOLOGY_RELATIONSHIPS",
+    "RELATIONSHIP_SUGGESTIONS",
+    "ELEMENT_TYPE_CATEGORIES",
+    "get_archimate_element_for_technology",
+    "extract_technology_elements",
+    "get_all_keywords_for_element_type",
+    "get_all_keywords_for_subtype",
+    "get_keywords_by_vendor",
+    "get_suggested_relationships",
+    "categorize_technology_stack",
+    "generate_archimate_elements_from_stack",
+    "get_element_type_info",
+    # APQC to ArchiMate Mapping Rules (Phase 2.2)
+    "APQC_LEVEL_MAPPING_RULES",
+    "APQC_CATEGORY_ELEMENT_PATTERNS",
+    "AGGREGATION_BEHAVIORS",
+    "get_mapping_rule_for_level",
+    "get_element_pattern_for_category",
+    "should_create_element",
+    "get_aggregation_behavior",
+    "get_primary_element_type",
+    "get_secondary_elements",
+    "should_derive_relationships",
+    "get_typical_roles_for_category",
+    "get_typical_objects_for_category",
+    "get_cross_layer_connections",
+    "get_all_business_elements_for_category",
+    "get_motivation_elements_for_category",
+    "get_category_type",
+    "get_aggregation_behavior_details",
+    "get_extract_fields_for_level",
+    "get_all_categories",
+    "get_category_name",
+    "validate_apqc_level",
+    "validate_apqc_category",
+    "validate_aggregation_behavior",
+]

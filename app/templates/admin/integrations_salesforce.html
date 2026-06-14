@@ -1,0 +1,215 @@
+{% extends 'layouts/admin_base.html' %}
+{% from 'components/page_header.html' import page_header %}
+
+{% block title %}Salesforce Org Discovery{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8" x-data="salesforceIntegration()">
+    {{ page_header(
+        title='Salesforce Org Discovery',
+        description='Scan a Salesforce org for Lightning apps and installed AppExchange packages, and import them into the ARCHIE application portfolio — optionally straight into a Transformation Programme baseline.',
+        breadcrumbs=[
+            {'label': 'Home', 'href': url_for('main.index')},
+            {'label': 'Admin', 'href': url_for('admin.index')},
+            {'label': 'Salesforce Discovery'}
+        ]
+    ) }}
+
+    <div x-cloak x-show="alert.message"
+         :class="alert.kind === 'error' ? 'border-destructive/30 bg-destructive/10 text-destructive' : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700'"
+         class="mb-6 rounded-md border p-4 text-sm" x-text="alert.message"></div>
+
+    <!-- Credentials card -->
+    <div class="rounded-lg border border-border bg-card text-card-foreground shadow-sm mb-6">
+        <div class="flex items-center justify-between px-6 py-4 border-b border-border">
+            <div>
+                <h2 class="text-base font-semibold">Connected App Credentials</h2>
+                <p class="text-sm text-muted-foreground mt-0.5">
+                    Salesforce Connected App with the
+                    <code class="text-xs bg-muted px-1 py-0.5 rounded">Client Credentials Flow</code>
+                    enabled and an API-enabled run-as user.
+                </p>
+            </div>
+            {% if sf_config.configured %}
+            <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block"></span> Configured
+            </span>
+            {% else %}
+            <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground border border-border">Not configured</span>
+            {% endif %}
+        </div>
+        <div class="px-6 py-5 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+                <label for="sf-instance" class="block text-sm font-medium mb-1">Instance URL</label>
+                <input type="url" id="sf-instance" x-model="creds.instance_url"
+                       placeholder="https://yourorg.my.salesforce.com"
+                       class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+            </div>
+            <div>
+                <label for="sf-client-id" class="block text-sm font-medium mb-1">Consumer Key (Client ID)</label>
+                <input type="text" id="sf-client-id" x-model="creds.client_id"
+                       class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+            </div>
+            <div>
+                <label for="sf-client-secret" class="block text-sm font-medium mb-1">Consumer Secret</label>
+                <input type="password" id="sf-client-secret" x-model="creds.client_secret"
+                       placeholder="{{ '••••••••  (saved)' if sf_config.configured else '' }}"
+                       class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+            </div>
+        </div>
+        <div class="px-6 pb-5 flex items-center gap-3">
+            <button type="button" @click="saveCredentials()" :disabled="busy"
+                    class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                Save Credentials
+            </button>
+            <button type="button" @click="testConnection()" :disabled="busy"
+                    class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md border border-input bg-background hover:bg-accent disabled:opacity-50">
+                Test Connection
+            </button>
+        </div>
+    </div>
+
+    <!-- Discovery card -->
+    <div class="rounded-lg border border-border bg-card text-card-foreground shadow-sm">
+        <div class="flex items-center justify-between px-6 py-4 border-b border-border">
+            <div>
+                <h2 class="text-base font-semibold">Org Discovery</h2>
+                <p class="text-sm text-muted-foreground mt-0.5">Lightning apps + installed AppExchange packages.</p>
+            </div>
+            <button type="button" @click="discover()" :disabled="busy"
+                    class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                <span x-text="busy ? 'Working…' : 'Discover'"></span>
+            </button>
+        </div>
+
+        <div x-cloak x-show="discovered.length" class="px-6 py-4 grid grid-cols-3 gap-4 border-b border-border">
+            <div><p class="text-xs text-muted-foreground uppercase">Total found</p><p class="text-xl font-bold" x-text="stats.total"></p></div>
+            <div><p class="text-xs text-muted-foreground uppercase">Already in ARCHIE</p><p class="text-xl font-bold" x-text="stats.linked"></p></div>
+            <div><p class="text-xs text-muted-foreground uppercase">Ungoverned</p><p class="text-xl font-bold text-amber-600" x-text="stats.ungoverned"></p></div>
+        </div>
+
+        <div x-cloak x-show="discovered.length">
+            <table class="min-w-full divide-y divide-border text-sm">
+                <thead class="bg-muted/30">
+                    <tr>
+                        <th class="px-4 py-2 w-8"><input type="checkbox" @change="toggleAll($event.target.checked)" aria-label="Select all"></th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase">Name</th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase">Kind</th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase">Namespace</th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase">Status</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-border">
+                    <template x-for="a in discovered" :key="a.id">
+                        <tr class="hover:bg-accent/40">
+                            <td class="px-4 py-2"><input type="checkbox" :value="a.id" x-model="selected" :disabled="a.status === 'linked'" :aria-label="'Select ' + a.name"></td>
+                            <td class="px-4 py-2 font-medium text-foreground" x-text="a.display_name || a.name"></td>
+                            <td class="px-4 py-2 text-muted-foreground" x-text="a.kind === 'installed_package' ? 'AppExchange package' : 'Lightning app'"></td>
+                            <td class="px-4 py-2 text-muted-foreground" x-text="a.namespace || '—'"></td>
+                            <td class="px-4 py-2">
+                                <span :class="a.status === 'linked' ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30' : 'bg-muted text-muted-foreground border-border'"
+                                      class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border"
+                                      x-text="a.status === 'linked' ? 'In ARCHIE' : 'Unregistered'"></span>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+            <div class="px-6 py-4 border-t border-border flex flex-wrap items-center gap-3">
+                <label for="sf-programme" class="text-sm font-medium">Link imports to programme:</label>
+                <select id="sf-programme" x-model="programmeId"
+                        class="h-9 rounded-md border border-input bg-background px-3 text-sm">
+                    <option value="">— None —</option>
+                    {% for p in programmes %}
+                    <option value="{{ p.id }}">{{ p.name }} ({{ p.initiative_type }})</option>
+                    {% endfor %}
+                </select>
+                <button type="button" @click="importSelected()" :disabled="busy || !selected.length"
+                        class="ml-auto inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                    <span x-text="'Import ' + selected.length + ' selected'"></span>
+                </button>
+            </div>
+        </div>
+
+        <div x-cloak x-show="!discovered.length" class="px-6 py-10 text-center text-sm text-muted-foreground">
+            Save and test credentials, then run Discover to scan the org.
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_head_js %}
+<script>
+    function salesforceIntegration() {
+        return {
+            creds: {
+                instance_url: {{ sf_config.instance_url | default('', true) | tojson }},
+                client_id: {{ sf_config.client_id | default('', true) | tojson }},
+                client_secret: ''
+            },
+            discovered: [],
+            selected: [],
+            stats: { total: 0, linked: 0, ungoverned: 0 },
+            programmeId: '',
+            busy: false,
+            alert: { kind: '', message: '' },
+            _csrf() { return document.querySelector('meta[name=csrf-token]')?.content || ''; },
+            _notify(kind, message) { this.alert = { kind, message }; },
+            async _post(url, body) {
+                const r = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this._csrf() },
+                    body: JSON.stringify(body || {}),
+                });
+                const d = await r.json();
+                return { ok: r.ok, d };
+            },
+            async saveCredentials() {
+                this.busy = true;
+                try {
+                    const { ok, d } = await this._post('/admin/integrations/salesforce/save', this.creds);
+                    this._notify(ok ? 'ok' : 'error', ok ? 'Credentials saved.' : (d.error || 'Save failed'));
+                } finally { this.busy = false; }
+            },
+            async testConnection() {
+                this.busy = true;
+                try {
+                    const { ok, d } = await this._post('/admin/integrations/salesforce/test', this.creds);
+                    this._notify(ok ? 'ok' : 'error', ok ? ('Connected to ' + (d.instance_url || 'org')) : (d.message || d.error || 'Connection failed'));
+                } finally { this.busy = false; }
+            },
+            async discover() {
+                this.busy = true;
+                try {
+                    const { ok, d } = await this._post('/admin/integrations/salesforce/discover');
+                    if (!ok) { this._notify('error', d.error || 'Discovery failed'); return; }
+                    this.discovered = d.apps || [];
+                    this.stats = { total: d.total, linked: d.linked, ungoverned: d.ungoverned };
+                    this.selected = [];
+                    this._notify('ok', 'Discovered ' + d.total + ' item(s).');
+                } finally { this.busy = false; }
+            },
+            toggleAll(checked) {
+                this.selected = checked
+                    ? this.discovered.filter(a => a.status !== 'linked').map(a => a.id)
+                    : [];
+            },
+            async importSelected() {
+                this.busy = true;
+                try {
+                    const { ok, d } = await this._post('/admin/integrations/salesforce/import', {
+                        app_ids: this.selected,
+                        programme_initiative_id: this.programmeId || null,
+                    });
+                    if (!ok) { this._notify('error', d.error || 'Import failed'); return; }
+                    this._notify('ok',
+                        'Imported ' + d.imported + ' · already in ARCHIE ' + d.already_exists +
+                        ' · failed ' + d.failed +
+                        (d.linked_to_programme ? (' · linked to programme ' + d.linked_to_programme) : ''));
+                    await this.discover();
+                } finally { this.busy = false; }
+            },
+        };
+    }
+</script>
+{% endblock %}

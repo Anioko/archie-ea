@@ -1,0 +1,75 @@
+{# Benefit Realization — Benefit tracking dashboard + org impact summary
+   Included in solutions/detail.html within solutionDetail() x-data scope #}
+<div class="mt-7">
+    <div class="flex items-center justify-between mb-3">
+        <h3 class="text-sm font-semibold text-foreground flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>Benefits &amp; Organization Impact</h3>
+        <div class="sad-actions">
+            <div class="flex gap-2">
+                <button @click="openEntityModal('benefit_realization')" class="inline-flex items-center gap-1 h-7 px-2.5 rounded-md text-xs font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors">+ Benefit</button>
+                <button @click="openEntityModal('org_impact')" class="inline-flex items-center gap-1 h-7 px-2.5 rounded-md text-xs font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors">+ Org Impact</button>
+            </div>
+        </div>
+    </div>
+    {# Benefit Realizations #}
+    <template x-if="sadBenefitRealizations.length > 0">
+        <div class="mb-4">
+            <h3 class="text-sm font-semibold text-foreground mb-2">Benefit Realization</h3>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead><tr class="border-b border-border">
+                        <th class="text-left py-2 px-3 text-muted-foreground font-medium">Benefit</th>
+                        <th class="text-left py-2 px-3 text-muted-foreground font-medium">Type</th>
+                        <th class="text-right py-2 px-3 text-muted-foreground font-medium">Baseline</th>
+                        <th class="text-right py-2 px-3 text-muted-foreground font-medium">Target</th>
+                        <th class="text-right py-2 px-3 text-muted-foreground font-medium">Current</th>
+                        <th class="text-left py-2 px-3 text-muted-foreground font-medium">Status</th>
+                        <th class="sad-actions text-right py-2 px-3 text-muted-foreground font-medium">Actions</th>
+                    </tr></thead>
+                    <tbody>
+                        <template x-for="item in sadBenefitRealizations" :key="item.id">
+                            <tr class="border-b border-border/50 hover:bg-muted/30">
+                                <td class="py-2 px-3 font-semibold text-foreground" x-text="item.benefit_name"></td>
+                                <td class="py-2 px-3"><span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30" x-text="item.benefit_type"></span></td>
+                                <td class="py-2 px-3 text-right font-mono text-muted-foreground" x-text="item.baseline_value != null ? Number(item.baseline_value).toLocaleString() : '\u2014'"></td>
+                                <td class="py-2 px-3 text-right font-mono text-muted-foreground" x-text="item.target_value != null ? Number(item.target_value).toLocaleString() : '\u2014'"></td>
+                                <td class="py-2 px-3 text-right font-mono" :class="{'text-emerald-600': item.current_value >= item.target_value, 'text-foreground': true}" x-text="item.current_value != null ? Number(item.current_value).toLocaleString() : '\u2014'"></td>
+                                <td class="py-2 px-3"><span :class="{'text-emerald-600': item.status === 'on_track', 'text-destructive': item.status === 'at_risk', 'text-muted-foreground': item.status === 'not_started'}" x-text="item.status?.replace('_', ' ')"></span></td>
+                                <td class="sad-actions py-2 px-3 text-right">
+                                    <button @click="openEntityModal('benefit_realization', item)" class="text-primary hover:underline text-xs mr-2">Edit</button>
+                                    <button @click="confirmDeleteEntity('benefit_realization', item)" class="text-destructive hover:underline text-xs">Delete</button>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </template>
+    {# Org Impacts #}
+    <template x-if="sadOrgImpacts.length > 0">
+        <div>
+            <h3 class="text-sm font-semibold text-foreground mb-2">Organization Impacts</h3>
+            <div class="space-y-2">
+                <template x-for="item in sadOrgImpacts" :key="item.id">
+                    <div class="flex items-center justify-between p-3 rounded-lg border border-border bg-muted/30">
+                        <div class="flex-1">
+                            <div class="flex items-center gap-2">
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-orange-500/10 text-orange-600 border border-orange-500/30" x-text="item.impact_area?.replace('_', ' ')"></span>
+                                <span class="text-xs text-muted-foreground" x-text="item.headcount_delta !== 0 ? (item.headcount_delta > 0 ? '+' : '') + item.headcount_delta + ' headcount' : ''"></span>
+                            </div>
+                            <p class="text-sm text-foreground mt-1" x-text="item.description?.substring(0, 100)"></p>
+                        </div>
+                        <div class="sad-actions flex items-center gap-2 ml-4">
+                            <span :class="{'text-emerald-600': item.change_readiness === 'ready', 'text-amber-600': item.change_readiness === 'partially_ready', 'text-destructive': item.change_readiness === 'not_ready', 'text-muted-foreground': item.change_readiness === 'unknown'}" class="text-xs" x-text="item.change_readiness?.replace('_', ' ')"></span>
+                            <button @click="openEntityModal('org_impact', item)" class="text-primary hover:underline text-xs">Edit</button>
+                            <button @click="confirmDeleteEntity('org_impact', item)" class="text-destructive hover:underline text-xs">Delete</button>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </template>
+    <template x-if="sadBenefitRealizations.length === 0 && sadOrgImpacts.length === 0">
+        <p class="text-sm text-muted-foreground/60 italic">No benefits or organization impacts recorded. Track value delivery and change readiness.</p>
+    </template>
+</div>

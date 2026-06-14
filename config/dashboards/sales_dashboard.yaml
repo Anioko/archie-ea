@@ -1,0 +1,45 @@
+# Sales Dashboard Example
+# Shadcn-style dashboard with metrics, charts, and table
+
+name: Sales Dashboard
+route: /sales-dashboard
+blueprint: main
+description: Track your sales performance and revenue metrics
+
+# Metric cards (top row)
+metrics:
+  - title: Total Revenue
+    value: $45,231.89
+    change: +20.1%
+    icon: dollar-sign
+
+  - title: Subscriptions
+    value: +2,350
+    change: +180.1%
+    icon: users
+
+  - title: Sales
+    value: +12,234
+    change: +19%
+    icon: credit-card
+
+  - title: Active Now
+    value: +573
+    change: +201 since last hour
+    icon: activity
+
+# Page features
+features:
+  - charts
+  - table
+
+# Table configuration
+table:
+  model: Sale
+  columns:
+    - id
+    - customer
+    - email
+    - status
+    - amount
+    - created_at

@@ -1,0 +1,99 @@
+{% from 'components/drawer.html' import drawer %}
+
+{% call drawer(id='page-guide', title='AI Guide', description='Context-aware help for the current page', size='default') %}
+<style>
+/* guide-markdown: minimal styling for LLM-rendered assistant responses */
+.guide-markdown p { margin-bottom: 0.4rem; }
+.guide-markdown h3, .guide-markdown h4 { font-weight: 600; font-size: 0.8125rem; margin: 0.5rem 0 0.25rem; }
+.guide-markdown ul, .guide-markdown ol { padding-left: 1.1rem; margin: 0.25rem 0; }
+.guide-markdown li { margin-bottom: 0.15rem; }
+.guide-markdown strong { font-weight: 600; }
+.guide-markdown em { font-style: italic; }
+.guide-markdown code { font-family: ui-monospace, monospace; font-size: 0.75rem; background: rgba(0,0,0,0.06); padding: 0.1em 0.3em; border-radius: 3px; }
+</style>
+<div id="page-guide-root" class="space-y-6">
+    <div class="space-y-2">
+        <div class="flex items-center justify-between gap-3">
+            <div>
+                <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Current page</p>
+                <h3 id="page-guide-page-title" class="text-base font-semibold text-foreground"></h3>
+                <p id="page-guide-mode-note" class="text-xs text-muted-foreground mt-1"></p>
+            </div>
+            <button id="page-guide-clear"
+                    type="button"
+                    class="inline-flex items-center rounded-md border border-input px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors">
+                Clear history
+            </button>
+        </div>
+        <p id="page-guide-summary" class="text-sm text-muted-foreground"></p>
+    </div>
+
+    <div>
+        <h4 class="text-sm font-semibold text-foreground mb-2">Suggested actions</h4>
+        <div id="page-guide-actions" class="space-y-2"></div>
+    </div>
+
+    <div>
+        <h4 class="text-sm font-semibold text-foreground mb-2">Ask the guide</h4>
+        <div id="page-guide-error"
+             class="hidden rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive mb-3"
+             role="status"
+             aria-live="polite"></div>
+        <div id="page-guide-messages" class="space-y-3 rounded-lg border border-border bg-muted/30 p-3 min-h-[220px] max-h-[360px] overflow-y-auto"></div>
+        <form id="page-guide-form" class="mt-3 space-y-2">
+            <label for="page-guide-input" class="sr-only">Ask a question about this page</label>
+            <textarea id="page-guide-input"
+                      rows="3"
+                      class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                      placeholder="Ask what this page does, what to do next, or how to complete a task."></textarea>
+            <div class="flex items-center justify-between gap-3">
+                <p class="text-xs text-muted-foreground">The guide explains the current page and suggests safe next steps.</p>
+                <button id="page-guide-submit"
+                        type="submit"
+                        class="inline-flex items-center rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 transition-opacity">
+                    Send
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <div>
+        <h4 class="text-sm font-semibold text-foreground mb-2">Starter questions</h4>
+        <div id="page-guide-starters" class="flex flex-wrap gap-2"></div>
+    </div>
+
+    <div>
+        <h4 class="text-sm font-semibold text-foreground mb-2">Glossary</h4>
+        <dl id="page-guide-glossary" class="space-y-2"></dl>
+    </div>
+</div>
+{% endcall %}
+
+<script>
+/* AI Guide auto-open DISABLED — users open via navbar button.
+   The drawer was auto-opening on first visit to each specialized page,
+   blocking ~576px of content. The navbar trigger button remains available.
+   To re-enable: remove the early return below. */
+(function() {
+    return; // Auto-open disabled — open via navbar button instead
+    const ctx = window.pageGuideContext;
+    if (!ctx || !ctx.enabled || ctx.guide_mode !== 'specialized') return;
+    const noAutoOpen = ['archimate.composer'];
+    if (noAutoOpen.indexOf(ctx.page_key) !== -1) return;
+    const storageKey = 'archie_guide_seen_' + (ctx.page_key || '').replace(/[^a-z0-9]/gi, '_');
+    if (localStorage.getItem(storageKey)) return;
+    localStorage.setItem(storageKey, '1');
+    let _guideAttempts = 0;
+    function _tryOpenGuide() {
+        _guideAttempts++;
+        if (_guideAttempts > 20) return;
+        const hasBlocker = Array.from(document.querySelectorAll('button')).some(function(b) {
+            const t = b.textContent.trim();
+            return (t === 'Restore' || t === 'Discard') && b.offsetParent !== null;
+        });
+        if (hasBlocker) { setTimeout(_tryOpenGuide, 1000); return; }
+        window.dispatchEvent(new CustomEvent('open-drawer-page-guide'));
+    }
+    setTimeout(_tryOpenGuide, 3000);
+})();
+</script>

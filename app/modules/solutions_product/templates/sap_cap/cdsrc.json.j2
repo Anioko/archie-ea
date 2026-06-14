@@ -1,0 +1,31 @@
+{# .cdsrc.json.j2 — CDS configuration.
+   Context: solution_name, sol_pascal #}
+{
+  "requires": {
+    "db": {
+      "[development]": {
+        "kind": "sqlite",
+        "credentials": { "url": ":memory:" }
+      },
+      "[production]": {
+        "kind": "hana"
+      }
+    },
+    "auth": {
+      "[development]": {
+        "kind": "mocked",
+        "users": {
+          "alice": {
+            "roles": ["{{ sol_pascal }}Admin"]
+          }
+        }
+      },
+      "[production]": {
+        "kind": "xsuaa"
+      }
+    }
+  },
+  "build": {
+    "target": "gen"
+  }
+}

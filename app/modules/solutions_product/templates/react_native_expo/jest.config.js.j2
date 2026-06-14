@@ -1,0 +1,31 @@
+const { getDefaultConfig } = require('expo/metro-config');
+
+module.exports = {
+  preset: 'jest-expo',
+  setupFilesAfterFramework: ['<rootDir>/jest.setup.js'],
+  transformIgnorePatterns: [
+    'node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@unimodules/.*|unimodules|sentry-expo|native-base|react-native-svg)',
+  ],
+  moduleNameMapper: {
+    '^@/(.*)$': '<rootDir>/src/$1',
+    '^@env$': '<rootDir>/__mocks__/env.js',
+  },
+  collectCoverageFrom: [
+    'src/**/*.{ts,tsx}',
+    '!src/**/*.d.ts',
+    '!src/**/*.stories.{ts,tsx}',
+  ],
+  coverageThresholds: {
+    global: {
+      branches: 60,
+      functions: 65,
+      lines: 70,
+      statements: 70,
+    },
+  },
+  testMatch: [
+    '<rootDir>/__tests__/**/*.{ts,tsx,js}',
+    '<rootDir>/src/**/__tests__/**/*.{ts,tsx,js}',
+  ],
+  testPathIgnorePatterns: ['/node_modules/', '/android/', '/ios/'],
+};

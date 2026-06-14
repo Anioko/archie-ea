@@ -1,0 +1,79 @@
+{# shadcn/ui Filter Panel Component
+
+   Advanced filter panel with multiple filter options.
+   
+   Usage:
+   {% from 'components/filter_panel.html' import filter_panel %}
+   
+   {{ filter_panel(
+       filters=[
+           {'type': 'select', 'label': 'Status', 'model': 'statusFilter', 'options': statuses},
+           {'type': 'select', 'label': 'Owner', 'model': 'ownerFilter', 'options': owners},
+           {'type': 'daterange', 'label': 'Created', 'model_start': 'startDate', 'model_end': 'endDate'}
+       ]
+   ) }}
+#}
+
+{% macro filter_panel(
+    filters=[],
+    class=''
+) %}
+<div 
+    x-show="showFilters" x-cloak
+    x-transition
+    class="rounded-lg border bg-card text-card-foreground shadow-sm p-4 mb-4 {{ class }}"
+>
+    <div class="flex items-center justify-between mb-4">
+        <h3 class="text-sm font-semibold">Filters</h3>
+        <button 
+            @click="clearFilters()"
+            class="text-xs text-muted-foreground hover:text-foreground"
+         aria-label="Filter">
+            Clear all
+        </button>
+    </div>
+    
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {% for filter in filters %}
+        <div class="space-y-2">
+            <label class="text-sm font-medium">{{ filter.label }}</label>
+            
+            {% if filter.type == 'select' %}
+            <select 
+                x-model="{{ filter.model }}"
+                class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            >
+                <option value="">All</option>
+                {% for option in filter.options %}
+                <option value="{{ option.value }}">{{ option.label }}</option>
+                {% endfor %}
+            </select>
+            
+            {% elif filter.type == 'text' %}
+            <input 
+                type="text"
+                x-model="{{ filter.model }}"
+                placeholder="{{ filter.placeholder or '' }}"
+                class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+             aria-label="{{ filter.placeholder or '' }}"/>
+            
+            {% elif filter.type == 'daterange' %}
+            <div class="flex items-center gap-2">
+                <input 
+                    type="date"
+                    x-model="{{ filter.model_start }}"
+                    class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                 aria-label="Date field"/>
+                <span class="text-muted-foreground">to</span>
+                <input 
+                    type="date"
+                    x-model="{{ filter.model_end }}"
+                    class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                 aria-label="Date field"/>
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endmacro %}

@@ -1,0 +1,6 @@
+name,description,impact,probability,mitigation,status,owner
+Vendor lock-in,Over-dependence on a single vendor for core platform capabilities,high,medium,Multi-vendor sourcing strategy and open standards adherence,open,Architecture Lead
+Data migration failure,Loss or corruption of data during migration from legacy system,critical,low,Full backup + dry-run migration in staging environment,open,Project Manager
+Performance degradation,System response times exceed SLA under peak load,high,medium,Load testing at 2x expected peak before go-live,open,Tech Lead
+Security vulnerability,Unpatched CVEs in third-party dependencies,high,high,Automated dependency scanning in CI pipeline + 30-day patch SLA,open,Security Team
+Regulatory non-compliance,GDPR or industry-specific requirements not met at launch,critical,low,Legal review of data flows + DPO sign-off before go-live,open,Compliance Lead

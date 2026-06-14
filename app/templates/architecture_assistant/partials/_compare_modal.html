@@ -1,0 +1,101 @@
+{# Compare Options Modal — MCDA side-by-side comparison #}
+<div x-show="compareModalOpen" x-trap.inert="compareModalOpen" x-cloak
+  class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+  @keydown.escape.window="compareModalOpen = false">
+  <div class="bg-background rounded-lg shadow-lg border border-border w-full max-w-4xl max-h-[80vh] overflow-auto p-6"
+    @click.outside="compareModalOpen = false"
+    role="dialog" aria-modal="true" aria-labelledby="compare-title">
+
+    <div class="flex items-center justify-between mb-4">
+      <h2 id="compare-title" class="text-lg font-semibold">Compare Options (MCDA)</h2>
+      <button @click="compareModalOpen = false"
+        class="rounded-md p-1 hover:bg-accent" aria-label="Close comparison">
+        <i data-lucide="x" class="h-5 w-5"></i>
+      </button>
+    </div>
+
+    <template x-if="comparisonData && comparisonData.options">
+      <div>
+        <p class="text-sm text-muted-foreground mb-4">
+          Weighted scoring: Strategic Fit
+          <span x-text="Math.round((comparisonData.weights.strategic_fit || 0) * 100) + '%'"></span>,
+          Risk
+          <span x-text="Math.round((comparisonData.weights.risk_score || 0) * 100) + '%'"></span>,
+          Coverage
+          <span x-text="Math.round((comparisonData.weights.coverage || 0) * 100) + '%'"></span>
+        </p>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm border-collapse" data-testid="compare-table">
+            <thead>
+              <tr class="border-b border-border">
+                <th class="text-left p-2 font-medium">Criteria</th>
+                <template x-for="opt in comparisonData.options" :key="'h-'+opt.name">
+                  <th class="text-center p-2 font-medium" x-text="opt.name"></th>
+                </template>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="border-b border-border">
+                <td class="p-2 text-muted-foreground">Strategic Fit</td>
+                <template x-for="opt in comparisonData.options" :key="'sf-'+opt.name">
+                  <td class="text-center p-2">
+                    <span x-text="Math.round((opt.scores?.strategic_fit || 0) * 100) + '%'"
+                      :class="(opt.scores?.strategic_fit || 0) >= 0.7 ? 'text-emerald-600' : 'text-amber-600'"></span>
+                  </td>
+                </template>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="p-2 text-muted-foreground">Risk (inverted)</td>
+                <template x-for="opt in comparisonData.options" :key="'ri-'+opt.name">
+                  <td class="text-center p-2">
+                    <span x-text="Math.round((opt.scores?.risk_inverted || 0) * 100) + '%'"
+                      :class="(opt.scores?.risk_inverted || 0) >= 0.7 ? 'text-emerald-600' : 'text-amber-600'"></span>
+                  </td>
+                </template>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="p-2 text-muted-foreground">Coverage</td>
+                <template x-for="opt in comparisonData.options" :key="'cv-'+opt.name">
+                  <td class="text-center p-2">
+                    <span x-text="Math.round((opt.scores?.coverage || 0) * 100) + '%'"
+                      :class="(opt.scores?.coverage || 0) >= 0.7 ? 'text-emerald-600' : 'text-amber-600'"></span>
+                  </td>
+                </template>
+              </tr>
+              <tr class="border-t-2 border-border font-semibold">
+                <td class="p-2">Weighted Score</td>
+                <template x-for="(opt, idx) in comparisonData.options" :key="'ws-'+opt.name">
+                  <td class="text-center p-2">
+                    <span x-text="(opt.weighted_score * 100).toFixed(1) + '%'"
+                      :class="idx === 0 ? 'text-emerald-600 text-lg' : ''"></span>
+                  </td>
+                </template>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="mt-4 grid gap-4" :style="'grid-template-columns: repeat(' + comparisonData.options.length + ', 1fr)'">
+          <template x-for="opt in comparisonData.options" :key="'detail-'+opt.name">
+            <div class="rounded-md border border-border p-3 text-sm">
+              <p class="font-medium mb-2" x-text="opt.name"></p>
+              <div class="space-y-1">
+                <template x-for="pro in (opt.pros || [])" :key="pro">
+                  <div class="pro-item rounded px-2 py-0.5 text-xs" x-text="'+ ' + pro"></div>
+                </template>
+                <template x-for="con in (opt.cons || [])" :key="con">
+                  <div class="con-item rounded px-2 py-0.5 text-xs" x-text="'- ' + con"></div>
+                </template>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+    </template>
+
+    <template x-if="!comparisonData">
+      <div class="text-center py-8 text-muted-foreground">Loading comparison data...</div>
+    </template>
+  </div>
+</div>

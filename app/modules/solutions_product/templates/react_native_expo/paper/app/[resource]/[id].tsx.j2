@@ -1,0 +1,618 @@
+import { useState } from "react"
+import {
+  Alert,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  View,
+  FlatList,
+} from "react-native"
+import DateTimePicker from "@react-native-community/datetimepicker"
+import { useRouter, useLocalSearchParams } from "expo-router"
+import { useForm, Controller } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import Toast from "react-native-toast-message"
+import {
+  ActivityIndicator,
+  Button,
+  Chip,
+  Divider,
+  HelperText,
+  List,
+  SegmentedButtons,
+  Surface,
+  Switch,
+  Text,
+  TextInput,
+  TouchableRipple,
+} from "react-native-paper"
+import { MaterialCommunityIcons } from "@expo/vector-icons"
+import { {{ name | lower }}Api } from "@/lib/api"
+import { {{ name }}Schema, type {{ name }}Input, type {{ name }} } from "@/lib/schemas"
+import { StatusBadge } from "@/components/StatusBadge"
+{% for rel in relationships %}
+import { {{ rel.target | lower }}Api } from "@/lib/api"
+{% endfor %}
+
+{% set status_field = none %}
+{% for field in fields %}
+{% if field.name == 'status' %}{% set status_field = field %}{% endif %}
+{% endfor %}
+
+// Style constants — no inline object literals to avoid Jinja2/JSX double-brace collision
+const S = StyleSheet.create({
+  flex: { flex: 1 },
+  container: { flex: 1, backgroundColor: "#f8fafc" },
+  scroll: { padding: 16, paddingBottom: 48 },
+  headerCard: { borderRadius: 16, padding: 16, marginBottom: 12 },
+  headerRow: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 12 },
+  headerTitle: { color: "#0f172a", flex: 1, marginRight: 8 },
+  editBtnRow: { flexDirection: "row", gap: 8 },
+  formCard: { borderRadius: 16, marginBottom: 12, overflow: "hidden" },
+  sectionLabel: { color: "#94a3b8", paddingHorizontal: 16, paddingVertical: 10 },
+  fieldRow: { paddingHorizontal: 16, paddingVertical: 10 },
+  boolRow: { paddingHorizontal: 16, paddingVertical: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  segRow: { paddingHorizontal: 16, paddingVertical: 10 },
+  readRow: { paddingHorizontal: 16, paddingVertical: 10 },
+  readLabel: { color: "#94a3b8", fontSize: 11, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 },
+  readValue: { color: "#0f172a", fontSize: 14 },
+  actionCard: { borderRadius: 16, marginBottom: 12, padding: 16 },
+  actionHeader: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 10 },
+  actionHeaderText: { color: "#4f46e5", fontWeight: "700", fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5 },
+  actionBtns: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  dangerCard: { borderRadius: 16, marginBottom: 12, padding: 16, borderColor: "#fecaca", borderWidth: 1 },
+  dangerLabel: { color: "#f87171", fontWeight: "700", fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 10 },
+  saveBtn: { marginBottom: 8, borderRadius: 12, paddingVertical: 4 },
+  saveContent: { paddingVertical: 6 },
+  loadingContainer: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#f8fafc" },
+  errorContainer: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#f8fafc", padding: 24 },
+  modalContainer: { flex: 1, backgroundColor: "#ffffff" },
+  modalHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: "#f1f5f9" },
+  searchInput: { margin: 12 },
+  listItem: { paddingHorizontal: 20 },
+  emptyText: { textAlign: "center", padding: 24, color: "#94a3b8" },
+  boolChip: { alignSelf: "flex-start" },
+  labelSmall: { color: "#64748b", marginBottom: 6 },
+  fieldLabel: { color: "#374151" },
+  errorTitle: { color: "#0f172a", marginBottom: 8 },
+  errorBody: { color: "#64748b", textAlign: "center", marginBottom: 20 },
+  dangerBorder: { borderColor: "#fca5a5" },
+})
+
+// ── Inline pickers (same pattern as new.tsx) ──
+
+function EnumField({ label, value, options, onChange, error }: {
+  label: string; value: string | undefined; options: string[]
+  onChange: (v: string) => void; error?: string
+}) {
+  const [open, setOpen] = useState(false)
+  if (options.length <= 4) {
+    return (
+      <View style={S.segRow}>
+        <Text variant="labelSmall" style={S.labelSmall}>{label}</Text>
+        <SegmentedButtons
+          value={value ?? ""}
+          onValueChange={onChange}
+          buttons={options.map((o) => ({ value: o, label: o.replace(/_/g, " ") }))}
+          accessibilityLabel={label}
+        />
+        {error ? <HelperText type="error" visible>{error}</HelperText> : null}
+      </View>
+    )
+  }
+  return (
+    <>
+      <TouchableRipple onPress={() => setOpen(true)} accessibilityLabel={`Select ${label}`}>
+        <View style={S.fieldRow}>
+          <TextInput
+            label={label}
+            value={value ? value.replace(/_/g, " ") : ""}
+            mode="outlined"
+            editable={false}
+            right={<TextInput.Icon icon="chevron-down" />}
+            error={!!error}
+            pointerEvents="none"
+          />
+          {error ? <HelperText type="error" visible>{error}</HelperText> : null}
+        </View>
+      </TouchableRipple>
+      <Modal visible={open} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setOpen(false)}>
+        <View style={S.modalContainer}>
+          <View style={S.modalHeader}>
+            <Text variant="titleMedium">{label}</Text>
+            <MaterialCommunityIcons name="close" size={22} color="#64748b" onPress={() => setOpen(false)} accessibilityLabel="Close" />
+          </View>
+          <FlatList
+            data={options}
+            keyExtractor={(o) => o}
+            renderItem={({ item }) => (
+              <List.Item
+                title={item.replace(/_/g, " ")}
+                style={S.listItem}
+                onPress={() => { onChange(item); setOpen(false) }}
+                right={() => value === item ? <MaterialCommunityIcons name="check" size={18} color="#4f46e5" /> : null}
+                accessibilityLabel={item}
+              />
+            )}
+            ItemSeparatorComponent={Divider}
+          />
+        </View>
+      </Modal>
+    </>
+  )
+}
+
+function DateField({ label, value, onChange, error, required }: {
+  label: string; value: string | undefined; onChange: (v: string) => void; error?: string; required?: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const date = value ? new Date(value) : new Date()
+  return (
+    <View style={S.fieldRow}>
+      <TouchableRipple onPress={() => setOpen(true)} accessibilityLabel={`Select ${label}`}>
+        <TextInput
+          label={`${label}${required ? " *" : ""}`}
+          value={value ? new Date(value).toLocaleDateString() : ""}
+          mode="outlined"
+          editable={false}
+          right={<TextInput.Icon icon="calendar" />}
+          error={!!error}
+          pointerEvents="none"
+        />
+      </TouchableRipple>
+      {error ? <HelperText type="error" visible>{error}</HelperText> : null}
+      {open && (
+        <DateTimePicker
+          value={date}
+          mode="date"
+          display={Platform.OS === "ios" ? "spinner" : "default"}
+          onChange={(_e, d) => {
+            setOpen(Platform.OS === "ios")
+            if (d) onChange(d.toISOString())
+          }}
+        />
+      )}
+    </View>
+  )
+}
+
+function RelationField({ label, value, fetchFn, displayField, onChange, error, required }: {
+  label: string; value: string | number | undefined
+  fetchFn: (params?: Record<string, string | number>) => Promise<unknown[]>
+  displayField: string; onChange: (id: string | number, label: string) => void
+  error?: string; required?: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState("")
+  const [displayLabel, setDisplayLabel] = useState<string>(value != null ? String(value) : "")
+  const { data: options = [], isLoading } = useQuery({
+    queryKey: ["relation-picker", label, search],
+    queryFn: () => fetchFn({ search, per_page: 30 }),
+    enabled: open,
+  })
+  return (
+    <>
+      <TouchableRipple onPress={() => setOpen(true)} accessibilityLabel={`Select ${label}`}>
+        <View style={S.fieldRow}>
+          <TextInput
+            label={`${label}${required ? " *" : ""}`}
+            value={displayLabel}
+            mode="outlined"
+            editable={false}
+            right={<TextInput.Icon icon="magnify" />}
+            error={!!error}
+            pointerEvents="none"
+          />
+          {error ? <HelperText type="error" visible>{error}</HelperText> : null}
+        </View>
+      </TouchableRipple>
+      <Modal visible={open} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setOpen(false)}>
+        <View style={S.modalContainer}>
+          <View style={S.modalHeader}>
+            <Text variant="titleMedium">{label}</Text>
+            <MaterialCommunityIcons name="close" size={22} color="#64748b" onPress={() => setOpen(false)} accessibilityLabel="Close" />
+          </View>
+          <TextInput
+            mode="outlined"
+            placeholder={`Search ${label.toLowerCase()}…`}
+            value={search}
+            onChangeText={setSearch}
+            style={S.searchInput}
+            left={<TextInput.Icon icon="magnify" />}
+            autoFocus
+            accessibilityLabel={`Search ${label}`}
+          />
+          <FlatList
+            data={options as Record<string, unknown>[]}
+            keyExtractor={(o) => String((o as Record<string, unknown>).id ?? JSON.stringify(o))}
+            ListEmptyComponent={<Text style={S.emptyText}>{isLoading ? "Loading…" : "No results"}</Text>}
+            renderItem={({ item }) => {
+              const rec = item as Record<string, unknown>
+              const lbl = String(rec[displayField] ?? rec.name ?? rec.title ?? rec.id)
+              const id = rec.id ?? rec._id
+              return (
+                <List.Item
+                  title={lbl}
+                  style={S.listItem}
+                  onPress={() => { onChange(id as string | number, lbl); setDisplayLabel(lbl); setOpen(false) }}
+                  right={() => value === id ? <MaterialCommunityIcons name="check" size={18} color="#4f46e5" /> : null}
+                  accessibilityLabel={lbl}
+                />
+              )
+            }}
+            ItemSeparatorComponent={Divider}
+          />
+        </View>
+      </Modal>
+    </>
+  )
+}
+
+export default function {{ name }}DetailScreen() {
+  const router = useRouter()
+  const { id } = useLocalSearchParams<{ id: string }>()
+  const queryClient = useQueryClient()
+  const [isEditing, setIsEditing] = useState(false)
+
+  const { data: item, isLoading, isError, error } = useQuery<{{ name }}>({
+    queryKey: ["{{ table_name }}", id],
+    queryFn: () => {{ name | lower }}Api.get(id),
+    enabled: !!id,
+  })
+
+  const displayTitle = item
+    ? String((item as Record<string, unknown>)[
+        "{{ (fields | selectattr('primary_key', 'undefined') | first | default({'name': 'id'})).name }}"
+      ] ?? `#${id}`)
+    : `#${id}`
+
+  const { control, handleSubmit, formState: { errors, isSubmitting, isDirty }, reset } = useForm<{{ name }}Input>({
+    resolver: zodResolver({{ name }}Schema),
+    values: item as {{ name }}Input | undefined,
+  })
+
+  const updateMutation = useMutation({
+    mutationFn: (data: {{ name }}Input) => {{ name | lower }}Api.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["{{ table_name }}"] })
+      queryClient.invalidateQueries({ queryKey: ["{{ table_name }}", id] })
+      setIsEditing(false)
+      Toast.show({ type: "success", text1: "Saved", text2: "Changes saved successfully." })
+    },
+    onError: (e: unknown) => {
+      Toast.show({ type: "error", text1: "Error", text2: e instanceof Error ? e.message : "Save failed" })
+    },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: () => {{ name | lower }}Api.remove(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["{{ table_name }}"] })
+      Toast.show({ type: "success", text1: "Deleted", text2: "{{ name | replace('_', ' ') }} removed." })
+      router.back()
+    },
+    onError: (e: unknown) => {
+      Toast.show({ type: "error", text1: "Delete failed", text2: e instanceof Error ? e.message : "An error occurred" })
+    },
+  })
+
+  {% if state_machine %}
+  const { data: actionsData } = useQuery<{ available_triggers: string[] }>({
+    queryKey: ["{{ table_name }}", id, "actions"],
+    queryFn: () => {{ name | lower }}Api.availableActions(id),
+    enabled: !!id && !!item,
+  })
+
+  const transitionMutation = useMutation({
+    mutationFn: (trigger: string) => {{ name | lower }}Api.transition(id, trigger),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["{{ table_name }}"] })
+      queryClient.invalidateQueries({ queryKey: ["{{ table_name }}", id] })
+      queryClient.invalidateQueries({ queryKey: ["{{ table_name }}", id, "actions"] })
+      Toast.show({ type: "success", text1: "Action completed", text2: "Status updated successfully." })
+    },
+    onError: (e: unknown) => {
+      Toast.show({ type: "error", text1: "Action failed", text2: e instanceof Error ? e.message : "Could not perform action" })
+    },
+  })
+  {% endif %}
+
+  const onDelete = () => {
+    Alert.alert(
+      "Delete {{ name | replace('_', ' ') }}?",
+      "This action cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Delete", style: "destructive", onPress: () => deleteMutation.mutate() },
+      ],
+    )
+  }
+
+  if (isLoading) {
+    return (
+      <View style={S.loadingContainer}>
+        <ActivityIndicator size="large" color="#4f46e5" />
+      </View>
+    )
+  }
+
+  if (isError || !item) {
+    return (
+      <View style={S.errorContainer}>
+        <Text variant="titleMedium" style={S.errorTitle}>
+          {isError ? "Failed to load" : "Not found"}
+        </Text>
+        <Text variant="bodyMedium" style={S.errorBody}>
+          {error instanceof Error ? error.message : "This record may have been deleted."}
+        </Text>
+        <Button mode="outlined" onPress={() => router.back()} accessibilityLabel="Go back">
+          Go Back
+        </Button>
+      </View>
+    )
+  }
+
+  const rec = item as Record<string, unknown>
+
+  return (
+    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={S.flex}>
+      <ScrollView style={S.container} contentContainerStyle={S.scroll}>
+
+        {/* Header card */}
+        <Surface style={S.headerCard} elevation={1}>
+          <View style={S.headerRow}>
+            <Text variant="headlineSmall" style={S.headerTitle} numberOfLines={2}>{displayTitle}</Text>
+            {% if status_field %}
+            <StatusBadge value={rec.status as string} />
+            {% endif %}
+          </View>
+          <View style={S.editBtnRow}>
+            <Button
+              mode={isEditing ? "outlined" : "contained-tonal"}
+              onPress={() => { setIsEditing(!isEditing); if (isEditing) reset() }}
+              compact
+              buttonColor={isEditing ? undefined : "#e0e7ff"}
+              textColor={isEditing ? "#64748b" : "#4f46e5"}
+              accessibilityLabel={isEditing ? "Cancel editing" : "Edit record"}
+            >
+              {isEditing ? "Cancel" : "Edit"}
+            </Button>
+          </View>
+        </Surface>
+
+        {/* Fields card */}
+        <Surface style={S.formCard} elevation={1}>
+          <Text variant="labelSmall" style={S.sectionLabel}>DETAILS</Text>
+          <Divider />
+
+          {% for field in fields %}{% if not field.primary_key %}
+          {% set fl = field.name | lower %}
+          {% set is_bool = field.type in ["bool", "boolean"] %}
+          {% set is_numeric = field.type in ['int', 'integer', 'float', 'Decimal', 'decimal', 'number'] %}
+          {% set is_date = field.type in ['datetime', 'date'] or field.format in ['date', 'date-time'] %}
+          {% set is_email = 'email' in fl %}
+          {% set is_phone = 'phone' in fl %}
+          {% set is_url = 'url' in fl or 'website' in fl or 'link' in fl %}
+          {% set is_secret = 'password' in fl or 'secret' in fl or 'passwd' in fl %}
+          {% set is_multiline = ('description' in fl or 'notes' in fl or 'body' in fl or 'content' in fl or 'summary' in fl or 'comment' in fl or 'remarks' in fl) and field.type in ['str', 'string', 'text'] %}
+          {% set is_fk = field.foreignKey is defined and field.foreignKey %}
+          {% set has_enum = field.enum is defined and field.enum | length > 0 %}
+          {% set kbd = 'numeric' if is_numeric else ('email-address' if is_email else ('phone-pad' if is_phone else ('url' if is_url else 'default'))) %}
+
+          {% if is_bool %}
+          <View style={S.boolRow}>
+            <Text variant="bodyMedium" style={S.fieldLabel}>{{ field.name | replace('_', ' ') | title }}</Text>
+            {isEditing ? (
+              <Controller
+                control={control}
+                name="{{ field.name }}"
+                render={({ field: { onChange, value } }) => (
+                  <Switch
+                    value={!!value}
+                    onValueChange={onChange}
+                    color="#4f46e5"
+                    accessibilityLabel="{{ field.name | replace('_', ' ') | title }}"
+                  />
+                )}
+              />
+            ) : (
+              <Chip compact mode="flat" accessibilityLabel={rec.{{ field.name }} ? "Yes" : "No"}
+                style={{ '{{' }} backgroundColor: rec.{{ field.name }} ? "#dcfce7" : "#f1f5f9" {{ '}}' }}
+                textStyle={{ '{{' }} color: rec.{{ field.name }} ? "#166534" : "#475569" {{ '}}' }}
+              >
+                {rec.{{ field.name }} ? "Yes" : "No"}
+              </Chip>
+            )}
+          </View>
+          <Divider />
+
+          {% elif is_date %}
+          {isEditing ? (
+            <Controller
+              control={control}
+              name="{{ field.name }}"
+              render={({ field: { onChange, value } }) => (
+                <DateField
+                  label="{{ field.name | replace('_', ' ') | title }}{% if not field.nullable %} *{% endif %}"
+                  value={value as string | undefined}
+                  onChange={onChange}
+                  error={errors.{{ field.name }}?.message}
+                />
+              )}
+            />
+          ) : (
+            <View style={S.readRow}>
+              <Text style={S.readLabel}>{{ field.name | replace('_', ' ') | upper }}</Text>
+              <Text style={S.readValue}>
+                {rec.{{ field.name }} ? new Date(String(rec.{{ field.name }})).toLocaleDateString() : "\u2014"}
+              </Text>
+            </View>
+          )}
+          <Divider />
+
+          {% elif has_enum %}
+          {isEditing ? (
+            <Controller
+              control={control}
+              name="{{ field.name }}"
+              render={({ field: { onChange, value } }) => (
+                <EnumField
+                  label="{{ field.name | replace('_', ' ') | title }}"
+                  value={value as string | undefined}
+                  options={[{% for v in field.enum %}"{{ v }}"{% if not loop.last %}, {% endif %}{% endfor %}]}
+                  onChange={onChange}
+                  error={errors.{{ field.name }}?.message}
+                />
+              )}
+            />
+          ) : (
+            <View style={S.readRow}>
+              <Text style={S.readLabel}>{{ field.name | replace('_', ' ') | upper }}</Text>
+              <Text style={S.readValue} >
+                {rec.{{ field.name }} != null ? String(rec.{{ field.name }}).replace(/_/g, " ") : "\u2014"}
+              </Text>
+            </View>
+          )}
+          <Divider />
+
+          {% elif is_fk %}
+          {isEditing ? (
+            <Controller
+              control={control}
+              name="{{ field.name }}"
+              render={({ field: { onChange, value } }) => (
+                <RelationField
+                  label="{{ field.name | replace('_id', '') | replace('_', ' ') | title }}"
+                  value={value as string | number | undefined}
+                  fetchFn={(params) => {{ field.foreignKey.split('.')[0] | lower }}Api.list(params)}
+                  displayField="name"
+                  onChange={(id) => onChange(id)}
+                  error={errors.{{ field.name }}?.message}
+                />
+              )}
+            />
+          ) : (
+            <View style={S.readRow}>
+              <Text style={S.readLabel}>{{ field.name | replace('_id', '') | replace('_', ' ') | upper }}</Text>
+              <Text style={S.readValue}>
+                {rec.{{ field.name }} != null ? String(rec.{{ field.name }}) : "\u2014"}
+              </Text>
+            </View>
+          )}
+          <Divider />
+
+          {% else %}
+          <View style={S.fieldRow}>
+            <Text style={S.readLabel}>{{ field.name | replace('_', ' ') | upper }}</Text>
+            {isEditing ? (
+              <Controller
+                control={control}
+                name="{{ field.name }}"
+                render={({ field: { onChange, onBlur, value } }) => (
+                  <>
+                    <TextInput
+                      label="{{ field.name | replace('_', ' ') | title }}{% if not field.nullable %} *{% endif %}"
+                      mode="outlined"
+                      onBlur={onBlur}
+                      onChangeText={(text) => onChange({% if is_numeric %}text === "" ? undefined : Number(text){% else %}text{% endif %})}
+                      value={value != null ? String(value) : ""}
+                      keyboardType="{{ kbd }}"
+                      {% if is_secret %}secureTextEntry{% endif %}
+                      {% if is_multiline %}multiline numberOfLines={4}{% endif %}
+                      {% if is_email %}autoCapitalize="none" autoComplete="email"{% endif %}
+                      error={!!errors.{{ field.name }}}
+                      accessibilityLabel="{{ field.name | replace('_', ' ') | title }}"
+                    />
+                    <HelperText type="error" visible={!!errors.{{ field.name }}}>
+                      {errors.{{ field.name }}?.message ?? ""}
+                    </HelperText>
+                  </>
+                )}
+              />
+            ) : (
+              <Text style={S.readValue}>
+                {rec.{{ field.name }} != null ? String(rec.{{ field.name }}) : "\u2014"}
+              </Text>
+            )}
+          </View>
+          <Divider />
+          {% endif %}
+
+          {% endif %}{% endfor %}
+        </Surface>
+
+        {/* Save button (edit mode) */}
+        {isEditing && (
+          <Button
+            mode="contained"
+            onPress={handleSubmit((data) => updateMutation.mutate(data))}
+            disabled={isSubmitting || updateMutation.isPending || !isDirty}
+            loading={isSubmitting || updateMutation.isPending}
+            style={S.saveBtn}
+            contentStyle={S.saveContent}
+            buttonColor="#4f46e5"
+            accessibilityLabel="Save changes"
+          >
+            {isSubmitting || updateMutation.isPending ? "Saving…" : isDirty ? "Save Changes" : "No Changes"}
+          </Button>
+        )}
+
+        {/* State machine actions */}
+        {% if state_machine %}
+        {!isEditing && (actionsData?.available_triggers?.length ?? 0) > 0 && (
+          <Surface style={S.actionCard} elevation={1}>
+            <View style={S.actionHeader}>
+              <MaterialCommunityIcons name="lightning-bolt" size={14} color="#4f46e5" />
+              <Text style={S.actionHeaderText}>Actions</Text>
+            </View>
+            <View style={S.actionBtns}>
+              {actionsData!.available_triggers.map((trigger) => (
+                <Button
+                  key={trigger}
+                  mode="outlined"
+                  compact
+                  onPress={() =>
+                    Alert.alert(
+                      trigger.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+                      `Are you sure you want to ${trigger.replace(/_/g, " ")} this {{ name | replace('_', ' ') | lower }}?`,
+                      [
+                        { text: "Cancel", style: "cancel" },
+                        { text: "Confirm", onPress: () => transitionMutation.mutate(trigger) },
+                      ]
+                    )
+                  }
+                  disabled={transitionMutation.isPending}
+                  textColor="#4f46e5"
+                  accessibilityLabel={trigger.replace(/_/g, " ")}
+                >
+                  {trigger.replace(/_/g, " ")}
+                </Button>
+              ))}
+            </View>
+          </Surface>
+        )}
+        {% endif %}
+
+        {/* Danger zone */}
+        <Surface style={S.dangerCard} elevation={0}>
+          <Text style={S.dangerLabel}>Danger Zone</Text>
+          <Button
+            mode="outlined"
+            onPress={onDelete}
+            disabled={deleteMutation.isPending}
+            loading={deleteMutation.isPending}
+            textColor="#dc2626"
+            style={S.dangerBorder}
+            icon="trash-can-outline"
+            accessibilityLabel="Delete {{ name }}"
+          >
+            {deleteMutation.isPending ? "Deleting…" : "Delete {{ name | replace('_', ' ') }}"}
+          </Button>
+        </Surface>
+      </ScrollView>
+    </KeyboardAvoidingView>
+  )
+}

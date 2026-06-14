@@ -1,0 +1,398 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'applications/rationalization/_disposition_tooltip.html' import disposition_badge %}
+{% block title %}{{ app.name }} — Planning{% endblock %}
+
+{% block content %}
+<div x-data="planningApp()" x-init="loadTab('overview')">
+
+    {# ── Breadcrumbs ──────────────────────────────────────────────── #}
+    <nav class="flex items-center text-sm text-muted-foreground mb-4" aria-label="Breadcrumb">
+        <a href="{{ url_for('unified_applications.rationalization_dashboard') }}" class="hover:text-foreground">Rationalization</a>
+        <i data-lucide="chevron-right" class="h-3.5 w-3.5 mx-1.5"></i>
+        <a href="{{ url_for('unified_applications.rationalization_workbench') }}" class="hover:text-foreground">Workbench</a>
+        <i data-lucide="chevron-right" class="h-3.5 w-3.5 mx-1.5"></i>
+        <span class="text-foreground font-medium">{{ app.name|truncate(40) }}</span>
+    </nav>
+
+    {% include 'applications/rationalization/_sub_nav.html' %}
+
+    {# ── App Header ───────────────────────────────────────────────── #}
+    <div class="rounded-xl border bg-card p-5 mb-6">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+                <h1 class="text-xl font-bold text-foreground">{{ app.name }}</h1>
+                <div class="flex flex-wrap items-center gap-2 mt-2">
+                    {% if score %}
+                    {{ disposition_badge(score.disposition_action or 'unknown') }}
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium
+                                 {{ 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/30' if score.overall_health_score and score.overall_health_score >= 70
+                                    else 'bg-amber-500/10 text-amber-600 border border-amber-500/30' if score.overall_health_score and score.overall_health_score >= 40
+                                    else 'bg-destructive/10 text-destructive border border-destructive/30' }}">
+                        Health: {{ score.overall_health_score or '—' }}
+                    </span>
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground border border-border">
+                        {{ (score.review_status or 'draft')|capitalize }}
+                    </span>
+                    {% if score.is_decision_ready %}
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30">
+                        <i data-lucide="shield-check" class="h-3 w-3 mr-1"></i>Decision Ready
+                    </span>
+                    {% endif %}
+                    {% else %}
+                    <span class="text-sm text-muted-foreground">No rationalization score available</span>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="flex items-center gap-3">
+                {# RATA-004: Score This App button #}
+                <button type="button" @click="scoreThisApp()"
+                        :disabled="isScoringApp"
+                        class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 py-2 disabled:opacity-50 disabled:pointer-events-none gap-2">
+                    <span x-show="isScoringApp" x-cloak class="animate-spin h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full inline-block"></span>
+                    <span x-text="isScoringApp ? 'Scoring...' : 'Score This App'"></span>
+                </button>
+                <a href="{{ url_for('unified_applications.rationalization_workbench') }}"
+                   class="text-sm text-primary hover:underline flex items-center gap-1">
+                    <i data-lucide="arrow-left" class="h-3.5 w-3.5"></i> Back to Workbench
+                </a>
+            </div>
+        </div>
+
+        {# ── Review Workflow Strip ────────────────────────────────── #}
+        {% if score %}
+        <div class="mt-4 pt-4 border-t border-border flex flex-wrap items-center gap-3">
+            <span class="text-xs font-medium text-muted-foreground">Review:</span>
+            <span class="text-xs font-semibold text-foreground" x-text="reviewStatus || '{{ score.review_status or 'draft' }}'"></span>
+            <div class="flex gap-2 ml-auto">
+                <button type="button" @click="transitionReview('reviewed')" x-show="reviewStatus === 'draft' || (!reviewStatus && '{{ score.review_status or 'draft' }}' === 'draft')" x-cloak
+                        class="px-3 py-1 text-xs font-medium rounded-md border border-border hover:bg-muted">
+                    Mark Reviewed
+                </button>
+                <button type="button" @click="transitionReview('approved')" x-show="reviewStatus === 'reviewed' || (!reviewStatus && '{{ score.review_status or 'draft' }}' === 'reviewed')" x-cloak
+                        class="px-3 py-1 text-xs font-medium rounded-md bg-emerald-600 text-primary-foreground hover:bg-emerald-700">
+                    Approve
+                </button>
+                <button type="button" @click="transitionReview('rejected')" x-show="reviewStatus === 'reviewed' || (!reviewStatus && '{{ score.review_status or 'draft' }}' === 'reviewed')" x-cloak
+                        class="px-3 py-1 text-xs font-medium rounded-md bg-destructive text-primary-foreground hover:bg-destructive/90">
+                    Reject
+                </button>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    {# ── Tab Navigation ───────────────────────────────────────────── #}
+    <div class="border-b border-border mb-6">
+        <nav class="-mb-px flex space-x-1 overflow-x-auto" role="tablist">
+            {% set tabs = [('overview', 'Overview'), ('options', 'Options'), ('replacement', 'Replacement'), ('retirement', 'Retirement'), ('overrides', 'Overrides')] %}
+            {% for tab_id, tab_label in tabs %}
+            <button type="button" @click="switchTab('{{ tab_id }}')"
+                    :class="activeTab === '{{ tab_id }}' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'"
+                    class="shrink-0 whitespace-nowrap py-2.5 px-4 border-b-2 font-medium text-sm transition-colors"
+                    role="tab" :aria-selected="activeTab === '{{ tab_id }}'">
+                {{ tab_label }}
+            </button>
+            {% endfor %}
+        </nav>
+    </div>
+
+    {# ── Tab Panels ───────────────────────────────────────────────── #}
+
+    {# Overview Tab #}
+    <div x-show="activeTab === 'overview'" x-cloak role="tabpanel">
+        <template x-if="tabLoading.overview">
+            <div class="space-y-4 animate-pulse">
+                <div class="h-6 bg-muted rounded w-1/3"></div>
+                <div class="h-4 bg-muted rounded w-full"></div>
+                <div class="h-4 bg-muted rounded w-4/5"></div>
+                <div class="h-4 bg-muted rounded w-2/3"></div>
+            </div>
+        </template>
+        <template x-if="!tabLoading.overview && tabData.overview">
+            <div class="space-y-6">
+
+                {# RATA-007: Score Breakdown Panel — radar chart + dimensions #}
+                <div class="rounded-xl border bg-card p-5" x-show="evidenceData" x-cloak
+                    <h3 class="text-sm font-semibold text-foreground mb-4">Score Breakdown</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {# Radar Chart #}
+                        <div class="relative max-h-[280px]">
+                            <canvas id="scoreRadarChart"></canvas>
+                        </div>
+                        {# Dimension Summary + TIME Badge #}
+                        <div class="space-y-3">
+                            <div class="flex items-center gap-2 mb-3">
+                                <span class="inline-flex items-center px-3 py-1 rounded-md text-sm font-bold"
+                                      :class="{'bg-primary/10 text-primary border border-primary/30': evidenceData.time_action === 'TOLERATE',
+                                               'bg-emerald-500/10 text-emerald-600 border border-emerald-500/30': evidenceData.time_action === 'INVEST',
+                                               'bg-amber-500/10 text-amber-600 border border-amber-500/30': evidenceData.time_action === 'MIGRATE',
+                                               'bg-destructive/10 text-destructive border border-destructive/30': evidenceData.time_action === 'ELIMINATE'}"
+                                      x-text="evidenceData.time_action || '—'"></span>
+                                <span class="text-xs text-muted-foreground"
+                                      :title="(evidenceData.confidence_reasons || []).join('; ')"
+                                      x-text="'Confidence: ' + (evidenceData.disposition_confidence || '—')"></span>
+                            </div>
+                            <template x-for="dim in evidenceData.dimension_summary" :key="dim.name">
+                                <div class="flex items-center gap-3">
+                                    <span class="text-xs font-medium text-muted-foreground w-28" x-text="dim.label"></span>
+                                    <div class="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+                                        <div class="h-full rounded-full transition-all"
+                                             :class="dim.score >= 70 ? 'bg-emerald-500' : dim.score >= 40 ? 'bg-amber-500' : 'bg-destructive'"
+                                             :style="'width:' + dim.score + '%'"></div>
+                                    </div>
+                                    <span class="text-xs font-bold w-8 text-right"
+                                          :class="dim.score >= 70 ? 'text-emerald-600' : dim.score >= 40 ? 'text-amber-600' : 'text-destructive'"
+                                          x-text="dim.score"></span>
+                                </div>
+                            </template>
+                            {# Readiness Indicators #}
+                            <div class="pt-3 border-t border-border">
+                                <p class="text-xs font-medium text-muted-foreground mb-2">Data Readiness</p>
+                                <div class="flex flex-wrap gap-2">
+                                    <template x-for="(satisfied, dimName) in (evidenceData.readiness_dimensions || {})" :key="dimName">
+                                        <span class="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-md"
+                                              :class="satisfied ? 'bg-emerald-500/10 text-emerald-600' : 'bg-destructive/10 text-destructive'">
+                                            <i :data-lucide="satisfied ? 'check' : 'x'" class="h-3 w-3"></i>
+                                            <span x-text="dimName"></span>
+                                        </span>
+                                    </template>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {# Expandable Evidence Trail per dimension #}
+                    <div class="mt-6 space-y-2">
+                        <template x-for="dim in evidenceData.evidence_trail" :key="dim.dimension">
+                            <details class="group border rounded-lg">
+                                <summary class="flex items-center justify-between px-4 py-2.5 cursor-pointer hover:bg-muted/30">
+                                    <span class="text-xs font-semibold text-foreground" x-text="dim.dimension"></span>
+                                    <span class="text-xs font-bold"
+                                          :class="dim.score >= 70 ? 'text-emerald-600' : dim.score >= 40 ? 'text-amber-600' : 'text-destructive'"
+                                          x-text="dim.score + '/100'"></span>
+                                </summary>
+                                <div class="px-4 pb-3 space-y-1.5">
+                                    <template x-for="factor in dim.sub_factors" :key="factor.name">
+                                        <div class="flex items-center gap-2 text-xs">
+                                            <span class="text-muted-foreground w-32 truncate" x-text="factor.name"></span>
+                                            <span class="font-mono text-foreground w-16 text-right" x-text="factor.raw_value || '—'"></span>
+                                            <span class="text-muted-foreground w-12 text-right" x-text="'+' + (factor.contribution || 0)"></span>
+                                            <span class="text-muted-foreground/60 text-[10px] truncate flex-1" x-text="factor.source || ''"></span>
+                                        </div>
+                                    </template>
+                                </div>
+                            </details>
+                        </template>
+                    </div>
+                </div>
+
+                <div class="rounded-xl border bg-card p-5">
+                    <h3 class="text-sm font-semibold text-foreground mb-3">Decision Dossier</h3>
+                    <div class="prose prose-sm max-w-none text-muted-foreground" x-html="tabData.overview.dossier_html || '<p>No dossier data available.</p>'"></div>
+                </div>
+            </div>
+        </template>
+    </div>
+
+    {# Options Tab #}
+    <div x-show="activeTab === 'options'" x-cloak role="tabpanel">
+        <template x-if="tabLoading.options">
+            <div class="space-y-4 animate-pulse"><div class="h-6 bg-muted rounded w-1/3"></div><div class="h-32 bg-muted rounded"></div></div>
+        </template>
+        <template x-if="!tabLoading.options && tabData.options">
+            <div class="space-y-6">
+                <div class="rounded-xl border bg-card p-5">
+                    <h3 class="text-sm font-semibold text-foreground mb-3">ARB Governance</h3>
+                    <div class="text-sm text-muted-foreground">
+                        <p>ARB Status: <span class="font-medium text-foreground" x-text="tabData.options.arb_status || 'Not submitted'"></span></p>
+                        <template x-if="tabData.options.arb_decision">
+                            <p class="mt-1">Decision: <span class="font-medium text-foreground" x-text="tabData.options.arb_decision"></span></p>
+                        </template>
+                        <template x-if="!tabData.options.arb_submitted">
+                            <button type="button" @click="submitToARB()"
+                                    class="mt-3 px-4 py-2 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90">
+                                Submit to ARB
+                            </button>
+                        </template>
+                    </div>
+                </div>
+            </div>
+        </template>
+    </div>
+
+    {# Replacement Tab #}
+    <div x-show="activeTab === 'replacement'" x-cloak role="tabpanel">
+        <template x-if="tabLoading.replacement">
+            <div class="space-y-4 animate-pulse"><div class="h-6 bg-muted rounded w-1/3"></div><div class="h-48 bg-muted rounded"></div></div>
+        </template>
+        <template x-if="!tabLoading.replacement">
+            <div class="rounded-xl border bg-card p-5">
+                <h3 class="text-sm font-semibold text-foreground mb-4">Replacement Plan</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-medium text-muted-foreground mb-1">Migration Strategy</label>
+                        <select x-model="replacementForm.replacement_type"
+                                class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                            <option value="">Select strategy</option>
+                            <option value="direct_replacement">Direct Replacement</option>
+                            <option value="phased_migration">Phased Migration</option>
+                            <option value="multi_app_consolidation">Multi-App Consolidation</option>
+                            <option value="cloud_migration">Cloud Migration</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-muted-foreground mb-1">Estimated Cost</label>
+                        <input type="number" x-model="replacementForm.estimated_cost" placeholder="0"
+                               class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-muted-foreground mb-1">Planned Start</label>
+                        <input type="date" x-model="replacementForm.planned_start_date"
+                               class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-muted-foreground mb-1">Planned Cutover</label>
+                        <input type="date" x-model="replacementForm.planned_cutover_date"
+                               class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-muted-foreground mb-1">Business Risk</label>
+                        <select x-model="replacementForm.business_risk_level"
+                                class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                            <option value="">Select level</option>
+                            <option value="low">Low</option>
+                            <option value="medium">Medium</option>
+                            <option value="high">High</option>
+                            <option value="critical">Critical</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-muted-foreground mb-1">Est. Annual Savings</label>
+                        <input type="number" x-model="replacementForm.estimated_savings_annual" placeholder="0"
+                               class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                    </div>
+                </div>
+                <div class="mt-4 flex justify-end">
+                    <button type="button" @click="saveReplacementPlan()"
+                            :disabled="savingReplacement"
+                            class="px-4 py-2 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                        <span x-show="!savingReplacement" x-cloak>Save Plan</span>
+                        <span x-show="savingReplacement" x-cloak>Saving...</span>
+                    </button>
+                </div>
+            </div>
+        </template>
+    </div>
+
+    {# Retirement Tab #}
+    <div x-show="activeTab === 'retirement'" x-cloak role="tabpanel">
+        <template x-if="tabLoading.retirement">
+            <div class="space-y-4 animate-pulse"><div class="h-6 bg-muted rounded w-1/3"></div><div class="h-32 bg-muted rounded"></div></div>
+        </template>
+        <template x-if="!tabLoading.retirement && tabData.retirement">
+            <div class="space-y-6">
+                <div class="rounded-xl border bg-card p-5">
+                    <h3 class="text-sm font-semibold text-foreground mb-3">Retirement Blockers</h3>
+                    <template x-if="tabData.retirement.blockers && tabData.retirement.blockers.length > 0">
+                        <div class="space-y-2">
+                            <template x-for="(b, idx) in tabData.retirement.blockers" :key="idx">
+                                <div class="flex items-center gap-3 p-2 rounded-lg bg-muted/50">
+                                    <i data-lucide="alert-triangle" class="h-4 w-4 text-amber-600 shrink-0"></i>
+                                    <span class="text-sm text-foreground" x-text="b.description || b.reason || b"></span>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+                    <template x-if="!tabData.retirement.blockers || tabData.retirement.blockers.length === 0">
+                        <p class="text-sm text-emerald-600 flex items-center gap-2">
+                            <i data-lucide="check-circle-2" class="h-4 w-4"></i> No retirement blockers found.
+                        </p>
+                    </template>
+                </div>
+                <div class="rounded-xl border bg-card p-5">
+                    <h3 class="text-sm font-semibold text-foreground mb-3">Dependency Impact</h3>
+                    <template x-if="tabData.retirement.impact">
+                        <div class="text-sm text-muted-foreground space-y-1">
+                            <p>Downstream apps affected: <span class="font-medium text-foreground" x-text="tabData.retirement.impact.downstream_count || 0"></span></p>
+                            <p>Critical dependencies: <span class="font-medium text-foreground" x-text="tabData.retirement.impact.critical_count || 0"></span></p>
+                        </div>
+                    </template>
+                    <template x-if="!tabData.retirement.impact">
+                        <p class="text-sm text-muted-foreground">No impact data available.</p>
+                    </template>
+                </div>
+            </div>
+        </template>
+    </div>
+
+    {# Overrides Tab #}
+    <div x-show="activeTab === 'overrides'" x-cloak role="tabpanel">
+        <template x-if="tabLoading.overrides">
+            <div class="space-y-4 animate-pulse"><div class="h-6 bg-muted rounded w-1/3"></div><div class="h-32 bg-muted rounded"></div></div>
+        </template>
+        <template x-if="!tabLoading.overrides">
+            <div class="rounded-xl border bg-card p-5">
+                <h3 class="text-sm font-semibold text-foreground mb-4">Disposition Override</h3>
+                <template x-if="tabData.overrides && tabData.overrides.override_active">
+                    <div class="space-y-3">
+                        <div class="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30">
+                            <p class="text-sm font-medium text-amber-700">Active override: <span x-text="tabData.overrides.override_disposition"></span></p>
+                            <p class="text-xs text-amber-600 mt-1" x-text="'Rationale: ' + (tabData.overrides.override_rationale || '—')"></p>
+                            <p class="text-xs text-amber-600" x-text="'Expires: ' + (tabData.overrides.override_expiry || 'No expiry')"></p>
+                        </div>
+                        <button type="button" @click="removeOverride()"
+                                class="px-3 py-1.5 text-xs font-medium rounded-md border border-destructive text-destructive hover:bg-destructive/10">
+                            Remove Override
+                        </button>
+                    </div>
+                </template>
+                <template x-if="!tabData.overrides || !tabData.overrides.override_active">
+                    <div class="space-y-4">
+                        <p class="text-sm text-muted-foreground">No active override. Create one to manually set the disposition.</p>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-medium text-muted-foreground mb-1">Override Disposition</label>
+                                <select x-model="overrideForm.disposition"
+                                        class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                                    <option value="">Select disposition</option>
+                                    <option value="retain">Retain</option>
+                                    <option value="rehost">Rehost</option>
+                                    <option value="replatform">Replatform</option>
+                                    <option value="refactor">Refactor</option>
+                                    <option value="replace">Replace</option>
+                                    <option value="consolidate">Consolidate</option>
+                                    <option value="retire">Retire</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-muted-foreground mb-1">Expiry Date</label>
+                                <input type="date" x-model="overrideForm.expiry"
+                                       class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-muted-foreground mb-1">Rationale</label>
+                            <textarea x-model="overrideForm.rationale" rows="3" placeholder="Explain why this override is needed..."
+                                      class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"></textarea>
+                        </div>
+                        <button type="button" @click="saveOverride()"
+                                :disabled="!overrideForm.disposition || !overrideForm.rationale"
+                                class="px-4 py-2 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                            Create Override
+                        </button>
+                    </div>
+                </template>
+            </div>
+        </template>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    window.__PLANNING_APP_ID__ = {{ app.id }};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="{{ url_for('static', filename='js/applications/rationalization_planning.js') }}?v=2"></script> <!-- entity-picker-ok: script tag, not input -->
+{% endblock %}

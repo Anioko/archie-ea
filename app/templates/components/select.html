@@ -1,0 +1,42 @@
+{# shadcn/ui Select Component (Alpine.js powered) #}
+{% macro select(
+    id='',
+    name='',
+    placeholder='Select...',
+    options=[],
+    selected=none,
+    class=''
+) %}
+    <div x-data="{ selectOpen: false, selected: '{{ selected or placeholder }}' }" class="relative {{ class }}">
+        <button
+            @click="selectOpen = !selectOpen"
+            type="button"
+            class="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+         aria-label="Open">
+            <span x-text="selected"></span>
+            <i data-lucide="chevron-down" class="h-4 w-4 opacity-50"></i>
+        </button>
+        
+        <div
+            x-show="selectOpen" x-cloak @keydown.escape.window="selectOpen = false" role="dialog" aria-modal="true"
+            @click.away="selectOpen = false"
+            x-transition
+            class="absolute z-50 mt-1 w-full rounded-md border bg-popover text-popover-foreground shadow-md hidden" >
+            <div class="p-1">
+                {% for value, label in options %}
+                    <button
+                        @click="selected = '{{ label }}'; selectOpen = false"
+                        type="button"
+                        class="relative flex w-full cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground"
+                     aria-label="Open">
+                        {{ label }}
+                    </button>
+                {% endfor %}
+            </div>
+        </div>
+        
+        {% if name %}
+            <input type="hidden" name="{{ name }}" x-bind:value="selected">
+        {% endif %}
+    </div>
+{% endmacro %}

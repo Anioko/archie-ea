@@ -1,0 +1,29 @@
+import type { Metadata } from "next"
+import { Inter } from "next/font/google"
+import "./globals.css"
+import { NavSidebar } from "@/components/nav-sidebar"
+import { Toaster } from "@/components/ui/toaster"
+import { Providers } from "@/components/providers"
+
+const inter = Inter({ subsets: ["latin"] })
+
+export const metadata: Metadata = {
+  title: "{{ solution_name }}",
+  description: "Auto-generated admin UI",
+}
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en">
+      <body className={inter.className}>
+        <Providers>
+          <div className="flex min-h-screen">
+            <NavSidebar />
+            <main className="flex-1 p-6">{children}</main>
+          </div>
+          <Toaster />
+        </Providers>
+      </body>
+    </html>
+  )
+}

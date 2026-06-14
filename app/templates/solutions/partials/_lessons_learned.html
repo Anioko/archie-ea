@@ -1,0 +1,31 @@
+{# Lessons Learned — Searchable lesson registry
+   Included in solutions/detail.html within solutionDetail() x-data scope #}
+<div class="mt-7">
+    <div class="flex items-center justify-between mb-3">
+        <h3 class="text-sm font-semibold text-foreground flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-amber-500 inline-block"></span>Lessons Learned</h3>
+        <div class="sad-actions"><button @click="openEntityModal('lesson_learned')" class="inline-flex items-center gap-1 h-7 px-2.5 rounded-md text-xs font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors">+ Lesson</button></div>
+    </div>
+    <template x-if="sadLessonsLearned.length > 0">
+        <div class="space-y-2">
+            <template x-for="item in sadLessonsLearned" :key="item.id">
+                <div class="flex items-center justify-between p-3 rounded-lg border border-border bg-muted/30">
+                    <div class="flex-1">
+                        <div class="flex items-center gap-2">
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-teal-500/10 text-teal-600 border border-teal-500/30" x-text="item.category"></span>
+                            <span class="text-xs text-muted-foreground" x-text="item.adm_phase ? 'Phase ' + item.adm_phase : ''"></span>
+                        </div>
+                        <p class="text-sm font-medium text-foreground mt-1" x-text="item.title"></p>
+                        <p class="text-xs text-muted-foreground mt-0.5" x-text="item.recommendation?.substring(0, 100)"></p>
+                    </div>
+                    <div class="sad-actions flex items-center gap-2 ml-4">
+                        <button @click="openEntityModal('lesson_learned', item)" class="text-primary hover:underline text-xs">Edit</button>
+                        <button @click="confirmDeleteEntity('lesson_learned', item)" class="text-destructive hover:underline text-xs">Delete</button>
+                    </div>
+                </div>
+            </template>
+        </div>
+    </template>
+    <template x-if="sadLessonsLearned.length === 0">
+        <p class="text-sm text-muted-foreground/60 italic">No lessons learned recorded. Document insights and recommendations from each ADM phase.</p>
+    </template>
+</div>

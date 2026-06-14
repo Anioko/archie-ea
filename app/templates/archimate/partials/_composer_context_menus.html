@@ -1,0 +1,233 @@
+    {# ── Context menu ────────────────────────────────────── #}
+    <div x-show="ctxMenuOpen" x-cloak role="dialog" aria-modal="true"
+         class="context-menu max-h-[calc(100vh-80px)] overflow-y-auto"
+         role="menu" aria-label="Element actions"
+         :style="'left:' + ctxMenuX + 'px; top:' + ctxMenuY + 'px'"
+         @click.outside="closeContextMenu()"
+         @keydown.escape.window="closeContextMenu()">
+        <div class="context-menu-item" @click="inspectElement()">
+            <i data-lucide="info" class="w-3.5 h-3.5"></i> View Details
+        </div>
+        <div class="context-menu-item" @click="explainImpactFromCtx()">
+            <i data-lucide="activity" class="w-3.5 h-3.5"></i> Explain Impact
+        </div>
+        <div class="context-menu-item" @click="ctxMenuCell && openComments(ctxMenuCell.get('elementId'))">
+            <i data-lucide="message-square" class="w-3.5 h-3.5"></i> Comments
+        </div>
+        <template x-if="mode === 'edit'">
+            <div>
+                <div class="context-menu-item" @click="renameElement()">
+                    <i data-lucide="pencil" class="w-3.5 h-3.5"></i> Rename
+                </div>
+                <div class="context-menu-sep"></div>
+                <div class="context-menu-item" @click="toggleRenderingMode()">
+                    <i data-lucide="layers" class="w-3.5 h-3.5"></i>
+                    <span x-text="(ctxMenuCell && ctxMenuCell.get('renderingMode') === 'white_box') ? 'Collapse (Black Box)' : 'Expand (White Box)'"></span>
+                </div>
+                <div class="context-menu-item" x-show="ctxMenuCell && ctxMenuCell.get('renderingMode') === 'white_box' && ctxMenuCell.getEmbeddedCells().length > 0" x-cloak @click="toggleCollapse()">
+                    <i data-lucide="chevrons-up-down" class="w-3.5 h-3.5"></i>
+                    <span x-text="(ctxMenuCell && ctxMenuCell.get('collapsed')) ? 'Expand Contents' : 'Collapse Contents'"></span>
+                </div>
+                <div class="context-menu-item" @click="embedInParent()">
+                    <i data-lucide="box" class="w-3.5 h-3.5"></i> Nest Inside Parent
+                </div>
+                <div class="context-menu-item" @click="unembedFromParent()">
+                    <i data-lucide="minimize-2" class="w-3.5 h-3.5"></i> Remove Nesting
+                </div>
+                <div class="context-menu-sep"></div>
+                <div class="context-menu-item" @click="sendToFront()">
+                    <i data-lucide="bring-to-front" class="w-3.5 h-3.5"></i> Bring to Front
+                </div>
+                <div class="context-menu-item" @click="sendToBack()">
+                    <i data-lucide="send-to-back" class="w-3.5 h-3.5"></i> Send to Back
+                </div>
+                <div class="context-menu-sep"></div>
+                <div class="context-menu-item" @click="openSavePatternModal()">
+                    <i data-lucide="bookmark-plus" class="w-3.5 h-3.5"></i> Save as Pattern
+                </div>
+                {# GAP-INT-004: Event badge #}
+                <div class="context-menu-item" @click="setEventBadge()">
+                    <i data-lucide="clock" class="w-3.5 h-3.5"></i>
+                    <span x-text="(ctxMenuCell && ctxMenuCell.get('eventSchedule')) ? 'Edit Event Badge' : 'Set Event Badge'"></span>
+                </div>
+                <div class="context-menu-item" x-show="ctxMenuCell && ctxMenuCell.get('eventSchedule')" x-cloak @click="clearEventBadge()">
+                    <i data-lucide="x" class="w-3.5 h-3.5"></i> Clear Event Badge
+                </div>
+                <div class="context-menu-item" @click="setMaturityFromCtx()">
+                    <i data-lucide="gauge" class="w-3.5 h-3.5"></i> Set Maturity
+                </div>
+                <div class="context-menu-item" x-data="{ lcOpen: false }" @click.stop="lcOpen = !lcOpen" style="position: relative;">
+                    <i data-lucide="activity" class="w-3.5 h-3.5"></i> Set Lifecycle
+                    <i data-lucide="chevron-right" class="w-3 h-3 ml-auto"></i>
+                    <div x-show="lcOpen" x-cloak @keydown.escape.window="lcOpen = false" role="dialog" aria-modal="true" class="context-menu" style="position: absolute; left: 100%; top: 0; min-width: 150px;">
+                        <div class="context-menu-item" @click="setLifecycleFromCtx('planned')">
+                            <span style="display:inline-block;width:10px;height:10px;border:2px dashed #3b82f6;border-radius:2px;margin-right:6px;"></span> Planned
+                        </div>
+                        <div class="context-menu-item" @click="setLifecycleFromCtx('current')">
+                            <span style="display:inline-block;width:10px;height:10px;border:2px solid rgba(0,0,0,0.2);border-radius:2px;margin-right:6px;"></span> Current
+                        </div>
+                        <div class="context-menu-item" @click="setLifecycleFromCtx('phasing_out')">
+                            <span style="display:inline-block;width:10px;height:10px;border:2px dashed #f59e0b;border-radius:2px;margin-right:6px;"></span> Phasing Out
+                        </div>
+                        <div class="context-menu-item" @click="setLifecycleFromCtx('retired')">
+                            <span style="display:inline-block;width:10px;height:10px;border:2px dashed #ef4444;border-radius:2px;margin-right:6px;opacity:0.5;"></span> Retired
+                        </div>
+                    </div>
+                </div>
+                <div class="context-menu-item" x-data="{ stOpen: false }" @click.stop="stOpen = !stOpen" style="position: relative;"> <!-- inline-style-ok --> <!-- ratchet-ok -->
+                    <i data-lucide="git-compare" class="w-3.5 h-3.5"></i> Set State
+                    <i data-lucide="chevron-right" class="w-3 h-3 ml-auto"></i>
+                    <div x-show="stOpen" x-cloak class="context-menu" style="position: absolute; left: 100%; top: 0; min-width: 170px;"> <!-- inline-style-ok --> <!-- ratchet-ok --> <!-- modal-a11y-ok -->
+                        <div class="context-menu-item" @click="setElementStateFromCtx('current')">
+                            <span style="display:inline-block;width:10px;height:10px;border:2px dashed #ef4444;border-radius:2px;margin-right:6px;"></span> Current Only <!-- inline-style-ok --> <!-- ratchet-ok -->
+                        </div>
+                        <div class="context-menu-item" @click="setElementStateFromCtx('target')">
+                            <span style="display:inline-block;width:10px;height:10px;border:2px solid #22c55e;border-radius:2px;margin-right:6px;"></span> Target Only <!-- inline-style-ok --> <!-- ratchet-ok -->
+                        </div>
+                        <div class="context-menu-item" @click="setElementStateFromCtx('both')">
+                            <span style="display:inline-block;width:10px;height:10px;border:2px solid #f59e0b;border-radius:2px;margin-right:6px;"></span> Both (Modified) <!-- inline-style-ok --> <!-- ratchet-ok -->
+                        </div>
+                    </div>
+                </div>
+                <div class="context-menu-item" @click="simulateRetirement(ctxMenuCell); ctxMenuOpen = false">
+                    <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Simulate Retirement
+                </div>
+                {# GAP-CMP-011: Sub-diagram drill-down #}
+                <div class="context-menu-sep"></div>
+                <div class="context-menu-item" @click="linkSubDiagram()">
+                    <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
+                    <span x-text="(ctxMenuCell && ctxMenuCell.get('linkedSubDiagramId')) ? 'Open Sub-Diagram' : 'Link Sub-Diagram'"></span>
+                </div>
+                <div class="context-menu-sep"></div>
+                <div class="context-menu-item" @click="deleteElement()">
+                    <i data-lucide="x-circle" class="w-3.5 h-3.5"></i> Remove from Canvas
+                </div>
+                <div class="context-menu-item danger" @click="deleteFromRepository()">
+                    <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Delete from Repository
+                </div>
+            </div>
+        </template>
+    </div>
+
+    {# ── Relationship context menu ───────────────────────── #}
+    <div x-show="relCtxMenuOpen" x-cloak @keydown.escape.window="relCtxMenuOpen = false" role="dialog" aria-modal="true" class="context-menu"
+         role="menu" aria-label="Relationship actions"
+         :style="'left:' + relCtxMenuX + 'px; top:' + relCtxMenuY + 'px'"
+         @click.outside="closeRelCtxMenu()">
+        <div class="context-menu-item" @click="viewRelProperties()">
+            <i data-lucide="info" class="w-3.5 h-3.5"></i> View Properties
+        </div>
+        <div class="context-menu-item" @click="explainRelFromCtx()">
+            <i data-lucide="book-open" class="w-3.5 h-3.5"></i> Explain Relationship
+        </div>
+        <div class="context-menu-item" @click="toggleRelRouting()">
+            <i data-lucide="route" class="w-3.5 h-3.5"></i> Toggle Routing
+        </div>
+        <div class="context-menu-item" @click="changeRelTypeFromCtx()">
+            <i data-lucide="repeat" class="w-3.5 h-3.5"></i> Change Type
+        </div>
+        <div class="context-menu-item" @click="reverseRelationship()">
+            <i data-lucide="arrow-left-right" class="w-3.5 h-3.5"></i> Reverse Direction
+        </div>
+        <div class="context-menu-sep"></div>
+        <div class="context-menu-item danger" @click="deleteRelationship()">
+            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Delete Relationship
+        </div>
+    </div>
+
+    {# ── Blank canvas context menu ────────────────────────── #}
+    <div x-show="canvasCtxMenuOpen" x-cloak @keydown.escape.window="canvasCtxMenuOpen = false" class="context-menu"
+         role="menu" aria-label="Canvas actions"
+         :style="'left:' + canvasCtxMenuX + 'px; top:' + canvasCtxMenuY + 'px'"
+         @click.outside="canvasCtxMenuOpen = false">
+        <template x-if="mode === 'edit'">
+            <div>
+                <div class="context-menu-item" @click="openQuickAdd(); canvasCtxMenuOpen = false">
+                    <i data-lucide="plus" class="w-3.5 h-3.5"></i> Add Element
+                </div>
+                <div class="context-menu-item"
+                     :class="_clipboardHasData() ? '' : 'opacity-40 pointer-events-none'"
+                     @click="canvasPasteAtCursor()">
+                    <i data-lucide="clipboard" class="w-3.5 h-3.5"></i> Paste
+                </div>
+                <div class="context-menu-item" @click="selectAll(); canvasCtxMenuOpen = false">
+                    <i data-lucide="box-select" class="w-3.5 h-3.5"></i> Select All
+                </div>
+                <div class="context-menu-sep"></div>
+            </div>
+        </template>
+        <div class="context-menu-item" @click="fitCanvas(); canvasCtxMenuOpen = false">
+            <i data-lucide="maximize-2" class="w-3.5 h-3.5"></i> Fit to Content
+        </div>
+        <div class="context-menu-item" @click="setZoom(100); canvasCtxMenuOpen = false">
+            <i data-lucide="zoom-in" class="w-3.5 h-3.5"></i> Actual Size (100%)
+        </div>
+        <div class="context-menu-item" @click="openCanvasSearch(); canvasCtxMenuOpen = false">
+            <i data-lucide="search" class="w-3.5 h-3.5"></i> Find Element… (Ctrl+F)
+        </div>
+        <template x-if="mode === 'edit'">
+            <div>
+                <div class="context-menu-sep"></div>
+                <div class="context-menu-item" @click="reLayout(); canvasCtxMenuOpen = false">
+                    <i data-lucide="layout-grid" class="w-3.5 h-3.5"></i> Auto-Layout
+                </div>
+                <div class="context-menu-item" @click="runValidation(); canvasCtxMenuOpen = false">
+                    <i data-lucide="check-circle" class="w-3.5 h-3.5"></i> Validate Diagram
+                </div>
+            </div>
+        </template>
+    </div>
+
+    {# ── Nesting prompt modal ───────────────────────────── #}
+    <div x-show="nestingPromptOpen" role="alertdialog" aria-modal="true" aria-label="Nesting confirmation" x-cloak class="search-overlay" @click.self="cancelNesting()">
+        <div class="search-panel" style="max-width: 360px;">
+            <div class="p-4 border-b border-border">
+                <p class="text-sm font-semibold text-foreground">Nest Element</p>
+                <p class="text-xs text-muted-foreground mt-1">
+                    What relationship connects
+                    <span class="font-medium" x-text="nestingPromptChild ? nestingPromptChild.get('elName') : ''"></span>
+                    to
+                    <span class="font-medium" x-text="nestingPromptParent ? nestingPromptParent.get('elName') : ''"></span>?
+                </p>
+            </div>
+            <div class="p-3 space-y-1">
+                <button @click="confirmNesting('composition')"
+                        class="w-full text-left px-3 py-2 rounded-md text-sm hover:bg-accent transition-colors flex items-center gap-2">
+                    <span class="w-4 h-4 rounded-sm border border-foreground bg-foreground/10 flex-shrink-0"></span>
+                    <span><span class="font-medium">Composition</span> <span class="text-muted-foreground">— part-of (strong ownership)</span></span>
+                </button>
+                <button @click="confirmNesting('aggregation')"
+                        class="w-full text-left px-3 py-2 rounded-md text-sm hover:bg-accent transition-colors flex items-center gap-2">
+                    <span class="w-4 h-4 rounded-sm border border-foreground flex-shrink-0"></span>
+                    <span><span class="font-medium">Aggregation</span> <span class="text-muted-foreground">— groups (shared)</span></span>
+                </button>
+                <button @click="confirmNesting('grouping')"
+                        class="w-full text-left px-3 py-2 rounded-md text-sm hover:bg-accent transition-colors flex items-center gap-2">
+                    <span class="w-4 h-4 rounded-sm border border-dashed border-muted-foreground flex-shrink-0"></span>
+                    <span><span class="font-medium">Grouping</span> <span class="text-muted-foreground">— visual only (no model relationship)</span></span>
+                </button>
+            </div>
+            <div class="px-4 pb-3">
+                <button @click="cancelNesting()" class="w-full text-center text-xs text-muted-foreground hover:text-foreground py-1.5">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    {# ── Bulk delete confirmation ─────────────────────── #}
+    <div x-show="bulkDeleteConfirmOpen" x-cloak role="dialog" aria-modal="true" class="search-overlay" @click.self="cancelBulkDelete()" @keydown.escape.window="cancelBulkDelete()">
+        <div class="search-panel" style="max-width: 340px;">
+            <div class="p-4 border-b border-border">
+                <p class="text-sm font-semibold text-foreground">Delete Selected Elements</p>
+                <p class="text-xs text-muted-foreground mt-1">
+                    Remove <span class="font-medium text-destructive" x-text="bulkDeleteCount"></span> element(s) from the canvas? Connected relationships will also be removed.
+                </p>
+            </div>
+            <div class="flex items-center justify-end gap-2 p-3">
+                <button @click="cancelBulkDelete()"
+                        class="px-3 py-1.5 text-xs rounded-md border border-border bg-background text-foreground hover:bg-accent transition-colors">Cancel</button>
+                <button @click="confirmBulkDelete()"
+                        class="px-3 py-1.5 text-xs rounded-md bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors font-medium">Delete</button>
+            </div>
+        </div>
+    </div>
+

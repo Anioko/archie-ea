@@ -1,0 +1,87 @@
+{# components/require-auth.tsx — HOC that checks useAuth().isAuthenticated, redirects to /login if false.
+   Context: (none required) #}
+"use client"
+
+import { useEffect } from "react"
+import { useRouter, usePathname } from "next/navigation"
+import { useAuth } from "@/lib/auth-context"
+import { Loader2 } from "lucide-react"
+
+type RequireAuthProps = {
+  children: React.ReactNode
+  /** Roles required to access this content. Empty = any authenticated user. */
+  requiredRoles?: string[]
+  /** Where to redirect if not authenticated. Defaults to /login. */
+  redirectTo?: string
+}
+
+/**
+ * RequireAuth — wraps content that requires authentication.
+ *
+ * Usage:
+ *   <RequireAuth>
+ *     <ProtectedContent />
+ *   </RequireAuth>
+ *
+ *   <RequireAuth requiredRoles={["admin", "approver"]}>
+ *     <AdminOnlyContent />
+ *   </RequireAuth>
+ */
+export function RequireAuth({
+  children,
+  requiredRoles = [],
+  redirectTo = "/login",
+}: RequireAuthProps) {
+  const { user, isAuthenticated, isLoading } = useAuth()
+  const router = useRouter()
+  const pathname = usePathname()
+
+  useEffect(() => {
+    if (isLoading) return
+
+    if (!isAuthenticated) {
+      const loginUrl = `${redirectTo}?from=${encodeURIComponent(pathname)}`
+      router.replace(loginUrl)
+      return
+    }
+
+    if (requiredRoles.length > 0 && user) {
+      const userRoles = user.roles || []
+      const hasRole = requiredRoles.some((role) => userRoles.includes(role))
+      if (!hasRole) {
+        router.replace("/403")
+      }
+    }
+  }, [isAuthenticated, isLoading, pathname, redirectTo, requiredRoles, router, user])
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+
+  if (!isAuthenticated) {
+    return null
+  }
+
+  if (requiredRoles.length > 0 && user) {
+    const userRoles = user.roles || []
+    const hasRole = requiredRoles.some((role) => userRoles.includes(role))
+    if (!hasRole) {
+      return (
+        <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 text-center">
+          <h2 className="text-2xl font-bold">Access Denied</h2>
+          <p className="text-muted-foreground">
+            You need one of these roles to access this page: {requiredRoles.join(", ")}
+          </p>
+        </div>
+      )
+    }
+  }
+
+  return <>{children}</>
+}
+
+export default RequireAuth

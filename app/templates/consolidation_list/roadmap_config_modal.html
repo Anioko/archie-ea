@@ -1,0 +1,206 @@
+{% from 'components/modal.html' import modal %}
+<!-- Add to Roadmap Configuration Modal — uses shared modal.html component -->
+{% call modal(id='roadmap-config', title='Add to Roadmap', description='Configure consolidation roadmap details', size='lg') %}
+    <div class="space-y-6">
+        <input type="hidden" id="roadmap-entry-id">
+
+        <!-- Application Info -->
+        <div class="p-4 bg-success/10 border border-success/30 rounded-lg">
+            <p class="text-sm font-medium text-success">Application</p>
+            <p class="text-lg font-semibold text-foreground" id="roadmap-app-name"></p>
+        </div>
+
+        <!-- Start Date -->
+        <div>
+            <label for="roadmap-start-date" class="block text-sm font-medium mb-2">Start Date <span class="text-destructive">*</span></label>
+            <input type="date" id="roadmap-start-date" class="w-full px-4 py-2 border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring" required>
+            <p class="text-xs text-muted-foreground mt-1">When will consolidation work begin?</p>
+        </div>
+
+        <!-- End Date -->
+        <div>
+            <label for="roadmap-end-date" class="block text-sm font-medium mb-2">Target Completion Date <span class="text-destructive">*</span></label>
+            <input type="date" id="roadmap-end-date" class="w-full px-4 py-2 border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring" required>
+            <p class="text-xs text-muted-foreground mt-1">When should this consolidation be completed?</p>
+        </div>
+
+        <!-- Target Quarter -->
+        <div>
+            <label for="roadmap-quarter" class="block text-sm font-medium mb-2">Target Quarter</label>
+            <select id="roadmap-quarter" class="w-full px-4 py-2 border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring">
+                <option value="">-- Select Quarter --</option>
+                <option value="Q1 2026">Q1 2026</option>
+                <option value="Q2 2026">Q2 2026</option>
+                <option value="Q3 2026">Q3 2026</option>
+                <option value="Q4 2026">Q4 2026</option>
+                <option value="Q1 2027">Q1 2027</option>
+                <option value="Q2 2027">Q2 2027</option>
+                <option value="Q3 2027">Q3 2027</option>
+                <option value="Q4 2027">Q4 2027</option>
+            </select>
+        </div>
+
+        <!-- Owner / Lead -->
+        <div>
+            <label for="roadmap-owner" class="block text-sm font-medium mb-2">Consolidation Lead <span class="text-destructive">*</span></label>
+            <input type="text" id="roadmap-owner" class="w-full px-4 py-2 border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring" placeholder="Name or team responsible" required>
+            <p class="text-xs text-muted-foreground mt-1">Who will lead this consolidation effort?</p>
+        </div>
+
+        <!-- Complexity -->
+        <div>
+            <label for="roadmap-complexity" class="block text-sm font-medium mb-2">Consolidation Complexity</label>
+            <select id="roadmap-complexity" class="w-full px-4 py-2 border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring">
+                <option value="">-- Select Complexity --</option>
+                <option value="low">Low (Simple decommission)</option>
+                <option value="medium">Medium (Migration + testing)</option>
+                <option value="high">High (Complex integration)</option>
+                <option value="critical">Critical (Major refactoring)</option>
+            </select>
+            <p class="text-xs text-muted-foreground mt-1">How complex is the consolidation work?</p>
+        </div>
+
+        <!-- Estimated Effort -->
+        <div>
+            <label for="roadmap-effort" class="block text-sm font-medium mb-2">Estimated Effort (hours)</label>
+            <input type="number" id="roadmap-effort" class="w-full px-4 py-2 border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring" placeholder="e.g., 80" min="1">
+            <p class="text-xs text-muted-foreground mt-1">How many person-hours will this require?</p>
+        </div>
+
+        <!-- Dependencies / Blockers -->
+        <div>
+            <label for="roadmap-dependencies" class="block text-sm font-medium mb-2">Dependencies / Blockers</label>
+            <textarea id="roadmap-dependencies" rows="3" class="w-full px-4 py-2 border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring" placeholder="List any dependencies or things blocking this work..."></textarea>
+            <p class="text-xs text-muted-foreground mt-1">What needs to be done before this consolidation can proceed?</p>
+        </div>
+
+        <!-- Business Justification -->
+        <div>
+            <label for="roadmap-justification" class="block text-sm font-medium mb-2">Business Justification</label>
+            <textarea id="roadmap-justification" rows="3" class="w-full px-4 py-2 border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring" placeholder="Why is this consolidation important?"></textarea>
+        </div>
+
+        <!-- Success Criteria -->
+        <div>
+            <label for="roadmap-success" class="block text-sm font-medium mb-2">Success Criteria</label>
+            <textarea id="roadmap-success" rows="3" class="w-full px-4 py-2 border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-ring" placeholder="How will we know this consolidation is successful?"></textarea>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="flex items-center justify-end gap-2 mt-6 pt-6 border-t border-border">
+        <button type="button" @click="Platform.modal.close('roadmap-config')" class="px-4 py-2 border border-input rounded-lg hover:bg-accent transition-colors" aria-label="Close">
+            Cancel
+        </button>
+        <button type="button" data-action="submitRoadmapConfig" class="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors" aria-label="Action">
+            Add to Roadmap
+        </button>
+    </div>
+{% endcall %}
+
+<script>
+// Open roadmap configuration modal
+function openRoadmapConfigModal(entryId) {
+    if (typeof allEntries === 'undefined' || !Array.isArray(allEntries)) {
+        Platform.toast.error('Entries not loaded yet. Please refresh.');
+        return;
+    }
+    const entry = allEntries.find(e => e.id === entryId);
+    if (!entry) {
+        Platform.toast.error('Entry not found');
+        return;
+    }
+
+    // Populate entry info
+    document.getElementById('roadmap-entry-id').value = entryId;
+    document.getElementById('roadmap-app-name').textContent = entry.application_name;
+
+    // Reset form fields
+    document.getElementById('roadmap-start-date').value = '';
+    document.getElementById('roadmap-end-date').value = '';
+    document.getElementById('roadmap-quarter').value = '';
+    document.getElementById('roadmap-owner').value = '';
+    document.getElementById('roadmap-complexity').value = '';
+    document.getElementById('roadmap-effort').value = '';
+    document.getElementById('roadmap-dependencies').value = '';
+    document.getElementById('roadmap-justification').value = '';
+    document.getElementById('roadmap-success').value = '';
+
+    // Auto-set defaults BEFORE opening to avoid blank-field flash
+    const today = new Date();
+    const currentQuarter = `Q${Math.ceil((today.getMonth() + 1) / 3)} ${today.getFullYear()}`;
+    document.getElementById('roadmap-quarter').value = currentQuarter;
+
+    const startDate = new Date(today);
+    startDate.setDate(startDate.getDate() + 14);
+    document.getElementById('roadmap-start-date').value = startDate.toISOString().split('T')[0];
+
+    const endDate = new Date(today);
+    endDate.setMonth(endDate.getMonth() + 3);
+    document.getElementById('roadmap-end-date').value = endDate.toISOString().split('T')[0];
+
+    Platform.modal.open('roadmap-config');
+}
+
+// Close roadmap modal
+function closeRoadmapConfigModal() {
+    Platform.modal.close('roadmap-config');
+}
+
+// Submit roadmap configuration
+function submitRoadmapConfig() {
+    const entryId = document.getElementById('roadmap-entry-id').value;
+    const startDate = document.getElementById('roadmap-start-date').value;
+    const endDate = document.getElementById('roadmap-end-date').value;
+    const owner = document.getElementById('roadmap-owner').value;
+
+    // Validation
+    if (!startDate || !endDate || !owner) {
+        Platform.toast.warning('Please fill in all required fields (marked with *)');
+        return;
+    }
+
+    if (new Date(startDate) >= new Date(endDate)) {
+        Platform.toast.warning('End date must be after start date');
+        return;
+    }
+
+    // Prepare data
+    const data = {
+        recommended_action: 'add_to_roadmap',
+        status: 'approved',
+        target_quarter: document.getElementById('roadmap-quarter').value,
+        target_date: endDate,
+        assigned_to: owner,
+        business_rationale: document.getElementById('roadmap-justification').value,
+        notes: `Roadmap Start: ${startDate} | Complexity: ${document.getElementById('roadmap-complexity').value} | Effort: ${document.getElementById('roadmap-effort').value} hrs`,
+        risk_assessment: document.getElementById('roadmap-dependencies').value,
+    };
+
+    // Create roadmap task
+    Platform.fetch.post('/consolidation-list/api/create-roadmap-task', {
+        entry_id: entryId,
+        start_date: startDate,
+        end_date: endDate,
+        owner: owner,
+        complexity: document.getElementById('roadmap-complexity').value,
+        estimated_hours: parseFloat(document.getElementById('roadmap-effort').value) || 0,
+        dependencies: document.getElementById('roadmap-dependencies').value,
+        business_justification: document.getElementById('roadmap-justification').value,
+        success_criteria: document.getElementById('roadmap-success').value,
+    })
+    .then(data => {
+        if (data.success) {
+            Platform.toast.success('Application added to roadmap successfully');
+            closeRoadmapConfigModal();
+            if (typeof loadEntries === 'function') loadEntries();
+        } else {
+            Platform.toast.error('Error: ' + (data.error || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        Platform.log.error('Error creating roadmap task:', error);
+        Platform.toast.error('Error adding to roadmap. Please try again.');
+    });
+}
+</script>

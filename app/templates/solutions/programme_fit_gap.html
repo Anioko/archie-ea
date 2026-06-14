@@ -1,0 +1,201 @@
+{% extends "layouts/admin_base.html" %}
+{% from "components/page_header.html" import page_header %}
+
+{% block title %}{{ rollup.programme.name }} — Fit-Gap Workbench{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 sm:px-6 lg:px-8 py-6 max-w-7xl"
+     x-data="fitGapWorkbench({{ rollup.programme.id }})">
+    {{ page_header(
+        title=rollup.programme.name ~ ' — Fit-Gap Workbench',
+        description='Classify the programme-wide fit-gap register. Standard and configuration keep the core clean; extensions are governed side-by-side extensibility; custom development erodes clean core.',
+        breadcrumbs=[
+            {'label': 'Dashboard', 'href': url_for('main.index')},
+            {'label': 'Programmes', 'href': url_for('solution_design.programmes_list')},
+            {'label': rollup.programme.name, 'href': url_for('solution_design.programme_cockpit', initiative_id=rollup.programme.id)},
+            {'label': 'Fit-Gap'}
+        ]
+    ) }}
+
+    {# ── Score strip: actual vs target + per-module ─────────────────── #}
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mt-6">
+        <div class="border border-border rounded-xl bg-card p-4" data-testid="cc-actual">
+            <p class="text-xs text-muted-foreground uppercase tracking-wider">Clean-Core Actual</p>
+            {% if rollup.fit_gap.clean_core_score is not none %}
+            <p class="text-2xl font-bold mt-1
+                {% if rollup.fit_gap.clean_core_score >= 70 %}text-emerald-600{% elif rollup.fit_gap.clean_core_score >= 40 %}text-amber-600{% else %}text-destructive{% endif %}">
+                {{ rollup.fit_gap.clean_core_score }}%</p>
+            {% else %}<p class="text-lg text-muted-foreground mt-1">No data</p>{% endif %}
+        </div>
+        <div class="border border-border rounded-xl bg-card p-4" data-testid="cc-target">
+            <p class="text-xs text-muted-foreground uppercase tracking-wider">Target</p>
+            <div class="flex items-center gap-2 mt-1">
+                <input type="number" min="0" max="100" x-model="target" @change="saveTarget()"
+                       class="w-20 h-9 rounded-md border border-input bg-background px-2 text-lg font-bold"
+                       aria-label="Clean-core target percent">
+                <span class="text-lg font-bold text-muted-foreground">%</span>
+            </div>
+        </div>
+        <div class="border border-border rounded-xl bg-card p-4">
+            <p class="text-xs text-muted-foreground uppercase tracking-wider">Delta to Target</p>
+            {% if rollup.fit_gap.clean_core_score is not none and rollup.fit_gap.clean_core_target %}
+            {% set delta = rollup.fit_gap.clean_core_score - rollup.fit_gap.clean_core_target %}
+            <p class="text-2xl font-bold mt-1 {% if delta >= 0 %}text-emerald-600{% else %}text-destructive{% endif %}">
+                {{ '%+d' % delta }}pp</p>
+            {% else %}<p class="text-lg text-muted-foreground mt-1">Set a target</p>{% endif %}
+        </div>
+        <div class="border border-border rounded-xl bg-card p-4">
+            <p class="text-xs text-muted-foreground uppercase tracking-wider">Entries</p>
+            <p class="text-2xl font-bold text-foreground mt-1">{{ rollup.fit_gap.total }}</p>
+            <p class="text-xs text-muted-foreground mt-0.5">{{ rollup.fit_gap.by_module | length }} module(s)</p>
+        </div>
+    </div>
+
+    {% if rollup.fit_gap.by_module %}
+    <div class="flex flex-wrap gap-3 mt-4">
+        {% for m in rollup.fit_gap.by_module %}
+        <div class="border border-border rounded-lg bg-card px-4 py-2 flex items-center gap-3">
+            <span class="text-sm font-medium text-foreground">{{ m.module }}</span>
+            <span class="text-xs text-muted-foreground">{{ m.total }} entr{{ 'y' if m.total == 1 else 'ies' }}</span>
+            {% if m.clean_core_score is not none %}
+            <span class="text-sm font-bold
+                {% if m.clean_core_score >= 70 %}text-emerald-600{% elif m.clean_core_score >= 40 %}text-amber-600{% else %}text-destructive{% endif %}">
+                {{ m.clean_core_score }}%</span>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {# ── Bulk action bar ─────────────────────────────────────────────── #}
+    <div class="border border-border rounded-xl bg-card mt-6 overflow-hidden">
+        <div class="px-5 py-3 border-b border-border flex flex-wrap items-center gap-3">
+            <h2 class="text-sm font-semibold text-foreground">Register</h2>
+            <span class="text-xs text-muted-foreground" x-text="selected.length + ' selected'"></span>
+            <div class="ml-auto flex flex-wrap items-center gap-2">
+                <select x-model="bulk.fit_type" class="h-8 rounded-md border border-input bg-background px-2 text-xs" aria-label="Bulk fit type">
+                    <option value="">Fit type — keep</option>
+                    {% for ft in fit_types %}<option value="{{ ft }}">{{ ft | replace('_', ' ') | title }}</option>{% endfor %}
+                </select>
+                <select x-model="bulk.status" class="h-8 rounded-md border border-input bg-background px-2 text-xs" aria-label="Bulk status">
+                    <option value="">Status — keep</option>
+                    {% for s in statuses %}<option value="{{ s }}">{{ s | title }}</option>{% endfor %}
+                </select>
+                <input type="text" x-model="bulk.erp_module" placeholder="Module — keep"
+                       class="h-8 w-32 rounded-md border border-input bg-background px-2 text-xs" aria-label="Bulk module">
+                <button type="button" @click="applyBulk()" :disabled="busy || !selected.length || (!bulk.fit_type && !bulk.status && !bulk.erp_module)"
+                        class="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                    <span x-text="busy ? 'Applying…' : 'Apply to selected'"></span>
+                </button>
+            </div>
+        </div>
+        <div x-cloak x-show="message" class="px-5 py-2 text-xs border-b border-border"
+             :class="messageKind === 'error' ? 'bg-destructive/10 text-destructive' : 'bg-emerald-500/10 text-emerald-700'"
+             x-text="message"></div>
+
+        {% if entries %}
+        <table class="min-w-full divide-y divide-border text-sm">
+            <thead class="bg-muted/30">
+                <tr>
+                    <th class="px-4 py-2 w-8"><input type="checkbox" @change="toggleAll($event.target.checked)" aria-label="Select all entries"></th>
+                    <th class="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase">Business Process</th>
+                    <th class="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase">Module</th>
+                    <th class="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase">Fit Type</th>
+                    <th class="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase">Status</th>
+                    <th class="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase">Solution</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-border">
+                {% for e in entries %}
+                <tr class="hover:bg-accent/40">
+                    <td class="px-4 py-2"><input type="checkbox" value="{{ e.id }}" x-model.number="selected" aria-label="Select entry {{ e.id }}"></td>
+                    <td class="px-4 py-2 font-medium text-foreground">{{ e.business_process }}</td>
+                    <td class="px-4 py-2 text-muted-foreground">{{ e.erp_module or '—' }}</td>
+                    <td class="px-4 py-2">
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border
+                            {% if e.fit_type in ('standard', 'configuration') %}bg-emerald-500/10 text-emerald-600 border-emerald-500/30
+                            {% elif e.fit_type in ('extension', 'isv_solution') %}bg-amber-500/10 text-amber-600 border-amber-500/30
+                            {% else %}bg-destructive/10 text-destructive border-destructive/30{% endif %}">
+                            {{ (e.fit_type or 'unclassified') | replace('_', ' ') | title }}
+                        </span>
+                    </td>
+                    <td class="px-4 py-2">
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border
+                            {% if e.status == 'approved' %}bg-emerald-500/10 text-emerald-600 border-emerald-500/30
+                            {% elif e.status == 'reviewed' %}bg-amber-500/10 text-amber-600 border-amber-500/30
+                            {% else %}bg-muted text-muted-foreground border-border{% endif %}">
+                            {{ (e.status or 'draft') | title }}
+                        </span>
+                    </td>
+                    <td class="px-4 py-2 text-muted-foreground">
+                        <a href="/solutions/{{ e.solution_id }}" class="hover:text-primary">{{ e.solution_name }}</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="px-5 py-10 text-center text-sm text-muted-foreground">
+            No fit-gap entries on this programme's member solutions yet — add them on the member blueprints' ERP Fit-Gap sections.
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_head_js %}
+<script>
+    function fitGapWorkbench(programmeId) {
+        return {
+            programmeId: programmeId,
+            selected: [],
+            bulk: { fit_type: '', status: '', erp_module: '' },
+            target: {{ rollup.fit_gap.clean_core_target | default('null', true) }},
+            busy: false,
+            message: '',
+            messageKind: 'ok',
+            _csrf() { return document.querySelector('meta[name=csrf-token]')?.content || ''; },
+            toggleAll(checked) {
+                this.selected = checked
+                    ? Array.from(document.querySelectorAll('tbody input[type=checkbox]')).map(c => Number(c.value))
+                    : [];
+            },
+            async applyBulk() {
+                this.busy = true;
+                try {
+                    const body = { entry_ids: this.selected };
+                    if (this.bulk.fit_type) body.fit_type = this.bulk.fit_type;
+                    if (this.bulk.status) body.status = this.bulk.status;
+                    if (this.bulk.erp_module) body.erp_module = this.bulk.erp_module;
+                    const r = await fetch('/solutions/programmes/' + this.programmeId + '/api/fit-gap/bulk', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this._csrf() },
+                        body: JSON.stringify(body),
+                    });
+                    const d = await r.json();
+                    if (!r.ok || !d.success) {
+                        this.messageKind = 'error';
+                        this.message = d.error || 'Bulk update failed';
+                        return;
+                    }
+                    window.location.reload();
+                } finally { this.busy = false; }
+            },
+            async saveTarget() {
+                const r = await fetch('/solutions/programmes/' + this.programmeId, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this._csrf() },
+                    body: JSON.stringify({ clean_core_target: this.target }),
+                });
+                const d = await r.json();
+                if (!r.ok || !d.success) {
+                    this.messageKind = 'error';
+                    this.message = d.error || 'Target update failed';
+                } else {
+                    window.location.reload();
+                }
+            },
+        };
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,333 @@
+{% extends "layouts/admin_base.html" %}
+
+{% block title %}Search Capabilities{% endblock %}
+
+{% block breadcrumb %}
+{% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
+{{ breadcrumb_nav(items=[
+    {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
+    {'text': 'Business Layer', 'href': url_for('archimate_crud.dashboard') + '#business'},
+    {'text': 'Capabilities', 'href': url_for('capability_map.index')},
+    {'text': 'Search Capabilities', 'current': true}
+]) }}
+{% endblock %}
+
+{% block content %}
+<div class="mx-auto px-4 py-6">
+    <!-- Header -->
+    <div class="mb-8">
+        <div class="flex items-center justify-between">
+            <div>
+                <h1 class="text-3xl font-bold text-foreground mb-2">Search Capabilities</h1>
+                <p class="text-muted-foreground">Find and edit business capability maturity levels</p>
+            </div>
+            <div class="flex space-x-4">
+                <a href="{{ url_for('maturity_management.frameworks_overview') }}" 
+                   class="inline-flex items-center gap-2 rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground transition-colors">
+                    ← Back to Dashboard
+                </a>
+                <a href="{{ url_for('maturity_management.batch_update_maturity') }}" 
+                   class="inline-flex items-center gap-2 rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm font-medium hover:bg-primary/90 transition-colors">
+                    Batch Update
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Search Filters -->
+    <div class="bg-card rounded-lg shadow mb-6">
+        <div class="p-6">
+            <form method="GET" class="space-y-4">
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div>
+                        <label for="q" class="block text-sm font-medium text-foreground mb-2">Search</label>
+                        <input type="text" 
+                               id="q" 
+                               name="q" 
+                               value="{{ query }}"
+                               placeholder="Search capabilities..."
+                               class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                    </div>
+                    
+                    <div>
+                        <label for="domain" class="block text-sm font-medium text-foreground mb-2">Domain</label>
+                        <select id="domain" 
+                                name="domain" 
+                                class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                            <option value="">All Domains</option>
+                            {% for domain in domains %}
+                            <option value="{{ domain }}" {% if domain == selected_domain %}selected{% endif %}>
+                                {{ domain }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
+                    <div>
+                        <label for="strategic_importance" class="block text-sm font-medium text-foreground mb-2">Strategic Importance</label>
+                        <select id="strategic_importance" 
+                                name="strategic_importance" 
+                                class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                            <option value="">All Levels</option>
+                            <option value="critical" {% if selected_importance == 'critical' %}selected{% endif %}>Critical</option>
+                            <option value="high" {% if selected_importance == 'high' %}selected{% endif %}>High</option>
+                            <option value="medium" {% if selected_importance == 'medium' %}selected{% endif %}>Medium</option>
+                            <option value="low" {% if selected_importance == 'low' %}selected{% endif %}>Low</option>
+                        </select>
+                    </div>
+                    
+                    <div class="flex items-end">
+                        <button type="submit" 
+                                class="w-full inline-flex items-center justify-center gap-2 rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm font-medium hover:bg-primary/90 transition-colors" aria-label="Submit">
+                            Search
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Results Summary -->
+    {% if capabilities %}
+    <div class="bg-card rounded-lg shadow mb-6">
+        <div class="px-6 py-4 border-b border-border">
+            <div class="flex items-center justify-between">
+                <h2 class="text-lg font-semibold text-foreground">
+                    Search Results ({{ total_count }} capabilities)
+                </h2>
+                <div class="text-sm text-muted-foreground">
+                    Page {{ page }} of {{ ((total_count - 1) // per_page) + 1 }}
+                </div>
+            </div>
+        </div>
+        
+        <!-- Capabilities Table -->
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-border">
+                <thead class="bg-muted/50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Capability</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Category</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Domain</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Current</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Target</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Gap</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Priority</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Owner</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-card divide-y divide-border">
+                    {% for cap in capabilities %}
+                    <tr class="hover:bg-accent">
+                        <td class="px-6 py-4">
+                            <div>
+                                <div class="text-sm font-medium text-foreground">{{ cap.name }}</div>
+                                {% if cap.description %}
+                                <div class="text-sm text-muted-foreground truncate max-w-xs">{{ cap.description[:100] }}{% if cap.description|length > 100 %}...{% endif %}</div>
+                                {% endif %}
+                            </div>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            {% if cap.category %}
+                                <div class="group relative">
+                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium 
+                                        {% if cap.category.startswith('APO') or cap.category.startswith('BAI') or cap.category.startswith('DSS') or cap.category.startswith('MEA') %}bg-primary/10 text-primary
+                                        {% elif cap.category.startswith('L4') %}bg-primary/20 text-primary
+                                        {% elif cap.category in ['SMP', 'BUS', 'GMP', 'INF', 'INT', 'COL', 'TMP', 'SVC'] %}bg-secondary text-secondary-foreground
+                                        {% else %}bg-muted text-foreground{% endif %}">
+                                        {{ cap.category }}
+                                    </span>
+                                    <div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-popover text-popover-foreground text-xs rounded-lg border border-border opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-10 shadow-md">
+                                        <div class="font-medium">{{ getCategoryExplanation(cap.category) }}</div>
+                                        <div class="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-1/2 rotate-45 w-2 h-2 bg-popover border-r border-b border-border"></div>
+                                    </div>
+                                </div>
+                            {% else %}
+                                <span class="text-muted-foreground text-xs">—</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-muted text-foreground">
+                                {{ cap.domain or 'Unknown' }}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            {% if cap.current_maturity_level %}
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium 
+                                    {% if cap.current_maturity_level == 1 %}bg-destructive/10 text-destructive
+                                    {% elif cap.current_maturity_level == 2 %}bg-warning/10 text-warning dark:text-warning/80
+                                    {% elif cap.current_maturity_level == 3 %}bg-warning/10 text-warning dark:text-warning/60
+                                    {% elif cap.current_maturity_level == 4 %}bg-primary/10 text-primary
+                                    {% else %}bg-primary/20 text-primary{% endif %}">
+                                    Level {{ cap.current_maturity_level }}
+                                </span>
+                            {% else %}
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-muted text-muted-foreground">
+                                    Not Set
+                                </span>
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            {% if cap.target_maturity_level %}
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium 
+                                    {% if cap.target_maturity_level == 1 %}bg-destructive/10 text-destructive
+                                    {% elif cap.target_maturity_level == 2 %}bg-warning/10 text-warning dark:text-warning/80
+                                    {% elif cap.target_maturity_level == 3 %}bg-warning/10 text-warning dark:text-warning/60
+                                    {% elif cap.target_maturity_level == 4 %}bg-primary/10 text-primary
+                                    {% else %}bg-primary/20 text-primary{% endif %}">
+                                    Level {{ cap.target_maturity_level }}
+                                </span>
+                            {% else %}
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-muted text-muted-foreground">
+                                    Not Set
+                                </span>
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            {% if cap.maturity_gap and cap.maturity_gap > 0 %}
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium 
+                                    {% if cap.maturity_gap > 2 %}bg-destructive/10 text-destructive
+                                    {% elif cap.maturity_gap > 1 %}bg-warning/10 text-warning dark:text-warning/80
+                                    {% else %}bg-primary/10 text-primary{% endif %}">
+                                    {{ cap.maturity_gap }}
+                                </span>
+                            {% else %}
+                                <span class="text-muted-foreground">—</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            {% if cap.strategic_importance %}
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium 
+                                    {% if cap.strategic_importance == 'critical' %}bg-destructive/10 text-destructive
+                                    {% elif cap.strategic_importance == 'high' %}bg-warning/10 text-warning dark:text-warning/80
+                                    {% elif cap.strategic_importance == 'medium' %}bg-warning/10 text-warning dark:text-warning/60
+                                    {% else %}bg-muted text-foreground{% endif %}">
+                                    {{ cap.strategic_importance }}
+                                </span>
+                            {% else %}
+                                <span class="text-muted-foreground">—</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
+                            {{ cap.business_owner or 'Not Assigned' }}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                            <div class="flex space-x-2">
+                                <a href="{{ url_for('maturity_management.edit_capability_maturity', capability_id=cap.id) }}" 
+                                   class="text-primary hover:text-primary/80">Edit</a>
+                                <span class="text-border">|</span>
+                                <a href="{{ url_for('maturity_management.get_capability_api', capability_id=cap.id) }}" 
+                                   class="text-muted-foreground hover:text-foreground" target="_blank">API</a>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- Pagination -->
+        {% if total_count > per_page %}
+        <div class="px-6 py-4 bg-muted/50 border-t border-border">
+            <div class="flex items-center justify-between">
+                <div class="text-sm text-muted-foreground">
+                    Showing {{ ((page - 1) * per_page) + 1 }} to 
+                    {{ min(page * per_page, total_count) }} of {{ total_count }} results
+                </div>
+                <div class="flex space-x-2">
+                    {% if page > 1 %}
+                    <a href="?page={{ page - 1 }}&q={{ query }}&domain={{ selected_domain }}&strategic_importance={{ selected_importance }}" 
+                       class="px-3 py-1 bg-background border border-input rounded-md text-sm font-medium text-foreground hover:bg-accent">
+                        Previous
+                    </a>
+                    {% endif %}
+                    
+                    {% if page * per_page < total_count %}
+                    <a href="?page={{ page + 1 }}&q={{ query }}&domain={{ selected_domain }}&strategic_importance={{ selected_importance }}" 
+                       class="px-3 py-1 bg-background border border-input rounded-md text-sm font-medium text-foreground hover:bg-accent">
+                        Next
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+    {% else %}
+    <!-- No Results -->
+    <div class="bg-card rounded-lg shadow">
+        <div class="p-12 text-center">
+            <i data-lucide="search-x" class="mx-auto h-12 w-12 text-muted-foreground mb-4" aria-hidden="true"></i>
+            <h3 class="mt-2 text-sm font-medium text-foreground">No capabilities found</h3>
+            <p class="mt-1 text-sm text-muted-foreground">
+                {% if query or selected_domain or selected_importance %}
+                    Try adjusting your search criteria.
+                {% else %}
+                    Get started by searching for capabilities or adjusting filters.
+                {% endif %}
+            </p>
+            <div class="mt-6">
+                <a href="{{ url_for('maturity_management.frameworks_overview') }}" 
+                   class="inline-flex items-center gap-2 rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm font-medium hover:bg-primary/90 transition-colors">
+                    Go to Dashboard
+                </a>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="mb-4 p-4 rounded-lg {% if category == 'error' %}bg-destructive/10 border border-destructive/20 text-destructive{% else %}bg-primary/10 border border-primary/20 text-foreground{% endif %}">
+                    {{ message }}
+                </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+</div>
+
+<script>
+// Category tooltip function
+function getCategoryExplanation(category) {
+    const explanations = {
+        // COBIT
+        'APO': 'COBIT: Align, Plan, and Organize - Strategic IT governance',
+        'BAI': 'COBIT: Build, Acquire, and Implement - Project implementation',
+        'DSS': 'COBIT: Deliver, Service, and Support - IT service delivery',
+        'MEA': 'COBIT: Monitor, Evaluate, and Assess - IT audit and monitoring',
+        'APO01': 'COBIT: Manage the IT Management Framework',
+        'APO02': 'COBIT: Define Information Systems Governance',
+        'APO03': 'COBIT: Determine Enterprise Technology Architecture',
+        
+        // Level 4
+        'L4.ERP': 'Level 4: Enterprise Resource Planning systems',
+        'L4.ERP.FIN': 'Level 4 ERP: Financial Management module',
+        'L4.ERP.HR': 'Level 4 ERP: Human Resources module',
+        'L4.ERP.MM': 'Level 4 ERP: Materials Management module',
+        'L4.ERP.PP': 'Level 4 ERP: Production Planning module',
+        'L4.ERP.SD': 'Level 4 ERP: Sales and Distribution module',
+        'L4.SCM': 'Level 4: Supply Chain Management systems',
+        'L4.SCM.SUP': 'Level 4 SCM: Supplier Management',
+        'L4.SCM.LOG': 'Level 4 SCM: Logistics Management',
+        'L4.SCM.INV': 'Level 4 SCM: Inventory Management',
+        'L4.PLM': 'Level 4: Product Lifecycle Management',
+        'L4.CRM': 'Level 4: Customer Relationship Management',
+        
+        // Custom
+        'SMP': 'Custom: Strategic Management Processes',
+        'BUS': 'Custom: Business Support processes',
+        'GMP': 'Custom: Governance and Management Processes',
+        'INF': 'Custom: Infrastructure Management',
+        'INT': 'Custom: Integration Management',
+        'COL': 'Custom: Collaboration processes',
+        'TMP': 'Custom: Technical Management Processes',
+        'SVC': 'Custom: Service Management'
+    };
+    
+    return explanations[category] || 'Unknown category - consult reference guide';
+}
+</script>
+{% endblock %}

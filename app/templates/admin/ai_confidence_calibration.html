@@ -1,0 +1,54 @@
+{% extends "layouts/admin_base.html" %}
+{% block title %}AI Confidence Calibration{% endblock %}
+{% block content %}
+<div class="p-6">
+    <h1 class="text-2xl font-semibold text-foreground mb-2">AI Confidence Calibration</h1>
+    <p class="text-sm text-muted-foreground mb-6">
+        Tracks whether AI confidence labels match actual architect acceptance rates.
+        Architects record verdicts (accepted / modified / rejected) on individual suggestions;
+        this page aggregates those verdicts by confidence tier so you can spot
+        over-confident or under-confident AI outputs.
+    </p>
+
+    <div class="rounded-lg border border-border bg-card">
+        <table class="w-full">
+            <thead>
+                <tr class="border-b border-border">
+                    <th class="px-4 py-3 text-left text-sm font-medium text-muted-foreground">Confidence Tier</th>
+                    <th class="px-4 py-3 text-right text-sm font-medium text-muted-foreground">Total</th>
+                    <th class="px-4 py-3 text-right text-sm font-medium text-muted-foreground">Accepted</th>
+                    <th class="px-4 py-3 text-right text-sm font-medium text-muted-foreground">Modified</th>
+                    <th class="px-4 py-3 text-right text-sm font-medium text-muted-foreground">Rejected</th>
+                    <th class="px-4 py-3 text-right text-sm font-medium text-muted-foreground">No Verdict</th>
+                    <th class="px-4 py-3 text-right text-sm font-medium text-muted-foreground">Acceptance Rate</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for tier in calibration_data %}
+                <tr class="border-b border-border last:border-0">
+                    <td class="px-4 py-3 text-sm font-medium text-foreground">{{ tier.name }}</td>
+                    <td class="px-4 py-3 text-right text-sm text-muted-foreground">{{ tier.total }}</td>
+                    <td class="px-4 py-3 text-right text-sm text-emerald-600">{{ tier.accepted }}</td>
+                    <td class="px-4 py-3 text-right text-sm text-amber-600">{{ tier.modified }}</td>
+                    <td class="px-4 py-3 text-right text-sm text-destructive">{{ tier.rejected }}</td>
+                    <td class="px-4 py-3 text-right text-sm text-muted-foreground">{{ tier.no_verdict }}</td>
+                    <td class="px-4 py-3 text-right text-sm font-medium
+                        {% if tier.acceptance_rate >= 80 %}text-emerald-600
+                        {% elif tier.acceptance_rate >= 50 %}text-amber-600
+                        {% else %}text-destructive{% endif %}">
+                        {{ tier.acceptance_rate }}%
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if calibration_data and calibration_data|map(attribute='total')|sum == 0 %}
+    <div class="mt-4 rounded-lg border border-border bg-muted/50 p-4 text-sm text-muted-foreground">
+        No AI suggestions found yet. Calibration data will appear once suggestions
+        are generated and architects begin recording verdicts.
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

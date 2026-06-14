@@ -1,0 +1,695 @@
+{# Step 8a: Load Your Data — Upload, Map, Import flow for deployed solutions #}
+<div class="space-y-4"
+     x-data="{
+         // Upload state
+         dataPhase: 'upload',  // 'upload' | 'mapping' | 'importing' | 'done'
+         uploadFile: null,
+         uploadFileName: '',
+         uploadFileSize: '',
+         uploadError: null,
+         uploadLoading: false,
+         uploadedSheets: [],
+
+         // Mapping state
+         mappingLoading: false,
+         mappingError: null,
+         selectedSheet: null,
+         sheetMappings: {},
+         allModelFields: [],
+
+         // Import state
+         importLoading: false,
+         importError: null,
+         importResult: null,
+         importProgress: 0,
+
+         // Helpers
+         formatFileSize(bytes) {
+             if (bytes < 1024) return bytes + ' B';
+             if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+             return (bytes / 1048576).toFixed(1) + ' MB';
+         },
+
+         isValidFile(file) {
+             const allowed = ['.csv', '.xlsx', '.xls'];
+             const name = file.name.toLowerCase();
+             return allowed.some(ext => name.endsWith(ext));
+         },
+
+         // Upload handlers
+         handleFileDrop(event) {
+             const file = event.dataTransfer.files[0];
+             if (!file) return;
+             if (!this.isValidFile(file)) {
+                 this.uploadError = 'Invalid file type. Only .xlsx, .xls, and .csv files are accepted.';
+                 return;
+             }
+             if (file.size > 10 * 1024 * 1024) {
+                 this.uploadError = 'File exceeds 10 MB limit.';
+                 return;
+             }
+             this.uploadFile = file;
+             this.uploadFileName = file.name;
+             this.uploadFileSize = this.formatFileSize(file.size);
+             this.uploadError = null;
+         },
+
+         handleFileSelect(event) {
+             const file = event.target.files[0];
+             if (!file) return;
+             if (!this.isValidFile(file)) {
+                 this.uploadError = 'Invalid file type. Only .xlsx, .xls, and .csv files are accepted.';
+                 return;
+             }
+             if (file.size > 10 * 1024 * 1024) {
+                 this.uploadError = 'File exceeds 10 MB limit.';
+                 return;
+             }
+             this.uploadFile = file;
+             this.uploadFileName = file.name;
+             this.uploadFileSize = this.formatFileSize(file.size);
+             this.uploadError = null;
+         },
+
+         clearFile() {
+             this.uploadFile = null;
+             this.uploadFileName = '';
+             this.uploadFileSize = '';
+             this.uploadError = null;
+         },
+
+         async uploadData() {
+             if (!this.uploadFile || !solutionId) return;
+             this.uploadLoading = true;
+             this.uploadError = null;
+             try {
+                 const fd = new FormData();
+                 fd.append('file', this.uploadFile);
+                 const resp = await fetch('/solutions/' + solutionId + '/codegen/data/upload', {
+                     method: 'POST',
+                     body: fd,
+                     headers: { 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || '' }
+                 });
+                 const data = await resp.json();
+                 if (!resp.ok) throw new Error(data.error || 'Upload failed');
+                 this.uploadedSheets = data.sheets || [];
+                 if (this.uploadedSheets.length > 0) {
+                     this.selectedSheet = this.uploadedSheets[0];
+                     this.dataPhase = 'mapping';
+                     this.autoMapSheet(this.selectedSheet);
+                 }
+             } catch (e) {
+                 this.uploadError = e.message;
+             } finally {
+                 this.uploadLoading = false;
+             }
+         },
+
+         // Mapping handlers
+         async autoMapSheet(sheet) {
+             if (!sheet || !solutionId) return;
+             this.mappingLoading = true;
+             this.mappingError = null;
+             try {
+                 const colTypes = {};
+                 (sheet.columns || []).forEach(c => {
+                     colTypes[c.name || c] = c.inferred_type || 'string';
+                 });
+                 const colNames = (sheet.columns || []).map(c => c.name || c);
+
+                 const resp = await fetch('/solutions/' + solutionId + '/codegen/data/auto-map', {
+                     method: 'POST',
+                     headers: {
+                         'Content-Type': 'application/json',
+                         'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''
+                     },
+                     body: JSON.stringify({
+                         columns: colNames,
+                         column_types: colTypes
+                     })
+                 });
+                 const data = await resp.json();
+                 if (!resp.ok) throw new Error(data.error || 'Auto-map failed');
+                 this.sheetMappings[sheet.name] = data.mappings || [];
+                 // Collect all target fields for dropdown overrides
+                 this.allModelFields = this.extractAllFields(data.mappings || []);
+             } catch (e) {
+                 this.mappingError = e.message;
+             } finally {
+                 this.mappingLoading = false;
+             }
+         },
+
+         extractAllFields(mappings) {
+             const fields = new Set();
+             mappings.forEach(m => {
+                 if (m.target_field && m.target_entity) {
+                     fields.add(m.target_entity + '.' + m.target_field);
+                 }
+             });
+             // Also pull from any candidates
+             mappings.forEach(m => {
+                 (m.candidates || []).forEach(c => {
+                     if (c.target_entity && c.target_field) {
+                         fields.add(c.target_entity + '.' + c.target_field);
+                     }
+                 });
+             });
+             return Array.from(fields).sort();
+         },
+
+         overrideMapping(mapping, value) {
+             if (!value) {
+                 mapping.target_entity = null;
+                 mapping.target_field = null;
+                 mapping.confidence = 0;
+                 mapping.method = 'manual_cleared';
+                 return;
+             }
+             const parts = value.split('.');
+             mapping.target_entity = parts[0];
+             mapping.target_field = parts.slice(1).join('.');
+             mapping.confidence = 1.0;
+             mapping.method = 'manual';
+         },
+
+         async addFieldForColumn(sheet, mapping) {
+             if (!solutionId) return;
+             try {
+                 const resp = await fetch('/solutions/' + solutionId + '/codegen/data/add-field', {
+                     method: 'POST',
+                     headers: {
+                         'Content-Type': 'application/json',
+                         'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''
+                     },
+                     body: JSON.stringify({
+                         column_name: mapping.source_column,
+                         column_type: mapping.inferred_type || 'string'
+                     })
+                 });
+                 const data = await resp.json();
+                 if (!resp.ok) throw new Error(data.error || 'Add field failed');
+                 // Update the mapping with the new field
+                 mapping.target_entity = data.entity || data.target_entity;
+                 mapping.target_field = data.field || data.target_field;
+                 mapping.confidence = 1.0;
+                 mapping.method = 'added';
+             } catch (e) {
+                 this.mappingError = e.message;
+             }
+         },
+
+         confirmMapping() {
+             this.dataPhase = 'importing';
+         },
+
+         getMappedCount() {
+             const mappings = this.getCurrentMappings();
+             return mappings.filter(m => m.target_field).length;
+         },
+
+         getUnmappedCount() {
+             const mappings = this.getCurrentMappings();
+             return mappings.filter(m => !m.target_field).length;
+         },
+
+         getCurrentMappings() {
+             if (!this.selectedSheet) return [];
+             return this.sheetMappings[this.selectedSheet.name] || [];
+         },
+
+         getRowCount() {
+             return this.selectedSheet ? (this.selectedSheet.row_count || 0) : 0;
+         },
+
+         // Import handler
+         async importData() {
+             if (!solutionId || !this.selectedSheet) return;
+             this.importLoading = true;
+             this.importError = null;
+             this.importProgress = 0;
+             try {
+                 const mappings = this.getCurrentMappings().filter(m => m.target_field);
+                 const resp = await fetch('/solutions/' + solutionId + '/codegen/data/import', {
+                     method: 'POST',
+                     headers: {
+                         'Content-Type': 'application/json',
+                         'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''
+                     },
+                     body: JSON.stringify({
+                         sheet_name: this.selectedSheet.name,
+                         file_name: this.uploadFileName,
+                         mappings: mappings
+                     })
+                 });
+                 const data = await resp.json();
+                 if (!resp.ok) throw new Error(data.error || 'Import failed');
+                 this.importResult = data;
+                 this.importProgress = 100;
+                 this.dataPhase = 'done';
+             } catch (e) {
+                 this.importError = e.message;
+                 this.importProgress = 0;
+             } finally {
+                 this.importLoading = false;
+             }
+         },
+
+         resetDataFlow() {
+             this.dataPhase = 'upload';
+             this.uploadFile = null;
+             this.uploadFileName = '';
+             this.uploadFileSize = '';
+             this.uploadError = null;
+             this.uploadedSheets = [];
+             this.sheetMappings = {};
+             this.selectedSheet = null;
+             this.allModelFields = [];
+             this.mappingError = null;
+             this.importResult = null;
+             this.importError = null;
+             this.importProgress = 0;
+         }
+     }">
+
+    {# ── Locked state — no deployment yet ── #}
+    <div x-show="!deployStatus || deployStatus === 'idle'" x-cloak
+         class="bg-card border border-border rounded-lg p-8 text-center space-y-3">
+        <div class="w-12 h-12 bg-muted rounded-full flex items-center justify-center mx-auto">
+            <i data-lucide="lock" class="w-5 h-5 text-muted-foreground" aria-hidden="true"></i>
+        </div>
+        <h2 class="text-base font-semibold text-foreground">Step 8: Load Your Data</h2>
+        <p class="text-sm text-muted-foreground max-w-sm mx-auto">
+            Deploy your application in Step 7 to unlock data loading.
+        </p>
+        <button type="button" @click="currentStep = 7"
+                class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium border border-input rounded-md hover:bg-accent transition-colors">
+            <i data-lucide="arrow-left" class="w-4 h-4" aria-hidden="true"></i>
+            Back to Code Generation
+        </button>
+    </div>
+
+    {# ── Unlocked state — deployment exists ── #}
+    <div x-show="deployStatus === 'healthy' || deployStatus === 'deploying' || deployStatus === 'unhealthy'" x-cloak class="space-y-4">
+
+        {# Header #}
+        <div class="bg-card border border-border rounded-lg p-6">
+            <div class="flex items-start justify-between gap-4">
+                <div>
+                    <h2 class="text-lg font-semibold text-foreground flex items-center gap-2">
+                        <i data-lucide="database" class="w-5 h-5 text-primary" aria-hidden="true"></i>
+                        Step 8: Load Your Data
+                    </h2>
+                    <p class="text-sm text-muted-foreground mt-1">
+                        Upload Excel or CSV files, map columns to your data model, and import rows into your live application.
+                    </p>
+                </div>
+                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30 shrink-0">
+                    <span class="w-1.5 h-1.5 bg-emerald-500 rounded-full"></span>
+                    App Deployed
+                </span>
+            </div>
+        </div>
+
+        {# ── Phase indicator ── #}
+        <div class="bg-card border border-border rounded-lg px-6 py-3">
+            <div class="flex items-center gap-2 text-xs">
+                <button type="button" @click="dataPhase === 'upload' ? null : resetDataFlow()"
+                        class="flex items-center gap-1.5 px-2.5 py-1 rounded-md font-medium transition-colors"
+                        :class="dataPhase === 'upload' ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground'">
+                    <span class="w-5 h-5 rounded-full border flex items-center justify-center text-[10px] font-bold"
+                          :class="dataPhase === 'upload' ? 'border-primary text-primary bg-primary/10' : (dataPhase !== 'upload' ? 'border-emerald-500 text-emerald-600 bg-emerald-500/10' : 'border-border text-muted-foreground')">
+                        <template x-if="dataPhase !== 'upload'">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                        </template>
+                        <template x-if="dataPhase === 'upload'"><span>1</span></template>
+                    </span>
+                    Upload
+                </button>
+                <svg class="w-4 h-4 text-border shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+                <span class="flex items-center gap-1.5 px-2.5 py-1 rounded-md font-medium"
+                      :class="dataPhase === 'mapping' ? 'bg-primary/10 text-primary' : (dataPhase === 'importing' || dataPhase === 'done' ? 'text-muted-foreground' : 'text-muted-foreground/50')">
+                    <span class="w-5 h-5 rounded-full border flex items-center justify-center text-[10px] font-bold"
+                          :class="dataPhase === 'mapping' ? 'border-primary text-primary bg-primary/10' : (dataPhase === 'importing' || dataPhase === 'done' ? 'border-emerald-500 text-emerald-600 bg-emerald-500/10' : 'border-border text-muted-foreground')">
+                        <template x-if="dataPhase === 'importing' || dataPhase === 'done'">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                        </template>
+                        <template x-if="dataPhase !== 'importing' && dataPhase !== 'done'"><span>2</span></template>
+                    </span>
+                    Map Columns
+                </span>
+                <svg class="w-4 h-4 text-border shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+                <span class="flex items-center gap-1.5 px-2.5 py-1 rounded-md font-medium"
+                      :class="dataPhase === 'importing' ? 'bg-primary/10 text-primary' : (dataPhase === 'done' ? 'text-muted-foreground' : 'text-muted-foreground/50')">
+                    <span class="w-5 h-5 rounded-full border flex items-center justify-center text-[10px] font-bold"
+                          :class="dataPhase === 'importing' ? 'border-primary text-primary bg-primary/10' : (dataPhase === 'done' ? 'border-emerald-500 text-emerald-600 bg-emerald-500/10' : 'border-border text-muted-foreground')">
+                        <template x-if="dataPhase === 'done'">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                        </template>
+                        <template x-if="dataPhase !== 'done'"><span>3</span></template>
+                    </span>
+                    Import
+                </span>
+            </div>
+        </div>
+
+        {# ════════════════════════════════════════════════════════════════
+           PHASE 1: Upload
+           ════════════════════════════════════════════════════════════════ #}
+        <div x-show="dataPhase === 'upload'" x-cloak class="bg-card border border-border rounded-lg p-6 space-y-4">
+            <h3 class="text-base font-medium text-foreground flex items-center gap-2">
+                <i data-lucide="upload" class="w-4 h-4 text-muted-foreground" aria-hidden="true"></i>
+                Upload Spreadsheet
+            </h3>
+
+            {# Drop zone #}
+            <div class="border-2 border-dashed rounded-lg p-8 text-center transition-colors"
+                 :class="uploadFile ? 'border-primary bg-primary/5' : 'border-border'"
+                 @dragover.prevent="$el.classList.add('border-primary', 'bg-primary/5')"
+                 @dragleave="if (!uploadFile) { $el.classList.remove('border-primary', 'bg-primary/5') }"
+                 @drop.prevent="handleFileDrop($event); if (!uploadFile) { $el.classList.remove('border-primary', 'bg-primary/5') }">
+
+                {# No file selected #}
+                <div x-show="!uploadFile" class="space-y-2">
+                    <i data-lucide="file-spreadsheet" class="w-10 h-10 text-muted-foreground mx-auto" aria-hidden="true"></i>
+                    <p class="text-sm text-foreground font-medium">Drop your Excel or CSV file here</p>
+                    <p class="text-xs text-muted-foreground">or</p>
+                    <label class="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium cursor-pointer hover:bg-primary/90 transition-colors">
+                        <i data-lucide="folder-open" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                        Browse files
+                        <input type="file" accept=".csv,.xlsx,.xls" class="hidden" @change="handleFileSelect($event)">
+                    </label>
+                    <p class="text-xs text-muted-foreground mt-2">Supports .xlsx, .xls, .csv &mdash; max 10 MB</p>
+                </div>
+
+                {# File selected — show details #}
+                <div x-show="uploadFile" class="space-y-3">
+                    <div class="flex items-center justify-center gap-3">
+                        <div class="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
+                            <i data-lucide="file-spreadsheet" class="w-5 h-5 text-primary" aria-hidden="true"></i>
+                        </div>
+                        <div class="text-left">
+                            <p class="text-sm font-medium text-foreground" x-text="uploadFileName"></p>
+                            <p class="text-xs text-muted-foreground" x-text="uploadFileSize"></p>
+                        </div>
+                        <button type="button" @click="clearFile()" class="ml-2 p-1.5 rounded-md hover:bg-muted transition-colors" title="Remove file">
+                            <i data-lucide="x" class="w-4 h-4 text-muted-foreground" aria-hidden="true"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            {# Upload error #}
+            <div x-show="uploadError" x-cloak
+                 class="flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3">
+                <i data-lucide="alert-triangle" class="w-4 h-4 text-destructive shrink-0 mt-0.5" aria-hidden="true"></i>
+                <p class="text-sm text-destructive" x-text="uploadError"></p>
+            </div>
+
+            {# Upload button #}
+            <button type="button" @click="uploadData()" :disabled="!uploadFile || uploadLoading"
+                    class="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50">
+                <template x-if="uploadLoading">
+                    <span class="flex items-center gap-2">
+                        <span class="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full"></span>
+                        Parsing file...
+                    </span>
+                </template>
+                <template x-if="!uploadLoading">
+                    <span class="flex items-center gap-2">
+                        <i data-lucide="upload" class="w-4 h-4" aria-hidden="true"></i>
+                        Upload &amp; Parse
+                    </span>
+                </template>
+            </button>
+        </div>
+
+        {# ════════════════════════════════════════════════════════════════
+           PHASE 2: Column Mapping
+           ════════════════════════════════════════════════════════════════ #}
+        <div x-show="dataPhase === 'mapping'" x-cloak class="bg-card border border-border rounded-lg p-6 space-y-4">
+            <div class="flex items-center justify-between">
+                <h3 class="text-base font-medium text-foreground flex items-center gap-2">
+                    <i data-lucide="columns" class="w-4 h-4 text-muted-foreground" aria-hidden="true"></i>
+                    Column Mapping
+                </h3>
+                <div class="flex items-center gap-3 text-xs text-muted-foreground">
+                    <span x-text="uploadFileName" class="font-medium text-foreground"></span>
+                    <span x-show="selectedSheet" x-text="'Sheet: ' + (selectedSheet ? selectedSheet.name : '')"></span>
+                </div>
+            </div>
+
+            {# Sheet selector (if multiple sheets) #}
+            <div x-show="uploadedSheets.length > 1" x-cloak class="flex items-center gap-2">
+                <label class="text-xs font-medium text-muted-foreground">Sheet:</label>
+                <div class="flex gap-1.5">
+                    <template x-for="sheet in uploadedSheets" :key="sheet.name">
+                        <button type="button" @click="selectedSheet = sheet; autoMapSheet(sheet)"
+                                class="px-3 py-1.5 text-xs font-medium rounded-md border transition-colors"
+                                :class="selectedSheet && selectedSheet.name === sheet.name
+                                    ? 'border-primary bg-primary/5 text-primary'
+                                    : 'border-border hover:border-primary/40 text-muted-foreground hover:text-foreground'">
+                            <span x-text="sheet.name"></span>
+                            <span class="text-muted-foreground ml-1" x-text="'(' + sheet.row_count + ' rows)'"></span>
+                        </button>
+                    </template>
+                </div>
+            </div>
+
+            {# Mapping loading spinner #}
+            <div x-show="mappingLoading" x-cloak class="flex items-center justify-center py-8">
+                <div class="flex items-center gap-3 text-sm text-muted-foreground">
+                    <span class="animate-spin h-5 w-5 border-2 border-primary border-t-transparent rounded-full"></span>
+                    Analyzing columns and matching to your data model...
+                </div>
+            </div>
+
+            {# Mapping error #}
+            <div x-show="mappingError" x-cloak
+                 class="flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3">
+                <i data-lucide="alert-triangle" class="w-4 h-4 text-destructive shrink-0 mt-0.5" aria-hidden="true"></i>
+                <p class="text-sm text-destructive" x-text="mappingError"></p>
+            </div>
+
+            {# Mapping table #}
+            <div x-show="!mappingLoading && getCurrentMappings().length > 0" x-cloak class="space-y-3">
+
+                {# Summary badges #}
+                <div class="flex items-center gap-3">
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30"
+                          x-text="getMappedCount() + ' mapped'"></span>
+                    <span x-show="getUnmappedCount() > 0" x-cloak
+                          class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-amber-500/10 text-amber-600 border border-amber-500/30"
+                          x-text="getUnmappedCount() + ' unmapped'"></span>
+                    <span class="text-xs text-muted-foreground" x-text="getRowCount() + ' rows to import'"></span>
+                </div>
+
+                {# Table #}
+                <div class="border border-border rounded-lg overflow-hidden">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="bg-muted/50 border-b border-border">
+                                <th class="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">Source Column</th>
+                                <th class="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">Inferred Type</th>
+                                <th class="text-center px-2 py-2.5 text-xs text-muted-foreground">&rarr;</th>
+                                <th class="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">Target Entity.Field</th>
+                                <th class="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">Confidence</th>
+                                <th class="text-right px-4 py-2.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <template x-for="(m, idx) in getCurrentMappings()" :key="m.source_column">
+                                <tr class="border-b border-border/50 hover:bg-muted/30 transition-colors">
+                                    <td class="px-4 py-2.5">
+                                        <span class="text-sm font-medium text-foreground" x-text="m.source_column"></span>
+                                    </td>
+                                    <td class="px-4 py-2.5">
+                                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-mono bg-muted text-muted-foreground"
+                                              x-text="m.inferred_type || 'unknown'"></span>
+                                    </td>
+                                    <td class="px-2 py-2.5 text-center text-muted-foreground">&rarr;</td>
+                                    <td class="px-4 py-2.5">
+                                        <select @change="overrideMapping(m, $event.target.value)"
+                                                class="w-full px-2.5 py-1.5 text-xs bg-background border border-input rounded-md focus:outline-none focus:ring-1 focus:ring-primary">
+                                            <option value="">-- No mapping --</option>
+                                            <template x-for="field in allModelFields" :key="field">
+                                                <option :value="field" :selected="(m.target_entity + '.' + m.target_field) === field" x-text="field"></option>
+                                            </template>
+                                        </select>
+                                    </td>
+                                    <td class="px-4 py-2.5">
+                                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border"
+                                              :class="m.confidence >= 0.85
+                                                  ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30'
+                                                  : m.confidence >= 0.55
+                                                      ? 'bg-amber-500/10 text-amber-600 border-amber-500/30'
+                                                      : 'bg-red-500/10 text-red-600 border-red-500/30'"
+                                              x-text="m.confidence ? Math.round(m.confidence * 100) + '%' : '—'"></span>
+                                    </td>
+                                    <td class="px-4 py-2.5 text-right">
+                                        <button type="button" x-show="!m.target_field" x-cloak
+                                                @click="addFieldForColumn(selectedSheet, m)"
+                                                class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-primary border border-primary/30 rounded-md hover:bg-primary/5 transition-colors">
+                                            <i data-lucide="plus" class="w-3 h-3" aria-hidden="true"></i>
+                                            Add Field
+                                        </button>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+
+                {# Confirm mapping button #}
+                <div class="flex items-center justify-between pt-2">
+                    <button type="button" @click="dataPhase = 'upload'; clearFile(); uploadedSheets = []; sheetMappings = {}; selectedSheet = null"
+                            class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium border border-input rounded-md hover:bg-accent transition-colors">
+                        <i data-lucide="arrow-left" class="w-4 h-4" aria-hidden="true"></i>
+                        Upload Different File
+                    </button>
+                    <button type="button" @click="confirmMapping()" :disabled="getMappedCount() === 0"
+                            class="inline-flex items-center gap-2 px-6 py-2.5 text-sm font-medium bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50">
+                        Confirm Mapping &amp; Continue
+                        <i data-lucide="arrow-right" class="w-4 h-4" aria-hidden="true"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        {# ════════════════════════════════════════════════════════════════
+           PHASE 3: Import
+           ════════════════════════════════════════════════════════════════ #}
+        <div x-show="dataPhase === 'importing'" x-cloak class="bg-card border border-border rounded-lg p-6 space-y-5">
+            <h3 class="text-base font-medium text-foreground flex items-center gap-2">
+                <i data-lucide="download" class="w-4 h-4 text-muted-foreground" aria-hidden="true"></i>
+                Import Data
+            </h3>
+
+            {# Summary #}
+            <div class="grid grid-cols-3 gap-4">
+                <div class="bg-muted/50 rounded-lg p-4 text-center">
+                    <p class="text-2xl font-bold text-foreground" x-text="getRowCount()"></p>
+                    <p class="text-xs text-muted-foreground mt-0.5">Rows</p>
+                </div>
+                <div class="bg-muted/50 rounded-lg p-4 text-center">
+                    <p class="text-2xl font-bold text-emerald-600" x-text="getMappedCount()"></p>
+                    <p class="text-xs text-muted-foreground mt-0.5">Columns Mapped</p>
+                </div>
+                <div class="bg-muted/50 rounded-lg p-4 text-center">
+                    <p class="text-2xl font-bold" :class="getUnmappedCount() > 0 ? 'text-amber-600' : 'text-muted-foreground'" x-text="getUnmappedCount()"></p>
+                    <p class="text-xs text-muted-foreground mt-0.5">Unmapped (skipped)</p>
+                </div>
+            </div>
+
+            {# Progress bar (during import) #}
+            <div x-show="importLoading" x-cloak class="space-y-2">
+                <div class="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>Importing rows...</span>
+                    <span x-text="importProgress + '%'"></span>
+                </div>
+                <div class="w-full bg-muted rounded-full h-2 overflow-hidden">
+                    <div class="h-full bg-primary rounded-full transition-all duration-300"
+                         :style="'width: ' + importProgress + '%'"></div>
+                </div>
+            </div>
+
+            {# Import error #}
+            <div x-show="importError" x-cloak
+                 class="flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3">
+                <i data-lucide="alert-triangle" class="w-4 h-4 text-destructive shrink-0 mt-0.5" aria-hidden="true"></i>
+                <p class="text-sm text-destructive" x-text="importError"></p>
+            </div>
+
+            {# Import button #}
+            <div class="flex items-center justify-between">
+                <button type="button" @click="dataPhase = 'mapping'"
+                        class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium border border-input rounded-md hover:bg-accent transition-colors">
+                    <i data-lucide="arrow-left" class="w-4 h-4" aria-hidden="true"></i>
+                    Back to Mapping
+                </button>
+                <button type="button" @click="importData()" :disabled="importLoading"
+                        class="inline-flex items-center gap-2 px-6 py-2.5 text-sm font-medium bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50">
+                    <template x-if="importLoading">
+                        <span class="flex items-center gap-2">
+                            <span class="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full"></span>
+                            Importing...
+                        </span>
+                    </template>
+                    <template x-if="!importLoading">
+                        <span class="flex items-center gap-2">
+                            <i data-lucide="database" class="w-4 h-4" aria-hidden="true"></i>
+                            Import Data
+                        </span>
+                    </template>
+                </button>
+            </div>
+        </div>
+
+        {# ════════════════════════════════════════════════════════════════
+           PHASE 4: Done — Import complete
+           ════════════════════════════════════════════════════════════════ #}
+        <div x-show="dataPhase === 'done'" x-cloak class="bg-card border border-border rounded-lg p-6 space-y-4">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-emerald-500/10 rounded-lg flex items-center justify-center">
+                    <i data-lucide="check-circle-2" class="w-5 h-5 text-emerald-600" aria-hidden="true"></i>
+                </div>
+                <div>
+                    <p class="text-sm font-semibold text-foreground">Data imported successfully</p>
+                    <p class="text-xs text-muted-foreground"
+                       x-text="importResult ? (importResult.rows_imported || 0) + ' rows imported into ' + (importResult.entity || 'your application') : ''"></p>
+                </div>
+            </div>
+
+            {# Import details #}
+            <div x-show="importResult && importResult.errors && importResult.errors.length > 0" x-cloak
+                 class="rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 space-y-1">
+                <p class="text-xs font-medium text-amber-600">Some rows had issues:</p>
+                <template x-for="err in (importResult ? importResult.errors.slice(0, 5) : [])" :key="err">
+                    <p class="text-xs text-amber-600/80 pl-2" x-text="'— ' + err"></p>
+                </template>
+                <p x-show="importResult && importResult.errors.length > 5" x-cloak
+                   class="text-xs text-amber-600/60 pl-2"
+                   x-text="'...and ' + (importResult.errors.length - 5) + ' more'"></p>
+            </div>
+
+            {# Action buttons #}
+            <div class="flex items-center gap-3 pt-2">
+                <button type="button" @click="resetDataFlow()"
+                        class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium border border-input rounded-md hover:bg-accent transition-colors">
+                    <i data-lucide="upload" class="w-4 h-4" aria-hidden="true"></i>
+                    Upload Another File
+                </button>
+                <a :href="deployUrl ? deployUrl + '/admin' : '#'" target="_blank" rel="noopener"
+                   class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium border border-input rounded-md hover:bg-accent transition-colors">
+                    <i data-lucide="external-link" class="w-4 h-4" aria-hidden="true"></i>
+                    View in Admin Panel
+                </a>
+                <a :href="deployUrl" target="_blank" rel="noopener"
+                   class="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors">
+                    <i data-lucide="globe" class="w-4 h-4" aria-hidden="true"></i>
+                    Open Your App
+                </a>
+            </div>
+        </div>
+
+        {# ── Alternative data entry links ── #}
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <a :href="deployUrl ? deployUrl + '/admin' : '#'" target="_blank" rel="noopener"
+               class="flex items-center gap-3 p-4 bg-card border border-border rounded-lg hover:bg-muted/50 transition-colors">
+                <i data-lucide="pencil" class="w-5 h-5 text-muted-foreground" aria-hidden="true"></i>
+                <div>
+                    <p class="text-sm font-medium text-foreground">Enter data manually</p>
+                    <p class="text-xs text-muted-foreground">Use the built-in admin forms</p>
+                </div>
+            </a>
+            <div class="flex items-center gap-3 p-4 bg-card border border-border rounded-lg opacity-60">
+                <i data-lucide="plug" class="w-5 h-5 text-muted-foreground" aria-hidden="true"></i>
+                <div>
+                    <p class="text-sm font-medium text-foreground">Connect external systems</p>
+                    <p class="text-xs text-muted-foreground">Coming soon &mdash; Salesforce, SAP, Jira, and more</p>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>

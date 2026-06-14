@@ -1,0 +1,66 @@
+{#
+===============================================================================
+SIDEBAR BREADCRUMB COMPONENT - Shows current location in menu hierarchy
+===============================================================================
+
+Usage:
+    {% include 'components/sidebar_breadcrumb.html' %}
+
+Requires context variables:
+    - current_menu_item: SidebarMenuItem object (optional)
+    - page_title: String fallback if no menu item
+
+Features:
+    - Shows section > subsection > current page
+    - Links back to sections/subsections
+    - Active state for current item
+    - Responsive (mobile-friendly)
+    - Icon support (Lucide)
+===============================================================================
+#}
+
+<nav aria-label="Breadcrumb" class="bg-background border-b border-border px-4 py-3">
+    <div class="flex items-center space-x-2 text-sm">
+        <!-- Home link -->
+        <a href="{{ url_for('admin.index') }}" class="text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1">
+            <i data-lucide="home" class="w-4 h-4"></i>
+            <span class="hidden sm:inline">Dashboard</span>
+        </a>
+
+        {% if current_menu_item and current_menu_item.show_in_breadcrumb %}
+            <!-- Section -->
+            {% if current_menu_item.section %}
+                <span class="text-muted-foreground">/</span>
+                <span class="text-foreground font-medium">
+                    {{ current_menu_item.section }}
+                </span>
+
+                <!-- Subsection -->
+                {% if current_menu_item.subsection %}
+                    <span class="text-muted-foreground">/</span>
+                    <span class="text-foreground font-medium">
+                        {{ current_menu_item.subsection }}
+                    </span>
+
+                    <!-- Current page -->
+                    <span class="text-muted-foreground">/</span>
+                    <span class="text-accent-foreground">
+                        {{ current_menu_item.breadcrumb_label or current_menu_item.label }}
+                    </span>
+                {% else %}
+                    <!-- Current page (no subsection) -->
+                    <span class="text-muted-foreground">/</span>
+                    <span class="text-accent-foreground">
+                        {{ current_menu_item.breadcrumb_label or current_menu_item.label }}
+                    </span>
+                {% endif %}
+            {% endif %}
+        {% elif page_title %}
+            <!-- Fallback to page title -->
+            <span class="text-muted-foreground">/</span>
+            <span class="text-accent-foreground">
+                {{ page_title }}
+            </span>
+        {% endif %}
+    </div>
+</nav>

@@ -1,0 +1,205 @@
+{% extends 'layouts/admin_base.html' %}
+
+{% block title %}Data Entity Catalog — A.R.C.H.I.E.{% endblock %}
+
+{% block breadcrumb %}
+{% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
+{{ breadcrumb_nav(items=[
+    {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
+    {'text': 'Technology Layer', 'href': url_for('archimate_crud.dashboard') + '#technology'},
+    {'text': 'Data Architecture'},
+    {'text': 'Entity Catalog', 'current': true}
+]) }}
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    {# Header #}
+    <div class="flex items-center justify-between">
+        <div>
+            <h1 class="text-2xl font-bold text-foreground">Data Entity Catalog</h1>
+            <p class="text-sm text-muted-foreground mt-1">{{ total_count }} data entities across the enterprise</p>
+        </div>
+        <a href="{{ url_for('data_architecture.create_data_entity') }}"
+           class="inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+            <i data-lucide="plus" class="w-4 h-4" aria-hidden="true"></i>
+            Create Entity
+        </a>
+    </div>
+
+    {# Summary Cards #}
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="rounded-lg border bg-card p-4">
+            <div class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Total Entities</div>
+            <div class="text-2xl font-bold text-foreground mt-1">{{ total_count }}</div>
+        </div>
+        <div class="rounded-lg border bg-card p-4">
+            <div class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Domains</div>
+            <div class="text-2xl font-bold text-foreground mt-1">{{ domains|length }}</div>
+        </div>
+        <div class="rounded-lg border bg-card p-4">
+            <div class="text-xs font-medium text-muted-foreground uppercase tracking-wide">PII Entities</div>
+            <div class="text-2xl font-bold text-foreground mt-1">{{ entities|selectattr('contains_pii')|list|length }}</div>
+        </div>
+        <div class="rounded-lg border bg-card p-4">
+            <div class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Classifications</div>
+            <div class="text-2xl font-bold text-foreground mt-1">{{ classification_dist|length }}</div>
+        </div>
+    </div>
+
+    {# Filters #}
+    <div class="rounded-lg border bg-card p-4">
+        <form method="get" class="flex flex-wrap gap-3 items-end">
+            <div class="flex-1 min-w-[200px]">
+                <label class="text-xs font-medium text-muted-foreground mb-1 block">Search</label>
+                <input type="text" name="search" value="{{ search }}"
+                    class="w-full h-9 px-3 text-sm rounded-md border border-input bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                    placeholder="Search entities...">
+            </div>
+            <div>
+                <label class="text-xs font-medium text-muted-foreground mb-1 block">Classification</label>
+                <select name="classification" class="h-9 px-3 text-sm rounded-md border border-input bg-background text-foreground">
+                    <option value="">All</option>
+                    <option value="public" {{ 'selected' if classification == 'public' }}>Public</option>
+                    <option value="internal" {{ 'selected' if classification == 'internal' }}>Internal</option>
+                    <option value="confidential" {{ 'selected' if classification == 'confidential' }}>Confidential</option>
+                    <option value="restricted" {{ 'selected' if classification == 'restricted' }}>Restricted</option>
+                </select>
+            </div>
+            <div>
+                <label class="text-xs font-medium text-muted-foreground mb-1 block">Type</label>
+                <select name="entity_type" class="h-9 px-3 text-sm rounded-md border border-input bg-background text-foreground">
+                    <option value="">All</option>
+                    <option value="master" {{ 'selected' if entity_type == 'master' }}>Master</option>
+                    <option value="transactional" {{ 'selected' if entity_type == 'transactional' }}>Transactional</option>
+                    <option value="reference" {{ 'selected' if entity_type == 'reference' }}>Reference</option>
+                    <option value="derived" {{ 'selected' if entity_type == 'derived' }}>Derived</option>
+                </select>
+            </div>
+            <div>
+                <label class="text-xs font-medium text-muted-foreground mb-1 block">Domain</label>
+                <select name="domain_id" class="h-9 px-3 text-sm rounded-md border border-input bg-background text-foreground">
+                    <option value="">All Domains</option>
+                    {% for d in domains %}
+                    <option value="{{ d.id }}" {{ 'selected' if domain_id == d.id|string }}>{{ d.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <button type="submit" class="h-9 px-4 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+                Filter
+            </button>
+            {% if search or classification or entity_type or domain_id %}
+            <a href="{{ url_for('data_architecture.data_entity_catalog') }}" class="h-9 px-3 text-sm font-medium rounded-md border border-input bg-background hover:bg-accent transition-colors inline-flex items-center">
+                Clear
+            </a>
+            {% endif %}
+        </form>
+    </div>
+
+    {# Entity Table #}
+    {% if entities %}
+    <div class="rounded-lg border bg-card overflow-hidden">
+        <table class="w-full">
+            <thead>
+                <tr class="border-b bg-muted/50">
+                    <th class="text-left text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">#</th>
+                    <th class="text-left text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Entity</th>
+                    <th class="text-left text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Type</th>
+                    <th class="text-left text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Classification</th>
+                    <th class="text-left text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">PII</th>
+                    <th class="text-left text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Quality</th>
+                    <th class="text-left text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">System of Record</th>
+                    <th class="text-right text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for entity in entities %}
+                <tr class="border-b hover:bg-accent/50 transition-colors">
+                    <td class="px-4 py-3 text-sm text-muted-foreground">{{ loop.index }}</td>
+                    <td class="px-4 py-3">
+                        <div class="font-medium text-sm text-foreground">{{ entity.name }}</div>
+                        {% if entity.business_name and entity.business_name != entity.name %}
+                        <div class="text-xs text-muted-foreground">{{ entity.business_name }}</div>
+                        {% endif %}
+                        {% if entity.description %}
+                        <div class="text-xs text-muted-foreground mt-0.5 line-clamp-1">{{ entity.description[:80] }}</div>
+                        {% endif %}
+                    </td>
+                    <td class="px-4 py-3">
+                        {% if entity.entity_type %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium
+                            {% if entity.entity_type == 'master' %}bg-primary/10 text-primary border border-primary/30
+                            {% elif entity.entity_type == 'transactional' %}bg-emerald-500/10 text-emerald-600 border border-emerald-500/30
+                            {% elif entity.entity_type == 'reference' %}bg-amber-500/10 text-amber-600 border border-amber-500/30
+                            {% else %}bg-muted text-muted-foreground border border-border{% endif %}">
+                            {{ entity.entity_type }}
+                        </span>
+                        {% else %}
+                        <span class="text-xs text-muted-foreground">—</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-4 py-3">
+                        {% if entity.data_classification %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium
+                            {% if entity.data_classification == 'restricted' %}bg-destructive/10 text-destructive border border-destructive/30
+                            {% elif entity.data_classification == 'confidential' %}bg-amber-500/10 text-amber-600 border border-amber-500/30
+                            {% elif entity.data_classification == 'internal' %}bg-primary/10 text-primary border border-primary/30
+                            {% else %}bg-emerald-500/10 text-emerald-600 border border-emerald-500/30{% endif %}">
+                            {{ entity.data_classification }}
+                        </span>
+                        {% else %}
+                        <span class="text-xs text-muted-foreground">—</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-4 py-3">
+                        {% if entity.contains_pii %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive border border-destructive/30">
+                            PII
+                        </span>
+                        {% else %}
+                        <span class="text-xs text-muted-foreground">—</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-4 py-3">
+                        {% if entity.data_quality_score is not none %}
+                        <div class="flex items-center gap-2">
+                            <div class="w-16 h-1.5 rounded-full bg-muted overflow-hidden">
+                                <div class="h-full rounded-full
+                                    {% if entity.data_quality_score >= 70 %}bg-emerald-500
+                                    {% elif entity.data_quality_score >= 40 %}bg-amber-500
+                                    {% else %}bg-destructive{% endif %}"
+                                    style="width: {{ entity.data_quality_score }}%"><!-- inline-style-ok --></div>
+                            </div>
+                            <span class="text-xs text-muted-foreground">{{ entity.data_quality_score }}%</span>
+                        </div>
+                        {% else %}
+                        <span class="text-xs text-muted-foreground">—</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-4 py-3 text-sm text-muted-foreground">{{ entity.system_of_record or '—' }}</td>
+                    <td class="px-4 py-3 text-right">
+                        <a href="{{ url_for('data_architecture.edit_data_entity', entity_id=entity.id) }}"
+                           class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+                            Edit
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="rounded-lg border bg-card p-12 text-center">
+        <div class="mx-auto w-12 h-12 rounded-lg bg-muted flex items-center justify-center mb-4">
+            <i data-lucide="database" class="w-6 h-6 text-muted-foreground" aria-hidden="true"></i>
+        </div>
+        <h2 class="text-lg font-semibold text-foreground mb-2">No data entities found</h2>
+        {% if search or classification or entity_type or domain_id %}
+        <p class="text-sm text-muted-foreground">No entities match your current filters. Try broadening your search.</p>
+        {% else %}
+        <p class="text-sm text-muted-foreground">The data entity catalog is empty. Data entities represent the business data objects (Customer, Order, Product, etc.) managed across your enterprise. They can be imported from Abacus or created manually.</p>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

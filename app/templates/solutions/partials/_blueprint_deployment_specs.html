@@ -1,0 +1,194 @@
+{# Deployment Specifications — collapsible cards per Node/Device/SystemSoftware
+   Included inside Deployment View section of blueprint.html
+   Requires Alpine.js data context with deploymentSpecsMixin merged in #}
+
+<div class="mt-6 space-y-3">
+    <h4 class="text-sm font-semibold text-foreground flex items-center gap-2">
+        <span class="w-2 h-2 rounded-full bg-orange-500 inline-block"></span>
+        Deployment Specifications
+    </h4>
+
+    <template x-for="elem in (sectionElements['deployment_view'] || [])" :key="elem.element_id || elem.id">
+        <div class="border border-border rounded-lg overflow-hidden">
+            {# Header: collapsible #}
+            <button
+                class="w-full flex items-center justify-between px-4 py-3 bg-muted/30 hover:bg-muted/50 transition-colors text-left"
+                x-on:click="toggleDeployExpanded(elem.element_id || elem.id)"
+            >
+                <div class="flex items-center gap-2">
+                    <svg class="w-4 h-4 text-muted-foreground transition-transform"
+                         :class="deployExpanded[elem.element_id || elem.id] ? 'rotate-90' : ''"
+                         xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                    </svg>
+                    <span class="text-sm font-medium text-foreground" x-text="elem.element_name || elem.name"></span>
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-muted text-muted-foreground"
+                          x-text="elem.element_type || elem.type"></span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <template x-if="deploymentSpecs[elem.element_id || elem.id] && deploymentSpecs[elem.element_id || elem.id].deployment">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium"
+                              :class="deploymentSpecs[elem.element_id || elem.id].deployment.deployment_status === 'confirmed' ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/30' :
+                                      deploymentSpecs[elem.element_id || elem.id].deployment.deployment_status === 'proposed' ? 'bg-amber-500/10 text-amber-600 border border-amber-500/30' :
+                                      'bg-muted text-muted-foreground border border-border'"
+                              x-text="(deploymentSpecs[elem.element_id || elem.id].deployment.deployment_status || 'draft')"></span>
+                    </template>
+                    <template x-if="!deploymentSpecs[elem.element_id || elem.id] || !deploymentSpecs[elem.element_id || elem.id].deployment">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground border border-border">No Spec</span>
+                    </template>
+                </div>
+            </button>
+
+            {# Body: deployment details #}
+            <div x-show="deployExpanded[elem.element_id || elem.id]" x-collapse class="border-t border-border p-4">
+                <div class="flex justify-between items-center mb-3">
+                    <span class="text-xs text-muted-foreground"
+                          x-text="'Version ' + ((deploymentSpecs[elem.element_id || elem.id] && deploymentSpecs[elem.element_id || elem.id].deployment) ? (deploymentSpecs[elem.element_id || elem.id].deployment.version || 0) : 0)"></span>
+                    <div class="flex gap-2">
+                        <button class="inline-flex items-center px-3 py-1 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 rounded-md transition-colors"
+                                x-on:click="suggestDeploymentSpec(elem.element_id || elem.id)"
+                                :disabled="deployLoading[elem.element_id || elem.id]">
+                            <span x-show="!deployLoading[elem.element_id || elem.id]">Suggest Spec</span>
+                            <span x-show="deployLoading[elem.element_id || elem.id]">Suggesting...</span>
+                        </button>
+                    </div>
+                </div>
+
+                {# Deployment spec details #}
+                <template x-if="deploymentSpecs[elem.element_id || elem.id] && deploymentSpecs[elem.element_id || elem.id].deployment">
+                    <div class="space-y-4">
+                        {# Runtime info #}
+                        <div class="rounded-lg border border-border bg-muted/20 p-3">
+                            <h5 class="text-xs font-medium text-foreground mb-2">Runtime Configuration</h5>
+                            <div class="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                                <template x-if="deploymentSpecs[elem.element_id || elem.id].deployment.runtime">
+                                    <div>
+                                        <span class="text-muted-foreground">Runtime: </span>
+                                        <span class="text-foreground font-mono" x-text="deploymentSpecs[elem.element_id || elem.id].deployment.runtime"></span>
+                                    </div>
+                                </template>
+                                <template x-if="deploymentSpecs[elem.element_id || elem.id].deployment.runtime_version">
+                                    <div>
+                                        <span class="text-muted-foreground">Version: </span>
+                                        <span class="text-foreground font-mono" x-text="deploymentSpecs[elem.element_id || elem.id].deployment.runtime_version"></span>
+                                    </div>
+                                </template>
+                                <template x-if="deploymentSpecs[elem.element_id || elem.id].deployment.container_image">
+                                    <div class="col-span-2">
+                                        <span class="text-muted-foreground">Image: </span>
+                                        <span class="text-foreground font-mono" x-text="deploymentSpecs[elem.element_id || elem.id].deployment.container_image"></span>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+
+                        {# Resources #}
+                        <template x-if="deploymentSpecs[elem.element_id || elem.id].deployment.resources">
+                            <div class="rounded-lg border border-border bg-muted/20 p-3">
+                                <h5 class="text-xs font-medium text-foreground mb-2">Resource Requirements</h5>
+                                <div class="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                                    <template x-if="deploymentSpecs[elem.element_id || elem.id].deployment.resources.cpu">
+                                        <div>
+                                            <span class="text-muted-foreground">CPU: </span>
+                                            <span class="text-foreground" x-text="deploymentSpecs[elem.element_id || elem.id].deployment.resources.cpu"></span>
+                                        </div>
+                                    </template>
+                                    <template x-if="deploymentSpecs[elem.element_id || elem.id].deployment.resources.memory">
+                                        <div>
+                                            <span class="text-muted-foreground">Memory: </span>
+                                            <span class="text-foreground" x-text="deploymentSpecs[elem.element_id || elem.id].deployment.resources.memory"></span>
+                                        </div>
+                                    </template>
+                                    <template x-if="deploymentSpecs[elem.element_id || elem.id].deployment.resources.storage">
+                                        <div>
+                                            <span class="text-muted-foreground">Storage: </span>
+                                            <span class="text-foreground" x-text="deploymentSpecs[elem.element_id || elem.id].deployment.resources.storage"></span>
+                                        </div>
+                                    </template>
+                                    <template x-if="deploymentSpecs[elem.element_id || elem.id].deployment.resources.replicas">
+                                        <div>
+                                            <span class="text-muted-foreground">Replicas: </span>
+                                            <span class="text-foreground" x-text="deploymentSpecs[elem.element_id || elem.id].deployment.resources.replicas"></span>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+                        </template>
+
+                        {# Environment variables #}
+                        <template x-if="deploymentSpecs[elem.element_id || elem.id].deployment.env_vars && deploymentSpecs[elem.element_id || elem.id].deployment.env_vars.length > 0">
+                            <div class="rounded-lg border border-border bg-muted/20 p-3">
+                                <h5 class="text-xs font-medium text-foreground mb-2">Environment Variables</h5>
+                                <div class="overflow-x-auto">
+                                    <table class="w-full text-xs">
+                                        <thead>
+                                            <tr class="border-b border-border">
+                                                <th class="text-left py-1.5 px-2 text-muted-foreground font-medium">Name</th>
+                                                <th class="text-left py-1.5 px-2 text-muted-foreground font-medium">Required</th>
+                                                <th class="text-left py-1.5 px-2 text-muted-foreground font-medium">Description</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="divide-y divide-border">
+                                            <template x-for="envVar in deploymentSpecs[elem.element_id || elem.id].deployment.env_vars" :key="envVar.name">
+                                                <tr class="hover:bg-muted/30 transition-colors">
+                                                    <td class="py-1.5 px-2 font-mono text-foreground" x-text="envVar.name"></td>
+                                                    <td class="py-1.5 px-2">
+                                                        <span :class="envVar.required ? 'text-emerald-600' : 'text-muted-foreground'" x-text="envVar.required ? 'Yes' : 'No'"></span>
+                                                    </td>
+                                                    <td class="py-1.5 px-2 text-muted-foreground" x-text="envVar.description || ''"></td>
+                                                </tr>
+                                            </template>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </template>
+
+                        {# Ports / networking #}
+                        <template x-if="deploymentSpecs[elem.element_id || elem.id].deployment.ports && deploymentSpecs[elem.element_id || elem.id].deployment.ports.length > 0">
+                            <div class="rounded-lg border border-border bg-muted/20 p-3">
+                                <h5 class="text-xs font-medium text-foreground mb-2">Network Ports</h5>
+                                <div class="flex flex-wrap gap-2">
+                                    <template x-for="port in deploymentSpecs[elem.element_id || elem.id].deployment.ports" :key="port.port || port">
+                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-blue-500/10 text-blue-600 border border-blue-500/30"
+                                              x-text="(port.name ? port.name + ': ' : '') + (port.port || port) + '/' + (port.protocol || 'tcp')"></span>
+                                    </template>
+                                </div>
+                            </div>
+                        </template>
+
+                        {# Health checks #}
+                        <template x-if="deploymentSpecs[elem.element_id || elem.id].deployment.health_check">
+                            <div class="rounded-lg border border-border bg-muted/20 p-3">
+                                <h5 class="text-xs font-medium text-foreground mb-2">Health Check</h5>
+                                <div class="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                                    <template x-if="deploymentSpecs[elem.element_id || elem.id].deployment.health_check.path">
+                                        <div>
+                                            <span class="text-muted-foreground">Path: </span>
+                                            <span class="text-foreground font-mono" x-text="deploymentSpecs[elem.element_id || elem.id].deployment.health_check.path"></span>
+                                        </div>
+                                    </template>
+                                    <template x-if="deploymentSpecs[elem.element_id || elem.id].deployment.health_check.interval">
+                                        <div>
+                                            <span class="text-muted-foreground">Interval: </span>
+                                            <span class="text-foreground" x-text="deploymentSpecs[elem.element_id || elem.id].deployment.health_check.interval"></span>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+
+                <template x-if="!deploymentSpecs[elem.element_id || elem.id] || !deploymentSpecs[elem.element_id || elem.id].deployment">
+                    <p class="text-xs text-muted-foreground/60 italic">No deployment spec defined. Click "Suggest Spec" to generate from element properties.</p>
+                </template>
+            </div>
+        </div>
+    </template>
+
+    {# Empty state when no elements in section #}
+    <template x-if="!(sectionElements['deployment_view'] || []).length">
+        <p class="text-xs text-muted-foreground/60 italic">Link deployment elements (Node, Device, SystemSoftware) to this section to define deployment specifications.</p>
+    </template>
+</div>

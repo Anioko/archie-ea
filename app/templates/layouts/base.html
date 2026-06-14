@@ -1,0 +1,102 @@
+{# Layout: base.html — LEGACY authenticated layout (no sidebar)
+   Usage: NOT RECOMMENDED for new templates.
+   When to use: Only for standalone authenticated pages that must NOT show the admin sidebar.
+   Prefer: admin_base.html for all admin/dashboard pages.
+   See also: admin_base.html (admin with sidebar), public_base.html (unauthenticated).
+#}
+{% import 'macros/nav_macros.html' as nav %}
+
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+
+<head>
+  {% include 'partials/_head.html' %}
+  {# Any templates that extend this template can set custom_head_tags to add scripts to their page #}
+  {% block custom_head_tags %}{% endblock %}
+</head>
+
+<body class="h-full bg-background text-foreground antialiased">
+  <a href="#main-content"
+     class="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[9999] focus:px-4 focus:py-2 focus:bg-background focus:text-foreground focus:rounded-md focus:shadow-lg focus:ring-2 focus:ring-ring">
+    Skip to main content
+  </a>
+  {# Example dropdown menu setup. Uncomment lines to view
+  {% set dropdown =
+  [
+  ('account stuff',
+  [
+  ('account.login', 'login', 'sign in'),
+  ('account.logout', 'logout', 'sign out'),
+  ('2nd drop', [
+  ('account.login', 'login 2', ''),
+  ('3rd drop', [
+  ('main.index', 'home 2', '')
+  ])
+  ])
+  ]
+  ),
+  ('main.index', 'home 1', 'home')
+  ]
+  %}
+  #}
+
+  {% block nav %}
+  {% set strategic_dropdown = [
+  ('Strategic Planning', [
+  ('strategic.capability_health', 'Capability Health', 'activity'),
+  ('architecture.investment_priorities', 'Investment Matrix', 'bar-chart-3'),
+  ('strategic.risk_assessment', 'Risk Assessment', 'alert-triangle'),
+  ('strategic.impact_analysis', 'Impact Analysis', 'zap'),
+  ('strategic.process_optimization', 'Process Optimization', 'refresh-cw'),
+  ('strategic.compliance_tracking', 'Compliance Tracking', 'shield-check')
+  ])
+  ] %}
+  {{ nav.render_nav(current_user, dropdown=strategic_dropdown) }}
+  {% endblock %}
+
+  <div id="main-content" class="container mx-auto px-4 py-6">
+    {% include 'partials/_flashes.html' %}
+    {# When extended, the content block contains all the html of the webpage #}
+    {% block content %}
+    {% endblock %}
+  </div>
+
+  {# CSRF Protection - Global token for AJAX requests #}
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+
+  {# AI Chat Floating Action Button - visible on all pages #}
+  {% if current_user.is_authenticated %}
+  <a href="{{ url_for('unified_ai_chat.index') }}"
+     id="unified-ai-chat-fab"
+     class="fixed bottom-6 right-6 h-14 w-14 rounded-full bg-primary text-primary-foreground shadow-lg hover:shadow-xl hover:scale-105 flex items-center justify-center z-50 transition-all duration-200 group"
+     title="AI Assistant (Ctrl+K)">
+    <i data-lucide="message-circle" class="h-6 w-6 group-hover:scale-110 transition-transform"></i>
+    <span class="absolute -top-8 right-0 bg-foreground text-background text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+      AI Assistant
+    </span>
+  </a>
+  {% endif %}
+
+  {# Common CSRF, fetch interceptor, XHR interceptor, Lucide init, event delegation #}
+  {% include 'partials/_scripts_common.html' %}
+
+  {# Block aliases — child templates may use any of these names for page-level scripts #}
+  {% block extra_js %}{% endblock %}
+  {% block scripts %}{% endblock %}{# alias for extra_js — legacy templates use this block name #}
+  {% block head %}{% endblock %}{# alias for custom_head_tags — 4 templates use this block name #}
+
+  {# base.html-specific: Lucide init (direct) + AI Chat keyboard shortcut #}
+  <script>
+    lucide.createIcons();
+
+    // Keyboard shortcut: Ctrl+K or Cmd+K to open AI Chat
+    document.addEventListener('keydown', function(e) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        window.location.href = '{{ url_for("unified_ai_chat.index") }}';
+      }
+    });
+  </script>
+</body>
+
+</html>

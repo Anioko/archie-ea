@@ -1,0 +1,501 @@
+{# Linked Sections — 4 reactive sections with Manage (multi-select) affordances
+   Requires Alpine.js solutionDetail() state:
+     linkedApplications, linkedVendorProducts, linkedADRs, linkedAPQCProcesses,
+     manageModalType, manageAllItems, manageSelectedIds, manageLoading, manageSaving, manageFilter
+   Methods: openManageModal(), closeManageModal(), toggleManageItem(), saveManageModal(), unlinkEntity()
+#}
+
+{# ── Associated Applications (TOGAF Phase B) ── #}
+<div class="bg-card rounded-xl border border-border shadow-sm p-6 transition-all"
+     :class="isSectionActive('B') ? 'ring-1 ring-primary/10' : ''">
+    <div class="flex items-center justify-between mb-4">
+        <div class="flex items-center gap-3">
+            <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-500 flex-shrink-0" x-show="isSectionCompleted('B')" x-cloak aria-hidden="true"></i>
+            <i data-lucide="circle-dot" class="w-4 h-4 text-primary flex-shrink-0" x-show="isSectionActive('B')" x-cloak aria-hidden="true"></i>
+            <i data-lucide="circle" class="w-4 h-4 text-muted-foreground flex-shrink-0" x-show="isSectionFuture('B')" x-cloak aria-hidden="true"></i>
+            <h3 class="text-lg font-semibold text-foreground">Associated Applications</h3>
+        </div>
+        <div class="flex items-center gap-2">
+            <button type="button" @click="openManageModal('application')"
+                class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+                <i data-lucide="settings-2" class="w-3 h-3" aria-hidden="true"></i> Manage
+            </button>
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30">Phase B</span>
+        </div>
+    </div>
+    <template x-if="linkedApplications.length > 0">
+        <div class="space-y-2">
+            <template x-for="app in linkedApplications" :key="app.id">
+                <div class="flex items-center justify-between p-3 bg-muted/50 rounded-lg border border-border group">
+                    <div>
+                        <p class="font-medium text-foreground" x-text="app.name"></p>
+                        <p class="text-sm text-muted-foreground" x-text="app.app_abbreviation || 'No code'"></p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <a :href="'/applications/' + app.id" class="text-primary hover:text-primary/80 text-sm font-medium transition-colors">View</a>
+                        <button type="button" @click="unlinkEntity('application', app.id)"
+                            class="text-muted-foreground hover:text-destructive p-1 rounded-md opacity-0 group-hover:opacity-100 transition-opacity" title="Remove">
+                            <i data-lucide="x" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                        </button>
+                    </div>
+                </div>
+            </template>
+        </div>
+    </template>
+    <template x-if="linkedApplications.length === 0">
+        <p class="text-sm text-muted-foreground italic">No applications associated yet. Click Manage to add.</p>
+    </template>
+</div>
+
+{# ── Vendor Products / Technology Components (TOGAF Phase E) ── #}
+<div class="bg-card rounded-xl border border-border shadow-sm p-6 transition-all"
+     :class="isSectionActive('E') ? 'ring-1 ring-primary/10' : ''">
+    <div class="flex items-center justify-between mb-4">
+        <div class="flex items-center gap-3">
+            <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-500 flex-shrink-0" x-show="isSectionCompleted('E')" x-cloak aria-hidden="true"></i>
+            <i data-lucide="circle-dot" class="w-4 h-4 text-primary flex-shrink-0" x-show="isSectionActive('E')" x-cloak aria-hidden="true"></i>
+            <i data-lucide="circle" class="w-4 h-4 text-muted-foreground flex-shrink-0" x-show="isSectionFuture('E')" x-cloak aria-hidden="true"></i>
+            <div>
+                <h3 class="text-lg font-semibold text-foreground">Technology Components</h3>
+                <p class="text-sm text-muted-foreground">Vendor products linked to this solution</p>
+            </div>
+        </div>
+        <div class="flex items-center gap-2">
+            <button type="button" @click="openManageModal('vendor_product')"
+                class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+                <i data-lucide="settings-2" class="w-3 h-3" aria-hidden="true"></i> Manage
+            </button>
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-amber-500/10 text-amber-600 border border-amber-500/30">Phase E</span>
+        </div>
+    </div>
+    <template x-if="linkedVendorProducts.length > 0">
+        <div class="space-y-2">
+            <template x-for="vp in linkedVendorProducts" :key="vp.id">
+                <div class="flex items-center justify-between p-3 bg-muted/50 rounded-lg border border-border group">
+                    <div>
+                        <template x-if="vp.vendor_id">
+                            <a :href="'/vendors/' + vp.vendor_id" target="_blank"
+                               class="font-medium text-primary hover:underline" x-text="vp.name"></a>
+                        </template>
+                        <template x-if="!vp.vendor_id">
+                            <p class="font-medium text-foreground" x-text="vp.name"></p>
+                        </template>
+                        <p class="text-sm text-muted-foreground">
+                            <span x-text="vp.vendor_name || 'Unknown vendor'"></span>
+                            <template x-if="vp.product_family_name">
+                                <span x-text="' · ' + vp.product_family_name"></span>
+                            </template>
+                        </p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <template x-if="vp.licensing_model">
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-violet-500/10 text-violet-600 border border-violet-500/30" x-text="vp.licensing_model"></span>
+                        </template>
+                        <button type="button" @click="unlinkEntity('vendor_product', vp.id)"
+                            class="text-muted-foreground hover:text-destructive p-1 rounded-md opacity-0 group-hover:opacity-100 transition-opacity" title="Remove">
+                            <i data-lucide="x" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                        </button>
+                    </div>
+                </div>
+            </template>
+        </div>
+    </template>
+    <template x-if="linkedVendorProducts.length === 0">
+        <p class="text-sm text-muted-foreground italic">No vendor products linked yet. Click Manage to add.</p>
+    </template>
+</div>
+
+{# ── Architecture Decision Records (TOGAF Phase G) ── #}
+<div class="bg-card rounded-xl border border-border shadow-sm p-6 transition-all"
+     :class="isSectionActive('G') ? 'ring-1 ring-primary/10' : ''">
+    <div class="flex items-center justify-between mb-4">
+        <div class="flex items-center gap-3">
+            <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-500 flex-shrink-0" x-show="isSectionCompleted('G')" x-cloak aria-hidden="true"></i>
+            <i data-lucide="circle-dot" class="w-4 h-4 text-primary flex-shrink-0" x-show="isSectionActive('G')" x-cloak aria-hidden="true"></i>
+            <i data-lucide="circle" class="w-4 h-4 text-muted-foreground flex-shrink-0" x-show="isSectionFuture('G')" x-cloak aria-hidden="true"></i>
+            <div>
+                <h3 class="text-lg font-semibold text-foreground">Architecture Decisions</h3>
+                <p class="text-sm text-muted-foreground">ADRs linked to this solution</p>
+            </div>
+        </div>
+        <div class="flex items-center gap-2">
+            <button type="button" @click="openManageModal('adr')"
+                class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+                <i data-lucide="settings-2" class="w-3 h-3" aria-hidden="true"></i> Manage
+            </button>
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-sky-500/10 text-sky-600 border border-sky-500/30">Phase G</span>
+        </div>
+    </div>
+    <template x-if="linkedADRs.length > 0">
+        <div class="space-y-2">
+            <template x-for="adr in linkedADRs" :key="adr.id">
+                <div class="p-3 bg-muted/50 rounded-lg border border-border group">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="text-sm font-medium text-foreground" x-text="'ADR-' + String(adr.adr_number || 0).padStart(3, '0') + ': ' + (adr.title || 'Untitled')"></span>
+                        <div class="flex items-center gap-2">
+                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
+                                  :class="adr.status === 'accepted' ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/30' :
+                                           (adr.status === 'deprecated' || adr.status === 'superseded') ? 'bg-zinc-500/10 text-zinc-600 border border-zinc-500/30' :
+                                           adr.status === 'proposed' ? 'bg-amber-500/10 text-amber-600 border border-amber-500/30' :
+                                           'bg-primary/10 text-primary border border-primary/30'"
+                                  x-text="adr.status || 'draft'"></span>
+                            <button type="button" @click="unlinkEntity('adr', adr.id)"
+                                class="text-muted-foreground hover:text-destructive p-1 rounded-md opacity-0 group-hover:opacity-100 transition-opacity" title="Remove">
+                                <i data-lucide="x" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <template x-if="adr.decision">
+                        <p class="text-xs text-muted-foreground" x-text="adr.decision"></p>
+                    </template>
+                </div>
+            </template>
+        </div>
+    </template>
+    <template x-if="linkedADRs.length === 0">
+        {% if solution.complexity_level in ('High', 'Complex', 'Enterprise') %}
+        <div class="flex items-start gap-2 p-3 rounded-md bg-amber-50 border border-amber-200 text-amber-800 text-sm">
+            <i data-lucide="triangle-alert" class="w-4 h-4 shrink-0 mt-0.5 text-amber-500" aria-hidden="true"></i>
+            <span><strong>No ADRs linked.</strong> High-complexity solutions should document key technical decisions as Architecture Decision Records. Click <strong>Manage</strong> to add.</span>
+        </div>
+        {% else %}
+        <p class="text-sm text-muted-foreground italic">No architecture decision records linked yet. Click Manage to add.</p>
+        {% endif %}
+    </template>
+</div>
+
+{# ── APQC Processes (TOGAF Phase A) ── #}
+<div class="bg-card rounded-xl border border-border shadow-sm p-6 transition-all"
+     :class="isSectionActive('A') ? 'ring-1 ring-primary/10' : ''">
+    <div class="flex items-center justify-between mb-4">
+        <div class="flex items-center gap-3">
+            <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-500 flex-shrink-0" x-show="isSectionCompleted('A')" x-cloak aria-hidden="true"></i>
+            <i data-lucide="circle-dot" class="w-4 h-4 text-primary flex-shrink-0" x-show="isSectionActive('A')" x-cloak aria-hidden="true"></i>
+            <i data-lucide="circle" class="w-4 h-4 text-muted-foreground flex-shrink-0" x-show="isSectionFuture('A')" x-cloak aria-hidden="true"></i>
+            <h3 class="text-lg font-semibold text-foreground">Associated APQC Processes</h3>
+        </div>
+        <div class="flex items-center gap-2">
+            <button type="button" @click="openManageModal('apqc_process')"
+                class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+                <i data-lucide="settings-2" class="w-3 h-3" aria-hidden="true"></i> Manage
+            </button>
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-violet-500/10 text-violet-600 border border-violet-500/30">Phase A</span>
+        </div>
+    </div>
+    <template x-if="linkedAPQCProcesses.length > 0">
+        <div class="space-y-2">
+            <template x-for="proc in linkedAPQCProcesses" :key="proc.id">
+                <div class="flex items-center justify-between p-3 bg-muted/50 rounded-lg border border-border group">
+                    <div>
+                        <p class="font-medium text-foreground" x-text="proc.process_name"></p>
+                        <p class="text-sm text-muted-foreground" x-text="proc.process_code || 'No code'"></p>
+                    </div>
+                    <button type="button" @click="unlinkEntity('apqc_process', proc.id)"
+                        class="text-muted-foreground hover:text-destructive p-1 rounded-md opacity-0 group-hover:opacity-100 transition-opacity" title="Remove">
+                        <i data-lucide="x" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                    </button>
+                </div>
+            </template>
+        </div>
+    </template>
+    <template x-if="linkedAPQCProcesses.length === 0">
+        <p class="text-sm text-muted-foreground italic">No APQC processes associated yet. Click Manage to add.</p>
+    </template>
+</div>
+
+{# ── Associated Capabilities (TOGAF Phase B) ── #}
+<div class="bg-card rounded-xl border border-border shadow-sm p-6 transition-all"
+     :class="isSectionActive('B') ? 'ring-1 ring-primary/10' : ''">
+    <div class="flex items-center justify-between mb-4">
+        <div class="flex items-center gap-3">
+            <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-500 flex-shrink-0" x-show="isSectionCompleted('B')" x-cloak aria-hidden="true"></i>
+            <i data-lucide="circle-dot" class="w-4 h-4 text-primary flex-shrink-0" x-show="isSectionActive('B')" x-cloak aria-hidden="true"></i>
+            <i data-lucide="circle" class="w-4 h-4 text-muted-foreground flex-shrink-0" x-show="isSectionFuture('B')" x-cloak aria-hidden="true"></i>
+            <h3 class="text-lg font-semibold text-foreground">Business Capabilities</h3>
+        </div>
+        <div class="flex items-center gap-2">
+            <button type="button" @click="openManageModal('capability')"
+                class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+                <i data-lucide="settings-2" class="w-3 h-3" aria-hidden="true"></i> Manage
+            </button>
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30">Phase B</span>
+        </div>
+    </div>
+    <template x-if="linkedCapabilities && linkedCapabilities.length > 0">
+        <div class="space-y-2">
+            <template x-for="cap in linkedCapabilities" :key="cap.capability_id || cap.id">
+                <div class="flex items-center justify-between p-3 bg-muted/50 rounded-lg border border-border group">
+                    <div>
+                        <p class="font-medium text-foreground" x-text="cap.capability_name || cap.name"></p>
+                        <p class="text-sm text-muted-foreground" x-text="cap.domain || cap.support_level || ''"></p>
+                    </div>
+                    <button type="button" @click="unlinkEntity('capability', cap.mapping_id || cap.id)"
+                        class="text-muted-foreground hover:text-destructive p-1 rounded-md opacity-0 group-hover:opacity-100 transition-opacity" title="Remove">
+                        <i data-lucide="x" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                    </button>
+                </div>
+            </template>
+        </div>
+    </template>
+    <template x-if="!linkedCapabilities || linkedCapabilities.length === 0">
+        <p class="text-sm text-muted-foreground italic">No business capabilities linked yet. Click Manage to add.</p>
+    </template>
+    {# ── Generate Architecture from Capabilities button (CAP-009) ── #}
+    <template x-if="linkedCapabilities && linkedCapabilities.length > 0">
+        <div class="mt-3 pt-3 border-t border-border">
+            <button type="button" @click="generateArchitectureFromCapabilities()"
+                :disabled="stagingGenerating"
+                class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium text-violet-600 bg-violet-500/10 hover:bg-violet-500/20 border border-violet-500/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                data-testid="btn-generate-architecture-from-capabilities"
+                aria-label="Generate ArchiMate architecture from linked capabilities">
+                <template x-if="stagingGenerating">
+                    <svg class="animate-spin w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" aria-hidden="true"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path></svg>
+                </template>
+                <i x-show="!stagingGenerating" x-cloak data-lucide="wand-2" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                <span x-text="stagingGenerating ? 'Generating...' : 'Generate Architecture from Capabilities'"></span>
+            </button>
+        </div>
+    </template>
+</div>
+
+{# ── ArchiMate Staging Panel (CAP-009) ── #}
+<div x-show="stagedElements && stagedElements.length > 0" x-cloak
+     class="bg-card rounded-xl border border-violet-500/30 shadow-sm p-6 transition-all ring-1 ring-violet-500/10"
+     data-testid="archimate-staging-panel">
+    <div class="flex items-center justify-between mb-4">
+        <div class="flex items-center gap-3">
+            <i data-lucide="layers" class="w-4 h-4 text-violet-500 flex-shrink-0" aria-hidden="true"></i>
+            <div>
+                <h3 class="text-lg font-semibold text-foreground">Generated Elements — Review &amp; Accept</h3>
+                <p class="text-sm text-muted-foreground" x-text="stagedElements.length + ' element' + (stagedElements.length !== 1 ? 's' : '') + ' awaiting review'"></p>
+            </div>
+        </div>
+        <div class="flex items-center gap-2">
+            <button type="button" @click="rejectAllStaged()"
+                class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium text-muted-foreground hover:text-destructive hover:bg-destructive/10 border border-input transition-colors"
+                data-testid="btn-reject-all-staged" aria-label="Reject all staged elements">
+                <i data-lucide="x" class="w-3 h-3" aria-hidden="true"></i> Reject All
+            </button>
+            <button type="button" @click="acceptAllStaged()"
+                class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                data-testid="btn-accept-all-staged" aria-label="Accept all staged elements">
+                <i data-lucide="check" class="w-3 h-3" aria-hidden="true"></i> Accept All
+            </button>
+        </div>
+    </div>
+    <div class="space-y-2">
+        <template x-for="(el, index) in stagedElements" :key="el.id + '-' + index">
+            <div class="flex items-center justify-between p-3 bg-muted/50 rounded-lg border border-border group"
+                 :data-testid="'staged-element-' + index">
+                <div class="flex items-center gap-3 min-w-0 flex-1">
+                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border"
+                          :class="{
+                              'bg-amber-500/10 text-amber-600 border-amber-500/30': el.layer === 'business',
+                              'bg-sky-500/10 text-sky-600 border-sky-500/30': el.layer === 'application',
+                              'bg-emerald-500/10 text-emerald-600 border-emerald-500/30': el.layer === 'technology',
+                              'bg-violet-500/10 text-violet-600 border-violet-500/30': el.layer === 'strategy' || el.layer === 'motivation',
+                              'bg-muted text-muted-foreground border-border': !['business','application','technology','strategy','motivation'].includes(el.layer)
+                          }"
+                          x-text="el.layer"></span>
+                    <div class="min-w-0 flex-1">
+                        <input type="text" x-model="el.name"
+                               class="w-full bg-transparent text-sm font-medium text-foreground border-0 border-b border-transparent hover:border-input focus:border-primary focus:outline-none px-0 py-0.5 transition-colors"
+                               :aria-label="'Element name for ' + el.name">
+                        <p class="text-xs text-muted-foreground" x-text="el.type + (el.relationship_type ? ' · ' + el.relationship_type : '')"></p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-1.5 flex-shrink-0 ml-2">
+                    <button type="button" @click="acceptStagedElement(index)"
+                        class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium text-emerald-600 hover:bg-emerald-500/10 transition-colors"
+                        :data-testid="'btn-accept-staged-' + index" :aria-label="'Accept ' + el.name">
+                        <i data-lucide="check" class="w-3 h-3" aria-hidden="true"></i> Accept
+                    </button>
+                    <button type="button" @click="rejectStagedElement(index)"
+                        class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                        :data-testid="'btn-reject-staged-' + index" :aria-label="'Reject ' + el.name">
+                        <i data-lucide="x" class="w-3 h-3" aria-hidden="true"></i> Reject
+                    </button>
+                </div>
+            </div>
+        </template>
+    </div>
+</div>
+
+{# ── Requirements (CBP-002: AI-generated, EARS-format, ADM-traced) ── #}
+<div class="requirements-section bg-card rounded-xl border border-border shadow-sm p-6 transition-all">
+    <div class="flex items-center justify-between mb-4">
+        <div class="flex items-center gap-3">
+            <h3 class="text-lg font-semibold text-foreground">Requirements</h3>
+        </div>
+        <div class="flex items-center gap-2">
+            <span class="linked-count inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground border border-border"
+                  x-text="(linkedRequirements || []).length + ' linked'" data-testid="requirements-linked-count"></span>
+            <button type="button" @click="openManageModal('requirement')"
+                data-manage="requirement"
+                class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                data-testid="btn-manage-requirements" aria-label="Manage linked requirements">
+                <i data-lucide="settings-2" class="w-3 h-3" aria-hidden="true"></i> Manage
+            </button>
+        </div>
+    </div>
+    <template x-if="linkedRequirements && linkedRequirements.length > 0">
+        <div class="flex flex-wrap gap-2">
+            <template x-for="req in linkedRequirements" :key="req.id">
+                <span class="requirement-badge inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30 group"
+                      :data-testid="'req-badge-' + req.id">
+                    <span x-text="req.name || ('Requirement #' + req.id)"></span>
+                    <span x-show="req.moscow_priority" x-cloak
+                          class="px-1 py-0 rounded text-[10px] font-bold"
+                          :class="{'bg-red-200 text-red-800': req.moscow_priority === 'MUST', 'bg-yellow-200 text-yellow-800': req.moscow_priority === 'SHOULD', 'bg-muted text-foreground': req.moscow_priority === 'WONT'}"
+                          x-text="req.moscow_priority"></span>
+                    <button type="button" @click="unlinkEntity('requirement', req.id)"
+                        class="text-primary/60 hover:text-destructive ml-0.5 opacity-0 group-hover:opacity-100 transition-opacity" title="Remove" aria-label="Remove requirement link">
+                        <i data-lucide="x" class="w-3 h-3" aria-hidden="true"></i>
+                    </button>
+                </span>
+            </template>
+        </div>
+    </template>
+    <template x-if="!linkedRequirements || linkedRequirements.length === 0">
+        <p class="text-sm text-muted-foreground italic">No requirements linked yet. Click Manage to add, or use Generate Requirements on the Capabilities page.</p>
+    </template>
+</div>
+
+{# ── Multi-Select Picker Modal (shared across all 4 sections) ── #}
+<div x-show="manageModalType" x-cloak
+     class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+     role="dialog" aria-modal="true"
+     x-trap="!!manageModalType"
+     @keydown.escape.window="closeManageModal()">
+    <div class="bg-card rounded-xl border border-border shadow-lg w-full max-w-lg mx-4 flex flex-col" style="max-height: 80vh;"
+         @click.outside="closeManageModal()">
+        {# Header #}
+        <div class="p-6 pb-4 border-b border-border flex-shrink-0">
+            <h3 class="text-lg font-semibold text-foreground" x-text="manageModalTitle"></h3>
+            <p class="text-sm text-muted-foreground mt-1">Select items to associate with this solution.</p>
+            <input type="text" x-model="manageFilter"
+                   placeholder="Filter..."
+                   class="mt-3 w-full px-3 py-2 rounded-md border border-input bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring">
+            <template x-if="manageModalType === 'archimate_element'">
+                <select x-model="manageLayerFilter"
+                        class="mt-2 w-full px-3 py-2 rounded-md border border-input bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring">
+                    <option value="">All Layers</option>
+                    <option value="motivation">Motivation</option>
+                    <option value="strategy">Strategy</option>
+                    <option value="business">Business</option>
+                    <option value="application">Application</option>
+                    <option value="technology">Technology</option>
+                    <option value="implementation">Implementation</option>
+                </select>
+            </template>
+            {# Domain filter for capability tree (CAP-016) #}
+            <template x-if="manageModalType === 'capability' && capTreeFormat">
+                <input type="text" x-model="capDomainFilter"
+                       placeholder="Filter by domain..."
+                       data-testid="cap-domain-filter"
+                       class="mt-2 w-full px-3 py-2 rounded-md border border-input bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring">
+            </template>
+        </div>
+        {# Body — scrollable checkbox list #}
+        <div class="flex-1 overflow-y-auto p-2 min-h-0">
+            <div x-show="manageLoading" x-cloak class="py-8 text-center text-sm text-muted-foreground">Loading...</div>
+            <div x-show="!manageLoading && manageFilteredItems.length === 0" x-cloak class="py-8 text-center text-sm text-muted-foreground italic">No items found.</div>
+
+            {# ── Hierarchical tree view for capabilities (CAP-016) ── #}
+            <template x-if="manageModalType === 'capability' && capTreeFormat">
+                <div data-testid="cap-tree-view">
+                    <template x-for="item in manageAllItems" :key="item.id">
+                        <div x-show="!capDomainFilter || (item.domain || '').toLowerCase().indexOf(capDomainFilter.toLowerCase()) >= 0" x-cloak>
+                            {# L1 node #}
+                            <div class="flex items-center gap-2 py-1.5 px-2 rounded hover:bg-muted cursor-pointer"
+                                 @click="toggleCapExpand(item.id)"
+                                 data-testid="cap-l1-node">
+                                <i :data-lucide="isCapExpanded(item.id) ? 'chevron-down' : 'chevron-right'" class="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" aria-hidden="true"></i>
+                                <input type="checkbox" :checked="isManageSelected(item.id)" @click.stop="toggleManageItem(item.id)"
+                                       class="h-4 w-4 rounded border-border text-primary focus:ring-primary/20 flex-shrink-0">
+                                <span class="text-sm font-medium text-foreground" x-text="item.name"></span>
+                                <span class="text-xs text-muted-foreground ml-auto" x-text="'(' + (item.children_count || 0) + ')'"></span>
+                            </div>
+                            {# L2 children #}
+                            <template x-if="isCapExpanded(item.id) && item.children && item.children.length > 0">
+                                <div class="ml-6">
+                                    <template x-for="child in item.children" :key="child.id">
+                                        <div>
+                                            <div class="flex items-center gap-2 py-1 px-2 rounded hover:bg-muted cursor-pointer"
+                                                 @click="child.children && child.children.length > 0 ? toggleCapExpand(child.id) : null"
+                                                 data-testid="cap-l2-node">
+                                                <template x-if="child.children && child.children.length > 0">
+                                                    <i :data-lucide="isCapExpanded(child.id) ? 'chevron-down' : 'chevron-right'" class="w-3 h-3 text-muted-foreground flex-shrink-0" aria-hidden="true"></i>
+                                                </template>
+                                                <template x-if="!child.children || child.children.length === 0">
+                                                    <span class="w-3 flex-shrink-0"></span>
+                                                </template>
+                                                <input type="checkbox" :checked="isManageSelected(child.id)" @click.stop="toggleManageItem(child.id)"
+                                                       class="h-4 w-4 rounded border-border text-primary focus:ring-primary/20 flex-shrink-0">
+                                                <span class="text-sm text-foreground" x-text="child.name"></span>
+                                            </div>
+                                            {# L3 grandchildren #}
+                                            <template x-if="isCapExpanded(child.id) && child.children && child.children.length > 0">
+                                                <div class="ml-6">
+                                                    <template x-for="gc in child.children" :key="gc.id">
+                                                        <div class="flex items-center gap-2 py-1 px-2 rounded hover:bg-muted"
+                                                             data-testid="cap-l3-node">
+                                                            <span class="w-3 flex-shrink-0"></span>
+                                                            <input type="checkbox" :checked="isManageSelected(gc.id)" @click.stop="toggleManageItem(gc.id)"
+                                                                   class="h-4 w-4 rounded border-border text-primary focus:ring-primary/20 flex-shrink-0">
+                                                            <span class="text-sm text-muted-foreground" x-text="gc.name"></span>
+                                                        </div>
+                                                    </template>
+                                                </div>
+                                            </template>
+                                        </div>
+                                    </template>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+                </div>
+            </template>
+
+            {# ── Flat list view (all other types, and capability fallback) ── #}
+            <template x-if="manageModalType !== 'capability' || !capTreeFormat">
+                <div>
+                    <template x-for="item in manageFilteredItems" :key="item.id">
+                        <label class="flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-colors"
+                               :class="isManageSelected(item.id) ? 'bg-primary/5' : 'hover:bg-muted/50'">
+                            <input type="checkbox"
+                                   :checked="isManageSelected(item.id)"
+                                   @change="toggleManageItem(item.id)"
+                                   class="rounded border-border text-primary focus:ring-primary/20 flex-shrink-0">
+                            <div class="min-w-0 flex-1">
+                                <div class="flex items-center gap-2">
+                                    <p class="text-sm font-medium text-foreground truncate" x-text="item.name"></p>
+                                    <template x-if="manageModalType === 'application' && item.name && (item.name.startsWith('(Duplicate)') || item.is_duplicate)">
+                                        <span class="flex-shrink-0 inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium bg-amber-100 text-amber-700 border border-amber-300 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-700">
+                                            Duplicate
+                                        </span>
+                                    </template>
+                                </div>
+                                <p class="text-xs text-muted-foreground truncate" x-text="item.sub" x-show="item.sub" x-cloak></p>
+                            </div>
+                        </label>
+                    </template>
+                </div>
+            </template>
+        </div>
+        {# Footer #}
+        <div class="p-4 border-t border-border flex items-center justify-between flex-shrink-0">
+            <span class="text-xs text-muted-foreground" x-text="manageSelectedIds.size + ' selected'"></span>
+            <div class="flex items-center gap-2">
+                <button type="button" @click="closeManageModal()"
+                    class="px-3 py-1.5 rounded-md text-sm font-medium border border-input hover:bg-accent transition-colors">
+                    Cancel
+                </button>
+                <button type="button" @click="saveManageModal()" :disabled="manageSaving"
+                    class="px-3 py-1.5 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors">
+                    <span x-text="manageSaving ? 'Saving...' : 'Save'"></span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>

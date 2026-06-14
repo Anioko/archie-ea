@@ -1,0 +1,338 @@
+{# WARNING: THIS FILE IS NOT REGISTERED #}
+{# Partial: Phase C/D — Application & Technology Architecture content (sec-4)
+   Included via {% call section_shell(...) %} — content only, no shell.
+   Prototype: Information Systems tab → hero diagram + layer filter pills + filtered element list.
+   All Alpine.js + Jinja variables in scope from parent solutionDetail() x-data. #}
+
+<div class="space-y-6" x-data="{ activeInfoLayer: 'all' }">
+
+    {# BIZBOK: Solution Architecture Viewpoint (cross-layer: Business↔Application↔Technology) #}
+    <div class="rounded-xl border border-border bg-card overflow-hidden">
+        <div class="bg-muted/20 px-5 py-2 border-b border-border flex items-center justify-between">
+            <span class="text-xs font-medium text-muted-foreground">Solution Architecture Viewpoint</span>
+            <span class="text-[10px] text-muted-foreground">Cross-layer overview</span>
+        </div>
+        <div id="viewpoint-diagram-infosys" class="w-full" style="min-height:350px;"></div>
+    </div>
+
+    {# Hero Architecture Diagram — ComposerRenderer (legacy sectionCanvasData, 350px) #}
+    <div x-show="sectionCanvasData['C'] && sectionCanvasData['C'].length > 0" x-cloak>
+        <div class="rounded-xl border border-border bg-card overflow-hidden">
+            <div class="bg-muted/20 px-5 py-2 border-b border-border flex items-center justify-between">
+                <span class="text-xs font-medium text-muted-foreground">Application Cooperation Viewpoint</span>
+                <span class="text-[10px] text-muted-foreground" x-text="(sectionCanvasData['C'] || []).length + ' elements'"></span>
+            </div>
+            <div x-init="$nextTick(() => {
+                if (typeof ComposerRenderer !== 'undefined' && sectionCanvasData['C'] && sectionCanvasData['C'].length > 0) {
+                    const r = ComposerRenderer.create($el, {mode: 'view', width: '100%', height: 350});
+                    r.loadElements(sectionCanvasData['C'], []);
+                    r.fitToContent();
+                }
+            })" class="w-full" style="height: 350px;"></div>
+        </div>
+    </div>
+
+    {# ArchiMate Elements — layer filter tabs + filtered list (prototype pattern) #}
+    <div>
+        <div class="flex items-center gap-3 mb-4">
+            <div class="w-1 h-5 rounded-full bg-blue-500"></div>
+            <p class="text-sm font-semibold text-foreground">ArchiMate Elements</p>
+            <span class="text-xs text-muted-foreground" x-text="'(' + (archimateElements || []).length + ' elements)'"></span>
+            <button @click="openEntityModal('archimate_element')" class="ml-auto text-[11px] text-primary/70 hover:text-primary font-medium">+ Link</button>
+        </div>
+
+        {# Layer filter pills (prototype pattern from /architecture/elements) #}
+        <div class="flex flex-wrap gap-2 mb-4" x-show="(archimateElements || []).length > 0">
+            <button @click="activeInfoLayer = 'all'"
+                    class="px-3 py-1.5 rounded-full text-xs font-medium transition-colors"
+                    :class="activeInfoLayer === 'all' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:text-foreground'"
+                    x-text="'All (' + (archimateElements || []).length + ')'"></button>
+            <button @click="activeInfoLayer = 'business'"
+                    class="px-3 py-1.5 rounded-full text-xs font-medium transition-colors"
+                    :class="activeInfoLayer === 'business' ? 'bg-emerald-500 text-white' : 'bg-muted text-muted-foreground hover:text-foreground'"
+                    x-text="'Business (' + (archimateElements || []).filter(e => e.layer === 'business').length + ')'"
+                    x-show="(archimateElements || []).some(e => e.layer === 'business')"></button>
+            <button @click="activeInfoLayer = 'application'"
+                    class="px-3 py-1.5 rounded-full text-xs font-medium transition-colors"
+                    :class="activeInfoLayer === 'application' ? 'bg-blue-500 text-white' : 'bg-muted text-muted-foreground hover:text-foreground'"
+                    x-text="'Application (' + (archimateElements || []).filter(e => e.layer === 'application').length + ')'"
+                    x-show="(archimateElements || []).some(e => e.layer === 'application')"></button>
+            <button @click="activeInfoLayer = 'technology'"
+                    class="px-3 py-1.5 rounded-full text-xs font-medium transition-colors"
+                    :class="activeInfoLayer === 'technology' ? 'bg-sky-500 text-white' : 'bg-muted text-muted-foreground hover:text-foreground'"
+                    x-text="'Technology (' + (archimateElements || []).filter(e => e.layer === 'technology').length + ')'"
+                    x-show="(archimateElements || []).some(e => e.layer === 'technology')"></button>
+            <button @click="activeInfoLayer = 'motivation'"
+                    class="px-3 py-1.5 rounded-full text-xs font-medium transition-colors"
+                    :class="activeInfoLayer === 'motivation' ? 'bg-purple-500 text-white' : 'bg-muted text-muted-foreground hover:text-foreground'"
+                    x-text="'Motivation (' + (archimateElements || []).filter(e => e.layer === 'motivation').length + ')'"
+                    x-show="(archimateElements || []).some(e => e.layer === 'motivation')"></button>
+        </div>
+
+        {# Filtered elements list (prototype pattern) #}
+        <div class="rounded-xl border border-border bg-card divide-y divide-border overflow-hidden"
+             x-show="(archimateElements || []).length > 0">
+            <template x-for="el in (archimateElements || []).filter(e => activeInfoLayer === 'all' || e.layer === activeInfoLayer)" :key="el.id || el.name">
+                <div class="flex items-center gap-3 px-5 py-3 hover:bg-muted/20">
+                    <span class="w-3 h-3 rounded shrink-0"
+                          :class="el.layer === 'business' ? 'bg-emerald-500/30 border border-emerald-500/50' :
+                                  el.layer === 'application' ? 'bg-blue-500/30 border border-blue-500/50' :
+                                  el.layer === 'technology' ? 'bg-sky-500/30 border border-sky-500/50' :
+                                  el.layer === 'motivation' ? 'bg-purple-500/30 border border-purple-500/50' :
+                                  'bg-muted border border-border'"></span>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm font-medium" x-text="el.name || el.element_name"></p>
+                        <p class="text-[10px] text-muted-foreground" x-text="(el.type || el.element_type || '').replace(/_/g, ' ')"></p>
+                    </div>
+                    <span class="text-[10px] text-muted-foreground px-1.5 py-0.5 rounded shrink-0"
+                          :class="el.layer === 'business' ? 'bg-emerald-500/10 text-emerald-400' :
+                                  el.layer === 'application' ? 'bg-blue-500/10 text-blue-400' :
+                                  el.layer === 'technology' ? 'bg-sky-500/10 text-sky-400' :
+                                  el.layer === 'motivation' ? 'bg-purple-500/10 text-purple-400' :
+                                  'bg-muted text-muted-foreground'"
+                          x-text="(el.layer || 'unknown').charAt(0).toUpperCase() + (el.layer || 'unknown').slice(1)"></span>
+                </div>
+            </template>
+        </div>
+
+        <p x-show="(archimateElements || []).length === 0" class="text-sm text-muted-foreground py-4">
+            No ArchiMate elements linked. Services, interfaces, and technology nodes compose the solution architecture.
+        </p>
+    </div>
+
+    {# Linked Applications — compact data table (prototype pattern from /applications/) #}
+    <div x-show="linkedApplications.length > 0">
+        <div class="flex items-center gap-3 mb-4">
+            <div class="w-1 h-5 rounded-full bg-violet-500"></div>
+            <p class="text-sm font-semibold text-foreground">Applications</p>
+            <span class="text-xs text-muted-foreground" x-text="'(' + linkedApplications.length + ')'"></span>
+            <button class="ml-auto text-[11px] text-primary/70 hover:text-primary font-medium"
+                    @click="appPickerOpen = true">+ Link</button>
+        </div>
+        <div class="rounded-xl border border-border bg-card overflow-hidden">
+            <table class="w-full text-sm">
+                <thead><tr class="border-b border-border bg-muted/30">
+                    <th class="text-left px-5 py-2 text-xs font-medium text-muted-foreground">Application</th>
+                    <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground w-[100px]">Lifecycle</th>
+                    <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground w-[80px]">Vendor</th>
+                </tr></thead>
+                <tbody class="divide-y divide-border">
+                    <template x-for="app in linkedApplications" :key="app.id || app.app_id">
+                        <tr class="hover:bg-muted/20">
+                            <td class="px-5 py-2.5 font-medium" x-text="app.name || app.app_name"></td>
+                            <td class="px-3 py-2.5">
+                                <span class="inline-flex items-center gap-1" x-show="app.lifecycle_status">
+                                    <span class="w-1.5 h-1.5 rounded-full"
+                                          :class="(app.lifecycle_status || '').includes('STRATEGIC') ? 'bg-emerald-400' :
+                                                  (app.lifecycle_status || '').includes('DECOM') || (app.lifecycle_status || '').includes('SUNSET') ? 'bg-red-400' :
+                                                  'bg-amber-400'"></span>
+                                    <span class="text-xs" x-text="(app.lifecycle_status || '').replace(/^\d+\.?\d*\s*/, '')"></span>
+                                </span>
+                            </td>
+                            <td class="px-3 py-2.5 text-xs text-muted-foreground" x-text="app.vendor_name || app.vendor || '\u2014'"></td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    {# Linked Vendor Products — compact list #}
+    <div x-show="linkedVendorProducts.length > 0">
+        <div class="flex items-center gap-3 mb-4">
+            <div class="w-1 h-5 rounded-full bg-blue-500"></div>
+            <p class="text-sm font-semibold text-foreground">Vendor Products</p>
+            <span class="text-xs text-muted-foreground" x-text="'(' + linkedVendorProducts.length + ')'"></span>
+        </div>
+        <div class="rounded-xl border border-border bg-card divide-y divide-border overflow-hidden">
+            <template x-for="vp in linkedVendorProducts" :key="vp.id || vp.product_id">
+                <div class="flex items-center gap-3 px-5 py-3 hover:bg-muted/20">
+                    <span class="w-3 h-3 rounded bg-blue-500/30 border border-blue-500/50 shrink-0"></span>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm font-medium" x-text="vp.name || vp.product_name"></p>
+                        <p class="text-[10px] text-muted-foreground" x-show="vp.vendor_name" x-text="vp.vendor_name"></p>
+                    </div>
+                </div>
+            </template>
+        </div>
+    </div>
+
+    {# Linked Capabilities — compact list #}
+    <div x-show="linkedCapabilities.length > 0">
+        <div class="flex items-center gap-3 mb-4">
+            <div class="w-1 h-5 rounded-full bg-emerald-500"></div>
+            <p class="text-sm font-semibold text-foreground">Business Capabilities</p>
+            <span class="text-xs text-muted-foreground" x-text="'(' + linkedCapabilities.length + ')'"></span>
+        </div>
+        <div class="rounded-xl border border-border bg-card divide-y divide-border overflow-hidden">
+            <template x-for="cap in linkedCapabilities" :key="cap.id || cap.mapping_id">
+                <div class="flex items-center gap-3 px-5 py-3 hover:bg-muted/20">
+                    <span class="w-3 h-3 rounded bg-emerald-500/30 border border-emerald-500/50 shrink-0"></span>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm font-medium" x-text="cap.name || cap.capability_name"></p>
+                        <p class="text-[10px] text-muted-foreground" x-show="cap.business_domain || cap.domain" x-text="cap.business_domain || cap.domain"></p>
+                    </div>
+                </div>
+            </template>
+        </div>
+    </div>
+
+    {# Architecture Viewpoints Gallery — preserved from original #}
+    <div class="pt-4 border-t border-border/50" x-data="viewpointGallery()" x-show="viewpoints.length > 0" x-cloak>
+        <div class="flex items-center gap-3 mb-4">
+            <div class="w-1 h-5 rounded-full bg-blue-500"></div>
+            <p class="text-sm font-semibold text-foreground">Architecture Viewpoints</p>
+            <span class="text-xs text-muted-foreground" x-text="'(' + viewpoints.length + ')'"></span>
+            <button @click="showPicker = true" class="ml-auto text-[11px] text-primary/70 hover:text-primary font-medium">+ New Viewpoint</button>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+            <template x-for="vp in viewpoints" :key="vp.id">
+                <div class="group rounded-xl border border-border bg-card p-4 hover:border-blue-500/40 hover:bg-blue-500/5 transition-all">
+                    <div class="flex items-start justify-between mb-2">
+                        <div class="min-w-0 flex-1">
+                            <h4 class="text-sm font-medium text-foreground truncate" x-text="vp.name"></h4>
+                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-primary/10 text-primary mt-1"
+                                  x-text="formatViewpointType(vp.viewpoint_type)"></span>
+                        </div>
+                    </div>
+                    <p class="text-xs text-muted-foreground line-clamp-2 mb-3" x-text="vp.description || 'No description'"></p>
+                    <div class="flex items-center justify-between">
+                        <span class="text-[10px] text-muted-foreground" x-text="(vp.element_count || 0) + ' elements'"></span>
+                        <a :href="'/archimate/composer?solution_id={{ solution.id }}&viewpoint=' + encodeURIComponent(vp.viewpoint_type) + '&diagram_id=' + vp.id"
+                           class="text-xs font-medium text-primary hover:text-primary/80">Open &rarr;</a>
+                    </div>
+                </div>
+            </template>
+        </div>
+
+        {# New Viewpoint Picker Modal — preserved #}
+        <div x-show="showPicker" x-cloak
+             class="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+             @keydown.escape.window="showPicker = false"
+             role="dialog" aria-modal="true" aria-labelledby="vp-picker-title">
+            <div @click.stop
+                 x-show="showPicker" x-cloak <!-- modal-a11y-ok -->
+                 x-trap.noscroll="showPicker"
+                 x-transition:enter="transition ease-out duration-200"
+                 x-transition:enter-start="opacity-0 scale-95"
+                 x-transition:enter-end="opacity-100 scale-100"
+                 x-transition:leave="transition ease-in duration-150"
+                 x-transition:leave-start="opacity-100 scale-100"
+                 x-transition:leave-end="opacity-0 scale-95"
+                 class="relative bg-card rounded-xl shadow-2xl w-full max-w-lg border border-border max-h-[85vh] overflow-hidden flex flex-col">
+                <div class="p-5 pb-3 border-b border-border shrink-0">
+                    <div class="flex items-center justify-between">
+                        <h3 id="vp-picker-title" class="text-base font-semibold text-foreground">New Architecture Viewpoint</h3>
+                        <button @click="showPicker = false" class="text-muted-foreground hover:text-foreground" aria-label="Close">
+                            <i data-lucide="x" class="w-4 h-4" aria-hidden="true"></i>
+                        </button>
+                    </div>
+                    <p class="text-xs text-muted-foreground mt-1">Choose a viewpoint type. This constrains which ArchiMate elements and relationships are valid.</p>
+                </div>
+                <div class="flex-1 overflow-y-auto p-5 space-y-4">
+                    <template x-for="group in viewpointGroups" :key="group.phase">
+                        <div>
+                            <h4 class="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2" x-text="group.phase"></h4>
+                            <div class="space-y-1">
+                                <template x-for="vt in group.viewpoints" :key="vt.code">
+                                    <button @click="selectedVpType = vt.code; selectedVpName = vt.name"
+                                            class="w-full text-left px-3 py-2 rounded-md text-sm transition-colors"
+                                            :class="selectedVpType === vt.code ? 'bg-primary/10 text-primary border border-primary/30' : 'hover:bg-accent text-foreground border border-transparent'">
+                                        <span class="font-medium" x-text="vt.name"></span>
+                                        <span class="block text-[10px] mt-0.5 opacity-70" x-text="vt.purpose"></span>
+                                    </button>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+                <div class="p-4 border-t border-border shrink-0 flex items-center justify-between">
+                    <span class="text-xs text-muted-foreground" x-show="selectedVpType" x-cloak x-text="'Selected: ' + selectedVpName"></span>
+                    <span x-show="!selectedVpType" x-cloak class="text-xs text-muted-foreground">Select a viewpoint type above</span>
+                    <div class="flex gap-2">
+                        <button @click="showPicker = false"
+                                class="px-3 py-1.5 rounded-md text-xs font-medium border border-input text-muted-foreground hover:bg-accent">Cancel</button>
+                        <a :href="selectedVpType ? '/archimate/composer?solution_id={{ solution.id }}&viewpoint=' + encodeURIComponent(selectedVpType) : '#'"
+                           :class="selectedVpType ? 'bg-primary text-primary-foreground hover:bg-primary/90' : 'bg-muted text-muted-foreground cursor-not-allowed pointer-events-none'"
+                           class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors">
+                            <i data-lucide="external-link" class="w-3 h-3" aria-hidden="true"></i>
+                            Open Composer
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# Empty state when nothing linked #}
+    <template x-if="(archimateElements || []).length === 0 && linkedApplications.length === 0 && linkedVendorProducts.length === 0 && linkedCapabilities.length === 0">
+        <p class="text-sm text-muted-foreground/60 italic">Architecture not yet defined. Link ArchiMate elements, applications, and vendor products to define the information systems architecture.
+            <a href="{{ url_for('solution_design.edit_solution', solution_id=solution.id) }}#sec-4" class="text-primary hover:underline">Define on Edit page &rarr;</a>
+        </p>
+    </template>
+
+</div>
+
+{# SA-004 viewpointGallery — restored 2026-06-11. Originally defined inline in
+   detail.html (48be7f019); the ACM-001 partial extraction moved the markup here
+   but dropped the script, leaving the viewpoint gallery dead (Alpine error). #}
+<script>
+  function viewpointGallery() {
+    return {
+      viewpoints: {{ (saved_viewpoints or [])|tojson }},
+      showPicker: false,
+      selectedVpType: null,
+      selectedVpName: '',
+      viewpointGroups: [
+        { phase: 'Phase B — Business Architecture', viewpoints: [
+          { code: 'organization', name: 'Organization', purpose: 'Structure of the enterprise in terms of business roles and actors' },
+          { code: 'business_process_cooperation', name: 'Business Process Cooperation', purpose: 'Relationships between business processes' },
+          { code: 'product', name: 'Product', purpose: 'Value that products offer to customers' },
+        ]},
+        { phase: 'Phase C — Application Architecture', viewpoints: [
+          { code: 'application_cooperation', name: 'Application Cooperation', purpose: 'How application components cooperate via services and data flows' },
+          { code: 'application_usage', name: 'Application Usage', purpose: 'How applications are used by business processes' },
+          { code: 'application_structure', name: 'Application Structure', purpose: 'Internal structure of application components' },
+          { code: 'information_structure', name: 'Information Structure', purpose: 'Data objects and their relationships' },
+        ]},
+        { phase: 'Phase D — Technology Architecture', viewpoints: [
+          { code: 'technology', name: 'Technology', purpose: 'Infrastructure and platform services' },
+          { code: 'technology_usage', name: 'Technology Usage', purpose: 'How applications are supported by technology' },
+          { code: 'physical', name: 'Physical', purpose: 'Physical environment and equipment' },
+        ]},
+        { phase: 'Phase E–H — Opportunities & Migration', viewpoints: [
+          { code: 'migration', name: 'Migration', purpose: 'Transition from baseline to target architecture' },
+          { code: 'implementation_and_migration', name: 'Implementation & Migration', purpose: 'Work packages and deliverables for migration' },
+          { code: 'project', name: 'Project', purpose: 'Management of implementation projects' },
+        ]},
+        { phase: 'Cross-Cutting', viewpoints: [
+          { code: 'layered', name: 'Layered', purpose: 'Full multi-layer architecture overview' },
+          { code: 'motivation', name: 'Motivation', purpose: 'Stakeholders, drivers, goals, and requirements' },
+          { code: 'strategy', name: 'Strategy', purpose: 'Strategic direction — capabilities, resources, courses of action' },
+          { code: 'stakeholder', name: 'Stakeholder', purpose: 'Stakeholder concerns and their relationships' },
+          { code: 'goal_realization', name: 'Goal Realization', purpose: 'How goals are refined into requirements and realized' },
+          { code: 'capability_map', name: 'Capability Map', purpose: 'Business capabilities and their relationships' },
+          { code: 'service_realization', name: 'Service Realization', purpose: 'How services are realized by internal behavior' },
+          { code: 'value_stream', name: 'Value Stream', purpose: 'End-to-end value creation through stages' },
+        ]},
+      ],
+      formatViewpointType(type) {
+        if (!type) return 'Custom';
+        return type.replace(/_/g, ' ').replace(/\b\w/g, function(l) { return l.toUpperCase(); });
+      },
+      timeAgo(dateStr) {
+        if (!dateStr) return '';
+        const d = new Date(dateStr);
+        const now = new Date();
+        const diffMs = now - d;
+        const diffMins = Math.floor(diffMs / 60000);
+        if (diffMins < 60) return diffMins + 'm ago';
+        const diffHrs = Math.floor(diffMins / 60);
+        if (diffHrs < 24) return diffHrs + 'h ago';
+        const diffDays = Math.floor(diffHrs / 24);
+        if (diffDays < 30) return diffDays + 'd ago';
+        return d.toLocaleDateString();
+      },
+    };
+  }
+</script>

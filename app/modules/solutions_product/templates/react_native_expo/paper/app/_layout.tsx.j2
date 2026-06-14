@@ -1,0 +1,172 @@
+import { Component, useEffect } from "react"
+import { View, StyleSheet } from "react-native"
+import { Stack, useRouter, useSegments } from "expo-router"
+import { SafeAreaProvider } from "react-native-safe-area-context"
+import { StatusBar } from "expo-status-bar"
+import { Provider as PaperProvider, MD3LightTheme, Text, Button } from "react-native-paper"
+import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client"
+import Toast from "react-native-toast-message"
+import { queryClient, asyncStoragePersister } from "@/lib/offline_cache"
+{% if auth == "jwt-local" %}
+import { AuthProvider, useAuth } from "@/providers/AuthProvider"
+{% endif %}
+{% if has_biometric %}
+import { BiometricGate } from "@/providers/BiometricGate"
+{% endif %}
+{% if monitoring_enabled %}
+import { initSentry } from "@/lib/sentry"
+initSentry()
+{% endif %}
+
+/** MD3 theme — primary mapped to brand indigo-600 */
+const PAPER_THEME = {
+  ...MD3LightTheme,
+  colors: {
+    ...MD3LightTheme.colors,
+    primary: "#4f46e5",
+    onPrimary: "#ffffff",
+    primaryContainer: "#e0e7ff",
+    onPrimaryContainer: "#3730a3",
+    secondary: "#6366f1",
+    onSecondary: "#ffffff",
+    surface: "#ffffff",
+    background: "#f8fafc",
+    error: "#ef4444",
+    onError: "#ffffff",
+  },
+}
+
+/** Top-level error boundary — catches unhandled render errors to prevent blank-screen crashes. */
+class ErrorBoundary extends Component<{ children: React.ReactNode }, { error: Error | null }> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props)
+    this.state = { error: null }
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { error }
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <View style={styles.errorContainer}>
+          <Text variant="headlineSmall" style={styles.errorTitle}>Something went wrong</Text>
+          <Text variant="bodyMedium" style={styles.errorMessage}>{this.state.error.message}</Text>
+          <Button
+            mode="contained"
+            onPress={() => this.setState({ error: null })}
+            accessibilityLabel="Try again"
+            style={styles.errorButton}
+          >
+            Try again
+          </Button>
+        </View>
+      )
+    }
+    return this.props.children
+  }
+}
+
+const styles = StyleSheet.create({
+  errorContainer: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24, backgroundColor: "#f8fafc" },
+  errorTitle: { color: "#0f172a", marginBottom: 8, textAlign: "center" },
+  errorMessage: { color: "#64748b", textAlign: "center", marginBottom: 24 },
+  errorButton: { backgroundColor: "#4f46e5" },
+})
+
+{% if auth == "jwt-local" %}
+/** Handles auth-based redirects without blocking rendering. */
+function AuthGate() {
+  const { isAuthenticated, isLoading } = useAuth()
+  const segments = useSegments()
+  const router = useRouter()
+
+  useEffect(() => {
+    if (isLoading) return
+    const onAuthScreen = segments[0] === "login" || segments[0] === "register"
+    if (!isAuthenticated && !onAuthScreen) {
+      router.replace("/login")
+    } else if (isAuthenticated && onAuthScreen) {
+      router.replace("/")
+    }
+  }, [isAuthenticated, isLoading, segments])
+
+  return null
+}
+{% endif %}
+
+// Stack screen options — extracted to constants to avoid JSX/Jinja2 double-brace conflicts
+const STACK_OPTIONS = {
+  headerStyle: { backgroundColor: "#ffffff" },
+  headerTintColor: "#0f172a",
+  headerTitleStyle: { fontWeight: "600" as const },
+  contentStyle: { backgroundColor: "#f8fafc" },
+}
+const OPT_TABS = { headerShown: false }
+const PERSIST_OPTS = { persister: asyncStoragePersister }
+{% if auth == "jwt-local" %}
+const OPT_LOGIN = { headerShown: false }
+const OPT_REGISTER = { title: "Create Account" }
+{% endif %}
+{% for cls in classes %}
+const OPT_{{ cls.table_name | upper }}_NEW = { title: "New {{ cls.name | replace('_', ' ') }}", presentation: "modal" as const }
+const OPT_{{ cls.table_name | upper }}_EDIT = { title: "{{ cls.name | replace('_', ' ') }} Details" }
+{% endfor %}
+
+function AppShell() {
+  return (
+    <SafeAreaProvider>
+      <StatusBar style="auto" />
+      {% if auth == "jwt-local" %}
+      <AuthGate />
+      {% endif %}
+      <Stack screenOptions={STACK_OPTIONS}>
+        <Stack.Screen name="(tabs)" options={OPT_TABS} />
+        {% if auth == "jwt-local" %}
+        <Stack.Screen name="login" options={OPT_LOGIN} />
+        <Stack.Screen name="register" options={OPT_REGISTER} />
+        {% endif %}
+        {% for cls in classes %}
+        <Stack.Screen name="{{ cls.table_name }}/new" options={OPT_{{ cls.table_name | upper }}_NEW} />
+        <Stack.Screen name="{{ cls.table_name }}/[id]" options={OPT_{{ cls.table_name | upper }}_EDIT} />
+        {% endfor %}
+      </Stack>
+      <Toast />
+    </SafeAreaProvider>
+  )
+}
+
+{% if has_biometric %}
+function SecuredApp() {
+  return (
+    <BiometricGate>
+      <AppShell />
+    </BiometricGate>
+  )
+}
+{% endif %}
+
+export default function RootLayout() {
+  return (
+    <ErrorBoundary>
+      <PaperProvider theme={PAPER_THEME}>
+        <PersistQueryClientProvider client={queryClient} persistOptions={PERSIST_OPTS}>
+          {% if auth == "jwt-local" %}
+          <AuthProvider>
+            {% if has_biometric %}
+            <SecuredApp />
+            {% else %}
+            <AppShell />
+            {% endif %}
+          </AuthProvider>
+          {% else %}
+          {% if has_biometric %}
+          <SecuredApp />
+          {% else %}
+          <AppShell />
+          {% endif %}
+          {% endif %}
+        </PersistQueryClientProvider>
+      </PaperProvider>
+    </ErrorBoundary>
+  )
+}

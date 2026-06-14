@@ -1,0 +1,136 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'components/page_header.html' import page_header %}
+
+{% block title %}Pending Approvals{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Breadcrumbs -->
+    <nav class="flex items-center gap-2 text-sm text-muted-foreground mb-6">
+        <a href="{{ url_for('main.index') }}" class="hover:text-foreground transition-colors">Dashboard</a>
+        <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
+        <a href="{{ url_for('main.ea_workflows_dashboard') }}" class="hover:text-foreground transition-colors">EA Workflows</a>
+        <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
+        <span class="text-foreground font-medium">Pending Approvals</span>
+    </nav>
+
+    <!-- Page Header -->
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+        {{ page_header(
+        title='Pending Approvals',
+        description='Workflows waiting for human approval to continue'
+    ) }}
+    </div>
+
+    {% if pending_approvals %}
+    <div class="space-y-4">
+        {% for instance in pending_approvals %}
+        <div class="rounded-xl border-2 border-warning/20 bg-warning/5 dark:bg-warning/20 p-6">
+            <div class="flex items-start justify-between mb-4">
+                <div>
+                    <h3 class="text-lg font-semibold">{{ instance.workflow_definition.workflow_name if instance.workflow_definition else 'Unknown Workflow' }}</h3>
+                    <p class="text-sm text-muted-foreground font-mono">{{ instance.instance_code }}</p>
+                </div>
+                <span class="inline-flex items-center rounded-full px-3 py-1 text-sm font-medium bg-warning/10 text-warning">
+                    <i data-lucide="clock" class="h-4 w-4 mr-1" aria-hidden="true"></i>
+                    Waiting Approval
+                </span>
+            </div>
+
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-4">
+                <div>
+                    <span class="text-muted-foreground">Current Step:</span>
+                    <span class="ml-1 font-medium">{{ instance.pending_approval_step_id }}</span>
+                </div>
+                <div>
+                    <span class="text-muted-foreground">Progress:</span>
+                    <span class="ml-1 font-medium">{{ instance.completed_steps }}/{{ instance.total_steps }}</span>
+                </div>
+                <div>
+                    <span class="text-muted-foreground">Requested:</span>
+                    <span class="ml-1 font-medium">{{ instance.approval_requested_at.strftime('%Y-%m-%d %H:%M') if instance.approval_requested_at else '-' }}</span>
+                </div>
+                <div>
+                    <span class="text-muted-foreground">Triggered By:</span>
+                    <span class="ml-1 font-medium">{{ instance.triggered_by }}</span>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-3 pt-4 border-t">
+                <a href="{{ url_for('main.ea_workflow_instance_detail', instance_id=instance.id) }}"
+                   class="inline-flex items-center gap-2 px-4 py-2 rounded-lg border-2 border-input hover:bg-muted text-sm">
+                    <i data-lucide="eye" class="h-4 w-4" aria-hidden="true"></i>
+                    View Details
+                </a>
+                <button @click="approveWorkflow({{ instance.id }})"
+                        class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-success text-white hover:bg-success text-sm" aria-label="Approve">
+                    <i data-lucide="check" class="h-4 w-4" aria-hidden="true"></i>
+                    Approve & Continue
+                </button>
+                <button @click="rejectWorkflow({{ instance.id }})"
+                        class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-destructive text-white hover:bg-destructive text-sm" aria-label="Reject">
+                    <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
+                    Reject
+                </button>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="rounded-xl border-2 border-input bg-background p-12 text-center">
+        <i data-lucide="check-circle" class="h-12 w-12 text-success mx-auto mb-4" aria-hidden="true"></i>
+        <h3 class="text-lg font-semibold mb-2">No Pending Approvals</h3>
+        <p class="text-muted-foreground">All workflows are either running or completed.</p>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+async function approveWorkflow(instanceId) {
+    if (!(await Platform.modal.confirm('Approve this workflow step and continue execution?'))) return;
+
+    try {
+        const response = await fetch(`/api/ea-workflows/instances/${instanceId}/resume`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token() }}'
+            },
+            body: JSON.stringify({})
+        });
+        const data = await response.json();
+        if (data.success) {
+            location.reload();
+        } else {
+            Platform.toast.error('Error: ' + data.error);
+        }
+    } catch (error) {
+        Platform.toast.error('Error: ' + error.message);
+    }
+}
+
+async function rejectWorkflow(instanceId) {
+    const reason = prompt('Reason for cancellation:');
+    if (!reason) return;
+
+    try {
+        const response = await fetch(`/api/ea-workflows/instances/${instanceId}/cancel`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token() }}'
+            },
+            body: JSON.stringify({ reason })
+        });
+        const data = await response.json();
+        if (data.success) {
+            location.reload();
+        } else {
+            Platform.toast.error('Error: ' + data.error);
+        }
+    } catch (error) {
+        Platform.toast.error('Error: ' + error.message);
+    }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,88 @@
+{% extends 'layouts/admin_base.html' %}
+{% from 'components/page_header.html' import page_header %}
+{% from 'components/metrics_card.html' import metrics_card %}
+
+{% block title %}Architecture Governance{% endblock %}
+
+{% block breadcrumb %}
+{% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
+{{ breadcrumb_nav(items=[
+    {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
+    {'text': 'Strategy Layer', 'href': url_for('archimate_crud.dashboard') + '#strategy'},
+    {'text': 'Strategic Planning', 'current': true}
+]) }}
+{% endblock %}
+
+{% block content %}
+<div class="flex flex-col space-y-8 animate-in fade-in duration-500">
+    {{ page_header(
+        title='Architecture Governance',
+        description='Govern and maintain architectural standards and compliance.'
+    ) }}
+
+    <!-- Metrics Cards -->
+    <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        {{ metrics_card(title='Total Reviews', value=portfolio_metrics.total_reviews|default(0), icon='clipboard-check') }}
+        {{ metrics_card(title='Compliance Rate', value=(portfolio_metrics.compliance_rate|default(0)|string) ~ '%', icon='check-circle', icon_class='!text-success', value_class='text-success') }}
+        {{ metrics_card(title='Critical Violations', value=critical_governance|length|default(0), icon='alert-triangle', icon_class='!text-destructive', value_class='text-destructive') }}
+        {{ metrics_card(title='Pending Approvals', value=high_governance|length|default(0), icon='clock', icon_class='!text-warning', value_class='text-warning') }}
+    </div>
+
+    <!-- Governance Analysis -->
+    <div data-slot="card" class="rounded-xl border bg-card">
+        <div class="p-6">
+            <h3 class="font-semibold mb-4">Governance Analysis</h3>
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead>
+                        <tr class="border-b">
+                            <th class="text-left p-3 font-medium">Element</th>
+                            <th class="text-left p-3 font-medium">Status</th>
+                            <th class="text-left p-3 font-medium">Priority</th>
+                            <th class="text-left p-3 font-medium">Last Review</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y">
+                        {% for item in governance_analyses|default([]) %}
+                        <tr class="border-b hover:bg-muted/50">
+                            <td class="p-3">{{ item.element_name|default('N/A') }}</td>
+                            <td class="p-3">
+                                <span class="px-2 py-1 text-xs rounded-full
+                                    {% if item.status == 'Critical' %}bg-destructive/20 text-destructive
+                                    {% elif item.status == 'Review Required' %}bg-warning/20 text-warning
+                                    {% else %}bg-success/20 text-success{% endif %}">
+                                    {{ item.status|default('Compliant') }}
+                                </span>
+                            </td>
+                            <td class="p-3">{{ item.priority|default('Normal') }}</td>
+                            <td class="p-3 text-sm text-muted-foreground">{{ item.last_review|default('Never') }}</td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="4" class="p-6 text-center text-muted-foreground">No governance data available</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recommendations -->
+    <div data-slot="card" class="rounded-xl border bg-card">
+        <div class="p-6">
+            <h3 class="font-semibold mb-4">Governance Recommendations</h3>
+            <ul class="space-y-2">
+                {% for rec in recommendations|default([]) %}
+                <li class="flex items-start gap-2">
+                    <i data-lucide="lightbulb" class="h-4 w-4 text-warning mt-1" aria-hidden="true"></i>
+                    <span>{{ rec }}</span>
+                </li>
+                {% else %}
+                <li class="text-muted-foreground">No recommendations at this time.</li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+</div>
+{% endblock %}

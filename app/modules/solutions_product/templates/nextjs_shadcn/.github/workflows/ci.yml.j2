@@ -1,0 +1,107 @@
+{# .github/workflows/ci.yml.j2 — CI/CD pipeline for generated Next.js app #}
+{# Context: solution_name, base_path #}
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  NODE_VERSION: "20"
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ '{{' }} env.NODE_VERSION {{ '}}' }}
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+        working-directory: frontend
+      - name: Run ESLint
+        run: npm run lint
+        working-directory: frontend
+      - name: Type check
+        run: npx tsc --noEmit
+        working-directory: frontend
+
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ '{{' }} env.NODE_VERSION {{ '}}' }}
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+        working-directory: frontend
+      - name: Run tests
+        run: npm test -- --coverage --watchAll=false
+        working-directory: frontend
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: frontend/coverage/
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ '{{' }} env.NODE_VERSION {{ '}}' }}
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+        working-directory: frontend
+      - name: Build Next.js app
+        run: npm run build
+        working-directory: frontend
+        env:
+          NEXT_PUBLIC_API_URL: ${{ '{{' }} secrets.NEXT_PUBLIC_API_URL || 'http://localhost:8000' {{ '}}' }}
+{% if base_path %}
+          NEXT_PUBLIC_BASE_PATH: "{{ base_path }}"
+{% endif %}
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nextjs-build
+          path: frontend/.next/
+          retention-days: 1
+
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    needs: [build]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: nextjs-build
+          path: frontend/.next/
+      - name: Deploy to production
+        run: |
+          echo "Deploy step — configure for your hosting provider:"
+          echo "  Vercel:  npx vercel --prod --token=\$VERCEL_TOKEN"
+          echo "  Docker:  docker build -t {{ solution_name | lower | replace(' ', '-') }} . && docker push"
+          echo "  SSH:     rsync -avz frontend/.next/ user@host:/app/"
+        # Replace the echo commands above with your actual deploy command.
+        # Add required secrets in GitHub → Settings → Secrets and variables → Actions

@@ -1,0 +1,49 @@
+{% extends "layouts/admin_base.html" %}
+
+{% block title %}Consolidation Opportunities{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="mb-8">
+        <h1 class="text-3xl font-bold text-foreground">Consolidation Opportunities</h1>
+        <p class="text-muted-foreground mt-2">Cost savings and rationalization opportunities</p>
+    </div>
+
+    {% if savings_forecast %}
+    <div class="rounded-xl border-2 border-input bg-background p-6 mb-6">
+        <div class="flex items-center gap-3">
+            <div class="rounded-lg bg-success/10 p-2">
+                <i data-lucide="trending-up" class="w-5 h-5 text-success" aria-hidden="true"></i>
+            </div>
+            <div>
+                <p class="text-sm text-muted-foreground">Estimated Annual Savings</p>
+                <p class="text-2xl font-bold text-foreground">{{ savings_forecast }}</p>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <div data-slot="card" class="rounded-xl border bg-card shadow-sm">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-border">
+                    <th class="px-6 py-3 text-left font-medium text-muted-foreground">Opportunity</th>
+                    <th class="px-6 py-3 text-left font-medium text-muted-foreground">Type</th>
+                    <th class="px-6 py-3 text-left font-medium text-muted-foreground">Impact</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-border">
+                {% for opp in opportunities %}
+                <tr class="hover:bg-muted/30">
+                    <td class="px-6 py-3 font-medium text-foreground">{{ opp.name|default(opp.title|default('Unnamed')) }}</td>
+                    <td class="px-6 py-3 text-muted-foreground">{{ opp.opportunity_type|default('—') }}</td>
+                    <td class="px-6 py-3 text-muted-foreground">{{ opp.impact|default('—') }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="3" class="px-6 py-8 text-center text-muted-foreground">No opportunities identified yet.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

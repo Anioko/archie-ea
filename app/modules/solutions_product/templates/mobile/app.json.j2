@@ -1,0 +1,67 @@
+{# app/modules/solutions_product/templates/mobile/app.json.j2 #}
+{
+  "expo": {
+    "name": "{{ project_name }}",
+    "slug": "{{ project_name | lower | replace(' ', '-') }}",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "{{ project_name | lower | replace(' ', '') }}",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.{{ project_name | lower | replace(' ', '') }}.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Used for profile photos and document scanning.",
+        "NSLocationWhenInUseUsageDescription": "Used to show location-relevant data.",
+        "NSFaceIDUsageDescription": "Used to authenticate with biometrics.",
+        "NSPhotoLibraryUsageDescription": "Used to upload images."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.{{ project_name | lower | replace(' ', '') }}.app",
+      "permissions": [
+        "CAMERA",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "RECEIVE_BOOT_COMPLETED",
+        "VIBRATE"
+      ]
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Allow $(PRODUCT_NAME) to use Face ID."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#ffffff"
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

@@ -1,0 +1,154 @@
+{# A.R.C.H.I.E. Drawer Component
+   Right-side slide-in panel for complex create/edit forms.
+
+   Usage:
+   {% from 'components/drawer.html' import drawer %}
+
+   {% call drawer(id='create-solution', title='New Solution', description='Create a new enterprise solution') %}
+   <form ...>...</form>
+   {% endcall %}
+
+   Open via:  openDrawer('create-solution')
+   Close via: closeDrawer('create-solution')
+#}
+
+{% macro drawer(id, title='', description='', size='default') %}
+{% set width_class = {
+    'sm': 'max-w-sm',
+    'default': 'max-w-xl',
+    'lg': 'max-w-2xl',
+    'full': 'max-w-full'
+}.get(size, 'max-w-xl') %}
+<div
+    id="drawer-{{ id }}"
+    x-data="{ drawerOpen: false, _triggerEl: null }"
+    x-init="
+        window.addEventListener('open-drawer-{{ id }}', () => {
+            drawerOpen = true;
+            if (window.Platform && window.Platform.modal && !Platform.modal.isOpen('drawer-{{ id }}')) {
+                Platform.modal.register('drawer-{{ id }}');
+                Platform.modal.open('drawer-{{ id }}');
+            }
+        });
+        window.addEventListener('close-drawer-{{ id }}', () => {
+            drawerOpen = false;
+            if (window.Platform && window.Platform.modal && Platform.modal.isOpen('drawer-{{ id }}')) {
+                Platform.modal.close('drawer-{{ id }}');
+            }
+        });
+        document.addEventListener('modal:close', (e) => {
+            if (e.detail && e.detail.id === 'drawer-{{ id }}') drawerOpen = false;
+        });
+    "
+    x-cloak
+>
+    <!-- Backdrop -->
+    <div
+        x-cloak x-show="drawerOpen"
+        x-transition:enter="transition ease-out duration-300"
+        x-transition:enter-start="opacity-0"
+        x-transition:enter-end="opacity-100"
+        x-transition:leave="transition ease-in duration-200"
+        x-transition:leave-start="opacity-100"
+        x-transition:leave-end="opacity-0"
+        @click="drawerOpen = false"
+        class="modal-root fixed inset-0 bg-black/50 overflow-y-auto z-50" aria-hidden="true"
+    ></div>
+
+    <!-- Panel -->
+    <div
+        x-cloak x-show="drawerOpen"
+        x-effect="
+            if (drawerOpen) {
+                _triggerEl = document.activeElement;
+                $nextTick(() => drawerFocusTrap.activate($el));
+            } else {
+                drawerFocusTrap.deactivate($el);
+                if (_triggerEl) { $nextTick(() => { if (_triggerEl) _triggerEl.focus(); }); }
+            }
+        "
+        x-transition:enter="transition ease-out duration-300"
+        x-transition:enter-start="translate-x-full"
+        x-transition:enter-end="translate-x-0"
+        x-transition:leave="transition ease-in duration-200"
+        x-transition:leave-start="translate-x-0"
+        x-transition:leave-end="translate-x-full"
+        class="fixed right-0 top-0 h-full w-full {{ width_class }} bg-background border-l border-border shadow-xl flex flex-col z-50"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="drawer-title-{{ id }}"
+        @keydown.escape.window="drawerOpen = false"
+    >
+        <!-- Header -->
+        <div class="flex items-start justify-between px-6 py-4 border-b border-border shrink-0">
+            <div>
+                {% if title %}
+                <h2 id="drawer-title-{{ id }}" class="text-lg font-semibold text-foreground">{{ title }}</h2>
+                {% endif %}
+                {% if description %}
+                <p class="text-sm text-muted-foreground mt-0.5">{{ description }}</p>
+                {% endif %}
+            </div>
+            <button type="button"
+                @click="drawerOpen = false"
+                class="ml-4 h-8 w-8 rounded-md hover:bg-muted flex items-center justify-center shrink-0 transition-colors"
+                aria-label="Close drawer"
+            >
+                <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
+            </button>
+        </div>
+
+        <!-- Body -->
+        <div class="flex-1 overflow-y-auto px-6 py-4">
+            {{ caller() }}
+        </div>
+    </div>
+</div>
+
+<script>
+/* Drawer helpers — idempotent, safe to include multiple times */
+if (!window.openDrawer) {
+    function openDrawer(drawerId) {
+        window.dispatchEvent(new CustomEvent('open-drawer-' + drawerId));
+    }
+    function closeDrawer(drawerId) {
+        window.dispatchEvent(new CustomEvent('close-drawer-' + drawerId));
+    }
+    window.openDrawer = openDrawer;
+    window.closeDrawer = closeDrawer;
+}
+
+/* Focus trap — traps Tab key within the drawer while open */
+if (!window.drawerFocusTrap) {
+    window.drawerFocusTrap = {
+        _selector: 'button:not([disabled]), [href], input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        activate: function(el) {
+            let self = this;
+            let focusable = el.querySelectorAll(self._selector);
+            if (focusable.length) focusable[0].focus();
+            el._drawerTrapHandler = function(e) {
+                if (e.key !== 'Tab') return;
+                let els = el.querySelectorAll(self._selector);
+                if (!els.length) return;
+                let first = els[0];
+                let last = els[els.length - 1];
+                if (e.shiftKey && document.activeElement === first) {
+                    e.preventDefault();
+                    last.focus();
+                } else if (!e.shiftKey && document.activeElement === last) {
+                    e.preventDefault();
+                    first.focus();
+                }
+            };
+            el.addEventListener('keydown', el._drawerTrapHandler);
+        },
+        deactivate: function(el) {
+            if (el._drawerTrapHandler) {
+                el.removeEventListener('keydown', el._drawerTrapHandler);
+                el._drawerTrapHandler = null;
+            }
+        }
+    };
+}
+</script>
+{% endmacro %}

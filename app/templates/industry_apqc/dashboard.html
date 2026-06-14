@@ -1,0 +1,163 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'components/page_header.html' import page_header %}
+{% from 'components/metrics_card.html' import metrics_card %}
+
+{% from 'components/button.html' import button %}
+{% from 'components/card.html' import card, card_header, card_title, card_content %}
+{% from 'components/badge.html' import badge %}
+
+{% block title %}Industry APQC Frameworks{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    {{ page_header(
+        title='Industry APQC Frameworks',
+        description='Manage industry-specific APQC process classification frameworks',
+        breadcrumbs=[
+            {'label': 'Dashboard', 'href': url_for('main.index')},
+            {'label': 'Industry APQC Frameworks'}
+        ],
+        actions=[
+            {'text': 'Seed Defaults', 'icon': 'database', 'onclick': 'seedFrameworks()', 'variant': 'outline'},
+            {'text': 'View Recommendations', 'icon': 'lightbulb', 'href': url_for('industry_apqc.industry_apqc_recommendations'), 'variant': 'default'}
+        ]
+    ) }}
+
+    {% if error %}
+    <div class="rounded-xl border-2 border-destructive/50 bg-destructive/10 p-4 mb-6">
+        <div class="flex items-center gap-2 text-destructive">
+            <i data-lucide="alert-circle" class="h-5 w-5" aria-hidden="true"></i>
+            <span class="font-medium">Error: {{ error }}</span>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Statistics Cards -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-8">
+        {{ metrics_card(title='Industry Frameworks', value=frameworks|length, icon='building-2') }}
+        {{ metrics_card(title='Total Processes', value=framework_stats|sum(attribute='stats.total_processes') if framework_stats else 0, icon='workflow') }}
+        {{ metrics_card(title='Industry-Unique Processes', value=framework_stats|sum(attribute='stats.unique_processes') if framework_stats else 0, icon='star') }}
+        {{ metrics_card(title='Regulatory Processes', value=framework_stats|sum(attribute='stats.regulatory_processes') if framework_stats else 0, icon='shield-check') }}
+    </div>
+
+    <!-- Industry Frameworks Grid -->
+    <div class="rounded-xl border-2 border-input bg-background p-6 mb-8">
+        <h2 class="text-xl font-semibold mb-4">Available Industry Frameworks</h2>
+
+        {% if frameworks %}
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {% for fw in frameworks %}
+            <a href="{{ url_for('industry_apqc.industry_apqc_framework_detail', industry_code=fw.industry_code) }}"
+               class="block rounded-lg border-2 border-input p-4 hover:border-primary/50 hover:shadow-md transition-all duration-200">
+                <div class="flex items-start justify-between mb-3">
+                    <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+                        <i data-lucide="factory" class="h-5 w-5 text-primary" aria-hidden="true"></i>
+                    </div>
+                    <span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium
+                        {% if fw.is_active %}bg-success/10 text-success{% else %}bg-muted text-foreground/80{% endif %}">
+                        {{ 'Active' if fw.is_active else 'Inactive' }}
+                    </span>
+                </div>
+                <h3 class="font-semibold text-lg mb-1">{{ fw.industry_name }}</h3>
+                <p class="text-sm text-muted-foreground mb-3 line-clamp-2">
+                    {{ fw.description or 'Industry-specific APQC process framework' }}
+                </p>
+                <div class="flex items-center gap-4 text-xs text-muted-foreground">
+                    <span class="flex items-center gap-1">
+                        <i data-lucide="tag" class="h-3 w-3" aria-hidden="true"></i>
+                        {{ fw.industry_code }}
+                    </span>
+                    {% if fw.pcf_version %}
+                    <span class="flex items-center gap-1">
+                        <i data-lucide="git-branch" class="h-3 w-3" aria-hidden="true"></i>
+                        v{{ fw.pcf_version }}
+                    </span>
+                    {% endif %}
+                </div>
+            </a>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-center py-12">
+            <i data-lucide="database" class="h-12 w-12 text-muted-foreground mx-auto mb-4" aria-hidden="true"></i>
+            <h3 class="text-lg font-semibold mb-2">No Frameworks Available</h3>
+            <p class="text-muted-foreground mb-4">Get started by seeding default industry frameworks.</p>
+            <button @click="seedFrameworks()" class="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium" aria-label="Action">
+                <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i>
+                Seed Default Frameworks
+            </button>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Industry Characteristics -->
+    {% if framework_stats %}
+    <div class="rounded-xl border-2 border-input bg-background p-6">
+        <h2 class="text-xl font-semibold mb-4">Framework Statistics</h2>
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead>
+                    <tr class="border-b">
+                        <th class="text-left py-3 px-4 font-medium text-muted-foreground">Industry</th>
+                        <th class="text-center py-3 px-4 font-medium text-muted-foreground">Total Processes</th>
+                        <th class="text-center py-3 px-4 font-medium text-muted-foreground">Unique</th>
+                        <th class="text-center py-3 px-4 font-medium text-muted-foreground">Regulatory</th>
+                        <th class="text-center py-3 px-4 font-medium text-muted-foreground">Complexity</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y">
+                    {% for item in framework_stats %}
+                    <tr class="border-b hover:bg-muted/50">
+                        <td class="py-3 px-4">
+                            <span class="font-medium">{{ item.framework.industry_name }}</span>
+                            <span class="text-xs text-muted-foreground ml-2">({{ item.framework.industry_code }})</span>
+                        </td>
+                        <td class="text-center py-3 px-4">{{ item.stats.total_processes or 0 }}</td>
+                        <td class="text-center py-3 px-4">{{ item.stats.unique_processes or 0 }}</td>
+                        <td class="text-center py-3 px-4">{{ item.stats.regulatory_processes or 0 }}</td>
+                        <td class="text-center py-3 px-4">
+                            <span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium
+                                {% if item.stats.process_complexity == 'highly_complex' %}bg-destructive/10 text-destructive
+                                {% elif item.stats.process_complexity == 'complex' %}bg-warning/10 text-warning
+                                {% else %}bg-success/10 text-success{% endif %}">
+                                {{ item.stats.process_complexity or 'moderate' }}
+                            </span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+async function seedFrameworks() {
+    if (!(await Platform.modal.confirm('Seed default industry frameworks? This will create Manufacturing, Finance, Healthcare, and other industry frameworks.'))) {
+        return;
+    }
+
+    try {
+        const response = await fetch('/industry-apqc/api/seed-frameworks', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token() }}'
+            }
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            Platform.toast.success(`Successfully created ${data.total_created} frameworks!`);
+            location.reload();
+        } else {
+            Platform.toast.error('Error: ' + (data.error || 'Failed to seed frameworks'));
+        }
+    } catch (error) {
+        Platform.toast.error('Error: ' + error.message);
+    }
+}
+</script>
+{% endblock %}

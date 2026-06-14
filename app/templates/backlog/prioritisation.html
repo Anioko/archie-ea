@@ -1,0 +1,254 @@
+{% extends "layouts/admin_base.html" %}
+<!-- modal-a11y-ok -->
+
+{% block title %}Backlog Prioritisation — MoSCoW / WSJF / RICE{% endblock %}
+
+{% block extra_css %}
+<style>
+.moscow-board { display: flex; gap: 1rem; overflow-x: auto; min-height: 300px; }
+.moscow-col { flex: 1; min-width: 200px; border-radius: 8px; padding: 1rem; }
+.moscow-col.must  { background: #fee2e2; }
+.moscow-col.should{ background: #fef9c3; }
+.moscow-col.could { background: #dcfce7; }
+.moscow-col.wont  { background: #f3f4f6; }
+.moscow-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 6px;
+               padding: 0.5rem 0.75rem; margin-bottom: 0.5rem; cursor: grab; font-size: 0.875rem; }
+.moscow-card:active { cursor: grabbing; }
+.wsjf-score-cell { font-weight: 600; color: #4f46e5; }
+.rice-score-cell  { font-weight: 600; color: #0891b2; }
+input.score-input { width: 60px; border: 1px solid #d1d5db; border-radius: 4px;
+                    padding: 2px 4px; text-align: center; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-6" x-data="prioritisationApp()">
+
+  <h1 class="text-2xl font-bold mb-2">Backlog Prioritisation</h1>
+  <p class="text-muted-foreground mb-6">Classify requirements with MoSCoW, score them with WSJF or RICE.</p>
+
+  <!-- Tab bar -->
+  <div class="flex gap-2 mb-6 border-b border-border">
+    <button @click="tab='moscow'"
+            :class="tab==='moscow' ? 'border-b-2 border-indigo-600 text-primary font-semibold' : 'text-muted-foreground hover:text-foreground'"
+            class="pb-2 px-3 text-sm">MoSCoW</button>
+    <button @click="tab='wsjf'"
+            :class="tab==='wsjf' ? 'border-b-2 border-indigo-600 text-primary font-semibold' : 'text-muted-foreground hover:text-foreground'"
+            class="pb-2 px-3 text-sm">WSJF</button>
+    <button @click="tab='rice'"
+            :class="tab==='rice' ? 'border-b-2 border-indigo-600 text-primary font-semibold' : 'text-muted-foreground hover:text-foreground'"
+            class="pb-2 px-3 text-sm">RICE</button>
+  </div>
+
+  <!-- Loading / error banner -->
+  <template x-if="loading">
+    <div class="text-sm text-muted-foreground py-4">Loading requirements…</div>
+  </template>
+  <template x-if="error">
+    <div class="text-sm text-destructive py-2" x-text="error"></div>
+  </template>
+
+  <!-- ── MoSCoW tab ── -->
+  <div x-show="tab==='moscow'" x-cloak>
+    <p class="text-sm text-muted-foreground mb-4">Drag cards between columns to assign priority.</p>
+    <div class="moscow-board">
+      <template x-for="col in moscowCols" :key="col.key">
+        <div class="moscow-col" :class="col.key.toLowerCase()"
+             @dragover.prevent
+             @drop="onDrop($event, col.key)">
+          <h2 class="font-semibold text-sm mb-3" x-text="col.label"></h2>
+          <template x-for="req in reqs.filter(r => (r.moscow_priority||'UNSET')===col.key)" :key="req.id">
+            <div class="moscow-card"
+                 draggable="true"
+                 @dragstart="onDragStart($event, req)"
+                 x-text="req.title || ('#' + req.id)">
+            </div>
+          </template>
+          <!-- Unassigned bucket shown in MUST column -->
+          <template x-if="col.key==='MUST'">
+            <template x-for="req in reqs.filter(r => !r.moscow_priority)" :key="'u'+req.id">
+              <div class="moscow-card opacity-50"
+                   draggable="true"
+                   @dragstart="onDragStart($event, req)"
+                   x-text="(req.title || ('#' + req.id)) + ' (unset)'">
+              </div>
+            </template>
+          </template>
+        </div>
+      </template>
+    </div>
+  </div>
+
+  <!-- ── WSJF tab ── -->
+  <div x-show="tab==='wsjf'" x-cloak>
+    <p class="text-sm text-muted-foreground mb-4">Edit Fibonacci components (1–13). Score = CoD / Job Size.</p>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm border-collapse">
+        <thead>
+          <tr class="bg-muted/30 text-left">
+            <th class="px-3 py-2 font-medium text-muted-foreground border-b">Requirement</th>
+            <th class="px-3 py-2 font-medium text-muted-foreground border-b">Biz Value</th>
+            <th class="px-3 py-2 font-medium text-muted-foreground border-b">Time Criticality</th>
+            <th class="px-3 py-2 font-medium text-muted-foreground border-b">Risk Reduction</th>
+            <th class="px-3 py-2 font-medium text-muted-foreground border-b">Job Size</th>
+            <th class="px-3 py-2 font-medium text-muted-foreground border-b">WSJF Score</th>
+            <th class="px-3 py-2 font-medium text-muted-foreground border-b"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="req in wsjfSorted" :key="req.id">
+            <tr class="border-b hover:bg-muted/30">
+              <td class="px-3 py-2" x-text="req.title || ('#' + req.id)"></td>
+              <td class="px-3 py-2"><input type="number" min="1" max="13" x-model.number="req.business_value" class="score-input" /></td>
+              <td class="px-3 py-2"><input type="number" min="1" max="13" x-model.number="req.time_criticality" class="score-input" /></td>
+              <td class="px-3 py-2"><input type="number" min="1" max="13" x-model.number="req.risk_reduction" class="score-input" /></td>
+              <td class="px-3 py-2"><input type="number" min="1" max="13" x-model.number="req.job_size" class="score-input" /></td>
+              <td class="px-3 py-2 wsjf-score-cell" x-text="calcWsjf(req).toFixed(2)"></td>
+              <td class="px-3 py-2">
+                <button @click="saveWsjf(req)"
+                        class="px-2 py-1 text-xs bg-primary text-primary-foreground rounded hover:bg-indigo-700">Save</button>
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── RICE tab ── -->
+  <div x-show="tab==='rice'" x-cloak>
+    <p class="text-sm text-muted-foreground mb-4">RICE = (Reach × Impact × Confidence%) / Story Points.</p>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm border-collapse">
+        <thead>
+          <tr class="bg-muted/30 text-left">
+            <th class="px-3 py-2 font-medium text-muted-foreground border-b">Requirement</th>
+            <th class="px-3 py-2 font-medium text-muted-foreground border-b">Reach</th>
+            <th class="px-3 py-2 font-medium text-muted-foreground border-b">Impact (1–5)</th>
+            <th class="px-3 py-2 font-medium text-muted-foreground border-b">Confidence %</th>
+            <th class="px-3 py-2 font-medium text-muted-foreground border-b">RICE Score</th>
+            <th class="px-3 py-2 font-medium text-muted-foreground border-b"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="req in riceSorted" :key="req.id">
+            <tr class="border-b hover:bg-muted/30">
+              <td class="px-3 py-2" x-text="req.title || ('#' + req.id)"></td>
+              <td class="px-3 py-2"><input type="number" min="0" x-model.number="req.reach" class="score-input" /></td>
+              <td class="px-3 py-2"><input type="number" min="1" max="5" x-model.number="req.impact" class="score-input" /></td>
+              <td class="px-3 py-2"><input type="number" min="0" max="100" x-model.number="req.confidence" class="score-input" /></td>
+              <td class="px-3 py-2 rice-score-cell" x-text="calcRice(req).toFixed(2)"></td>
+              <td class="px-3 py-2">
+                <button @click="saveRice(req)"
+                        class="px-2 py-1 text-xs bg-cyan-600 text-primary-foreground rounded hover:bg-cyan-700">Save</button>
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function prioritisationApp() {
+  return {
+    tab: 'moscow',
+    loading: true,
+    error: null,
+    reqs: [],
+    dragging: null,
+    moscowCols: [
+      { key: 'MUST',   label: 'Must Have' },
+      { key: 'SHOULD', label: 'Should Have' },
+      { key: 'COULD',  label: 'Could Have' },
+      { key: 'WONT',   label: "Won't Have" },
+    ],
+
+    async init() {
+      try {
+        const r = await fetch('/api/backlog/prioritised?method=moscow');
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        this.reqs = await r.json();
+      } catch (e) {
+        this.error = 'Failed to load requirements: ' + e.message;
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    get wsjfSorted() {
+      return [...this.reqs].sort((a, b) => this.calcWsjf(b) - this.calcWsjf(a));
+    },
+    get riceSorted() {
+      return [...this.reqs].sort((a, b) => this.calcRice(b) - this.calcRice(a));
+    },
+
+    calcWsjf(req) {
+      const cod = (req.business_value||1) + (req.time_criticality||1) + (req.risk_reduction||1);
+      return cod / Math.max(req.job_size||1, 1);
+    },
+    calcRice(req) {
+      const sp = req.story_points || 1;
+      return ((req.reach||0) * (req.impact||1) * ((req.confidence||100)/100)) / Math.max(sp, 1);
+    },
+
+    onDragStart(event, req) {
+      this.dragging = req;
+      event.dataTransfer.effectAllowed = 'move';
+    },
+    async onDrop(event, colKey) {
+      if (!this.dragging) return;
+      const req = this.dragging;
+      this.dragging = null;
+      const prev = req.moscow_priority;
+      req.moscow_priority = colKey;
+      try {
+        const r = await fetch(`/api/backlog/${req.id}/moscow`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+          body: JSON.stringify({ priority: colKey }),
+        });
+        if (!r.ok) { req.moscow_priority = prev; this.error = 'Save failed'; }
+      } catch (e) { req.moscow_priority = prev; this.error = e.message; }
+    },
+
+    async saveWsjf(req) {
+      const r = await fetch(`/api/backlog/${req.id}/wsjf`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+        body: JSON.stringify({
+          business_value: req.business_value,
+          time_criticality: req.time_criticality,
+          risk_reduction: req.risk_reduction,
+          job_size: req.job_size,
+        }),
+      });
+      if (!r.ok) { this.error = 'WSJF save failed'; return; }
+      const updated = await r.json();
+      req.wsjf_score = updated.wsjf_score;
+    },
+
+    async saveRice(req) {
+      const r = await fetch(`/api/backlog/${req.id}/rice`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
+        body: JSON.stringify({ reach: req.reach, impact: req.impact, confidence: req.confidence }),
+      });
+      if (!r.ok) { this.error = 'RICE save failed'; return; }
+      const updated = await r.json();
+      req.rice_score = updated.rice_score;
+    },
+  };
+}
+
+function getCsrfToken() {
+  const el = document.querySelector('meta[name="csrf-token"]') ||
+             document.querySelector('input[name="csrf_token"]');
+  return el ? (el.content || el.value) : '';
+}
+</script>
+{% endblock %}

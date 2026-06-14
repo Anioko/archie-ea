@@ -1,0 +1,193 @@
+{# shadcn/ui Dropdown Menu Component
+   
+   Dropdown menu with Alpine.js state management for action menus and navigation.
+   
+   Usage Examples:
+   
+   1. Basic Dropdown Menu:
+   {% from 'components/dropdown_menu.html' import dropdown_menu %}
+   {{ dropdown_menu(
+       trigger_text='Actions',
+       trigger_icon='more-horizontal',
+       items=[
+           {'text': 'Edit', 'icon': 'edit', 'onclick': 'editItem()'},
+           {'text': 'Delete', 'icon': 'trash-2', 'onclick': 'deleteItem()', 'variant': 'destructive'},
+           {'divider': true},
+           {'text': 'View Details', 'icon': 'eye', 'href': '/details/123'}
+       ]
+   ) }}
+   
+   2. Export Dropdown:
+   {{ dropdown_menu(
+       trigger_text='Export',
+       trigger_icon='download',
+       trigger_variant='primary',
+       items=[
+           {'text': 'Export as CSV', 'icon': 'file-text', 'onclick': "exportData('csv')"},
+           {'text': 'Export as JSON', 'icon': 'code', 'onclick': "exportData('json')"},
+           {'text': 'Export as JPG', 'icon': 'image', 'onclick': "exportData('jpg')"},
+           {'text': 'Export as PNG', 'icon': 'image', 'onclick': "exportData('png')"}
+       ]
+   ) }}
+   
+   3. User Profile Dropdown:
+   {{ dropdown_menu(
+       id='user-menu',
+       trigger_text='John Doe',
+       trigger_icon='user',
+       position='right',
+       items=[
+           {'text': 'Profile', 'icon': 'user', 'href': '/profile'},
+           {'text': 'Settings', 'icon': 'settings', 'href': '/settings'},
+           {'divider': true},
+           {'text': 'Logout', 'icon': 'log-out', 'onclick': 'logout()'}
+       ]
+   ) }}
+   
+   4. Icon-Only Trigger:
+   {{ dropdown_menu(
+       trigger_icon='more-vertical',
+       trigger_icon_only=true,
+       items=[...]
+   ) }}
+#}
+
+{% macro dropdown_menu(
+    id='',
+    trigger_text='',
+    trigger_icon='',
+    trigger_icon_only=false,
+    trigger_variant='default',
+    items=[],
+    position='right',
+    class='',
+    trigger_class='',
+    menu_width='w-48'
+) %}
+{% set unique_id = id or 'dropdown-' ~ range(1000, 9999) | random %}
+
+{% set trigger_variants = {
+    'default': 'border border-input bg-background hover:bg-accent hover:text-accent-foreground',
+    'primary': 'bg-primary text-primary-foreground hover:bg-primary/90',
+    'secondary': 'bg-secondary text-secondary-foreground hover:bg-secondary/80',
+    'ghost': 'hover:bg-accent hover:text-accent-foreground',
+    'destructive': 'bg-destructive text-destructive-foreground hover:bg-destructive/90'
+} %}
+
+{% set positions = {
+    'left': 'left-0',
+    'right': 'right-0',
+    'center': 'left-1/2 transform -translate-x-1/2'
+} %}
+
+<div 
+    id="{{ unique_id }}"
+    class="relative {{ class }}"
+    x-data="{ menuOpen: false }"
+    @click.away="menuOpen = false"
+    @keydown.escape.window="menuOpen = false"
+>
+    {# Trigger Button #}
+    <button
+        type="button"
+        @click="menuOpen = !menuOpen"
+        :aria-expanded="menuOpen"
+        aria-haspopup="true"
+        class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 h-10 {{ 'w-10' if trigger_icon_only else 'px-4 py-2' }} {{ trigger_variants.get(trigger_variant, trigger_variants['default']) }} {{ trigger_class }}"
+     aria-label="Open">
+        {% if trigger_icon %}
+        <i data-lucide="{{ trigger_icon }}" class="{% if not trigger_icon_only %}mr-2{% endif %} w-4 h-4" aria-hidden="true"></i>
+        {% endif %}
+        
+        {% if not trigger_icon_only and trigger_text %}
+        {{ trigger_text }}
+        {% endif %}
+        
+        {% if not trigger_icon_only %}
+        <i data-lucide="chevron-down" class="ml-2 w-4 h-4" aria-hidden="true"></i>
+        {% endif %}
+        
+        <span class="sr-only">{% if trigger_text %}{{ trigger_text }} menu{% else %}Open menu{% endif %}</span>
+    </button>
+
+    {# Dropdown Menu #}
+    <div 
+        x-show="menuOpen" x-cloak @keydown.escape.window="menuOpen = false" role="dialog" aria-modal="true"
+        x-transition:enter="transition ease-out duration-100"
+        x-transition:enter-start="transform opacity-0 scale-95"
+        x-transition:enter-end="transform opacity-100 scale-100"
+        x-transition:leave="transition ease-in duration-75"
+        x-transition:leave-start="transform opacity-100 scale-100"
+        x-transition:leave-end="transform opacity-0 scale-95"
+        x-cloak
+        class="absolute {{ positions.get(position, 'right-0') }} mt-2 {{ menu_width }} rounded-lg border border-border bg-card shadow-lg z-50"
+        role="menu"
+        aria-orientation="vertical"
+    >
+        <div class="py-1" role="none">
+            {% for item in items %}
+                {% if item.divider %}
+                    {# Divider #}
+                    <div class="my-1 h-px bg-border" role="separator"></div>
+                
+                {% elif item.header %}
+                    {# Section Header #}
+                    <div class="px-4 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider" role="none">
+                        {{ item.header }}
+                    </div>
+                
+                {% else %}
+                    {# Menu Item #}
+                    {% set item_variants = {
+                        'default': 'text-foreground hover:bg-accent',
+                        'destructive': 'text-destructive hover:bg-destructive/10'
+                    } %}
+                    
+                    {% if item.href %}
+                        <a
+                            href="{{ item.href }}"
+                            @click="menuOpen = false"
+                            class="w-full text-left px-4 py-2 text-sm flex items-center gap-2 transition-colors {{ item_variants.get(item.variant, item_variants['default']) }} {% if loop.first %}rounded-t-lg{% endif %} {% if loop.last %}rounded-b-lg{% endif %} {{ item.class|default('') }}"
+                            role="menuitem"
+                            {% if item.disabled %}aria-disabled="true" class="opacity-50 cursor-not-allowed pointer-events-none"{% endif %}
+                        >
+                            {% if item.icon %}
+                            <i data-lucide="{{ item.icon }}" class="w-4 h-4" aria-hidden="true"></i>
+                            {% endif %}
+                            {{ item.text }}
+                        </a>
+                    {% elif item.onclick %}
+                        <button
+                            type="button"
+                            @click="{{ item.onclick }}; menuOpen = false"
+                            class="w-full text-left px-4 py-2 text-sm flex items-center gap-2 transition-colors {{ item_variants.get(item.variant, item_variants['default']) }} {% if loop.first %}rounded-t-lg{% endif %} {% if loop.last %}rounded-b-lg{% endif %} {{ item.class|default('') }}"
+                            role="menuitem"
+                            {% if item.disabled %}disabled class="opacity-50 cursor-not-allowed"{% endif %}
+                         aria-label="Open">
+                            {% if item.icon %}
+                            <i data-lucide="{{ item.icon }}" class="w-4 h-4" aria-hidden="true"></i>
+                            {% endif %}
+                            {{ item.text }}
+                        </button>
+                    {% else %}
+                        <div
+                            class="px-4 py-2 text-sm flex items-center gap-2 text-muted-foreground cursor-default {{ item.class|default('') }}"
+                            role="menuitem"
+                            aria-disabled="true"
+                        >
+                            {% if item.icon %}
+                            <i data-lucide="{{ item.icon }}" class="w-4 h-4" aria-hidden="true"></i>
+                            {% endif %}
+                            {{ item.text }}
+                        </div>
+                    {% endif %}
+                {% endif %}
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<style>
+[x-cloak] { display: none !important; }
+</style>
+{% endmacro %}

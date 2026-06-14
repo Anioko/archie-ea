@@ -1,0 +1,907 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'components/page_header.html' import page_header %}
+
+{% block title %}ArchiMate Elements — Catalog
+    <!-- Tech Debt Analysis (FRAG-008) -->
+    <div x-data="{ tdOpen: false, tdData: null, tdLoading: false }" class="mt-6">
+        <button @click="tdOpen = !tdOpen; if (!tdData && !tdLoading) { tdLoading = true;
+            Promise.all([
+                fetch('/api/ea/phase-d/debt-scores').then(r => r.json()),
+                fetch('/api/ea/phase-d/stack-audit').then(r => r.json())
+            ]).then(([debt, stack]) => { tdData = {debt, stack}; tdLoading = false; })
+            .catch(() => { tdLoading = false; });
+        }" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-border bg-card text-sm font-medium text-foreground hover:bg-accent transition-colors">
+            <i data-lucide="alert-triangle" class="h-4 w-4 text-amber-500"></i>
+            Tech Debt Analysis
+            <svg xmlns='http://www.w3.org/2000/svg' class='h-3 w-3 transition-transform' :class="tdOpen ? 'rotate-90' : ''" fill='none' viewBox='0 0 24 24' stroke='currentColor' stroke-width='2'><path stroke-linecap='round' stroke-linejoin='round' d='M9 5l7 7-7 7'/></svg>
+        </button>
+        <div x-show="tdOpen" x-cloak x-transition class="mt-4 bg-card rounded-lg shadow border overflow-hidden">
+            <div x-show="tdLoading" class="px-6 py-8 text-center text-sm text-muted-foreground">Loading tech debt data...</div>
+            <template x-if="tdData">
+                <div>
+                    <template x-if="tdData.debt && tdData.debt.summary">
+                        <div class="grid grid-cols-3 gap-0 border-b border-border">
+                            <div class="p-4 text-center border-r border-border">
+                                <p class="text-2xl font-bold text-foreground" x-text="tdData.debt.summary.total_scored || tdData.debt.scores?.length || 0"></p>
+                                <p class="text-xs text-muted-foreground">Scored Elements</p>
+                            </div>
+                            <div class="p-4 text-center border-r border-border">
+                                <p class="text-2xl font-bold text-destructive" x-text="tdData.debt.summary.high_debt || 0"></p>
+                                <p class="text-xs text-muted-foreground">High Debt</p>
+                            </div>
+                            <div class="p-4 text-center">
+                                <p class="text-2xl font-bold text-amber-600" x-text="tdData.debt.summary.avg_score ? Math.round(tdData.debt.summary.avg_score) : 0"></p>
+                                <p class="text-xs text-muted-foreground">Avg Score</p>
+                            </div>
+                        </div>
+                    </template>
+                    <template x-if="tdData.debt && tdData.debt.scores && tdData.debt.scores.length > 0">
+                        <div class="max-h-72 overflow-y-auto">
+                            <table class="w-full text-sm">
+                                <thead class="bg-muted/50 sticky top-0">
+                                    <tr>
+                                        <th class="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Element</th>
+                                        <th class="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Type</th>
+                                        <th class="px-4 py-2 text-center text-xs font-medium text-muted-foreground">Debt Score</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <template x-for="item in tdData.debt.scores.sort((a,b) => (b.debt_score||b.score||0) - (a.debt_score||a.score||0)).slice(0, 30)" :key="item.id || item.name">
+                                        <tr class="border-t border-border hover:bg-muted/50">
+                                            <td class="px-4 py-2 text-foreground" x-text="item.name || item.element_name"></td>
+                                            <td class="px-4 py-2 text-muted-foreground text-xs" x-text="item.type || item.element_type || '-'"></td>
+                                            <td class="px-4 py-2 text-center">
+                                                <span class="font-medium"
+                                                    :class="(item.debt_score||item.score||0) >= 70 ? 'text-destructive' : (item.debt_score||item.score||0) >= 40 ? 'text-amber-600' : 'text-emerald-600'"
+                                                    x-text="(item.debt_score || item.score || 0)"></span>
+                                            </td>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </div>
+                    </template>
+                </div>
+            </template>
+        </div>
+    </div>
+
+{% endblock %}
+
+{% block extra_css %}
+<style>
+  [x-cloak]{display:none!important}
+  .layer-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+  .layer-motivation { background: rgb(139 92 246); }
+  .layer-strategy { background: rgb(99 102 241); }
+  .layer-business { background: rgb(245 158 11); }
+  .layer-application { background: rgb(59 130 246); }
+  .layer-technology { background: rgb(16 185 129); }
+  .layer-implementation { background: rgb(100 116 139); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8"
+     x-data="archimateElements()" x-init="init()" x-cloak>
+
+    {{ page_header(title='ArchiMate Element Catalog', description='720 elements across 6 layers — the master catalog') }}
+
+    {# ── Layer Summary Bar (ARC-002) ── #}
+    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
+        <template x-for="layer in layers" :key="layer.name">
+            <button @click="filterByLayer(layer.name)"
+                    :class="[layerBadgeClass(layer.name), activeLayer === layer.name.toLowerCase() ? 'ring-2 ring-offset-1 ring-current' : '']"
+                    class="rounded-xl border p-4 text-left hover:opacity-90 transition-all"
+                    data-testid="layer-card">
+                <div class="flex items-center gap-2 mb-1">
+                    <span class="layer-dot" :class="'layer-' + layer.name.toLowerCase()"></span>
+                    <span class="text-xs font-bold uppercase tracking-wider" x-text="layer.name"></span>
+                </div>
+                <span class="text-2xl font-bold" x-text="layer.count">0</span>
+                <span class="text-xs opacity-70 ml-1">elements</span>
+                <div class="mt-2 space-y-0.5" x-show="layer.topTypes && layer.topTypes.length > 0">
+                    <template x-for="tt in layer.topTypes" :key="tt.type">
+                        <div class="flex justify-between text-xs opacity-70">
+                            <span x-text="(tt.type || '').replace(/_/g, ' ')"></span>
+                            <span x-text="tt.count" class="ml-1 opacity-60"></span>
+                        </div>
+                    </template>
+                </div>
+            </button>
+        </template>
+    </div>
+
+    {# ── BIZBOK: Diagram Toggle + Viewpoint Diagram ── #}
+    <div class="flex items-center gap-3 mb-4">
+        <button @click="showDiagram = !showDiagram; if(showDiagram && !diagramLoaded) loadDiagram()"
+                :class="showDiagram ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'"
+                class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"/>
+            </svg>
+            Diagram View
+        </button>
+        <span x-show="showDiagram" x-cloak class="text-[10px] text-muted-foreground">
+            Showing <span x-text="activeLayer || 'all'"></span> layer elements as architecture diagram
+        </span>
+    </div>
+    <div x-show="showDiagram" x-cloak x-transition class="mb-6">
+        <div class="rounded-xl border border-border bg-card overflow-hidden">
+            <div class="bg-muted/20 px-5 py-2 border-b border-border flex items-center justify-between">
+                <span class="text-xs font-medium text-muted-foreground" x-text="diagramViewpointName || 'Architecture Diagram'"></span>
+                <span class="text-[10px] text-muted-foreground" x-text="diagramElementCount + ' elements, ' + diagramRelCount + ' relationships'"></span>
+            </div>
+            <div id="elements-viewpoint-diagram" class="w-full" style="min-height:350px;"></div>
+        </div>
+    </div>
+
+    {# ── Data Quality Banner ── #}
+    <div x-show="totalCount > 0" x-cloak class="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 mb-4 flex items-center gap-4 text-xs text-muted-foreground">
+        <i data-lucide="alert-triangle" class="h-4 w-4 text-amber-500 shrink-0"></i>
+        <span>No description: <strong class="text-foreground" x-text="noDescCount"></strong></span>
+        <span>No relationships: <strong class="text-foreground" x-text="noRelCount"></strong></span>
+        <span>Not linked to solutions: <strong class="text-foreground" x-text="noSolCount"></strong></span>
+    </div>
+
+    {# ── FRAG-008: Tech Debt Analysis (Phase D) ── #}
+    <div x-data="{ debtOpen: false, debtLoading: false, debtLoaded: false, debtScores: [], debtSummary: {}, debtError:  }" class="mb-4">
+        <button @click="debtOpen = !debtOpen; if(debtOpen && !debtLoaded) {
+            debtLoading = true;
+            fetch(/api/ea/phase-d/debt-scores, { credentials: same-origin })
+                .then(r => r.json())
+                .then(d => { debtScores = (d.scores || []).sort((a,b) => (b.debt_score||0) - (a.debt_score||0)); debtSummary = d.summary || {}; debtLoaded = true; debtLoading = false; })
+                .catch(e => { debtError = e.message; debtLoading = false; });
+        }"
+            :class="debtOpen ? bg-primary text-primary-foreground : bg-muted text-muted-foreground"
+            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            Tech Debt Analysis
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 transition-transform" :class="debtOpen ? rotate-180 : " fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+        </button>
+        <div x-show="debtOpen" x-cloak x-transition class="mt-3">
+            <div class="rounded-xl border border-border bg-card overflow-hidden">
+                <div class="bg-muted/20 px-5 py-2 border-b border-border flex items-center justify-between">
+                    <span class="text-xs font-medium text-muted-foreground">Phase D — Technology Debt Scores</span>
+                    <span x-show="debtSummary.total_elements" x-cloak class="text-[10px] text-muted-foreground" x-text="(debtSummary.total_elements || 0) +  elements analyzed"></span>
+                </div>
+                <div x-show="debtLoading" x-cloak class="p-6 text-center text-sm text-muted-foreground">
+                    <span class="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full inline-block mr-2"></span> Loading debt scores...
+                </div>
+                <div x-show="debtError" x-cloak class="p-4 text-sm text-destructive" x-text="debtError"></div>
+                <div x-show="debtLoaded && debtScores.length === 0 && !debtError" x-cloak class="p-6 text-center text-sm text-muted-foreground">No debt scores available.</div>
+                <table x-show="debtLoaded && debtScores.length > 0" x-cloak class="w-full text-sm">
+                    <thead>
+                        <tr class="border-b border-border">
+                            <th class="px-4 py-2 text-left font-medium text-muted-foreground">Element</th>
+                            <th class="px-4 py-2 text-left font-medium text-muted-foreground">Layer</th>
+                            <th class="px-4 py-2 text-center font-medium text-muted-foreground w-24">Debt Score</th>
+                            <th class="px-4 py-2 text-left font-medium text-muted-foreground hidden lg:table-cell">Factors</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border">
+                        <template x-for="item in debtScores.slice(0, 20)" :key="item.id || item.name">
+                            <tr class="hover:bg-muted/30">
+                                <td class="px-4 py-2 font-medium text-foreground" x-text="item.name || item.element_name || Unknown"></td>
+                                <td class="px-4 py-2 text-muted-foreground capitalize" x-text="item.layer || u2014"></td>
+                                <td class="px-4 py-2 text-center">
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-bold"
+                                          :class="(item.debt_score || 0) >= 70 ? bg-red-500/10 text-destructive : (item.debt_score || 0) >= 40 ? bg-amber-500/10 text-amber-600 : bg-emerald-500/10 text-emerald-600"
+                                          x-text="(item.debt_score || 0) + %"></span>
+                                </td>
+                                <td class="px-4 py-2 text-xs text-muted-foreground hidden lg:table-cell" x-text="(item.factors || []).join(, ) || item.reason || u2014"></td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    {# ── ARC-005: Data Quality Banner ── #}
+    {% set dq_issues = (no_desc_count or 0) + (no_rels_count or 0) + (no_solutions_count or 0) %}
+    {% if dq_issues > 0 %}
+    <div data-testid="data-quality-banner"
+         class="mb-4 rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+        <span class="flex items-center gap-1.5 font-medium text-amber-800 dark:text-amber-300">
+            <svg class="w-4 h-4 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/></svg>
+            Data quality
+        </span>
+        {% if no_desc_count %}
+        <span data-testid="dq-no-description" class="text-amber-700 dark:text-amber-400">
+            <strong>{{ no_desc_count }}</strong> element{{ 's' if no_desc_count != 1 }} missing description
+        </span>
+        {% endif %}
+        {% if no_rels_count %}
+        <span data-testid="dq-no-relationships" class="text-amber-700 dark:text-amber-400">
+            <strong>{{ no_rels_count }}</strong> element{{ 's' if no_rels_count != 1 }} with no relationships
+        </span>
+        {% endif %}
+        {% if no_solutions_count %}
+        <span data-testid="dq-no-solutions" class="text-amber-700 dark:text-amber-400">
+            <strong>{{ no_solutions_count }}</strong> element{{ 's' if no_solutions_count != 1 }} not linked to any solution
+        </span>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    {# ── Filter Bar ── #}
+    <div x-data="{ advancedOpen: false }">
+        <div class="flex flex-wrap items-center gap-3 mb-2">
+            {# Search #}
+            <div class="relative flex-1 min-w-[200px] max-w-md">
+                <input type="text"
+                       x-model="searchQuery"
+                       @input.debounce.300ms="page=1; fetchElements()"
+                       placeholder="Search by name..."
+                       class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring pl-9">
+                <svg class="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+            </div>
+            {# Layer dropdown #}
+            <select x-model="activeLayer" @change="onLayerSelect()"
+                    data-testid="layer-select"
+                    class="h-9 rounded-md border border-input bg-transparent px-3 text-sm">
+                <option value="">All Layers</option>
+                <option value="application">Application</option>
+                <option value="motivation">Motivation</option>
+                <option value="business">Business</option>
+                <option value="technology">Technology</option>
+                <option value="strategy">Strategy</option>
+                <option value="implementation">Implementation</option>
+            </select>
+            {# Type dropdown — driven by selected layer #}
+            <select x-model="filterType" @change="page=1; fetchElements()"
+                    data-testid="type-select"
+                    class="h-9 rounded-md border border-input bg-transparent px-3 text-sm">
+                <option value="">All Types</option>
+                <template x-for="t in availableTypes" :key="t">
+                    <option :value="t" x-text="t.replace(/_/g, ' ')"></option>
+                </template>
+            </select>
+            {# Advanced toggle #}
+            <button @click="advancedOpen = !advancedOpen"
+                    data-testid="advanced-toggle"
+                    :class="advancedOpen ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-accent'"
+                    class="h-9 px-3 rounded-md text-sm border border-input transition-colors inline-flex items-center gap-1.5">
+                <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg>
+                Advanced
+            </button>
+            {# Clear filters #}
+            <button @click="clearFilters()" x-show="searchQuery || activeLayer || filterType || filterScope || filterBuildingBlock || filterPlateau || filterHasRels || filterHasSolutions" x-cloak
+                    class="h-9 px-3 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
+                Clear filters
+            </button>
+            <div class="flex-1"></div>
+            <span class="text-sm text-muted-foreground" x-text="totalCount + ' elements'"></span>
+            <button @click="showCreateModal = true"
+                    class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 py-2">
+                <svg class="w-4 h-4 mr-1.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+                New Element
+            </button>
+        </div>
+        {# Active filter badge #}
+        <div x-show="activeLayer" x-cloak class="flex items-center gap-2 mb-2">
+            <span data-testid="active-filter-badge"
+                  class="inline-flex items-center gap-1.5 rounded-full border border-border bg-accent px-3 py-0.5 text-xs font-medium text-accent-foreground capitalize">
+                <span x-text="activeLayer + ' layer (' + (layers.find(l => l.name.toLowerCase() === activeLayer)?.count ?? '') + ' elements)'"></span>
+                <button @click="activeLayer=''; onLayerSelect()" class="hover:text-destructive transition-colors" aria-label="Clear layer filter">
+                    <svg class="w-3 h-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </span>
+        </div>
+        {# Advanced panel #}
+        <div x-show="advancedOpen" x-cloak
+             data-testid="advanced-panel"
+             class="mb-4 p-4 rounded-lg border border-border bg-muted/30 flex flex-wrap gap-3">
+            <select x-model="filterScope" @change="page=1; fetchElements()"
+                    class="h-9 rounded-md border border-input bg-background px-3 text-sm">
+                <option value="">All Scopes</option>
+                <option value="core">Core</option>
+                <option value="supporting">Supporting</option>
+                <option value="generic">Generic</option>
+            </select>
+            <select x-model="filterBuildingBlock" @change="page=1; fetchElements()"
+                    class="h-9 rounded-md border border-input bg-background px-3 text-sm">
+                <option value="">Building Block Type</option>
+                <option value="architecture">Architecture Building Block</option>
+                <option value="solution">Solution Building Block</option>
+            </select>
+            <select x-model="filterPlateau" @change="page=1; fetchElements()"
+                    class="h-9 rounded-md border border-input bg-background px-3 text-sm">
+                <option value="">All Plateaus</option>
+                <option value="baseline">Baseline</option>
+                <option value="target">Target</option>
+                <option value="transition">Transition</option>
+            </select>
+            <select x-model="filterHasRels" @change="page=1; fetchElements()"
+                    class="h-9 rounded-md border border-input bg-background px-3 text-sm">
+                <option value="">Has Relationships</option>
+                <option value="yes">With Relationships</option>
+                <option value="no">Without Relationships</option>
+            </select>
+            <select x-model="filterHasSolutions" @change="page=1; fetchElements()"
+                    class="h-9 rounded-md border border-input bg-background px-3 text-sm">
+                <option value="">Linked to Solution</option>
+                <option value="yes">Linked</option>
+                <option value="no">Not Linked</option>
+            </select>
+        </div>
+    </div>
+
+    {# ── Elements Table ── #}
+    <div data-slot="card" class="rounded-xl border bg-card shadow-sm overflow-hidden">
+        {# Loading #}
+        <div x-show="loading" x-cloak class="p-8 text-center text-muted-foreground">
+            <span class="animate-spin h-5 w-5 border-2 border-current border-t-transparent rounded-full inline-block"></span>
+            <span class="ml-2">Loading elements...</span>
+        </div>
+
+        {# Empty — PLT-040: role-aware CTA #}
+        <div x-show="!loading && elements.length === 0" x-cloak class="p-12 text-center">
+            <p class="text-muted-foreground">No elements match your filters.</p>
+            <button @click="clearFilters()" class="mt-2 text-sm text-primary hover:underline">Clear all filters</button>
+            {% if current_user.enterprise_role in ('enterprise_architect', 'platform_admin') or current_user.is_admin() %}
+            <p class="mt-3 text-sm text-muted-foreground">
+                <a href="/archimate/composer" class="text-primary hover:underline">Open the Composer</a> to create elements,
+                or <a href="/admin/abacus-settings" class="text-primary hover:underline">sync from Abacus</a>.
+            </p>
+            {% elif current_user.enterprise_role == 'solution_architect' %}
+            <p class="mt-3 text-sm text-muted-foreground">
+                <a href="/architecture-journey/" class="text-primary hover:underline">Start an Architecture Journey</a> to generate ArchiMate elements.
+            </p>
+            {% else %}
+            <p class="mt-3 text-sm text-muted-foreground">Ask your enterprise architect to populate the ArchiMate catalog.</p>
+            {% endif %}
+        </div>
+
+        {# Table (ARC-003: 8 columns, sortable headers) #}
+        <table x-show="!loading && elements.length > 0" x-cloak class="w-full text-sm" data-testid="elements-table">
+            <thead>
+                <tr class="border-b border-border">
+                    <th class="w-8 px-3 py-3"><input type="checkbox" @change="toggleSelectAll($event)" class="rounded border-input"></th>
+                    <th class="px-4 py-3 text-left font-medium text-muted-foreground cursor-pointer hover:text-foreground" @click="sort('name')">
+                        Name <span x-show="sortField==='name'" x-text="sortDir==='asc'?'↑':'↓'" x-cloak></span>
+                    </th>
+                    <th class="px-4 py-3 text-left font-medium text-muted-foreground cursor-pointer hover:text-foreground" @click="sort('type')">
+                        Type <span x-show="sortField==='type'" x-text="sortDir==='asc'?'↑':'↓'" x-cloak></span>
+                    </th>
+                    <th class="px-4 py-3 text-left font-medium text-muted-foreground cursor-pointer hover:text-foreground" @click="sort('layer')">
+                        Layer <span x-show="sortField==='layer'" x-text="sortDir==='asc'?'↑':'↓'" x-cloak></span>
+                    </th>
+                    <th class="px-4 py-3 text-left font-medium text-muted-foreground hidden lg:table-cell">Description</th>
+                    <th class="px-4 py-3 text-center font-medium text-muted-foreground w-16 cursor-pointer hover:text-foreground" @click="sort('relationship_count')">
+                        Rels <span x-show="sortField==='relationship_count'" x-text="sortDir==='asc'?'↑':'↓'" x-cloak></span>
+                    </th>
+                    <th class="px-4 py-3 text-center font-medium text-muted-foreground w-16 cursor-pointer hover:text-foreground" @click="sort('solution_count')">
+                        Sols <span x-show="sortField==='solution_count'" x-text="sortDir==='asc'?'↑':'↓'" x-cloak></span>
+                    </th>
+                    <th class="px-4 py-3 text-right font-medium text-muted-foreground w-24">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-border">
+                <template x-for="el in elements" :key="el.id">
+                    <tr class="hover:bg-muted/30 cursor-pointer" @click="selectElement(el)" data-testid="element-row">
+                        <td class="px-3 py-3" @click.stop>
+                            <input type="checkbox" :value="el.id" x-model="selectedIds" class="rounded border-input">
+                        </td>
+                        <td class="px-4 py-3 font-medium text-foreground" x-text="el.name"></td>
+                        <td class="px-4 py-3">
+                            <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-medium border"
+                                  :class="layerBadgeClass(el.layer)">
+                                <span class="layer-dot w-2 h-2" :class="'layer-' + (el.layer || '').toLowerCase()"></span>
+                                <span x-text="(el.type || '').replace(/_/g, ' ')"></span>
+                            </span>
+                        </td>
+                        <td class="px-4 py-3 text-muted-foreground capitalize" x-text="el.layer || '—'"></td>
+                        <td class="px-4 py-3 text-muted-foreground hidden lg:table-cell"
+                            :title="el.description || ''"
+                            x-text="(el.description || '').length > 80 ? (el.description || '').slice(0, 80) + '…' : (el.description || '—')"></td>
+                        <td class="px-4 py-3 text-center text-sm">
+                            <span :class="!(el.relationship_count) ? 'inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-amber-500/10 text-amber-600' : 'text-foreground'"
+                                  x-text="el.relationship_count || 0"></span>
+                        </td>
+                        <td class="px-4 py-3 text-center text-sm">
+                            <span :class="!(el.solution_count) ? 'inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-amber-500/10 text-amber-600' : 'text-foreground'"
+                                  x-text="el.solution_count || 0"></span>
+                        </td>
+                        <td class="px-4 py-3 text-right" @click.stop>
+                            <button @click="editElement(el)" class="text-muted-foreground hover:text-foreground p-1" title="Edit">
+                                <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                            </button>
+                            {% if current_user.is_admin() %}
+                            <button @click.stop="deleteElement(el)" class="text-muted-foreground hover:text-destructive p-1" title="Delete">
+                                <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                            </button>
+                            {% endif %}
+                        </td>
+                    </tr>
+                </template>
+            </tbody>
+        </table>
+
+        {# Pagination (ARC-003: Showing X-Y of Z) #}
+        <div x-show="!loading && totalPages > 1" x-cloak
+             class="flex items-center justify-between px-4 py-3 border-t border-border"
+             data-testid="pagination-footer">
+            <span class="text-sm text-muted-foreground"
+                  x-text="'Showing ' + ((page - 1) * perPage + 1) + '–' + Math.min(page * perPage, totalCount) + ' of ' + totalCount + ' elements'"></span>
+            <div class="flex gap-1">
+                <button @click="page = Math.max(1, page - 1); fetchElements()"
+                        :disabled="page <= 1"
+                        class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent h-8 px-3 disabled:opacity-50">
+                    Previous
+                </button>
+                <button @click="page = Math.min(totalPages, page + 1); fetchElements()"
+                        :disabled="page >= totalPages"
+                        class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent h-8 px-3 disabled:opacity-50">
+                    Next
+                </button>
+            </div>
+        </div>
+    </div>
+
+    {# ── Detail Panel (slide-out) ── #}
+    <div x-show="selectedElement" x-cloak
+         x-transition:enter="transition ease-out duration-200"
+         x-transition:enter-start="translate-x-full"
+         x-transition:enter-end="translate-x-0"
+         x-transition:leave="transition ease-in duration-150"
+         x-transition:leave-start="translate-x-0"
+         x-transition:leave-end="translate-x-full"
+         class="fixed top-0 right-0 h-full w-full max-w-md bg-card border-l border-border shadow-xl z-30 overflow-y-auto">
+        <div class="p-6">
+            <div class="flex items-center justify-between mb-6">
+                <h2 class="text-lg font-semibold text-foreground" x-text="selectedElement?.name || ''"></h2>
+                <button @click="selectedElement = null" class="text-muted-foreground hover:text-foreground p-1">
+                    <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </div>
+
+            {# Type + Layer badges #}
+            <div class="flex gap-2 mb-4">
+                <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-medium border"
+                      :class="layerBadgeClass(selectedElement?.layer)">
+                    <span class="layer-dot w-2 h-2" :class="'layer-' + (selectedElement?.layer || '').toLowerCase()"></span>
+                    <span x-text="(selectedElement?.type || '').replace(/_/g, ' ')"></span>
+                </span>
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground capitalize"
+                      x-text="(selectedElement?.layer || '') + ' Layer'"></span>
+            </div>
+
+            {# Description #}
+            <div class="mb-6">
+                <label class="text-xs font-medium text-muted-foreground uppercase tracking-wider">Description</label>
+                <p class="mt-1 text-sm text-foreground" x-text="selectedElement?.description || 'No description'"></p>
+            </div>
+
+            {# Quick actions #}
+            <div class="flex gap-2 mb-6">
+                <button @click="editElement(selectedElement)"
+                        class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-8 px-3">
+                    Edit
+                </button>
+                <a :href="selectedElement?.id ? '/archimate/composer?element=' + selectedElement.id : '#'"
+                   class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-8 px-3">
+                    Open in Composer
+                </a>
+            </div>
+
+            {# Relationships (loaded on select) #}
+            <div class="border-t border-border pt-4">
+                <h3 class="text-sm font-medium text-foreground mb-3">Relationships</h3>
+                <div x-show="detailLoading" x-cloak class="text-xs text-muted-foreground">Loading...</div>
+                <div x-show="!detailLoading && relationships.length === 0" x-cloak class="text-xs text-muted-foreground italic">No relationships</div>
+                <div x-show="!detailLoading && relationships.length > 0" x-cloak class="space-y-2">
+                    <template x-for="rel in relationships" :key="rel.id">
+                        <div class="flex items-center gap-2 text-xs p-2 rounded-md bg-muted/30">
+                            <span class="layer-dot w-2 h-2" :class="'layer-' + (rel.direction === 'outgoing' ? (rel.target_layer || '').toLowerCase() : (rel.source_layer || '').toLowerCase())"></span>
+                            <span class="text-muted-foreground" x-text="rel.direction === 'outgoing' ? '→' : '←'"></span>
+                            <span class="font-medium" x-text="rel.direction === 'outgoing' ? rel.target_name : rel.source_name"></span>
+                            <span class="text-muted-foreground ml-auto" x-text="rel.relationship_type"></span>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# ── Create Modal ── #}
+    <div x-show="showCreateModal" x-cloak
+         class="fixed inset-0 z-40 flex items-center justify-center bg-black/50"
+         @keydown.escape.window="showCreateModal = false">
+        <div class="bg-card rounded-xl border shadow-xl w-full max-w-md mx-4 p-6"
+             @click.outside="showCreateModal = false">
+            <h2 class="text-lg font-semibold mb-4">Create ArchiMate Element</h2>
+            <div class="space-y-4">
+                <div>
+                    <label class="text-sm font-medium">Layer</label>
+                    <select x-model="createForm.layer" @change="updateTypeOptions()"
+                            class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm">
+                        <option value="">Select layer...</option>
+                        <option value="motivation">Motivation</option>
+                        <option value="strategy">Strategy</option>
+                        <option value="business">Business</option>
+                        <option value="application">Application</option>
+                        <option value="technology">Technology</option>
+                        <option value="implementation">Implementation</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="text-sm font-medium">Type</label>
+                    <select x-model="createForm.element_type"
+                            class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm">
+                        <option value="">Select type...</option>
+                        <template x-for="t in createTypeOptions" :key="t">
+                            <option :value="t" x-text="t.replace(/_/g, ' ')"></option>
+                        </template>
+                    </select>
+                </div>
+                <div>
+                    <label class="text-sm font-medium">Name</label>
+                    <!-- entity-picker-ok: this IS the create form for a new ArchiMate element, name is genuinely free-text -->
+                    <input type="text" x-model="createForm.name" placeholder="Element name"
+                           class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                </div>
+                <div>
+                    <label class="text-sm font-medium">Description</label>
+                    <textarea x-model="createForm.description" rows="3" placeholder="Optional description"
+                              class="mt-1 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none"></textarea>
+                </div>
+                <div x-show="createError" x-cloak class="text-sm text-destructive" x-text="createError"></div>
+            </div>
+            <div class="flex justify-end gap-2 mt-6">
+                <button @click="showCreateModal = false"
+                        class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent h-9 px-4">
+                    Cancel
+                </button>
+                <button @click="createElement()" :disabled="createSubmitting"
+                        class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 disabled:opacity-50">
+                    <span x-show="createSubmitting" x-cloak class="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full inline-block mr-2"></span>
+                    Create
+                </button>
+            </div>
+        </div>
+    </div>
+
+    {# ── Bulk Actions Bar ── #}
+    <div x-show="selectedIds.length > 0" x-cloak
+         x-transition
+         class="fixed bottom-4 left-1/2 -translate-x-1/2 z-20 bg-card border rounded-xl shadow-lg px-4 py-2 flex items-center gap-3">
+        <span class="text-sm font-medium" x-text="selectedIds.length + ' selected'"></span>
+        <button @click="bulkExport()" class="text-sm text-primary hover:underline">Export</button>
+        <button @click="selectedIds = []" class="text-sm text-muted-foreground hover:text-foreground">Clear</button>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/jointjs@3.7.7/dist/joint.min.js" crossorigin="anonymous"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jointjs@3.7.7/dist/joint.min.css" crossorigin="anonymous">
+<script src="{{ url_for('static', filename='js/archimate/composer_renderer.js') }}"></script>
+<script>
+document.addEventListener('alpine:init', () => {
+    Alpine.data('archimateElements', () => ({
+        // State
+        elements: [],
+        layers: [],
+        loading: true,
+        page: 1,
+        perPage: 25,
+        totalCount: 0,
+        totalPages: 1,
+        searchQuery: '',
+        activeLayer: '',
+        filterType: '',
+        // ARC-004 advanced filters
+        filterScope: '',
+        filterBuildingBlock: '',
+        filterPlateau: '',
+        filterHasRels: '',
+        filterHasSolutions: '',
+        sortField: 'name',
+        sortDir: 'asc',
+        selectedIds: [],
+        selectedElement: null,
+        detailLoading: false,
+        relationships: [],
+        showCreateModal: false,
+        createSubmitting: false,
+        createError: '',
+        createForm: { name: '', element_type: '', layer: '', description: '' },
+        createTypeOptions: [],
+        availableTypes: [],
+        noDescCount: 0,
+        noRelCount: 0,
+        noSolCount: 0,
+
+        // BIZBOK: Diagram toggle state
+        showDiagram: false,
+        diagramLoaded: false,
+        diagramViewpointName: '',
+        diagramElementCount: 0,
+        diagramRelCount: 0,
+        _diagramRenderer: null,
+
+        // Layer → type mapping (ArchiMate 3.2)
+        layerTypes: {
+            motivation: ['Stakeholder','Driver','Assessment','Goal','Outcome','Principle','Requirement','Constraint','Meaning','Value'],
+            strategy: ['Resource','Capability','CourseOfAction','ValueStream'],
+            business: ['BusinessActor','BusinessRole','BusinessProcess','BusinessFunction','BusinessService','BusinessObject','BusinessEvent','BusinessInterface','Contract'],
+            application: ['ApplicationComponent','ApplicationService','ApplicationInterface','ApplicationFunction','DataObject'],
+            technology: ['Node','Device','SystemSoftware','CommunicationNetwork','TechnologyService','Artifact','Path'],
+            implementation: ['WorkPackage','Deliverable','Plateau','Gap','ImplementationEvent']
+        },
+
+        async init() {
+            // Bootstrap layer counts from server-side SQLAlchemy query (ARC-002)
+            const serverStats = {{ layer_stats | default([]) | tojson }};
+            if (serverStats && serverStats.length) {
+                this.layers = serverStats.map(s => ({
+                    name: s.name,
+                    count: s.count,
+                    topTypes: s.top_types || [],
+                }));
+                this.totalCount = this.layers.reduce((sum, l) => sum + l.count, 0);
+                this.availableTypes = Object.values(this.layerTypes).flat().sort();
+            } else {
+                await this.fetchLayers();
+            }
+            // ARC-004: pre-select layer from URL ?layer= param
+            const params = new URLSearchParams(window.location.search);
+            const layerParam = params.get('layer');
+            if (layerParam) {
+                this.activeLayer = layerParam.toLowerCase();
+                this.availableTypes = this.layerTypes[this.activeLayer] || Object.values(this.layerTypes).flat().sort();
+            }
+            await this.fetchElements();
+        },
+
+        async loadDiagram() {
+            let vpKey = this.activeLayer ? 'layered' : 'layered';
+            let url = '/api/archimate/viewpoints/' + vpKey + '/diagram?limit=30';
+            if (this.activeLayer) url += '&layer=' + this.activeLayer;
+            try {
+                let resp = await fetch(url, { credentials: 'same-origin' });
+                let data = await resp.json();
+                if (!data.success || !data.elements.length) return;
+                this.diagramViewpointName = data.viewpoint_name;
+                this.diagramElementCount = data.count;
+                this.diagramRelCount = data.relationship_count;
+                let container = document.getElementById('elements-viewpoint-diagram');
+                if (!container || typeof ComposerRenderer === 'undefined') return;
+                if (this._diagramRenderer) this._diagramRenderer.destroy();
+                this._diagramRenderer = ComposerRenderer.create(container, { mode: 'view', width: '100%', height: 350 });
+                this._diagramRenderer.loadElements(data.elements, data.relationships);
+                this._diagramRenderer.fitToContent();
+                this.diagramLoaded = true;
+            } catch(e) { console.warn('[BIZBOK] diagram load failed', e); }
+        },
+
+        async fetchLayers() {
+            try {
+                const statsResp = await fetch('/capability-map/api/archimate/relationship-health');
+                const statsJson = await statsResp.json();
+                const byLayer = statsJson.by_layer || [];
+                const layerCounts = {};
+                byLayer.forEach(l => { layerCounts[(l.layer || '').toLowerCase()] = l.element_count || 0; });
+                this.totalCount = statsJson.total_elements || 0;
+                this.noRelCount = statsJson.zero_relationship_count || 0;
+                this.layers = this.layers.map(l => ({
+                    ...l,
+                    count: layerCounts[l.name.toLowerCase()] || l.count,
+                }));
+            } catch (e) {
+                console.error('Failed to refresh layer counts:', e);
+            }
+        },
+
+        async fetchElements() {
+            this.loading = true;
+            try {
+                let url = '/archimate/api/elements/search?limit=' + this.perPage;
+                if (this.searchQuery) url += '&q=' + encodeURIComponent(this.searchQuery);
+                if (this.activeLayer) url += '&layer=' + encodeURIComponent(this.activeLayer);
+                if (this.filterType) url += '&type=' + encodeURIComponent(this.filterType);
+                if (this.filterScope) url += '&scope=' + encodeURIComponent(this.filterScope);
+                if (this.filterBuildingBlock) url += '&building_block=' + encodeURIComponent(this.filterBuildingBlock);
+                if (this.filterPlateau) url += '&plateau=' + encodeURIComponent(this.filterPlateau);
+                if (this.filterHasRels) url += '&has_rels=' + encodeURIComponent(this.filterHasRels);
+                if (this.filterHasSolutions) url += '&has_solutions=' + encodeURIComponent(this.filterHasSolutions);
+                const resp = await fetch(url);
+                const json = await resp.json();
+                this.elements = json.data || [];
+                // Approximate pagination (search endpoint doesn't return total)
+                this.totalPages = this.elements.length < this.perPage ? this.page : this.page + 1;
+            } catch (e) {
+                console.error('Failed to fetch elements:', e);
+                this.elements = [];
+            }
+            this.loading = false;
+        },
+
+        onLayerSelect() {
+            const layer = this.activeLayer;
+            this.filterType = '';
+            this.availableTypes = layer
+                ? (this.layerTypes[layer] || [])
+                : Object.values(this.layerTypes).flat().sort();
+            this.page = 1;
+            const params = new URLSearchParams(window.location.search);
+            if (layer) {
+                params.set('layer', layer);
+            } else {
+                params.delete('layer');
+            }
+            history.pushState({}, '', window.location.pathname + (params.toString() ? '?' + params.toString() : ''));
+            this.fetchElements();
+        },
+
+        filterByLayer(layerName) {
+            if (this.activeLayer === layerName.toLowerCase()) {
+                this.activeLayer = '';
+            } else {
+                this.activeLayer = layerName.toLowerCase();
+            }
+            this.onLayerSelect();
+        },
+
+        clearFilters() {
+            this.searchQuery = '';
+            this.activeLayer = '';
+            this.filterType = '';
+            this.filterScope = '';
+            this.filterBuildingBlock = '';
+            this.filterPlateau = '';
+            this.filterHasRels = '';
+            this.filterHasSolutions = '';
+            this.page = 1;
+            history.pushState({}, '', window.location.pathname);
+            this.fetchElements();
+        },
+
+        sort(field) {
+            if (this.sortField === field) {
+                this.sortDir = this.sortDir === 'asc' ? 'desc' : 'asc';
+            } else {
+                this.sortField = field;
+                this.sortDir = 'asc';
+            }
+            this.elements.sort((a, b) => {
+                const va = (a[field] || '').toLowerCase();
+                const vb = (b[field] || '').toLowerCase();
+                return this.sortDir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
+            });
+        },
+
+        async selectElement(el) {
+            this.selectedElement = el;
+            this.detailLoading = true;
+            this.relationships = [];
+            try {
+                const resp = await fetch('/architecture/api/elements/' + el.id + '/relationships');
+                const json = await resp.json();
+                const incoming = (json.incoming || []).map(r => ({...r, direction: 'incoming'}));
+                const outgoing = (json.outgoing || []).map(r => ({...r, direction: 'outgoing'}));
+                this.relationships = [...outgoing, ...incoming];
+            } catch (e) {
+                console.error('Failed to load relationships:', e);
+            }
+            this.detailLoading = false;
+        },
+
+        editElement(el) {
+            this.createForm = {
+                name: el.name,
+                element_type: el.type || el.element_type || '',
+                layer: (el.layer || '').toLowerCase(),
+                description: el.description || ''
+            };
+            this.createForm._editId = el.id;
+            this.updateTypeOptions();
+            this.showCreateModal = true;
+        },
+
+        updateTypeOptions() {
+            this.createTypeOptions = this.layerTypes[this.createForm.layer] || [];
+        },
+
+        async createElement() {
+            if (!this.createForm.name || !this.createForm.element_type) {
+                this.createError = 'Name and type are required.';
+                return;
+            }
+            this.createSubmitting = true;
+            this.createError = '';
+            try {
+                const isEdit = !!this.createForm._editId;
+                const url = isEdit
+                    ? '/architecture/elements/' + this.createForm._editId
+                    : '/architecture/elements';
+                const method = isEdit ? 'PUT' : 'POST';
+                const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
+                const resp = await fetch(url, {
+                    method,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...(csrf ? {'X-CSRFToken': csrf} : {})
+                    },
+                    body: JSON.stringify({
+                        name: this.createForm.name,
+                        element_type: this.createForm.element_type,
+                        layer: this.createForm.layer,
+                        description: this.createForm.description
+                    })
+                });
+                const json = await resp.json();
+                if (resp.ok) {
+                    this.showCreateModal = false;
+                    this.createForm = { name: '', element_type: '', layer: '', description: '' };
+                    delete this.createForm._editId;
+                    await this.fetchLayers();
+                    await this.fetchElements();
+                } else {
+                    this.createError = json.error || json.message || 'Failed to save.';
+                }
+            } catch (e) {
+                this.createError = 'Network error: ' + e.message;
+            }
+            this.createSubmitting = false;
+        },
+
+        toggleSelectAll(event) {
+            if (event.target.checked) {
+                this.selectedIds = this.elements.map(e => e.id);
+            } else {
+                this.selectedIds = [];
+            }
+        },
+
+        bulkExport() {
+            const selected = this.elements.filter(e => this.selectedIds.includes(e.id));
+            const csv = 'Name,Type,Layer,Description\n' + selected.map(e =>
+                `"${e.name}","${e.type}","${e.layer}","${(e.description || '').replace(/"/g, '""')}"`
+            ).join('\n');
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = 'archimate_elements.csv'; a.click();
+            URL.revokeObjectURL(url);
+        },
+
+        layerBadgeClass(layer) {
+            const l = (layer || '').toLowerCase();
+            const map = {
+                motivation: 'bg-violet-500/10 text-violet-600 border-violet-500/30',
+                strategy: 'bg-indigo-500/10 text-primary border-indigo-500/30',
+                business: 'bg-amber-500/10 text-amber-600 border-amber-500/30',
+                application: 'bg-blue-500/10 text-primary border-blue-500/30',
+                technology: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30',
+                implementation: 'bg-slate-500/10 text-slate-600 border-slate-500/30',
+            };
+            return map[l] || 'bg-muted text-muted-foreground border-border';
+        },
+
+        async deleteElement(el) {
+            if (!(await Platform.modal.confirm('Delete element "' + el.name + '"? This cannot be undone.'))) return;
+            const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
+            try {
+                const resp = await fetch('/architecture/elements/' + el.id, {
+                    method: 'DELETE',
+                    headers: csrf ? { 'X-CSRFToken': csrf } : {},
+                });
+                if (resp.ok || resp.status === 204) {
+                    this.elements = this.elements.filter(e => e.id !== el.id);
+                    if (this.selectedElement?.id === el.id) this.selectedElement = null;
+                    this.totalCount = Math.max(0, this.totalCount - 1);
+                }
+            } catch (e) {
+                console.error('Delete failed:', e);
+            }
+        }
+    }));
+});
+</script>
+{% endblock %}

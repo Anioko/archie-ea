@@ -1,0 +1,193 @@
+{# snack_preview.js.j2 — Snack-compatible single-file preview of the generated mobile app.
+   Uses only core React Native APIs (no NativeWind, no Expo Router) so Snack can bundle it.
+   Context: solution_name, solution_id, entities (list of {name_snake, name_display, api_path, fields, status_field, states}) #}
+import React, { useState, useEffect } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, TextInput, FlatList, StyleSheet, ActivityIndicator } from 'react-native';
+
+// Generated from ARCHIE solution #{{ solution_id }} — {{ solution_name }}
+const C = { primary: '#2563eb', bg: '#f8fafc', card: '#fff', text: '#0f172a', muted: '#64748b', border: '#e2e8f0', ok: '#10b981', warn: '#f59e0b', bad: '#ef4444' };
+
+function Badge({ status }) {
+  const s = (status || '').toLowerCase();
+  const c = ['active','completed','approved','verified'].includes(s) ? C.ok
+    : ['pending','submitted','in_progress','processing'].includes(s) ? C.warn
+    : ['rejected','failed','cancelled'].includes(s) ? C.bad : C.muted;
+  return <View style={[st.badge, { backgroundColor: c + '20', borderColor: c + '40' }]}><Text style={[st.badgeTxt, { color: c }]}>{status?.replace(/_/g, ' ')}</Text></View>;
+}
+
+function Metric({ title, value, color }) {
+  return <View style={st.metric}><Text style={st.metricL}>{title}</Text><Text style={[st.metricV, { color: color || C.text }]}>{value}</Text></View>;
+}
+
+// ── Dashboard ──
+function Dashboard({ go }) {
+  const [counts, setCounts] = useState({});
+  useEffect(() => {
+    // In production, these would hit the generated API endpoints
+    // For preview, we show placeholder counts
+    setCounts({
+{% for entity in entities %}
+      '{{ entity.name_snake }}': Math.floor(Math.random() * 50) + 5,
+{% endfor %}
+    });
+  }, []);
+  return (
+    <ScrollView style={st.page}>
+      <Text style={st.h1}>Dashboard</Text>
+      <View style={st.row}>
+{% for entity in entities[:3] %}
+        <Metric title="{{ entity.name_display }}" value={counts['{{ entity.name_snake }}'] || '-'} color={['#2563eb','#10b981','#f59e0b'][{{ loop.index0 }} % 3]} />
+{% endfor %}
+      </View>
+      <Text style={st.section}>Quick Actions</Text>
+{% for entity in entities %}
+      <TouchableOpacity style={st.action} onPress={() => go('{{ entity.name_snake }}')}><Text style={st.actionTxt}>{{ entity.name_display }}</Text></TouchableOpacity>
+{% endfor %}
+    </ScrollView>
+  );
+}
+
+// ── Entity List ──
+function ListScreen({ entity, go, detail }) {
+  const [items, setItems] = useState([]);
+  const [q, setQ] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  // Entity metadata for display
+  const meta = {
+{% for entity in entities %}
+    '{{ entity.name_snake }}': {
+      display: '{{ entity.name_display }}',
+{% if entity.status_field %}
+      statusField: '{{ entity.status_field }}',
+{% endif %}
+      labelField: '{{ entity.fields[0].name if entity.fields else "id" }}',
+    },
+{% endfor %}
+  };
+
+  useEffect(() => {
+    setLoading(true);
+    // Generate demo data for preview
+    const m = meta[entity] || { display: entity };
+    const demo = Array.from({ length: 12 }, (_, i) => ({
+      id: i + 1,
+{% for entity in entities %}
+{% if loop.first %}
+{% for field in entity.fields[:4] %}
+{% if field.type == 'string' %}
+      {{ field.name }}: '{{ field.display_name }} ' + (i + 1),
+{% elif field.type == 'integer' %}
+      {{ field.name }}: Math.floor(Math.random() * 100),
+{% elif field.type == 'boolean' %}
+      {{ field.name }}: Math.random() > 0.5,
+{% endif %}
+{% endfor %}
+{% if entity.status_field and entity.states %}
+      {{ entity.status_field }}: {{ entity.states | tojson }}[i % {{ entity.states | length }}],
+{% endif %}
+{% endif %}
+{% endfor %}
+      created_at: new Date(Date.now() - i * 86400000).toISOString(),
+    }));
+    setTimeout(() => { setItems(demo); setLoading(false); }, 500);
+  }, [entity]);
+
+  const filtered = items.filter(i => !q || Object.values(i).some(v => String(v).toLowerCase().includes(q.toLowerCase())));
+  const m = meta[entity] || {};
+
+  return (
+    <View style={st.page}>
+      <View style={st.listHeader}>
+        <TouchableOpacity onPress={() => go('dashboard')}><Text style={st.backLink}>← Back</Text></TouchableOpacity>
+        <Text style={st.h1}>{m.display || entity}</Text>
+        <Text style={st.countLabel}>{filtered.length}</Text>
+      </View>
+      <TextInput style={st.search} placeholder="Search..." value={q} onChangeText={setQ} />
+      {loading ? <ActivityIndicator size="large" color={C.primary} style={st.loader} /> :
+      <FlatList data={filtered} keyExtractor={i => String(i.id)} renderItem={({ item }) => (
+        <TouchableOpacity style={st.listItem} onPress={() => detail(item)}>
+          <View style={st.flex1}>
+            <Text style={st.itemTitle} numberOfLines={1}>{item[m.labelField] || item.name || item.title || '#' + item.id}</Text>
+            <Text style={st.itemSub} numberOfLines={1}>ID: {item.id} · {new Date(item.created_at).toLocaleDateString()}</Text>
+          </View>
+          {m.statusField && item[m.statusField] && <Badge status={item[m.statusField]} />}
+          <Text style={st.chevron}>›</Text>
+        </TouchableOpacity>
+      )} />}
+    </View>
+  );
+}
+
+// ── Entity Detail ──
+function DetailScreen({ item, onBack }) {
+  return (
+    <ScrollView style={st.page}>
+      <TouchableOpacity onPress={onBack}><Text style={st.backLinkMb}>← Back to list</Text></TouchableOpacity>
+      <Text style={st.h1}>{item.name || item.title || 'Record #' + item.id}</Text>
+      <View style={st.card}>
+        {Object.entries(item).filter(([k]) => k !== 'id').map(([k, v]) => (
+          <View key={k} style={st.detailRow}>
+            <Text style={st.detailK}>{k.replace(/_/g, ' ')}</Text>
+            {typeof v === 'boolean' ? <Badge status={v ? 'Active' : 'Inactive'} /> :
+             <Text style={st.detailV}>{String(v).substring(0, 200)}</Text>}
+          </View>
+        ))}
+      </View>
+    </ScrollView>
+  );
+}
+
+// ── App Shell ──
+export default function App() {
+  const [screen, setScreen] = useState('dashboard');
+  const [entity, setEntity] = useState('');
+  const [detail, setDetail] = useState(null);
+  const go = t => { setScreen(t === 'dashboard' ? 'dashboard' : 'list'); setEntity(t); setDetail(null); };
+  return (
+    <View style={st.root}>
+      <View style={st.topBar}>
+        <Text style={st.topTitle}>{{ solution_name }}</Text>
+        <View style={st.topBadge}><Text style={st.topBadgeTxt}>Preview</Text></View>
+      </View>
+      {screen === 'dashboard' && <Dashboard go={go} />}
+      {screen === 'list' && !detail && <ListScreen entity={entity} go={go} detail={setDetail} />}
+      {detail && <DetailScreen item={detail} onBack={() => setDetail(null)} />}
+      <View style={st.tabs}>
+        <TouchableOpacity style={st.tab} onPress={() => go('dashboard')}>
+          <Text style={[st.tabTxt, screen === 'dashboard' ? { color: C.primary, fontWeight: '600' } : {}]}>Home</Text>
+        </TouchableOpacity>
+{% for entity in entities[:3] %}
+        <TouchableOpacity style={st.tab} onPress={() => go('{{ entity.name_snake }}')}>
+          <Text style={[st.tabTxt, entity === '{{ entity.name_snake }}' ? { color: C.primary, fontWeight: '600' } : {}]}>{{ entity.name_display }}</Text>
+        </TouchableOpacity>
+{% endfor %}
+      </View>
+    </View>
+  );
+}
+
+const st = StyleSheet.create({
+  root:{flex:1,backgroundColor:C.bg},
+  topBar:{backgroundColor:C.card,paddingTop:50,paddingBottom:12,paddingHorizontal:20,borderBottomWidth:1,borderBottomColor:C.border,flexDirection:'row',alignItems:'center',justifyContent:'space-between'},
+  topTitle:{fontSize:16,fontWeight:'700',color:C.text},topBadge:{backgroundColor:C.primary+'15',paddingHorizontal:8,paddingVertical:3,borderRadius:6},topBadgeTxt:{fontSize:10,fontWeight:'600',color:C.primary},
+  page:{flex:1,padding:20},h1:{fontSize:22,fontWeight:'700',color:C.text,marginBottom:16},
+  section:{fontSize:12,fontWeight:'600',color:C.muted,textTransform:'uppercase',letterSpacing:0.5,marginTop:24,marginBottom:12},
+  row:{flexDirection:'row',gap:10},
+  metric:{flex:1,backgroundColor:C.card,borderRadius:12,padding:16,borderWidth:1,borderColor:C.border},
+  metricL:{fontSize:10,color:C.muted,textTransform:'uppercase',letterSpacing:0.5,marginBottom:6},metricV:{fontSize:24,fontWeight:'700'},
+  action:{backgroundColor:C.card,borderRadius:10,padding:14,marginBottom:8,borderWidth:1,borderColor:C.border},
+  search:{backgroundColor:C.card,borderRadius:10,padding:12,fontSize:14,borderWidth:1,borderColor:C.border,marginBottom:12},
+  listItem:{backgroundColor:C.card,borderRadius:10,padding:14,marginBottom:6,borderWidth:1,borderColor:C.border,flexDirection:'row',alignItems:'center',gap:10},
+  itemTitle:{fontSize:14,fontWeight:'600',color:C.text},itemSub:{fontSize:12,color:C.muted,marginTop:2},
+  badge:{paddingHorizontal:8,paddingVertical:3,borderRadius:6,borderWidth:1},badgeTxt:{fontSize:10,fontWeight:'600'},
+  card:{backgroundColor:C.card,borderRadius:12,borderWidth:1,borderColor:C.border,overflow:'hidden',marginTop:12},
+  detailRow:{padding:14,borderBottomWidth:1,borderBottomColor:C.border},detailK:{fontSize:11,fontWeight:'600',color:C.muted,textTransform:'uppercase',letterSpacing:0.5,marginBottom:4},detailV:{fontSize:14,color:C.text},
+  tabs:{flexDirection:'row',backgroundColor:C.card,borderTopWidth:1,borderTopColor:C.border,paddingBottom:24,paddingTop:8},
+  tab:{flex:1,alignItems:'center',paddingVertical:6},tabTxt:{fontSize:11,color:C.muted},
+  listHeader:{flexDirection:'row',alignItems:'center',gap:12,marginBottom:12},
+  backLink:{color:'#2563eb'},backLinkMb:{color:'#2563eb',marginBottom:16},
+  countLabel:{color:'#64748b',fontSize:12},
+  loader:{marginTop:40},flex1:{flex:1},chevron:{color:'#64748b',fontSize:18},
+  actionTxt:{color:'#2563eb',fontWeight:'500'},
+});

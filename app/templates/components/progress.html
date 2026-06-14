@@ -1,0 +1,50 @@
+{# shadcn/ui Progress Component #}
+{% macro progress(
+    value=0,
+    max=100,
+    show_label=false,
+    class=''
+) %}
+<div class="relative h-4 w-full overflow-hidden rounded-full bg-secondary {{ class }}">
+    <div 
+        class="h-full w-full flex-1 bg-primary transition-all"
+        style="transform: translateX(-{{ 100 - (value / max * 100) }}%)"
+        role="progressbar"
+        aria-valuenow="{{ value }}"
+        aria-valuemin="0"
+        aria-valuemax="{{ max }}"
+    ></div>
+    {% if show_label %}
+    <span class="absolute inset-0 flex items-center justify-center text-xs font-medium">
+        {{ (value / max * 100)|round|int }}%
+    </span>
+    {% endif %}
+</div>
+{% endmacro %}
+
+{% macro progress_dynamic(
+    id='progress',
+    max=100,
+    show_label=false,
+    class=''
+) %}
+<div 
+    x-data="{ value: 0 }"
+    class="relative h-4 w-full overflow-hidden rounded-full bg-secondary {{ class }}"
+    id="{{ id }}"
+>
+    <div 
+        :style="`transform: translateX(-${100 - (value / {{ max }} * 100)}%)`"
+        class="h-full w-full flex-1 bg-primary transition-all"
+        role="progressbar"
+        :aria-valuenow="value"
+        aria-valuemin="0"
+        aria-valuemax="{{ max }}"
+    ></div>
+    {% if show_label %}
+    <span class="absolute inset-0 flex items-center justify-center text-xs font-medium">
+        <span x-text="Math.round(value / {{ max }} * 100)"></span>%
+    </span>
+    {% endif %}
+</div>
+{% endmacro %}

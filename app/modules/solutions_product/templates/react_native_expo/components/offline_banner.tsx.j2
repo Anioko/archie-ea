@@ -1,0 +1,45 @@
+{# Offline / syncing status banner — shown at top of list screens #}
+import { Text, View } from "react-native"
+import { useIsOnline, getPendingCount } from "@/lib/offline_cache"
+import { useState, useEffect } from "react"
+import { Wifi, WifiOff, RefreshCw } from "lucide-react-native"
+
+// Dynamic style helper — avoids Jinja2/JSX double-brace conflict
+const _bg = (c: string) => ({ backgroundColor: c })
+
+export function OfflineBanner() {
+  const isOnline = useIsOnline()
+  const [pendingCount, setPendingCount] = useState(0)
+
+  useEffect(() => {
+    getPendingCount().then(setPendingCount)
+    const interval = setInterval(() => getPendingCount().then(setPendingCount), 5000)
+    return () => clearInterval(interval)
+  }, [])
+
+  // Online and no pending mutations → hide
+  if (isOnline && pendingCount === 0) return null
+
+  if (!isOnline) {
+    return (
+      <View className="flex-row items-center justify-center px-4 py-2 gap-2" style={_bg("#fef2f2")}>
+        <WifiOff size={14} color="#dc2626" />
+        <Text className="text-xs font-semibold text-red-700">
+          {pendingCount > 0
+            ? `Offline — ${pendingCount} change${pendingCount !== 1 ? "s" : ""} queued`
+            : "Offline — changes will sync when reconnected"}
+        </Text>
+      </View>
+    )
+  }
+
+  // Online but pending sync
+  return (
+    <View className="flex-row items-center justify-center px-4 py-2 gap-2" style={_bg("#fefce8")}>
+      <RefreshCw size={14} color="#ca8a04" />
+      <Text className="text-xs font-semibold text-yellow-700">
+        Syncing {pendingCount} pending change{pendingCount !== 1 ? "s" : ""}…
+      </Text>
+    </View>
+  )
+}

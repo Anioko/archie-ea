@@ -1,0 +1,326 @@
+            {# Phase D — Technology Architecture (ArchiMate Technology Layer) #}
+            <div id="phase-d" class="bg-card rounded-xl border border-border shadow-sm p-6 transition-all relative"
+                 x-show="isSectionActive('D')" x-cloak
+                 :class="isSectionActive('D') ? 'ring-1 ring-primary/10' : ''">
+                <div x-show="isSectionFuture('D')" x-cloak class="absolute inset-0 bg-background/60 z-10 flex items-center justify-center rounded-xl">
+                    <p class="text-sm text-muted-foreground font-medium">Complete Phase <span x-text="currentPhase"></span> to unlock</p>
+                </div>
+
+                {# Header #}
+                <div class="flex items-center justify-between mb-4">
+                    <div class="flex items-center gap-3">
+                        <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-500 flex-shrink-0" x-show="isSectionCompleted('D')" x-cloak aria-hidden="true"></i>
+                        <i data-lucide="circle-dot" class="w-4 h-4 text-primary flex-shrink-0" x-show="isSectionActive('D')" x-cloak aria-hidden="true"></i>
+                        <i data-lucide="circle" class="w-4 h-4 text-muted-foreground flex-shrink-0" x-show="isSectionFuture('D')" x-cloak aria-hidden="true"></i>
+                        <h3 class="text-lg font-semibold text-foreground">Technology Architecture</h3>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs text-muted-foreground" x-text="(technologyElements || []).length + ' elements'"></span>
+                        <button type="button" @click="$dispatch('open-archimate-picker', {elementType: 'Technology', linkEndpoint: '/api/solutions/{{ solution.id }}/elements'})"
+                            class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+                            <i data-lucide="plus" class="w-3 h-3" aria-hidden="true"></i> Link Element
+                        </button>
+                        <button @click="generatePhase('D')"
+                                :disabled="generateLoading === 'D'"
+                                class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-amber-500/30 text-amber-600 rounded-md hover:bg-amber-500/10 disabled:opacity-50"
+                                aria-label="Generate missing Phase D elements">
+                            <i data-lucide="sparkles" class="h-3.5 w-3.5" :class="generateLoading === 'D' && 'animate-spin'" aria-hidden="true"></i>
+                            <span x-text="generateLoading === 'D' ? 'Generating...' : 'Generate Missing'"></span>
+                        </button>
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-violet-500/10 text-violet-600 border border-violet-500/30">Phase D</span>
+                    </div>
+                </div>
+
+                {# Generate Missing Preview Panel (BPP-014) #}
+                <template x-if="generatePreview && generatePreview.phase === 'D'">
+                    <div class="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 space-y-3">
+                        <div class="flex items-center justify-between">
+                            <h4 class="text-sm font-medium text-amber-700">
+                                Would create <span x-text="generatePreview.count"></span> elements
+                            </h4>
+                            <span class="text-xs text-muted-foreground"
+                                  x-text="'Completeness: ' + Math.round((generatePreview.completeness_before || 0) * 100) + '% → ' + Math.round((generatePreview.completeness_after || 0) * 100) + '%'"></span>
+                        </div>
+                        <div class="space-y-1.5 max-h-48 overflow-y-auto">
+                            <template x-for="item in (generatePreview.would_create || [])" :key="item.type + item.name">
+                                <div class="flex items-center gap-2 text-xs">
+                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium"
+                                          :class="item.direction === 'upstream' ? 'bg-blue-500/10 text-blue-600' : 'bg-emerald-500/10 text-emerald-600'"
+                                          x-text="item.direction === 'upstream' ? 'up' : 'down'"></span>
+                                    <span class="font-medium" x-text="item.type"></span>
+                                    <span class="text-muted-foreground truncate" x-text="item.name"></span>
+                                </div>
+                            </template>
+                        </div>
+                        <template x-if="generatePreview.count === 0">
+                            <p class="text-xs text-muted-foreground">All required elements already exist. Phase is complete.</p>
+                        </template>
+                        <div class="flex gap-2 pt-2 border-t border-amber-500/20" x-show="generatePreview.count > 0">
+                            <button @click="confirmGenerate()" :disabled="generateLoading"
+                                    class="px-3 py-1.5 text-xs font-medium bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50">
+                                <span x-text="generateLoading ? 'Creating...' : 'Confirm'"></span>
+                            </button>
+                            <button @click="cancelGenerate()"
+                                    class="px-3 py-1.5 text-xs font-medium border border-border rounded-md hover:bg-accent">Cancel</button>
+                        </div>
+                    </div>
+                </template>
+                <template x-if="generateError && !generateLoading">
+                    <div class="mt-2 text-xs text-destructive flex items-center gap-1">
+                        <i data-lucide="alert-circle" class="h-3 w-3" aria-hidden="true"></i>
+                        <span x-text="generateError"></span>
+                        <button @click="generateError = null" class="ml-1 underline">dismiss</button>
+                    </div>
+                </template>
+
+                {# TOGAF guidance #}
+                <details class="mb-4 text-xs text-muted-foreground bg-muted/30 rounded-lg border border-border">
+                    <summary class="px-4 py-2 text-sm font-medium text-muted-foreground cursor-pointer hover:text-foreground select-none">Phase D Guidance — Technology Architecture</summary>
+                    <div class="px-4 pb-3 space-y-1">
+                        <p><strong class="text-foreground">TOGAF Deliverable:</strong> Technology Architecture Document (TAD). Maps technology services, nodes, and infrastructure to application and business requirements.</p>
+                        <p><strong class="text-foreground">ArchiMate Artifacts:</strong> Node, Device, SystemSoftware, TechnologyService, CommunicationNetwork, Path, Artifact, TechnologyInterface elements.</p>
+                        <p><strong class="text-foreground">Key Activities:</strong> Define technology platform, map infrastructure to application components, identify deployment models (cloud/on-prem/hybrid), specify network topology.</p>
+                    </div>
+                </details>
+
+                {# Summary badges by type #}
+                <template x-if="technologyElements && technologyElements.length > 0">
+                    <div class="mb-4">
+                        <div class="flex flex-wrap gap-1.5">
+                            <template x-for="typeGroup in technologyElementsByType" :key="typeGroup.type">
+                                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-teal-500/10 text-teal-600 border border-teal-500/30">
+                                    <span x-text="typeGroup.type"></span>
+                                    <span class="bg-teal-500/20 px-1 rounded" x-text="typeGroup.count"></span>
+                                </span>
+                            </template>
+                        </div>
+                    </div>
+                </template>
+
+                {# Technology elements table #}
+                <template x-if="technologyElements && technologyElements.length > 0">
+                    <div class="overflow-x-auto border border-border rounded-lg">
+                        <table class="w-full text-sm">
+                            <thead class="bg-muted/50 border-b border-border">
+                                <tr>
+                                    <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground">Element</th>
+                                    <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground">Type</th>
+                                    <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground">Role</th>
+                                    <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground">Deployment</th>
+                                    <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground">Building Block</th>
+                                    <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground w-16"></th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-border/50">
+                                <template x-for="el in technologyElements" :key="el.id">
+                                    <tr class="group hover:bg-muted/30 transition-colors">
+                                        <td class="px-3 py-2">
+                                            <span class="font-medium text-foreground" x-text="el.name"></span>
+                                            <p class="text-xs text-muted-foreground mt-0.5 line-clamp-1" x-text="el.description" x-show="el.description" x-cloak></p>
+                                        </td>
+                                        <td class="px-3 py-2">
+                                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-teal-500/10 text-teal-600 border border-teal-500/30"
+                                                  x-text="el.type"></span>
+                                        </td>
+                                        <td class="px-3 py-2">
+                                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
+                                                  :class="el.element_role === 'primary' ? 'bg-primary/10 text-primary border border-primary/30' :
+                                                           el.element_role === 'supporting' ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/30' :
+                                                           'bg-muted text-muted-foreground border border-border'"
+                                                  x-text="el.element_role || 'primary'"></span>
+                                        </td>
+                                        <td class="px-3 py-2">
+                                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
+                                                :class="(/(cloud|saas|paas|iaas)/i.test((el.name||'') + ' ' + (el.description||''))) ? 'bg-sky-500/10 text-sky-600 border border-sky-500/20' : (/(on.?prem|server|physical)/i.test((el.name||'') + ' ' + (el.description||''))) ? 'bg-orange-500/10 text-orange-600 border border-orange-500/20' : 'bg-muted text-muted-foreground border border-border'"
+                                                x-text="(/(cloud|saas|paas|iaas)/i.test((el.name||'') + ' ' + (el.description||''))) ? 'Cloud' : (/(on.?prem|server|physical)/i.test((el.name||'') + ' ' + (el.description||''))) ? 'On-Prem' : 'TBD'">
+                                            </span>
+                                        </td>
+                                        <td class="px-3 py-2">
+                                            <span class="text-xs text-muted-foreground" x-text="el.building_block_type || '\u2014'"></span>
+                                        </td>
+                                        <td class="px-3 py-2">
+                                            <button type="button" @click="unlinkTechnologyElement(el.id)"
+                                                class="text-muted-foreground hover:text-destructive p-1 rounded-md opacity-0 group-hover:opacity-100 transition-opacity" title="Remove technology element link">
+                                                <i data-lucide="x" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                </template>
+
+                {# Empty state #}
+                <template x-if="!technologyElements || technologyElements.length === 0">
+                    <div class="text-center py-6 border-2 border-dashed border-border rounded-lg">
+                        <i data-lucide="server" class="w-8 h-8 mx-auto mb-2 text-muted-foreground opacity-50" aria-hidden="true"></i>
+                        <p class="text-sm text-muted-foreground">No technology elements linked to this solution.</p>
+                        <p class="text-xs text-muted-foreground mt-1">Click <strong>Link Element</strong> to associate ArchiMate technology-layer elements (nodes, devices, services, software).</p>
+                        <p class="text-xs text-muted-foreground mt-2 italic">
+                            <i data-lucide="sparkles" class="h-3 w-3 inline-block mr-1 text-primary/60"></i>
+                            A.R.C.H.I.E. suggests: Add technology elements to show the infrastructure that will support this solution.
+                        </p>
+                    </div>
+                </template>
+
+                {# ENT-097: Deployment Mapping — component-to-node assignment #}
+                <template x-if="technologyElements && technologyElements.length > 0">
+                    <div class="mt-6 pt-6 border-t border-border"
+                         x-data="{
+                             depLoading: false,
+                             depLoaded: false,
+                             depError: null,
+                             deployables: [],
+                             techNodes: [],
+                             assignments: {},
+
+                             get solId() {
+                                 return window.__SOLUTION_CONFIG__ ? window.__SOLUTION_CONFIG__.solutionId : null;
+                             },
+
+                             async loadDeployments() {
+                                 if (!this.solId) return;
+                                 this.depLoading = true;
+                                 this.depError = null;
+                                 try {
+                                     const res = await fetch('/api/solutions/' + this.solId + '/archimate-elements', {credentials:'same-origin'});
+                                     if (!res.ok) throw new Error('HTTP ' + res.status);
+                                     const data = await res.json();
+                                     const allEls = [];
+                                     for (const [layer, items] of Object.entries(data.elements_by_layer || {})) {
+                                         for (const el of items) allEls.push(el);
+                                     }
+                                     this.deployables = allEls.filter(e => {
+                                         const t = (e.type || '').toLowerCase();
+                                         return t.includes('applicationcomponent') || t.includes('applicationservice') || t.includes('artifact');
+                                     });
+                                     this.techNodes = allEls.filter(e => {
+                                         const t = (e.type || '').toLowerCase();
+                                         return t.includes('node') || t.includes('device') || t.includes('systemsoftware');
+                                     });
+
+                                     const relRes = await fetch('/api/solutions/' + this.solId + '/relationships?type=assignment', {credentials:'same-origin'});
+                                     if (relRes.ok) {
+                                         const relData = await relRes.json();
+                                         for (const r of (relData.relationships || [])) {
+                                             const srcId = r.source?.id || r.source_element_id;
+                                             const tgtId = r.target?.id || r.target_element_id;
+                                             this.assignments[srcId] = { relId: r.id, nodeId: tgtId };
+                                         }
+                                     }
+                                 } catch(e) {
+                                     this.depError = e.message;
+                                 } finally {
+                                     this.depLoading = false;
+                                     this.depLoaded = true;
+                                 }
+                             },
+
+                             getAssignedNode(deployableId) {
+                                 const a = this.assignments[deployableId];
+                                 if (!a) return null;
+                                 return this.techNodes.find(n => n.id === a.nodeId) || null;
+                             },
+
+                             async assignNode(deployableId, nodeId) {
+                                 const existing = this.assignments[deployableId];
+                                 try {
+                                     if (existing && existing.relId) {
+                                         await fetch('/api/solutions/' + this.solId + '/relationships/' + existing.relId, {
+                                             method: 'DELETE', credentials: 'same-origin'
+                                         });
+                                         delete this.assignments[deployableId];
+                                     }
+                                     if (nodeId) {
+                                         const res = await fetch('/api/solutions/' + this.solId + '/relationships', {
+                                             method: 'POST',
+                                             headers: {'Content-Type': 'application/json'},
+                                             credentials: 'same-origin',
+                                             body: JSON.stringify({
+                                                 source_element_id: parseInt(nodeId),
+                                                 target_element_id: deployableId,
+                                                 relationship_type: 'assignment'
+                                             })
+                                         });
+                                         if (res.ok) {
+                                             const data = await res.json();
+                                             this.assignments[deployableId] = { relId: data.id, nodeId: parseInt(nodeId) };
+                                         }
+                                     }
+                                 } catch(e) {
+                                     this.depError = e.message;
+                                 }
+                             }
+                         }"
+                         x-init="loadDeployments()">
+                        <div class="flex items-center justify-between mb-3">
+                            <div class="flex items-center gap-2">
+                                <i data-lucide="hard-drive" class="w-4 h-4 text-muted-foreground" aria-hidden="true"></i>
+                                <h3 class="text-sm font-semibold text-foreground">Deployment Mapping</h3>
+                                <span class="text-xs text-muted-foreground">Component-to-node assignments</span>
+                            </div>
+                        </div>
+
+                        <template x-if="depLoading">
+                            <div class="flex items-center justify-center py-4">
+                                <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
+                                <span class="ml-2 text-xs text-muted-foreground">Loading…</span>
+                            </div>
+                        </template>
+
+                        <template x-if="depError">
+                            <div class="mb-3 p-2 rounded-md bg-destructive/10 text-destructive text-xs" x-text="depError"></div>
+                        </template>
+
+                        <template x-if="depLoaded && deployables.length > 0 && techNodes.length > 0">
+                            <div class="overflow-x-auto border border-border rounded-lg">
+                                <table class="w-full text-sm">
+                                    <thead class="bg-muted/50 border-b border-border">
+                                        <tr>
+                                            <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground">Component / Artifact</th>
+                                            <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground">Type</th>
+                                            <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground">Deployed On</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-border/50">
+                                        <template x-for="dep in deployables" :key="dep.id">
+                                            <tr class="hover:bg-muted/20 transition-colors">
+                                                <td class="px-3 py-2 font-medium text-foreground text-xs" x-text="dep.name"></td>
+                                                <td class="px-3 py-2">
+                                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-primary border border-blue-500/30"
+                                                          x-text="dep.type"></span>
+                                                </td>
+                                                <td class="px-3 py-2">
+                                                    <select
+                                                        @change="assignNode(dep.id, $event.target.value)"
+                                                        class="text-xs rounded-md border border-input bg-background px-2 py-1 min-w-[160px]"
+                                                    >
+                                                        <option value="">— Not assigned —</option>
+                                                        <template x-for="node in techNodes" :key="node.id">
+                                                            <option :value="node.id" :selected="getAssignedNode(dep.id)?.id === node.id" x-text="node.name + ' (' + node.type + ')'"></option>
+                                                        </template>
+                                                    </select>
+                                                </td>
+                                            </tr>
+                                        </template>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </template>
+
+                        <template x-if="depLoaded && !depLoading && (deployables.length === 0 || techNodes.length === 0)">
+                            <div class="text-center py-4 border border-dashed border-border rounded-lg">
+                                <p class="text-xs text-muted-foreground">
+                                    <template x-if="techNodes.length === 0">
+                                        <span>Link Node, Device, or SystemSoftware elements to enable deployment mapping.</span>
+                                    </template>
+                                    <template x-if="techNodes.length > 0 && deployables.length === 0">
+                                        <span>Link ApplicationComponent or Artifact elements to map deployments.</span>
+                                    </template>
+                                </p>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+            </div>

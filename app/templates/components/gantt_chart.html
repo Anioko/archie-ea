@@ -1,0 +1,783 @@
+<!-- 
+shadcn/ui Gantt Chart Component
+Enterprise Implementation & Migration Planning Roadmap
+ArchiMate 3.2 Compatible with 5-year timeline support
+-->
+
+
+<!-- html2canvas library for image export -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+<div class="min-w-full overflow-x-auto" x-data="ganttChartManager()" x-init="initializeGantt()">
+    <!-- Gantt Chart Header -->
+    <div class="flex items-center justify-between mb-6">
+        <div>
+            <h2 class="text-2xl font-semibold text-foreground">Implementation Roadmap</h2>
+            <p class="text-muted-foreground">Enterprise Architecture Migration Timeline</p>
+        </div>
+        <div class="flex items-center gap-2">
+            <!-- Timeline Selector -->
+            <select x-model="selectedTimeline" @change="updateTimeline()" 
+                    class="px-3 py-2 border border-input bg-background rounded-md text-sm">
+                <option value="1">1 Year</option>
+                <option value="2">2 Years</option>
+                <option value="3" selected>3 Years</option>
+                <option value="5">5 Years</option>
+            </select>
+            
+            <!-- View Mode -->
+            <div class="flex border border-input rounded-md">
+                <button @click="viewMode = 'gantt'" 
+                        :class="viewMode === 'gantt' ? 'bg-primary text-primary-foreground' : 'bg-background text-foreground'"
+                        class="px-3 py-1 text-sm rounded-l-md" aria-label="Switch to Gantt view">
+                    Gantt
+                </button>
+                <button @click="viewMode = 'list'" 
+                        :class="viewMode === 'list' ? 'bg-primary text-primary-foreground' : 'bg-background text-foreground'"
+                        class="px-3 py-1 text-sm rounded-r-md border-l border-input" aria-label="Switch to list view">
+                    List
+                </button>
+            </div>
+            
+            <!-- Export Options -->
+            <div class="relative" x-data="{ exportOpen: false }">
+                <button @click="exportOpen = !exportOpen" 
+                        class="flex items-center gap-2 px-3 py-2 bg-primary text-primary-foreground rounded-md text-sm hover:bg-primary/90" aria-label="Export options">
+                    <i data-lucide="download" class="h-4 w-4"></i>
+                    Export
+                </button>
+                <div x-show="exportOpen" x-cloak @click.away="exportOpen = false"
+                     x-transition:enter="transition ease-out duration-200"
+                     x-transition:enter-start="opacity-0 transform scale-95"
+                     x-transition:enter-end="opacity-100 transform scale-100"
+                     x-transition:leave="transition ease-in duration-75"
+                     x-transition:leave-start="opacity-100 transform scale-100"
+                     x-transition:leave-end="opacity-0 transform scale-95"
+                     class="absolute right-0 mt-2 w-48 bg-popover border border-border rounded-md shadow-lg z-50">
+                    <button @click="exportToCSV()" class="w-full text-left px-3 py-2 text-sm hover:bg-accent" aria-label="Export to CSV">
+                        Export to CSV
+                    </button>
+                    <button @click="exportToPNG()" class="w-full text-left px-3 py-2 text-sm hover:bg-accent" aria-label="Export to PNG">
+                        Export to PNG
+                    </button>
+                    <button @click="exportToJPG()" class="w-full text-left px-3 py-2 text-sm hover:bg-accent" aria-label="Export to JPG">
+                        Export to JPG
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filter Controls -->
+    <div class="mb-6 p-4 bg-card border border-border rounded-lg">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <!-- Search -->
+            <div class="relative">
+                <i data-lucide="search" class="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground"></i>
+                <input type="text" x-model="searchTerm" @input="filterWorkPackages()" 
+                       placeholder="Search work packages..." 
+                       class="w-full pl-10 pr-3 py-2 border border-input bg-background rounded-md text-sm" aria-label="Search work packages...">
+            </div>
+            
+            <!-- Status Filter -->
+            <select x-model="statusFilter" @change="filterWorkPackages()" 
+                    class="px-3 py-2 border border-input bg-background rounded-md text-sm">
+                <option value="">All Statuses</option>
+                <option value="planned">Planned</option>
+                <option value="in_progress">In Progress</option>
+                <option value="completed">Completed</option>
+                <option value="cancelled">Cancelled</option>
+            </select>
+            
+            <!-- Business Capability Filter -->
+            <select x-model="capabilityFilter" @change="filterWorkPackages()" 
+                    class="px-3 py-2 border border-input bg-background rounded-md text-sm">
+                <option value="">All Capabilities</option>
+                <option value="customer-management">Customer Management</option>
+                <option value="financial-services">Financial Services</option>
+                <option value="supply-chain">Supply Chain Management</option>
+                <option value="human-resources">Human Resources</option>
+                <option value="operations">Operations Management</option>
+                <option value="analytics">Analytics & Intelligence</option>
+                <option value="risk-compliance">Risk & Compliance</option>
+                <option value="digital-platform">Digital Platform</option>
+            </select>
+            
+            <!-- Layer Filter -->
+            <select x-model="layerFilter" @change="filterWorkPackages()" 
+                    class="px-3 py-2 border border-input bg-background rounded-md text-sm">
+                <option value="">All Layers</option>
+                <option value="business">Business</option>
+                <option value="application">Application</option>
+                <option value="technology">Technology</option>
+                <option value="implementation">Implementation</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- Statistics Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <div class="p-4 bg-card border border-border rounded-lg">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm text-muted-foreground">Total Work Packages</p>
+                    <p class="text-2xl font-semibold text-foreground" x-text="stats.total"></p>
+                </div>
+                <i data-lucide="package" class="h-8 w-8 text-primary"></i>
+            </div>
+        </div>
+        
+        <div class="p-4 bg-card border border-border rounded-lg">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm text-muted-foreground">In Progress</p>
+                    <p class="text-2xl font-semibold text-foreground" x-text="stats.inProgress"></p>
+                </div>
+                <i data-lucide="clock" class="h-8 w-8 text-warning"></i>
+            </div>
+        </div>
+        
+        <div class="p-4 bg-card border border-border rounded-lg">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm text-muted-foreground">Completed</p>
+                    <p class="text-2xl font-semibold text-foreground" x-text="stats.completed"></p>
+                </div>
+                <i data-lucide="check-circle" class="h-8 w-8 text-success"></i>
+            </div>
+        </div>
+        
+        <div class="p-4 bg-card border border-border rounded-lg">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm text-muted-foreground">Critical Items</p>
+                    <p class="text-2xl font-semibold text-foreground" x-text="stats.critical"></p>
+                </div>
+                <i data-lucide="alert-triangle" class="h-8 w-8 text-destructive"></i>
+            </div>
+        </div>
+    </div>
+
+    <!-- Gantt Chart View -->
+    <div x-show="viewMode === 'gantt'" class="bg-card border border-border rounded-lg overflow-hidden gantt-chart-view min-w-[1200px]">
+        <!-- Timeline Header -->
+        <div class="flex border-b border-border">
+            <div class="w-80 p-3 bg-muted border-r border-border">
+                <h3 class="font-semibold text-foreground">Work Package</h3>
+            </div>
+            <div class="flex-1 flex">
+                <template x-for="month in timelineMonths" :key="month">
+                    <div class="flex-1 p-2 text-center text-xs border-r border-border bg-muted">
+                        <div x-text="month.name"></div>
+                        <div x-text="month.year" class="text-muted-foreground"></div>
+                    </div>
+                </template>
+            </div>
+        </div>
+        
+        <!-- Gantt Chart Body -->
+        <div class="max-h-96 overflow-y-auto">
+            <template x-for="workPackage in filteredWorkPackages" :key="workPackage.id">
+                <div class="flex border-b border-border hover:bg-accent/50">
+                    <!-- Work Package Info -->
+                    <div class="w-80 p-3 border-r border-border">
+                        <div class="flex items-start gap-2">
+                            <div class="w-3 h-3 rounded-full flex-shrink-0 mt-1"
+                                 :class="getStatusColor(workPackage.status)"></div>
+                            <div class="flex-1 min-w-0">
+                                <div class="font-medium text-foreground max-w-0 overflow-hidden text-ellipsis whitespace-nowrap" x-text="workPackage.name" :title="workPackage.name"></div>
+                                <div class="text-xs text-muted-foreground max-w-0 overflow-hidden text-ellipsis whitespace-nowrap" x-text="workPackage.assigned_to || 'Unassigned'" :title="workPackage.assigned_to || 'Unassigned'"></div>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2 mt-2 flex-wrap">
+                            <span class="px-2 py-1 text-xs rounded-full bg-primary/10 text-primary flex-shrink-0"
+                                  x-text="workPackage.business_capability"></span>
+                            <span class="text-xs text-muted-foreground flex-shrink-0" x-text="workPackage.progress_percentage + '%'"></span>
+                        </div>
+                    </div>
+                    
+                    <!-- Timeline Bars -->
+                    <div class="flex-1 relative p-2 shrink-0 min-w-0">
+                        <div class="absolute inset-0 flex">
+                            <template x-for="month in timelineMonths" :key="month.name + workPackage.id">
+                                <div class="flex-1 border-r border-border/20 flex-shrink-0"></div>
+                            </template>
+                        </div>
+                        
+                        <!-- Work Package Bar -->
+                        <div class="absolute h-6 bg-primary rounded-md flex items-center justify-center"
+                             :style="getBarStyle(workPackage)">
+                            <div class="absolute inset-0 bg-primary/20 rounded-md"
+                                 :style="getProgressStyle(workPackage)"></div>
+                            <span class="relative text-xs text-primary-foreground font-medium"
+                                  x-text="workPackage.progress_percentage + '%'"></span>
+                        </div>
+                        
+                        <!-- Milestone Markers -->
+                        <template x-for="milestone in workPackage.milestones || []" :key="milestone.id">
+                            <div class="absolute w-3 h-3 bg-warning rounded-full border-2 border-background"
+                                 :style="getMilestoneStyle(milestone, workPackage)"
+                                 :title="milestone.name"></div>
+                        </template>
+                    </div>
+                </div>
+            </template>
+        </div>
+    </div>
+
+    <!-- List View -->
+    <div x-show="viewMode === 'list'" class="bg-card border border-border rounded-lg">
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead class="bg-muted">
+                    <tr>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Work Package</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Status</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Business Capability</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Assigned To</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Start Date</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">End Date</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Progress</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-border">
+                    <template x-for="workPackage in filteredWorkPackages" :key="workPackage.id">
+                        <tr class="hover:bg-accent/50">
+                            <td class="px-4 py-3">
+                                <div>
+                                    <div class="font-medium text-foreground" x-text="workPackage.name"></div>
+                                    <div class="text-sm text-muted-foreground" x-text="workPackage.description"></div>
+                                </div>
+                            </td>
+                            <td class="px-4 py-3">
+                                <span class="px-2 py-1 text-xs rounded-full"
+                                      :class="getStatusClass(workPackage.status)"
+                                      x-text="workPackage.status"></span>
+                            </td>
+                            <td class="px-4 py-3">
+                                <span class="px-2 py-1 text-xs rounded-full bg-primary/10 text-primary"
+                                      x-text="workPackage.business_capability"></span>
+                            </td>
+                            <td class="px-4 py-3 text-sm text-foreground" x-text="workPackage.assigned_to || 'Unassigned'"></td>
+                            <td class="px-4 py-3 text-sm text-foreground" x-text="formatDate(workPackage.start_date)"></td>
+                            <td class="px-4 py-3 text-sm text-foreground" x-text="formatDate(workPackage.end_date)"></td>
+                            <td class="px-4 py-3">
+                                <div class="flex items-center gap-2">
+                                    <div class="w-full bg-muted rounded-full h-2">
+                                        <div class="bg-primary h-2 rounded-full"
+                                             :style="`width: ${workPackage.progress_percentage}%`"></div>  <!-- inline-style-ok -->
+                                    </div>
+                                    <span class="text-sm text-muted-foreground" x-text="workPackage.progress_percentage + '%'"></span>
+                                </div>
+                            </td>
+                            <td class="px-4 py-3">
+                                <div class="flex items-center gap-2">
+                                    <button @click="editWorkPackage(workPackage)" 
+                                            class="text-primary hover:text-primary/80" aria-label="Edit">
+                                        <i data-lucide="edit" class="h-4 w-4"></i>
+                                    </button>
+                                    <button @click="deleteWorkPackage(workPackage)" 
+                                            class="text-destructive hover:text-destructive/80" aria-label="Delete">
+                                        <i data-lucide="trash-2" class="h-4 w-4"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Add Work Package Button -->
+    <div class="fixed bottom-6 right-6">
+        <button @click="showAddModal = true" 
+                class="flex items-center gap-2 px-4 py-3 bg-primary text-primary-foreground rounded-full shadow-lg hover:bg-primary/90" aria-label="Add work package">
+            <i data-lucide="plus" class="h-5 w-5"></i>
+            Add Work Package
+        </button>
+    </div>
+
+    <!-- Add/Edit Work Package Modal -->
+    <div x-show="showAddModal" x-cloak  <!-- modal-a11y-ok -->
+         x-transition:enter="transition ease-out duration-300"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         x-transition:leave="transition ease-in duration-200"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="opacity-0"
+         class="modal-root flex items-center justify-center fixed inset-0 bg-black/50 overflow-y-auto z-50" @click.self="showAddModal = false">
+        <div class="bg-card border border-border rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <h3 class="text-lg font-semibold text-foreground mb-4">
+                <span x-text="editingWorkPackage ? 'Edit Work Package' : 'Add Work Package'"></span>
+            </h3>
+            
+            <form @submit.prevent="saveWorkPackage()">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-foreground mb-1">Name *</label>
+                        <input type="text" x-model="formData.name" required
+                               class="w-full px-3 py-2 border border-input bg-background rounded-md" aria-label="Text field">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-foreground mb-1">Assigned To</label>
+                        <input type="text" x-model="formData.assigned_to"
+                               class="w-full px-3 py-2 border border-input bg-background rounded-md" aria-label="Text field">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-foreground mb-1">Status</label>
+                        <select x-model="formData.status"
+                                class="w-full px-3 py-2 border border-input bg-background rounded-md">
+                            <option value="planned">Planned</option>
+                            <option value="in_progress">In Progress</option>
+                            <option value="completed">Completed</option>
+                            <option value="cancelled">Cancelled</option>
+                        </select>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-foreground mb-1">Business Capability</label>
+                        <select x-model="formData.business_capability"
+                                class="w-full px-3 py-2 border border-input bg-background rounded-md">
+                            <option value="customer-management">Customer Management</option>
+                            <option value="financial-services">Financial Services</option>
+                            <option value="supply-chain">Supply Chain Management</option>
+                            <option value="human-resources">Human Resources</option>
+                            <option value="operations">Operations Management</option>
+                            <option value="analytics">Analytics & Intelligence</option>
+                            <option value="risk-compliance">Risk & Compliance</option>
+                            <option value="digital-platform">Digital Platform</option>
+                        </select>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-foreground mb-1">Start Date</label>
+                        <input type="date" x-model="formData.start_date"
+                               class="w-full px-3 py-2 border border-input bg-background rounded-md" aria-label="Date field">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-foreground mb-1">End Date</label>
+                        <input type="date" x-model="formData.end_date"
+                               class="w-full px-3 py-2 border border-input bg-background rounded-md" aria-label="Date field">
+                    </div>
+                    
+                    <div class="md:col-span-2">
+                        <label class="block text-sm font-medium text-foreground mb-1">Description</label>
+                        <textarea x-model="formData.description" rows="3"
+                                  class="w-full px-3 py-2 border border-input bg-background rounded-md"></textarea>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-foreground mb-1">Progress (%)</label>
+                        <input type="number" x-model="formData.progress_percentage" min="0" max="100"
+                               class="w-full px-3 py-2 border border-input bg-background rounded-md" aria-label="Number field">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-foreground mb-1">Estimated Cost</label>
+                        <input type="number" x-model="formData.estimated_cost" step="0.01"
+                               class="w-full px-3 py-2 border border-input bg-background rounded-md" aria-label="Number field">
+                    </div>
+                </div>
+                
+                <div class="flex justify-end gap-2 mt-6">
+                    <button type="button" @click="showAddModal = false"
+                            class="px-4 py-2 border border-input bg-background rounded-md hover:bg-accent" aria-label="Cancel">
+                        Cancel
+                    </button>
+                    <button type="submit"
+                            class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90" aria-label="Save work package">
+                        <span x-text="editingWorkPackage ? 'Update' : 'Create'"></span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function ganttChartManager() {
+    return {
+        viewMode: 'gantt',
+        selectedTimeline: '3',
+        searchTerm: '',
+        statusFilter: '',
+        capabilityFilter: '',
+        layerFilter: '',
+        showAddModal: false,
+        editingWorkPackage: null,
+        workPackages: [],
+        filteredWorkPackages: [],
+        timelineMonths: [],
+        formData: {
+            name: '',
+            description: '',
+            assigned_to: '',
+            status: 'planned',
+            business_capability: 'customer-management',
+            start_date: '',
+            end_date: '',
+            progress_percentage: 0,
+            estimated_cost: 0
+        },
+        stats: {
+            total: 0,
+            inProgress: 0,
+            completed: 0,
+            critical: 0
+        },
+        
+        initializeGantt() {
+            this.loadWorkPackages();
+            this.generateTimeline();
+            this.filterWorkPackages();
+            this.updateStats();
+        },
+        
+        loadWorkPackages() {
+            // Load work packages from API
+            fetch('/implementation/api/work-packages')
+                .then(response => response.json())
+                .then(data => {
+                    this.workPackages = data.work_packages || [];
+                    this.filteredWorkPackages = [...this.workPackages];
+                })
+                .catch(error => {
+                    console.error('Error loading work packages:', error);
+                    // Sample data for demonstration
+                    this.workPackages = this.getSampleWorkPackages();
+                    this.filteredWorkPackages = [...this.workPackages];
+                });
+        },
+        
+        getSampleWorkPackages() {
+            const today = new Date();
+            return [
+                {
+                    id: 1,
+                    name: 'Legacy System Migration',
+                    description: 'Migrate legacy CRM system to new platform',
+                    assigned_to: 'IT Infrastructure Team',
+                    status: 'in_progress',
+                    business_capability: 'customer-management',
+                    start_date: new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0],
+                    end_date: new Date(today.getFullYear(), today.getMonth() + 6, 30).toISOString().split('T')[0],
+                    progress_percentage: 35,
+                    estimated_cost: 250000,
+                    milestones: [
+                        { id: 1, name: 'Requirements Complete', date: new Date(today.getFullYear(), today.getMonth() + 1, 15) },
+                        { id: 2, name: 'Development Complete', date: new Date(today.getFullYear(), today.getMonth() + 4, 30) }
+                    ]
+                },
+                {
+                    id: 2,
+                    name: 'Cloud Infrastructure Setup',
+                    description: 'Setup cloud infrastructure for new applications',
+                    assigned_to: 'Cloud Team',
+                    status: 'planned',
+                    business_capability: 'digital-platform',
+                    start_date: new Date(today.getFullYear(), today.getMonth() + 2, 1).toISOString().split('T')[0],
+                    end_date: new Date(today.getFullYear(), today.getMonth() + 5, 31).toISOString().split('T')[0],
+                    progress_percentage: 0,
+                    estimated_cost: 150000,
+                    milestones: []
+                },
+                {
+                    id: 3,
+                    name: 'Business Process Reengineering',
+                    description: 'Redesign customer onboarding process',
+                    assigned_to: 'Business Process Team',
+                    status: 'completed',
+                    business_capability: 'customer-management',
+                    start_date: new Date(today.getFullYear(), today.getMonth() - 3, 1).toISOString().split('T')[0],
+                    end_date: new Date(today.getFullYear(), today.getMonth(), 31).toISOString().split('T')[0],
+                    progress_percentage: 100,
+                    estimated_cost: 75000,
+                    milestones: []
+                },
+                {
+                    id: 4,
+                    name: 'Financial Analytics Platform',
+                    description: 'Implement advanced financial analytics and reporting',
+                    assigned_to: 'Analytics Team',
+                    status: 'planned',
+                    business_capability: 'financial-services',
+                    start_date: new Date(today.getFullYear(), today.getMonth() + 1, 1).toISOString().split('T')[0],
+                    end_date: new Date(today.getFullYear(), today.getMonth() + 4, 30).toISOString().split('T')[0],
+                    progress_percentage: 0,
+                    estimated_cost: 200000,
+                    milestones: []
+                },
+                {
+                    id: 5,
+                    name: 'Supply Chain Optimization',
+                    description: 'Optimize supply chain management and inventory systems',
+                    assigned_to: 'Operations Team',
+                    status: 'in_progress',
+                    business_capability: 'supply-chain',
+                    start_date: new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0],
+                    end_date: new Date(today.getFullYear(), today.getMonth() + 3, 31).toISOString().split('T')[0],
+                    progress_percentage: 25,
+                    estimated_cost: 180000,
+                    milestones: []
+                }
+            ];
+        },
+        
+        generateTimeline() {
+            const months = [];
+            const today = new Date();
+            const years = parseInt(this.selectedTimeline);
+            const totalMonths = years * 12;
+            
+            for (let i = 0; i < totalMonths; i++) {
+                const date = new Date(today.getFullYear(), today.getMonth() + i, 1);
+                months.push({
+                    name: date.toLocaleDateString('en-US', { month: 'short' }),
+                    year: date.getFullYear(),
+                    date: date
+                });
+            }
+            
+            this.timelineMonths = months;
+        },
+        
+        updateTimeline() {
+            this.generateTimeline();
+        },
+        
+        filterWorkPackages() {
+            this.filteredWorkPackages = this.workPackages.filter(wp => {
+                const matchesSearch = !this.searchTerm || 
+                    wp.name.toLowerCase().includes(this.searchTerm.toLowerCase()) ||
+                    wp.description.toLowerCase().includes(this.searchTerm.toLowerCase());
+                
+                const matchesStatus = !this.statusFilter || wp.status === this.statusFilter;
+                const matchesCapability = !this.capabilityFilter || wp.business_capability === this.capabilityFilter;
+                const matchesLayer = !this.layerFilter || wp.layer === this.layerFilter;
+                
+                return matchesSearch && matchesStatus && matchesCapability && matchesLayer;
+            });
+            
+            this.updateStats();
+        },
+        
+        updateStats() {
+            this.stats.total = this.filteredWorkPackages.length;
+            this.stats.inProgress = this.filteredWorkPackages.filter(wp => wp.status === 'in_progress').length;
+            this.stats.completed = this.filteredWorkPackages.filter(wp => wp.status === 'completed').length;
+            this.stats.critical = this.filteredWorkPackages.filter(wp => wp.business_capability === 'risk-compliance').length;
+        },
+        
+        getBarStyle(workPackage) {
+            if (!workPackage.start_date || !workPackage.end_date) return {};
+            
+            const startDate = new Date(workPackage.start_date);
+            const endDate = new Date(workPackage.end_date);
+            const timelineStart = this.timelineMonths[0].date;
+            const timelineEnd = this.timelineMonths[this.timelineMonths.length - 1].date;
+            
+            const totalDays = (timelineEnd - timelineStart) / (1000 * 60 * 60 * 24);
+            const startOffset = (startDate - timelineStart) / (1000 * 60 * 60 * 24);
+            const duration = (endDate - startDate) / (1000 * 60 * 60 * 24);
+            
+            const leftPercent = (startOffset / totalDays) * 100;
+            const widthPercent = (duration / totalDays) * 100;
+            
+            return {
+                left: `${leftPercent}%`,
+                width: `${widthPercent}%`,
+                top: '50%',
+                transform: 'translateY(-50%)'
+            };
+        },
+        
+        getProgressStyle(workPackage) {
+            return {
+                width: `${workPackage.progress_percentage}%`
+            };
+        },
+        
+        getMilestoneStyle(milestone, workPackage) {
+            const milestoneDate = new Date(milestone.date);
+            const timelineStart = this.timelineMonths[0].date;
+            const totalDays = (this.timelineMonths[this.timelineMonths.length - 1].date - timelineStart) / (1000 * 60 * 60 * 24);
+            const offset = (milestoneDate - timelineStart) / (1000 * 60 * 60 * 24);
+            const leftPercent = (offset / totalDays) * 100;
+            
+            return {
+                left: `${leftPercent}%`,
+                top: '50%',
+                transform: 'translate(-50%, -50%)'
+            };
+        },
+        
+        getStatusColor(status) {
+            const colors = {
+                planned: 'bg-primary',
+                in_progress: 'bg-warning',
+                completed: 'bg-success',
+                cancelled: 'bg-muted-foreground'
+            };
+            return colors[status] || 'bg-muted-foreground';
+        },
+        
+        getStatusClass(status) {
+            const classes = {
+                planned: 'bg-primary/10 text-primary',
+                in_progress: 'bg-warning/10 text-warning',
+                completed: 'bg-success/10 text-success',
+                cancelled: 'bg-muted text-foreground'
+            };
+            return classes[status] || 'bg-muted text-foreground';
+        },
+        
+        getPriorityClass(priority) {
+            const classes = {
+                low: 'bg-primary/10 text-primary',
+                medium: 'bg-muted text-foreground',
+                high: 'bg-warning/10 text-warning',
+                critical: 'bg-destructive/10 text-destructive'
+            };
+            return classes[priority] || 'bg-muted text-foreground';
+        },
+        
+        formatDate(dateString) {
+            if (!dateString) return '';
+            const date = new Date(dateString);
+            return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+        },
+        
+        editWorkPackage(workPackage) {
+            this.editingWorkPackage = workPackage;
+            this.formData = { ...workPackage };
+            this.showAddModal = true;
+        },
+        
+        async deleteWorkPackage(workPackage) {
+            if ((await Platform.modal.confirm(`Are you sure you want to delete "${workPackage.name}"?`))) {
+                // API call to delete
+                this.workPackages = this.workPackages.filter(wp => wp.id !== workPackage.id);
+                this.filterWorkPackages();
+            }
+        },
+        
+        saveWorkPackage() {
+            if (this.editingWorkPackage) {
+                // Update existing
+                const index = this.workPackages.findIndex(wp => wp.id === this.editingWorkPackage.id);
+                if (index !== -1) {
+                    this.workPackages[index] = { ...this.formData };
+                }
+            } else {
+                // Add new
+                const newWorkPackage = {
+                    ...this.formData,
+                    id: Date.now(),
+                    milestones: []
+                };
+                this.workPackages.push(newWorkPackage);
+            }
+            
+            this.filterWorkPackages();
+            this.showAddModal = false;
+            this.editingWorkPackage = null;
+            this.resetForm();
+        },
+        
+        resetForm() {
+            this.formData = {
+                name: '',
+                description: '',
+                assigned_to: '',
+                status: 'planned',
+                business_capability: 'customer-management',
+                start_date: '',
+                end_date: '',
+                progress_percentage: 0,
+                estimated_cost: 0
+            };
+        },
+        
+        exportToCSV() {
+            // Generate CSV content
+            const headers = ['Name', 'Description', 'Status', 'Business Capability', 'Assigned To', 'Start Date', 'End Date', 'Progress', 'Cost'];
+            const rows = this.filteredWorkPackages.map(wp => [
+                wp.name,
+                wp.description,
+                wp.status,
+                wp.business_capability,
+                wp.assigned_to || 'Unassigned',
+                wp.start_date,
+                wp.end_date,
+                wp.progress_percentage + '%',
+                wp.estimated_cost
+            ]);
+            
+            const csvContent = [headers, ...rows]
+                .map(row => row.map(cell => `"${cell}"`).join(','))
+                .join('\n');
+            
+            // Download CSV
+            const blob = new Blob([csvContent], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `implementation-roadmap-${new Date().toISOString().split('T')[0]}.csv`;
+            a.click();
+            window.URL.revokeObjectURL(url);
+        },
+        
+        exportToPNG() {
+            const ganttElement = document.querySelector('.gantt-chart-view');
+            if (!ganttElement) {
+                alert('Gantt chart view not found');
+                return;
+            }
+            
+            html2canvas(ganttElement, {
+                backgroundColor: '#ffffff',
+                scale: 2,
+                logging: false,
+                useCORS: true
+            }).then(canvas => {
+                const link = document.createElement('a');
+                link.download = `implementation-roadmap-${new Date().toISOString().split('T')[0]}.png`;
+                link.href = canvas.toDataURL();
+                link.click();
+            }).catch(error => {
+                console.error('Error generating PNG:', error);
+                alert('Error generating PNG export');
+            });
+        },
+        
+        exportToJPG() {
+            const ganttElement = document.querySelector('.gantt-chart-view');
+            if (!ganttElement) {
+                alert('Gantt chart view not found');
+                return;
+            }
+            
+            html2canvas(ganttElement, {
+                backgroundColor: '#ffffff',
+                scale: 2,
+                logging: false,
+                useCORS: true
+            }).then(canvas => {
+                const link = document.createElement('a');
+                link.download = `implementation-roadmap-${new Date().toISOString().split('T')[0]}.jpg`;
+                link.href = canvas.toDataURL('image/jpeg', 0.9);
+                link.click();
+            }).catch(error => {
+                console.error('Error generating JPG:', error);
+                alert('Error generating JPG export');
+            });
+        }
+    };
+}
+</script>
+

@@ -1,0 +1,202 @@
+{# Reusable Initiative Creation Modal Component
+
+   Creates new StrategicInitiative from dashboard context.
+   Uses shared modal.html component for consistent shell.
+
+   Usage:
+   {% from 'components/initiative_modal.html' import initiative_modal %}
+
+   {{ initiative_modal(
+       id='health-remediation-modal',
+       title='Create Remediation Plan',
+       endpoint='/strategic/api/initiatives/from-health',
+       fields=[
+           {'name': 'title', 'type': 'text', 'label': 'Plan Title', 'required': True, 'value': 'Remediation: Finance Capability'},
+           {'name': 'description', 'type': 'textarea', 'label': 'Description', 'required': True, 'placeholder': 'Describe remediation approach...'},
+           {'name': 'priority', 'type': 'select', 'label': 'Priority', 'options': [('High', 'High'), ('Medium', 'Medium'), ('Low', 'Low')], 'value': 'High'},
+           {'name': 'owner_id', 'type': 'select', 'label': 'Owner', 'options': users, 'value_key': 'id', 'label_key': 'name'},
+       ]
+   ) }}
+
+   Trigger from JavaScript:
+   document.dispatchEvent(new CustomEvent('open-initiative-{{ id }}', {
+       detail: { prefill: { title: 'Remediation: Finance' } }
+   }));
+#}
+
+{% from 'components/modal.html' import modal %}
+{% macro initiative_modal(
+    id='initiative-modal',
+    title='Create Initiative',
+    endpoint='/strategic/api/initiatives',
+    fields=[]
+) %}
+
+<div x-data="{
+    loading: false,
+    error: null,
+    formData: {},
+    init() {
+        {% for field in fields %}
+            this.formData['{{ field.name }}'] = '{{ field.value | default('') }}';
+        {% endfor %}
+    },
+    submitInitiativeForm() {
+        this.loading = true;
+        this.error = null;
+
+        fetch('{{ endpoint }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('meta[name=&quot;csrf-token&quot;]')?.content
+                    || document.querySelector('input[name=&quot;csrf_token&quot;]')?.value || ''
+            },
+            body: JSON.stringify(this.formData)
+        })
+        .then(response => {
+            if (!response.ok) throw new Error('Network response was not ok');
+            return response.json();
+        })
+        .then(result => {
+            if (result.success) {
+                Platform.toast.success(result.message || 'Initiative created successfully');
+                Platform.modal.close('initiative-{{ id }}');
+                this.formData = {};
+                if (typeof refreshInitiatives === 'function') {
+                    refreshInitiatives();
+                }
+            } else {
+                this.error = result.error || 'Failed to create initiative';
+            }
+        })
+        .catch(err => {
+            this.error = 'Error: ' + (err.message || 'Unknown error');
+        })
+        .finally(() => {
+            this.loading = false;
+        });
+    }
+}"
+     @open-initiative-{{ id }}.window="
+         $event.detail?.prefill && (formData = { ...formData, ...$event.detail.prefill });
+         Platform.modal.open('initiative-{{ id }}');
+     "
+     x-cloak>
+
+{% call modal(id='initiative-' ~ id, title=title, size='lg') %}
+    <!-- Error Alert -->
+    <div x-show="error" x-cloak
+         x-transition
+         class="mb-4 p-3 bg-destructive/10 border border-destructive/30 rounded-md text-destructive text-sm">
+        <span x-text="error"></span>
+    </div>
+
+    <!-- Form -->
+    <form @submit.prevent="submitInitiativeForm" class="space-y-4">
+
+        {% for field in fields %}
+            {% if field.type == 'text' %}
+            <div>
+                <label class="block text-sm font-medium text-foreground mb-1">
+                    {{ field.label }}
+                    {% if field.required %}<span class="text-destructive">*</span>{% endif %}
+                </label>
+                <input type="text"
+                       x-model="formData['{{ field.name }}']"
+                       placeholder="{{ field.placeholder | default('') }}"
+                       {% if field.required %}required{% endif %}
+                       class="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring" aria-label="{{ field.placeholder | default('') }}">
+            </div>
+
+            {% elif field.type == 'textarea' %}
+            <div>
+                <label class="block text-sm font-medium text-foreground mb-1">
+                    {{ field.label }}
+                    {% if field.required %}<span class="text-destructive">*</span>{% endif %}
+                </label>
+                <textarea x-model="formData['{{ field.name }}']"
+                          placeholder="{{ field.placeholder | default('') }}"
+                          {% if field.required %}required{% endif %}
+                          rows="3"
+                          class="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"></textarea>
+            </div>
+
+            {% elif field.type == 'select' %}
+            <div>
+                <label class="block text-sm font-medium text-foreground mb-1">
+                    {{ field.label }}
+                    {% if field.required %}<span class="text-destructive">*</span>{% endif %}
+                </label>
+                <select x-model="formData['{{ field.name }}']"
+                        {% if field.required %}required{% endif %}
+                        class="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring">
+                    <option value="">-- Select {{ field.label }} --</option>
+                    {% if field.value_key %}
+                        {# Complex options: list of objects #}
+                        {% for option in field.options %}
+                        <option value="{{ option[field.value_key] }}">
+                            {{ option[field.label_key] }}
+                        </option>
+                        {% endfor %}
+                    {% else %}
+                        {# Simple options: tuples (value, label) #}
+                        {% for value, label in field.options %}
+                        <option value="{{ value }}">{{ label }}</option>
+                        {% endfor %}
+                    {% endif %}
+                </select>
+            </div>
+
+            {% elif field.type == 'date' %}
+            <div>
+                <label class="block text-sm font-medium text-foreground mb-1">
+                    {{ field.label }}
+                    {% if field.required %}<span class="text-destructive">*</span>{% endif %}
+                </label>
+                <input type="date"
+                       x-model="formData['{{ field.name }}']"
+                       {% if field.required %}required{% endif %}
+                       class="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Date field">
+            </div>
+
+            {% elif field.type == 'number' %}
+            <div>
+                <label class="block text-sm font-medium text-foreground mb-1">
+                    {{ field.label }}
+                    {% if field.required %}<span class="text-destructive">*</span>{% endif %}
+                </label>
+                <input type="number"
+                       x-model="formData['{{ field.name }}']"
+                       placeholder="{{ field.placeholder | default('') }}"
+                       {% if field.required %}required{% endif %}
+                       class="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring" aria-label="{{ field.placeholder | default('') }}">
+            </div>
+            {% endif %}
+        {% endfor %}
+
+    </form>
+
+    <!-- Footer -->
+    <div class="flex justify-end gap-3 mt-6 pt-6 border-t border-border">
+        <button @click="Platform.modal.close('initiative-{{ id }}')"
+                type="button"
+                class="px-4 py-2 text-sm font-medium text-muted-foreground border border-input rounded-md hover:bg-accent transition-colors" aria-label="Close">
+            Cancel
+        </button>
+        <button @click="submitInitiativeForm()"
+                :disabled="loading"
+                type="button"
+                class="px-4 py-2 text-sm font-medium text-primary-foreground bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed rounded-md transition-colors inline-flex items-center gap-2" aria-label="Submit">
+            <span x-show="!loading" x-cloak>Create Initiative</span>
+            <span x-show="loading" x-cloak class="inline-flex items-center gap-1">
+                <i data-lucide="loader-2" class="h-4 w-4 animate-spin"></i>
+                Creating...
+            </span>
+        </button>
+    </div>
+{% endcall %}
+
+</div>
+
+{% endmacro %}

@@ -1,0 +1,74 @@
+{# Empty State Component
+   
+   Improved empty state with visual appeal and actionable guidance
+   Features:
+   - Icon/illustration support
+   - Title and description
+   - Optional CTA button
+   - Consistent styling
+   
+   Usage:
+   {% from 'components/empty_state.html' import empty_state %}
+   
+   {{ empty_state(
+       icon='inbox',
+       title='No applications yet',
+       description='Get started by creating your first application',
+       cta_text='Create Application',
+       cta_onclick='openApplicationImportModal()',
+       cta_icon='plus'
+   ) }}
+#}
+
+{% macro empty_state(
+    icon='inbox',
+    title='No items found',
+    description='',
+    cta_text=None,
+    cta_onclick=None,
+    cta_href=None,
+    cta_icon=None,
+    class=''
+) %}
+<div class="text-center py-12 px-4 {{ class }}" role="status">
+    <!-- Icon -->
+    <div class="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-muted mb-4">
+        <i data-lucide="{{ icon }}" class="h-8 w-8 text-muted-foreground" aria-hidden="true"></i>
+    </div>
+
+    <!-- Title -->
+    <h3 class="mt-4 text-lg font-medium text-foreground">
+        {{ title }}
+    </h3>
+
+    <!-- Description -->
+    {% if description %}
+    <p class="mt-2 text-sm text-muted-foreground max-w-md mx-auto">
+        {{ description }}
+    </p>
+    {% endif %}
+
+    <!-- CTA Button -->
+    {% if cta_text %}
+    <div class="mt-6">
+        {% if cta_href %}
+        <a href="{{ cta_href }}"
+           class="inline-flex items-center px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-ring transition-colors">
+            {% if cta_icon %}
+            <i data-lucide="{{ cta_icon }}" class="w-4 h-4 mr-2" aria-hidden="true"></i>
+            {% endif %}
+            {{ cta_text }}
+        </a>
+        {% elif cta_onclick %}
+        <button type="button" @click="{{ cta_onclick }}"
+                class="inline-flex items-center px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-ring transition-colors" aria-label="{{ cta_text }}">
+            {% if cta_icon %}
+            <i data-lucide="{{ cta_icon }}" class="w-4 h-4 mr-2" aria-hidden="true"></i>
+            {% endif %}
+            {{ cta_text }}
+        </button>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+{% endmacro %}

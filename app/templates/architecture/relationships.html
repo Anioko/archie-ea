@@ -1,0 +1,33 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'components/page_header.html' import page_header %}
+
+{% block title %}Architecture Relationships{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    {{ page_header(title='Architecture Relationships', description='Connections between architecture elements') }}
+
+    <div data-slot="card" class="rounded-xl border bg-card shadow-sm">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-border">
+                    <th class="px-6 py-3 text-left font-medium text-muted-foreground">Source</th>
+                    <th class="px-6 py-3 text-left font-medium text-muted-foreground">Relationship</th>
+                    <th class="px-6 py-3 text-left font-medium text-muted-foreground">Target</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-border">
+                {% for rel in relationships %}
+                <tr class="hover:bg-muted/30">
+                    <td class="px-6 py-3 text-foreground">{{ rel.source_element.name if rel.source_element else rel.source_id }}</td>
+                    <td class="px-6 py-3 text-muted-foreground">{{ rel.relationship_type|default('—') }}</td>
+                    <td class="px-6 py-3 text-foreground">{{ rel.target_element.name if rel.target_element else rel.target_id }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="3" class="px-6 py-8 text-center text-muted-foreground">No relationships found.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,752 @@
+﻿﻿﻿{% extends "layouts/admin_base.html" %}
+{% from 'components/page_header.html' import page_header %}
+
+{% block page_title %}Cross-Layer Traceability Chain{% endblock %}
+
+{% block content %}
+<!-- modal-a11y-ok -->
+<div class="space-y-6" x-data="traceabilityChain()">
+    {{ page_header(
+        title="Cross-Layer Traceability Chain",
+        description="Stakeholder → Driver → Goal → Requirement → Capability → Process → Application → Technology"
+    ) }}
+
+    <!-- GLB-057: Solution filter dropdown -->
+    <div class="flex items-center gap-3 flex-wrap">
+        <label for="solution-filter" class="text-sm font-medium text-muted-foreground">Filter by Solution:</label>
+        <select id="solution-filter"
+                class="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                @change="if($event.target.value){location.href='?solution_id='+$event.target.value}else{location.href=location.pathname}">
+            <option value="">All Solutions</option>
+            {% for sol in solutions_list %}
+            <option value="{{ sol.id }}" {% if current_solution_id == sol.id %}selected{% endif %}>{{ sol.name }}</option>
+            {% endfor %}
+        </select>
+        {% if current_solution_id %}
+        <span class="text-xs text-muted-foreground">Filtering active — <a href="{{ request.path }}" class="underline hover:text-foreground">clear</a></span>
+        {% endif %}
+    </div>
+
+    <!-- TRC-003: Coverage metrics bar -->
+    {% if gap_analysis and gap_analysis.coverage %}
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {% for key, label in [('drivers_with_goals', 'Drivers → Goals'), ('goals_with_requirements', 'Goals → Requirements'), ('requirements_with_capabilities', 'Requirements → Capabilities'), ('capabilities_with_apps', 'Capabilities → Applications')] %}
+        {% set metric = gap_analysis.coverage[key] %}
+        {% set pct = ((metric.count / metric.total * 100) if metric.total > 0 else 0) | round(0) | int %}
+        <div class="rounded-md border border-border bg-card p-3">
+            <div class="flex items-center justify-between mb-1.5">
+                <span class="text-xs font-medium text-foreground">{{ label }}</span>
+                <span class="text-xs text-muted-foreground">{{ metric.count }}/{{ metric.total }}</span>
+            </div>
+            <div class="h-2 rounded-full bg-muted overflow-hidden">
+                <div class="h-full rounded-full {{ 'bg-emerald-500' if pct >= 80 else 'bg-amber-500' if pct >= 50 else 'bg-destructive' }}"
+                     style="width: {{ pct }}%"></div> <!-- ratchet-ok: dynamic width requires inline style -->
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if chain.requirements | length == 0 %}
+    <!-- TRC-025: Amber banner when motivation layer is disconnected from architecture -->
+    <div class="rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 px-4 py-3 flex items-start gap-3 text-sm text-amber-800 dark:text-amber-200">
+        <i data-lucide="triangle-alert" class="h-4 w-4 mt-0.5 shrink-0 text-amber-500"></i>
+        <span>
+            <strong>Motivation layer not connected to architecture.</strong>
+            The Requirement layer (Goal → Capability bridge) has no data.
+            <a href="{{ url_for('enterprise_crud.requirements_backlog') }}" class="underline hover:no-underline ml-1">Add requirements →</a>
+        </span>
+    </div>
+    {% endif %}
+
+    <!-- TRC-002: Clear selection button -->
+    <div x-show="selected.layer" x-cloak class="flex justify-end">
+        <button @click="clearSelection()" type="button"
+            class="inline-flex items-center gap-1.5 h-8 px-3 rounded-md text-xs font-medium border border-input bg-background hover:bg-accent">
+            <i data-lucide="x" class="h-3.5 w-3.5"></i> Clear selection
+        </button>
+    </div>
+
+    <!-- Layer grid — horizontal scroll on desktop, stacked on mobile -->
+    <div class="overflow-x-auto pb-4 relative"
+         @scroll="scrollHint = $el.scrollLeft < ($el.scrollWidth - $el.clientWidth - 4)"
+         x-ref="scrollContainer">
+        <div class="flex gap-4 min-w-max lg:min-w-0 lg:grid lg:grid-cols-4 xl:grid-cols-8">
+
+            {# ── Stakeholder ─────────────────────────────────────────────── #}
+            <section
+                data-layer="stakeholders"
+                aria-label="Stakeholder layer"
+                class="w-56 lg:w-auto flex-shrink-0 rounded-lg border border-border bg-card shadow-sm"
+            >
+                <div class="flex items-center gap-2 border-b border-border px-4 py-3 bg-violet-50 dark:bg-violet-950/30">
+                    <span class="h-3 w-3 rounded-full bg-violet-500" aria-hidden="true"></span>
+                    <h2 class="text-sm font-semibold text-violet-700 dark:text-violet-300">Stakeholder</h2>
+                    <span class="text-xs text-muted-foreground">{{ chain.stakeholders | length }}</span>
+                    <a href="{{ url_for('archimate.composer_page') }}?layer=Motivation" class="ml-auto text-xs text-muted-foreground hover:text-foreground transition-colors" title="Add new element in Composer">+ Add</a>
+                </div>
+                <ul class="p-3 space-y-1.5 max-h-[60vh] overflow-y-auto" role="list">
+                    {% for item in chain.stakeholders %}
+                    <li>
+                        <button
+                            type="button"
+                            data-element-id="{{ item.id }}"
+                            data-element='{{ {"id": item.id, "name": item.name, "description": item.concern | default("", true), "type": "Stakeholder", "layer": "Motivation"} | tojson }}'
+                            @click="selectChip('stakeholders', {{ item.id }})"
+                            @dblclick="openEditModal(JSON.parse($el.dataset.element))"
+                            :class="chipClass('stakeholders', {{ item.id }})"
+                            class="w-full text-left rounded-md border px-2.5 py-1.5 text-xs transition-all"
+                            title="{{ item.concern | default('') }}"
+                        >{{ item.name }}</button>
+                    </li>
+                    {% else %}
+                    <li class="text-xs text-muted-foreground italic py-2 px-1">No Stakeholder elements</li>
+                    {% endfor %}
+                </ul>
+            </section>
+
+            {# ── Driver ──────────────────────────────────────────────────── #}
+            <section
+                data-layer="drivers"
+                aria-label="Driver layer"
+                class="w-56 lg:w-auto flex-shrink-0 rounded-lg border border-border bg-card shadow-sm"
+            >
+                <div class="flex items-center gap-2 border-b border-border px-4 py-3 bg-amber-50 dark:bg-amber-950/30">
+                    <span class="h-3 w-3 rounded-full bg-amber-500" aria-hidden="true"></span>
+                    <h2 class="text-sm font-semibold text-amber-700 dark:text-amber-300">Driver</h2>
+                    <span class="text-xs text-muted-foreground">{{ chain.drivers | length }}</span>
+                    <a href="{{ url_for('archimate.composer_page') }}?layer=Motivation" class="ml-auto text-xs text-muted-foreground hover:text-foreground transition-colors" title="Add new element in Composer">+ Add</a>
+                </div>
+                <ul class="p-3 space-y-1.5 max-h-[60vh] overflow-y-auto" role="list">
+                    {% for item in chain.drivers %}
+                    <li>
+                        <button
+                            type="button"
+                            data-element-id="{{ item.id }}"
+                            data-element='{{ {"id": item.id, "name": item.name, "description": item.description | default("", true), "type": "Driver", "layer": "Motivation"} | tojson }}'
+                            @click="selectChip('drivers', {{ item.id }})"
+                            @dblclick="openEditModal(JSON.parse($el.dataset.element))"
+                            :class="chipClass('drivers', {{ item.id }})"
+                            class="w-full text-left rounded-md border px-2.5 py-1.5 text-xs transition-all"
+                        >{{ item.name }}</button>
+                    </li>
+                    {% else %}
+                    <li class="text-xs text-muted-foreground italic py-2 px-1">No Driver elements</li>
+                    {% endfor %}
+                </ul>
+            </section>
+
+            {# ── Goal ────────────────────────────────────────────────────── #}
+            <section
+                data-layer="goals"
+                aria-label="Goal layer"
+                class="w-56 lg:w-auto flex-shrink-0 rounded-lg border border-border bg-card shadow-sm"
+            >
+                <div class="flex items-center gap-2 border-b border-border px-4 py-3 bg-emerald-50 dark:bg-emerald-950/30">
+                    <span class="h-3 w-3 rounded-full bg-emerald-500" aria-hidden="true"></span>
+                    <h2 class="text-sm font-semibold text-emerald-700 dark:text-emerald-300">Goal</h2>
+                    <span class="text-xs text-muted-foreground">{{ chain.goals | length }}</span>
+                    <a href="{{ url_for('archimate.composer_page') }}?layer=Motivation" class="ml-auto text-xs text-muted-foreground hover:text-foreground transition-colors" title="Add new element in Composer">+ Add</a>
+                </div>
+                <ul class="p-3 space-y-1.5 max-h-[60vh] overflow-y-auto" role="list">
+                    {% for item in chain.goals %}
+                    <li>
+                        <button
+                            type="button"
+                            data-element-id="{{ item.id }}"
+                            data-element='{{ {"id": item.id, "name": item.name, "description": item.description | default("", true), "type": "Goal", "layer": "Motivation"} | tojson }}'
+                            @click="selectChip('goals', {{ item.id }})"
+                            @dblclick="openEditModal(JSON.parse($el.dataset.element))"
+                            :class="chipClass('goals', {{ item.id }})"
+                            class="w-full text-left rounded-md border px-2.5 py-1.5 text-xs transition-all"
+                        >{{ item.name }}</button>
+                    </li>
+                    {% else %}
+                    <li class="text-xs text-muted-foreground italic py-2 px-1">No Goal elements</li>
+                    {% endfor %}
+                </ul>
+            </section>
+
+            {# ── Requirement ─────────────────────────────────────────────── #}
+            <section
+                data-layer="requirements"
+                aria-label="Requirement layer"
+                class="w-56 lg:w-auto flex-shrink-0 rounded-lg border border-border bg-card shadow-sm"
+            >
+                <div class="flex items-center gap-2 border-b border-border px-4 py-3 bg-primary/5 dark:bg-blue-950/30">
+                    <span class="h-3 w-3 rounded-full bg-primary" aria-hidden="true"></span>
+                    <h2 class="text-sm font-semibold text-primary dark:text-blue-300">Requirement</h2>
+                    <span class="text-xs text-muted-foreground">{{ chain.requirements | length }}</span>
+                    <a href="{{ url_for('archimate.composer_page') }}?layer=Motivation" class="ml-auto text-xs text-muted-foreground hover:text-foreground transition-colors" title="Add new element in Composer">+ Add</a>
+                </div>
+                <ul class="p-3 space-y-1.5 max-h-[60vh] overflow-y-auto" role="list">
+                    {% for item in chain.requirements %}
+                    <li>
+                        <button
+                            type="button"
+                            data-element-id="{{ item.id }}"
+                            data-element='{{ {"id": item.id, "name": item.name, "description": "", "type": "Requirement", "layer": "Motivation"} | tojson }}'
+                            @click="selectChip('requirements', {{ item.id }})"
+                            @dblclick="openEditModal(JSON.parse($el.dataset.element))"
+                            :class="chipClass('requirements', {{ item.id }})"
+                            class="w-full text-left rounded-md border px-2.5 py-1.5 text-xs transition-all"
+                        >{{ item.name }}{% if item.story_points %} <span class="opacity-60">({{ item.story_points }}sp)</span>{% endif %}</button>
+                    </li>
+                    {% else %}
+                    <li class="text-xs text-muted-foreground italic py-2 px-1">
+                        <p>Requirements bridge Goals to Capabilities.</p>
+                        <p class="mt-1"><a href="{{ url_for('enterprise_crud.requirements_backlog') }}" class="underline hover:no-underline">Add them via the Requirements Backlog</a></p>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </section>
+
+            {# ── Capability ──────────────────────────────────────────────── #}
+            <section
+                data-layer="capabilities"
+                aria-label="Capability layer"
+                class="w-56 lg:w-auto flex-shrink-0 rounded-lg border border-border bg-card shadow-sm"
+            >
+                <div class="flex items-center gap-2 border-b border-border px-4 py-3 bg-indigo-50 dark:bg-indigo-950/30">
+                    <span class="h-3 w-3 rounded-full bg-primary" aria-hidden="true"></span>
+                    <h2 class="text-sm font-semibold text-indigo-700 dark:text-indigo-300">Capability</h2>
+                    <span class="text-xs text-muted-foreground">{{ chain.capabilities | length }}</span>
+                    <a href="{{ url_for('archimate.composer_page') }}?layer=Business" class="ml-auto text-xs text-muted-foreground hover:text-foreground transition-colors" title="Add new element in Composer">+ Add</a>
+                </div>
+                <ul class="p-3 space-y-1.5 max-h-[60vh] overflow-y-auto" role="list">
+                    {% for item in chain.capabilities %}
+                    <li>
+                        <button
+                            type="button"
+                            data-element-id="{{ item.id }}"
+                            data-element='{{ {"id": item.id, "name": item.name, "description": item.description | default("", true), "type": "Capability", "layer": "Business"} | tojson }}'
+                            @click="selectChip('capabilities', {{ item.id }})"
+                            @dblclick="openEditModal(JSON.parse($el.dataset.element))"
+                            :class="chipClass('capabilities', {{ item.id }})"
+                            class="w-full text-left rounded-md border px-2.5 py-1.5 text-xs transition-all"
+                        >{{ item.name }}</button>
+                    </li>
+                    {% else %}
+                    <li class="text-xs text-muted-foreground italic py-2 px-1">No Capability elements</li>
+                    {% endfor %}
+                </ul>
+            </section>
+
+            {# ── Process ─────────────────────────────────────────────────── #}
+            <section
+                data-layer="processes"
+                aria-label="Process layer"
+                class="w-56 lg:w-auto flex-shrink-0 rounded-lg border border-border bg-card shadow-sm"
+            >
+                <div class="flex items-center gap-2 border-b border-border px-4 py-3 bg-teal-50 dark:bg-teal-950/30">
+                    <span class="h-3 w-3 rounded-full bg-teal-500" aria-hidden="true"></span>
+                    <h2 class="text-sm font-semibold text-teal-700 dark:text-teal-300">Process</h2>
+                    <span class="text-xs text-muted-foreground">{{ chain.processes | length }}</span>
+                    <a href="{{ url_for('archimate.composer_page') }}?layer=Business" class="ml-auto text-xs text-muted-foreground hover:text-foreground transition-colors" title="Add new element in Composer">+ Add</a>
+                </div>
+                <ul class="p-3 space-y-1.5 max-h-[60vh] overflow-y-auto" role="list">
+                    {% for item in chain.processes %}
+                    <li>
+                        <button
+                            type="button"
+                            data-element-id="{{ item.id }}"
+                            data-element='{{ {"id": item.id, "name": item.name, "description": item.description | default("", true), "type": "Process", "layer": "Business"} | tojson }}'
+                            @click="selectChip('processes', {{ item.id }})"
+                            @dblclick="openEditModal(JSON.parse($el.dataset.element))"
+                            :class="chipClass('processes', {{ item.id }})"
+                            class="w-full text-left rounded-md border px-2.5 py-1.5 text-xs transition-all"
+                        >{{ item.name }}</button>
+                    </li>
+                    {% else %}
+                    <li class="text-xs text-muted-foreground italic py-2 px-1">No Process elements</li>
+                    {% endfor %}
+                </ul>
+            </section>
+
+            {# ── Application ─────────────────────────────────────────────── #}
+            <section
+                data-layer="applications"
+                aria-label="Application layer"
+                class="w-56 lg:w-auto flex-shrink-0 rounded-lg border border-border bg-card shadow-sm"
+            >
+                <div class="flex items-center gap-2 border-b border-border px-4 py-3 bg-orange-50 dark:bg-orange-950/30">
+                    <span class="h-3 w-3 rounded-full bg-orange-500" aria-hidden="true"></span>
+                    <h2 class="text-sm font-semibold text-orange-700 dark:text-orange-300">Application</h2>
+                    <span class="text-xs text-muted-foreground">{{ chain.applications | length }}</span>
+                    <a href="{{ url_for('archimate.composer_page') }}?layer=Application" class="ml-auto text-xs text-muted-foreground hover:text-foreground transition-colors" title="Add new element in Composer">+ Add</a>
+                </div>
+                <ul class="p-3 space-y-1.5 max-h-[60vh] overflow-y-auto" role="list">
+                    {% for item in chain.applications %}
+                    <li>
+                        <button
+                            type="button"
+                            data-element-id="{{ item.id }}"
+                            data-element='{{ {"id": item.id, "name": item.name, "description": item.description | default("", true), "type": "Application", "layer": "Application"} | tojson }}'
+                            @click="selectChip('applications', {{ item.id }})"
+                            @dblclick="openEditModal(JSON.parse($el.dataset.element))"
+                            :class="chipClass('applications', {{ item.id }})"
+                            class="w-full text-left rounded-md border px-2.5 py-1.5 text-xs transition-all"
+                        >{{ item.name }}</button>
+                    </li>
+                    {% else %}
+                    <li class="text-xs text-muted-foreground italic py-2 px-1">No Application elements</li>
+                    {% endfor %}
+                </ul>
+            </section>
+
+            {# ── Technology ──────────────────────────────────────────────── #}
+            <section
+                data-layer="technology"
+                aria-label="Technology layer"
+                class="w-56 lg:w-auto flex-shrink-0 rounded-lg border border-border bg-card shadow-sm"
+            >
+                <div class="flex items-center gap-2 border-b border-border px-4 py-3 bg-slate-50 dark:bg-slate-900/60">
+                    <span class="h-3 w-3 rounded-full bg-slate-500" aria-hidden="true"></span>
+                    <h2 class="text-sm font-semibold text-slate-700 dark:text-slate-300">Technology</h2>
+                    <span class="text-xs text-muted-foreground">{{ chain.technology | length }}</span>
+                    <a href="{{ url_for('archimate.composer_page') }}?layer=Technology" class="ml-auto text-xs text-muted-foreground hover:text-foreground transition-colors" title="Add new element in Composer">+ Add</a>
+                </div>
+                <ul class="p-3 space-y-1.5 max-h-[60vh] overflow-y-auto" role="list">
+                    {% for item in chain.technology %}
+                    <li>
+                        <button
+                            type="button"
+                            data-element-id="{{ item.id }}"
+                            data-element='{{ {"id": item.id, "name": item.name, "description": item.description | default("", true), "type": "Technology", "layer": "Technology"} | tojson }}'
+                            @click="selectChip('technology', {{ item.id }})"
+                            @dblclick="openEditModal(JSON.parse($el.dataset.element))"
+                            :class="chipClass('technology', {{ item.id }})"
+                            class="w-full text-left rounded-md border px-2.5 py-1.5 text-xs transition-all"
+                        >{{ item.name }}</button>
+                    </li>
+                    {% else %}
+                    <li class="text-xs text-muted-foreground italic py-2 px-1">No Technology elements</li>
+                    {% endfor %}
+                </ul>
+            </section>
+
+        </div><!-- /grid -->
+
+        <!-- Right-edge fade gradient — visible while content extends beyond viewport -->
+        <div x-cloak x-show="scrollHint"
+             class="pointer-events-none absolute right-0 top-0 bottom-4 w-16 bg-gradient-to-l from-background to-transparent"
+             aria-hidden="true"></div>
+
+    </div><!-- /overflow-x-auto -->
+
+    <!-- Scroll hint text — shown while right columns are off-screen -->
+    <p x-cloak x-show="scrollHint"
+       class="text-center text-xs text-muted-foreground -mt-2 mb-1">
+        <span class="inline-flex items-center gap-1">
+            <i data-lucide="chevrons-right" class="h-3 w-3"></i>
+            Scroll right to see all 8 layers (Capability → Process → Application → Technology)
+        </span>
+    </p>
+
+    <!-- Selection hint -->
+    <p x-cloak class="text-xs text-muted-foreground text-center" x-show="!selected.layer">
+        Click any element chip above to highlight it across all layers.
+    </p>
+    <p class="text-xs text-muted-foreground text-center" x-show="selected.layer" x-cloak>
+        Showing selected element (double-click to edit) — <button type="button" @click="clearSelection()" class="underline hover:text-foreground">Clear</button>
+    </p>
+
+    <!-- GLB-056: Linked Solutions panel -->
+    <div x-show="selected.layer" x-cloak x-transition class="rounded-lg border border-border bg-card p-4">
+        <h3 class="text-sm font-medium mb-2 flex items-center gap-2">
+            <i data-lucide="link" class="h-4 w-4"></i>
+            Linked Solutions
+        </h3>
+        <div class="flex flex-wrap gap-2" id="linked-solutions-container">
+            <template x-for="sol in linkedSolutions" :key="sol.id">
+                <a :href="'/solutions/' + sol.id" class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30 hover:bg-primary/20 transition-colors">
+                    <span x-text="sol.name"></span>
+                    <span class="ml-1 opacity-60" x-text="'(' + sol.element_role + ')'"></span>
+                </a>
+            </template>
+            <span x-show="linkedSolutions.length === 0" x-cloak
+                  class="text-xs text-muted-foreground italic">No linked solutions</span>
+        </div>
+    </div>
+
+    <!-- GLB-059 / TRC-027: Edit modal. Option B: in-place PATCH only for Technology layer; others show redirect. -->
+    <div x-show="editModalOpen" x-cloak class="fixed inset-0 z-50 flex items-start justify-center pt-20" @keydown.escape.window="editModalOpen = false" role="dialog" aria-modal="true" aria-labelledby="edit-element-title"><!-- modal-a11y-ok -->
+        <div class="fixed inset-0 bg-black/50" @click="editModalOpen = false"></div>
+        <div class="relative z-10 w-full max-w-md rounded-lg border border-border bg-card p-6 shadow-lg">
+            <h2 id="edit-element-title" class="text-lg font-semibold mb-4">Edit Element</h2>
+            <div class="flex gap-2 mb-4">
+                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground" x-text="editElement.layer"></span>
+                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground" x-text="editElement.type"></span>
+            </div>
+            <template x-if="editElement.layer === 'Technology'">
+                <div>
+                    <div class="mb-3">
+                        <label for="edit-name" class="block text-sm font-medium mb-1">Name</label>
+                        <input id="edit-name" type="text" x-model="editElement.name" maxlength="100"
+                               placeholder="Element name"
+                               class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring">
+                    </div>
+                    <div class="mb-4">
+                        <label for="edit-desc" class="block text-sm font-medium mb-1">Description</label>
+                        <textarea id="edit-desc" x-model="editElement.description" rows="3"
+                                  class="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring"></textarea>
+                    </div>
+                    <div x-show="editError" x-cloak class="text-destructive text-xs mb-3" x-text="editError"></div>
+                    <div class="flex items-center justify-between">
+                        <a :href="'/archimate/composer?element_id=' + editElement.id"
+                           class="text-xs text-muted-foreground hover:text-foreground underline">Edit in Composer</a>
+                        <div class="flex gap-2">
+                            <button type="button" @click="editModalOpen = false"
+                                    class="inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground">Cancel</button>
+                            <button type="button" @click="saveEdit()" :disabled="editSaving"
+                                    class="inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                                <span x-show="!editSaving" x-cloak>Save</span>
+                                <span x-show="editSaving" x-cloak>Saving...</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </template>
+            <template x-if="editElement.layer !== 'Technology'">
+                <div>
+                    <p class="text-sm text-muted-foreground mb-4">In-place edit is only available for Technology layer elements. To edit this element, use the Composer or the relevant Solution.</p>
+                    <div class="flex items-center justify-between">
+                        <a :href="'/archimate/composer?element_id=' + editElement.id"
+                           class="text-sm font-medium text-primary hover:underline">Edit in Composer</a>
+                        <button type="button" @click="editModalOpen = false"
+                                class="inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground">Close</button>
+                    </div>
+                </div>
+            </template>
+        </div>
+    </div>
+
+    <!-- TRC-028: Gap link modal (picker for linking orphan to goal/application) -->
+    <div x-show="linkModalOpen" x-cloak class="fixed inset-0 z-50 flex items-start justify-center pt-20" @keydown.escape.window="closeLinkModal()" role="dialog" aria-modal="true" aria-labelledby="link-modal-title"><!-- modal-a11y-ok -->
+        <div class="fixed inset-0 bg-black/50" @click="closeLinkModal()"></div>
+        <div class="relative z-10 w-full max-w-md rounded-lg border border-border bg-card p-6 shadow-lg">
+            <h2 id="link-modal-title" class="text-lg font-semibold mb-2" x-text="linkType === 'driver-goal' ? 'Link Driver to Goal' : 'Link Capability to Application'"></h2>
+            <p class="text-sm text-muted-foreground mb-3" x-show="linkSource" x-cloak><span x-text="'Linking: ' + (linkSource && linkSource.name)"></span></p>
+            <div class="mb-4">
+                <label class="block text-sm font-medium mb-1" x-text="linkType === 'driver-goal' ? 'Select Goal' : 'Select Application'"></label>
+                <select x-model="linkTargetId" class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                    <option value="">— Select —</option>
+                    <template x-for="t in linkTargets" :key="t.id">
+                        <option :value="t.id" x-text="t.name"></option>
+                    </template>
+                </select>
+            </div>
+            <div x-show="linkError" x-cloak class="text-destructive text-xs mb-3" x-text="linkError"></div>
+            <div class="flex justify-end gap-2">
+                <button type="button" @click="closeLinkModal()" class="inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium border border-input bg-background hover:bg-accent">Cancel</button>
+                <button type="button" @click="submitLink()" :disabled="!linkTargetId || linkSaving" class="inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                    <span x-show="!linkSaving" x-cloak>Link</span>
+                    <span x-show="linkSaving" x-cloak>Saving...</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- TRC-003: Gap analysis panel (collapsible, closed by default) -->
+    {% set has_gaps = gap_analysis and (gap_analysis.orphaned_drivers or gap_analysis.orphaned_goals or gap_analysis.orphaned_requirements or gap_analysis.orphaned_capabilities) %}
+    <div x-data="{ gapOpen: false }" class="rounded-lg border border-border bg-card">
+        <button @click="gapOpen = !gapOpen" type="button"
+            class="flex items-center justify-between w-full px-4 py-3 text-sm font-medium text-foreground hover:bg-muted/50 rounded-lg">
+            <span class="flex items-center gap-2">
+                <i data-lucide="alert-triangle" class="h-4 w-4 text-amber-500"></i>
+                Gap Analysis
+                {% if has_gaps %}
+                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-amber-500/10 text-amber-600 border border-amber-500/30">
+                    {{ (gap_analysis.orphaned_drivers | length) + (gap_analysis.orphaned_goals | length) + (gap_analysis.orphaned_requirements | length) + (gap_analysis.orphaned_capabilities | length) }} gaps
+                </span>
+                {% else %}
+                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30">No gaps</span>
+                {% endif %}
+            </span>
+            <i :data-lucide="gapOpen ? 'chevron-up' : 'chevron-down'" class="h-4 w-4 text-muted-foreground"></i>
+        </button>
+        <div x-show="gapOpen" x-cloak x-transition class="px-4 pb-4 space-y-3"> <!-- modal-a11y-ok: disclosure panel, not a dialog -->
+            {% if not has_gaps %}
+            <p class="text-sm text-muted-foreground">All elements are connected — no orphaned items found.</p>
+            {% else %}
+                {% for key, label in [('orphaned_drivers', 'Drivers without Goals'), ('orphaned_goals', 'Goals without Requirements'), ('orphaned_requirements', 'Requirements without Capabilities'), ('orphaned_capabilities', 'Capabilities without Applications')] %}
+                {% set items = gap_analysis.get(key, []) %}
+                {% if items %}
+                <div>
+                    <h4 class="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">{{ label }} ({{ items | length }})</h4><!-- frontend-quality-ok -->
+                    <div class="flex flex-wrap gap-1.5 items-center">
+                        {% for item in items[:20] %}
+                        <span class="inline-flex items-center gap-1 rounded-md text-xs font-medium bg-amber-500/10 text-amber-600 border border-amber-500/30">
+                            <span>{{ item.name }}</span>
+                            {% if key == 'orphaned_drivers' %}
+                            <button type="button" data-id="{{ item.id }}" data-name="{{ item.name | e }}"
+                                @click="openLinkModal('driver-goal', $el.dataset.id, $el.dataset.name, gapGoals)"
+                                class="ml-1 px-1.5 py-0.5 text-xs rounded bg-amber-600/20 hover:bg-amber-600/30 text-amber-700 dark:text-amber-300">Link to Goal</button>
+                            {% elif key == 'orphaned_capabilities' %}
+                            <button type="button" data-id="{{ item.id }}" data-name="{{ item.name | e }}"
+                                @click="openLinkModal('capability-app', $el.dataset.id, $el.dataset.name, gapApps)"
+                                class="ml-1 px-1.5 py-0.5 text-xs rounded bg-amber-600/20 hover:bg-amber-600/30 text-amber-700 dark:text-amber-300">Link to Application</button>
+                            {% endif %}
+                        </span>
+                        {% endfor %}
+                        {% if items | length > 20 %}
+                        <span class="text-xs text-muted-foreground">+{{ items | length - 20 }} more</span>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endif %}
+                {% endfor %}
+            {% endif %}
+        </div>
+    </div>
+
+
+</div><!-- /x-data -->
+{% endblock %}
+
+{% block extra_head_js %}
+<script>
+function traceabilityChain() {
+    /* TRC-002: relationship_maps from server for cross-layer highlighting */
+    const _maps = {{ relationship_maps | tojson }};
+
+    /* GLB-056 / TRC-026: Element-solution data by layer (pre-parsed in <head>) */
+    const _esDataByLayer = {{ element_solutions_json|safe if element_solutions_json else '{}' }};
+
+    /* TRC-028: Gap link picker lists (from chain) */
+    const _gapGoals = {{ (chain.get('goals') or []) | tojson }};
+    const _gapApps = {{ (chain.get('applications') or []) | tojson }};
+
+    /* TRC-002: Build reverse maps for upstream traversal */
+    function _invertMap(map) {
+        const inv = {};
+        for (const [src, targets] of Object.entries(map || {})) {
+            for (const tgt of targets) {
+                if (!inv[tgt]) inv[tgt] = [];
+                inv[tgt].push(parseInt(src, 10));
+            }
+        }
+        return inv;
+    }
+    const _revDriverToGoals = _invertMap(_maps.driver_to_goals);
+    const _revGoalToReqs = _invertMap(_maps.goal_to_requirements);
+    const _revReqToCaps = _invertMap(_maps.requirement_to_capabilities);
+    const _revCapToApps = _invertMap(_maps.capability_to_apps);
+
+    /* TRC-002: Layer ordering for traversal */
+    const LAYER_ORDER = ['stakeholders', 'drivers', 'goals', 'requirements', 'capabilities', 'processes', 'applications', 'technology'];
+
+    /* TRC-002: Forward and reverse map lookup by layer pair */
+    const FWD = {
+        'drivers': { map: _maps.driver_to_goals, targetLayer: 'goals' },
+        'goals': { map: _maps.goal_to_requirements, targetLayer: 'requirements' },
+        'requirements': { map: _maps.requirement_to_capabilities, targetLayer: 'capabilities' },
+        'capabilities': { map: _maps.capability_to_apps, targetLayer: 'applications' },
+    };
+    const REV = {
+        'goals': { map: _revDriverToGoals, targetLayer: 'drivers' },
+        'requirements': { map: _revGoalToReqs, targetLayer: 'goals' },
+        'capabilities': { map: _revReqToCaps, targetLayer: 'requirements' },
+        'applications': { map: _revCapToApps, targetLayer: 'capabilities' },
+    };
+
+    return {
+        selected: { layer: null, id: null },
+        relatedIds: {},
+        scrollHint: false,
+        linkedSolutions: [],
+        editModalOpen: false,
+        editElement: {id: null, name: '', description: '', type: '', layer: ''},
+        editSaving: false,
+        editError: '',
+        /* TRC-028: Gap link modal */
+        linkModalOpen: false,
+        linkType: '',
+        linkSource: null,
+        linkTargetId: null,
+        linkTargets: [],
+        linkSaving: false,
+        linkError: '',
+        gapGoals: _gapGoals,
+        gapApps: _gapApps,
+
+        init() {
+            const el = this.$refs.scrollContainer;
+            if (el) {
+                this.scrollHint = el.scrollWidth > el.clientWidth + 4;
+            }
+        },
+
+        selectChip(layer, id) {
+            if (this.selected.layer === layer && this.selected.id === id) {
+                this.clearSelection();
+            } else {
+                this.selected = { layer, id };
+                this._computeRelated(layer, id);
+                /* GLB-056 / TRC-026: Linked solutions by layer + element id */
+                const byLayer = _esDataByLayer[layer];
+                this.linkedSolutions = (byLayer && byLayer[String(id)]) || [];
+            }
+        },
+
+        clearSelection() {
+            this.selected = { layer: null, id: null };
+            this.relatedIds = {};
+            this.linkedSolutions = [];
+        },
+
+        openEditModal(item) {
+            this.editElement = {id: item.id, name: item.name, description: item.description || '', type: item.type || '', layer: item.layer || ''};
+            this.editError = '';
+            this.editModalOpen = true;
+        },
+
+        openLinkModal(type, sourceId, sourceName, targets) {
+            this.linkType = type;
+            this.linkSource = { id: sourceId, name: sourceName };
+            this.linkTargetId = null;
+            this.linkTargets = targets || [];
+            this.linkError = '';
+            this.linkModalOpen = true;
+        },
+        closeLinkModal() {
+            this.linkModalOpen = false;
+        },
+        async submitLink() {
+            if (!this.linkSource || !this.linkTargetId) return;
+            this.linkSaving = true;
+            this.linkError = '';
+            const csrfToken = document.querySelector('meta[name=csrf-token]')?.content || '';
+            let url = '';
+            let body = {};
+            if (this.linkType === 'driver-goal') {
+                url = '/archimate/api/link/driver-to-goal';
+                body = { driver_id: this.linkSource.id, goal_id: this.linkTargetId };
+            } else if (this.linkType === 'capability-app') {
+                url = '/archimate/api/link/capability-to-application';
+                body = { capability_id: this.linkSource.id, application_id: this.linkTargetId };
+            } else {
+                this.linkSaving = false;
+                return;
+            }
+            try {
+                const resp = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+                    body: JSON.stringify(body),
+                });
+                const data = await resp.json();
+                if (!resp.ok) {
+                    this.linkError = data.error || 'Link failed';
+                    return;
+                }
+                this.linkModalOpen = false;
+                window.location.reload();
+            } catch (e) {
+                this.linkError = 'Network error';
+            } finally {
+                this.linkSaving = false;
+            }
+        },
+
+        async saveEdit() {
+            if (this.editElement.layer !== 'Technology') return;
+            this.editSaving = true;
+            this.editError = '';
+            try {
+                const csrfToken = document.querySelector('meta[name=csrf-token]')?.content || '';
+                const resp = await fetch('/archimate/api/elements/' + this.editElement.id, {
+                    method: 'PATCH',
+                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
+                    body: JSON.stringify({name: this.editElement.name, description: this.editElement.description}),
+                });
+                const data = await resp.json();
+                if (!resp.ok) { this.editError = data.error || 'Save failed'; return; }
+                const chipEl = document.querySelector('[data-element-id="' + this.editElement.id + '"]');
+                if (chipEl) chipEl.textContent = data.name;
+                this.editModalOpen = false;
+            } catch (e) {
+                this.editError = 'Network error';
+            } finally {
+                this.editSaving = false;
+            }
+        },
+
+        /* TRC-002: Walk relationship_maps downstream and upstream from selected */
+        _computeRelated(layer, id) {
+            const related = {};
+            LAYER_ORDER.forEach(l => { related[l] = new Set(); });
+            related[layer].add(id);
+
+            /* Downstream traversal */
+            let frontier = [{ layer: layer, ids: [id] }];
+            while (frontier.length) {
+                const next = [];
+                for (const item of frontier) {
+                    const fwd = FWD[item.layer];
+                    if (!fwd) continue;
+                    const newIds = [];
+                    for (const srcId of item.ids) {
+                        const targets = (fwd.map || {})[srcId] || [];
+                        for (const tgt of targets) {
+                            if (!related[fwd.targetLayer].has(tgt)) {
+                                related[fwd.targetLayer].add(tgt);
+                                newIds.push(tgt);
+                            }
+                        }
+                    }
+                    if (newIds.length) next.push({ layer: fwd.targetLayer, ids: newIds });
+                }
+                frontier = next;
+            }
+
+            /* Upstream traversal */
+            frontier = [{ layer: layer, ids: [id] }];
+            while (frontier.length) {
+                const next = [];
+                for (const item of frontier) {
+                    const rev = REV[item.layer];
+                    if (!rev) continue;
+                    const newIds = [];
+                    for (const srcId of item.ids) {
+                        const targets = (rev.map || {})[srcId] || [];
+                        for (const tgt of targets) {
+                            if (!related[rev.targetLayer].has(tgt)) {
+                                related[rev.targetLayer].add(tgt);
+                                newIds.push(tgt);
+                            }
+                        }
+                    }
+                    if (newIds.length) next.push({ layer: rev.targetLayer, ids: newIds });
+                }
+                frontier = next;
+            }
+
+            /* Convert Sets to plain objects for Alpine reactivity */
+            const result = {};
+            for (const [l, s] of Object.entries(related)) {
+                result[l] = Array.from(s);
+            }
+            this.relatedIds = result;
+        },
+
+        chipClass(layer, id) {
+            const base = 'border-border bg-background hover:bg-muted/60 text-foreground';
+            const active = 'border-primary bg-primary/10 text-primary font-medium ring-2 ring-primary';
+            const related = 'border-primary/50 bg-primary/5 text-foreground ring-1 ring-primary/50';
+            const dimmed = 'opacity-30 border-border bg-background text-muted-foreground';
+
+            if (!this.selected.layer) return base;
+            if (this.selected.layer === layer && this.selected.id === id) return active;
+
+            /* TRC-002: Check cross-layer relationship */
+            const layerRelated = this.relatedIds[layer] || [];
+            if (layerRelated.includes(id)) return related;
+
+            /* Dim unrelated elements */
+            return dimmed;
+        },
+    };
+}
+</script>
+{% endblock %}

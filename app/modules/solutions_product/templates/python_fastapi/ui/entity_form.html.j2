@@ -1,0 +1,132 @@
+{# Entity create/edit form — one generated per entity #}
+{# Context: ent (entity dict with fields, status_field, state_transitions) #}
+{# This template is rendered into app.js as a form builder function #}
+
+/* ── {{ ent.name_display }} Form ── */
+function buildForm_{{ ent.name_snake }}(formData, isEdit, relatedData) {
+    return `
+        <form @submit.prevent="saveEntity('{{ ent.name_snake }}', '{{ ent.api_base_path }}')" class="space-y-4">
+{% for field in ent.fields %}
+{% if not field.is_auto %}
+{% if field.name == ent.status_field and ent.state_transitions %}
+            <!-- Status is controlled by state transitions, show read-only in edit -->
+            ${isEdit ? `
+            <div>
+                <label class="block text-xs font-medium text-zinc-400 mb-1">{{ field.display_name }}</label>
+                <div class="px-3 py-1.5 text-sm rounded-md border border-zinc-700 bg-zinc-800/50 text-zinc-400">
+                    ${formData.{{ field.name }} || 'N/A'}
+                </div>
+                <p class="text-[10px] text-zinc-600 mt-1">Status is changed via workflow actions</p>
+            </div>` : `
+            <div>
+                <label class="block text-xs font-medium text-zinc-400 mb-1">{{ field.display_name }}{% if field.required %} <span class="text-red-400">*</span>{% endif %}</label>
+{% if field.enum_values %}
+                <select x-model="formPanel.data.{{ field.name }}"{% if field.required %} required{% endif %}
+                        class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500">
+                    <option value="">Select...</option>
+{% for val in field.enum_values %}
+                    <option value="{{ val }}">{{ val }}</option>
+{% endfor %}
+                </select>
+{% else %}
+                <input type="text" x-model="formPanel.data.{{ field.name }}"{% if field.required %} required{% endif %}
+                       class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500">
+{% endif %}
+            </div>`}
+{% elif field.type == 'boolean' %}
+            <div>
+                <label class="block text-xs font-medium text-zinc-400 mb-1">{{ field.display_name }}</label>
+                <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" x-model="formPanel.data.{{ field.name }}" class="sr-only peer">
+                    <div class="w-9 h-5 bg-zinc-700 peer-focus:ring-2 peer-focus:ring-blue-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                </label>
+            </div>
+{% elif field.type == 'integer' or field.type == 'number' %}
+            <div>
+                <label class="block text-xs font-medium text-zinc-400 mb-1">{{ field.display_name }}{% if field.required %} <span class="text-red-400">*</span>{% endif %}</label>
+                <input type="number" x-model="formPanel.data.{{ field.name }}"{% if field.required %} required{% endif %}
+                       {% if field.type == 'number' %}step="any"{% endif %}
+                       {% if field.constraints and field.constraints.minimum is defined %}min="{{ field.constraints.minimum }}"{% endif %}
+                       {% if field.constraints and field.constraints.maximum is defined %}max="{{ field.constraints.maximum }}"{% endif %}
+                       class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500">
+            </div>
+{% elif field.type == 'text' %}
+            <div>
+                <label class="block text-xs font-medium text-zinc-400 mb-1">{{ field.display_name }}{% if field.required %} <span class="text-red-400">*</span>{% endif %}</label>
+                <textarea x-model="formPanel.data.{{ field.name }}" rows="3"{% if field.required %} required{% endif %}
+                          class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"></textarea>
+            </div>
+{% elif field.enum_values %}
+            <div>
+                <label class="block text-xs font-medium text-zinc-400 mb-1">{{ field.display_name }}{% if field.required %} <span class="text-red-400">*</span>{% endif %}</label>
+                <select x-model="formPanel.data.{{ field.name }}"{% if field.required %} required{% endif %}
+                        class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500">
+                    <option value="">Select...</option>
+{% for val in field.enum_values %}
+                    <option value="{{ val }}">{{ val }}</option>
+{% endfor %}
+                </select>
+            </div>
+{% elif field.type == 'date-time' %}
+            <div>
+                <label class="block text-xs font-medium text-zinc-400 mb-1">{{ field.display_name }}{% if field.required %} <span class="text-red-400">*</span>{% endif %}</label>
+                <input type="datetime-local" x-model="formPanel.data.{{ field.name }}"{% if field.required %} required{% endif %}
+                       class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500">
+            </div>
+{% elif field.format == 'email' %}
+            <div>
+                <label class="block text-xs font-medium text-zinc-400 mb-1">{{ field.display_name }}{% if field.required %} <span class="text-red-400">*</span>{% endif %}</label>
+                <input type="email" x-model="formPanel.data.{{ field.name }}"{% if field.required %} required{% endif %}
+                       class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500">
+            </div>
+{% elif field.format == 'uri' %}
+            <div>
+                <label class="block text-xs font-medium text-zinc-400 mb-1">{{ field.display_name }}{% if field.required %} <span class="text-red-400">*</span>{% endif %}</label>
+                <input type="url" x-model="formPanel.data.{{ field.name }}"{% if field.required %} required{% endif %}
+                       class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500">
+            </div>
+{% elif field.is_fk %}
+            <div>
+                <label class="block text-xs font-medium text-zinc-400 mb-1">{{ field.display_name }}{% if field.required %} <span class="text-red-400">*</span>{% endif %}</label>
+                <div x-data="{ fkSearch: '', fkOptions: [], fkLoading: false, fkOpen: false }" class="relative">
+                    <input type="text" x-model="fkSearch"
+                           @focus="fkOpen = true"
+                           @input.debounce.300ms="fkLoading = true; api.get('{{ field.fk_api_path }}?search=' + encodeURIComponent(fkSearch)).then(d => { fkOptions = Array.isArray(d) ? d : (d.items || []); fkLoading = false; }).catch(() => { fkLoading = false; })"
+                           placeholder="Search {{ field.fk_entity_display }}..."
+                           class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500">
+                    <input type="hidden" x-model="formPanel.data.{{ field.name }}">
+                    <div x-show="fkOpen && fkOptions.length" x-cloak @click.outside="fkOpen = false"
+                         class="absolute z-10 mt-1 w-full bg-zinc-800 border border-zinc-700 rounded-md shadow-lg max-h-40 overflow-y-auto">
+                        <template x-for="opt in fkOptions" :key="opt.id">
+                            <div @click="formPanel.data.{{ field.name }} = opt.id; fkSearch = opt.{{ field.fk_label_field || 'id' }}; fkOpen = false"
+                                 class="px-3 py-1.5 text-sm hover:bg-zinc-700 cursor-pointer" x-text="opt.{{ field.fk_label_field || 'id' }}"></div>
+                        </template>
+                    </div>
+                    <div x-show="fkLoading" class="absolute right-2 top-2">
+                        <div class="w-4 h-4 border-2 border-zinc-600 border-t-blue-500 rounded-full animate-spin"></div>
+                    </div>
+                </div>
+            </div>
+{% else %}
+            <div>
+                <label class="block text-xs font-medium text-zinc-400 mb-1">{{ field.display_name }}{% if field.required %} <span class="text-red-400">*</span>{% endif %}</label>
+                <input type="text" x-model="formPanel.data.{{ field.name }}"{% if field.required %} required{% endif %}
+                       {% if field.constraints and field.constraints.max_length %}maxlength="{{ field.constraints.max_length }}"{% endif %}
+                       {% if field.constraints and field.constraints.pattern %}pattern="{{ field.constraints.pattern }}"{% endif %}
+                       class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500">
+            </div>
+{% endif %}
+{% endif %}
+{% endfor %}
+            <div class="flex gap-2 pt-4 border-t border-zinc-800">
+                <button type="submit" :disabled="formPanel.saving"
+                        class="flex-1 px-4 py-2 text-sm font-medium rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 transition-colors">
+                    <span x-show="!formPanel.saving" x-text="formPanel.editId ? 'Update' : 'Create'"></span>
+                    <span x-show="formPanel.saving">Saving...</span>
+                </button>
+                <button type="button" @click="formPanel.open = false"
+                        class="px-4 py-2 text-sm rounded-md border border-zinc-700 text-zinc-400 hover:text-zinc-100 transition-colors">Cancel</button>
+            </div>
+        </form>
+    `;
+}

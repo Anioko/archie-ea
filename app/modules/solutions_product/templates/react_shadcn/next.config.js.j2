@@ -1,0 +1,22 @@
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  output: 'standalone',
+  async rewrites() {
+    // BACKEND_URL is a server-side env var used only by the Next.js proxy.
+    // Client-side API calls go to /api/... (same-origin) and are rewritten here.
+    const backendUrl = process.env.BACKEND_URL || 'http://localhost:8000'
+    return [
+      {
+        source: '/api/:path*',
+        destination: `${backendUrl}/api/:path*`,
+      },
+      {
+        // Auth endpoints are not under /api/ — proxy them separately
+        source: '/auth/:path*',
+        destination: `${backendUrl}/auth/:path*`,
+      },
+    ]
+  },
+}
+
+module.exports = nextConfig

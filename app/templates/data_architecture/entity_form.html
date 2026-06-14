@@ -1,0 +1,155 @@
+{% extends 'layouts/admin_base.html' %}
+
+{% block title %}{{ 'Edit' if entity else 'Create' }} Data Entity — A.R.C.H.I.E.{% endblock %}
+
+{% block breadcrumb %}
+{% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
+{{ breadcrumb_nav(items=[
+    {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
+    {'text': 'Technology Layer'},
+    {'text': 'Data Architecture'},
+    {'text': 'Entity Form', 'current': true}
+]) }}
+{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto space-y-6">
+    <div>
+        <a href="{{ url_for('data_architecture.data_entity_catalog') }}" class="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1 mb-4">
+            <i data-lucide="arrow-left" class="w-3.5 h-3.5" aria-hidden="true"></i> Back to Catalog
+        </a>
+        <h1 class="text-2xl font-bold text-foreground">{{ 'Edit' if entity else 'Create' }} Data Entity</h1>
+        <p class="text-sm text-muted-foreground mt-1">{{ 'Update this data entity definition.' if entity else 'Define a new business data entity in the catalog.' }}</p>
+    </div>
+
+    <form method="post" class="space-y-6">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <div class="rounded-lg border bg-card p-6 space-y-4">
+            <h2 class="text-sm font-semibold text-foreground uppercase tracking-wide">Identity</h2>
+
+            <div>
+                <label for="name" class="block text-sm font-medium text-foreground mb-1">Name <span class="text-destructive">*</span></label>
+                <input type="text" id="name" name="name" required value="{{ entity.name if entity else '' }}"
+                    class="w-full h-9 px-3 text-sm rounded-md border border-input bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                    placeholder="e.g., Customer Master, Sales Order, Product Catalog">
+            </div>
+
+            <div>
+                <label for="business_name" class="block text-sm font-medium text-foreground mb-1">Business Name</label>
+                <input type="text" id="business_name" name="business_name" value="{{ entity.business_name if entity else '' }}"
+                    class="w-full h-9 px-3 text-sm rounded-md border border-input bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                    placeholder="Business-friendly name">
+            </div>
+
+            <div>
+                <label for="description" class="block text-sm font-medium text-foreground mb-1">Description</label>
+                <textarea id="description" name="description" rows="3"
+                    class="w-full px-3 py-2 text-sm rounded-md border border-input bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                    placeholder="Describe what this data entity represents and how it's used">{{ entity.description if entity else '' }}</textarea>
+            </div>
+        </div>
+
+        <div class="rounded-lg border bg-card p-6 space-y-4">
+            <h2 class="text-sm font-semibold text-foreground uppercase tracking-wide">Classification</h2>
+
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label for="domain_id" class="block text-sm font-medium text-foreground mb-1">Domain</label>
+                    <select id="domain_id" name="domain_id"
+                        class="w-full h-9 px-3 text-sm rounded-md border border-input bg-background text-foreground">
+                        <option value="">Select domain...</option>
+                        {% for d in domains %}
+                        <option value="{{ d.id }}" {{ 'selected' if entity and entity.domain_id == d.id }}>{{ d.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div>
+                    <label for="entity_type" class="block text-sm font-medium text-foreground mb-1">Entity Type</label>
+                    <select id="entity_type" name="entity_type"
+                        class="w-full h-9 px-3 text-sm rounded-md border border-input bg-background text-foreground">
+                        <option value="">Select type...</option>
+                        <option value="master" {{ 'selected' if entity and entity.entity_type == 'master' }}>Master Data</option>
+                        <option value="transactional" {{ 'selected' if entity and entity.entity_type == 'transactional' }}>Transactional</option>
+                        <option value="reference" {{ 'selected' if entity and entity.entity_type == 'reference' }}>Reference Data</option>
+                        <option value="derived" {{ 'selected' if entity and entity.entity_type == 'derived' }}>Derived / Analytical</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label for="data_classification" class="block text-sm font-medium text-foreground mb-1">Data Classification</label>
+                    <select id="data_classification" name="data_classification"
+                        class="w-full h-9 px-3 text-sm rounded-md border border-input bg-background text-foreground">
+                        <option value="">Select classification...</option>
+                        <option value="public" {{ 'selected' if entity and entity.data_classification == 'public' }}>Public</option>
+                        <option value="internal" {{ 'selected' if entity and entity.data_classification == 'internal' }}>Internal</option>
+                        <option value="confidential" {{ 'selected' if entity and entity.data_classification == 'confidential' }}>Confidential</option>
+                        <option value="restricted" {{ 'selected' if entity and entity.data_classification == 'restricted' }}>Restricted</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label for="system_of_record" class="block text-sm font-medium text-foreground mb-1">System of Record</label>
+                    <input type="text" id="system_of_record" name="system_of_record" value="{{ entity.system_of_record if entity else '' }}"
+                        class="w-full h-9 px-3 text-sm rounded-md border border-input bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                        placeholder="e.g., SAP ECC, Salesforce">
+                </div>
+            </div>
+
+            <div class="flex gap-6">
+                <label class="flex items-center gap-2 text-sm">
+                    <input type="checkbox" name="contains_pii" {{ 'checked' if entity and entity.contains_pii }}
+                        class="h-4 w-4 rounded border-input">
+                    Contains PII
+                </label>
+                <label class="flex items-center gap-2 text-sm">
+                    <input type="checkbox" name="is_master_data" {{ 'checked' if entity and entity.is_master_data }}
+                        class="h-4 w-4 rounded border-input">
+                    Master Data
+                </label>
+            </div>
+        </div>
+
+        <div class="flex items-center justify-between">
+            <a href="{{ url_for('data_architecture.data_entity_catalog') }}"
+               class="px-4 py-2 text-sm font-medium rounded-md border border-input bg-background hover:bg-accent transition-colors">
+                Cancel
+            </a>
+            <button type="submit"
+                class="px-4 py-2 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+                {{ 'Save Changes' if entity else 'Create Entity' }}
+            </button>
+        </div>
+    </form>
+
+    {% if entity %}
+    <div class="rounded-lg border border-destructive/30 bg-destructive/5 p-6">
+        <h2 class="text-sm font-semibold text-destructive mb-2">Danger Zone</h2>
+        <p class="text-sm text-muted-foreground mb-4">Deleting this data entity removes it permanently from the catalog.</p>
+        <form id="delete-entity-form" method="post" action="{{ url_for('data_architecture.delete_data_entity', entity_id=entity.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="button" id="btn-delete-entity"
+                data-entity-name="{{ entity.name | e }}"
+                class="px-4 py-2 text-sm font-medium rounded-md bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors">
+                Delete Entity
+            </button>
+        </form>
+        <script nonce="{{ csp_nonce }}">
+        (function() {
+            let btn = document.getElementById('btn-delete-entity');
+            if (btn) {
+                btn.addEventListener('click', async function() {
+                    if ((await Platform.modal.confirm('Delete data entity \'' + btn.dataset.entityName + '\'? This cannot be undone.'))) {
+                        document.getElementById('delete-entity-form').submit();
+                    }
+                });
+            }
+        })();
+        </script>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

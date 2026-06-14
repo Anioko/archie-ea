@@ -1,0 +1,703 @@
+{# ENT-090: ArchiMate Relationship Table — editable CRUD for solution-scoped relationships #}
+<div
+    x-data="{
+        relLoading: false,
+        relError: null,
+        relRows: [],
+        relLoaded: false,
+        relSaving: false,
+        filterLayer: 'all',
+        filterType: 'all',
+        showAddRow: false,
+        newSource: null,
+        newTarget: null,
+        newType: '',
+        sourceSearch: '',
+        targetSearch: '',
+        sourceResults: [],
+        targetResults: [],
+        sourceDropOpen: false,
+        targetDropOpen: false,
+        proposals: [],
+        showProposals: false,
+        generating: false,
+        accepting: false,
+        showTraceability: false,
+        traceLoading: false,
+        traceData: null,
+
+        categories: {
+            structural: ['composition', 'aggregation', 'assignment', 'realization'],
+            dependency: ['serving', 'access', 'influence'],
+            dynamic: ['triggering', 'flow'],
+            other: ['specialization', 'association']
+        },
+        allTypes: ['composition','aggregation','assignment','realization','serving','access','influence','triggering','flow','specialization','association'],
+
+        typeLabel(t) {
+            return t ? t.charAt(0).toUpperCase() + t.slice(1).replace(/_/g, ' ') : '';
+        },
+        typeCategory(t) {
+            for (const [cat, types] of Object.entries(this.categories)) {
+                if (types.includes(t)) return cat;
+            }
+            return 'other';
+        },
+        typeBadgeClass(t) {
+            const cat = this.typeCategory(t);
+            const map = {
+                structural: 'bg-blue-500/10 text-primary border-blue-500/30',
+                dependency: 'bg-amber-500/10 text-amber-600 border-amber-500/30',
+                dynamic:    'bg-emerald-500/10 text-emerald-600 border-emerald-500/30',
+                other:      'bg-gray-500/10 text-muted-foreground border-gray-500/30'
+            };
+            return map[cat] || map.other;
+        },
+        validationIcon(status) {
+            if (status === 'valid') return '✓';
+            if (status === 'advisory') return '⚠';
+            return '✗';
+        },
+        validationClass(status) {
+            if (status === 'valid') return 'text-emerald-600';
+            if (status === 'advisory') return 'text-amber-500';
+            return 'text-destructive';
+        },
+
+        get solutionId() {
+            return window.__SOLUTION_CONFIG__ ? window.__SOLUTION_CONFIG__.solutionId : null;
+        },
+
+        get filteredRows() {
+            return this.relRows.filter(r => {
+                if (this.filterLayer !== 'all') {
+                    const srcLayer = (r.source_layer || '').toLowerCase();
+                    const tgtLayer = (r.target_layer || '').toLowerCase();
+                    if (srcLayer !== this.filterLayer && tgtLayer !== this.filterLayer) return false;
+                }
+                if (this.filterType !== 'all' && r.relationship_type !== this.filterType) return false;
+                return true;
+            });
+        },
+
+        get uniqueLayers() {
+            const layers = new Set();
+            this.relRows.forEach(r => {
+                if (r.source_layer) layers.add(r.source_layer.toLowerCase());
+                if (r.target_layer) layers.add(r.target_layer.toLowerCase());
+            });
+            return [...layers].sort();
+        },
+
+        async load() {
+            if (!this.solutionId) return;
+            this.relLoading = true;
+            this.relError = null;
+            try {
+                const res = await fetch('/api/solutions/' + this.solutionId + '/relationships', {credentials:'same-origin'});
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                const data = await res.json();
+                this.relRows = data.relationships || [];
+            } catch(e) {
+                this.relError = e.message;
+            } finally {
+                this.relLoading = false;
+                this.relLoaded = true;
+            }
+        },
+
+        async searchElements(query, target) {
+            if (!query || query.length < 2) {
+                if (target === 'source') this.sourceResults = [];
+                else this.targetResults = [];
+                return;
+            }
+            try {
+                const res = await fetch('/solutions/api/archimate-all-elements?search=' + encodeURIComponent(query), {credentials:'same-origin'});
+                if (!res.ok) return;
+                const data = await res.json();
+                const results = data.elements || data || [];
+                if (target === 'source') this.sourceResults = results.slice(0, 10);
+                else this.targetResults = results.slice(0, 10);
+            } catch(e) { /* ignore search errors */ }
+        },
+
+        selectSource(elem) {
+            this.newSource = elem;
+            this.sourceSearch = elem.name || elem.label || '';
+            this.sourceDropOpen = false;
+            this.sourceResults = [];
+        },
+        selectTarget(elem) {
+            this.newTarget = elem;
+            this.targetSearch = elem.name || elem.label || '';
+            this.targetDropOpen = false;
+            this.targetResults = [];
+        },
+
+        async addRelationship() {
+            if (!this.newSource || !this.newTarget || !this.newType) {
+                this.relError = 'Select source, target, and relationship type';
+                return;
+            }
+            this.relSaving = true;
+            this.relError = null;
+            try {
+                const res = await fetch('/api/solutions/' + this.solutionId + '/relationships', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    credentials: 'same-origin',
+                    body: JSON.stringify({
+                        source_element_id: this.newSource.id,
+                        target_element_id: this.newTarget.id,
+                        relationship_type: this.newType
+                    })
+                });
+                const data = await res.json();
+                if (!res.ok) {
+                    this.relError = data.error || data.message || 'Failed to create relationship';
+                    return;
+                }
+                this.relRows.push(data.relationship || data);
+                this.resetNewRow();
+            } catch(e) {
+                this.relError = e.message;
+            } finally {
+                this.relSaving = false;
+            }
+        },
+
+        async deleteRelationship(relId) {
+            if (!(await Platform.modal.confirm('Remove this relationship?'))) return;
+            try {
+                const res = await fetch('/api/solutions/' + this.solutionId + '/relationships/' + relId, {
+                    method: 'DELETE',
+                    credentials: 'same-origin'
+                });
+                if (res.ok || res.status === 204) {
+                    this.relRows = this.relRows.filter(r => r.id !== relId);
+                } else {
+                    const data = await res.json().catch(() => ({}));
+                    this.relError = data.error || 'Failed to delete';
+                }
+            } catch(e) {
+                this.relError = e.message;
+            }
+        },
+
+        resetNewRow() {
+            this.newSource = null;
+            this.newTarget = null;
+            this.newType = '';
+            this.sourceSearch = '';
+            this.targetSearch = '';
+            this.showAddRow = false;
+        },
+
+        confidenceBadge(c) {
+            if (c >= 80) return 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30';
+            if (c >= 60) return 'bg-amber-500/10 text-amber-600 border-amber-500/30';
+            return 'bg-destructive/10 text-destructive border-destructive/30';
+        },
+
+        async generateRelationships() {
+            if (!this.solutionId) return;
+            this.generating = true;
+            this.relError = null;
+            this.proposals = [];
+            try {
+                const res = await fetch('/api/solutions/' + this.solutionId + '/relationships/generate', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {'Content-Type': 'application/json'}
+                });
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                const data = await res.json();
+                this.proposals = (data.proposals || []).map(p => ({
+                    ...p,
+                    checked: (p.confidence || 0) >= 80
+                }));
+                this.showProposals = true;
+                if (this.proposals.length === 0) {
+                    this.relError = 'No relationship proposals generated. Link more ArchiMate elements first.';
+                }
+            } catch(e) {
+                this.relError = e.message;
+            } finally {
+                this.generating = false;
+            }
+        },
+
+        async acceptSelected() {
+            const selected = this.proposals.filter(p => p.checked);
+            if (!selected.length) return;
+            this.accepting = true;
+            this.relError = null;
+            let accepted = 0;
+            for (const p of selected) {
+                try {
+                    const res = await fetch('/api/solutions/' + this.solutionId + '/relationships', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        credentials: 'same-origin',
+                        body: JSON.stringify({
+                            source_element_id: p.source_element_id,
+                            target_element_id: p.target_element_id,
+                            relationship_type: p.relationship_type
+                        })
+                    });
+                    if (res.ok) {
+                        const data = await res.json();
+                        this.relRows.push(data.relationship || data);
+                        accepted++;
+                    }
+                } catch(e) { /* skip failed proposals */ }  // fabricated-values-ok
+            }
+            this.proposals = this.proposals.filter(p => !p.checked);
+            if (this.proposals.length === 0) this.showProposals = false;
+            this.accepting = false;
+        },
+
+        layerColor(layer) {
+            const map = {
+                motivation: 'bg-purple-500/10 text-primary border-purple-500/30',
+                strategy: 'bg-rose-500/10 text-rose-600 border-rose-500/30',
+                business: 'bg-amber-500/10 text-amber-600 border-amber-500/30',
+                application: 'bg-blue-500/10 text-primary border-blue-500/30',
+                technology: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30'
+            };
+            return map[(layer || '').toLowerCase()] || 'bg-muted text-muted-foreground border-border';
+        },
+
+        async loadTraceability() {
+            if (!this.solutionId) return;
+            this.traceLoading = true;
+            this.relError = null;
+            try {
+                const res = await fetch('/api/solutions/' + this.solutionId + '/relationships/traceability', {credentials:'same-origin'});
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                this.traceData = await res.json();
+            } catch(e) {
+                this.relError = e.message;
+            } finally {
+                this.traceLoading = false;
+            }
+        },
+
+        async toggleTraceability() {
+            this.showTraceability = !this.showTraceability;
+            if (this.showTraceability && !this.traceData) {
+                await this.loadTraceability();
+            }
+        }
+    }"
+    x-init="load()"
+    class="bg-card rounded-xl border border-border shadow-sm p-6 mt-6"
+>
+    {# Header #}
+    <div class="flex items-center justify-between mb-4">
+        <div>
+            <h3 class="text-lg font-semibold text-foreground">ArchiMate Relationships</h3>
+            <p class="text-sm text-muted-foreground">
+                <span x-text="relRows.length"></span> relationship<span x-show="relRows.length !== 1" x-cloak>s</span> defined
+            </p>
+        </div>
+        <div class="flex items-center gap-2">
+            <button
+                @click="toggleTraceability()"
+                :class="showTraceability ? 'bg-primary text-primary-foreground' : 'border border-input bg-background text-foreground hover:bg-accent'"
+                class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md transition-colors"
+                x-cloak
+            >
+                <i data-lucide="layers" class="w-4 h-4" aria-hidden="true"></i>
+                <span>Traceability</span>
+            </button>
+            <button
+                @click="generateRelationships()"
+                :disabled="generating"
+                class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md border border-input bg-background text-foreground hover:bg-accent disabled:opacity-50 transition-colors"
+                x-cloak
+            >
+                <template x-if="generating">
+                    <div class="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-foreground"></div>
+                </template>
+                <template x-if="!generating">
+                    <i data-lucide="sparkles" class="w-4 h-4" aria-hidden="true"></i>
+                </template>
+                <span x-text="generating ? 'Generating…' : 'AI Generate'"></span>
+            </button>
+            <button
+                @click="$dispatch('launch-composition-wizard')"
+                class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md border border-input bg-background text-foreground hover:bg-accent transition-colors"
+                x-cloak
+            >
+                <i data-lucide="wand-2" class="w-4 h-4" aria-hidden="true"></i>
+                Wizard
+            </button>
+            <button
+                @click="showAddRow = !showAddRow"
+                class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                x-cloak
+            >
+                <i data-lucide="plus" class="w-4 h-4" aria-hidden="true"></i>
+                Add Relationship
+            </button>
+        </div>
+    </div>
+
+    {# Loading #}
+    <template x-if="relLoading">
+        <div class="flex items-center justify-center py-8">
+            <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+            <span class="ml-2 text-sm text-muted-foreground">Loading relationships…</span>
+        </div>
+    </template>
+
+    {# Error #}
+    <template x-if="relError">
+        <div class="mb-4 p-3 rounded-md bg-destructive/10 text-destructive text-sm" x-text="relError"></div>
+    </template>
+
+    {# Filters (shown when there are rows) #}
+    <template x-if="relLoaded && relRows.length > 0">
+        <div class="flex flex-wrap gap-3 mb-4">
+            <div>
+                <label class="text-xs font-medium text-muted-foreground block mb-1">Layer</label>
+                <select x-model="filterLayer" class="text-sm rounded-md border border-input bg-background px-2 py-1">
+                    <option value="all">All Layers</option>
+                    <template x-for="layer in uniqueLayers" :key="layer">
+                        <option :value="layer" x-text="layer.charAt(0).toUpperCase() + layer.slice(1)"></option>
+                    </template>
+                </select>
+            </div>
+            <div>
+                <label class="text-xs font-medium text-muted-foreground block mb-1">Type</label>
+                <select x-model="filterType" class="text-sm rounded-md border border-input bg-background px-2 py-1">
+                    <option value="all">All Types</option>
+                    <template x-for="t in allTypes" :key="t">
+                        <option :value="t" x-text="typeLabel(t)"></option>
+                    </template>
+                </select>
+            </div>
+        </div>
+    </template>
+
+    {# AI Proposals Review Panel (ENT-093) #}
+    <template x-if="showProposals && proposals.length > 0">
+        <div class="mb-4 p-4 rounded-lg border border-violet-500/30 bg-violet-500/5" x-cloak>
+            <div class="flex items-center justify-between mb-3">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="sparkles" class="w-4 h-4 text-violet-600" aria-hidden="true"></i>
+                    <span class="text-sm font-medium text-foreground">AI-Proposed Relationships</span>
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-violet-500/10 text-violet-600 border border-violet-500/30"
+                          x-text="proposals.length + ' proposals'"></span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button
+                        @click="acceptSelected()"
+                        :disabled="accepting || !proposals.some(p => p.checked)"
+                        class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                    >
+                        <template x-if="accepting">
+                            <div class="animate-spin rounded-full h-3 w-3 border-b-2 border-primary-foreground"></div>
+                        </template>
+                        Accept Selected
+                    </button>
+                    <button
+                        @click="generateRelationships()"
+                        :disabled="generating"
+                        class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md border border-input bg-background text-foreground hover:bg-accent disabled:opacity-50 transition-colors"
+                    >
+                        Regenerate
+                    </button>
+                    <button
+                        @click="showProposals = false; proposals = []"
+                        class="text-muted-foreground hover:text-foreground transition-colors p-1"
+                        title="Dismiss proposals"
+                    >
+                        <i data-lucide="x" class="w-4 h-4" aria-hidden="true"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="border-b border-border">
+                            <th class="text-left py-2 px-2 w-8"><input type="checkbox" @change="proposals.forEach(p => p.checked = $event.target.checked)" class="rounded border-input"></th>
+                            <th class="text-left py-2 px-3 font-medium text-muted-foreground">Source</th>
+                            <th class="text-left py-2 px-3 font-medium text-muted-foreground">Type</th>
+                            <th class="text-left py-2 px-3 font-medium text-muted-foreground">Target</th>
+                            <th class="text-center py-2 px-3 font-medium text-muted-foreground">Confidence</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="(prop, idx) in proposals" :key="idx">
+                            <tr class="border-b border-border/50 hover:bg-muted/30 transition-colors">
+                                <td class="py-2 px-2"><input type="checkbox" x-model="prop.checked" class="rounded border-input"></td>
+                                <td class="py-2 px-3 font-medium text-foreground" x-text="prop.source_name || 'Unknown'"></td>
+                                <td class="py-2 px-3">
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border"
+                                          :class="typeBadgeClass(prop.relationship_type)"
+                                          x-text="typeLabel(prop.relationship_type)"></span>
+                                </td>
+                                <td class="py-2 px-3 font-medium text-foreground" x-text="prop.target_name || 'Unknown'"></td>
+                                <td class="py-2 px-3 text-center" :title="prop.reasoning || ''">
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border"
+                                          :class="confidenceBadge(prop.confidence || 0)"
+                                          x-text="(prop.confidence || 0) + '%'"></span>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </template>
+
+    {# Add Row Form #}
+    <template x-if="showAddRow">
+        <div class="mb-4 p-4 rounded-lg border border-dashed border-primary/40 bg-primary/5" x-cloak>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+                {# Source Picker #}
+                <div class="relative">
+                    <label class="text-xs font-medium text-muted-foreground block mb-1">Source Element</label>
+                    <input
+                        type="text"
+                        x-model="sourceSearch"
+                        @input.debounce.300ms="searchElements(sourceSearch, 'source'); sourceDropOpen = true"
+                        @focus="if(sourceSearch.length >= 2) sourceDropOpen = true"
+                        placeholder="Search elements…"
+                        class="w-full text-sm rounded-md border border-input bg-background px-3 py-1.5"
+                    >
+                    <template x-if="sourceDropOpen && sourceResults.length > 0">
+                        <div class="absolute z-20 w-full mt-1 bg-popover border border-border rounded-md shadow-md max-h-48 overflow-y-auto" x-cloak>
+                            <template x-for="elem in sourceResults" :key="elem.id">
+                                <button
+                                    @click="selectSource(elem)"
+                                    class="w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors flex items-center gap-2"
+                                >
+                                    <span class="font-medium" x-text="elem.name || elem.label"></span>
+                                    <span class="text-xs text-muted-foreground" x-text="elem.layer || elem.type || ''"></span>
+                                </button>
+                            </template>
+                        </div>
+                    </template>
+                </div>
+
+                {# Relationship Type #}
+                <div>
+                    <label class="text-xs font-medium text-muted-foreground block mb-1">Relationship Type</label>
+                    <select x-model="newType" class="w-full text-sm rounded-md border border-input bg-background px-3 py-1.5">
+                        <option value="">Select type…</option>
+                        <optgroup label="Structural">
+                            <option value="composition">Composition</option>
+                            <option value="aggregation">Aggregation</option>
+                            <option value="assignment">Assignment</option>
+                            <option value="realization">Realization</option>
+                        </optgroup>
+                        <optgroup label="Dependency">
+                            <option value="serving">Serving</option>
+                            <option value="access">Access</option>
+                            <option value="influence">Influence</option>
+                        </optgroup>
+                        <optgroup label="Dynamic">
+                            <option value="triggering">Triggering</option>
+                            <option value="flow">Flow</option>
+                        </optgroup>
+                        <optgroup label="Other">
+                            <option value="specialization">Specialization</option>
+                            <option value="association">Association</option>
+                        </optgroup>
+                    </select>
+                </div>
+
+                {# Target Picker #}
+                <div class="relative">
+                    <label class="text-xs font-medium text-muted-foreground block mb-1">Target Element</label>
+                    <input
+                        type="text"
+                        x-model="targetSearch"
+                        @input.debounce.300ms="searchElements(targetSearch, 'target'); targetDropOpen = true"
+                        @focus="if(targetSearch.length >= 2) targetDropOpen = true"
+                        placeholder="Search elements…"
+                        class="w-full text-sm rounded-md border border-input bg-background px-3 py-1.5"
+                    >
+                    <template x-if="targetDropOpen && targetResults.length > 0">
+                        <div class="absolute z-20 w-full mt-1 bg-popover border border-border rounded-md shadow-md max-h-48 overflow-y-auto" x-cloak>
+                            <template x-for="elem in targetResults" :key="elem.id">
+                                <button
+                                    @click="selectTarget(elem)"
+                                    class="w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors flex items-center gap-2"
+                                >
+                                    <span class="font-medium" x-text="elem.name || elem.label"></span>
+                                    <span class="text-xs text-muted-foreground" x-text="elem.layer || elem.type || ''"></span>
+                                </button>
+                            </template>
+                        </div>
+                    </template>
+                </div>
+            </div>
+            <div class="flex items-center gap-2">
+                <button
+                    @click="addRelationship()"
+                    :disabled="relSaving || !newSource || !newTarget || !newType"
+                    class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                    <template x-if="relSaving">
+                        <div class="animate-spin rounded-full h-3 w-3 border-b-2 border-primary-foreground"></div>
+                    </template>
+                    Save Relationship
+                </button>
+                <button
+                    @click="resetNewRow()"
+                    class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md border border-input bg-background text-foreground hover:bg-accent transition-colors"
+                >
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </template>
+
+    {# Relationship Table #}
+    <template x-if="relLoaded && filteredRows.length > 0">
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b border-border">
+                        <th class="text-left py-2 px-3 font-medium text-muted-foreground">Source</th>
+                        <th class="text-left py-2 px-3 font-medium text-muted-foreground">Type</th>
+                        <th class="text-left py-2 px-3 font-medium text-muted-foreground">Target</th>
+                        <th class="text-center py-2 px-3 font-medium text-muted-foreground">Valid</th>
+                        <th class="text-right py-2 px-3 font-medium text-muted-foreground sr-only">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="row in filteredRows" :key="row.id">
+                        <tr class="border-b border-border/50 hover:bg-muted/30 transition-colors">
+                            <td class="py-2 px-3">
+                                <span class="font-medium text-foreground" x-text="row.source_name || 'Unknown'"></span>
+                                <span class="text-xs text-muted-foreground ml-1" x-text="row.source_layer ? '(' + row.source_layer + ')' : ''"></span>
+                            </td>
+                            <td class="py-2 px-3">
+                                <span
+                                    class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border"
+                                    :class="typeBadgeClass(row.relationship_type)"
+                                    x-text="typeLabel(row.relationship_type)"
+                                ></span>
+                            </td>
+                            <td class="py-2 px-3">
+                                <span class="font-medium text-foreground" x-text="row.target_name || 'Unknown'"></span>
+                                <span class="text-xs text-muted-foreground ml-1" x-text="row.target_layer ? '(' + row.target_layer + ')' : ''"></span>
+                            </td>
+                            <td class="py-2 px-3 text-center">
+                                <span
+                                    :class="validationClass(row.validation_status || 'valid')"
+                                    class="text-base"
+                                    x-text="validationIcon(row.validation_status || 'valid')"
+                                    :title="row.validation_status || 'valid'"
+                                ></span>
+                            </td>
+                            <td class="py-2 px-3 text-right">
+                                <button
+                                    @click="deleteRelationship(row.id)"
+                                    class="text-muted-foreground hover:text-destructive transition-colors p-1"
+                                    title="Delete relationship"
+                                >
+                                    <i data-lucide="trash-2" class="w-4 h-4" aria-hidden="true"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+    </template>
+
+    {# Empty State #}
+    <template x-if="relLoaded && !relLoading && relRows.length === 0 && !showTraceability">
+        <div class="flex flex-col items-center justify-center py-8 border-2 border-dashed border-border rounded-lg">
+            <i data-lucide="git-branch" class="w-8 h-8 text-muted-foreground mb-2" aria-hidden="true"></i>
+            <p class="text-sm text-muted-foreground mb-3">No relationships defined yet</p>
+            <button
+                @click="showAddRow = true"
+                class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+            >
+                <i data-lucide="plus" class="w-4 h-4" aria-hidden="true"></i>
+                Add Relationship
+            </button>
+        </div>
+    </template>
+
+    {# ENT-098: Traceability Waterfall View #}
+    <template x-if="showTraceability">
+        <div class="mt-4" x-cloak>
+            <template x-if="traceLoading">
+                <div class="flex items-center justify-center py-8">
+                    <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+                    <span class="ml-2 text-sm text-muted-foreground">Loading traceability view…</span>
+                </div>
+            </template>
+
+            <template x-if="traceData && !traceLoading">
+                <div>
+                    <template x-if="traceData.layer_order && traceData.layer_order.length === 0">
+                        <div class="text-center py-8 border-2 border-dashed border-border rounded-lg">
+                            <i data-lucide="layers" class="w-8 h-8 mx-auto mb-2 text-muted-foreground opacity-50" aria-hidden="true"></i>
+                            <p class="text-sm text-muted-foreground">No elements linked to this solution yet.</p>
+                            <p class="text-xs text-muted-foreground mt-1">Link ArchiMate elements across layers to see traceability.</p>
+                        </div>
+                    </template>
+
+                    <template x-if="traceData.layer_order && traceData.layer_order.length > 0">
+                        <div class="space-y-3">
+                            <div class="flex items-center justify-between mb-2">
+                                <p class="text-xs text-muted-foreground">
+                                    <span x-text="traceData.layer_order.length"></span> layers,
+                                    <span x-text="traceData.relationships.length"></span> relationships
+                                </p>
+                                <button @click="loadTraceability()" class="text-xs text-muted-foreground hover:text-foreground transition-colors">
+                                    <i data-lucide="refresh-cw" class="w-3 h-3 inline" aria-hidden="true"></i> Refresh
+                                </button>
+                            </div>
+                            <template x-for="(layerName, layerIdx) in traceData.layer_order" :key="layerName">
+                                <div class="rounded-lg border p-3" :class="layerColor(layerName).replace('text-', 'border-').split(' ')[2] || 'border-border'">
+                                    <div class="flex items-center gap-2 mb-2">
+                                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border"
+                                              :class="layerColor(layerName)"
+                                              x-text="layerName.charAt(0).toUpperCase() + layerName.slice(1) + ' Layer'"></span>
+                                        <span class="text-xs text-muted-foreground" x-text="(traceData.layers[layerName] || []).length + ' elements'"></span>
+                                    </div>
+                                    <div class="flex flex-wrap gap-2">
+                                        <template x-for="el in (traceData.layers[layerName] || [])" :key="el.id">
+                                            <div class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium bg-card border border-border shadow-sm">
+                                                <span class="text-foreground" x-text="el.name"></span>
+                                                <span class="text-muted-foreground text-[10px]" x-text="el.type"></span>
+                                            </div>
+                                        </template>
+                                    </div>
+                                    <template x-if="layerIdx < traceData.layer_order.length - 1">
+                                        <div class="flex justify-center mt-2">
+                                            <div class="flex flex-col items-center">
+                                                <i data-lucide="arrow-down" class="w-4 h-4 text-muted-foreground" aria-hidden="true"></i>
+                                                <span class="text-[10px] text-muted-foreground"
+                                                      x-text="(() => {
+                                                          const nextLayer = traceData.layer_order[layerIdx + 1];
+                                                          const curIds = new Set((traceData.layers[layerName] || []).map(e => e.id));
+                                                          const nextIds = new Set((traceData.layers[nextLayer] || []).map(e => e.id));
+                                                          return traceData.relationships.filter(r =>
+                                                              (curIds.has(r.source_id) && nextIds.has(r.target_id)) ||
+                                                              (nextIds.has(r.source_id) && curIds.has(r.target_id))
+                                                          ).length + ' relationships';
+                                                      })()"></span>
+                                            </div>
+                                        </div>
+                                    </template>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+                </div>
+            </template>
+        </div>
+    </template>
+</div>

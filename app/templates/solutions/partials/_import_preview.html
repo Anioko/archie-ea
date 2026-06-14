@@ -1,0 +1,296 @@
+{# ArchiMate OEF XML Import Preview Panel (ENT-067)
+   Include inside solutions detail or a dedicated import page.
+   Requires Alpine.js (already loaded via admin_base.html).
+#}
+<div x-data="archiMateImport()" x-cloak class="space-y-6">
+
+  {# ── Upload Area ── #}
+  <div class="rounded-lg border border-border bg-card p-6">
+    <h3 class="text-lg font-semibold text-foreground mb-4">Import ArchiMate Model (OEF XML)</h3>
+
+    <div class="flex items-center gap-4">
+      <label class="flex-1">
+        <span class="sr-only">Choose OEF XML file</span>
+        <input type="file" accept=".xml,application/xml,text/xml"
+               @change="handleFileSelect($event)"
+               class="block w-full text-sm text-muted-foreground
+                      file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0
+                      file:text-sm file:font-medium file:bg-primary file:text-primary-foreground
+                      hover:file:bg-primary/90 cursor-pointer" />
+      </label>
+      <button @click="uploadPreview()"
+              :disabled="!selectedFile || loading"
+              class="inline-flex items-center px-4 py-2 rounded-md text-sm font-medium
+                     bg-primary text-primary-foreground hover:bg-primary/90
+                     disabled:opacity-50 disabled:cursor-not-allowed">
+        <template x-if="loading">
+          <svg class="animate-spin -ml-1 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+          </svg>
+        </template>
+        Preview Import
+      </button>
+    </div>
+
+    <template x-if="error">
+      <div class="mt-4 rounded-md bg-destructive/10 border border-destructive/30 p-3">
+        <p class="text-sm text-destructive" x-text="error"></p>
+      </div>
+    </template>
+
+    <template x-if="modelName">
+      <p class="mt-2 text-sm text-muted-foreground">
+        Model: <span class="font-medium text-foreground" x-text="modelName"></span>
+      </p>
+    </template>
+  </div>
+
+  {# ── Summary Counts ── #}
+  <template x-if="preview">
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div class="rounded-lg border border-border bg-card p-4 text-center">
+        <p class="text-2xl font-bold text-foreground" x-text="preview.summary.total"></p>
+        <p class="text-xs text-muted-foreground">Total Elements</p>
+      </div>
+      <div class="rounded-lg border border-border bg-card p-4 text-center">
+        <p class="text-2xl font-bold text-emerald-600" x-text="preview.summary.new"></p>
+        <p class="text-xs text-muted-foreground">New</p>
+      </div>
+      <div class="rounded-lg border border-border bg-card p-4 text-center">
+        <p class="text-2xl font-bold text-primary" x-text="preview.summary.exists"></p>
+        <p class="text-xs text-muted-foreground">Already Exist</p>
+      </div>
+      <div class="rounded-lg border border-border bg-card p-4 text-center">
+        <p class="text-2xl font-bold text-amber-600" x-text="preview.summary.conflict"></p>
+        <p class="text-xs text-muted-foreground">Conflicts</p>
+      </div>
+    </div>
+  </template>
+
+  {# ── Preview Table ── #}
+  <template x-if="preview && preview.elements.length > 0">
+    <div class="rounded-lg border border-border bg-card overflow-hidden">
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="bg-muted/50">
+            <tr>
+              <th class="px-4 py-3 text-left font-medium text-muted-foreground">Name</th>
+              <th class="px-4 py-3 text-left font-medium text-muted-foreground">Type</th>
+              <th class="px-4 py-3 text-left font-medium text-muted-foreground">Layer</th>
+              <th class="px-4 py-3 text-left font-medium text-muted-foreground">Status</th>
+              <th class="px-4 py-3 text-left font-medium text-muted-foreground">Details</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-border">
+            <template x-for="elem in preview.elements" :key="elem.identifier">
+              <tr class="hover:bg-muted/30">
+                <td class="px-4 py-3 font-medium text-foreground" x-text="elem.name"></td>
+                <td class="px-4 py-3 text-muted-foreground" x-text="elem.type"></td>
+                <td class="px-4 py-3">
+                  <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium"
+                        :class="layerBadgeClass(elem.layer)"
+                        x-text="elem.layer"></span>
+                </td>
+                <td class="px-4 py-3">
+                  <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium"
+                        :class="statusBadgeClass(elem.status)"
+                        x-text="statusLabel(elem.status)"></span>
+                </td>
+                <td class="px-4 py-3 text-xs text-muted-foreground" x-text="elem.diff || '—'"></td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </template>
+
+  {# ── Parse Warnings ── #}
+  <template x-if="preview && preview.errors.length > 0">
+    <div class="rounded-md bg-amber-500/10 border border-amber-500/30 p-4">
+      <h4 class="text-sm font-medium text-amber-700 mb-2">Warnings</h4>
+      <ul class="list-disc list-inside text-xs text-amber-600 space-y-1">
+        <template x-for="err in preview.errors" :key="err">
+          <li x-text="err"></li>
+        </template>
+      </ul>
+    </div>
+  </template>
+
+  {# ── Import Controls ── #}
+  <template x-if="preview && preview.summary.total > 0">
+    <div class="flex items-center gap-4 rounded-lg border border-border bg-card p-4">
+      <label class="text-sm font-medium text-foreground">Strategy:</label>
+      <select x-model="strategy"
+              class="rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground
+                     focus:outline-none focus:ring-2 focus:ring-ring">
+        <option value="skip_duplicates">Skip Duplicates</option>
+        <option value="update_existing">Update Existing</option>
+        <option value="create_all">Create All (allow duplicates)</option>
+      </select>
+
+      <button @click="executeImport()"
+              :disabled="importing"
+              class="ml-auto inline-flex items-center px-4 py-2 rounded-md text-sm font-medium
+                     bg-primary text-primary-foreground hover:bg-primary/90
+                     disabled:opacity-50 disabled:cursor-not-allowed">
+        <template x-if="importing">
+          <svg class="animate-spin -ml-1 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+          </svg>
+        </template>
+        Import Elements
+      </button>
+    </div>
+  </template>
+
+  {# ── Import Result ── #}
+  <template x-if="importResult">
+    <div class="rounded-lg border border-border bg-card p-6">
+      <h4 class="text-sm font-semibold text-foreground mb-3">Import Complete</h4>
+      <div class="grid grid-cols-3 gap-4 text-center">
+        <div>
+          <p class="text-xl font-bold text-emerald-600" x-text="importResult.created"></p>
+          <p class="text-xs text-muted-foreground">Created</p>
+        </div>
+        <div>
+          <p class="text-xl font-bold text-primary" x-text="importResult.updated"></p>
+          <p class="text-xs text-muted-foreground">Updated</p>
+        </div>
+        <div>
+          <p class="text-xl font-bold text-muted-foreground" x-text="importResult.skipped"></p>
+          <p class="text-xs text-muted-foreground">Skipped</p>
+        </div>
+      </div>
+      <template x-if="importResult.errors && importResult.errors.length > 0">
+        <div class="mt-4 rounded-md bg-destructive/10 border border-destructive/30 p-3">
+          <p class="text-xs font-medium text-destructive mb-1">Errors during import:</p>
+          <ul class="list-disc list-inside text-xs text-destructive space-y-1">
+            <template x-for="err in importResult.errors" :key="err">
+              <li x-text="err"></li>
+            </template>
+          </ul>
+        </div>
+      </template>
+    </div>
+  </template>
+</div>
+
+<script>
+function archiMateImport() {
+  return {
+    selectedFile: null,
+    xmlContent: null,
+    loading: false,
+    importing: false,
+    error: null,
+    modelName: null,
+    preview: null,
+    importResult: null,
+    strategy: 'skip_duplicates',
+
+    handleFileSelect(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      if (!file.name.toLowerCase().endsWith('.xml')) {
+        this.error = 'Please select an XML file (.xml)';
+        this.selectedFile = null;
+        return;
+      }
+      this.selectedFile = file;
+      this.error = null;
+      this.preview = null;
+      this.importResult = null;
+      this.modelName = null;
+    },
+
+    async uploadPreview() {
+      if (!this.selectedFile) return;
+      this.loading = true;
+      this.error = null;
+      this.preview = null;
+      this.importResult = null;
+
+      const formData = new FormData();
+      formData.append('file', this.selectedFile);
+
+      try {
+        const resp = await fetch('/solutions/import/archimate/preview', {
+          method: 'POST',
+          body: formData,
+          headers: { 'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || '' },
+        });
+        const data = await resp.json();
+        if (!resp.ok) {
+          this.error = data.error || 'Preview failed';
+          return;
+        }
+        this.modelName = data.model_name || null;
+        this.preview = data;
+      } catch (err) {
+        this.error = 'Network error: ' + err.message;
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    async executeImport() {
+      if (!this.selectedFile) return;
+      this.importing = true;
+      this.error = null;
+      this.importResult = null;
+
+      const formData = new FormData();
+      formData.append('file', this.selectedFile);
+      formData.append('strategy', this.strategy);
+
+      try {
+        const resp = await fetch('/solutions/import/archimate/execute', {
+          method: 'POST',
+          body: formData,
+          headers: { 'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || '' },
+        });
+        const data = await resp.json();
+        if (!resp.ok && resp.status !== 207) {
+          this.error = data.error || 'Import failed';
+          return;
+        }
+        this.importResult = data;
+      } catch (err) {
+        this.error = 'Network error: ' + err.message;
+      } finally {
+        this.importing = false;
+      }
+    },
+
+    layerBadgeClass(layer) {
+      const map = {
+        'Strategy': 'bg-primary/10 text-primary border border-purple-500/30',
+        'Business': 'bg-amber-500/10 text-amber-700 border border-yellow-500/30',
+        'Application': 'bg-primary/10 text-primary border border-primary/30',
+        'Technology': 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/30',
+        'Physical': 'bg-teal-500/10 text-teal-600 border border-teal-500/30',
+        'Motivation': 'bg-pink-500/10 text-pink-600 border border-pink-500/30',
+        'Implementation & Migration': 'bg-orange-500/10 text-orange-600 border border-orange-500/30',
+      };
+      return map[layer] || 'bg-muted/50/10 text-muted-foreground border border-gray-500/30';
+    },
+
+    statusBadgeClass(status) {
+      const map = {
+        'new': 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/30',
+        'exists': 'bg-primary/10 text-primary border border-primary/30',
+        'conflict': 'bg-amber-500/10 text-amber-600 border border-amber-500/30',
+      };
+      return map[status] || 'bg-muted/50/10 text-muted-foreground border border-gray-500/30';
+    },
+
+    statusLabel(status) {
+      const map = { 'new': 'New', 'exists': 'Exists', 'conflict': 'Conflict' };
+      return map[status] || status;
+    },
+  };
+}
+</script>

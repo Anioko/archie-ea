@@ -1,0 +1,163 @@
+{# app/templates/codegen/partials/_wb_diff_review.html
+   Multi-file diff review panel — shows all pending patches with Accept/Reject controls.
+   Used by the "Accept All" flow when multiple files are changed.
+#}
+<div
+  id="wb-diff-review"
+  x-data="wbDiffReview()"
+  x-show="isVisible && patches.length > 0"
+  x-transition
+  class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+  @keydown.escape.window="close()"
+>
+  <div class="bg-[var(--color-surface)] rounded-xl shadow-2xl border border-[var(--color-border)] w-full max-w-4xl max-h-[90vh] flex flex-col mx-4">
+    {# Header #}
+    <div class="flex items-center justify-between px-5 py-3 border-b border-[var(--color-border)]">
+      <div>
+        <h2 class="font-semibold text-[var(--color-text)]">Review Changes</h2>
+        <p class="text-xs text-[var(--color-muted)]" x-text="`${patches.length} file${patches.length !== 1 ? 's' : ''} to change`"></p>
+      </div>
+      <div class="flex gap-2">
+        <button
+          @click="rejectAll()"
+          class="px-3 py-1.5 text-sm border border-[var(--color-border)] rounded-lg text-[var(--color-text)] hover:bg-destructive/5 hover:border-destructive/30 hover:text-destructive"
+        >Reject All</button>
+        <button
+          @click="acceptAll()"
+          class="px-3 py-1.5 text-sm bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-primary-foreground rounded-lg font-medium"
+          :disabled="isApplying"
+          x-text="isApplying ? 'Applying...' : `Accept All (${patches.length})`"
+        ></button>
+        <button @click="close()" class="text-[var(--color-muted)] hover:text-[var(--color-text)] p-1">
+          <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    {# File tabs #}
+    <div class="flex gap-1 px-4 pt-2 overflow-x-auto border-b border-[var(--color-border)] bg-[var(--color-surface-secondary)]">
+      <template x-for="(patch, i) in patches" :key="i">
+        <button
+          @click="activeIndex = i"
+          :class="activeIndex === i
+            ? 'border-b-2 border-[var(--color-primary)] text-[var(--color-primary)]'
+            : 'text-[var(--color-muted)] hover:text-[var(--color-text)]'"
+          class="px-3 py-1.5 text-xs font-medium whitespace-nowrap flex items-center gap-1.5"
+        >
+          <span x-text="patch.file.split('/').pop()"></span>
+          <span
+            x-show="patch.applied"
+            class="w-1.5 h-1.5 rounded-full bg-emerald-500"
+          ></span>
+          <template x-if="patch.warnings && patch.warnings.length > 0">
+            <span class="text-amber-500">⚠</span>
+          </template>
+        </button>
+      </template>
+    </div>
+
+    {# Active diff #}
+    <div class="flex-1 overflow-hidden flex flex-col" x-show="patches[activeIndex]">
+      <div class="flex items-center justify-between px-4 py-2 bg-[var(--color-surface-secondary)]">
+        <div>
+          <p class="text-xs font-mono text-[var(--color-text)]" x-text="patches[activeIndex]?.file"></p>
+          <template x-if="patches[activeIndex]?.warnings?.length > 0">
+            <p class="text-xs text-amber-600 mt-0.5">
+              ⚠ Security warning: <span x-text="patches[activeIndex].warnings.join(', ')"></span>
+            </p>
+          </template>
+        </div>
+        <div class="flex gap-2">
+          <button
+            @click="acceptOne(activeIndex)"
+            :disabled="patches[activeIndex]?.applied || isApplying"
+            class="px-3 py-1 text-xs font-semibold text-primary-foreground rounded"
+            :class="patches[activeIndex]?.applied ? 'bg-emerald-500 cursor-default' : 'bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)]'"
+            x-text="patches[activeIndex]?.applied ? '✓ Applied' : 'Accept this file'"
+          ></button>
+          <button
+            @click="rejectOne(activeIndex)"
+            :disabled="patches[activeIndex]?.applied"
+            class="px-3 py-1 text-xs border border-[var(--color-border)] rounded text-[var(--color-text)] hover:border-destructive/30 hover:text-destructive"
+          >Reject</button>
+        </div>
+      </div>
+      <div class="flex-1 overflow-auto">
+        <pre
+          class="p-4 text-xs font-mono bg-gray-950 text-foreground/90 min-h-full"
+          x-html="renderDiff(patches[activeIndex]?.diff || '')"
+        ></pre>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function wbDiffReview() {
+  return {
+    isVisible: false,
+    patches: [],
+    activeIndex: 0,
+    isApplying: false,
+    solutionId: window.SOLUTION_ID || null,
+    _resolve: null,
+
+    show(patches) {
+      this.patches = patches.map(p => ({ ...p, applied: false }));
+      this.activeIndex = 0;
+      this.isVisible = true;
+      return new Promise(resolve => { this._resolve = resolve; });
+    },
+
+    close() {
+      this.isVisible = false;
+      this._resolve?.(this.patches.filter(p => p.applied));
+    },
+
+    async acceptOne(i) {
+      const patch = this.patches[i];
+      if (patch.applied) return;
+      this.isApplying = true;
+      try {
+        const r = await fetch(`/solutions/${this.solutionId}/codegen/chat-edit/apply-patch`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-CSRFToken': window.CSRF_TOKEN || '' },
+          body: JSON.stringify({ file: patch.file, diff: patch.diff }),
+        });
+        if (r.ok) {
+          patch.applied = true;
+          window.wbRefreshFile?.(patch.file);
+        } else {
+          const err = await r.json();
+          alert(err.error || 'Apply failed');
+        }
+      } finally { this.isApplying = false; }
+    },
+
+    async acceptAll() {
+      this.isApplying = true;
+      for (let i = 0; i < this.patches.length; i++) {
+        if (!this.patches[i].applied) await this.acceptOne(i);
+      }
+      this.isApplying = false;
+      if (this.patches.every(p => p.applied)) this.close();
+    },
+
+    rejectOne(i) { this.patches.splice(i, 1); if (this.activeIndex >= this.patches.length) this.activeIndex = Math.max(0, this.patches.length - 1); },
+    rejectAll() { this.patches = []; this.close(); },
+
+    renderDiff(diff) {
+      return diff.split('\n').map(line => {
+        const escaped = line.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        if (line.startsWith('+') && !line.startsWith('+++')) return `<span class="text-green-400">${escaped}</span>`;
+        if (line.startsWith('-') && !line.startsWith('---')) return `<span class="text-red-400">${escaped}</span>`;
+        if (line.startsWith('@@')) return `<span class="text-blue-400">${escaped}</span>`;
+        if (line.startsWith('---') || line.startsWith('+++')) return `<span class="text-muted-foreground/60">${escaped}</span>`;
+        return `<span class="text-foreground/70">${escaped}</span>`;
+      }).join('\n');
+    },
+  };
+}
+</script>

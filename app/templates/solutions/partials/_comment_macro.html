@@ -1,0 +1,64 @@
+{# WARNING: THIS FILE IS NOT REGISTERED #}
+{# PLT-012: Reusable section comment thread with @mention autocomplete #}
+{% macro section_comment_thread(section_key) %}
+<div class="mt-6 border-t border-border pt-4"
+     x-show="commentCount('{{ section_key }}') > 0 || commentOpen['{{ section_key }}']" x-cloak>
+    <button type="button"
+            @click="toggleComments('{{ section_key }}')"
+            class="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+        <span x-text="commentOpen['{{ section_key }}'] ? 'Hide Comments' : 'Comments (' + commentCount('{{ section_key }}') + ')'"></span>
+    </button>
+    <div x-show="commentOpen['{{ section_key }}']" x-cloak class="mt-3 space-y-3">
+        {# Loading state #}
+        <div x-show="commentLoading['{{ section_key }}']" x-cloak class="text-xs text-muted-foreground italic">Loading comments...</div>
+        {# Comment list #}
+        <template x-for="c in (commentSections['{{ section_key }}'] || [])" :key="c.id">
+            <div class="flex items-start gap-2 text-sm">
+                <div class="shrink-0 flex items-center justify-center w-6 h-6 rounded-full bg-primary/10 text-primary text-[10px] font-bold" x-text="(c.author_name || 'U')[0].toUpperCase()"></div>
+                <div class="min-w-0 flex-1">
+                    <p class="text-xs text-muted-foreground">
+                        <span class="font-medium text-foreground" x-text="c.author_name"></span>
+                        <span x-text="' \u00b7 ' + formatCommentDate(c.created_at)"></span>
+                    </p>
+                    <p class="text-sm text-foreground mt-0.5" x-html="(c.content || '').replace(/@([\w\s]+?)(?=\s@|\s*$|[^a-zA-Z\s])/g, '<span class=&quot;text-primary font-medium&quot;>@$1</span>')"></p>
+                </div>
+            </div>
+        </template>
+        {# New comment input with @mention #}
+        <div class="relative">
+            <textarea x-model="commentDrafts['{{ section_key }}']"
+                      @input="onCommentInput('{{ section_key }}')"
+                      @keydown.escape="mentionOpen = false"
+                      placeholder="Add a comment... Type @ to mention someone"
+                      rows="2"
+                      class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-none"></textarea>
+            {# @mention autocomplete dropdown #}
+            <div x-show="mentionOpen && mentionSectionKey === '{{ section_key }}' && mentionUsers.length > 0" x-cloak
+                 @click.outside="mentionOpen = false"
+                 class="absolute bottom-full left-0 mb-1 w-64 max-h-48 overflow-y-auto rounded-md border border-border bg-popover shadow-md z-50">
+                <template x-for="u in mentionUsers" :key="u.id">
+                    <button type="button"
+                            @click="selectMention('{{ section_key }}', u)"
+                            class="flex items-center gap-2 w-full px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground transition-colors">
+                        <div class="shrink-0 flex items-center justify-center w-6 h-6 rounded-full bg-primary/10 text-primary text-[10px] font-bold" x-text="(u.name || u.email || 'U')[0].toUpperCase()"></div>
+                        <div class="min-w-0">
+                            <p class="text-sm font-medium truncate" x-text="u.name || u.email"></p>
+                            <p class="text-xs text-muted-foreground truncate" x-show="u.name && u.email" x-cloak x-text="u.email"></p>
+                        </div>
+                    </button>
+                </template>
+            </div>
+            <div class="flex justify-end mt-1.5">
+                <button type="button"
+                        @click="addComment('{{ section_key }}')"
+                        :disabled="!(commentDrafts['{{ section_key }}'] || '').trim() || commentPosting['{{ section_key }}']"
+                        class="inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors">
+                    <span x-show="!commentPosting['{{ section_key }}']">Comment</span><!-- alpine-scope-ok -->
+                    <span x-show="commentPosting['{{ section_key }}']" x-cloak>Posting...</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endmacro %}

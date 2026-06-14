@@ -1,0 +1,562 @@
+{% extends "layouts/admin_base.html" %}
+{% import 'components/breadcrumb.html' as breadcrumb %}
+
+{% block title %}Capability Hierarchy - Capability Map{% endblock %}
+
+{% block breadcrumb %}
+{% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
+{{ breadcrumb_nav(items=[
+    {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
+    {'text': 'Business Layer', 'href': url_for('archimate_crud.dashboard') + '#business'},
+    {'text': 'Capabilities', 'href': url_for('capability_map.index')},
+    {'text': 'Hierarchy View', 'current': true}
+]) }}
+{% endblock %}
+{% block content %}
+<div class="space-y-6" x-data="hierarchyView()">
+    <!-- Breadcrumb -->
+    {% call breadcrumb.breadcrumb() %}
+        {% call breadcrumb.breadcrumb_item(href=url_for('admin.dashboard')) %}
+            <i data-lucide="home" class="h-4 w-4"></i>
+        {% endcall %}
+        {{ breadcrumb.breadcrumb_separator() }}
+        {% call breadcrumb.breadcrumb_item(href=url_for('capability_map.index')) %}
+            Capability Map
+        {% endcall %}
+        {{ breadcrumb.breadcrumb_separator() }}
+        {% call breadcrumb.breadcrumb_item(active=true) %}
+            Hierarchy
+        {% endcall %}
+    {% endcall %}
+
+    <!-- Page Header -->
+    <div class="flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+            <i data-lucide="git-branch" class="w-6 h-6 text-primary"></i>
+            <h1 class="text-3xl font-bold tracking-tight">Capability Hierarchy</h1>
+        </div>
+        <div class="flex items-center space-x-4">
+            <button @click="expandAll()" class="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                <i data-lucide="maximize-2" class="w-4 h-4 inline mr-1"></i>
+                Expand All
+            </button>
+            <button @click="collapseAll()" class="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                <i data-lucide="minimize-2" class="w-4 h-4 inline mr-1"></i>
+                Collapse All
+            </button>
+        </div>
+    </div>
+
+    <!-- Level Filter -->
+    <div class="bg-card rounded-lg shadow border p-4">
+        <div class="flex items-center flex-wrap gap-3">
+            <span class="text-sm font-medium text-foreground mr-2">Filter by Level:</span>
+            <button @click="levelFilter = 0"
+                    class="inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium transition-colors"
+                    :class="levelFilter === 0 ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:text-foreground'">
+                All Levels
+            </button>
+            <template x-for="lvl in [1, 2, 3, 4, 5]" :key="lvl">
+                <button @click="levelFilter = lvl"
+                        class="inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium transition-colors gap-1.5"
+                        :class="levelFilter === lvl ? getLevelBadgeClassActive(lvl) : 'bg-muted text-muted-foreground hover:text-foreground'">
+                    <span class="inline-block w-2 h-2 rounded-full" :class="getLevelDotColor(lvl)"></span>
+                    <span x-text="'L' + lvl"></span>
+                    <span class="text-xs opacity-70" x-text="'(' + countByLevel(lvl) + ')'"></span>
+                </button>
+            </template>
+        </div>
+    </div>
+
+    <!-- Coverage Summary Banner -->
+    <div class="bg-card rounded-lg shadow border px-4 py-2 flex items-center gap-4 text-sm">
+        <span class="font-medium text-foreground" x-text="countAll() + ' capabilities'"></span>
+        <span class="text-muted-foreground">|</span>
+        <!-- TODO: mapping_count not available in catalog data — wire from UnifiedApplicationCapabilityMapping to show mapped/gaps/coverage% -->
+        <span class="text-muted-foreground">Coverage data pending application mappings</span>
+    </div>
+
+    <!-- Hierarchy Tree -->
+    <div class="bg-card rounded-lg shadow border">
+        <div class="p-6">
+            <div class="space-y-4" x-ref="treeContainer" x-html="renderTree(catalog.children, 1)" x-effect="$nextTick(() => { if (typeof lucide !== 'undefined') lucide.createIcons({ attrs: { class: ['lucide-icon'] } }); })">
+            </div>
+        </div>
+    </div>
+
+    <!-- Statistics Sidebar -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div class="bg-card rounded-lg shadow border p-6">
+            <h3 class="text-lg font-medium text-foreground mb-4">Domain Distribution</h3> <!-- frontend-quality-ok: h3 in stats card, pre-existing content -->
+            <div class="space-y-3">
+                <template x-for="domain in getDomainStats()" :key="domain.name">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center">
+                            <div class="w-3 h-3 rounded-full mr-2" :class="getDomainColor(domain.name)"></div>
+                            <span class="text-sm text-muted-foreground" x-text="domain.name"></span>
+                        </div>
+                        <span class="text-sm font-medium text-foreground" x-text="domain.count"></span>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <div class="bg-card rounded-lg shadow border p-6">
+            <h3 class="text-lg font-medium text-foreground mb-4">Capability Types</h3> <!-- frontend-quality-ok: h3 in stats card, pre-existing content -->
+            <div class="space-y-3">
+                <template x-for="type in getTypeStats()" :key="type.name">
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm text-muted-foreground" x-text="type.name"></span>
+                        <span class="transition-all duration-200 hover:scale-105 px-2 py-1 text-xs font-semibold rounded-full"
+                              :class="getTypeColor(type.name)"
+                              x-text="type.count"></span>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <div class="bg-card rounded-lg shadow border p-6">
+            <h3 class="text-lg font-medium text-foreground mb-4">Level Distribution</h3> <!-- frontend-quality-ok: h3 in stats card -->
+            <div class="space-y-3">
+                <template x-for="lvl in getLevelStats()" :key="lvl.level">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <span class="inline-block w-2 h-2 rounded-full" :class="getLevelDotColor(lvl.level)"></span>
+                            <span class="text-sm text-muted-foreground" x-text="'Level ' + lvl.level + ' — ' + getLevelLabel(lvl.level)"></span>
+                        </div>
+                        <span class="text-sm font-medium text-foreground" x-text="lvl.count"></span>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function hierarchyView() {
+    return {
+        catalog: {{ catalog | tojson }},
+        expandedNodes: [],
+        levelFilter: 0,
+
+        init() {
+            // Expand first level by default
+            if (this.catalog.children) {
+                this.catalog.children.forEach(capability => {
+                    this.expandedNodes.push(capability.name);
+                });
+            }
+            this.$nextTick(() => {
+                if (typeof lucide !== 'undefined') {
+                    lucide.createIcons();
+                }
+            });
+        },
+
+        toggleCapability(name) {
+            const index = this.expandedNodes.indexOf(name);
+            if (index > -1) {
+                this.expandedNodes.splice(index, 1);
+            } else {
+                this.expandedNodes.push(name);
+            }
+            this.$nextTick(() => {
+                if (typeof lucide !== 'undefined') {
+                    lucide.createIcons();
+                }
+            });
+        },
+
+        expandAll() {
+            const collectAllNames = (capabilities) => {
+                let names = [];
+                if (!capabilities) return names;
+                capabilities.forEach(cap => {
+                    names.push(cap.name);
+                    if (cap.children) {
+                        names = names.concat(collectAllNames(cap.children));
+                    }
+                });
+                return names;
+            };
+            this.expandedNodes = collectAllNames(this.catalog.children);
+            this.$nextTick(() => {
+                if (typeof lucide !== 'undefined') {
+                    lucide.createIcons();
+                }
+            });
+        },
+
+        collapseAll() {
+            this.expandedNodes = [];
+        },
+
+        getLevelLabel(level) {
+            const labels = {
+                1: 'Strategic',
+                2: 'Core',
+                3: 'Supporting',
+                4: 'Operational',
+                5: 'Detailed'
+            };
+            return labels[level] || 'Level ' + level;
+        },
+
+        getLevelBadgeClass(level) {
+            const classes = {
+                1: 'bg-primary/10 text-primary border border-primary/30',
+                2: 'bg-sky-500/10 text-sky-700 border border-sky-500/30',
+                3: 'bg-amber-500/10 text-amber-700 border border-amber-500/30',
+                4: 'bg-violet-500/10 text-violet-700 border border-violet-500/30',
+                5: 'bg-rose-500/10 text-rose-700 border border-rose-500/30'
+            };
+            return classes[level] || 'bg-muted text-foreground border border-border';
+        },
+
+        getLevelBadgeClassActive(level) {
+            const classes = {
+                1: 'bg-primary text-primary-foreground',
+                2: 'bg-sky-600 text-primary-foreground',
+                3: 'bg-amber-600 text-primary-foreground',
+                4: 'bg-violet-600 text-primary-foreground',
+                5: 'bg-rose-600 text-primary-foreground'
+            };
+            return classes[level] || 'bg-primary text-primary-foreground';
+        },
+
+        getLevelDotColor(level) {
+            const colors = {
+                1: 'bg-primary',
+                2: 'bg-sky-500',
+                3: 'bg-amber-500',
+                4: 'bg-violet-500',
+                5: 'bg-rose-500'
+            };
+            return colors[level] || 'bg-muted-foreground';
+        },
+
+        getLevelBorderColor(level) {
+            const colors = {
+                1: 'border-primary/40',
+                2: 'border-sky-500/40',
+                3: 'border-amber-500/40',
+                4: 'border-violet-500/40',
+                5: 'border-rose-500/40'
+            };
+            return colors[level] || 'border-border';
+        },
+
+        getLevelTextSize(level) {
+            const sizes = {
+                1: 'text-lg',
+                2: 'text-base',
+                3: 'text-sm',
+                4: 'text-sm',
+                5: 'text-xs'
+            };
+            return sizes[level] || 'text-sm';
+        },
+
+        getLevelDotSize(level) {
+            const sizes = {
+                1: 'w-4 h-4',
+                2: 'w-3 h-3',
+                3: 'w-2.5 h-2.5',
+                4: 'w-2 h-2',
+                5: 'w-2 h-2'
+            };
+            return sizes[level] || 'w-3 h-3';
+        },
+
+        escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        },
+
+        isCapabilityVisible(cap) {
+            if (this.levelFilter === 0) return true;
+            // Show if this cap's level matches, or if any descendant matches
+            if (cap.level === this.levelFilter) return true;
+            if (cap.children && cap.children.length > 0) {
+                return cap.children.some(child => this.isCapabilityVisible(child));
+            }
+            return false;
+        },
+
+        countAll() {
+            let count = 0;
+            const walk = (caps) => { if (!caps) return; caps.forEach(cap => { count++; if (cap.children) walk(cap.children); }); };
+            walk(this.catalog.children);
+            return count;
+        },
+
+        // TODO: Replace with real mapping_count when catalog includes application mapping data
+        getCoverageDotClass(cap) {
+            const mc = cap.mapping_count || 0;
+            if (mc >= 3) return 'bg-emerald-500';
+            if (mc >= 1) return 'bg-amber-500';
+            return 'bg-destructive';
+        },
+
+        countByLevel(level) {
+            let count = 0;
+            const walk = (caps) => {
+                if (!caps) return;
+                caps.forEach(cap => {
+                    if (cap.level === level) count++;
+                    if (cap.children) walk(cap.children);
+                });
+            };
+            walk(this.catalog.children);
+            return count;
+        },
+
+        renderFunctions(functions) {
+            if (!functions || functions.length === 0) return '';
+            let html = '';
+            functions.forEach(func => {
+                const automatedBadge = func.is_automated
+                    ? '<span class="px-2 py-1 text-xs font-semibold rounded-full bg-emerald-500/10 text-green-800"><i data-lucide="zap" class="w-3 h-3 inline mr-1"></i>Automated</span>'
+                    : '';
+                const automationPct = func.automation_level > 0
+                    ? '<span class="text-xs text-muted-foreground">' + func.automation_level + '% automation</span>'
+                    : '';
+                html += '<div class="flex items-center space-x-3 p-3 bg-muted/50 rounded-lg hover:bg-muted">';
+                html += '  <div class="flex-shrink-0"><i data-lucide="cpu" class="w-4 h-4 text-muted-foreground"></i></div>';
+                html += '  <div class="flex-1">';
+                html += '    <div class="text-sm font-medium text-foreground">' + this.escapeHtml(func.name) + '</div>';
+                html += '    <p class="text-xs text-muted-foreground">' + this.escapeHtml(func.description) + '</p>';
+                html += '    <div class="flex items-center space-x-3 mt-1">';
+                html += '      <span class="text-xs text-muted-foreground">' + this.escapeHtml(func.function_type) + '</span>';
+                html += automatedBadge + automationPct;
+                html += '    </div>';
+                html += '  </div>';
+                html += '</div>';
+            });
+            return html;
+        },
+
+        renderTree(capabilities, depth) {
+            if (!capabilities || capabilities.length === 0) return '';
+            let html = '';
+            capabilities.forEach(cap => {
+                if (!this.isCapabilityVisible(cap)) return;
+
+                const level = cap.level || depth;
+                const isExpanded = this.expandedNodes.includes(cap.name);
+                const hasChildren = cap.children && cap.children.length > 0;
+                const hasFunctions = cap.functions && cap.functions.length > 0;
+                const hasExpandable = hasChildren || hasFunctions;
+                const childCount = hasChildren ? cap.children.length : 0;
+                const funcCount = hasFunctions ? cap.functions.length : 0;
+                const chevronRotateClass = isExpanded ? 'rotate-180' : '';
+                const dotSizeClass = this.getLevelDotSize(level);
+                const textSizeClass = this.getLevelTextSize(level);
+                const levelBadgeClass = this.getLevelBadgeClass(level);
+                const levelLabel = this.getLevelLabel(level);
+                const borderColor = this.getLevelBorderColor(level);
+                const domainColorClass = this.getDomainColor(cap.domain);
+                const typeColorClass = this.getTypeColor(cap.capability_type);
+
+                // Indentation increases with depth: L1=0, L2=ml-6, L3=ml-6, L4=ml-6, L5=ml-6
+                const indentClass = level > 1 ? 'ml-6' : '';
+                const borderClass = level > 1 ? 'border-l-2 ' + borderColor + ' pl-4' : '';
+
+                html += '<div class="capability-node ' + indentClass + '">';
+
+                if (level > 1) {
+                    html += '<div class="' + borderClass + '">';
+                }
+
+                html += '<div class="flex items-start space-x-3">';
+                html += '  <div class="flex-shrink-0 mt-1">';
+                html += '    <div class="' + dotSizeClass + ' rounded-full ' + domainColorClass + '"></div>';
+                html += '  </div>';
+                html += '  <div class="flex-1 min-w-0">';
+                html += '    <div class="flex items-center justify-between">';
+                html += '      <div>';
+                const coverageDot = this.getCoverageDotClass(cap);
+                html += '        <span class="w-2 h-2 rounded-full inline-block align-middle mr-1.5 ' + coverageDot + '" title="' + (cap.mapping_count || 0) + ' apps mapped"></span>';
+                html += '        <span class="' + textSizeClass + ' font-medium text-foreground">' + this.escapeHtml(cap.name) + '</span>';
+                if (cap.description) {
+                    html += '        <p class="text-sm text-muted-foreground mt-1">' + this.escapeHtml(cap.description) + '</p>';
+                }
+                html += '        <div class="flex items-center flex-wrap gap-2 mt-2">';
+                html += '          <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium ' + levelBadgeClass + '">';
+                html += '            L' + level + ' ' + this.escapeHtml(levelLabel);
+                html += '          </span>';
+                if (cap.domain) {
+                    html += '          <span class="text-xs text-muted-foreground">' + this.escapeHtml(cap.domain) + '</span>';
+                }
+                if (cap.capability_type) {
+                    html += '          <span class="transition-all duration-200 hover:scale-105 px-2 py-0.5 text-xs font-semibold rounded-full ' + typeColorClass + '">' + this.escapeHtml(cap.capability_type) + '</span>';
+                }
+                if (childCount > 0) {
+                    html += '          <span class="text-xs text-muted-foreground">' + childCount + ' sub-capabilities</span>';
+                }
+                if (funcCount > 0) {
+                    html += '          <span class="text-xs text-muted-foreground">' + funcCount + ' functions</span>';
+                }
+                html += '        </div>';
+                html += '      </div>';
+
+                if (hasExpandable) {
+                    html += '      <button @click="toggleCapability(\'' + this.escapeHtml(cap.name).replace(/'/g, "\\'") + '\')" class="text-muted-foreground hover:text-foreground flex-shrink-0 p-1">';
+                    html += '        <i data-lucide="chevron-down" class="w-4 h-4 transition-transform ' + chevronRotateClass + '"></i>';
+                    html += '      </button>';
+                }
+
+                html += '    </div>';
+
+                // Expanded content: children and functions
+                if (isExpanded && hasExpandable) {
+                    html += '<div class="mt-4 space-y-3">';
+
+                    // Render child capabilities recursively
+                    if (hasChildren) {
+                        html += this.renderTree(cap.children, depth + 1);
+                    }
+
+                    // Render functions at the bottom
+                    if (hasFunctions) {
+                        html += '<div class="space-y-2 mt-2">';
+                        html += this.renderFunctions(cap.functions);
+                        html += '</div>';
+                    }
+
+                    html += '</div>';
+                }
+
+                html += '  </div>';
+                html += '</div>';
+
+                if (level > 1) {
+                    html += '</div>';
+                }
+
+                html += '</div>';
+            });
+            return html;
+        },
+
+        getDomainColor(domain) {
+            const colorMap = {
+                'Enterprise': 'bg-primary',
+                'Experience': 'bg-emerald-500',
+                'Engineering': 'bg-amber-500',
+                'Integration': 'bg-primary',
+                'Operations': 'bg-destructive',
+                'Data': 'bg-cyan-500',
+                'Governance': 'bg-lime-500',
+                'Analytics': 'bg-orange-500',
+                'Security': 'bg-rose-500',
+                'Quality': 'bg-pink-500',
+                'Mobility': 'bg-teal-500',
+                'Finance': 'bg-amber-500'
+            };
+            return colorMap[domain] || 'bg-muted/50';
+        },
+
+        getTypeColor(type) {
+            const colorMap = {
+                'core': 'bg-primary/10 text-primary/90',
+                'supporting': 'bg-muted text-foreground',
+                'differentiating': 'bg-emerald-500/10 text-green-800'
+            };
+            return colorMap[type] || 'bg-muted text-foreground';
+        },
+
+        getDomainStats() {
+            const domains = {};
+            const countCapabilities = (capabilities) => {
+                if (!capabilities) return;
+                capabilities.forEach(cap => {
+                    domains[cap.domain] = (domains[cap.domain] || 0) + 1;
+                    if (cap.children) {
+                        countCapabilities(cap.children);
+                    }
+                });
+            };
+            countCapabilities(this.catalog.children);
+
+            return Object.entries(domains).map(([name, count]) => ({ name, count }))
+                .sort((a, b) => b.count - a.count);
+        },
+
+        getTypeStats() {
+            const types = {};
+            const countTypes = (capabilities) => {
+                if (!capabilities) return;
+                capabilities.forEach(cap => {
+                    types[cap.capability_type] = (types[cap.capability_type] || 0) + 1;
+                    if (cap.children) {
+                        countTypes(cap.children);
+                    }
+                });
+            };
+            countTypes(this.catalog.children);
+
+            return Object.entries(types).map(([name, count]) => ({ name, count }));
+        },
+
+        getLevelStats() {
+            const levels = {};
+            const countLevels = (capabilities) => {
+                if (!capabilities) return;
+                capabilities.forEach(cap => {
+                    const lvl = cap.level || 1;
+                    levels[lvl] = (levels[lvl] || 0) + 1;
+                    if (cap.children) {
+                        countLevels(cap.children);
+                    }
+                });
+            };
+            countLevels(this.catalog.children);
+
+            return Object.entries(levels)
+                .map(([level, count]) => ({ level: parseInt(level), count }))
+                .sort((a, b) => a.level - b.level);
+        },
+
+        getAutomationStats() {
+            let automated = 0;
+            let manual = 0;
+            let totalAutomation = 0;
+            let functionCount = 0;
+
+            const countFunctions = (capabilities) => {
+                if (!capabilities) return;
+                capabilities.forEach(cap => {
+                    if (cap.functions) {
+                        cap.functions.forEach(func => {
+                            functionCount++;
+                            if (func.is_automated) {
+                                automated++;
+                            } else {
+                                manual++;
+                            }
+                            totalAutomation += func.automation_level || 0;
+                        });
+                    }
+                    if (cap.children) {
+                        countFunctions(cap.children);
+                    }
+                });
+            };
+
+            countFunctions(this.catalog.children);
+
+            return {
+                automated,
+                manual,
+                average: functionCount > 0 ? Math.round(totalAutomation / functionCount) : 0
+            };
+        }
+    }
+}
+</script>
+{% endblock %}

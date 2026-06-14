@@ -1,0 +1,337 @@
+{% extends 'layouts/admin_base.html' %}
+
+{% block title %}{{ element_type }}: {{ element.name if element.name else (element.title if element.title else 'Unnamed') }}{% endblock %}
+
+{% block breadcrumb %}
+{% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
+{{ breadcrumb_nav(items=[
+    {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
+    {'text': 'Architecture Elements', 'href': url_for('archimate_crud.dashboard')},
+    {'text': layer_config[layer].name, 'href': url_for('archimate_crud.dashboard') + '#' + layer},
+    {'text': element_type, 'href': url_for('archimate_crud.list_elements', layer=layer, element_type=element_type)},
+    {'text': element.name, 'current': true}
+]) }}
+{% endblock %}
+
+{% block content %}
+{% set elem_name = element.name if element.name else (element.title if element.title else 'Unnamed') %}
+{% set layer_label = layer_config[layer].name if layer in layer_config else layer|title %}
+
+<div class="container mx-auto p-6 space-y-6" x-data="archimateDetail">
+
+    <!-- Breadcrumb + Header -->
+    <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+        <div class="min-w-0">
+            <nav class="flex items-center gap-2 text-sm text-muted-foreground mb-2">
+                <a href="{{ url_for('archimate_crud.dashboard') }}" class="hover:text-foreground">Architecture</a>
+                <i data-lucide="chevron-right" class="h-3 w-3 shrink-0" aria-hidden="true"></i>
+                <span class="hover:text-foreground cursor-pointer" @click="activeTab='details'">{{ layer_label }}</span>
+                <i data-lucide="chevron-right" class="h-3 w-3 shrink-0" aria-hidden="true"></i>
+                <a href="{{ url_for('archimate_crud.list_elements', layer=layer, element_type=element_type) }}" class="hover:text-foreground">{{ element_type }}</a>
+                <i data-lucide="chevron-right" class="h-3 w-3 shrink-0" aria-hidden="true"></i>
+                <span class="text-foreground truncate max-w-xs">{{ elem_name }}</span>
+            </nav>
+
+            <h1 class="text-2xl font-bold leading-tight">{{ elem_name }}</h1>
+
+            <!-- Identity badges -->
+            <div class="flex flex-wrap items-center gap-2 mt-3">
+                <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold bg-primary/5 text-primary border-primary/20 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800">
+                    <i data-lucide="layers" class="h-3 w-3 mr-1" aria-hidden="true"></i>{{ element_type }}
+                </span>
+                <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950 dark:text-purple-300 dark:border-purple-800">
+                    <i data-lucide="stack" class="h-3 w-3 mr-1" aria-hidden="true"></i>{{ layer|title }}
+                </span>
+                {% if element.scope %}
+                <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300">
+                    {{ element.scope|title }}
+                </span>
+                {% endif %}
+                {% if element.building_block_type %}
+                <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800">
+                    <i data-lucide="box" class="h-3 w-3 mr-1" aria-hidden="true"></i>{{ element.building_block_type }}
+                </span>
+                {% endif %}
+                {% if element.plateau %}
+                <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold bg-emerald-500/5 text-emerald-700 border-emerald-200 dark:bg-green-950 dark:text-green-300 dark:border-green-800">
+                    <i data-lucide="flag" class="h-3 w-3 mr-1" aria-hidden="true"></i>{{ element.plateau }}
+                </span>
+                {% endif %}
+                {% if element.status %}
+                <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold {% if element.status == 'Active' %}bg-emerald-500/5 text-emerald-700 border-emerald-200{% elif element.status in ('Deprecated','Retired') %}bg-destructive/5 text-destructive border-destructive/20{% else %}bg-slate-100 text-slate-700 border-slate-200{% endif %}">
+                    {{ element.status }}
+                </span>
+                {% endif %}
+                {% if relationships|length > 0 %}
+                <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300">
+                    <i data-lucide="git-merge" class="h-3 w-3 mr-1" aria-hidden="true"></i>{{ relationships|length }} relationship{{ 's' if relationships|length != 1 else '' }}
+                </span>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="flex shrink-0 gap-2">
+            <a href="{{ url_for('architect_ui.impact_analysis', element_id=element.id) }}"
+               class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-3 py-2">
+                <i data-lucide="zap" class="h-4 w-4 mr-1.5" aria-hidden="true"></i>Impact
+            </a>
+            <a href="{{ url_for('archimate_crud.update_element', layer=layer, element_type=element_type, element_id=element.id) }}"
+               class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-3 py-2">
+                <i data-lucide="pencil" class="h-4 w-4 mr-1.5" aria-hidden="true"></i>Edit
+            </a>
+            <button @click="deleteElement()"
+                    class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-destructive text-destructive-foreground hover:bg-destructive/90 h-9 px-3 py-2"
+                    aria-label="Delete element">
+                <i data-lucide="trash-2" class="h-4 w-4 mr-1.5" aria-hidden="true"></i>Delete
+            </button>
+            <button @click="downloadDiagram()"
+                    class="inline-flex items-center justify-center rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30 hover:bg-primary/20 h-9 px-3 py-2"
+                    aria-label="Export ArchiMate diagram as SVG">
+                <svg class="w-3 h-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                Export Diagram
+            </button>
+        </div>
+    </div>
+
+    <!-- Description banner (if present) -->
+    {% if element.description %}
+    <div class="rounded-lg border bg-muted/30 px-5 py-4">
+        <p class="text-sm leading-relaxed text-muted-foreground">{{ element.description }}</p>
+    </div>
+    {% endif %}
+
+    <!-- Tabs -->
+    <div class="border-b">
+        <nav class="flex space-x-6" role="tablist">
+            <button @click="activeTab='details'" role="tab"
+                    :class="activeTab==='details' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:border-border hover:text-foreground'"
+                    class="border-b-2 pb-3 text-sm font-medium transition-colors">
+                <i data-lucide="info" class="h-4 w-4 inline mr-1.5" aria-hidden="true"></i>Details
+            </button>
+            <button @click="activeTab='relationships'" role="tab"
+                    :class="activeTab==='relationships' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:border-border hover:text-foreground'"
+                    class="border-b-2 pb-3 text-sm font-medium transition-colors">
+                <i data-lucide="git-merge" class="h-4 w-4 inline mr-1.5" aria-hidden="true"></i>
+                Relationships
+                {% if relationships %}<span class="ml-1.5 rounded-full bg-muted px-2 py-0.5 text-xs">{{ relationships|length }}</span>{% endif %}
+            </button>
+        </nav>
+    </div>
+
+    <!-- ── DETAILS TAB ── -->
+    <div x-show="activeTab==='details'" x-cloak class="space-y-6">
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+            <!-- ArchiMate Identity -->
+            <div class="border rounded-lg p-5 space-y-3">
+                <h2 class="text-sm font-semibold uppercase tracking-wide text-muted-foreground">ArchiMate Identity</h2>
+                <dl class="space-y-2">
+                    <div class="flex justify-between text-sm">
+                        <dt class="text-muted-foreground">Type</dt>
+                        <dd class="font-medium">{{ element_type }}</dd>
+                    </div>
+                    <div class="flex justify-between text-sm">
+                        <dt class="text-muted-foreground">Layer</dt>
+                        <dd class="font-medium">{{ layer|title }}</dd>
+                    </div>
+                    {% if element.scope %}
+                    <div class="flex justify-between text-sm">
+                        <dt class="text-muted-foreground">Scope</dt>
+                        <dd class="font-medium">{{ element.scope|title }}</dd>
+                    </div>
+                    {% endif %}
+                    {% if element.building_block_type %}
+                    <div class="flex justify-between text-sm">
+                        <dt class="text-muted-foreground">Building Block</dt>
+                        <dd class="font-medium">{{ element.building_block_type }}</dd>
+                    </div>
+                    {% endif %}
+                    {% if element.plateau %}
+                    <div class="flex justify-between text-sm">
+                        <dt class="text-muted-foreground">Plateau</dt>
+                        <dd class="font-medium">{{ element.plateau }}</dd>
+                    </div>
+                    {% endif %}
+                    {% if element.status %}
+                    <div class="flex justify-between text-sm">
+                        <dt class="text-muted-foreground">Status</dt>
+                        <dd class="font-medium">{{ element.status }}</dd>
+                    </div>
+                    {% endif %}
+                    <div class="flex justify-between text-sm">
+                        <dt class="text-muted-foreground">Element ID</dt>
+                        <dd class="font-mono text-xs text-muted-foreground">#{{ element.id }}</dd>
+                    </div>
+                </dl>
+            </div>
+
+            <!-- Auto-discovered attributes (display_fields) -->
+            {% if display_fields %}
+            <div class="border rounded-lg p-5 space-y-3 lg:col-span-2">
+                <h2 class="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Attributes</h2>
+                <dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
+                    {% for field in display_fields %}
+                    <div class="text-sm">
+                        <dt class="text-muted-foreground">{{ field.label }}</dt>
+                        <dd class="font-medium mt-0.5 break-words">{{ field.value }}</dd>
+                    </div>
+                    {% endfor %}
+                </dl>
+            </div>
+            {% else %}
+            <div class="border rounded-lg p-5 lg:col-span-2 flex items-center justify-center text-sm text-muted-foreground">
+                No additional attributes recorded for this element.
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Metadata -->
+        <div class="border rounded-lg p-5">
+            <h2 class="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-3">Audit</h2>
+            <dl class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                {% if element.created_at %}
+                <div>
+                    <dt class="text-muted-foreground">Created</dt>
+                    <dd class="font-medium mt-0.5">{{ element.created_at.strftime('%d %b %Y') }}</dd>
+                </div>
+                {% endif %}
+                {% if element.updated_at %}
+                <div>
+                    <dt class="text-muted-foreground">Last Updated</dt>
+                    <dd class="font-medium mt-0.5">{{ element.updated_at.strftime('%d %b %Y') }}</dd>
+                </div>
+                {% endif %}
+                {% if element.last_reviewed_date %}
+                <div>
+                    <dt class="text-muted-foreground">Last Reviewed</dt>
+                    <dd class="font-medium mt-0.5">{{ element.last_reviewed_date.strftime('%d %b %Y') }}</dd>
+                </div>
+                {% endif %}
+                {% if element.architecture_review_status %}
+                <div>
+                    <dt class="text-muted-foreground">Review Status</dt>
+                    <dd class="font-medium mt-0.5">{{ element.architecture_review_status }}</dd>
+                </div>
+                {% endif %}
+            </dl>
+        </div>
+    </div>
+
+    <!-- ── RELATIONSHIPS TAB ── -->
+    <div x-show="activeTab==='relationships'" x-cloak class="space-y-4">
+        {% set outgoing = relationships | selectattr('direction', 'equalto', 'outgoing') | list %}
+        {% set incoming = relationships | selectattr('direction', 'equalto', 'incoming') | list %}
+
+        {% if not relationships %}
+        <div class="border rounded-lg p-8 text-center text-sm text-muted-foreground">
+            <i data-lucide="git-merge" class="h-8 w-8 mx-auto mb-3 opacity-40" aria-hidden="true"></i>
+            No ArchiMate relationships recorded for this element.
+        </div>
+        {% endif %}
+
+        {% if outgoing %}
+        <div class="border rounded-lg p-5">
+            <h2 class="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-3">
+                <i data-lucide="arrow-right" class="h-4 w-4 inline mr-1" aria-hidden="true"></i>
+                Outgoing ({{ outgoing|length }})
+            </h2>
+            <div class="divide-y">
+                {% for rel in outgoing %}
+                <div class="flex items-center justify-between py-2.5 gap-4">
+                    <div class="flex items-center gap-3 min-w-0">
+                        <span class="inline-flex shrink-0 items-center rounded border px-2 py-0.5 text-xs font-medium bg-slate-50 text-slate-600 border-slate-200 dark:bg-slate-900 dark:text-slate-400">
+                            {{ rel.type }}
+                        </span>
+                        <div class="min-w-0">
+                            <a href="{{ url_for('archimate_crud.detail_element', layer=rel.target.layer|lower, element_type=rel.target.type, element_id=rel.target.id) }}"
+                               class="text-sm font-medium hover:underline truncate block">{{ rel.target.name }}</a>
+                            <p class="text-xs text-muted-foreground">{{ rel.target.type }} · {{ rel.target.layer }}</p>
+                        </div>
+                    </div>
+                    <a href="{{ url_for('archimate_crud.detail_element', layer=rel.target.layer|lower, element_type=rel.target.type, element_id=rel.target.id) }}"
+                       class="shrink-0 text-muted-foreground hover:text-foreground" aria-label="View">
+                        <i data-lucide="arrow-right" class="h-4 w-4" aria-hidden="true"></i>
+                    </a>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        {% if incoming %}
+        <div class="border rounded-lg p-5">
+            <h2 class="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-3">
+                <i data-lucide="arrow-left" class="h-4 w-4 inline mr-1" aria-hidden="true"></i>
+                Incoming ({{ incoming|length }})
+            </h2>
+            <div class="divide-y">
+                {% for rel in incoming %}
+                <div class="flex items-center justify-between py-2.5 gap-4">
+                    <div class="flex items-center gap-3 min-w-0">
+                        <span class="inline-flex shrink-0 items-center rounded border px-2 py-0.5 text-xs font-medium bg-slate-50 text-slate-600 border-slate-200 dark:bg-slate-900 dark:text-slate-400">
+                            {{ rel.type }}
+                        </span>
+                        <div class="min-w-0">
+                            <a href="{{ url_for('archimate_crud.detail_element', layer=rel.source.layer|lower, element_type=rel.source.type, element_id=rel.source.id) }}"
+                               class="text-sm font-medium hover:underline truncate block">{{ rel.source.name }}</a>
+                            <p class="text-xs text-muted-foreground">{{ rel.source.type }} · {{ rel.source.layer }}</p>
+                        </div>
+                    </div>
+                    <a href="{{ url_for('archimate_crud.detail_element', layer=rel.source.layer|lower, element_type=rel.source.type, element_id=rel.source.id) }}"
+                       class="shrink-0 text-muted-foreground hover:text-foreground" aria-label="View">
+                        <i data-lucide="arrow-right" class="h-4 w-4" aria-hidden="true"></i>
+                    </a>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+</div>
+
+<script>
+document.addEventListener('alpine:init', () => {
+    Alpine.data('archimateDetail', () => ({
+        activeTab: 'details',
+
+        async deleteElement() {
+            if (!(await Platform.modal.confirm('Delete "{{ elem_name|replace("'", "\\'") }}"? This cannot be undone.'))) return;
+            try {
+                const resp = await fetch(
+                    '{{ url_for("archimate_crud.delete_element", layer=layer, element_type=element_type, element_id=element.id) }}',
+                    { method: 'POST', headers: { 'Content-Type': 'application/json' } }
+                );
+                const data = await resp.json();
+                if (data.success) {
+                    window.location.href = '{{ url_for("archimate_crud.list_elements", layer=layer, element_type=element_type) }}';
+                } else {
+                    Platform.toast.error('Error: ' + (data.error || 'Unknown error'));
+                }
+            } catch (e) {
+                Platform.toast.error('Error: ' + e.message);
+            }
+        },
+
+        downloadDiagram() {
+            const elId = {{ element.id }};
+            const url = '/api/enterprise/archimate/diagram?elements=' + elId + '&viewpoint=application';
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'archimate-diagram-' + elId + '.svg';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+    }));
+});
+</script>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+});
+</script>
+{% endblock %}

@@ -1,0 +1,116 @@
+{% extends 'layouts/admin_base.html' %}
+{% from 'components/page_header.html' import page_header %}
+{% from 'components/metrics_card.html' import metrics_card %}
+{% from 'components/card.html' import card, card_header, card_title, card_content %}
+
+{% block title %}Compliance Tracking{% endblock %}
+
+{% block breadcrumb %}
+{% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
+{{ breadcrumb_nav(items=[
+    {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
+    {'text': 'Strategy Layer', 'href': url_for('archimate_crud.dashboard') + '#strategy'},
+    {'text': 'Strategic Planning', 'current': true}
+]) }}
+{% endblock %}
+
+{% block content %}
+<div class="flex flex-col space-y-8 animate-in fade-in duration-500">
+    {{ page_header(
+        title='Compliance Tracking',
+        description='Monitor compliance status across business capabilities and applications.',
+        breadcrumbs=[
+            {'label': 'Home', 'href': url_for('main.index')},
+            {'label': 'Compliance Tracking'}
+        ]
+    ) }}
+
+    {# ── Metrics (v4 SectionCards) ────────────────────────────────────────── #}
+    <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        {{ metrics_card(
+            title='Total Capabilities',
+            value=portfolio_metrics.total_capabilities|default(0)|string,
+            icon='layers'
+        ) }}
+        {{ metrics_card(
+            title='Compliance Rate',
+            value=portfolio_metrics.compliance_rate|default(0)|string + '%',
+            icon='check-circle',
+            value_class='text-success'
+        ) }}
+        {{ metrics_card(
+            title='Critical Issues',
+            value=critical_compliance|length|default(0)|string,
+            icon='alert-triangle',
+            value_class='text-destructive'
+        ) }}
+        {{ metrics_card(
+            title='Pending Reviews',
+            value=high_compliance|length|default(0)|string,
+            icon='clock',
+            value_class='text-warning'
+        ) }}
+    </div>
+
+    {# ── Compliance Table ─────────────────────────────────────────────────── #}
+    {% call card() %}
+        {% call card_header() %}
+            {% call card_title() %}Capability Compliance Status{% endcall %}
+        {% endcall %}
+        {% call card_content() %}
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm border-collapse">
+                    <thead>
+                        <tr class="bg-muted/50 border-b">
+                            <th class="h-10 px-4 text-left align-middle font-medium text-muted-foreground">Capability</th>
+                            <th class="h-10 px-4 text-left align-middle font-medium text-muted-foreground">Compliance Status</th>
+                            <th class="h-10 px-4 text-left align-middle font-medium text-muted-foreground">Score</th>
+                            <th class="h-10 px-4 text-left align-middle font-medium text-muted-foreground">Last Review</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y">
+                        {% for item in capability_compliance|default([]) %}
+                        <tr class="hover:bg-muted/50 transition-colors">
+                            <td class="p-4 font-medium">{{ item.capability_name|default('N/A') }}</td>
+                            <td class="p-4">
+                                <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold
+                                    {% if item.status == 'Critical' %}border-destructive/30 text-destructive
+                                    {% elif item.status == 'Non-Compliant' %}border-warning/30 text-warning
+                                    {% else %}border-success/30 text-success{% endif %}">
+                                    {{ item.status|default('Unknown') }}
+                                </span>
+                            </td>
+                            <td class="p-4 tabular-nums">{{ item.compliance_score|default(0) }}%</td>
+                            <td class="p-4 text-sm text-muted-foreground">{{ item.last_review|default('Never') }}</td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="4" class="p-8 text-center text-muted-foreground italic">No compliance data available</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% endcall %}
+    {% endcall %}
+
+    {# ── Recommendations ──────────────────────────────────────────────────── #}
+    {% call card() %}
+        {% call card_header() %}
+            {% call card_title() %}Recommendations{% endcall %}
+        {% endcall %}
+        {% call card_content() %}
+            <ul class="space-y-3">
+                {% for rec in recommendations|default([]) %}
+                <li class="flex items-start gap-3">
+                    <i data-lucide="lightbulb" class="h-4 w-4 text-warning mt-0.5 shrink-0" aria-hidden="true"></i>
+                    <span class="text-sm">{{ rec }}</span>
+                </li>
+                {% else %}
+                <li class="text-sm text-muted-foreground">No recommendations at this time.</li>
+                {% endfor %}
+            </ul>
+        {% endcall %}
+    {% endcall %}
+</div>
+{% endblock %}

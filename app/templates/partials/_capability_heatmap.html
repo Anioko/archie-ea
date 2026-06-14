@@ -1,0 +1,129 @@
+{# Partial: _capability_heatmap.html
+   Context: heatmap_data — list of {capability_id, capability_name, coverage_score, status, app_count, confidence}
+#}
+<div x-data="{ selected: null }" class="w-full">
+
+  {% if not heatmap_data %}
+  <div class="flex items-center justify-center py-12 text-muted-foreground text-sm">
+    No capability data available
+  </div>
+  {% else %}
+
+  {# Build bucketed lists from heatmap_data #}
+  {% set invest   = heatmap_data | selectattr('coverage_score', 'gt', 0.7)  | list %}
+  {% set maintain = heatmap_data | selectattr('coverage_score', 'gt', 0.4)
+                                 | selectattr('coverage_score', 'le', 0.7) | list %}
+  {% set divest   = heatmap_data | selectattr('coverage_score', 'gt', 0.2)
+                                 | selectattr('coverage_score', 'le', 0.4) | list %}
+  {% set absent   = heatmap_data | selectattr('coverage_score', 'le', 0.2) | list %}
+
+  <div class="grid grid-cols-4 gap-4">
+
+    {# Column headers #}
+    <div class="text-center font-semibold text-sm text-emerald-700 bg-emerald-500/5 rounded-t px-2 py-1">Invest</div>
+    <div class="text-center font-semibold text-sm text-primary bg-primary/5 rounded-t px-2 py-1">Maintain</div>
+    <div class="text-center font-semibold text-sm text-amber-700 bg-amber-50 rounded-t px-2 py-1">Divest</div>
+    <div class="text-center font-semibold text-sm text-muted-foreground bg-muted rounded-t px-2 py-1">Absent</div>
+
+    {# Invest column #}
+    <div class="flex flex-col gap-2">
+      {% for cap in invest %}
+      <div
+        class="rounded border border-emerald-200 bg-emerald-500/5 p-3 cursor-pointer hover:bg-emerald-500/10 transition-colors"
+        @click="selected = selected && selected.capability_id === '{{ cap.capability_id }}' ? null : {{ cap | tojson }}"
+        data-capability-id="{{ cap.capability_id }}"
+      >
+        <p class="text-xs font-medium text-green-900 truncate">{{ cap.capability_name }}</p>
+        <p class="text-xs text-emerald-700 mt-1">{{ (cap.coverage_score * 100) | round(1) }}% &bull; {{ cap.app_count }} apps</p>
+        {% set conf = cap.confidence if cap.confidence is defined else cap.coverage_score %}
+        {% if conf >= 0.8 %}
+        <span class="inline-block mt-1 text-xs font-medium px-1.5 py-0.5 rounded bg-green-200 text-green-800">High</span>
+        {% elif conf >= 0.5 %}
+        <span class="inline-block mt-1 text-xs font-medium px-1.5 py-0.5 rounded bg-amber-200 text-amber-800">Medium</span>
+        {% else %}
+        <span class="inline-block mt-1 text-xs font-medium px-1.5 py-0.5 rounded bg-red-200 text-red-800">Low</span>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+
+    {# Maintain column #}
+    <div class="flex flex-col gap-2">
+      {% for cap in maintain %}
+      <div
+        class="rounded border border-primary/20 bg-primary/5 p-3 cursor-pointer hover:bg-primary/10 transition-colors"
+        @click="selected = selected && selected.capability_id === '{{ cap.capability_id }}' ? null : {{ cap | tojson }}"
+        data-capability-id="{{ cap.capability_id }}"
+      >
+        <p class="text-xs font-medium text-blue-900 truncate">{{ cap.capability_name }}</p>
+        <p class="text-xs text-primary mt-1">{{ (cap.coverage_score * 100) | round(1) }}% &bull; {{ cap.app_count }} apps</p>
+        {% set conf = cap.confidence if cap.confidence is defined else cap.coverage_score %}
+        {% if conf >= 0.8 %}
+        <span class="inline-block mt-1 text-xs font-medium px-1.5 py-0.5 rounded bg-green-200 text-green-800">High</span>
+        {% elif conf >= 0.5 %}
+        <span class="inline-block mt-1 text-xs font-medium px-1.5 py-0.5 rounded bg-amber-200 text-amber-800">Medium</span>
+        {% else %}
+        <span class="inline-block mt-1 text-xs font-medium px-1.5 py-0.5 rounded bg-red-200 text-red-800">Low</span>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+
+    {# Divest column #}
+    <div class="flex flex-col gap-2">
+      {% for cap in divest %}
+      <div
+        class="rounded border border-amber-200 bg-amber-50 p-3 cursor-pointer hover:bg-amber-100 transition-colors"
+        @click="selected = selected && selected.capability_id === '{{ cap.capability_id }}' ? null : {{ cap | tojson }}"
+        data-capability-id="{{ cap.capability_id }}"
+      >
+        <p class="text-xs font-medium text-amber-900 truncate">{{ cap.capability_name }}</p>
+        <p class="text-xs text-amber-700 mt-1">{{ (cap.coverage_score * 100) | round(1) }}% &bull; {{ cap.app_count }} apps</p>
+        {% set conf = cap.confidence if cap.confidence is defined else cap.coverage_score %}
+        {% if conf >= 0.8 %}
+        <span class="inline-block mt-1 text-xs font-medium px-1.5 py-0.5 rounded bg-green-200 text-green-800">High</span>
+        {% elif conf >= 0.5 %}
+        <span class="inline-block mt-1 text-xs font-medium px-1.5 py-0.5 rounded bg-amber-200 text-amber-800">Medium</span>
+        {% else %}
+        <span class="inline-block mt-1 text-xs font-medium px-1.5 py-0.5 rounded bg-red-200 text-red-800">Low</span>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+
+    {# Absent column #}
+    <div class="flex flex-col gap-2">
+      {% for cap in absent %}
+      <div
+        class="rounded border border-border bg-muted/30 p-3 cursor-pointer hover:bg-muted transition-colors"
+        @click="selected = selected && selected.capability_id === '{{ cap.capability_id }}' ? null : {{ cap | tojson }}"
+        data-capability-id="{{ cap.capability_id }}"
+      >
+        <p class="text-xs font-medium text-foreground truncate">{{ cap.capability_name }}</p>
+        <p class="text-xs text-muted-foreground mt-1">{{ (cap.coverage_score * 100) | round(1) }}% &bull; {{ cap.app_count }} apps</p>
+        {% set conf = cap.confidence if cap.confidence is defined else cap.coverage_score %}
+        {% if conf >= 0.8 %}
+        <span class="inline-block mt-1 text-xs font-medium px-1.5 py-0.5 rounded bg-green-200 text-green-800">High</span>
+        {% elif conf >= 0.5 %}
+        <span class="inline-block mt-1 text-xs font-medium px-1.5 py-0.5 rounded bg-amber-200 text-amber-800">Medium</span>
+        {% else %}
+        <span class="inline-block mt-1 text-xs font-medium px-1.5 py-0.5 rounded bg-red-200 text-red-800">Low</span>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+
+  </div>{# /grid #}
+
+  {# Detail panel shown when a capability is selected #}
+  <div x-show="selected" x-cloak class="mt-4 rounded border border-border bg-background p-4 shadow-sm">
+    <h3 class="text-sm font-semibold text-foreground" x-text="selected && selected.capability_name"></h3>
+    <p class="text-xs text-muted-foreground mt-1">
+      Coverage: <span class="font-medium" x-text="selected && (selected.coverage_score * 100).toFixed(1) + '%'"></span>
+      &nbsp;&bull;&nbsp;
+      Apps: <span class="font-medium" x-text="selected && selected.app_count"></span>
+    </p>
+  </div>
+
+  {% endif %}
+</div>

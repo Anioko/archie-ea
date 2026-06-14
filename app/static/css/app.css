@@ -1,0 +1,133 @@
+@media -sass-debug-info{filename{}line{font-family:\000037}}
+nav {
+  margin-bottom: 40px !important;
+}
+
+@media -sass-debug-info{filename{}line{font-family:\0000312}}
+.ui.fixed.main.menu .right.menu > .item:last-of-type {
+  border-right: 1px solid rgba(34, 36, 38, 0.0980392);
+}
+
+@media -sass-debug-info{filename{}line{font-family:\0000318}}
+nav .mobile.only.row .ui.vertical.menu {
+  margin-top: 40px;
+  display: none;
+}
+
+@media -sass-debug-info{filename{}line{font-family:\0000325}}
+.flashes > .ui.message:last-of-type {
+  margin-bottom: 2rem;
+}
+
+@media -sass-debug-info{filename{}line{font-family:\0000330}}
+table.selectable tr:hover {
+  cursor: pointer !important;
+}
+
+/* shadcn-inspired button utilities (compiled from app.scss) */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: calc(var(--radius, 0.5rem) - 2px);
+  font-size: 0.875rem;
+  font-weight: 500;
+  padding: 0.5rem 1rem;
+  transition: all 0.2s;
+  cursor: pointer;
+  border: none;
+}
+
+.btn:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
+
+.btn:disabled {
+  pointer-events: none;
+  opacity: 0.5;
+}
+
+.btn-primary {
+  background-color: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+}
+
+.btn-primary:hover {
+  opacity: 0.9;
+}
+
+.btn-secondary {
+  background-color: hsl(var(--secondary));
+  color: hsl(var(--secondary-foreground));
+}
+
+.btn-secondary:hover {
+  opacity: 0.8;
+}
+
+.btn-destructive {
+  background-color: hsl(var(--destructive));
+  color: hsl(var(--destructive-foreground));
+}
+
+.btn-destructive:hover {
+  opacity: 0.9;
+}
+
+.btn-outline {
+  border: 1px solid hsl(var(--input));
+  background-color: transparent;
+  color: hsl(var(--foreground));
+}
+
+.btn-outline:hover {
+  background-color: hsl(var(--accent));
+  color: hsl(var(--accent-foreground));
+}
+
+.btn-ghost {
+  background-color: transparent;
+  color: hsl(var(--foreground));
+}
+
+.btn-ghost:hover {
+  background-color: hsl(var(--accent));
+  color: hsl(var(--accent-foreground));
+}
+
+/* shadcn button size variants */
+.btn-sm {
+  height: 2rem;          /* h-8  */
+  padding: 0 0.75rem;    /* px-3 */
+  font-size: 0.75rem;    /* text-xs */
+  border-radius: calc(var(--radius, 0.5rem) - 2px);
+}
+
+.btn-lg {
+  height: 2.75rem;       /* h-11 */
+  padding: 0 2rem;       /* px-8 */
+  font-size: 1rem;       /* text-base */
+}
+
+.btn-icon {
+  height: 2.25rem;       /* h-9  */
+  width: 2.25rem;        /* w-9  */
+  padding: 0;
+}
+
+.btn-link {
+  background: transparent;
+  color: hsl(var(--primary));
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  padding: 0;
+}
+
+.btn-link:hover {
+  color: hsl(var(--primary) / 0.8);
+}
+
+/* Alpine.js: hide elements with x-cloak until Alpine initializes */
+[x-cloak] { display: none !important; }

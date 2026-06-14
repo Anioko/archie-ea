@@ -1,0 +1,147 @@
+{% extends 'layouts/admin_base.html' %}
+{% block title %}Vendor Contracts{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-6">
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-6">
+        <div>
+            <h1 class="text-2xl font-bold">Vendor Contracts</h1>
+            <p class="text-muted-foreground">Manage vendor contracts and agreements</p>
+        </div>
+        <div class="flex items-center gap-2">
+            <a href="{{ url_for('procurement.renewals_dashboard') }}"
+               class="inline-flex items-center gap-2 px-4 py-2 rounded-md border border-border hover:bg-accent transition-colors">
+                <i data-lucide="calendar-clock" class="w-4 h-4"></i>
+                Renewal Alerts
+            </a>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="bg-card border border-border rounded-lg p-4 mb-6">
+        <form method="get" class="flex flex-wrap items-center gap-4">
+            <div class="flex-1 min-w-[200px]">
+                <input type="text" name="search" value="{{ search or '' }}"
+                       placeholder="Search contracts..."
+                       class="w-full px-3 py-2 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+            </div>
+            <select name="status" class="px-3 py-2 rounded-md border border-input bg-background text-sm">
+                <option value="">All Statuses</option>
+                <option value="active" {{ 'selected' if status == 'active' }}>Active</option>
+                <option value="expired" {{ 'selected' if status == 'expired' }}>Expired</option>
+                <option value="draft" {{ 'selected' if status == 'draft' }}>Draft</option>
+                <option value="terminated" {{ 'selected' if status == 'terminated' }}>Terminated</option>
+            </select>
+            <button type="submit" class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors">
+                Filter
+            </button>
+        </form>
+    </div>
+
+    <!-- Contracts Table -->
+    {% if contracts %}
+    <div class="bg-card border border-border rounded-lg overflow-hidden">
+        <table class="w-full">
+            <thead class="bg-muted/50">
+                <tr>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Contract</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Vendor</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Annual Cost</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Renewal</th>
+                    <th class="px-4 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-border">
+                {% for item in contracts %}
+                <tr class="hover:bg-muted/30 transition-colors">
+                    <td class="px-4 py-3">
+                        <div class="font-medium">{{ item.contract.contract_name }}</div>
+                        <div class="text-sm text-muted-foreground">{{ item.contract.contract_number or 'No number' }}</div>
+                    </td>
+                    <td class="px-4 py-3 text-sm">
+                        {{ item.contract.vendor.name if item.contract.vendor else 'N/A' }}
+                    </td>
+                    <td class="px-4 py-3 text-sm">
+                        {% if item.contract.annual_cost %}
+                            {{ "${:,.0f}".format(item.contract.annual_cost) }}
+                        {% else %}
+                            <span class="text-muted-foreground">-</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-4 py-3">
+                        <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium
+                            {% if item.contract.status == 'active' %}bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400
+                            {% elif item.contract.status == 'expired' %}bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400
+                            {% elif item.contract.status == 'draft' %}bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400
+                            {% else %}bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400{% endif %}">
+                            {{ item.contract.status or 'unknown' }}
+                        </span>
+                    </td>
+                    <td class="px-4 py-3">
+                        {% if item.days_until_renewal is not none %}
+                            <div class="flex items-center gap-2">
+                                <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium
+                                    {% if item.urgency == 'critical' %}bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400
+                                    {% elif item.urgency == 'warning' %}bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400
+                                    {% elif item.urgency == 'upcoming' %}bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400
+                                    {% elif item.urgency == 'expired' %}bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400
+                                    {% else %}bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400{% endif %}">
+                                    {% if item.urgency == 'expired' %}Expired
+                                    {% else %}{{ item.days_until_renewal }} days{% endif %}
+                                </span>
+                            </div>
+                        {% else %}
+                            <span class="text-muted-foreground text-sm">No date</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-4 py-3 text-right">
+                        <a href="{{ url_for('procurement.contract_detail', contract_id=item.contract.id) }}"
+                           class="text-primary hover:underline text-sm">View</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Pagination -->
+    {% if total > 20 %}
+    <div class="flex items-center justify-between mt-4">
+        <div class="text-sm text-muted-foreground">
+            Showing {{ (page - 1) * 20 + 1 }} - {{ min(page * 20, total) }} of {{ total }} contracts
+        </div>
+        <div class="flex items-center gap-2">
+            {% if page > 1 %}
+            <a href="?page={{ page - 1 }}{% if status %}&status={{ status }}{% endif %}{% if search %}&search={{ search }}{% endif %}"
+               class="px-3 py-1 rounded border border-border hover:bg-accent text-sm">Previous</a>
+            {% endif %}
+            {% if page * 20 < total %}
+            <a href="?page={{ page + 1 }}{% if status %}&status={{ status }}{% endif %}{% if search %}&search={{ search }}{% endif %}"
+               class="px-3 py-1 rounded border border-border hover:bg-accent text-sm">Next</a>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    {% else %}
+    <!-- Empty State -->
+    <div class="bg-card border border-border rounded-lg p-12 text-center">
+        <div class="w-16 h-16 mx-auto mb-4 bg-muted rounded-full flex items-center justify-center">
+            <i data-lucide="file-text" class="w-8 h-8 text-muted-foreground"></i>
+        </div>
+        <h3 class="text-lg font-medium mb-2">No contracts found</h3>
+        <p class="text-muted-foreground mb-4">
+            {% if search %}No contracts match your search criteria.
+            {% else %}There are no vendor contracts in the system yet.{% endif %}
+        </p>
+        {% if search %}
+        <a href="{{ url_for('procurement.contracts_list') }}" class="text-primary hover:underline">Clear filters</a>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+
+<script>if (typeof lucide !== 'undefined') lucide.createIcons();</script>
+{% endblock %}

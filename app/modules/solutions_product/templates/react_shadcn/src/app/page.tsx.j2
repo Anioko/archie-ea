@@ -1,0 +1,29 @@
+import Link from "next/link"
+
+export default function DashboardPage() {
+  const resources = [
+{% for cls in classes %}
+    {
+      name: "{{ cls.name | replace('_', ' ') }}",
+      href: "/{{ cls.table_name }}",
+      description: {{ cls.description | tojson }},
+    },
+{% endfor %}
+  ]
+
+  return (
+    <div>
+      <h1 className="text-2xl font-bold mb-6">Dashboard</h1>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {resources.map((r) => (
+          <Link key={r.href} href={r.href}>
+            <div className="rounded-lg border border-border bg-card p-6 hover:border-primary/50 transition-colors cursor-pointer">
+              <h2 className="font-semibold text-base mb-1">{r.name}</h2>
+              <p className="text-sm text-muted-foreground line-clamp-2">{r.description || "Manage records"}</p>
+            </div>
+          </Link>
+        ))}
+      </div>
+    </div>
+  )
+}

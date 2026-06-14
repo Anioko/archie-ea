@@ -1,0 +1,202 @@
+{% extends 'layouts/admin_base.html' %}
+{% from 'components/page_header.html' import page_header %}
+
+{% block title %}Slack AI Architect{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+    {{ page_header(
+        title='Slack AI Architect',
+        description='Connect A.R.C.H.I.E. to Slack. The AI Architect listens for @archie mentions and passively monitors channels for portfolio application names.',
+        breadcrumbs=[
+            {'label': 'Home', 'href': url_for('main.index')},
+            {'label': 'Admin', 'href': url_for('admin.index')},
+            {'label': 'Slack AI Architect'}
+        ]
+    ) }}
+
+    <div id="slack-alert" hidden class="mb-6 rounded-md border p-4 text-sm"></div>
+
+    <!-- Status strip -->
+    <div class="rounded-lg border border-border bg-card text-card-foreground shadow-sm mb-6">
+        <div class="flex items-center justify-between px-6 py-4 border-b border-border">
+            <div>
+                <h2 class="text-base font-semibold">Bot Status</h2>
+                <p class="text-sm text-muted-foreground mt-0.5">
+                    A Slack app with <code class="text-xs bg-muted px-1 py-0.5 rounded">app_mentions:read</code>,
+                    <code class="text-xs bg-muted px-1 py-0.5 rounded">channels:history</code>,
+                    <code class="text-xs bg-muted px-1 py-0.5 rounded">chat:write</code> scopes required.
+                </p>
+            </div>
+            {% if config.configured %}
+            <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-medium
+                         bg-emerald-500/10 text-emerald-600 border border-emerald-500/30">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block"></span>
+                Configured
+            </span>
+            {% else %}
+            <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-medium
+                         bg-muted text-muted-foreground border border-border">
+                Not configured
+            </span>
+            {% endif %}
+        </div>
+
+        <!-- Credentials form -->
+        <div class="px-6 py-5">
+            <form method="POST" action="{{ url_for('admin.slack_integration') }}"
+                  class="grid grid-cols-1 gap-5 sm:grid-cols-2">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+
+                <div class="flex flex-col gap-1.5">
+                    <label for="bot_token" class="text-sm font-medium">Bot Token</label>
+                    <input id="bot_token" name="bot_token" type="password"
+                           value="{{ config.bot_token or '' }}"
+                           placeholder="xoxb-..."
+                           autocomplete="off"
+                           class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm
+                                  shadow-sm transition-colors placeholder:text-muted-foreground
+                                  focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" />
+                    <p class="text-xs text-muted-foreground">From your Slack app's "OAuth & Permissions" page.</p>
+                </div>
+
+                <div class="flex flex-col gap-1.5">
+                    <label for="signing_secret" class="text-sm font-medium">Signing Secret</label>
+                    <input id="signing_secret" name="signing_secret" type="password"
+                           value="{{ config.signing_secret or '' }}"
+                           placeholder="••••••••••••••••"
+                           autocomplete="off"
+                           class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm
+                                  shadow-sm transition-colors placeholder:text-muted-foreground
+                                  focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" />
+                    <p class="text-xs text-muted-foreground">From your Slack app's "Basic Information" page.</p>
+                </div>
+
+                <div class="sm:col-span-2 flex flex-col gap-1.5">
+                    <label for="monitored_channels" class="text-sm font-medium">Monitored Channels <span class="text-muted-foreground font-normal">(optional)</span></label>
+                    <input id="monitored_channels" name="monitored_channels" type="text"
+                           value="{{ config.monitored_channels or '' }}"
+                           placeholder="C0123ABCDEF, C0456GHIJKL — leave blank to monitor all channels the bot is invited to"
+                           class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm
+                                  shadow-sm transition-colors placeholder:text-muted-foreground
+                                  focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" />
+                    <p class="text-xs text-muted-foreground">Comma-separated channel IDs. The bot must be invited to each channel.</p>
+                </div>
+
+                <!-- Feature toggles -->
+                <div class="sm:col-span-2 flex flex-col gap-3">
+                    <p class="text-sm font-medium">Features</p>
+                    <label class="flex items-start gap-3 cursor-pointer">
+                        <input type="checkbox" name="mention_response" value="1"
+                               {% if config.mention_response %}checked{% endif %}
+                               class="mt-0.5 h-4 w-4 rounded border-border accent-primary" />
+                        <span>
+                            <span class="text-sm font-medium">@archie mention responses</span><br>
+                            <span class="text-xs text-muted-foreground">When someone @mentions the bot, the AI Architect answers architecture questions using live portfolio context.</span>
+                        </span>
+                    </label>
+                    <label class="flex items-start gap-3 cursor-pointer">
+                        <input type="checkbox" name="portfolio_scan" value="1"
+                               {% if config.portfolio_scan %}checked{% endif %}
+                               class="mt-0.5 h-4 w-4 rounded border-border accent-primary" />
+                        <span>
+                            <span class="text-sm font-medium">Passive portfolio monitoring</span><br>
+                            <span class="text-xs text-muted-foreground">When a message mentions a known application from the portfolio (by exact name), the bot replies with lifecycle status and a link to the portfolio entry.</span>
+                        </span>
+                    </label>
+                </div>
+
+                <div class="sm:col-span-2 flex items-center gap-3">
+                    <button type="submit"
+                            class="inline-flex items-center justify-center rounded-md text-sm font-medium
+                                   bg-primary text-primary-foreground shadow hover:bg-primary/90
+                                   h-9 px-4 py-2 transition-colors">
+                        Save configuration
+                    </button>
+                    <button type="button" id="test-btn"
+                            class="inline-flex items-center justify-center rounded-md text-sm font-medium
+                                   border border-input bg-background shadow-sm hover:bg-accent
+                                   h-9 px-4 py-2 transition-colors">
+                        Test connection
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Events API setup guide -->
+    <div class="rounded-lg border border-border bg-card text-card-foreground shadow-sm mb-6">
+        <div class="px-6 py-4 border-b border-border">
+            <h2 class="text-base font-semibold">Events API Setup</h2>
+            <p class="text-sm text-muted-foreground mt-0.5">Point your Slack app's Event Subscriptions URL at this endpoint.</p>
+        </div>
+        <div class="px-6 py-5 space-y-4">
+            <div>
+                <p class="text-sm font-medium mb-1.5">Request URL</p>
+                <div class="flex items-center gap-2">
+                    <code class="flex-1 rounded-md border border-border bg-muted px-3 py-2 text-xs font-mono">
+                        http://127.0.0.1/api/webhooks/slack/events
+                    </code>
+                    <button type="button" onclick="navigator.clipboard.writeText('http://127.0.0.1/api/webhooks/slack/events')"
+                            class="shrink-0 inline-flex items-center justify-center rounded-md border border-input bg-background
+                                   shadow-sm hover:bg-accent h-8 px-3 text-xs transition-colors">
+                        Copy
+                    </button>
+                </div>
+            </div>
+            <div>
+                <p class="text-sm font-medium mb-1.5">Required event subscriptions</p>
+                <ul class="text-sm text-muted-foreground space-y-1">
+                    <li><code class="text-xs bg-muted px-1 py-0.5 rounded">app_mention</code> — responds when @archie is mentioned</li>
+                    <li><code class="text-xs bg-muted px-1 py-0.5 rounded">message.channels</code> — scans public channel messages for portfolio app names</li>
+                </ul>
+            </div>
+            <div>
+                <p class="text-sm font-medium mb-1.5">Required bot scopes</p>
+                <ul class="text-sm text-muted-foreground space-y-1 font-mono text-xs">
+                    <li>app_mentions:read</li>
+                    <li>channels:history</li>
+                    <li>chat:write</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.getElementById('test-btn').addEventListener('click', async function () {
+    const btn = this;
+    const tokenInput = document.getElementById('bot_token');
+    const alertEl = document.getElementById('slack-alert');
+    btn.textContent = 'Testing…';
+    btn.disabled = true;
+
+    const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+    const csrfToken = csrfMeta ? csrfMeta.content : '';
+
+    try {
+        const resp = await fetch('/admin/integrations/slack/test', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+            body: JSON.stringify({ bot_token: tokenInput.value }),
+        });
+        const data = await resp.json();
+        alertEl.hidden = false;
+        if (data.status === 'ok') {
+            alertEl.className = 'mb-6 rounded-md border border-emerald-500/30 bg-emerald-500/10 text-emerald-700 p-4 text-sm';
+            alertEl.textContent = `Connected: team "${data.team}", bot "${data.bot_name}".`;
+        } else {
+            alertEl.className = 'mb-6 rounded-md border border-destructive/30 bg-destructive/10 text-destructive p-4 text-sm';
+            alertEl.textContent = `Error: ${data.error}`;
+        }
+    } catch (e) {
+        alertEl.hidden = false;
+        alertEl.className = 'mb-6 rounded-md border border-destructive/30 bg-destructive/10 text-destructive p-4 text-sm';
+        alertEl.textContent = `Request failed: ${e.message}`;
+    } finally {
+        btn.textContent = 'Test connection';
+        btn.disabled = false;
+    }
+});
+</script>
+{% endblock %}

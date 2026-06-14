@@ -1,0 +1,1901 @@
+{# ── Blueprint Governance Panel (right sidebar) ── #}
+{# Variables: solution, scores, phase_checklist, next_actions, arb_ready #}
+
+{# ── Pre-compute overall score and section count using Jinja ── #}
+{% set all_sections = [
+    'executive_summary', 'vision_motivation', 'value_stream_map',
+    'business_process_view', 'application_cooperation', 'data_information',
+    'deployment_view', 'network_communication', 'gap_analysis',
+    'transition_roadmap', 'work_packages', 'security_viewpoint',
+    'nfr_satisfaction', 'requirements_traceability'
+] %}
+{% set ns = namespace(total=0, filled=0) %}
+{% for sid in all_sections %}
+    {% set pct = scores.get(sid, {}).get('overall', 0) if scores else 0 %}
+    {% set ns.total = ns.total + pct %}
+    {% if pct > 0 %}
+        {% set ns.filled = ns.filled + 1 %}
+    {% endif %}
+{% endfor %}
+{% set overall_pct = (ns.total / 14)|round|int %}
+
+<div class="space-y-3">
+
+    {# ════════════════════════════════════════════════════════════════════ #}
+    {# 0. Setup Checklist (GOV-03)                                         #}
+    {# ════════════════════════════════════════════════════════════════════ #}
+    <div class="rounded-xl border border-border bg-card shadow-sm p-4" x-data="setupChecklist({{ solution.id }})">
+        <h3 class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">Platform Setup</h3>
+
+        {# Progress bar #}
+        <div class="flex items-center justify-between mb-2">
+            <span class="text-xs font-medium" :class="{
+                'text-emerald-600': completionPct >= 80,
+                'text-amber-600': completionPct >= 40 && completionPct < 80,
+                'text-destructive': completionPct < 40
+            }" x-text="configuredCount + '/' + totalCount + ' configured'"></span>
+            <span class="text-[10px] text-muted-foreground" x-text="completionPct + '%'"></span>
+        </div>
+        <div class="w-full h-1.5 rounded-full bg-muted/60 mb-3">
+            <div class="h-1.5 rounded-full transition-all duration-500" :class="{
+                'bg-emerald-500': completionPct >= 80,
+                'bg-amber-500': completionPct >= 40 && completionPct < 80,
+                'bg-destructive': completionPct < 40
+            }" :style="'width:' + completionPct + '%'"></div>
+        </div>
+
+        {# Checklist items #}
+        <div class="space-y-1.5">
+            <template x-for="item in checklistItems" :key="item.key">
+                <a :href="'#setup-' + item.anchor" @click.prevent="scrollToSection(item.anchor)"
+                   class="flex items-center gap-2 group cursor-pointer">
+                    <span class="w-4 h-4 rounded-full flex items-center justify-center shrink-0"
+                          :class="item.done ? 'bg-emerald-500/20' : 'border border-border'">
+                        <span class="text-[10px] leading-none"
+                              :class="item.done ? 'text-emerald-600' : 'text-muted-foreground/50'"
+                              x-text="item.done ? '\u2713' : '\u25CB'"></span>
+                    </span>
+                    <span class="text-xs group-hover:underline"
+                          :class="item.done ? 'text-muted-foreground line-through' : 'text-foreground'"
+                          x-text="item.label"></span>
+                </a>
+            </template>
+        </div>
+    </div>
+
+    <script>
+    function setupChecklist(solutionId) {
+        return {
+            completionPct: 0,
+            configuredCount: 0,
+            totalCount: 7,
+            checklistItems: [
+                {key: 'integration_contracts', label: 'Integration contracts registered', anchor: 'integration-contracts', done: false},
+                {key: 'identity_provider', label: 'Identity provider configured', anchor: 'identity-provider', done: false},
+                {key: 'database_config', label: 'Database config set', anchor: 'infrastructure', done: false},
+                {key: 'ci_cd_config', label: 'CI/CD pipeline configured', anchor: 'infrastructure', done: false},
+                {key: 'architecture_style', label: 'Architecture style selected', anchor: 'infrastructure', done: false},
+                {key: 'code_generated', label: 'Code generated', anchor: 'bp-generate-product-btn', done: false},
+                {key: 'api_spec_published', label: 'API spec published', anchor: 'bp-generate-product-btn', done: false},
+            ],
+            init: function() {
+                const self = this;
+                fetch('/api/solutions/' + solutionId + '/setup-status', {
+                    headers: {'Accept': 'application/json'}
+                }).then(function(r) { return r.json(); }).then(function(data) {
+                    if (data.success) {
+                        self.completionPct = data.completion_pct || 0;
+                        self.configuredCount = data.configured_count || 0;
+                        self.totalCount = data.total_count || 7;
+                        self.checklistItems.forEach(function(item) {
+                            item.done = !!data[item.key];
+                        });
+                    }
+                }).catch(function() {});
+            },
+            scrollToSection: function(anchor) {
+                const el = document.getElementById('setup-' + anchor) || document.getElementById(anchor);
+                if (el) {
+                    const y = el.getBoundingClientRect().top + window.pageYOffset - 120;
+                    window.scrollTo({top: y, behavior: 'smooth'});
+                }
+            }
+        };
+    }
+    </script>
+
+    {# ════════════════════════════════════════════════════════════════════ #}
+    {# 1. Blueprint Completeness Ring                                      #}
+    {# ════════════════════════════════════════════════════════════════════ #}
+    <div class="rounded-xl border border-border bg-card shadow-sm p-4">
+        <h3 class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">Completeness</h3>
+
+        <div class="flex flex-col items-center">
+            {# Circular score ring #}
+            <div class="relative w-16 h-16 mb-2">
+                <svg class="w-16 h-16 -rotate-90" viewBox="0 0 64 64">
+                    {# Background ring #}
+                    <circle cx="32" cy="32" r="28" fill="none"
+                            stroke="currentColor" stroke-width="4"
+                            class="text-muted/60" />
+                    {# Progress ring — circumference = 2*pi*28 ≈ 175.93 #}
+                    <circle cx="32" cy="32" r="28" fill="none"
+                            stroke-width="4" stroke-linecap="round"
+                            stroke-dasharray="175.93"
+                            stroke-dashoffset="{{ 175.93 - (175.93 * overall_pct / 100) }}"
+                            class="{% if overall_pct >= 80 %}text-emerald-500
+                                   {% elif overall_pct >= 40 %}text-amber-500
+                                   {% else %}text-destructive
+                                   {% endif %}" />
+                </svg>
+                <div class="absolute inset-0 flex items-center justify-center">
+                    <span class="text-sm font-bold {% if overall_pct >= 80 %}text-emerald-600
+                        {% elif overall_pct >= 40 %}text-amber-600
+                        {% else %}text-destructive
+                        {% endif %}">{{ overall_pct }}%</span>
+                </div>
+            </div>
+
+            {# Version badge + section count #}
+            <div class="flex items-center gap-2 mt-1">
+                {% if solution.blueprint_version is defined and solution.blueprint_version %}
+                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-muted text-muted-foreground border border-border">v{{ solution.blueprint_version }}</span>
+                {% endif %}
+                <span class="text-[10px] text-muted-foreground">{{ ns.filled }} of 14 sections</span>
+            </div>
+        </div>
+    </div>
+
+    {# ════════════════════════════════════════════════════════════════════ #}
+    {# 2. TOGAF ADM Checklist                                              #}
+    {# ════════════════════════════════════════════════════════════════════ #}
+    {% if phase_checklist %}
+    <div class="rounded-xl border border-border bg-card shadow-sm p-4">
+        <h3 class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">TOGAF ADM Checklist</h3>
+
+        <div class="space-y-2">
+            {% for phase in phase_checklist %}
+            <div class="flex items-center gap-2">
+                {% if phase.passed %}
+                <span class="w-4 h-4 rounded-full bg-emerald-500/20 flex items-center justify-center shrink-0">
+                    <span class="text-emerald-600 text-[10px] leading-none">&#10003;</span>
+                </span>
+                <span class="text-xs text-muted-foreground line-through">{{ phase.name }}</span>
+                {% else %}
+                <span class="w-4 h-4 rounded-full border border-border flex items-center justify-center shrink-0">
+                    <span class="text-muted-foreground/50 text-[10px] leading-none">&#9675;</span>
+                </span>
+                <span class="text-xs text-foreground">{{ phase.name }}</span>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    {# ════════════════════════════════════════════════════════════════════ #}
+    {# 3. Next Actions                                                     #}
+    {# ════════════════════════════════════════════════════════════════════ #}
+    <div class="rounded-xl border border-border bg-card shadow-sm p-4">
+        <h3 class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">Next Actions</h3>
+
+        {% if next_actions %}
+        <div class="space-y-2">
+            {% for action in next_actions[:3] %}
+            <a href="#{{ action.section_id }}"
+               data-section-scroll="{{ action.section_id }}"
+               class="block rounded-lg border border-border p-2.5 hover:bg-muted/50 transition-colors cursor-pointer group">
+                <div class="flex items-center gap-1.5 mb-0.5">
+                    <span class="w-1.5 h-1.5 rounded-full shrink-0
+                        {% if action.score is defined and action.score == 0 %}bg-destructive
+                        {% else %}bg-amber-500
+                        {% endif %}"></span>
+                    <span class="text-xs font-medium
+                        {% if action.score is defined and action.score == 0 %}text-destructive
+                        {% else %}text-amber-600
+                        {% endif %} group-hover:underline">{{ action.title }}</span>
+                </div>
+                {% if action.description %}
+                <p class="text-[10px] text-muted-foreground leading-snug pl-3">{{ action.description }}</p>
+                {% endif %}
+            </a>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="rounded-lg border border-dashed border-emerald-500/30 bg-emerald-500/5 p-3 text-center">
+            <span class="text-[10px] text-emerald-600 font-medium">All sections at 80%+ — ready for governance review.</span>
+        </div>
+        {% endif %}
+    </div>
+
+    {# ════════════════════════════════════════════════════════════════════ #}
+    {# 4. Governance Status                                                #}
+    {# ════════════════════════════════════════════════════════════════════ #}
+    <div class="rounded-xl border border-border bg-card shadow-sm p-4">
+        <h3 class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">Governance Status</h3>
+
+        {# Review status badge #}
+        <div class="mb-3">
+            {% set gov_status = solution.governance_status if solution.governance_status is defined and solution.governance_status else 'draft' %}
+            {% if gov_status == 'approved' %}
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30">Approved</span>
+            {% elif gov_status == 'arb_review' or gov_status == 'in_review' %}
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30">In ARB Review</span>
+            {% elif gov_status == 'rejected' %}
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive border border-destructive/30">Rejected</span>
+            {% else %}
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground border border-border">Draft</span>
+            {% endif %}
+        </div>
+
+        {# Compliance score #}
+        <div class="flex items-center justify-between mb-3">
+            <span class="text-xs text-muted-foreground">Compliance</span>
+            <span class="text-xs font-semibold
+                {% if overall_pct >= 80 %}text-emerald-600
+                {% elif overall_pct >= 40 %}text-amber-600
+                {% else %}text-destructive
+                {% endif %}">{{ overall_pct }}%</span>
+        </div>
+
+        {# ARB Readiness Checklist — fetched async to avoid blocking page render #}
+        <div x-data="arbReadinessPanel({{ solution.id }})" x-init="load()" class="mb-3">
+            <template x-if="checks.length > 0">
+                <div>
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">ARB Readiness</span>
+                        <span class="text-[10px] font-semibold"
+                              :class="{'text-emerald-600': pct >= 80, 'text-amber-600': pct >= 50 && pct < 80, 'text-destructive': pct < 50}"
+                              x-text="pct + '%'"></span>
+                    </div>
+                    <div class="w-full h-1 rounded-full bg-muted/60 mb-2">
+                        <div class="h-1 rounded-full transition-all duration-500"
+                             :class="{'bg-emerald-500': pct >= 80, 'bg-amber-500': pct >= 50 && pct < 80, 'bg-destructive': pct < 50}"
+                             :style="'width:' + pct + '%'"></div>
+                    </div>
+                    <div class="space-y-1">
+                        <template x-for="c in checks" :key="c.label">
+                            <div class="flex items-start gap-1.5">
+                                <span class="w-3.5 h-3.5 rounded-full flex items-center justify-center shrink-0 mt-0.5"
+                                      :class="c.passed ? 'bg-emerald-500/20' : (c.required ? 'border border-destructive/50' : 'border border-border')">
+                                    <span class="text-[11px] leading-none"
+                                          :class="c.passed ? 'text-emerald-600' : (c.required ? 'text-destructive/60' : 'text-muted-foreground/50')"
+                                          x-text="c.passed ? '\u2713' : '\u25CB'"></span>
+                                </span>
+                                <div class="leading-tight">
+                                    <span class="text-[10px]"
+                                          :class="c.passed ? 'text-muted-foreground line-through' : (c.required ? 'text-foreground' : 'text-muted-foreground')"
+                                          x-text="c.label"></span>
+                                    <span x-show="!c.required" class="text-[11px] text-muted-foreground/60 ml-1">(optional)</span>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </template>
+        </div>
+        <script>
+        function arbReadinessPanel(solutionId) {
+            return {
+                checks: [], pct: 0,
+                load: function() {
+                    const self = this;
+                    fetch('/solutions/' + solutionId + '/governance-status', {
+                        headers: {'Accept': 'application/json'}
+                    }).then(function(r) { return r.json(); }).then(function(d) {
+                        if (d.readiness_checks) {
+                            self.checks = d.readiness_checks;
+                            const total = self.checks.length;
+                            const passed = self.checks.filter(function(c) { return c.passed; }).length;
+                            self.pct = total > 0 ? Math.round(passed / total * 100) : 0;
+                        }
+                    }).catch(function() {});
+                }
+            };
+        }
+        </script>
+
+        {# ARB submit button #}
+        <div class="space-y-2">
+            {% if arb_ready %}
+            <button type="button" id="bp-submit-arb-btn"
+                    class="w-full inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                Submit to ARB
+            </button>
+            {% else %}
+            <button type="button" disabled
+                    title="Complete all ADM phases and reach 80%+ to submit"
+                    class="w-full inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-medium bg-muted text-muted-foreground border border-border cursor-not-allowed opacity-60">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                Submit to ARB
+            </button>
+            {% endif %}
+
+            {# Resume Journey link #}
+            {% if solution.journey_state is defined and solution.journey_state %}
+            {% set current_step = solution.journey_state.get('current_step', 0) if solution.journey_state is mapping else 0 %}
+            {% if current_step < 6 %}
+            <a href="{{ url_for('solution_design.view_solution', solution_id=solution.id) }}?tab=journey"
+               class="w-full inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-medium border border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                Resume Journey
+            </a>
+            {% endif %}
+            {% endif %}
+
+            {# Sync from Journey button (placeholder) #}
+            {% if solution.journey_state is defined and solution.journey_state %}
+            {% set j_step = solution.journey_state.get('current_step', 0) if solution.journey_state is mapping else 0 %}
+            {% if j_step >= 6 %}
+            <a href="/architecture-journey/{{ solution.id }}"
+               class="w-full inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-medium border border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                Sync from Journey
+            </a>
+            {% endif %}
+            {% endif %}
+        </div>
+    </div>
+
+    {# ════════════════════════════════════════════════════════════════════ #}
+    {# 4b. ARB Inline Review (visible when in arb_review)                  #}
+    {# ════════════════════════════════════════════════════════════════════ #}
+    {% set gov_status = solution.governance_status if solution.governance_status is defined else 'draft' %}
+    {% if gov_status == 'arb_review' and arb_review_id is defined and arb_review_id %}
+    <div class="rounded-xl border border-primary/30 bg-primary/5 shadow-sm p-4"
+         x-data="arbReviewPanel({{ solution.id }}, {{ arb_review_id }})">
+        <h3 class="text-[11px] font-semibold uppercase tracking-wider text-primary/80 mb-3">ARB Review</h3>
+        <p class="text-xs text-muted-foreground mb-3">This blueprint is pending ARB approval. Review it and record your decision.</p>
+
+        <div class="space-y-2">
+            {# Approve #}
+            <button type="button" @click="approve()"
+                    :disabled="deciding"
+                    class="w-full inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30 hover:bg-emerald-500/20 transition-colors disabled:opacity-50">
+                <svg x-show="!deciding" xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                <svg x-show="deciding" x-cloak class="w-3.5 h-3.5 mr-1.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                <span x-text="deciding ? 'Recording...' : 'Approve'"></span>
+            </button>
+            {# Reject #}
+            <button type="button" @click="rejectPrompt()"
+                    :disabled="deciding"
+                    class="w-full inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive border border-destructive/30 hover:bg-destructive/20 transition-colors disabled:opacity-50">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                Reject with Conditions
+            </button>
+            {# Reject reason input #}
+            <template x-if="showRejectInput">
+                <div class="space-y-1.5">
+                    <textarea x-model="rejectReason"
+                              rows="3"
+                              placeholder="Reason for rejection / conditions required..."
+                              class="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-none"></textarea>
+                    <div class="flex gap-1.5">
+                        <button type="button" @click="reject()"
+                                :disabled="!rejectReason.trim() || deciding"
+                                class="flex-1 px-2.5 py-1 rounded-md text-xs font-medium bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50">Confirm</button>
+                        <button type="button" @click="showRejectInput = false"
+                                class="px-2.5 py-1 rounded-md text-xs border border-border text-muted-foreground hover:text-foreground">Cancel</button>
+                    </div>
+                </div>
+            </template>
+            <p x-show="arbMsg" x-cloak class="text-xs font-medium mt-1"
+               :class="arbSuccess ? 'text-emerald-600' : 'text-destructive'"
+               x-text="arbMsg"></p>
+        </div>
+    </div>
+    <script>
+    function arbReviewPanel(solutionId, reviewId) {
+        return {
+            deciding: false,
+            showRejectInput: false,
+            rejectReason: '',
+            arbMsg: '',
+            arbSuccess: false,
+            _decide: function(decision, reason) {
+                const self = this;
+                self.deciding = true;
+                self.arbMsg = '';
+                fetch('/solutions/' + solutionId + '/arb/' + reviewId + '/record-decision', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': (window.__BLUEPRINT_CONFIG__ || {}).csrfToken || ''
+                    },
+                    body: JSON.stringify({
+                        decision: decision,
+                        decision_reason: reason || '',
+                        decided_by_id: null
+                    })
+                })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    self.arbSuccess = !data.error;
+                    self.arbMsg = data.error ? data.error : (decision === 'approved' ? 'Approved — page will reload' : 'Rejected — page will reload');
+                    if (!data.error) setTimeout(function() { window.location.reload(); }, 1800);
+                })
+                .catch(function(e) {
+                    self.arbMsg = e.message || 'Request failed';
+                    self.arbSuccess = false;
+                })
+                .finally(function() { self.deciding = false; });
+            },
+            approve: function() { this._decide('approved', ''); },
+            rejectPrompt: function() { this.showRejectInput = true; },
+            reject: function() { this._decide('rejected', this.rejectReason); }
+        };
+    }
+    </script>
+    {% endif %}
+
+    {# ════════════════════════════════════════════════════════════════════ #}
+    {# 4c. AI Generation panel                                             #}
+    {# ════════════════════════════════════════════════════════════════════ #}
+    <div class="rounded-xl border border-violet-500/20 bg-violet-500/5 shadow-sm p-4"
+         x-data="{ aiGenerating: false, aiMsg: '', aiSuccess: false }">
+        <h3 class="text-[11px] font-semibold uppercase tracking-wider text-violet-500/80 mb-3">AI Generation</h3>
+        <p class="text-[10px] text-muted-foreground mb-3 leading-relaxed">Generate a complete architecture draft across all TOGAF phases from the problem statement.</p>
+        <button type="button"
+                @click="
+                    aiGenerating = true; aiMsg = '';
+                    fetch('/solutions/{{ solution.id }}/generate-draft', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': (window.__BLUEPRINT_CONFIG__ || {}).csrfToken || ''
+                        },
+                        body: JSON.stringify({problem_statement: '{{ (solution.description or solution.name)|replace("'", "\\'") }}'})
+                    })
+                    .then(r => r.json())
+                    .then(d => {
+                        aiSuccess = d.success;
+                        aiMsg = d.success ? 'Created ' + (d.total || 0) + ' entities — reloading...' : (d.error || 'Failed');
+                        if (d.success) setTimeout(() => window.location.reload(), 1800);
+                    })
+                    .catch(e => { aiMsg = e.message; aiSuccess = false; })
+                    .finally(() => { aiGenerating = false; })
+                "
+                :disabled="aiGenerating"
+                class="w-full inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-medium bg-violet-500/10 text-violet-600 border border-violet-500/30 hover:bg-violet-500/20 transition-colors disabled:opacity-50">
+            <svg x-show="!aiGenerating" xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg><!-- alpine-scope-ok -->
+            <svg x-show="aiGenerating" x-cloak class="w-3.5 h-3.5 mr-1.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+            <span x-text="aiGenerating ? 'Generating...' : 'Generate All Phases'"></span>
+        </button>
+        <p x-show="aiMsg" x-cloak class="mt-2 text-[10px] font-medium leading-snug"
+           :class="aiSuccess ? 'text-emerald-600' : 'text-destructive'"
+           x-text="aiMsg"></p>
+    </div>
+
+    {# ════════════════════════════════════════════════════════════════════ #}
+    {# 5. Export & Generate                                                #}
+    {# ════════════════════════════════════════════════════════════════════ #}
+    <div class="rounded-xl border border-border bg-card shadow-sm p-4">
+        {# Export section #}
+        <h3 class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">Export</h3>
+
+        <div class="space-y-1.5 mb-4">
+            {# Export PDF #}
+            <a href="{{ url_for('solution_design.export_solution_blueprint', solution_id=solution.id) }}" target="_blank"
+               class="w-full inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium border border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                Export PDF
+            </a>
+
+            {# Export PowerPoint (disabled) #}
+            <button type="button" disabled
+                    title="Coming soon"
+                    class="w-full inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium border border-border text-muted-foreground cursor-not-allowed opacity-50">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+                Export PowerPoint
+                <span class="ml-auto text-[11px] text-muted-foreground/60">Soon</span>
+            </button>
+
+            {# Export ArchiMate XML #}
+            <a href="{{ url_for('solution_design.export_archimate_oef', solution_id=solution.id) }}"
+               class="w-full inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium border border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
+                Export ArchiMate XML
+            </a>
+        </div>
+
+        {# Divider #}
+        <div class="border-t border-border my-3"></div>
+
+        {# Development section #}
+        <h3 class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">Development</h3>
+
+        <div class="space-y-1.5">
+            {# Generate API Specs #}
+            <button type="button" id="bp-generate-api-specs-btn"
+                    class="w-full inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium border border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                Generate API Specs
+            </button>
+
+            {# Infer Code Specs #}
+            <button type="button" id="bp-infer-code-specs-btn"
+                    class="w-full inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium border border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                Infer Code Specs
+            </button>
+
+            {# Language selector #}
+            <div class="mb-1.5">
+                <label for="bp-language-select" class="text-[10px] text-muted-foreground block mb-1">Target Language</label>
+                <select id="bp-language-select"
+                        class="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary">
+                    <option value="python-fastapi">Python (FastAPI)</option>
+                    <option value="go-chi">Go (Chi)</option>
+                </select>
+            </div>
+
+            {# Generate Product #}
+            <button type="button" id="bp-generate-product-btn"
+                    class="w-full inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium border border-primary/30 text-primary hover:bg-primary/5 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+                Generate Product
+            </button>
+
+            {# Synthesize Business Logic (hidden until generation completes) #}
+            <button id="bp-synthesize-logic-btn" type="button" class="hidden w-full inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium border border-indigo-500/30 text-primary hover:bg-indigo-500/5 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                Synthesize Business Logic
+            </button>
+
+            {# Download generated code (hidden until generation completes) #}
+            <a id="bp-download-product-btn" href="#" class="hidden w-full inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium border border-emerald-500/30 text-emerald-600 hover:bg-emerald-500/5 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                Download Code ZIP
+            </a>
+
+            {# Push to GitHub (hidden until generation completes) #}
+            <button id="bp-push-github-btn" type="button" class="hidden w-full inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium border border-sky-500/30 text-sky-600 hover:bg-sky-500/5 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+                Push to GitHub
+            </button>
+
+            {# GitHub repo link (hidden until push completes) #}
+            <div class="bp-github-repo-info hidden rounded-lg border border-sky-500/20 bg-sky-500/5 p-2">
+                <span class="text-[10px] text-muted-foreground block mb-0.5">Repository:</span>
+                <a id="bp-github-repo-link" href="#" target="_blank" class="text-[11px] text-sky-600 hover:underline truncate block"></a>
+            </div>
+
+            {# Run Tests (hidden until generation completes) #}
+            <button id="bp-run-tests-btn" type="button" class="hidden w-full inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium border border-amber-500/30 text-amber-600 hover:bg-amber-500/5 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                Run Tests
+            </button>
+
+            {# Live Preview (hidden until generation completes) #}
+            <button id="bp-preview-btn" type="button" class="hidden w-full inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium border border-violet-500/30 text-violet-600 hover:bg-violet-500/5 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                Live Preview
+            </button>
+        </div>
+    </div>
+
+    {# ════════════════════════════════════════════════════════════════════ #}
+    {# 5a. Integration Contracts (RUNTIME-02)                              #}
+    {# ════════════════════════════════════════════════════════════════════ #}
+    <div id="setup-integration-contracts" class="rounded-xl border border-border bg-card shadow-sm" x-data="integrationContracts({{ solution.id }})">
+        <button type="button" @click="expanded = !expanded"
+                class="w-full flex items-center justify-between p-4 text-left">
+            <h3 class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Integration Contracts</h3>
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-muted-foreground transition-transform"
+                 :class="expanded ? 'rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+            </svg>
+        </button>
+
+        <div x-show="expanded" x-collapse class="px-4 pb-4">
+            {# Existing contracts list #}
+            <template x-if="contracts.length > 0">
+                <div class="space-y-2 mb-3">
+                    <template x-for="c in contracts" :key="c.id">
+                        <div class="rounded-lg border border-border p-2.5 group">
+                            <div class="flex items-center justify-between mb-1">
+                                <span class="text-xs font-medium text-foreground" x-text="c.name"></span>
+                                <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <button @click="editContract(c)" class="text-muted-foreground hover:text-foreground" title="Edit">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                                    </button>
+                                    <button @click="deleteContract(c.id)" class="text-muted-foreground hover:text-destructive" title="Delete">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-1.5 flex-wrap">
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-blue-500/10 text-primary border border-blue-500/30" x-text="(c.protocol || 'rest').toUpperCase()"></span>
+                                <span x-show="c.auth_method" class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-violet-500/10 text-violet-600 border border-violet-500/30" x-text="c.auth_method"></span>
+                                <span x-show="c.base_url" class="text-[10px] text-muted-foreground truncate max-w-[140px]" x-text="c.base_url" :title="c.base_url"></span>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </template>
+
+            <template x-if="contracts.length === 0 && !showForm">
+                <p class="text-[10px] text-muted-foreground mb-3">No integration contracts registered yet.</p>
+            </template>
+
+            {# Add / Edit form #}
+            <div x-show="showForm" class="space-y-2 mb-3 rounded-lg border border-border p-3 bg-muted/20">
+                <div>
+                    <label class="text-[10px] text-muted-foreground block mb-0.5">Application</label>
+                    <select x-model="form.application_id" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary">
+                        <option value="">-- Select application --</option>
+                        <template x-for="app in connectedApps" :key="app.id">
+                            <option :value="app.id" x-text="app.name"></option>
+                        </template>
+                    </select>
+                </div>
+                <div>
+                    <label class="text-[10px] text-muted-foreground block mb-0.5">Name</label>
+                    <input type="text" x-model="form.name" placeholder="e.g. Payment Gateway API" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary" />
+                </div>
+                <div>
+                    <label class="text-[10px] text-muted-foreground block mb-0.5">Base URL</label>
+                    <input type="url" x-model="form.base_url" placeholder="https://api.example.com/v1" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary" />
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="text-[10px] text-muted-foreground block mb-0.5">Protocol</label>
+                        <select x-model="form.protocol" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary">
+                            <option value="rest">REST</option>
+                            <option value="grpc">gRPC</option>
+                            <option value="soap">SOAP</option>
+                            <option value="odata">OData</option>
+                            <option value="graphql">GraphQL</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-[10px] text-muted-foreground block mb-0.5">Auth Method</label>
+                        <select x-model="form.auth_method" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary">
+                            <option value="none">None</option>
+                            <option value="api_key">API Key</option>
+                            <option value="oauth2">OAuth 2.0</option>
+                            <option value="basic">Basic Auth</option>
+                            <option value="mtls">Mutual TLS</option>
+                        </select>
+                    </div>
+                </div>
+
+                {# Conditional auth config fields #}
+                <template x-if="form.auth_method === 'oauth2'">
+                    <div class="space-y-2 pl-2 border-l-2 border-blue-500/30">
+                        <div><label class="text-[10px] text-muted-foreground block mb-0.5">Token URL</label>
+                        <input type="url" x-model="form.auth_config.token_url" placeholder="https://auth.example.com/oauth/token" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary" /></div>
+                        <div><label class="text-[10px] text-muted-foreground block mb-0.5">Client ID env var</label>
+                        <input type="text" x-model="form.auth_config.client_id_env" placeholder="CLIENT_ID" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary" /></div>
+                        <div><label class="text-[10px] text-muted-foreground block mb-0.5">Scope</label>
+                        <input type="text" x-model="form.auth_config.scope" placeholder="read write" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary" /></div>
+                    </div>
+                </template>
+                <template x-if="form.auth_method === 'api_key'">
+                    <div class="space-y-2 pl-2 border-l-2 border-blue-500/30">
+                        <div><label class="text-[10px] text-muted-foreground block mb-0.5">Header name</label>
+                        <input type="text" x-model="form.auth_config.api_key_header" placeholder="X-API-Key" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary" /></div>
+                        <div><label class="text-[10px] text-muted-foreground block mb-0.5">Env var name</label>
+                        <input type="text" x-model="form.auth_config.api_key_env" placeholder="API_KEY" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary" /></div>
+                    </div>
+                </template>
+                <template x-if="form.auth_method === 'basic'">
+                    <div class="space-y-2 pl-2 border-l-2 border-blue-500/30">
+                        <div><label class="text-[10px] text-muted-foreground block mb-0.5">Username env var</label>
+                        <input type="text" x-model="form.auth_config.username_env" placeholder="BASIC_USER" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary" /></div> <!-- entity-picker-ok: env var name, not a user reference -->
+                        <div><label class="text-[10px] text-muted-foreground block mb-0.5">Password env var</label>
+                        <input type="text" x-model="form.auth_config.password_env" placeholder="BASIC_PASS" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary" /></div>
+                    </div>
+                </template>
+                <template x-if="form.auth_method === 'mtls'">
+                    <div class="space-y-2 pl-2 border-l-2 border-blue-500/30">
+                        <div><label class="text-[10px] text-muted-foreground block mb-0.5">Cert path env var</label>
+                        <input type="text" x-model="form.auth_config.cert_path_env" placeholder="MTLS_CERT_PATH" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary" /></div>
+                        <div><label class="text-[10px] text-muted-foreground block mb-0.5">Key path env var</label>
+                        <input type="text" x-model="form.auth_config.key_path_env" placeholder="MTLS_KEY_PATH" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary" /></div>
+                    </div>
+                </template>
+
+                {# Environment URLs #}
+                <div class="space-y-1.5">
+                    <label class="text-[10px] text-muted-foreground block">Environment URLs</label>
+                    <input type="url" x-model="form.environments.dev" placeholder="Dev: https://dev-api.example.com" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary" />
+                    <input type="url" x-model="form.environments.staging" placeholder="Staging: https://staging-api.example.com" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary" />
+                    <input type="url" x-model="form.environments.prod" placeholder="Prod: https://api.example.com" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary" />
+                </div>
+
+                {# SLA #}
+                <div>
+                    <label class="text-[10px] text-muted-foreground block mb-0.5">SLA Latency (ms)</label>
+                    <input type="number" x-model.number="form.sla_latency_ms" placeholder="500" min="0" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary" />
+                </div>
+
+                {# Actions #}
+                <div class="flex items-center gap-2 pt-1">
+                    <button type="button" @click="saveContract()" :disabled="saving"
+                            class="inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium border border-primary/30 text-primary hover:bg-primary/5 transition-colors disabled:opacity-50">
+                        <span x-text="saving ? 'Saving...' : (editingId ? 'Update' : 'Save')"></span>
+                    </button>
+                    <button type="button" @click="cancelForm()"
+                            class="inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium border border-border text-muted-foreground hover:text-foreground transition-colors">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+
+            {# Add button #}
+            <button x-show="!showForm" type="button" @click="showAddForm()"
+                    class="w-full inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-medium border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+                Add Contract
+            </button>
+        </div>
+    </div>
+
+    <script>
+    function integrationContracts(solutionId) {
+        return {
+            expanded: false,
+            contracts: [],
+            connectedApps: [],
+            showForm: false,
+            saving: false,
+            editingId: null,
+            form: {application_id: '', name: '', base_url: '', protocol: 'rest', auth_method: 'none', auth_config: {}, environments: {dev: '', staging: '', prod: ''}, sla_latency_ms: null},
+            init: function() {
+                this.loadContracts();
+                this.loadConnectedApps();
+            },
+            loadContracts: function() {
+                let self = this;
+                fetch('/api/enterprise/contracts?per_page=100', {headers: {'Accept': 'application/json'}})
+                .then(function(r) { return r.json(); })
+                .then(function(data) { self.contracts = data.items || []; })
+                .catch(function() {});
+            },
+            loadConnectedApps: function() {
+                let self = this;
+                fetch('/solutions/' + solutionId + '/api/archimate-elements?layer=application', {headers: {'Accept': 'application/json'}})
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    const elems = data.elements || data.items || [];
+                    self.connectedApps = elems.filter(function(e) { return e.application_id; }).map(function(e) {
+                        return {id: e.application_id, name: e.name || e.element_name || ('App #' + e.application_id)};
+                    });
+                })
+                .catch(function() {});
+            },
+            resetForm: function() {
+                this.form = {application_id: '', name: '', base_url: '', protocol: 'rest', auth_method: 'none', auth_config: {}, environments: {dev: '', staging: '', prod: ''}, sla_latency_ms: null};
+                this.editingId = null;
+            },
+            showAddForm: function() { this.resetForm(); this.showForm = true; },
+            cancelForm: function() { this.showForm = false; this.resetForm(); },
+            editContract: function(c) {
+                this.editingId = c.id;
+                this.form = {
+                    application_id: c.application_id || '',
+                    name: c.name || '',
+                    base_url: c.base_url || '',
+                    protocol: c.protocol || 'rest',
+                    auth_method: c.auth_method || 'none',
+                    auth_config: c.auth_config || {},
+                    environments: c.environments || {dev: '', staging: '', prod: ''},
+                    sla_latency_ms: c.sla_latency_ms || null
+                };
+                this.showForm = true;
+            },
+            saveContract: function() {
+                let self = this;
+                self.saving = true;
+                let csrf = (window.__BLUEPRINT_CONFIG__ || {}).csrfToken || '';
+                const payload = JSON.parse(JSON.stringify(self.form));
+                if (payload.application_id) payload.application_id = parseInt(payload.application_id);
+                if (payload.sla_latency_ms) payload.sla_latency_ms = parseInt(payload.sla_latency_ms);
+
+                let url = '/api/enterprise/contracts';
+                let method = 'POST';
+                if (self.editingId) {
+                    url = '/api/enterprise/contracts/' + self.editingId;
+                    method = 'PUT';
+                }
+
+                fetch(url, {
+                    method: method,
+                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrf},
+                    body: JSON.stringify(payload)
+                }).then(function(r) { return r.json(); }).then(function(data) {
+                    self.saving = false;
+                    if (data.error) {
+                        if (window.Platform && Platform.toast) Platform.toast.error(data.error);
+                    } else {
+                        if (window.Platform && Platform.toast) Platform.toast.success(self.editingId ? 'Contract updated' : 'Contract created');
+                        self.showForm = false;
+                        self.resetForm();
+                        self.loadContracts();
+                    }
+                }).catch(function(e) {
+                    self.saving = false;
+                    if (window.Platform && Platform.toast) Platform.toast.error('Error: ' + e.message);
+                });
+            },
+            deleteContract: async function(id) {
+                if (!(await Platform.modal.confirm('Delete this integration contract?'))) return;
+                let self = this;
+                let csrf = (window.__BLUEPRINT_CONFIG__ || {}).csrfToken || '';
+                fetch('/api/enterprise/contracts/' + id, {
+                    method: 'DELETE',
+                    headers: {'X-CSRFToken': csrf}
+                }).then(function(r) { return r.json(); }).then(function() {
+                    if (window.Platform && Platform.toast) Platform.toast.success('Contract deleted');
+                    self.loadContracts();
+                }).catch(function(e) {
+                    if (window.Platform && Platform.toast) Platform.toast.error('Error: ' + e.message);
+                });
+            }
+        };
+    }
+    </script>
+
+    {# ════════════════════════════════════════════════════════════════════ #}
+    {# 5b-idp. Identity Provider (RUNTIME-03)                             #}
+    {# ════════════════════════════════════════════════════════════════════ #}
+    <div id="setup-identity-provider" class="rounded-xl border border-border bg-card shadow-sm" x-data="identityProvider({{ solution.id }})">
+        <button type="button" @click="expanded = !expanded"
+                class="w-full flex items-center justify-between p-4 text-left">
+            <h3 class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Identity Provider</h3>
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-muted-foreground transition-transform"
+                 :class="expanded ? 'rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+            </svg>
+        </button>
+
+        <div x-show="expanded" x-collapse class="px-4 pb-4 space-y-2">
+            {# Provider selector #}
+            <div>
+                <label class="text-[10px] text-muted-foreground block mb-0.5">Provider</label>
+                <select x-model="form.type" @change="onPresetChange()" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary">
+                    <option value="">-- Select provider --</option>
+                    <option value="okta">Okta</option>
+                    <option value="azure_ad">Azure AD</option>
+                    <option value="keycloak">Keycloak</option>
+                    <option value="auth0">Auth0</option>
+                    <option value="cognito">AWS Cognito</option>
+                    <option value="custom">Custom</option>
+                </select>
+            </div>
+
+            {# Issuer URL #}
+            <div>
+                <label class="text-[10px] text-muted-foreground block mb-0.5">Issuer URL</label>
+                <input type="url" x-model="form.issuer_url" placeholder="https://your-idp.example.com" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary" />
+            </div>
+
+            {# JWKS URI #}
+            <div>
+                <label class="text-[10px] text-muted-foreground block mb-0.5">JWKS URI</label>
+                <input type="url" x-model="form.jwks_uri" placeholder="https://your-idp.example.com/.well-known/jwks.json" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary" />
+            </div>
+
+            {# Client ID env var #}
+            <div>
+                <label class="text-[10px] text-muted-foreground block mb-0.5">Client ID env var</label>
+                <input type="text" x-model="form.client_id_env" placeholder="OAUTH_CLIENT_ID" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary" />
+            </div>
+
+            {# Audience #}
+            <div>
+                <label class="text-[10px] text-muted-foreground block mb-0.5">Audience</label>
+                <input type="text" x-model="form.audience" placeholder="https://api.example.com" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary" />
+            </div>
+
+            {# Scopes #}
+            <div>
+                <label class="text-[10px] text-muted-foreground block mb-0.5">Scopes (comma-separated)</label>
+                <input type="text" x-model="scopesStr" placeholder="openid, profile, email" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary" />
+            </div>
+
+            {# Role claim path #}
+            <div>
+                <label class="text-[10px] text-muted-foreground block mb-0.5">Role claim path</label>
+                <input type="text" x-model="form.role_claim" placeholder="groups" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary" />
+            </div>
+
+            {# Role mapping #}
+            <div>
+                <label class="text-[10px] text-muted-foreground block mb-1">Role Mapping</label>
+                <div class="space-y-1.5">
+                    <template x-for="(mapping, idx) in roleMappings" :key="idx">
+                        <div class="flex items-center gap-1.5">
+                            <input type="text" x-model="mapping.idp_group" placeholder="IdP Group" class="flex-1 rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1 text-[11px] text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary" />
+                            <span class="text-[10px] text-muted-foreground">&#8594;</span>
+                            <input type="text" x-model="mapping.app_role" placeholder="App Role" class="flex-1 rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1 text-[11px] text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary" />
+                            <button @click="roleMappings.splice(idx, 1)" class="text-muted-foreground hover:text-destructive shrink-0">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                            </button>
+                        </div>
+                    </template>
+                </div>
+                <button type="button" @click="roleMappings.push({idp_group: '', app_role: ''})"
+                        class="mt-1.5 text-[10px] text-primary hover:underline">+ Add row</button>
+            </div>
+
+            {# Save button #}
+            <button type="button" @click="saveIdp()" :disabled="saving"
+                    class="w-full inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-medium border border-primary/30 text-primary hover:bg-primary/5 transition-colors disabled:opacity-50">
+                <span x-text="saving ? 'Saving...' : 'Save Identity Provider'"></span>
+            </button>
+
+            {# Current status #}
+            <template x-if="currentProvider">
+                <div class="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-2">
+                    <span class="text-[10px] text-emerald-600 font-medium" x-text="'Configured: ' + currentProvider"></span>
+                </div>
+            </template>
+        </div>
+    </div>
+
+    <script>
+    function identityProvider(solutionId) {
+        const presetDefaults = {
+            okta: {issuer_url: 'https://YOUR_ORG.okta.com/oauth2/default', jwks_uri: 'https://YOUR_ORG.okta.com/oauth2/default/v1/keys', role_claim: 'groups', scopes: 'openid, profile, email'},
+            azure_ad: {issuer_url: 'https://login.microsoftonline.com/YOUR_TENANT_ID/v2.0', jwks_uri: 'https://login.microsoftonline.com/YOUR_TENANT_ID/discovery/v2.0/keys', role_claim: 'roles', scopes: 'openid, profile'},
+            keycloak: {issuer_url: 'https://YOUR_HOST/realms/YOUR_REALM', jwks_uri: 'https://YOUR_HOST/realms/YOUR_REALM/protocol/openid-connect/certs', role_claim: 'realm_access.roles', scopes: 'openid, profile'},
+            auth0: {issuer_url: 'https://YOUR_DOMAIN.auth0.com/', jwks_uri: 'https://YOUR_DOMAIN.auth0.com/.well-known/jwks.json', role_claim: 'permissions', scopes: 'openid, profile, email'},
+            cognito: {issuer_url: 'https://cognito-idp.REGION.amazonaws.com/USER_POOL_ID', jwks_uri: 'https://cognito-idp.REGION.amazonaws.com/USER_POOL_ID/.well-known/jwks.json', role_claim: 'cognito:groups', scopes: 'openid, profile'}
+        };
+        return {
+            expanded: false,
+            saving: false,
+            currentProvider: null,
+            form: {type: '', issuer_url: '', jwks_uri: '', client_id_env: 'OAUTH_CLIENT_ID', audience: '', role_claim: ''},
+            scopesStr: 'openid, profile, email',
+            roleMappings: [{idp_group: '', app_role: ''}, {idp_group: '', app_role: ''}, {idp_group: '', app_role: ''}],
+            init: function() {
+                let self = this;
+                fetch('/solutions/' + solutionId + '/identity-provider', {headers: {'Accept': 'application/json'}})
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    const idp = (data.data || {}).identity_provider;
+                    if (idp) {
+                        self.currentProvider = idp.display_name || idp.type || 'Configured';
+                        self.form.type = idp.type || '';
+                        self.form.issuer_url = idp.issuer_url || '';
+                        self.form.jwks_uri = idp.jwks_uri || '';
+                        self.form.client_id_env = idp.client_id_env || 'OAUTH_CLIENT_ID';
+                        self.form.audience = idp.audience || '';
+                        self.form.role_claim = idp.role_claim || '';
+                        if (idp.scopes) self.scopesStr = Array.isArray(idp.scopes) ? idp.scopes.join(', ') : idp.scopes;
+                        if (idp.role_mapping && typeof idp.role_mapping === 'object') {
+                            const entries = Object.entries(idp.role_mapping);
+                            if (entries.length > 0) {
+                                self.roleMappings = entries.map(function(e) { return {idp_group: e[0], app_role: e[1]}; });
+                            }
+                        }
+                    }
+                }).catch(function() {});
+            },
+            onPresetChange: function() {
+                const preset = presetDefaults[this.form.type];
+                if (preset) {
+                    this.form.issuer_url = preset.issuer_url;
+                    this.form.jwks_uri = preset.jwks_uri;
+                    this.form.role_claim = preset.role_claim;
+                    this.scopesStr = preset.scopes;
+                }
+            },
+            saveIdp: function() {
+                let self = this;
+                self.saving = true;
+                const csrf = (window.__BLUEPRINT_CONFIG__ || {}).csrfToken || '';
+                const scopes = self.scopesStr.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+                const roleMap = {};
+                self.roleMappings.forEach(function(m) { if (m.idp_group && m.app_role) roleMap[m.idp_group] = m.app_role; });
+
+                const payload = {
+                    type: self.form.type || 'custom',
+                    issuer_url: self.form.issuer_url,
+                    jwks_uri: self.form.jwks_uri,
+                    client_id_env: self.form.client_id_env,
+                    audience: self.form.audience,
+                    scopes: scopes,
+                    role_claim: self.form.role_claim,
+                    role_mapping: roleMap
+                };
+
+                fetch('/solutions/' + solutionId + '/identity-provider', {
+                    method: 'PUT',
+                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrf},
+                    body: JSON.stringify(payload)
+                }).then(function(r) { return r.json(); }).then(function(data) {
+                    self.saving = false;
+                    if (data.success) {
+                        self.currentProvider = (data.identity_provider || {}).display_name || self.form.type;
+                        if (window.Platform && Platform.toast) Platform.toast.success('Identity provider saved');
+                    } else {
+                        if (window.Platform && Platform.toast) Platform.toast.error(data.error || 'Save failed');
+                    }
+                }).catch(function(e) {
+                    self.saving = false;
+                    if (window.Platform && Platform.toast) Platform.toast.error('Error: ' + e.message);
+                });
+            }
+        };
+    }
+    </script>
+
+    {# ════════════════════════════════════════════════════════════════════ #}
+    {# 5c. Infrastructure & Deployment (RUNTIME-04/05)                     #}
+    {# ════════════════════════════════════════════════════════════════════ #}
+    <div id="setup-infrastructure" class="rounded-xl border border-border bg-card shadow-sm" x-data="infrastructureConfig({{ solution.id }})">
+        <button type="button" @click="expanded = !expanded"
+                class="w-full flex items-center justify-between p-4 text-left">
+            <h3 class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Infrastructure</h3>
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-muted-foreground transition-transform"
+                 :class="expanded ? 'rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+            </svg>
+        </button>
+
+        <div x-show="expanded" x-collapse class="px-4 pb-4 space-y-4">
+
+            {# ── Database sub-section ── #}
+            <div>
+                <h4 class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"/></svg>
+                    Database
+                </h4>
+                <div class="space-y-2">
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="text-[10px] text-muted-foreground block mb-0.5">Engine</label>
+                            <select x-model="db.engine" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary">
+                                <option value="postgresql">PostgreSQL</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-[10px] text-muted-foreground block mb-0.5">Version</label>
+                            <select x-model="db.version" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary">
+                                <option value="14">14</option>
+                                <option value="15">15</option>
+                                <option value="16">16</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="text-[10px] text-muted-foreground block mb-0.5">Instance class</label>
+                        <select x-model="db.instance_class" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary">
+                            <option value="db.t3.micro">db.t3.micro</option>
+                            <option value="db.t3.small">db.t3.small</option>
+                            <option value="db.t3.medium">db.t3.medium</option>
+                            <option value="db.t3.large">db.t3.large</option>
+                            <option value="db.t4g.micro">db.t4g.micro</option>
+                            <option value="db.t4g.small">db.t4g.small</option>
+                            <option value="db.t4g.medium">db.t4g.medium</option>
+                            <option value="db.t4g.large">db.t4g.large</option>
+                            <option value="db.r6g.large">db.r6g.large</option>
+                            <option value="db.r6g.xlarge">db.r6g.xlarge</option>
+                            <option value="db.m6g.large">db.m6g.large</option>
+                            <option value="db.m6g.xlarge">db.m6g.xlarge</option>
+                        </select>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="text-[10px] text-muted-foreground block mb-0.5">Storage (GB)</label>
+                            <input type="number" x-model.number="db.storage_gb" min="5" max="1000" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary" />
+                        </div>
+                        <div>
+                            <label class="text-[10px] text-muted-foreground block mb-0.5">Backup days</label>
+                            <input type="number" x-model.number="db.backup_days" min="0" max="35" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary" />
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <label class="flex items-center gap-1.5 cursor-pointer">
+                            <input type="checkbox" x-model="db.multi_az" class="rounded border-zinc-600 bg-zinc-800 text-primary focus:ring-primary focus:ring-offset-0" />
+                            <span class="text-[10px] text-muted-foreground">Multi-AZ</span>
+                        </label>
+                        <label class="flex items-center gap-1.5 cursor-pointer">
+                            <input type="checkbox" x-model="db.encryption" class="rounded border-zinc-600 bg-zinc-800 text-primary focus:ring-primary focus:ring-offset-0" />
+                            <span class="text-[10px] text-muted-foreground">Encryption</span>
+                        </label>
+                    </div>
+                    <button type="button" @click="saveDb()" :disabled="savingDb"
+                            class="w-full inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-medium border border-primary/30 text-primary hover:bg-primary/5 transition-colors disabled:opacity-50">
+                        <span x-text="savingDb ? 'Saving...' : 'Save Database Config'"></span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="border-t border-border"></div>
+
+            {# ── CI/CD sub-section ── #}
+            <div>
+                <h4 class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                    CI/CD Pipeline
+                </h4>
+                <div class="space-y-2">
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="text-[10px] text-muted-foreground block mb-0.5">Provider</label>
+                            <select x-model="cicd.provider" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary">
+                                <option value="github_actions">GitHub Actions</option>
+                                <option value="gitlab_ci">GitLab CI</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-[10px] text-muted-foreground block mb-0.5">Container registry</label>
+                            <select x-model="cicd.container_registry" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary">
+                                <option value="ghcr">GHCR</option>
+                                <option value="ecr">ECR</option>
+                                <option value="gcr">GCR</option>
+                                <option value="acr">ACR</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="text-[10px] text-muted-foreground block mb-0.5">Staging namespace</label>
+                            <input type="text" x-model="cicd.k8s_staging_namespace" placeholder="staging" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary" />
+                        </div>
+                        <div>
+                            <label class="text-[10px] text-muted-foreground block mb-0.5">Prod namespace</label>
+                            <input type="text" x-model="cicd.k8s_prod_namespace" placeholder="production" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary" />
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <label class="flex items-center gap-1.5 cursor-pointer">
+                            <input type="checkbox" x-model="cicd.require_manual_approval" class="rounded border-zinc-600 bg-zinc-800 text-primary focus:ring-primary focus:ring-offset-0" />
+                            <span class="text-[10px] text-muted-foreground">Manual approval for prod</span>
+                        </label>
+                        <label class="flex items-center gap-1.5 cursor-pointer">
+                            <input type="checkbox" x-model="cicd.run_security_scan" class="rounded border-zinc-600 bg-zinc-800 text-primary focus:ring-primary focus:ring-offset-0" />
+                            <span class="text-[10px] text-muted-foreground">Security scan</span>
+                        </label>
+                    </div>
+                    <button type="button" @click="saveCicd()" :disabled="savingCicd"
+                            class="w-full inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-medium border border-primary/30 text-primary hover:bg-primary/5 transition-colors disabled:opacity-50">
+                        <span x-text="savingCicd ? 'Saving...' : 'Save CI/CD Config'"></span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="border-t border-border"></div>
+
+            {# ── Architecture Style sub-section ── #}
+            <div>
+                <h4 class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+                    Architecture Style
+                </h4>
+                <div class="space-y-2">
+                    <div>
+                        <label class="text-[10px] text-muted-foreground block mb-0.5">Primary style</label>
+                        <select x-model="arch.primary" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary">
+                            <option value="microservices">Microservices</option>
+                            <option value="event_driven">Event-Driven</option>
+                            <option value="serverless">Serverless</option>
+                            <option value="modular_monolith">Modular Monolith</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-[10px] text-muted-foreground block mb-1">Patterns</label>
+                        <div class="grid grid-cols-2 gap-1.5">
+                            <label class="flex items-center gap-1.5 cursor-pointer">
+                                <input type="checkbox" value="saga" x-model="arch.patterns" class="rounded border-zinc-600 bg-zinc-800 text-primary focus:ring-primary focus:ring-offset-0" />
+                                <span class="text-[11px] text-zinc-100">Saga</span>
+                            </label>
+                            <label class="flex items-center gap-1.5 cursor-pointer">
+                                <input type="checkbox" value="event_sourcing" x-model="arch.patterns" class="rounded border-zinc-600 bg-zinc-800 text-primary focus:ring-primary focus:ring-offset-0" />
+                                <span class="text-[11px] text-zinc-100">Event Sourcing</span>
+                            </label>
+                            <label class="flex items-center gap-1.5 cursor-pointer">
+                                <input type="checkbox" value="api_gateway" x-model="arch.patterns" class="rounded border-zinc-600 bg-zinc-800 text-primary focus:ring-primary focus:ring-offset-0" />
+                                <span class="text-[11px] text-zinc-100">API Gateway</span>
+                            </label>
+                            <label class="flex items-center gap-1.5 cursor-pointer">
+                                <input type="checkbox" value="service_mesh" x-model="arch.patterns" class="rounded border-zinc-600 bg-zinc-800 text-primary focus:ring-primary focus:ring-offset-0" />
+                                <span class="text-[11px] text-zinc-100">Service Mesh</span>
+                            </label>
+                            <label class="flex items-center gap-1.5 cursor-pointer">
+                                <input type="checkbox" value="cqrs" x-model="arch.patterns" class="rounded border-zinc-600 bg-zinc-800 text-primary focus:ring-primary focus:ring-offset-0" />
+                                <span class="text-[11px] text-zinc-100">CQRS</span>
+                            </label>
+                            <label class="flex items-center gap-1.5 cursor-pointer">
+                                <input type="checkbox" value="circuit_breaker" x-model="arch.patterns" class="rounded border-zinc-600 bg-zinc-800 text-primary focus:ring-primary focus:ring-offset-0" />
+                                <span class="text-[11px] text-zinc-100">Circuit Breaker</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    {# Service mesh selector (conditional) #}
+                    <template x-if="arch.patterns.includes('service_mesh')">
+                        <div>
+                            <label class="text-[10px] text-muted-foreground block mb-0.5">Service Mesh</label>
+                            <select x-model="arch.service_mesh" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary">
+                                <option value="">None</option>
+                                <option value="istio">Istio</option>
+                                <option value="linkerd">Linkerd</option>
+                                <option value="consul_connect">Consul Connect</option>
+                            </select>
+                        </div>
+                    </template>
+
+                    {# API gateway selector (conditional) #}
+                    <template x-if="arch.patterns.includes('api_gateway')">
+                        <div>
+                            <label class="text-[10px] text-muted-foreground block mb-0.5">API Gateway</label>
+                            <select x-model="arch.api_gateway" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary">
+                                <option value="">None</option>
+                                <option value="kong">Kong</option>
+                                <option value="envoy">Envoy</option>
+                                <option value="aws_api_gateway">AWS API Gateway</option>
+                                <option value="traefik">Traefik</option>
+                                <option value="ambassador">Ambassador</option>
+                            </select>
+                        </div>
+                    </template>
+
+                    <button type="button" @click="saveArch()" :disabled="savingArch"
+                            class="w-full inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-medium border border-primary/30 text-primary hover:bg-primary/5 transition-colors disabled:opacity-50">
+                        <span x-text="savingArch ? 'Saving...' : 'Save Architecture Style'"></span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    function infrastructureConfig(solutionId) {
+        return {
+            expanded: false,
+            savingDb: false,
+            savingCicd: false,
+            savingArch: false,
+            db: {engine: 'postgresql', version: '16', instance_class: 'db.t3.micro', storage_gb: 20, multi_az: false, encryption: true, backup_days: 7},
+            cicd: {provider: 'github_actions', container_registry: 'ghcr', k8s_staging_namespace: 'staging', k8s_prod_namespace: 'production', require_manual_approval: true, run_security_scan: true},
+            arch: {primary: 'microservices', patterns: [], service_mesh: '', api_gateway: ''},
+            init: function() {
+                let self = this;
+                // Load database config
+                fetch('/api/solutions/' + solutionId + '/database-config', {headers: {'Accept': 'application/json'}})
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data.success && data.database_config) {
+                        let c = data.database_config;
+                        self.db.engine = c.engine || 'postgresql';
+                        self.db.version = c.version || '16';
+                        self.db.instance_class = c.instance_class || 'db.t3.micro';
+                        self.db.storage_gb = c.storage_gb || 20;
+                        self.db.multi_az = !!c.multi_az;
+                        self.db.encryption = c.encryption !== false;
+                        self.db.backup_days = c.backup_days || 7;
+                    }
+                }).catch(function() {});
+
+                // Load CI/CD config
+                fetch('/api/solutions/' + solutionId + '/ci-cd-config', {headers: {'Accept': 'application/json'}})
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data.success && data.ci_cd) {
+                        let c = data.ci_cd;
+                        self.cicd.provider = c.provider || 'github_actions';
+                        self.cicd.container_registry = c.container_registry || 'ghcr';
+                        self.cicd.k8s_staging_namespace = c.k8s_staging_namespace || 'staging';
+                        self.cicd.k8s_prod_namespace = c.k8s_prod_namespace || 'production';
+                        self.cicd.require_manual_approval = c.require_manual_approval !== false;
+                        self.cicd.run_security_scan = c.run_security_scan !== false;
+                    }
+                }).catch(function() {});
+
+                // Load architecture style
+                fetch('/api/solutions/' + solutionId + '/architecture-style', {headers: {'Accept': 'application/json'}})
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data.success && data.architecture_style) {
+                        let c = data.architecture_style;
+                        self.arch.primary = c.primary || 'microservices';
+                        self.arch.patterns = c.patterns || [];
+                        self.arch.service_mesh = c.service_mesh || '';
+                        self.arch.api_gateway = c.api_gateway || '';
+                    }
+                }).catch(function() {});
+            },
+            saveDb: function() {
+                let self = this;
+                self.savingDb = true;
+                let csrf = (window.__BLUEPRINT_CONFIG__ || {}).csrfToken || '';
+                fetch('/api/solutions/' + solutionId + '/database-config', {
+                    method: 'PUT',
+                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrf},
+                    body: JSON.stringify(self.db)
+                }).then(function(r) { return r.json(); }).then(function(data) {
+                    self.savingDb = false;
+                    if (data.success) {
+                        if (window.Platform && Platform.toast) Platform.toast.success('Database config saved');
+                    } else {
+                        if (window.Platform && Platform.toast) Platform.toast.error(data.error || 'Save failed');
+                    }
+                }).catch(function(e) {
+                    self.savingDb = false;
+                    if (window.Platform && Platform.toast) Platform.toast.error('Error: ' + e.message);
+                });
+            },
+            saveCicd: function() {
+                let self = this;
+                self.savingCicd = true;
+                let csrf = (window.__BLUEPRINT_CONFIG__ || {}).csrfToken || '';
+                fetch('/api/solutions/' + solutionId + '/ci-cd-config', {
+                    method: 'PUT',
+                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrf},
+                    body: JSON.stringify(self.cicd)
+                }).then(function(r) { return r.json(); }).then(function(data) {
+                    self.savingCicd = false;
+                    if (data.success) {
+                        if (window.Platform && Platform.toast) Platform.toast.success('CI/CD config saved');
+                    } else {
+                        if (window.Platform && Platform.toast) Platform.toast.error(data.error || 'Save failed');
+                    }
+                }).catch(function(e) {
+                    self.savingCicd = false;
+                    if (window.Platform && Platform.toast) Platform.toast.error('Error: ' + e.message);
+                });
+            },
+            saveArch: function() {
+                let self = this;
+                self.savingArch = true;
+                let csrf = (window.__BLUEPRINT_CONFIG__ || {}).csrfToken || '';
+                const payload = {primary: self.arch.primary, patterns: self.arch.patterns};
+                if (self.arch.patterns.includes('service_mesh') && self.arch.service_mesh) payload.service_mesh = self.arch.service_mesh;
+                if (self.arch.patterns.includes('api_gateway') && self.arch.api_gateway) payload.api_gateway = self.arch.api_gateway;
+                fetch('/api/solutions/' + solutionId + '/architecture-style', {
+                    method: 'PUT',
+                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrf},
+                    body: JSON.stringify(payload)
+                }).then(function(r) { return r.json(); }).then(function(data) {
+                    self.savingArch = false;
+                    if (data.success) {
+                        if (window.Platform && Platform.toast) Platform.toast.success('Architecture style saved');
+                    } else {
+                        if (window.Platform && Platform.toast) Platform.toast.error(data.error || 'Save failed');
+                    }
+                }).catch(function(e) {
+                    self.savingArch = false;
+                    if (window.Platform && Platform.toast) Platform.toast.error('Error: ' + e.message);
+                });
+            }
+        };
+    }
+    </script>
+
+    {# ════════════════════════════════════════════════════════════════════ #}
+    {# 5d. Cloud Cost Estimator                                            #}
+    {# ════════════════════════════════════════════════════════════════════ #}
+    <div class="rounded-xl border border-border bg-card shadow-sm p-4" x-data="costEstimator({{ solution.id }})">
+        <h3 class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">Cloud Cost Estimate</h3>
+
+        {# Estimate button #}
+        <button type="button"
+                @click="runEstimate()"
+                :disabled="loading"
+                class="w-full inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-medium border border-primary/30 text-primary hover:bg-primary/5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed mb-2">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            <span x-text="loading ? 'Estimating...' : 'Estimate Cost'"></span>
+        </button>
+
+        {# Results (shown after estimate) #}
+        <template x-if="result">
+            <div class="space-y-2">
+                {# Monthly total #}
+                <div class="flex items-center justify-between">
+                    <span class="text-xs text-muted-foreground">Monthly</span>
+                    <span class="text-lg font-bold" :class="{
+                        'text-emerald-600': result.total_monthly_usd < 200,
+                        'text-amber-600': result.total_monthly_usd >= 200 && result.total_monthly_usd < 500,
+                        'text-destructive': result.total_monthly_usd >= 500
+                    }" x-text="'$' + result.total_monthly_usd.toLocaleString('en-US', {minimumFractionDigits: 2})"></span>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-xs text-muted-foreground">Annual</span>
+                    <span class="text-xs font-medium text-foreground" x-text="'$' + result.annual_usd.toLocaleString('en-US', {minimumFractionDigits: 2})"></span>
+                </div>
+
+                {# Warning badge #}
+                <template x-if="result.warning">
+                    <div class="inline-flex items-center px-2.5 py-1 rounded-md text-[10px] font-medium bg-destructive/10 text-destructive border border-destructive/30 w-full">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 mr-1 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
+                        <span x-text="result.warning"></span>
+                    </div>
+                </template>
+
+                {# Breakdown table #}
+                <div class="border-t border-border pt-2">
+                    <h4 class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Breakdown</h4>
+                    <div class="space-y-1">
+                        <template x-for="item in result.breakdown" :key="item.service">
+                            <div class="flex items-center justify-between text-[11px]">
+                                <div class="flex items-center gap-1.5 min-w-0">
+                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium bg-muted/60 text-muted-foreground shrink-0" x-text="item.category"></span>
+                                    <span class="text-foreground truncate" x-text="item.service"></span>
+                                </div>
+                                <span class="text-foreground font-medium shrink-0 ml-2" x-text="'$' + item.monthly_usd.toFixed(2)"></span>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                {# Assumptions #}
+                <div class="border-t border-border pt-2">
+                    <details class="group">
+                        <summary class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground cursor-pointer">Assumptions</summary>
+                        <ul class="mt-1.5 space-y-0.5">
+                            <template x-for="(a, idx) in result.assumptions" :key="idx">
+                                <li class="text-[10px] text-muted-foreground pl-3 relative before:content-[''] before:absolute before:left-0 before:top-1.5 before:w-1 before:h-1 before:rounded-full before:bg-muted-foreground/30" x-text="a"></li>
+                            </template>
+                        </ul>
+                    </details>
+                </div>
+
+                {# Source badge #}
+                <div class="text-[11px] text-muted-foreground/50 text-right" x-text="'Source: ' + (result.source || 'estimate')"></div>
+            </div>
+        </template>
+
+        {# Error state #}
+        <template x-if="error">
+            <div class="text-[11px] text-destructive" x-text="error"></div>
+        </template>
+    </div>
+
+    <script>
+    function costEstimator(solutionId) {
+        return {
+            loading: false,
+            result: null,
+            error: null,
+            runEstimate: function() {
+                const self = this;
+                self.loading = true;
+                self.error = null;
+                self.result = null;
+                fetch('/api/solutions/' + solutionId + '/cost-estimate', {
+                    headers: {'Accept': 'application/json'}
+                })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    self.loading = false;
+                    if (data.success) {
+                        self.result = data;
+                    } else {
+                        self.error = data.error || 'Estimation failed';
+                    }
+                })
+                .catch(function(e) {
+                    self.loading = false;
+                    self.error = 'Error: ' + e.message;
+                });
+            }
+        };
+    }
+    </script>
+
+    {# ════════════════════════════════════════════════════════════════════ #}
+    {# 5b. Compliance Monitor (CODEGEN-06)                                #}
+    {# ════════════════════════════════════════════════════════════════════ #}
+    <div class="rounded-xl border border-border bg-card shadow-sm p-4" x-data="complianceMonitor({{ solution.id }})">
+        <h3 class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">Compliance Monitor</h3>
+
+        {# Service URL input #}
+        <div class="mb-2">
+            <input type="url" x-model="serviceUrl"
+                   placeholder="http://service:8000"
+                   class="w-full px-2.5 py-1.5 text-xs rounded-md border border-border bg-background text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary" />
+        </div>
+
+        {# Check button #}
+        <button type="button"
+                @click="runCheck()"
+                :disabled="checking || !serviceUrl"
+                class="w-full inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-medium border border-primary/30 text-primary hover:bg-primary/5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed mb-2">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+            <span x-text="checking ? 'Checking...' : 'Check Compliance'"></span>
+        </button>
+
+        {# Results (shown after check) #}
+        <template x-if="result">
+            <div class="space-y-2">
+                {# Score badge #}
+                <div class="flex items-center justify-between">
+                    <span class="text-xs text-muted-foreground">Score</span>
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold"
+                          :class="{
+                              'bg-emerald-500/10 text-emerald-600 border border-emerald-500/30': result.compliance_score >= 0.8,
+                              'bg-amber-500/10 text-amber-600 border border-amber-500/30': result.compliance_score >= 0.5 && result.compliance_score < 0.8,
+                              'bg-destructive/10 text-destructive border border-destructive/30': result.compliance_score < 0.5
+                          }"
+                          x-text="Math.round(result.compliance_score * 100) + '%'"></span>
+                </div>
+
+                {# Status badge #}
+                <div class="flex items-center justify-between">
+                    <span class="text-xs text-muted-foreground">Status</span>
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium"
+                          :class="{
+                              'bg-emerald-500/10 text-emerald-600 border border-emerald-500/30': result.status === 'passed',
+                              'bg-amber-500/10 text-amber-600 border border-amber-500/30': result.status === 'drifted',
+                              'bg-destructive/10 text-destructive border border-destructive/30': result.status === 'unreachable' || result.status === 'error'
+                          }"
+                          x-text="result.status"></span>
+                </div>
+
+                {# Missing endpoints #}
+                <template x-if="result.missing_endpoints && result.missing_endpoints.length > 0">
+                    <div>
+                        <button @click="showMissing = !showMissing" class="text-[10px] text-destructive hover:underline cursor-pointer">
+                            <span x-text="result.missing_endpoints.length + ' missing endpoint(s)'"></span>
+                            <span x-text="showMissing ? '[-]' : '[+]'"></span>
+                        </button>
+                        <div x-show="showMissing" class="mt-1 space-y-0.5">
+                            <template x-for="ep in result.missing_endpoints" :key="ep.method + ep.path">
+                                <div class="text-[10px] text-muted-foreground font-mono pl-2 border-l-2 border-destructive/30">
+                                    <span x-text="ep.method + ' ' + ep.path"></span>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </template>
+
+                {# Schema mismatches #}
+                <template x-if="result.schema_mismatches && result.schema_mismatches.length > 0">
+                    <div>
+                        <button @click="showSchema = !showSchema" class="text-[10px] text-amber-600 hover:underline cursor-pointer">
+                            <span x-text="result.schema_mismatches.length + ' schema mismatch(es)'"></span>
+                            <span x-text="showSchema ? '[-]' : '[+]'"></span>
+                        </button>
+                        <div x-show="showSchema" class="mt-1 space-y-0.5">
+                            <template x-for="sm in result.schema_mismatches" :key="sm.method + sm.path">
+                                <div class="text-[10px] text-muted-foreground font-mono pl-2 border-l-2 border-amber-500/30">
+                                    <span x-text="sm.method + ' ' + sm.path"></span>
+                                    <span class="block text-[11px] text-muted-foreground/70" x-text="sm.details"></span>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </template>
+
+                {# SLA violations #}
+                <template x-if="result.sla_violations && result.sla_violations.length > 0">
+                    <div>
+                        <button @click="showSla = !showSla" class="text-[10px] text-amber-600 hover:underline cursor-pointer">
+                            <span x-text="result.sla_violations.length + ' SLA violation(s)'"></span>
+                            <span x-text="showSla ? '[-]' : '[+]'"></span>
+                        </button>
+                        <div x-show="showSla" class="mt-1 space-y-0.5">
+                            <template x-for="sv in result.sla_violations" :key="sv.method + sv.path">
+                                <div class="text-[10px] text-muted-foreground font-mono pl-2 border-l-2 border-amber-500/30">
+                                    <span x-text="sv.method + ' ' + sv.path + ' (' + sv.latency_ms + 'ms > ' + sv.threshold_ms + 'ms)'"></span>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </template>
+
+                {# Last checked #}
+                <div class="text-[10px] text-muted-foreground/60 pt-1 border-t border-border">
+                    Checked <span x-text="result.checked_at ? new Date(result.checked_at).toLocaleString() : 'just now'"></span>
+                    <span x-show="result.duration_ms"> in <span x-text="result.duration_ms"></span>ms</span>
+                </div>
+            </div>
+        </template>
+
+        {# Error display #}
+        <template x-if="error">
+            <div class="rounded-lg border border-destructive/30 bg-destructive/5 p-2">
+                <p class="text-[10px] text-destructive" x-text="error"></p>
+            </div>
+        </template>
+    </div>
+
+    <script>
+    function complianceMonitor(solutionId) {
+        const storageKey = 'compliance_url_' + solutionId;
+        return {
+            serviceUrl: localStorage.getItem(storageKey) || '',
+            checking: false,
+            result: null,
+            error: null,
+            showMissing: false,
+            showSchema: false,
+            showSla: false,
+            init: function() {
+                let self = this;
+                fetch('/api/solutions/' + solutionId + '/compliance/latest', {
+                    headers: {'Accept': 'application/json'}
+                }).then(function(r) { return r.json(); }).then(function(data) {
+                    if (data.check) {
+                        self.result = data.check;
+                        if (data.check.service_url && !self.serviceUrl) {
+                            self.serviceUrl = data.check.service_url;
+                        }
+                    }
+                }).catch(function() {});
+            },
+            runCheck: function() {
+                let self = this;
+                self.checking = true;
+                self.error = null;
+                localStorage.setItem(storageKey, self.serviceUrl);
+                const csrf = (window.__BLUEPRINT_CONFIG__ || {}).csrfToken || '';
+                fetch('/api/solutions/' + solutionId + '/compliance/check', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrf
+                    },
+                    body: JSON.stringify({service_url: self.serviceUrl})
+                }).then(function(r) { return r.json(); }).then(function(data) {
+                    self.checking = false;
+                    if (data.success) {
+                        self.result = data;
+                        if (window.Platform && Platform.toast) {
+                            const pct = Math.round(data.compliance_score * 100);
+                            Platform.toast[data.status === 'passed' ? 'success' : 'warning'](
+                                'Compliance: ' + pct + '% (' + data.status + ')'
+                            );
+                        }
+                    } else {
+                        self.error = data.error || 'Check failed';
+                        if (window.Platform && Platform.toast) Platform.toast.error(self.error);
+                    }
+                }).catch(function(e) {
+                    self.checking = false;
+                    self.error = 'Network error: ' + e.message;
+                });
+            }
+        };
+    }
+    </script>
+
+    {# ════════════════════════════════════════════════════════════════════ #}
+    {# 6. Governance & Compliance (reused partial)                        #}
+    {# ════════════════════════════════════════════════════════════════════ #}
+    {% include 'solutions/partials/_governance_compliance.html' ignore missing %}
+
+    {# ════════════════════════════════════════════════════════════════════ #}
+    {# 7. Phase Gate Checklist (reused partial)                           #}
+    {# ════════════════════════════════════════════════════════════════════ #}
+    {% include 'solutions/partials/_phase_gate_checklist.html' ignore missing %}
+
+</div>
+
+{# CSP-safe event handlers — replaces all removed onclick="" attributes #}
+<script>
+(function () {
+    let _SID = {{ solution.id }};
+
+    function _csrf() {
+        return (window.__BLUEPRINT_CONFIG__ || {}).csrfToken || '';
+    }
+
+    /* ── Next Actions: smooth-scroll links ── */
+    document.addEventListener('click', function (e) {
+        let link = e.target.closest('[data-section-scroll]');
+        if (!link) return;
+        e.preventDefault();
+        let el = document.getElementById(link.dataset.sectionScroll);
+        if (el) {
+            let y = el.getBoundingClientRect().top + window.pageYOffset - 120;
+            window.scrollTo({ top: y, behavior: 'smooth' });
+        }
+    });
+
+    /* ── Submit to ARB ── */
+    let _arbBtn = document.getElementById('bp-submit-arb-btn');
+    if (_arbBtn) {
+        _arbBtn.addEventListener('click', async function () {
+            if (!(await Platform.modal.confirm('Submit this blueprint to the Architecture Review Board?'))) return;
+            fetch('/solutions/' + _SID + '/submit-for-arb', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _csrf() }
+            }).then(function (r) {
+                if (r.ok && window.Platform && Platform.toast) Platform.toast.success('Submitted to ARB');
+                else if (window.Platform && Platform.toast) Platform.toast.error('Submission failed');
+            });
+        });
+    }
+
+    /* ── Generate API Specs ── */
+    let _genApiBtn = document.getElementById('bp-generate-api-specs-btn');
+    if (_genApiBtn) {
+        _genApiBtn.addEventListener('click', function () {
+            fetch('/solutions/api/' + _SID + '/generate-specs', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _csrf() }
+            }).then(function (r) {
+                if (r.ok && window.Platform && Platform.toast) Platform.toast.success('API specs generated');
+                else if (window.Platform && Platform.toast) Platform.toast.error('Generation failed');
+            });
+        });
+    }
+
+    /* ── Infer Code Specs ── */
+    let _inferBtn = document.getElementById('bp-infer-code-specs-btn');
+    if (_inferBtn) {
+        _inferBtn.addEventListener('click', function () {
+            fetch('/solutions/api/' + _SID + '/infer-code-specs', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _csrf() }
+            }).then(function (r) {
+                if (r.ok && window.Platform && Platform.toast) Platform.toast.success('Code specs inferred');
+                else if (window.Platform && Platform.toast) Platform.toast.error('Inference failed');
+            });
+        });
+    }
+
+    /* ── Generate Product ── */
+    let _genBtn = document.getElementById('bp-generate-product-btn');
+    if (_genBtn) {
+        _genBtn.addEventListener('click', function () {
+            let btn = _genBtn;
+            let lang = (document.getElementById('bp-language-select') || {}).value || 'python-fastapi';
+            btn.disabled = true;
+            btn.textContent = 'Inferring specs...';
+            fetch('/solutions/' + _SID + '/api/component-specs/infer-all', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _csrf() }
+            }).then(function () {
+                btn.textContent = 'Generating ' + (lang === 'go-chi' ? 'Go' : 'Python') + ' code...';
+                return fetch('/api/solutions/' + _SID + '/product/generate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _csrf() },
+                    body: JSON.stringify({ language: lang })
+                });
+            }).then(function (r) { return r.json(); }).then(function (data) {
+                btn.disabled = false;
+                btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg> Generate Product';
+                if (data.success) {
+                    if (window.Platform && Platform.toast) Platform.toast.success(data.file_count + ' files generated');
+                    window.__lastBundleId = data.bundle_id;
+                    let dlBtn = document.getElementById('bp-download-product-btn');
+                    if (dlBtn) {
+                        dlBtn.href = '/api/solutions/' + _SID + '/product/' + data.bundle_id + '/download';
+                        dlBtn.classList.remove('hidden');
+                    }
+                    ['bp-synthesize-logic-btn','bp-run-tests-btn','bp-preview-btn','bp-push-github-btn'].forEach(function(id) {
+                        let el = document.getElementById(id);
+                        if (el) el.classList.remove('hidden');
+                    });
+                } else {
+                    if (window.Platform && Platform.toast) Platform.toast.error(data.error || 'Generation failed');
+                }
+            }).catch(function (e) {
+                btn.disabled = false;
+                btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg> Generate Product';
+                if (window.Platform && Platform.toast) Platform.toast.error('Error: ' + e.message);
+            });
+        });
+    }
+
+    /* ── Synthesize Business Logic ── */
+    let _synthBtn = document.getElementById('bp-synthesize-logic-btn');
+    if (_synthBtn) {
+        _synthBtn.addEventListener('click', function () {
+            let btn = _synthBtn;
+            let bid = window.__lastBundleId;
+            if (!bid) { if (window.Platform) Platform.toast.error('Generate code first'); return; }
+            btn.disabled = true;
+            btn.textContent = 'Synthesizing logic...';
+            fetch('/api/solutions/' + _SID + '/product/' + bid + '/synthesize', {
+                method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _csrf() }
+            }).then(function (r) { return r.json(); }).then(function (data) {
+                btn.disabled = false;
+                btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg> Synthesize Business Logic';
+                if (data.success) {
+                    let msg = data.handlers_generated + '/' + data.total + ' handlers synthesized';
+                    if (data.handlers_failed > 0) msg += ' (' + data.handlers_failed + ' failed)';
+                    if (window.Platform) Platform.toast.success(msg);
+                } else {
+                    if (window.Platform) Platform.toast.error(data.error || 'Synthesis failed');
+                }
+            }).catch(function (e) {
+                btn.disabled = false;
+                btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg> Synthesize Business Logic';
+                if (window.Platform) Platform.toast.error('Error: ' + e.message);
+            });
+        });
+    }
+
+    /* ── Download Code ZIP: guard against missing bundle ── */
+    let _dlBtn = document.getElementById('bp-download-product-btn');
+    if (_dlBtn) {
+        _dlBtn.addEventListener('click', function (e) {
+            if (!window.__lastBundleId) {
+                e.preventDefault();
+                if (window.Platform) Platform.toast.error('Generate code first');
+            }
+        });
+    }
+
+    /* ── Push to GitHub ── */
+    let _ghBtn = document.getElementById('bp-push-github-btn');
+    if (_ghBtn) {
+        _ghBtn.addEventListener('click', function () {
+            let btn = _ghBtn;
+            let bid = window.__lastBundleId;
+            if (!bid) { if (window.Platform) Platform.toast.error('Generate code first'); return; }
+            btn.disabled = true;
+            btn.textContent = 'Pushing to GitHub...';
+            fetch('/api/solutions/' + _SID + '/product/' + bid + '/push-to-github', {
+                method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _csrf() }
+            }).then(function (r) { return r.json(); }).then(function (data) {
+                btn.disabled = false;
+                btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg> Push to GitHub';
+                if (data.success) {
+                    if (window.Platform) Platform.toast.success('Pushed to GitHub');
+                    let linkEl = document.getElementById('bp-github-repo-link');
+                    if (linkEl) {
+                        linkEl.href = data.repo_url;
+                        linkEl.textContent = data.repo_url.replace('https://github.com/', '');
+                        linkEl.closest('.bp-github-repo-info').classList.remove('hidden');
+                    }
+                } else {
+                    if (window.Platform) Platform.toast.error(data.error || 'Push failed');
+                }
+            }).catch(function (e) {
+                btn.disabled = false;
+                btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg> Push to GitHub';
+                if (window.Platform) Platform.toast.error('Error: ' + e.message);
+            });
+        });
+    }
+
+    /* ── Run Tests ── */
+    let _runBtn = document.getElementById('bp-run-tests-btn');
+    if (_runBtn) {
+        _runBtn.addEventListener('click', function () {
+            let btn = _runBtn;
+            let bid = window.__lastBundleId;
+            if (!bid) { if (window.Platform) Platform.toast.error('Generate code first'); return; }
+            btn.disabled = true;
+            btn.textContent = 'Running tests...';
+            fetch('/api/solutions/' + _SID + '/product/' + bid + '/run', {
+                method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _csrf() }
+            }).then(function (r) { return r.json(); }).then(function (data) {
+                btn.disabled = false;
+                btn.textContent = 'Run Tests';
+                if (data.success !== false) {
+                    let msg = data.test_summary ? data.test_summary.passed + ' passed, ' + data.test_summary.failed + ' failed' : data.status;
+                    if (window.Platform) Platform.toast[data.status === 'passed' ? 'success' : 'warning'](msg);
+                } else {
+                    if (window.Platform) Platform.toast.error(data.error || 'Test run failed');
+                }
+            }).catch(function () { _runBtn.disabled = false; _runBtn.textContent = 'Run Tests'; });
+        });
+    }
+
+    /* ── Live Preview ── */
+    let _pvBtn = document.getElementById('bp-preview-btn');
+    if (_pvBtn) {
+        _pvBtn.addEventListener('click', function () {
+            let btn = _pvBtn;
+            let bid = window.__lastBundleId;
+            if (!bid) { if (window.Platform) Platform.toast.error('Generate code first'); return; }
+            btn.disabled = true;
+            btn.textContent = 'Starting preview...';
+            fetch('/api/solutions/' + _SID + '/product/' + bid + '/preview', {
+                method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _csrf() }
+            }).then(function (r) { return r.json(); }).then(function (data) {
+                btn.disabled = false;
+                btn.textContent = 'Live Preview';
+                if (data.success) {
+                    if (window.Platform) Platform.toast.success('Preview running at ' + data.url);
+                    window.open(data.docs_url, '_blank');
+                } else {
+                    if (window.Platform) Platform.toast.error(data.error || 'Preview failed');
+                }
+            }).catch(function () { _pvBtn.disabled = false; _pvBtn.textContent = 'Live Preview'; });
+        });
+    }
+})();
+</script>

@@ -1,0 +1,11 @@
+<!DOCTYPE html>
+<html>
+<body>
+<p>Dear {{ user.full_name() }},</p>
+<p>Welcome to {{ config.APP_NAME }}!</p>
+<p>To confirm your account, please click on the following link:</p>
+<p><a href="{{ confirm_link }}">Confirm Your Account</a></p>
+<p>Sincerely,<br>The {{ config.APP_NAME }} Team</p>
+<p><small>Note: replies to this email address are not monitored.</small></p>
+</body>
+</html>

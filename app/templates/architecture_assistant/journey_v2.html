@@ -1,0 +1,377 @@
+{# WARNING: THIS FILE IS NOT REGISTERED #}
+{# app/templates/architecture_assistant/architecture_journey.html #}
+{% extends "layouts/admin_base.html" %}
+
+{% block title %}{% if solution is defined and solution %}Architecture Journey — {{ solution.name }}{% else %}Architecture Journey{% endif %}{% endblock %}
+
+{% block extra_css %}
+<style>
+.journey-step { transition: all 200ms ease-out; }
+.journey-step-active { border-color: hsl(var(--primary)); background: hsl(var(--primary) / 0.05); }
+.journey-step-done { border-color: hsl(142 76% 36%); }
+</style>
+{% endblock %}
+
+{% block content %}
+{% if not solution_id %}
+{# ── Landing Page: Start or Resume ────────────────────────────── #}
+<div class="max-w-5xl mx-auto py-10" x-data="{ starting: false }">
+
+    {# ── Hero Section ─────────────────────────────────────────────── #}
+    <section class="mb-12">
+        <div class="flex flex-col lg:flex-row justify-between lg:items-end gap-6 mb-2">
+            <div>
+                <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/10 text-primary text-[10px] font-bold uppercase tracking-widest mb-4">
+                    <i data-lucide="sparkles" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                    AI-Guided TOGAF ADM Workflow
+                </div>
+                <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight text-foreground mb-3">Architecture Journey</h1>
+                <p class="text-lg text-muted-foreground max-w-2xl leading-relaxed">
+                    Execute professional-grade enterprise architecture designs with high-fidelity outputs.
+                    This guided workflow ensures every artifact complies with TOGAF 9.2 and ArchiMate 3.2 standards.
+                </p>
+            </div>
+            <div class="flex flex-col items-start lg:items-end gap-1 flex-shrink-0">
+                <p class="text-xs font-medium text-muted-foreground uppercase tracking-widest">Total commitment</p>
+                <p class="text-2xl font-bold text-primary">15-20 mins</p>
+                <p class="text-[10px] text-muted-foreground">Pause & resume at any step</p>
+            </div>
+        </div>
+    </section>
+
+    {# ── Workflow Steps ───────────────────────────────────────────── #}
+    <section class="mb-14">
+        <h3 class="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground mb-6 px-1">The Design Loop</h3>  <!-- frontend-quality-ok -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+            {% set journey_steps = [
+                ('01', 'Clarify Problem', 'lightbulb', 'Define scope, constraints, and business goals through AI-guided dialogue.', '~2 min'),
+                ('02', 'Map Landscape', 'map', 'Identify dependencies, applications, and current-state architecture.', '~3 min'),
+                ('03', 'Design Architecture', 'layout', 'Draft conceptual and logical ArchiMate models across all layers.', '~5 min'),
+                ('04', 'Evaluate Options', 'git-compare', 'Compare alternatives with cost, risk, and trade-off analysis.', '~3 min'),
+                ('05', 'Plan Migration', 'rocket', 'Define phased roadmaps, work packages, and resource dependencies.', '~4 min'),
+                ('06', 'ARB Submission', 'clipboard-check', 'Package governance artifacts for Architecture Review Board approval.', '~2 min'),
+            ] %}
+            {% for num, title, icon, desc, time in journey_steps %}
+            <div class="group relative bg-card p-6 rounded-xl border border-border hover:shadow-lg hover:shadow-primary/5 hover:border-primary/30 transition-all duration-300">
+                <div class="text-4xl font-extrabold text-muted/30 absolute top-2 right-4 group-hover:text-primary/10 transition-colors select-none" aria-hidden="true">{{ num }}</div>
+                <div class="w-10 h-10 bg-muted rounded-lg flex items-center justify-center text-muted-foreground mb-5 group-hover:bg-primary/10 group-hover:text-primary transition-colors">
+                    <i data-lucide="{{ icon }}" class="w-5 h-5" aria-hidden="true"></i>
+                </div>
+                <h4 class="font-bold text-foreground mb-2 text-sm">{{ title }}</h4>
+                <p class="text-xs text-muted-foreground leading-relaxed mb-4">{{ desc }}</p>
+                <div class="flex items-center gap-1.5 text-[10px] font-bold text-muted-foreground/60">
+                    <i data-lucide="clock" class="w-3 h-3" aria-hidden="true"></i> {{ time }}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+
+    {# ── Deliverables + Start Action ──────────────────────────────── #}
+    <section class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center mb-14">
+        <div class="lg:col-span-7 bg-muted/30 p-8 rounded-2xl">
+            <h3 class="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground mb-6">Generated Deliverables</h3>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                <div class="flex items-center gap-4">
+                    <div class="w-12 h-12 bg-card rounded-xl flex items-center justify-center text-primary shadow-sm border border-border flex-shrink-0">
+                        <i data-lucide="file-text" class="w-5 h-5" aria-hidden="true"></i>
+                    </div>
+                    <div>
+                        <p class="text-sm font-bold text-foreground">Solution Architecture Document</p>
+                        <p class="text-[10px] text-muted-foreground">TOGAF ADM Phases A-H compliant</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-4">
+                    <div class="w-12 h-12 bg-card rounded-xl flex items-center justify-center text-primary shadow-sm border border-border flex-shrink-0">
+                        <i data-lucide="git-branch" class="w-5 h-5" aria-hidden="true"></i>
+                    </div>
+                    <div>
+                        <p class="text-sm font-bold text-foreground">ArchiMate Elements</p>
+                        <p class="text-[10px] text-muted-foreground">Standard 3.2 modeling output</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-4">
+                    <div class="w-12 h-12 bg-card rounded-xl flex items-center justify-center text-primary shadow-sm border border-border flex-shrink-0">
+                        <i data-lucide="shield-check" class="w-5 h-5" aria-hidden="true"></i>
+                    </div>
+                    <div>
+                        <p class="text-sm font-bold text-foreground">Governance Artifacts</p>
+                        <p class="text-[10px] text-muted-foreground">Risk register & compliance checklists</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-4">
+                    <div class="w-12 h-12 bg-card rounded-xl flex items-center justify-center text-primary shadow-sm border border-border flex-shrink-0">
+                        <i data-lucide="gantt-chart" class="w-5 h-5" aria-hidden="true"></i>
+                    </div>
+                    <div>
+                        <p class="text-sm font-bold text-foreground">Migration Roadmap</p>
+                        <p class="text-[10px] text-muted-foreground">Phased execution plan</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="lg:col-span-5 flex flex-col items-center lg:items-end gap-4">
+            <button type="button" @click.prevent.stop="
+                starting = true;
+                fetch('/architecture-journey/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || '' },
+                    credentials: 'same-origin'
+                }).then(function(r) { return r.json(); }).then(function(d) {
+                    var url = (d.data && d.data.redirect) ? d.data.redirect : (d.redirect || '');
+                    if (url) { window.location.href = url; }
+                    else { starting = false; }
+                }).catch(function(err) { console.error('Start journey failed:', err); starting = false; });
+            " :disabled="starting"
+                class="w-full max-w-sm py-4 rounded-xl bg-primary text-primary-foreground font-bold text-base flex items-center justify-center gap-3 hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20 disabled:opacity-50">
+                <span x-text="starting ? 'Creating workspace...' : 'Start New Journey'"></span>
+                <i data-lucide="arrow-right" class="w-5 h-5" aria-hidden="true"></i>
+            </button>
+            <p class="text-xs text-muted-foreground font-medium">Auto-saves to your workspace. Resume anytime.</p>
+        </div>
+    </section>
+
+    {# ── Resume In-Progress ───────────────────────────────────────── #}
+    {% if solutions %}
+    <section class="mb-14">
+        <div class="flex items-center justify-between mb-6">
+            <h3 class="text-xl font-extrabold text-foreground">Resume In-Progress</h3>
+            <a href="{{ url_for('solution_design.list_solutions') }}" class="text-primary text-[10px] font-bold uppercase tracking-wider hover:underline">View All Drafts</a>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+            {% set GOV_LABELS = {'draft': 'Draft', 'proposed': 'Submitted', 'in_progress': 'In Progress', 'arb_review': 'In Review', 'approved': 'Approved'} %}
+            {% set GOV_COLORS = {'draft': 'amber', 'proposed': 'blue', 'in_progress': 'blue', 'arb_review': 'amber', 'approved': 'emerald'} %}
+            {% for sol in solutions %}
+            {% set status = sol.governance_status or 'draft' %}
+            {% set color = GOV_COLORS.get(status, 'blue') %}
+            <a href="{{ url_for('architecture_journey.journey_page', solution_id=sol.id) }}"
+               class="group flex items-center justify-between p-5 bg-card border border-border rounded-2xl hover:border-primary/30 hover:shadow-md transition-all duration-200">
+                <div class="flex items-center gap-4 min-w-0">
+                    <div class="w-12 h-12 bg-muted rounded-xl flex items-center justify-center text-muted-foreground group-hover:text-primary transition-colors flex-shrink-0">
+                        <i data-lucide="layers" class="w-6 h-6" aria-hidden="true"></i>
+                    </div>
+                    <div class="min-w-0">
+                        <h4 class="font-bold text-foreground truncate">{{ sol.name }}</h4>
+                        <p class="text-xs text-muted-foreground mt-0.5">Last updated {{ sol.updated_at.strftime('%d %b %Y, %H:%M') if sol.updated_at else 'recently' }}</p>
+                        <div class="inline-flex items-center gap-1.5 px-2 py-0.5 mt-1.5 rounded text-[10px] font-bold uppercase tracking-tight bg-{{ color }}-500/10 text-{{ color }}-600 border border-{{ color }}-500/20">
+                            <span class="w-1.5 h-1.5 bg-{{ color }}-500 rounded-full"></span>
+                            {{ GOV_LABELS.get(status, status|replace('_',' ')|title) }}
+                        </div>
+                    </div>
+                </div>
+                <i data-lucide="play-circle" class="w-6 h-6 text-muted-foreground/30 group-hover:text-primary transition-colors flex-shrink-0" aria-hidden="true"></i>
+            </a>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+
+    {# ── Tips for Best Results ────────────────────────────────────── #}
+    <footer class="bg-card p-8 sm:p-10 rounded-2xl border border-border">
+        <div class="flex items-center gap-3 mb-8">
+            <i data-lucide="lightbulb" class="w-6 h-6 text-primary" aria-hidden="true"></i>
+            <h3 class="text-xl font-extrabold text-foreground">Tips for Best Results</h3>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-10">
+            <div>
+                <h4 class="text-[10px] font-bold uppercase tracking-[0.2em] text-primary mb-5">Recommended Practices</h4>
+                <ul class="space-y-4">
+                    <li class="flex gap-3">
+                        <i data-lucide="check-circle-2" class="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" aria-hidden="true"></i>
+                        <p class="text-sm text-muted-foreground leading-relaxed">Provide specific technical constraints early in the journey to ensure AI alignment with your existing infrastructure.</p>
+                    </li>
+                    <li class="flex gap-3">
+                        <i data-lucide="check-circle-2" class="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" aria-hidden="true"></i>
+                        <p class="text-sm text-muted-foreground leading-relaxed">Mention affected applications and business units so the AI can map dependencies from your portfolio automatically.</p>
+                    </li>
+                    <li class="flex gap-3">
+                        <i data-lucide="check-circle-2" class="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" aria-hidden="true"></i>
+                        <p class="text-sm text-muted-foreground leading-relaxed">Answer every clarifying question thoroughly — each response sharpens the architecture and prevents rework in later phases.</p>
+                    </li>
+                </ul>
+            </div>
+            <div>
+                <h4 class="text-[10px] font-bold uppercase tracking-[0.2em] text-destructive mb-5">Common Pitfalls</h4>
+                <ul class="space-y-4">
+                    <li class="flex gap-3">
+                        <i data-lucide="x-circle" class="w-5 h-5 text-destructive flex-shrink-0 mt-0.5" aria-hidden="true"></i>
+                        <p class="text-sm text-muted-foreground leading-relaxed">Don't use generic titles like "New Project." Use clear intent-based names for better AI context retention across steps.</p>
+                    </li>
+                    <li class="flex gap-3">
+                        <i data-lucide="x-circle" class="w-5 h-5 text-destructive flex-shrink-0 mt-0.5" aria-hidden="true"></i>
+                        <p class="text-sm text-muted-foreground leading-relaxed">Avoid skipping the "Map Landscape" phase — accurate current-state maps are critical for trade-off analysis and risk assessment.</p>
+                    </li>
+                    <li class="flex gap-3">
+                        <i data-lucide="x-circle" class="w-5 h-5 text-destructive flex-shrink-0 mt-0.5" aria-hidden="true"></i>
+                        <p class="text-sm text-muted-foreground leading-relaxed">Do not bypass ARB Submission for production deployments. The governance workflow maintains audit compliance and traceability.</p>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </footer>
+</div>
+{% else %}
+{# ── Journey Wizard ───────────────────────────────────────────── #}
+<input type="hidden" id="journey-v2-solution-description" value="{{ solution.description|default('', true)|e if solution is defined and solution else '' }}">
+<input type="hidden" id="journey-v2-state" value="{{ journey_state_json|default('null', true)|e }}">
+
+{# Step labels for the indicator — server-side so Jinja can branch on mode #}
+{% if has_acm_domains %}
+{% set step_labels = ['Clarify', 'Domains', 'Architecture', 'Decisions', 'Roadmap', 'ARB Review', 'Code', 'Data', 'Rules', 'Evolve'] %}
+{% else %}
+{% set step_labels = ['Clarify', 'Capabilities', 'Landscape', 'Gaps', 'Roadmap', 'Review', 'Code', 'Data', 'Rules', 'Evolve'] %}
+{% endif %}
+
+<div x-data="journeyV2Flow({{ solution_id or 0 }})" x-init="init()">
+
+    {# ── Sticky Header ─────────────────────────────────────────── #}
+    <div class="sticky top-0 z-30 bg-background/95 backdrop-blur-sm border-b border-border -mx-4 sm:-mx-6 px-4 sm:px-6">
+        <div class="max-w-4xl mx-auto py-3 flex items-center justify-between gap-4">
+            <div class="flex items-center gap-2 min-w-0">
+                <a href="{{ url_for('architecture_journey.index') }}" class="text-sm text-muted-foreground hover:text-foreground transition-colors shrink-0">&larr; Journeys</a>
+                <span class="text-muted-foreground/40">/</span>
+                <span class="text-sm font-semibold text-foreground truncate">{{ solution.name if solution is defined and solution else 'New Solution' }}</span>
+                {% if solution is defined and solution %}
+                <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/10 text-amber-600 border border-amber-500/20">
+                    <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>{{ (solution.governance_status or 'draft')|replace('_',' ')|title }}
+                </span>
+                {% endif %}
+            </div>
+            <div class="flex items-center gap-2 shrink-0">
+                <a :href="'/solutions/' + solutionId" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border border-input bg-card text-foreground hover:bg-accent transition-colors">
+                    View Blueprint
+                </a>
+                {# Save indicator #}
+                <span x-show="_propSaveIndicator" x-cloak
+                      x-transition:enter="transition ease-out duration-200"
+                      x-transition:leave="transition ease-in duration-150"
+                      class="inline-flex items-center gap-1 text-[10px] text-emerald-600 font-medium">
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                    Saved
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <div class="max-w-4xl mx-auto py-8 space-y-8">
+
+        {# ── Step Indicator ────────────────────────────────────────── #}
+        <nav class="flex items-center justify-between">
+            {% for label in step_labels %}
+            <div class="flex items-center {{ 'flex-1' if not loop.last else '' }}">
+                <button type="button" @click="goToStep({{ loop.index }})"
+                        class="flex flex-col items-center gap-1.5 group relative">
+                    <span class="flex items-center justify-center w-9 h-9 rounded-full text-xs font-bold transition-all"
+                          :class="{
+                            'bg-primary text-primary-foreground ring-4 ring-primary/20': currentStep === {{ loop.index }},
+                            'bg-emerald-500/15 text-emerald-600 border border-emerald-500/30': completedSteps.indexOf({{ loop.index }}) !== -1 && currentStep !== {{ loop.index }},
+                            'bg-muted text-muted-foreground border border-border': completedSteps.indexOf({{ loop.index }}) === -1 && currentStep !== {{ loop.index }}
+                          }">
+                        <span x-show="completedSteps.indexOf({{ loop.index }}) !== -1 && currentStep !== {{ loop.index }}" x-cloak>
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                        </span>
+                        <span x-show="completedSteps.indexOf({{ loop.index }}) === -1 || currentStep === {{ loop.index }}">{{ loop.index }}</span>
+                    </span>
+                    <span class="text-[11px] font-medium transition-colors whitespace-nowrap"
+                          :class="currentStep === {{ loop.index }} ? 'text-foreground' : 'text-muted-foreground'">{{ label }}</span>
+                </button>
+                {% if not loop.last %}
+                <div class="flex-1 mx-3 mt-[-18px]">
+                    <div class="h-[2px] rounded-full transition-colors"
+                         :class="completedSteps.indexOf({{ loop.index }}) !== -1 ? 'bg-emerald-500/40' : 'bg-border'"></div>
+                </div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </nav>
+
+        {# ── Co-Pilot Message ──────────────────────────────────────── #}
+        <div class="rounded-xl border-l-4 border-l-primary border border-border bg-card px-5 py-3.5 flex items-start gap-3">
+            <span class="flex items-center justify-center w-7 h-7 rounded-full bg-primary/10 text-primary shrink-0 mt-0.5">
+                <i data-lucide="sparkles" class="w-3.5 h-3.5" aria-hidden="true"></i>
+            </span>
+            <div class="flex-1 min-w-0">
+                <p class="text-sm text-foreground/90 leading-relaxed" x-text="copilotMessage"></p>
+                <div x-show="loading" x-cloak class="flex items-center gap-2 text-xs text-primary mt-1.5">
+                    <span class="animate-spin h-3 w-3 border-2 border-primary border-t-transparent rounded-full"></span>
+                    <span>Processing...</span>
+                </div>
+            </div>
+        </div>
+
+        {# ── Error Banner ──────────────────────────────────────────── #}
+        <div x-show="error" x-cloak class="rounded-xl border border-destructive/30 bg-destructive/5 px-5 py-3 flex items-center justify-between">
+            <p class="text-sm text-destructive" x-text="error"></p>
+            <button type="button" @click="error = null" class="text-xs text-destructive/70 hover:text-destructive font-medium ml-4 shrink-0">Dismiss</button>
+        </div>
+
+        {# ── Step Content ──────────────────────────────────────────── #}
+        <div class="min-h-[400px]">
+            <div x-show="currentStep === 1" x-cloak>
+                {% include 'architecture_assistant/journey_v2_steps/_step1_clarify.html' %}
+            </div>
+            <div x-show="currentStep === 2" x-cloak>
+                {% if has_acm_domains %}
+                {% include 'architecture_assistant/journey_v2_steps/_step2_domains.html' %}
+                {% else %}
+                {% include 'architecture_assistant/journey_v2_steps/_step2_capabilities.html' %}
+                {% endif %}
+            </div>
+            <div x-show="currentStep === 3" x-cloak>
+                {% include 'architecture_assistant/journey_v2_steps/_step3_architecture.html' %}
+            </div>
+            <div x-show="currentStep === 4" x-cloak>
+                {% include 'architecture_assistant/journey_v2_steps/_step4_options.html' %}
+            </div>
+            <div x-show="currentStep === 5" x-cloak>
+                {% include 'architecture_assistant/journey_v2_steps/_step5_migration.html' %}
+            </div>
+            <div x-show="currentStep === 6" x-cloak>
+                {% include 'architecture_assistant/journey_v2_steps/_step6_review.html' %}
+            </div>
+            <div x-show="currentStep === 7" x-cloak>
+                {% include 'architecture_assistant/journey_v2_steps/_step7_codegen.html' %}
+            </div>
+            <div x-show="currentStep === 8" x-cloak>
+                {% include 'architecture_assistant/journey_v2_steps/_step8a_data.html' %}
+            </div>
+            <div x-show="currentStep === 9" x-cloak>
+                {% include 'architecture_assistant/journey_v2_steps/_step8b_rules.html' %}
+            </div>
+            <div x-show="currentStep === 10" x-cloak>
+                {% include 'architecture_assistant/journey_v2_steps/_step9_evolve.html' %}
+            </div>
+        </div>
+
+        {# ── Navigation Footer ─────────────────────────────────────── #}
+        <div class="flex items-center justify-between pt-4 border-t border-border">
+            <button type="button" @click="prevStep()" x-show="currentStep > 1" x-cloak
+                    class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-input bg-card text-foreground hover:bg-accent transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
+                Previous
+            </button>
+            <div x-show="currentStep <= 1" x-cloak></div>
+            <div class="flex flex-col items-end gap-1">
+                <button type="button" @click="nextStep()" x-show="currentStep < 10" x-cloak
+                        :disabled="!canProceed()"
+                        class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50">
+                    Continue
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+                </button>
+                <p x-show="!canProceed() && blockerMessage()" x-cloak
+                   class="text-[11px] text-amber-600 max-w-xs text-right"
+                   x-text="blockerMessage()"></p>
+            </div>
+        </div>
+
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+{% if solution_id %}
+<script src="{{ url_for('static', filename='js/solutions/vendor_suggestions.js') }}?v=1"></script> <!-- entity-picker-ok -->
+<script src="{{ url_for('static', filename='js/architecture_assistant/architecture_journey.js') }}?v=13"></script>
+{% endif %}
+{% endblock %}

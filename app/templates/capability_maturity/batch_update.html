@@ -1,0 +1,315 @@
+{% extends "layouts/admin_base.html" %}
+
+{% block title %}Batch Update Maturity{% endblock %}
+
+{% block breadcrumb %}
+{% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
+{{ breadcrumb_nav(items=[
+    {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
+    {'text': 'Business Layer', 'href': url_for('archimate_crud.dashboard') + '#business'},
+    {'text': 'Capabilities', 'href': url_for('capability_map.index')},
+    {'text': 'Batch Update', 'current': true}
+]) }}
+{% endblock %}
+
+{% block content %}
+<div class="mx-auto px-4 py-6">
+    <!-- Header -->
+    <div class="mb-8">
+        <div class="flex items-center justify-between">
+            <div>
+                <h1 class="text-3xl font-bold text-foreground mb-2">Batch Update Maturity</h1>
+                <p class="text-muted-foreground">Update maturity levels for multiple capabilities at once</p>
+            </div>
+            <div class="flex space-x-4">
+                <a href="{{ url_for('maturity_management.frameworks_overview') }}" 
+                   class="inline-flex items-center gap-2 rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground transition-colors">
+                    ← Back to Dashboard
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Warning Notice -->
+    <div class="bg-warning/10 border border-warning/30 rounded-lg p-4 mb-6">
+        <div class="flex">
+            <div class="flex-shrink-0">
+                <i data-lucide="alert-triangle" class="h-5 w-5 text-warning dark:text-warning/80" aria-hidden="true"></i>
+            </div>
+            <div class="ml-3">
+                <h2 class="text-sm font-medium text-foreground">Batch Update Warning</h2>
+                <div class="mt-2 text-sm text-muted-foreground">
+                    <p>This action will update multiple capabilities at once. Please review the preview below carefully before proceeding.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- CSV Import Panel -->
+    <div class="bg-card rounded-lg shadow mb-6"
+         x-data="{
+             importing: false,
+             result: null,
+             async importCsv(evt) {
+                 var file = evt.target.files[0];
+                 evt.target.value = '';
+                 if (!file) return;
+                 this.importing = true;
+                 this.result = null;
+                 var fd = new FormData();
+                 fd.append('file', file);
+                 var csrf = document.querySelector('meta[name=csrf-token]')?.content || '';
+                 try {
+                     var r = await fetch('{{ url_for('maturity_management.import_maturity_csv') }}', {
+                         method: 'POST',
+                         headers: { 'X-CSRFToken': csrf },
+                         body: fd
+                     });
+                     this.result = await r.json();
+                 } catch(e) {
+                     this.result = { success: false, error: 'Network error — please try again.' };
+                 }
+                 this.importing = false;
+             }
+         }">
+        <div class="px-6 py-4 border-b border-border flex items-center justify-between">
+            <div>
+                <h2 class="text-lg font-semibold text-foreground">Import from CSV</h2>
+                <p class="text-xs text-muted-foreground mt-0.5">Upload a spreadsheet to update individual capabilities by name</p>
+            </div>
+            <div class="flex items-center gap-3">
+                <a href="/static/templates/capability_maturity_template.csv" download="capability_maturity_template.csv"
+                   class="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-dashed border-border rounded px-3 py-1.5 transition-colors">
+                    <i data-lucide="download" class="w-3.5 h-3.5"></i> Download template
+                </a>
+                <label class="inline-flex items-center gap-1.5 cursor-pointer text-xs font-medium text-primary-foreground bg-primary hover:bg-primary/90 rounded px-3 py-1.5 transition-colors"
+                       :class="importing ? 'opacity-50 cursor-not-allowed' : ''">
+                    <i data-lucide="upload" class="w-3.5 h-3.5"></i>
+                    <span x-show="!importing">Import CSV</span>
+                    <span x-show="importing" x-cloak>Importing…</span>
+                    <input type="file" class="sr-only" accept=".csv" @change="importCsv($event)" :disabled="importing">
+                </label>
+            </div>
+        </div>
+        <div class="px-6 py-3 text-xs text-muted-foreground bg-muted/30">
+            Required columns: <code class="font-mono">capability_name</code>, <code class="font-mono">current_maturity</code> (1-5).
+            Optional: <code class="font-mono">target_maturity</code> (1-5), <code class="font-mono">notes</code>.
+            Max 500 rows, 2 MB.
+        </div>
+        <!-- Import result -->
+        <div x-show="result" x-cloak class="px-6 py-4 border-t border-border">
+            <div x-show="result && result.success"
+                 class="flex items-start gap-2 text-sm text-emerald-700 bg-emerald-500/10 border border-emerald-500/30 rounded-lg px-4 py-3">
+                <i data-lucide="check-circle" class="w-4 h-4 mt-0.5 flex-shrink-0"></i>
+                <div>
+                    <span x-text="result && result.message"></span>
+                    <template x-if="result && result.errors && result.errors.length > 0">
+                        <ul class="mt-2 space-y-0.5">
+                            <template x-for="e in result.errors" :key="e.row">
+                                <li class="text-amber-700" x-text="'Row ' + e.row + ': ' + e.reason"></li>
+                            </template>
+                        </ul>
+                    </template>
+                </div>
+            </div>
+            <div x-show="result && !result.success"
+                 class="flex items-start gap-2 text-sm text-destructive bg-destructive/10 border border-destructive/30 rounded-lg px-4 py-3">
+                <i data-lucide="alert-circle" class="w-4 h-4 mt-0.5 flex-shrink-0"></i>
+                <span x-text="result && (result.error || 'Import failed')"></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Batch Update Form -->
+    <div class="bg-card rounded-lg shadow mb-6">
+        <div class="px-6 py-4 border-b border-border">
+            <h2 class="text-lg font-semibold text-foreground">Batch Update Configuration</h2>
+        </div>
+        <div class="p-6">
+            <form method="POST" class="space-y-6">
+                {{ csrf_token() }}
+                <!-- Filter Configuration -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <label for="domain" class="block text-sm font-medium text-foreground mb-2">
+                            Filter by Domain <span class="text-muted-foreground">(Optional)</span>
+                        </label>
+                        <select id="domain" 
+                                name="domain" 
+                                class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                            <option value="">All Domains</option>
+                            {% for domain in domains %}
+                            <option value="{{ domain }}" {% if domain == selected_domain %}selected{% endif %}>
+                                {{ domain }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <p class="mt-1 text-xs text-muted-foreground">Only update capabilities in this domain</p>
+                    </div>
+                    
+                    <div>
+                        <label for="strategic_importance" class="block text-sm font-medium text-foreground mb-2">
+                            Filter by Strategic Importance <span class="text-muted-foreground">(Optional)</span>
+                        </label>
+                        <select id="strategic_importance" 
+                                name="strategic_importance" 
+                                class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                            <option value="">All Levels</option>
+                            <option value="critical" {% if selected_importance == 'critical' %}selected{% endif %}>Critical</option>
+                            <option value="high" {% if selected_importance == 'high' %}selected{% endif %}>High</option>
+                            <option value="medium" {% if selected_importance == 'medium' %}selected{% endif %}>Medium</option>
+                            <option value="low" {% if selected_importance == 'low' %}selected{% endif %}>Low</option>
+                        </select>
+                        <p class="mt-1 text-xs text-muted-foreground">Only update capabilities with this importance</p>
+                    </div>
+                </div>
+
+                <!-- Maturity Level Updates -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <label for="current_maturity_level" class="block text-sm font-medium text-foreground mb-2">
+                            Set Current Maturity Level <span class="text-muted-foreground">(Optional)</span>
+                        </label>
+                        <select id="current_maturity_level" 
+                                name="current_maturity_level" 
+                                class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                            <option value="">Leave Unchanged</option>
+                            {% for level in range(1, 6) %}
+                            <option value="{{ level }}">Level {{ level }}</option>
+                            {% endfor %}
+                        </select>
+                        <p class="mt-1 text-xs text-muted-foreground">Set current maturity for all matching capabilities</p>
+                    </div>
+                    
+                    <div>
+                        <label for="target_maturity_level" class="block text-sm font-medium text-foreground mb-2">
+                            Set Target Maturity Level <span class="text-muted-foreground">(Optional)</span>
+                        </label>
+                        <select id="target_maturity_level" 
+                                name="target_maturity_level" 
+                                class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                            <option value="">Leave Unchanged</option>
+                            {% for level in range(1, 6) %}
+                            <option value="{{ level }}">Level {{ level }}</option>
+                            {% endfor %}
+                        </select>
+                        <p class="mt-1 text-xs text-muted-foreground">Set target maturity for all matching capabilities</p>
+                    </div>
+                </div>
+
+                <div>
+                    <label for="assessment_notes" class="block text-sm font-medium text-foreground mb-2">
+                        Assessment Notes <span class="text-muted-foreground">(Optional)</span>
+                    </label>
+                    <textarea id="assessment_notes" 
+                              name="assessment_notes" 
+                              rows="3"
+                              class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                              placeholder="Add notes about this batch update..."></textarea>
+                    <p class="mt-1 text-xs text-muted-foreground">These notes will be applied to all updated capabilities</p>
+                </div>
+
+                <!-- Preview Section -->
+                {% if preview_capabilities %}
+                <div class="border-t border-border pt-6">
+                    <h3 class="text-lg font-semibold text-foreground mb-4">
+                        Preview: {{ preview_capabilities|length }} capabilities will be updated
+                    </h3>
+                    
+                    <div class="bg-muted/50 rounded-lg overflow-hidden">
+                        <div class="max-h-64 overflow-y-auto">
+                            <table class="min-w-full divide-y divide-border">
+                                <thead class="bg-muted">
+                                    <tr>
+                                        <th class="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase">Capability</th>
+                                        <th class="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase">Domain</th>
+                                        <th class="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase">Current</th>
+                                        <th class="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase">Target</th>
+                                        <th class="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase">Priority</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="bg-card divide-y divide-border">
+                                    {% for cap in preview_capabilities %}
+                                    <tr>
+                                        <td class="px-4 py-2 text-sm text-foreground">{{ cap.name }}</td>
+                                        <td class="px-4 py-2 text-sm text-muted-foreground">{{ cap.domain or 'Unknown' }}</td>
+                                        <td class="px-4 py-2 text-sm text-muted-foreground">{{ cap.current_maturity_level or 'Not Set' }}</td>
+                                        <td class="px-4 py-2 text-sm text-muted-foreground">{{ cap.target_maturity_level or 'Not Set' }}</td>
+                                        <td class="px-4 py-2 text-sm text-muted-foreground">{{ cap.strategic_importance or 'Not Set' }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        {% if preview_capabilities|length >= 20 %}
+                        <div class="px-4 py-2 bg-muted text-center text-sm text-muted-foreground">
+                            Showing first 20 capabilities. More may be updated.
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Form Actions -->
+                <div class="flex justify-end space-x-4 border-t border-border pt-6">
+                    <a href="{{ url_for('maturity_management.frameworks_overview') }}" 
+                       class="inline-flex items-center gap-2 rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground transition-colors">
+                        Cancel
+                    </a>
+                    <button type="submit" 
+                            class="inline-flex items-center gap-2 rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm font-medium hover:bg-primary/90 transition-colors" aria-label="Submit">
+                        {% if preview_capabilities %}
+                            Update {{ preview_capabilities|length }} Capabilities
+                        {% else %}
+                            Preview Update
+                        {% endif %}
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Quick Templates -->
+    <div class="bg-card rounded-lg shadow">
+        <div class="px-6 py-4 border-b border-border">
+            <h2 class="text-lg font-semibold text-foreground">Quick Update Templates</h2>
+            <p class="text-sm text-muted-foreground">Pre-configured updates for common scenarios</p>
+        </div>
+        <div class="p-6">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <a href="?domain=Risk Management & Compliance&current_maturity_level=2&target_maturity_level=4" 
+                   class="block p-4 border border-border rounded-lg hover:bg-accent transition-colors">
+                    <h3 class="font-medium text-foreground mb-1">Risk Management Baseline</h3>
+                    <p class="text-sm text-muted-foreground">Set Risk Management to Level 2→4</p>
+                    <div class="mt-2 text-xs text-primary">Critical compliance improvements</div>
+                </a>
+                
+                <a href="?strategic_importance=critical&target_maturity_level=5" 
+                   class="block p-4 border border-border rounded-lg hover:bg-accent transition-colors">
+                    <h3 class="font-medium text-foreground mb-1">Critical Capabilities</h3>
+                    <p class="text-sm text-muted-foreground">Set all critical to Level 5</p>
+                    <div class="mt-2 text-xs text-primary">Highest priority targets</div>
+                </a>
+                
+                <a href="?strategic_importance=high&target_maturity_level=4" 
+                   class="block p-4 border border-border rounded-lg hover:bg-accent transition-colors">
+                    <h3 class="font-medium text-foreground mb-1">High Priority</h3>
+                    <p class="text-sm text-muted-foreground">Set high priority to Level 4</p>
+                    <div class="mt-2 text-xs text-primary">Important capabilities</div>
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="mb-4 p-4 rounded-lg {% if category == 'error' %}bg-destructive/10 border border-destructive/20 text-destructive{% else %}bg-primary/10 border border-primary/20 text-foreground{% endif %}">
+                    {{ message }}
+                </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+</div>
+{% endblock %}

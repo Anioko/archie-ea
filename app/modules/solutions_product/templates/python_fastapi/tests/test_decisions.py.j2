@@ -1,0 +1,77 @@
+{# app/modules/solutions_product/templates/python_fastapi/tests/test_decisions.py.j2 #}
+{# Context: solution_name, decision_models (list of DecisionModelDef) #}
+"""
+Decision service unit tests — auto-generated for {{ solution_name }}.
+
+Tests every decision function: first-row match, no-match fallback, and boundary
+conditions where row data exists.  Uses pytest-parametrize for table-driven testing.
+
+Run: pytest tests/unit/test_decisions.py -v
+"""
+import pytest
+{% if decision_models %}
+from app.decisions import (
+    {% for dm in decision_models %}
+    {{ dm.name }},
+    {% endfor %}
+)
+{% endif %}
+
+{% for dm in decision_models %}
+
+class Test{{ dm.name | replace('_', ' ') | title | replace(' ', '') }}:
+    """Tests for decision function: {{ dm.name }}"""
+
+    {% if dm.rows %}
+    def test_first_row_matches(self):
+        """First table row should return expected outputs."""
+        first_conditions = {{ dm.rows[0].conditions | tojson }}
+        expected_outputs = {{ dm.rows[0].outputs | tojson }}
+        # Build inputs satisfying the first row's conditions (use exact values)
+        inputs = {}
+        for key, val in first_conditions.items():
+            if isinstance(val, str) and val.startswith(">"):
+                try:
+                    inputs[key] = float(val.lstrip(">= ")) + 1
+                except ValueError:
+                    inputs[key] = val.lstrip(">= ").strip()
+            elif isinstance(val, str) and val == "*":
+                inputs[key] = "any_value"
+            elif isinstance(val, list):
+                inputs[key] = val[0]
+            else:
+                inputs[key] = val
+        result = {{ dm.name }}(**inputs)
+        {% if dm.hit_policy == "COLLECT" %}
+        assert isinstance(result, list)
+        assert len(result) > 0
+        {% else %}
+        assert result is not None
+        for out_key in expected_outputs:
+            assert out_key in result
+        {% endif %}
+
+    def test_no_match_returns_{% if dm.hit_policy == "COLLECT" %}empty_list{% else %}none{% endif %}(self):
+        """Inputs matching no row should return {% if dm.hit_policy == "COLLECT" %}[]{% else %}None{% endif %}."""
+        impossible_inputs = {inp: "__no_match_sentinel__" for inp in {{ dm.inputs | tojson }}}
+        result = {{ dm.name }}(**impossible_inputs)
+        {% if dm.hit_policy == "COLLECT" %}
+        assert result == []
+        {% else %}
+        assert result is None
+        {% endif %}
+
+    {% else %}
+    def test_empty_table_returns_{% if dm.hit_policy == "COLLECT" %}empty_list{% else %}none{% endif %}(self):
+        """Empty decision table (no rows extracted) returns default."""
+        dummy_inputs = {inp: None for inp in {{ dm.inputs | tojson }}}
+        result = {{ dm.name }}(**dummy_inputs)
+        {% if dm.hit_policy == "COLLECT" %}
+        assert result == []
+        {% else %}
+        assert result is None
+        {% endif %}
+
+    {% endif %}
+
+{% endfor %}

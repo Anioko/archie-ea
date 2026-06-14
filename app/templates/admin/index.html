@@ -1,0 +1,325 @@
+{% extends 'layouts/admin_base.html' %}
+
+{% block content %}
+{% set health = health|default({}) %}
+{% set unconfirmed_users = unconfirmed_users|default(0) %}
+{% set stats = stats|default({}) %}
+{% set recent_activity = recent_activity|default([]) %}
+<div class="space-y-8">
+
+    {# ════════════════════════════════════════════════════════════════════════ #}
+    {# HEADER                                                                    #}
+    {# ════════════════════════════════════════════════════════════════════════ #}
+    <div>
+        <h1 class="text-2xl font-bold tracking-tight text-foreground">Command Center</h1>
+        <p class="text-sm text-muted-foreground mt-1">Enterprise Architecture Administration</p>
+    </div>
+
+    {# ════════════════════════════════════════════════════════════════════════ #}
+    {# SYSTEM HEALTH ROW                                                         #}
+    {# ════════════════════════════════════════════════════════════════════════ #}
+    <div>
+        <div class="flex items-center gap-2 mb-3">
+            <h2 class="text-sm font-semibold text-foreground uppercase tracking-wider">System Health</h2>
+            <div class="flex-1 h-px bg-border/50"></div>
+        </div>
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+
+            {# Database #}
+            <div class="rounded-xl border bg-card p-5 flex items-center gap-4
+                {% if health.db == 'ok' %}border-emerald-500/30{% else %}border-destructive/30{% endif %}">
+                <div class="p-2.5 rounded-lg {% if health.db == 'ok' %}bg-emerald-500/10{% else %}bg-destructive/10{% endif %}">
+                    <i data-lucide="database" class="w-5 h-5 {% if health.db == 'ok' %}text-emerald-500{% else %}text-destructive{% endif %}" aria-hidden="true"></i>
+                </div>
+                <div>
+                    <p class="text-xs font-medium text-muted-foreground">Database</p>
+                    <p class="text-sm font-bold {% if health.db == 'ok' %}text-emerald-600{% else %}text-destructive{% endif %}">
+                        {{ 'Connected' if health.db == 'ok' else 'Error' }}
+                    </p>
+                </div>
+            </div>
+
+            {# Redis #}
+            <div class="rounded-xl border bg-card p-5 flex items-center gap-4
+                {% if health.redis == 'ok' %}border-emerald-500/30{% else %}border-amber-500/30{% endif %}">
+                <div class="p-2.5 rounded-lg {% if health.redis == 'ok' %}bg-emerald-500/10{% else %}bg-amber-500/10{% endif %}">
+                    <i data-lucide="zap" class="w-5 h-5 {% if health.redis == 'ok' %}text-emerald-500{% else %}text-amber-500{% endif %}" aria-hidden="true"></i>
+                </div>
+                <div>
+                    <p class="text-xs font-medium text-muted-foreground">Cache (Redis)</p>
+                    <p class="text-sm font-bold {% if health.redis == 'ok' %}text-emerald-600{% else %}text-amber-500{% endif %}">
+                        {{ 'Connected' if health.redis == 'ok' else 'Unavailable' }}
+                    </p>
+                </div>
+            </div>
+
+            {# Users #}
+            <div class="rounded-xl border border-border/50 bg-card p-5 flex items-center gap-4">
+                <div class="p-2.5 rounded-lg bg-primary/10">
+                    <i data-lucide="users" class="w-5 h-5 text-primary" aria-hidden="true"></i>
+                </div>
+                <div>
+                    <p class="text-xs font-medium text-muted-foreground">Total Users</p>
+                    <p class="text-sm font-bold text-foreground">{{ total_users }}
+                        {% if unconfirmed_users > 0 %}
+                            <span class="text-[10px] font-semibold text-amber-500 ml-1">{{ unconfirmed_users }} unconfirmed</span>
+                        {% endif %}
+                    </p>
+                </div>
+            </div>
+
+            {# Feature Flags #}
+            <div class="rounded-xl border border-border/50 bg-card p-5 flex items-center gap-4">
+                <div class="p-2.5 rounded-lg bg-violet-500/10">
+                    <i data-lucide="toggle-left" class="w-5 h-5 text-violet-500" aria-hidden="true"></i>
+                </div>
+                <div>
+                    <p class="text-xs font-medium text-muted-foreground">Feature Flags</p>
+                    <p class="text-sm font-bold text-foreground">
+                        <span class="text-emerald-600">{{ flags.enabled }} on</span>
+                        <span class="text-muted-foreground mx-1">/</span>
+                        <span class="text-muted-foreground">{{ flags.disabled }} off</span>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# ════════════════════════════════════════════════════════════════════════ #}
+    {# MAIN GRID                                                                  #}
+    {# ════════════════════════════════════════════════════════════════════════ #}
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+        {# LEFT: Quick Actions #}
+        <div class="lg:col-span-2 space-y-6">
+
+            {# User Management #}
+            <div>
+                <div class="flex items-center gap-2 mb-3">
+                    <h2 class="text-sm font-semibold text-foreground uppercase tracking-wider">User Management</h2>
+                    <div class="flex-1 h-px bg-border/50"></div>
+                    <a href="{{ url_for('admin.registered_users') }}" class="text-xs font-medium text-primary hover:text-primary/80 transition-colors">View All →</a>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <a href="{{ url_for('admin.registered_users') }}" class="block group">
+                        <div class="rounded-xl border border-border/50 bg-card hover:bg-accent/5 hover:border-primary/30 transition-all p-5 flex items-start gap-4">
+                            <div class="p-2.5 rounded-lg bg-primary/10 group-hover:bg-primary/15 transition-colors">
+                                <i data-lucide="users" class="w-5 h-5 text-primary" aria-hidden="true"></i>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <p class="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">Registered Users</p>
+                                <p class="text-xs text-muted-foreground mt-1">View and manage accounts</p>
+                            </div>
+                        </div>
+                    </a>
+                    <a href="{{ url_for('admin.new_user') }}" class="block group">
+                        <div class="rounded-xl border border-border/50 bg-card hover:bg-accent/5 hover:border-primary/30 transition-all p-5 flex items-start gap-4">
+                            <div class="p-2.5 rounded-lg bg-primary/10 group-hover:bg-primary/15 transition-colors">
+                                <i data-lucide="user-plus" class="w-5 h-5 text-primary" aria-hidden="true"></i>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <p class="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">Add New User</p>
+                                <p class="text-xs text-muted-foreground mt-1">Create a user account</p>
+                            </div>
+                        </div>
+                    </a>
+                    <a href="{{ url_for('admin.invite_user') }}" class="block group">
+                        <div class="rounded-xl border border-border/50 bg-card hover:bg-accent/5 hover:border-primary/30 transition-all p-5 flex items-start gap-4">
+                            <div class="p-2.5 rounded-lg bg-primary/10 group-hover:bg-primary/15 transition-colors">
+                                <i data-lucide="mail" class="w-5 h-5 text-primary" aria-hidden="true"></i>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <p class="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">Invite User</p>
+                                <p class="text-xs text-muted-foreground mt-1">Send invitation to join</p>
+                            </div>
+                        </div>
+                    </a>
+                </div>
+            </div>
+
+            {# System Configuration #}
+            <div>
+                <div class="flex items-center gap-2 mb-3">
+                    <h2 class="text-sm font-semibold text-foreground uppercase tracking-wider">System Configuration</h2>
+                    <div class="flex-1 h-px bg-border/50"></div>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <a href="{{ url_for('admin.feature_flags') }}" class="block group">
+                        <div class="rounded-xl border border-border/50 bg-card hover:bg-accent/5 hover:border-primary/30 transition-all p-5 flex items-start gap-4">
+                            <div class="p-2.5 rounded-lg bg-violet-500/10 group-hover:bg-violet-500/15 transition-colors">
+                                <i data-lucide="toggle-left" class="w-5 h-5 text-violet-500" aria-hidden="true"></i>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <p class="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">Feature Flags</p>
+                                <p class="text-xs text-muted-foreground mt-1">Control feature visibility</p>
+                            </div>
+                        </div>
+                    </a>
+                    <a href="{{ url_for('admin.api_settings') }}" class="block group">
+                        <div class="rounded-xl border border-border/50 bg-card hover:bg-accent/5 hover:border-primary/30 transition-all p-5 flex items-start gap-4">
+                            <div class="p-2.5 rounded-lg bg-amber-500/10 group-hover:bg-amber-500/15 transition-colors">
+                                <i data-lucide="key" class="w-5 h-5 text-amber-500" aria-hidden="true"></i>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <p class="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">API Settings</p>
+                                <p class="text-xs text-muted-foreground mt-1">Integration credentials</p>
+                            </div>
+                        </div>
+                    </a>
+                    <a href="{{ url_for('admin.abacus_settings') }}" class="block group">
+                        <div class="rounded-xl border border-border/50 bg-card hover:bg-accent/5 hover:border-primary/30 transition-all p-5 flex items-start gap-4">
+                            <div class="p-2.5 rounded-lg bg-sky-500/10 group-hover:bg-sky-500/15 transition-colors">
+                                <i data-lucide="database" class="w-5 h-5 text-sky-500" aria-hidden="true"></i>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <p class="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">Abacus Settings</p>
+                                <p class="text-xs text-muted-foreground mt-1">Data synchronization</p>
+                            </div>
+                        </div>
+                    </a>
+                    <a href="{{ url_for('admin.jira_settings') }}" class="block group">
+                        <div class="rounded-xl border border-border/50 bg-card hover:bg-accent/5 hover:border-primary/30 transition-all p-5 flex items-start gap-4">
+                            <div class="p-2.5 rounded-lg bg-blue-500/10 group-hover:bg-blue-500/15 transition-colors">
+                                <i data-lucide="git-merge" class="w-5 h-5 text-primary" aria-hidden="true"></i>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <p class="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">Jira Settings</p>
+                                <p class="text-xs text-muted-foreground mt-1">ADM Kanban integration</p>
+                            </div>
+                        </div>
+                    </a>
+                    <a href="{{ url_for('admin.slack_integration') }}" class="block group">
+                        <div class="rounded-xl border border-border/50 bg-card hover:bg-accent/5 hover:border-primary/30 transition-all p-5 flex items-start gap-4">
+                            <div class="p-2.5 rounded-lg bg-violet-500/10 group-hover:bg-violet-500/15 transition-colors">
+                                <i data-lucide="message-square" class="w-5 h-5 text-violet-500" aria-hidden="true"></i>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <p class="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">Slack AI Architect</p>
+                                <p class="text-xs text-muted-foreground mt-1">@archie + portfolio monitoring</p>
+                            </div>
+                        </div>
+                    </a>
+                    <a href="{{ url_for('admin.teams_meetings_integration') }}" class="block group">
+                        <div class="rounded-xl border border-border/50 bg-card hover:bg-accent/5 hover:border-primary/30 transition-all p-5 flex items-start gap-4">
+                            <div class="p-2.5 rounded-lg bg-blue-500/10 group-hover:bg-blue-500/15 transition-colors">
+                                <i data-lucide="video" class="w-5 h-5 text-blue-500" aria-hidden="true"></i>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <p class="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">Teams Meeting Intelligence</p>
+                                <p class="text-xs text-muted-foreground mt-1">Transcript analysis + signals</p>
+                            </div>
+                        </div>
+                    </a>
+                    <a href="{{ url_for('admin.seed_management') }}" class="block group">
+                        <div class="rounded-xl border border-border/50 bg-card hover:bg-accent/5 hover:border-primary/30 transition-all p-5 flex items-start gap-4">
+                            <div class="p-2.5 rounded-lg bg-emerald-500/10 group-hover:bg-emerald-500/15 transition-colors">
+                                <i data-lucide="sprout" class="w-5 h-5 text-emerald-500" aria-hidden="true"></i>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <p class="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">Seed Management</p>
+                                <p class="text-xs text-muted-foreground mt-1">Reference data operations</p>
+                            </div>
+                        </div>
+                    </a>
+                </div>
+            </div>
+
+            {# Recent Users #}
+            {% if recent_users %}
+            <div>
+                <div class="flex items-center gap-2 mb-3">
+                    <h2 class="text-sm font-semibold text-foreground uppercase tracking-wider">Recent Users</h2>
+                    <div class="flex-1 h-px bg-border/50"></div>
+                    <a href="{{ url_for('admin.registered_users') }}" class="text-xs font-medium text-primary hover:text-primary/80 transition-colors">Manage →</a>
+                </div>
+                <div class="rounded-xl border border-border/50 bg-card overflow-hidden">
+                    <div class="divide-y divide-border/50">
+                        {% for user in recent_users %}
+                        <div class="flex items-center justify-between px-5 py-3 hover:bg-accent/30 transition-colors">
+                            <div class="flex items-center gap-3 min-w-0">
+                                <div class="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                                    <span class="text-[11px] font-bold text-primary">{{ (user.first_name or user.email)[0].upper() }}</span>
+                                </div>
+                                <div class="min-w-0">
+                                    <p class="text-sm font-medium text-foreground truncate">
+                                        {% if user.first_name %}{{ user.first_name }} {{ user.last_name or '' }}{% else %}{{ user.email }}{% endif %}
+                                    </p>
+                                    {% if user.first_name %}
+                                    <p class="text-xs text-muted-foreground truncate">{{ user.email }}</p>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-2 shrink-0 ml-3">
+                                {% if not user.confirmed %}
+                                    <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-500/10 text-amber-600 border border-amber-500/20">Unconfirmed</span>
+                                {% else %}
+                                    <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">Active</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        {# RIGHT: API Key Status #}
+        <div class="space-y-6">
+            {% if api_keys %}
+            <div class="rounded-xl border border-border/50 bg-card overflow-hidden">
+                <div class="px-5 py-4 border-b border-border/50">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-3">
+                            <div class="p-2 rounded-lg bg-amber-500/10">
+                                <i data-lucide="key" class="w-5 h-5 text-amber-500" aria-hidden="true"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-semibold text-foreground">API Keys</h3>
+                                <p class="text-[11px] text-muted-foreground">Integration status</p>
+                            </div>
+                        </div>
+                        <a href="{{ url_for('admin.api_settings') }}" class="text-xs font-medium text-primary hover:text-primary/80 transition-colors">Configure →</a>
+                    </div>
+                </div>
+                <div class="divide-y divide-border/50">
+                    {% for key in api_keys %}
+                    <div class="flex items-center justify-between px-5 py-3">
+                        <div class="flex items-center gap-3">
+                            <div class="w-2 h-2 rounded-full shrink-0
+                                {% if key.enabled and key.test_status == 'success' %}bg-emerald-500
+                                {% elif key.enabled and key.test_status == 'failed' %}bg-destructive
+                                {% elif key.enabled %}bg-amber-500
+                                {% else %}bg-muted-foreground/30{% endif %}">
+                            </div>
+                            <span class="text-sm font-medium text-foreground capitalize">{{ key.provider }}</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            {% if key.default_model %}
+                                <span class="text-[10px] text-muted-foreground font-mono truncate max-w-[100px]">{{ key.default_model }}</span>
+                            {% endif %}
+                            {% if not key.enabled %}
+                                <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-muted/50 text-muted-foreground">Disabled</span>
+                            {% elif key.test_status == 'success' %}
+                                <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">OK</span>
+                            {% elif key.test_status == 'failed' %}
+                                <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-destructive/10 text-destructive border border-destructive/20">Failed</span>
+                            {% else %}
+                                <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-500/10 text-amber-600 border border-amber-500/20">Untested</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,554 @@
+{% extends 'layouts/admin_base.html' %}
+
+{% from 'components/modal.html' import modal %}
+{% block title %}Stakeholder Map{% endblock %}
+
+{% block breadcrumb %}
+{% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
+{{ breadcrumb_nav(items=[
+    {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
+    {'text': 'Motivation Layer', 'href': url_for('archimate_crud.dashboard') + '#motivation'},
+    {'text': 'Stakeholder Map', 'current': true}
+]) }}
+{% endblock %}
+
+{% block extra_css %}
+<style>
+  /* ── Canvas container ─────────────────────────────── */
+  #stk-canvas-wrap {
+    position: relative;
+    width: 100%;
+    background: hsl(var(--background));
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.75rem;
+    overflow: hidden;
+    user-select: none;
+  }
+  #stk-svg { display: block; width: 100%; }
+
+  /* ── Quadrant shading ─────────────────────────────── */
+  .q-manage   { fill: #ecfdf5; }
+  .q-satisfy  { fill: #eff6ff; }
+  .q-inform   { fill: #fefce8; }
+  .q-monitor  { fill: #f9fafb; }
+
+  /* ── Quadrant labels ──────────────────────────────── */
+  .q-label {
+    font-size: 11px;
+    font-weight: 600;
+    fill: hsl(var(--muted-foreground));
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    pointer-events: none;
+  }
+
+  /* ── Axis labels ──────────────────────────────────── */
+  .axis-label {
+    font-size: 12px;
+    font-weight: 600;
+    fill: hsl(var(--muted-foreground));
+    pointer-events: none;
+  }
+
+  /* ── Nodes ────────────────────────────────────────── */
+  .stk-node circle {
+    stroke-width: 2;
+    cursor: grab;
+    transition: r 0.15s ease, filter 0.15s ease;
+  }
+  .stk-node circle:hover { filter: brightness(1.1); }
+  .stk-node circle:active { cursor: grabbing; }
+  .stk-node text {
+    font-size: 11px;
+    fill: hsl(var(--foreground));
+    pointer-events: none;
+    dominant-baseline: middle;
+    text-anchor: middle;
+  }
+
+  /* ── Attitude colours ─────────────────────────────── */
+  .att-champion  { fill: #10b981; stroke: #059669; }
+  .att-supporter { fill: #3b82f6; stroke: #2563eb; }
+  .att-neutral   { fill: #9ca3af; stroke: #6b7280; }
+  .att-skeptic   { fill: #f59e0b; stroke: #d97706; }
+  .att-blocker   { fill: #ef4444; stroke: #dc2626; }
+
+  /* ── Tooltip ──────────────────────────────────────── */
+  #stk-tooltip {
+    position: absolute;
+    background: hsl(var(--popover));
+    color: hsl(var(--popover-foreground));
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 12px;
+    line-height: 1.5;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+    max-width: 220px;
+    z-index: 50;
+    white-space: pre-wrap;
+  }
+
+  /* ── Legend ───────────────────────────────────────── */
+  .legend-dot {
+    display: inline-block;
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    margin-right: 4px;
+    vertical-align: middle;
+  }
+
+  /* ── Add-node modal ───────────────────────────────── */
+  .stk-range { accent-color: hsl(var(--primary)); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="p-6 space-y-4" x-data="stakeholderMap()">
+
+  {# ── Page header ────────────────────────────────── #}
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <div>
+      <h1 class="text-2xl font-bold text-foreground">Stakeholder Map</h1>
+      <p class="text-sm text-muted-foreground mt-0.5">Power / Interest grid — drag nodes to reposition</p>
+    </div>
+    <div class="flex items-center gap-2">
+      {# Solution filter #}
+      <select x-model="selectedSolution" @change="loadData()"
+              class="text-sm border border-border rounded-lg px-3 py-2 bg-background focus:ring-2 focus:ring-indigo-400 outline-none">
+        <option value="">Select a solution...</option>
+        {% for sol in solutions %}
+        <option value="{{ sol.id }}">{{ sol.name }}</option>
+        {% endfor %}
+      </select>
+      <button type="button" @click="openAddModal()"
+              class="inline-flex items-center gap-1.5 bg-primary hover:bg-indigo-700 text-primary-foreground text-sm font-medium px-4 py-2 rounded-lg shadow-sm transition">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+        </svg>
+        Add Stakeholder
+      </button>
+    </div>
+  </div>
+
+  {# ── Legend ─────────────────────────────────────── #}
+  <div class="flex flex-wrap gap-4 text-xs text-muted-foreground">
+    <span><span class="legend-dot bg-emerald-500"></span>Champion</span>
+    <span><span class="legend-dot bg-primary"></span>Supporter</span>
+    <span><span class="legend-dot bg-muted/70"></span>Neutral</span>
+    <span><span class="legend-dot bg-amber-500"></span>Skeptic</span>
+    <span><span class="legend-dot bg-destructive"></span>Blocker</span>
+    <span class="ml-4 text-muted-foreground/60">Node size = engagement weight</span>
+  </div>
+
+  {# ── Empty state ────────────────────────────────── #}
+  <div x-show="!loading && stakeholders.length === 0" x-cloak
+       class="flex flex-col items-center justify-center py-20 text-center bg-background border border-dashed border-border rounded-xl">
+    <svg class="w-14 h-14 text-foreground/70 mb-4" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+      <circle cx="9" cy="9" r="5"/><circle cx="17" cy="15" r="4"/>
+      <path stroke-linecap="round" d="M14 9h.01M9 14h.01"/>
+    </svg>
+    <p class="text-muted-foreground font-medium text-lg mb-1" x-text="selectedSolution ? 'No stakeholders yet' : 'Select a solution'"></p>
+    <p class="text-muted-foreground/60 text-sm mb-4" x-text="selectedSolution ? 'Add stakeholders to visualise your Power/Interest grid' : 'Choose a solution from the dropdown above to view its stakeholder map'"></p>
+    <button type="button" @click="openAddModal()"
+            class="bg-primary hover:bg-indigo-700 text-primary-foreground text-sm font-semibold px-5 py-2.5 rounded-lg transition">
+      + Add First Stakeholder
+    </button>
+  </div>
+
+  {# ── D3 canvas ──────────────────────────────────── #}
+  <div x-show="stakeholders.length > 0" x-cloak id="stk-canvas-wrap">
+    <svg id="stk-svg"></svg>
+    <div id="stk-tooltip"></div>
+  </div>
+
+
+</div>
+{% endblock %}
+
+{% block modals %}
+{% call modal(id='add-stakeholder-modal', title='Add Stakeholder', size='default') %}
+  <div class="space-y-4">
+    <div>
+      <label class="block text-sm font-medium text-foreground mb-1">Person or Team</label>
+      <template x-if="!selectedPerson">
+        <div class="relative">
+          <input x-model="personSearch" @input.debounce.300ms="searchPeople()" type="text"
+                 placeholder="Search people, teams, departments..."
+                 class="w-full border border-border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-ring outline-none"/>
+          <div x-show="personResults.length > 0" class="absolute z-10 mt-1 w-full border border-border rounded-lg bg-background shadow-lg max-h-40 overflow-y-auto">
+            <template x-for="p in personResults" :key="p.source + '-' + p.id">
+              <div @click="selectPerson(p)" class="px-3 py-2 hover:bg-muted cursor-pointer text-sm flex items-center justify-between">
+                <span>
+                  <span x-text="p.name" class="font-medium"></span>
+                  <span x-show="p.department" x-text="' — ' + p.department" class="text-muted-foreground"></span>
+                </span>
+                <span class="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground" x-text="p.source === 'user' ? 'User' : p.type"></span>
+              </div>
+            </template>
+          </div>
+          <p class="text-xs text-muted-foreground mt-1">Or type a name manually if not in the system</p>
+          <input x-show="personSearch.length > 0 && personResults.length === 0" x-model="form.name" type="text"
+                 placeholder="Name not found — type manually" class="w-full border border-border rounded-lg px-3 py-2 text-sm mt-2 focus:ring-2 focus:ring-ring outline-none"/>
+        </div>
+      </template>
+      <template x-if="selectedPerson">
+        <div class="flex items-center justify-between border border-primary/30 bg-primary/5 rounded-lg px-3 py-2">
+          <div>
+            <span class="font-medium text-sm" x-text="selectedPerson.name"></span>
+            <span class="text-xs text-muted-foreground ml-2" x-text="selectedPerson.source === 'user' ? 'Platform User' : selectedPerson.type"></span>
+          </div>
+          <button type="button" @click="clearPerson()" class="text-muted-foreground hover:text-destructive text-sm">&times;</button>
+        </div>
+      </template>
+    </div>
+
+    <div class="grid grid-cols-2 gap-4">
+      <div>
+        <label class="block text-sm font-medium text-foreground mb-1">
+          Influence / Power: <strong x-text="form.influence_level"></strong>
+        </label>
+        <input x-model.number="form.influence_level" type="range" min="1" max="5" step="1"
+               class="stk-range w-full"/>
+        <div class="flex justify-between text-xs text-muted-foreground/60 mt-0.5">
+          <span>Low</span><span>High</span>
+        </div>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-foreground mb-1">
+          Interest: <strong x-text="form.interest_level"></strong>
+        </label>
+        <input x-model.number="form.interest_level" type="range" min="1" max="5" step="1"
+               class="stk-range w-full"/>
+        <div class="flex justify-between text-xs text-muted-foreground/60 mt-0.5">
+          <span>Low</span><span>High</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-2 gap-4">
+      <div>
+        <label class="block text-sm font-medium text-foreground mb-1">Type</label>
+        <select x-model="form.stakeholder_type"
+                class="w-full border border-border rounded-lg px-3 py-2 text-sm outline-none">
+          <option value="individual">Individual</option>
+          <option value="group">Group</option>
+          <option value="organization">Organization</option>
+          <option value="role">Role</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-foreground mb-1">Attitude</label>
+        <select x-model="form.attitude"
+                class="w-full border border-border rounded-lg px-3 py-2 text-sm outline-none">
+          <option value="champion">Champion</option>
+          <option value="supporter">Supporter</option>
+          <option value="neutral">Neutral</option>
+          <option value="skeptic">Skeptic</option>
+          <option value="blocker">Blocker</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="flex justify-end gap-2 pt-2">
+      <button type="button" data-modal-close="add-stakeholder-modal"
+              class="px-4 py-2 text-sm text-muted-foreground hover:text-foreground border border-border rounded-lg transition">
+        Cancel
+      </button>
+      <button type="button" @click="submitAdd()"
+              class="px-4 py-2 text-sm font-semibold text-primary-foreground bg-primary hover:bg-primary/90 rounded-lg transition">
+        Add Stakeholder
+      </button>
+    </div>
+  </div>
+{% endcall %}
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<script>
+function stakeholderMap() {
+  return {
+    stakeholders: [],
+    loading: true,
+    selectedSolution: '',
+    form: { name:'', influence_level:3, interest_level:3, stakeholder_type:'individual', attitude:'neutral',
+            business_actor_id: null, user_id: null },
+    personSearch: '',
+    personResults: [],
+    selectedPerson: null,
+    _simulation: null,
+
+    init() {
+      // Don't auto-load all stakeholders — wait for solution selection
+      this.loading = false;
+    },
+
+    async searchPeople() {
+      if (this.personSearch.length < 2) { this.personResults = []; return; }
+      try {
+        const res = await fetch('/api/stakeholders/search-people?q=' + encodeURIComponent(this.personSearch));
+        this.personResults = await res.json();
+      } catch(e) { this.personResults = []; }
+    },
+
+    selectPerson(p) {
+      this.selectedPerson = p;
+      this.form.name = p.name;
+      this.form.stakeholder_type = p.type === 'Individual' ? 'individual' : 'organization';
+      if (p.source === 'business_actor') {
+        this.form.business_actor_id = p.id;
+        this.form.user_id = null;
+      } else {
+        this.form.user_id = p.id;
+        this.form.business_actor_id = null;
+      }
+      this.personResults = [];
+      this.personSearch = '';
+    },
+
+    clearPerson() {
+      this.selectedPerson = null;
+      this.form.name = '';
+      this.form.business_actor_id = null;
+      this.form.user_id = null;
+    },
+
+    async loadData() {
+      if (!this.selectedSolution) {
+        this.stakeholders = [];
+        if (this._simulation) { this._simulation.stop(); this._simulation = null; }
+        d3.select('#stk-svg').selectAll('*').remove();
+        return;
+      }
+      this.loading = true;
+      const url = '/api/stakeholders/map-data?solution_id=' + this.selectedSolution;
+      try {
+        const res = await fetch(url);
+        this.stakeholders = await res.json();
+      } catch(e) {
+        this.stakeholders = [];
+      }
+      this.loading = false;
+      this.$nextTick(() => this.renderChart());
+    },
+
+    openAddModal() {
+      this.form = { name:'', influence_level:3, interest_level:3, stakeholder_type:'individual', attitude:'neutral',
+                    business_actor_id: null, user_id: null };
+      this.selectedPerson = null;
+      this.personSearch = '';
+      this.personResults = [];
+      Platform.modal.open('add-stakeholder-modal');
+    },
+
+    async submitAdd() {
+      if (!this.form.name.trim()) return;
+      const body = { ...this.form };
+      if (this.selectedSolution) body.solution_id = parseInt(this.selectedSolution);
+      try {
+        await fetch('/api/stakeholders/', { method:'POST', headers:{'Content-Type':'application/json', 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''}, body: JSON.stringify(body) });
+        Platform.modal.close('add-stakeholder-modal');
+        await this.loadData();
+      } catch(e) { console.error(e); }
+    },
+
+    async patchStakeholder(id, influence_level, interest_level) {
+      try {
+        await fetch(`/api/stakeholders/${id}`, {
+          method: 'PATCH',
+          headers: {'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''},
+          body: JSON.stringify({ influence_level, interest_level })
+        });
+      } catch(e) { console.error(e); }
+    },
+
+    renderChart() {
+      const data = this.stakeholders;
+      d3.select('#stk-svg').selectAll('*').remove();
+      if (!data || data.length === 0) return;
+
+      const wrap = document.getElementById('stk-canvas-wrap');
+      const W = wrap.clientWidth || 800;
+      const H = Math.max(480, W * 0.58);
+      const M = { top: 40, right: 40, bottom: 60, left: 60 };
+      const iW = W - M.left - M.right;
+      const iH = H - M.top - M.bottom;
+
+      const svg = d3.select('#stk-svg')
+        .attr('width', W).attr('height', H);
+
+      const g = svg.append('g').attr('transform', `translate(${M.left},${M.top})`);
+
+      // Scales (1-5 axes with slight padding)
+      const x = d3.scaleLinear().domain([0.5, 5.5]).range([0, iW]);
+      const y = d3.scaleLinear().domain([0.5, 5.5]).range([iH, 0]);
+      const mid = 3.5; // boundary between low/high quadrants
+
+      // ── Quadrant shading ──────────────────────────
+      const quads = [
+        { cls:'q-manage',  x:x(mid), y:0,      w:x(5.5)-x(mid), h:y(mid) },
+        { cls:'q-satisfy', x:0,      y:0,      w:x(mid)-x(0.5), h:y(mid) },
+        { cls:'q-inform',  x:x(mid), y:y(mid), w:x(5.5)-x(mid), h:iH-y(mid) },
+        { cls:'q-monitor', x:0,      y:y(mid), w:x(mid)-x(0.5), h:iH-y(mid) },
+      ];
+      quads.forEach(q => {
+        g.append('rect').attr('class', q.cls)
+          .attr('x',q.x).attr('y',q.y).attr('width',q.w).attr('height',q.h);
+      });
+
+      // ── Divider lines ─────────────────────────────
+      g.append('line').attr('x1',x(mid)).attr('x2',x(mid)).attr('y1',0).attr('y2',iH)
+        .attr('stroke','hsl(var(--border))').attr('stroke-width',1).attr('stroke-dasharray','4 3');
+      g.append('line').attr('x1',0).attr('x2',iW).attr('y1',y(mid)).attr('y2',y(mid))
+        .attr('stroke','hsl(var(--border))').attr('stroke-width',1).attr('stroke-dasharray','4 3');
+
+      // ── Quadrant labels ───────────────────────────
+      const qlabels = [
+        { text:'MANAGE CLOSELY', xv:4.5, yv:5.1 },
+        { text:'KEEP SATISFIED', xv:2,   yv:5.1 },
+        { text:'KEEP INFORMED',  xv:4.5, yv:0.9 },
+        { text:'MONITOR',        xv:2,   yv:0.9 },
+      ];
+      qlabels.forEach(ql => {
+        g.append('text').attr('class','q-label')
+          .attr('x', x(ql.xv)).attr('y', y(ql.yv))
+          .attr('text-anchor','middle').text(ql.text);
+      });
+
+      // ── Axes ──────────────────────────────────────
+      g.append('g').attr('transform',`translate(0,${iH})`)
+        .call(d3.axisBottom(x).ticks(5).tickFormat(d => ['','Low','','','High'][d-1]||d))
+        .selectAll('text').style('font-size','11px');
+      g.append('g')
+        .call(d3.axisLeft(y).ticks(5).tickFormat(d => ['','Low','','','High'][d-1]||d))
+        .selectAll('text').style('font-size','11px');
+
+      // Axis titles
+      g.append('text').attr('class','axis-label')
+        .attr('x', iW/2).attr('y', iH+48)
+        .attr('text-anchor','middle').text('Interest →');
+      g.append('text').attr('class','axis-label')
+        .attr('transform','rotate(-90)')
+        .attr('x', -iH/2).attr('y', -46)
+        .attr('text-anchor','middle').text('← Influence / Power');
+
+      // ── Tooltip ───────────────────────────────────
+      const tooltip = document.getElementById('stk-tooltip');
+
+      // ── Attitude → CSS class map ──────────────────
+      const attClass = {
+        champion:'att-champion', supporter:'att-supporter',
+        neutral:'att-neutral', skeptic:'att-skeptic', blocker:'att-blocker'
+      };
+
+      // ── Adaptive node radius ──────────────────────
+      const nodeCount = data.length;
+      const R = nodeCount > 40 ? 14 : nodeCount > 20 ? 18 : 22;
+
+      // ── Build simulation nodes ──────────────────────
+      const nodes = data.map(d => ({
+        ...d,
+        fx: null, fy: null, // clear any fixed positions
+        x: x(d.interest_level) + (Math.random()-0.5)*20,
+        y: y(d.influence_level) + (Math.random()-0.5)*20,
+        targetX: x(d.interest_level),
+        targetY: y(d.influence_level),
+      }));
+
+      // ── Render nodes first (simulation updates positions) ──
+      const node = g.selectAll('.stk-node')
+        .data(nodes)
+        .enter().append('g')
+          .attr('class', 'stk-node')
+          .attr('transform', d => `translate(${d.x},${d.y})`);
+
+      node.append('circle')
+        .attr('r', R)
+        .attr('class', d => attClass[d.attitude] || 'att-neutral');
+
+      // Initials inside circle
+      node.append('text')
+        .text(d => d.name.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase())
+        .attr('y', 0).attr('font-size', R < 18 ? '8px' : '10px').attr('font-weight','600').attr('fill','white');
+
+      // Name below circle (hide when too many nodes)
+      if (nodeCount <= 30) {
+        node.append('text')
+          .text(d => d.name.length > 14 ? d.name.substring(0,12)+'…' : d.name)
+          .attr('y', R + 12).attr('font-size','10px').attr('fill','hsl(var(--foreground))');
+      }
+
+      // ── Force simulation: push overlapping nodes apart ──
+      const self = this;
+      if (this._simulation) this._simulation.stop();
+
+      this._simulation = d3.forceSimulation(nodes)
+        .force('x', d3.forceX(d => d.targetX).strength(0.4))
+        .force('y', d3.forceY(d => d.targetY).strength(0.4))
+        .force('collide', d3.forceCollide(R + (nodeCount <= 30 ? 14 : 4)).strength(0.8))
+        .alphaDecay(0.05)
+        .on('tick', () => {
+          node.attr('transform', d => {
+            // Clamp within chart area
+            d.x = Math.max(R, Math.min(iW - R, d.x));
+            d.y = Math.max(R, Math.min(iH - R, d.y));
+            return `translate(${d.x},${d.y})`;
+          });
+        });
+
+      // ── Drag behaviour ────────────────────────────
+      const drag = d3.drag()
+        .on('start', function(event, d) {
+          if (!event.active) self._simulation.alphaTarget(0.3).restart();
+          d.fx = d.x; d.fy = d.y;
+          d3.select(this).raise();
+        })
+        .on('drag', function(event, d) {
+          d.fx = Math.max(0, Math.min(iW, event.x));
+          d.fy = Math.max(0, Math.min(iH, event.y));
+        })
+        .on('end', function(event, d) {
+          if (!event.active) self._simulation.alphaTarget(0);
+          // Map back to 1-5 scale and persist
+          const newInterest = Math.round(Math.max(1, Math.min(5, x.invert(d.fx || d.x))));
+          const newInfluence = Math.round(Math.max(1, Math.min(5, y.invert(d.fy || d.y))));
+          d.interest_level = newInterest;
+          d.influence_level = newInfluence;
+          d.targetX = x(newInterest);
+          d.targetY = y(newInfluence);
+          d.fx = null; d.fy = null;
+          self.patchStakeholder(d.id, newInfluence, newInterest);
+        });
+
+      node.call(drag);
+
+      // ── Tooltip on hover ──────────────────────────
+      node.on('mouseenter', function(event, d) {
+          const concerns = Array.isArray(d.concerns) ? d.concerns.join(', ') : (d.concerns || '—');
+          tooltip.innerHTML =
+            `<strong>${d.name}</strong>\n` +
+            `Type: ${d.stakeholder_type || '—'}\n` +
+            `Quadrant: ${(d.quadrant||'').replace(/_/g,' ')}\n` +
+            `Attitude: ${d.attitude || '—'}\n` +
+            `Influence: ${d.influence_level} | Interest: ${d.interest_level}\n` +
+            (concerns !== '—' ? `Concerns: ${concerns}` : '');
+          tooltip.style.opacity = '1';
+        })
+        .on('mousemove', function(event) {
+          const rect = wrap.getBoundingClientRect();
+          let tx = event.clientX - rect.left + 12;
+          let ty = event.clientY - rect.top - 10;
+          if (tx + 230 > rect.width) tx = event.clientX - rect.left - 240;
+          tooltip.style.left = tx + 'px';
+          tooltip.style.top = ty + 'px';
+        })
+        .on('mouseleave', function() {
+          tooltip.style.opacity = '0';
+        });
+    },
+  };
+}
+</script>
+{% endblock %}

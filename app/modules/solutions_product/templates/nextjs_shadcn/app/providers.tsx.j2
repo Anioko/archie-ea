@@ -1,0 +1,28 @@
+{# app/providers.tsx.j2 — Client-side providers (React Query).
+   AuthProvider is NOT here — it lives in layout_root.tsx.j2 (root layout)
+   so it wraps the entire app including server components. #}
+"use client"
+
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { useState } from "react"
+
+export function Providers({ children }: { children: React.ReactNode }) {
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: {
+          queries: {
+            staleTime: 30 * 1000,
+            retry: 1,
+            refetchOnWindowFocus: false,
+          },
+        },
+      })
+  )
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      {children}
+    </QueryClientProvider>
+  )
+}

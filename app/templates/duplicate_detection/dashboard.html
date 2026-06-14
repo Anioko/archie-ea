@@ -1,0 +1,519 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'components/page_header.html' import page_header %}
+
+{% block title %}Duplicate Detection{% endblock %}
+
+{% block content %}
+<div class="flex-1 space-y-6 p-4 md:p-8" x-data="duplicateDetection()" x-init="init()">
+    <!-- Header -->
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      {{ page_header(
+        title='Duplicate Detection',
+        description='Identify and consolidate duplicate applications'
+    ) }}
+      <button type="button" @click="showRunDetectionModal = true"
+              :disabled="isRunningDetection"
+              class="inline-flex items-center justify-center rounded-lg text-sm font-medium transition-colors bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-6 disabled:opacity-50 disabled:cursor-not-allowed" aria-label="Run duplicate detection">
+        <i data-lucide="search" class="w-4 h-4 mr-2" aria-hidden="true"></i>
+        <span x-text="isRunningDetection ? 'Detection Running...' : 'Run Detection'">Run Detection</span>
+      </button>
+    </div>
+
+    <!-- Detection Run Feedback -->
+    <div x-show="runFeedback.status" x-cloak
+         x-cloak
+         data-slot="card"
+         class="rounded-xl border shadow-sm p-4"
+         :class="runFeedback.status === 'running' ? 'bg-primary/5 border-primary/30' : (runFeedback.status === 'success' ? 'bg-green-500/10 border-green-500/30' : 'bg-red-500/10 border-red-500/30')">
+      <div class="flex items-start justify-between gap-4">
+        <div class="flex items-start gap-3 min-w-0">
+          <i x-show="runFeedback.status === 'running'" x-cloak data-lucide="loader" class="w-5 h-5 text-primary animate-spin mt-0.5" aria-hidden="true"></i>
+          <i x-show="runFeedback.status === 'success'" x-cloak data-lucide="check-circle-2" class="w-5 h-5 text-emerald-600 mt-0.5" aria-hidden="true"></i>
+          <i x-show="runFeedback.status === 'error'" x-cloak data-lucide="alert-circle" class="w-5 h-5 text-destructive mt-0.5" aria-hidden="true"></i>
+          <div class="min-w-0">
+            <p class="text-sm font-semibold text-foreground" x-text="runFeedback.title"></p>
+            <p class="text-sm text-muted-foreground mt-0.5" x-text="runFeedback.message"></p>
+            <p x-show="runFeedback.status === 'running'" x-cloak class="text-xs text-muted-foreground mt-1">
+              <span x-text="runProgressMessage"></span>
+              <span class="mx-1">•</span>
+              <span>Elapsed: <span class="font-medium text-foreground" x-text="formatDuration(runElapsedSeconds)"></span></span>
+            </p>
+            <div x-show="runFeedback.status === 'success'" x-cloak class="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">
+              <div class="rounded-md border border-input/60 bg-background/80 px-2.5 py-2">
+                <p class="text-[11px] uppercase tracking-wide text-muted-foreground">Apps</p>
+                <p class="text-sm font-semibold text-foreground" x-text="runFeedback.applications_analyzed || 0"></p>
+              </div>
+              <div class="rounded-md border border-input/60 bg-background/80 px-2.5 py-2">
+                <p class="text-[11px] uppercase tracking-wide text-muted-foreground">Groups</p>
+                <p class="text-sm font-semibold text-foreground" x-text="runFeedback.groups_found || 0"></p>
+              </div>
+              <div class="rounded-md border border-input/60 bg-background/80 px-2.5 py-2">
+                <p class="text-[11px] uppercase tracking-wide text-muted-foreground">Exact</p>
+                <p class="text-sm font-semibold text-foreground" x-text="runFeedback.exact_matches || 0"></p>
+              </div>
+              <div class="rounded-md border border-input/60 bg-background/80 px-2.5 py-2">
+                <p class="text-[11px] uppercase tracking-wide text-muted-foreground">Savings</p>
+                <p class="text-sm font-semibold text-foreground">{{ currency_symbol }}<span x-text="formatNumber(runFeedback.estimated_savings || 0)"></span></p>
+              </div>
+            </div>
+            <p x-show="runFeedback.status === 'success' && runFeedback.run_id" x-cloak class="text-xs text-muted-foreground mt-2">
+              Run ID: <span class="font-medium text-foreground" x-text="runFeedback.run_id"></span>
+              <span x-show="runFeedback.duration_seconds !== null" x-cloak>
+                • Duration: <span class="font-medium text-foreground" x-text="formatDuration(runFeedback.duration_seconds)"></span>
+              </span>
+            </p>
+          </div>
+        </div>
+        <button type="button" x-show="runFeedback.status !== 'running'" x-cloak
+                @click="clearRunFeedback()"
+                class="inline-flex items-center justify-center rounded-md text-xs font-medium transition-colors hover:bg-accent hover:text-accent-foreground h-8 px-3 border border-input"
+                aria-label="Dismiss run feedback">
+          Dismiss
+        </button>
+      </div>
+    </div>
+
+    <!-- Stats Cards -->
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <!-- Duplicate Groups -->
+      <div class="rounded-xl border border-input bg-background hover:border-primary/50 hover:shadow-sm transition-all duration-200 p-5">
+        <div class="flex items-start gap-4">
+          <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-primary">
+            <i data-lucide="layers" class="h-5 w-5 text-primary-foreground" aria-hidden="true"></i>
+          </div>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-medium text-muted-foreground">Duplicate Groups</p>
+            <p class="text-2xl font-bold tracking-tight mt-1" x-text="stats.total_groups || 0">0</p>
+            <p class="text-xs text-muted-foreground mt-1">Consolidation opportunities</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Estimated Savings -->
+      <div class="rounded-xl border border-input bg-background hover:border-primary/50 hover:shadow-sm transition-all duration-200 p-5">
+        <div class="flex items-start gap-4">
+          <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-success">
+            <i data-lucide="piggy-bank" class="h-5 w-5 text-primary-foreground" aria-hidden="true"></i>
+          </div>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-medium text-muted-foreground">Estimated Savings</p>
+            {# sum the loaded groups so the headline always matches the table
+               below; fall back to the server aggregate before groups load #}
+            <p class="text-2xl font-bold tracking-tight mt-1">{{ currency_symbol }}<span x-text="formatNumber(allGroups.length ? allGroups.reduce((s,g)=>s+(g.estimated_savings||0),0) : (stats.total_estimated_savings || 0))">0</span></p>
+            <p class="text-xs text-muted-foreground mt-1">Annual cost reduction</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- High Priority -->
+      <div class="rounded-xl border border-input bg-background hover:border-primary/50 hover:shadow-sm transition-all duration-200 p-5">
+        <div class="flex items-start gap-4">
+          <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-warning">
+            <i data-lucide="alert-triangle" class="h-5 w-5 text-primary-foreground" aria-hidden="true"></i>
+          </div>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-medium text-muted-foreground">High Priority</p>
+            <p class="text-2xl font-bold tracking-tight mt-1" x-text="stats.high_priority_groups || 0">0</p>
+            <p class="text-xs text-muted-foreground mt-1">Needs attention</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Last Run -->
+      <div class="rounded-xl border border-input bg-background hover:border-primary/50 hover:shadow-sm transition-all duration-200 p-5">
+        <div class="flex items-start gap-4">
+          <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-muted-foreground">
+            <i data-lucide="clock" class="h-5 w-5 text-primary-foreground" aria-hidden="true"></i>
+          </div>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-medium text-muted-foreground">Last Detection</p>
+            <p class="text-lg font-bold tracking-tight mt-1" x-text="stats.last_run_date || 'Never'">Never</p>
+            <p class="text-xs text-muted-foreground mt-1" x-text="stats.last_run_summary || 'Run detection to generate results'">Run detection to generate results</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Groups Data Table -->
+    <div data-slot="card" class="rounded-xl border bg-card shadow-sm">
+      <!-- Table Header -->
+      <div class="p-4 sm:p-6 border-b">
+        <h2 class="text-xl font-semibold mb-1">Duplicate Groups</h2>
+        <p class="text-sm text-muted-foreground">Review and manage detected duplicate application groups</p>
+      </div>
+
+      <!-- Bulk Action Bar -->
+      <div x-show="selectedGroups.length > 0" x-cloak class="p-4 sm:p-6 border-b bg-primary/5">
+        <div class="flex items-center justify-between gap-4">
+          <p class="text-sm font-medium text-foreground">
+            <span x-text="selectedGroups.length"></span> group<span x-show="selectedGroups.length !== 1" x-cloak>s</span> selected
+          </p>
+          <div class="flex items-center gap-2">
+            <button type="button" @click="bulkAddToConsolidation()"
+                    class="inline-flex items-center justify-center h-8 px-4 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors" aria-label="Add selected groups to consolidation list">
+              <i data-lucide="arrow-right-circle" class="w-3.5 h-3.5 mr-1.5" aria-hidden="true"></i>
+              Add to Consolidation List
+            </button>
+            <button type="button" @click="bulkDismiss()"
+                    class="inline-flex items-center justify-center h-8 px-4 rounded-md text-sm font-medium hover:bg-accent hover:text-accent-foreground transition-colors border border-input" aria-label="Dismiss selected groups">
+              Dismiss Selected
+            </button>
+            <button type="button" @click="clearSelection()"
+                    class="inline-flex items-center justify-center h-8 px-3 rounded-md text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors" aria-label="Clear selection">
+              <i data-lucide="x" class="w-3.5 h-3.5" aria-hidden="true"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Filters -->
+      <div class="p-4 sm:p-6 border-b bg-muted/30">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div>
+            <label class="block text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">Search Groups</label>
+            <div class="relative">
+              <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" aria-hidden="true"></i>
+              <input type="text" x-model="filters.search" @input="applyFilters()"
+                     placeholder="Search by group name..."
+                     class="flex h-10 w-full rounded-md border border-input bg-background pl-9 pr-3 py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Search by group name...">
+            </div>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">Type</label>
+            <select x-model="filters.type" @change="applyFilters()"
+                    class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <option value="">All Types</option>
+              <option value="exact">Exact Match</option>
+              <option value="fuzzy">Fuzzy Match</option>
+              <option value="functional">Functional</option>
+              <option value="technical">Technical</option>
+              <option value="capability">Capability</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">Status</label>
+            <select x-model="filters.status" @change="applyFilters()"
+                    class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <option value="">All Status</option>
+              <option value="pending">Pending</option>
+              <option value="reviewing">Reviewing</option>
+              <option value="approved">Approved</option>
+              <option value="resolved">Resolved</option>
+              <option value="ignored">Ignored</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">Risk Level</label>
+            <select x-model="filters.risk" @change="applyFilters()"
+                    class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <option value="">All Risks</option>
+              <option value="high">High</option>
+              <option value="medium">Medium</option>
+              <option value="low">Low</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Empty State -->
+      <template x-if="allGroups.length === 0 && !isRunningDetection && !isLoading">
+        <div class="text-center py-12">
+          <div class="flex h-16 w-16 mx-auto items-center justify-center rounded-full bg-muted mb-4">
+            <i data-lucide="inbox" class="w-8 h-8 text-muted-foreground" aria-hidden="true"></i>
+          </div>
+          <h3 class="text-lg font-semibold text-foreground mb-1">No Duplicate Groups Found</h3>
+          <p class="text-sm text-muted-foreground mb-4">Run detection to discover consolidation opportunities</p>
+          <button type="button" @click="showRunDetectionModal = true"
+                  class="inline-flex items-center justify-center rounded-lg text-sm font-medium transition-colors bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-6" aria-label="Run duplicate detection now">
+            <i data-lucide="search" class="w-4 h-4 mr-2" aria-hidden="true"></i>
+            Run Detection Now
+          </button>
+        </div>
+      </template>
+
+      <!-- Loading -->
+      <template x-if="isLoading && allGroups.length === 0">
+        <div class="text-center py-12">
+          <i data-lucide="loader" class="w-8 h-8 mx-auto text-primary animate-spin mb-4" aria-hidden="true"></i>
+          <p class="text-sm text-muted-foreground">Loading groups...</p>
+        </div>
+      </template>
+
+      <template x-if="isRunningDetection && allGroups.length === 0 && !isLoading">
+        <div class="text-center py-12">
+          <i data-lucide="loader" class="w-8 h-8 mx-auto text-primary animate-spin mb-4" aria-hidden="true"></i>
+          <p class="text-sm text-muted-foreground">Detection is running. Results will appear here when complete.</p>
+        </div>
+      </template>
+
+      <!-- Desktop Data Table -->
+      <template x-if="allGroups.length > 0 && !isLoading">
+        <div>
+          <div class="hidden lg:block overflow-x-auto">
+            <table class="w-full border-collapse">
+              <thead class="bg-muted/50 border-b">
+                <tr>
+                  <th class="px-4 py-3 w-10">
+                    <input type="checkbox" @change="toggleSelectAll()" :checked="isAllPageSelected()"
+                           class="rounded border-input" aria-label="Select all groups on this page">
+                  </th>
+                  <th class="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider min-w-[200px] cursor-pointer select-none" @click="sortBy('name')">
+                    <span class="inline-flex items-center gap-1">Group Name <span x-show="sortColumn === 'name'" x-cloak x-text="sortDirection === 'asc' ? '\u2191' : '\u2193'"></span></span>
+                  </th>
+                  <th class="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider min-w-[100px] cursor-pointer select-none" @click="sortBy('duplicate_type')">
+                    <span class="inline-flex items-center gap-1">Type <span x-show="sortColumn === 'duplicate_type'" x-cloak x-text="sortDirection === 'asc' ? '\u2191' : '\u2193'"></span></span>
+                  </th>
+                  <th class="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider min-w-[60px] cursor-pointer select-none" @click="sortBy('application_count')">
+                    <span class="inline-flex items-center gap-1">Apps <span x-show="sortColumn === 'application_count'" x-cloak x-text="sortDirection === 'asc' ? '\u2191' : '\u2193'"></span></span>
+                  </th>
+                  <th class="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider min-w-[90px] cursor-pointer select-none" @click="sortBy('similarity_threshold')">
+                    <span class="inline-flex items-center gap-1">Similarity <span x-show="sortColumn === 'similarity_threshold'" x-cloak x-text="sortDirection === 'asc' ? '\u2191' : '\u2193'"></span></span>
+                  </th>
+                  <th class="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider min-w-[90px] cursor-pointer select-none" @click="sortBy('status')">
+                    <span class="inline-flex items-center gap-1">Status <span x-show="sortColumn === 'status'" x-cloak x-text="sortDirection === 'asc' ? '\u2191' : '\u2193'"></span></span>
+                  </th>
+                  <th class="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider min-w-[80px]">
+                    Risk
+                  </th>
+                  <th class="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider min-w-[110px] cursor-pointer select-none" @click="sortBy('estimated_savings')">
+                    <span class="inline-flex items-center gap-1">Est. Savings <span x-show="sortColumn === 'estimated_savings'" x-cloak x-text="sortDirection === 'asc' ? '\u2191' : '\u2193'"></span></span>
+                  </th>
+                  <th class="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider min-w-[180px]">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody class="divide-y">
+                <template x-for="group in paginatedGroups()" :key="group.id">
+                  <tr class="border-b hover:bg-muted/30 transition-colors" :class="selectedGroups.includes(group.id) ? 'bg-primary/5' : ''">
+                    <td class="px-4 py-3 w-10">
+                      <input type="checkbox" :checked="selectedGroups.includes(group.id)" @change="toggleSelectGroup(group.id)"
+                             class="rounded border-input" :aria-label="`Select group ${group.name || group.id}`">
+                    </td>
+                    <td class="px-4 py-3">
+                      <a :href="`/duplicate-detection/simple/group/${group.id}`" class="font-medium text-sm text-foreground hover:text-primary transition-colors" x-text="group.name || `Group ${group.id}`"></a>
+                      <p class="text-xs text-muted-foreground mt-0.5 truncate max-w-[200px]" x-text="group.description || 'Similar applications detected'"></p>
+                    </td>
+                    <td class="px-4 py-3">
+                      <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium"
+                            :class="typeBadgeClass(group.duplicate_type)"
+                            x-text="(group.duplicate_type || 'unknown').charAt(0).toUpperCase() + (group.duplicate_type || 'unknown').slice(1)"></span>
+                    </td>
+                    <td class="px-4 py-3">
+                      <span class="text-sm font-medium text-foreground" x-text="group.application_count || 0"></span>
+                    </td>
+                    <td class="px-4 py-3">
+                      <span class="text-sm text-foreground" x-text="formatPercent(group.similarity_threshold || 0.6)"></span>
+                    </td>
+                    <td class="px-4 py-3">
+                      <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium"
+                            :class="statusBadgeClass(group.status)"
+                            x-text="(group.status || 'pending').charAt(0).toUpperCase() + (group.status || 'pending').slice(1)"></span>
+                    </td>
+                    <td class="px-4 py-3">
+                      <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium"
+                            :class="riskBadgeClass(group.risk_level)"
+                            x-text="(group.risk_level || 'medium').charAt(0).toUpperCase() + (group.risk_level || 'medium').slice(1)"></span>
+                    </td>
+                    <td class="px-4 py-3">
+                      <span class="text-sm font-medium text-foreground">{{ currency_symbol }}<span x-text="formatNumber(group.estimated_savings || 0)"></span></span>
+                    </td>
+                    <td class="px-4 py-3 text-right">
+                      <div class="flex gap-1 justify-end">
+                        <a :href="`/duplicate-detection/simple/group/${group.id}`"
+                           class="inline-flex items-center justify-center whitespace-nowrap h-8 px-3 rounded-md text-sm font-medium hover:bg-accent hover:text-accent-foreground transition-colors">
+                          View
+                        </a>
+                        <button type="button" @click.stop="addToConsolidation(group.id)"
+                                class="inline-flex items-center justify-center whitespace-nowrap h-8 px-3 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors" aria-label="Add to consolidation list">
+                          Add to List
+                        </button>
+                        <button type="button" @click.stop="dismissGroup(group.id)"
+                                class="inline-flex items-center justify-center whitespace-nowrap h-8 px-3 rounded-md text-sm font-medium hover:bg-accent hover:text-accent-foreground transition-colors border border-input" :aria-label="`Dismiss group ${group.name || group.id}`">
+                          Dismiss
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                </template>
+                <template x-if="getFilteredGroups().length === 0 && allGroups.length > 0">
+                  <tr>
+                    <td colspan="9" class="px-4 py-8 text-center text-sm text-muted-foreground">
+                      No groups match your filter criteria.
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Mobile Cards (hidden on desktop) -->
+          <div class="lg:hidden divide-y">
+            <template x-for="group in paginatedGroups()" :key="'m-' + group.id">
+              <div class="p-4 hover:bg-muted/30 transition-colors">
+                <div class="flex items-start justify-between mb-3">
+                  <div class="min-w-0">
+                    <a :href="`/duplicate-detection/simple/group/${group.id}`" class="font-semibold text-base text-foreground hover:text-primary" x-text="group.name || `Group ${group.id}`"></a>
+                    <div class="flex items-center gap-2 mt-1">
+                      <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium"
+                            :class="typeBadgeClass(group.duplicate_type)"
+                            x-text="(group.duplicate_type || 'unknown').charAt(0).toUpperCase() + (group.duplicate_type || 'unknown').slice(1)"></span>
+                      <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium"
+                            :class="statusBadgeClass(group.status)"
+                            x-text="(group.status || 'pending').charAt(0).toUpperCase() + (group.status || 'pending').slice(1)"></span>
+                    </div>
+                  </div>
+                  <a :href="`/duplicate-detection/simple/group/${group.id}`"
+                     class="inline-flex items-center justify-center h-8 px-3 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90">
+                    <i data-lucide="eye" class="h-4 w-4" aria-hidden="true"></i>
+                  </a>
+                </div>
+                <div class="grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <p class="text-xs text-muted-foreground mb-1">Applications</p>
+                    <p class="font-medium text-foreground" x-text="group.application_count || 0"></p>
+                  </div>
+                  <div>
+                    <p class="text-xs text-muted-foreground mb-1">Est. Savings</p>
+                    <p class="font-medium text-foreground">{{ currency_symbol }}<span x-text="formatNumber(group.estimated_savings || 0)"></span></p>
+                  </div>
+                  <div>
+                    <p class="text-xs text-muted-foreground mb-1">Similarity</p>
+                    <p class="font-medium text-foreground" x-text="formatPercent(group.similarity_threshold || 0.6)"></p>
+                  </div>
+                  <div>
+                    <p class="text-xs text-muted-foreground mb-1">Risk</p>
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium"
+                          :class="riskBadgeClass(group.risk_level)"
+                          x-text="(group.risk_level || 'medium').charAt(0).toUpperCase() + (group.risk_level || 'medium').slice(1)"></span>
+                  </div>
+                </div>
+                <div class="flex gap-2 pt-3 mt-3 border-t">
+                  <button type="button" @click.stop="addToConsolidation(group.id)"
+                          class="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors bg-primary text-primary-foreground hover:bg-primary/90 h-8 px-4 flex-1" :aria-label="`Consolidate group ${group.name || group.id}`">
+                    Consolidate
+                  </button>
+                  <button type="button" @click.stop="dismissGroup(group.id)"
+                          class="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground h-8 px-4 border border-input" :aria-label="`Dismiss group ${group.name || group.id}`">
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            </template>
+          </div>
+
+          <!-- Pagination Footer -->
+          <div class="p-4 sm:p-6 border-t bg-muted/30">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div class="text-sm text-muted-foreground">
+                Showing <span class="font-medium text-foreground" x-text="getFilteredGroups().length === 0 ? 0 : (currentPage - 1) * perPage + 1"></span>
+                to <span class="font-medium text-foreground" x-text="Math.min(currentPage * perPage, getFilteredGroups().length)"></span>
+                of <span class="font-medium text-foreground" x-text="getFilteredGroups().length"></span> groups
+              </div>
+              <div class="flex items-center gap-2">
+                <label class="text-sm text-muted-foreground">Show:</label>
+                <select x-model.number="perPage" @change="currentPage = 1"
+                        class="h-8 w-16 rounded-md border border-input bg-background px-2 py-1 text-sm">
+                  <option value="10">10</option>
+                  <option value="20">20</option>
+                  <option value="50">50</option>
+                </select>
+                <div class="flex items-center gap-1 ml-2">
+                  <button type="button" @click="currentPage = Math.max(1, currentPage - 1)" :disabled="currentPage <= 1"
+                          class="flex h-8 w-8 items-center justify-center rounded-md border border-input bg-background hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed" aria-label="Go to previous page">
+                    <i data-lucide="chevron-left" class="h-4 w-4" aria-hidden="true"></i>
+                  </button>
+                  <span class="text-sm text-muted-foreground px-2 min-w-[80px] text-center">
+                    Page <span class="font-medium text-foreground" x-text="currentPage"></span> of <span x-text="totalPages()"></span>
+                  </span>
+                  <button type="button" @click="currentPage = Math.min(totalPages(), currentPage + 1)" :disabled="currentPage >= totalPages()"
+                          class="flex h-8 w-8 items-center justify-center rounded-md border border-input bg-background hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed" aria-label="Go to next page">
+                    <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </template>
+    </div>
+
+<!-- Run Detection Modal -->
+<div x-show="showRunDetectionModal" x-cloak
+     @keydown.escape.window="showRunDetectionModal = false"
+     x-cloak
+     role="dialog" aria-modal="true" aria-labelledby="run-detection-modal-title"
+     x-effect="document.body.classList.toggle('overflow-hidden', showRunDetectionModal)"
+     class="modal-root overflow-y-auto fixed inset-0 z-50"> <!-- inline-style-ok -->
+  <div class="absolute inset-0" @click="showRunDetectionModal = false" style="background:rgba(0,0,0,.5);"></div> <!-- inline-style-ok -->
+  <div class="relative flex items-center justify-center min-h-screen px-4">
+    <div data-slot="card" class="relative rounded-xl border bg-card shadow-lg max-w-lg w-full p-6" tabindex="-1">
+      <div class="flex items-center justify-between mb-6">
+        <h3 id="run-detection-modal-title" class="text-lg font-semibold text-foreground">Run Detection</h3>
+        <button type="button" @click="showRunDetectionModal = false" class="text-muted-foreground hover:text-foreground" aria-label="Close detection modal">
+          <i data-lucide="x" class="w-5 h-5" aria-hidden="true"></i>
+        </button>
+      </div>
+
+      <div class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-foreground mb-1.5">Detection Strategy</label>
+          <select x-model="detectionConfig.strategy"
+                  class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <option value="hybrid">Hybrid Detection (Recommended)</option>
+            <option value="fast">Fast Detection</option>
+            <option value="enhanced">Enhanced Detection</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-foreground mb-1.5">
+            Similarity Threshold: <span class="text-muted-foreground" x-text="detectionConfig.similarity_threshold"></span>
+          </label>
+          <input type="range" x-model.number="detectionConfig.similarity_threshold"
+                 min="0.4" max="0.9" step="0.05"
+                 class="w-full accent-primary" aria-label="Similarity threshold">
+          <div class="flex justify-between text-xs text-muted-foreground mt-1">
+            <span>More matches</span>
+            <span>Higher precision</span>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-foreground mb-1.5">Run Name (Optional)</label>
+          <input type="text" x-model="detectionConfig.run_name"
+                 placeholder="e.g., Q1 2026 Detection"
+                 class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="e.g., Q1 2026 Detection">
+          <p class="text-xs text-muted-foreground mt-1.5">After you start, progress and results are shown in the live status panel above.</p>
+        </div>
+      </div>
+
+      <div class="flex gap-3 mt-6">
+        <button type="button" @click="runDetection()" :disabled="isRunningDetection"
+                class="flex-1 inline-flex items-center justify-center rounded-lg text-sm font-medium transition-colors bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-6 disabled:opacity-50 disabled:cursor-not-allowed" aria-label="Start duplicate detection">
+          <span x-show="!isRunningDetection" x-cloak class="flex items-center gap-2">
+            <i data-lucide="search" class="w-4 h-4" aria-hidden="true"></i>
+            Run Detection
+          </span>
+          <span x-show="isRunningDetection" x-cloak class="flex items-center gap-2">
+            <i data-lucide="loader" class="w-4 h-4 animate-spin" aria-hidden="true"></i>
+            Running...
+          </span>
+        </button>
+        <button type="button" @click="showRunDetectionModal = false"
+                class="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground h-10 px-6 border border-input" aria-label="Cancel and close detection modal">
+          Cancel
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_head_js %}
+<script>
+  window.__APP_CONFIG__ = window.__APP_CONFIG__ || {};
+</script>
+<script src="{{ url_for('static', filename='js/duplicate_detection/dashboard.js') }}?v=3"></script>
+{% endblock %}

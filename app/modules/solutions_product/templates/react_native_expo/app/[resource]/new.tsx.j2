@@ -1,0 +1,391 @@
+import { useState } from "react"
+import {
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  ScrollView,
+  Switch,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+  FlatList,
+} from "react-native"
+import DateTimePicker from "@react-native-community/datetimepicker"
+import { useRouter } from "expo-router"
+import { useForm, Controller } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query"
+import Toast from "react-native-toast-message"
+import { Check, ChevronDown, Search, X } from "lucide-react-native"
+import { {{ name | lower }}Api } from "@/lib/api"
+import { {{ name }}Schema, type {{ name }}Input } from "@/lib/schemas"
+{% for rel in relationships %}
+import { {{ rel.target | lower }}Api } from "@/lib/api"
+{% endfor %}
+
+const CARD_SHADOW = { shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 2 }
+const BTN_SHADOW = { shadowColor: "#6366f1", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 4 }
+const SCROLL_STYLE = { padding: 20, paddingBottom: 48 }
+const SWITCH_TRACK = { false: "#e2e8f0", true: "#6366f1" }
+
+// ── Reusable enum picker modal ──────────────────────────────────────────────
+function EnumPicker({
+  label,
+  value,
+  options,
+  onChange,
+  error,
+}: {
+  label: string
+  value: string | undefined
+  options: string[]
+  onChange: (v: string) => void
+  error?: string
+}) {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <View className="px-5 py-3.5 border-b border-slate-50">
+        <Text className="text-xs font-medium text-slate-400 mb-1.5">{label}</Text>
+        <TouchableOpacity
+          onPress={() => setOpen(true)}
+          className={`bg-slate-50 border rounded-lg px-3.5 py-2.5 flex-row items-center justify-between ${error ? "border-red-400" : "border-slate-200"}`}
+        >
+          <Text className={value ? "text-sm text-slate-900" : "text-sm text-slate-400"}>
+            {value ? String(value).replace(/_/g, " ") : "Select…"}
+          </Text>
+          <ChevronDown size={16} color="#94a3b8" />
+        </TouchableOpacity>
+        {error ? <Text className="text-red-500 text-xs mt-1">{error}</Text> : null}
+      </View>
+      <Modal visible={open} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setOpen(false)}>
+        <View className="flex-1 bg-white">
+          <View className="flex-row items-center justify-between px-5 py-4 border-b border-slate-100">
+            <Text className="text-base font-semibold text-slate-900">{label}</Text>
+            <TouchableOpacity onPress={() => setOpen(false)} accessibilityLabel="Close">
+              <X size={22} color="#64748b" />
+            </TouchableOpacity>
+          </View>
+          <FlatList
+            data={options}
+            keyExtractor={(o) => o}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                onPress={() => { onChange(item); setOpen(false) }}
+                className="flex-row items-center px-5 py-4 border-b border-slate-50"
+              >
+                <Text className="text-sm text-slate-900 flex-1 capitalize">{item.replace(/_/g, " ")}</Text>
+                {value === item ? <Check size={16} color="#6366f1" /> : null}
+              </TouchableOpacity>
+            )}
+          />
+        </View>
+      </Modal>
+    </>
+  )
+}
+
+// ── Reusable date picker ────────────────────────────────────────────────────
+function DateField({
+  label,
+  value,
+  onChange,
+  error,
+  required,
+}: {
+  label: string
+  value: string | undefined
+  onChange: (v: string) => void
+  error?: string
+  required?: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const date = value ? new Date(value) : new Date()
+  return (
+    <View className="px-5 py-3.5 border-b border-slate-50">
+      <Text className="text-xs font-medium text-slate-400 mb-1.5">
+        {label}{required ? " *" : ""}
+      </Text>
+      <TouchableOpacity
+        onPress={() => setOpen(true)}
+        className={`bg-slate-50 border rounded-lg px-3.5 py-2.5 ${error ? "border-red-400" : "border-slate-200"}`}
+      >
+        <Text className={value ? "text-sm text-slate-900" : "text-sm text-slate-400"}>
+          {value ? new Date(value).toLocaleDateString() : "Select date…"}
+        </Text>
+      </TouchableOpacity>
+      {error ? <Text className="text-red-500 text-xs mt-1">{error}</Text> : null}
+      {open && (
+        <DateTimePicker
+          value={date}
+          mode="date"
+          display={Platform.OS === "ios" ? "spinner" : "default"}
+          onChange={(_e, d) => {
+            setOpen(Platform.OS === "ios")
+            if (d) onChange(d.toISOString())
+          }}
+        />
+      )}
+    </View>
+  )
+}
+
+// ── Reusable relation picker ────────────────────────────────────────────────
+function RelationPicker({
+  label,
+  value,
+  fetchFn,
+  displayField,
+  onChange,
+  error,
+  required,
+}: {
+  label: string
+  value: string | number | undefined
+  fetchFn: (params?: Record<string, string | number>) => Promise<unknown[]>
+  displayField: string
+  onChange: (id: string | number, label: string) => void
+  error?: string
+  required?: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState("")
+  const [displayLabel, setDisplayLabel] = useState<string>(value != null ? String(value) : "")
+
+  const { data: options = [], isLoading } = useQuery({
+    queryKey: ["relation-picker", label, search],
+    queryFn: () => fetchFn({ search, per_page: 30 }),
+    enabled: open,
+  })
+
+  return (
+    <>
+      <View className="px-5 py-3.5 border-b border-slate-50">
+        <Text className="text-xs font-medium text-slate-400 mb-1.5">
+          {label}{required ? " *" : ""}
+        </Text>
+        <TouchableOpacity
+          onPress={() => setOpen(true)}
+          className={`bg-slate-50 border rounded-lg px-3.5 py-2.5 flex-row items-center justify-between ${error ? "border-red-400" : "border-slate-200"}`}
+        >
+          <Text className={displayLabel ? "text-sm text-slate-900 flex-1" : "text-sm text-slate-400 flex-1"} numberOfLines={1}>
+            {displayLabel || "Search and select…"}
+          </Text>
+          <Search size={16} color="#94a3b8" />
+        </TouchableOpacity>
+        {error ? <Text className="text-red-500 text-xs mt-1">{error}</Text> : null}
+      </View>
+      <Modal visible={open} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setOpen(false)}>
+        <View className="flex-1 bg-white">
+          <View className="flex-row items-center justify-between px-5 py-4 border-b border-slate-100">
+            <Text className="text-base font-semibold text-slate-900">{label}</Text>
+            <TouchableOpacity onPress={() => setOpen(false)} accessibilityLabel="Close">
+              <X size={22} color="#64748b" />
+            </TouchableOpacity>
+          </View>
+          <View className="px-4 py-3 border-b border-slate-100">
+            <TextInput
+              className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-900"
+              placeholder={`Search ${label.toLowerCase()}…`}
+              placeholderTextColor="#94a3b8"
+              value={search}
+              onChangeText={setSearch}
+              autoFocus
+            />
+          </View>
+          <FlatList
+            data={options as Record<string, unknown>[]}
+            keyExtractor={(o) => String(o.id ?? o._id ?? JSON.stringify(o))}
+            ListEmptyComponent={
+              <Text className="text-sm text-slate-400 text-center py-8">
+                {isLoading ? "Loading…" : "No results"}
+              </Text>
+            }
+            renderItem={({ item }) => {
+              const rec = item as Record<string, unknown>
+              const label2 = String(rec[displayField] ?? rec.name ?? rec.title ?? rec.id)
+              const id = rec.id ?? rec._id
+              return (
+                <TouchableOpacity
+                  onPress={() => {
+                    onChange(id as string | number, label2)
+                    setDisplayLabel(label2)
+                    setOpen(false)
+                  }}
+                  className="flex-row items-center px-5 py-4 border-b border-slate-50"
+                >
+                  <Text className="text-sm text-slate-900 flex-1">{label2}</Text>
+                  {value === id ? <Check size={16} color="#6366f1" /> : null}
+                </TouchableOpacity>
+              )
+            }}
+          />
+        </View>
+      </Modal>
+    </>
+  )
+}
+
+export default function New{{ name }}Screen() {
+  const router = useRouter()
+  const queryClient = useQueryClient()
+
+  const { control, handleSubmit, setValue, formState: { errors, isSubmitting } } = useForm<{{ name }}Input>({
+    resolver: zodResolver({{ name }}Schema),
+  })
+
+  const mutation = useMutation({
+    mutationFn: (data: {{ name }}Input) => {{ name | lower }}Api.create(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["{{ table_name }}"] })
+      Toast.show({ type: "success", text1: "Created", text2: "{{ name | replace('_', ' ') }} created successfully." })
+      router.back()
+    },
+    onError: (e: unknown) => {
+      Toast.show({ type: "error", text1: "Error", text2: e instanceof Error ? e.message : "Creation failed" })
+    },
+  })
+
+  return (
+    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} className="flex-1 bg-slate-50">
+      <ScrollView className="flex-1" contentContainerStyle={SCROLL_STYLE}>
+
+        {/* Header */}
+        <View className="mb-5">
+          <Text className="text-2xl font-bold text-slate-900">New {{ name | replace('_', ' ') }}</Text>
+          <Text className="text-sm text-slate-500 mt-1">{{ description | default('Fill in the details below.') }}</Text>
+        </View>
+
+        {/* Form card */}
+        <View className="bg-white rounded-2xl border border-slate-100 overflow-hidden mb-5" style={CARD_SHADOW}>
+          {% for field in fields %}{% if not field.primary_key %}
+          {% set fl = field.name | lower %}
+          {% set is_bool = field.type in ["bool", "boolean"] %}
+          {% set is_numeric = field.type in ['int', 'integer', 'float', 'Decimal', 'decimal', 'number'] %}
+          {% set is_date = field.type in ['datetime', 'date'] or field.format in ['date', 'date-time'] %}
+          {% set is_email = 'email' in fl %}
+          {% set is_phone = 'phone' in fl %}
+          {% set is_url = 'url' in fl or 'website' in fl or 'link' in fl %}
+          {% set is_secret = 'password' in fl or 'secret' in fl or 'passwd' in fl %}
+          {% set is_multiline = ('description' in fl or 'notes' in fl or 'body' in fl or 'content' in fl or 'summary' in fl or 'comment' in fl or 'remarks' in fl) and field.type in ['str', 'string', 'text'] %}
+          {% set is_fk = field.foreignKey is defined and field.foreignKey %}
+          {% set has_enum = field.enum is defined and field.enum | length > 0 %}
+          {% set kbd = 'numeric' if is_numeric else ('email-address' if is_email else ('phone-pad' if is_phone else ('url' if is_url else 'default'))) %}
+
+          {% if is_bool %}
+          <View className="px-5 py-3.5 border-b border-slate-50 flex-row items-center justify-between">
+            <Text className="text-sm font-medium text-slate-700">{{ field.name | replace('_', ' ') | title }}</Text>
+            <Controller
+              control={control}
+              name="{{ field.name }}"
+              defaultValue={false}
+              render={({ field: { onChange, value } }) => (
+                <Switch value={!!value} onValueChange={onChange} trackColor={SWITCH_TRACK} thumbColor="#fff" />
+              )}
+            />
+          </View>
+
+          {% elif is_date %}
+          <Controller
+            control={control}
+            name="{{ field.name }}"
+            render={({ field: { onChange, value } }) => (
+              <DateField
+                label="{{ field.name | replace('_', ' ') | title }}"
+                value={value as string | undefined}
+                onChange={onChange}
+                error={errors.{{ field.name }}?.message}
+                {% if not field.nullable %}required={true}{% else %}required={false}{% endif %}
+              />
+            )}
+          />
+
+          {% elif has_enum %}
+          <Controller
+            control={control}
+            name="{{ field.name }}"
+            render={({ field: { onChange, value } }) => (
+              <EnumPicker
+                label="{{ field.name | replace('_', ' ') | title }}{% if not field.nullable %} *{% endif %}"
+                value={value as string | undefined}
+                options={[{% for v in field.enum %}"{{ v }}"{% if not loop.last %}, {% endif %}{% endfor %}]}
+                onChange={onChange}
+                error={errors.{{ field.name }}?.message}
+              />
+            )}
+          />
+
+          {% elif is_fk %}
+          <Controller
+            control={control}
+            name="{{ field.name }}"
+            render={({ field: { onChange, value } }) => (
+              <RelationPicker
+                label="{{ field.name | replace('_id', '') | replace('_', ' ') | title }}"
+                value={value as string | number | undefined}
+                fetchFn={(params) => {{ field.foreignKey.split('.')[0] | lower }}Api.list(params)}
+                displayField="{{ field.foreignKey.split('.')[0] | lower }}_name"
+                onChange={(id) => onChange(id)}
+                error={errors.{{ field.name }}?.message}
+                {% if not field.nullable %}required={true}{% else %}required={false}{% endif %}
+              />
+            )}
+          />
+
+          {% else %}
+          <View className="px-5 py-3.5 border-b border-slate-50">
+            <Text className="text-xs font-medium text-slate-400 mb-1.5">
+              {{ field.name | replace('_', ' ') | title }}{% if not field.nullable %} *{% endif %}
+            </Text>
+            <Controller
+              control={control}
+              name="{{ field.name }}"
+              render={({ field: { onChange, onBlur, value } }) => (
+                <TextInput
+                  className={`bg-slate-50 border rounded-lg px-3.5 {% if is_multiline %}py-3{% else %}py-2.5{% endif %} text-sm text-slate-900 ${errors.{{ field.name }} ? "border-red-400" : "border-slate-200"}`}
+                  onBlur={onBlur}
+                  onChangeText={(text) => onChange({% if is_numeric %}text === "" ? undefined : Number(text){% else %}text{% endif %})}
+                  value={value != null ? String(value) : ""}
+                  keyboardType="{{ kbd }}"
+                  {% if is_secret %}secureTextEntry{% endif %}
+                  {% if is_multiline %}multiline numberOfLines={4} textAlignVertical="top"{% endif %}
+                  {% if is_email %}autoCapitalize="none" autoComplete="email"{% endif %}
+                  placeholder="{{ field.name | replace('_', ' ') | title }}"
+                  placeholderTextColor="#94a3b8"
+                  accessibilityLabel="{{ field.name | replace('_', ' ') | title }}"
+                />
+              )}
+            />
+            {errors.{{ field.name }} && (
+              <Text className="text-red-500 text-xs mt-1">{errors.{{ field.name }}?.message}</Text>
+            )}
+          </View>
+          {% endif %}
+
+          {% endif %}{% endfor %}
+        </View>
+
+        {/* Submit */}
+        <TouchableOpacity
+          onPress={handleSubmit((data) => mutation.mutate(data))}
+          disabled={isSubmitting || mutation.isPending}
+          className={`rounded-2xl px-4 py-4 items-center flex-row justify-center gap-2 ${
+            isSubmitting || mutation.isPending ? "bg-indigo-300" : "bg-indigo-600"
+          }`}
+          style={BTN_SHADOW}
+          accessibilityLabel="Create {{ name }}"
+        >
+          <Check size={18} color="#fff" />
+          <Text className="text-white font-semibold text-base">
+            {isSubmitting || mutation.isPending ? "Creating…" : "Create {{ name | replace('_', ' ') }}"}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity onPress={() => router.back()} className="items-center py-3 mt-1">
+          <Text className="text-slate-500 font-medium">Cancel</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </KeyboardAvoidingView>
+  )
+}

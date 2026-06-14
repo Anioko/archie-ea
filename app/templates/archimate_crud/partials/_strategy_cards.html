@@ -1,0 +1,33 @@
+<!-- Strategy cards — shows Strategy-layer elements as cards -->
+<div class="space-y-4">
+    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        <template x-for="el in elements.filter(e => !searchQuery || e.name.toLowerCase().indexOf(searchQuery.toLowerCase()) >= 0)" :key="el.id + ':' + el.element_type">
+            <div class="bg-card border border-border rounded-lg p-5 space-y-3 flex flex-col hover:shadow-sm transition-shadow">
+                <div class="flex items-start justify-between gap-2">
+                    <a :href="detailUrl(el)" class="text-lg font-semibold leading-tight hover:text-primary transition-colors" x-text="el.name"></a>
+                    <span class="shrink-0 text-xs bg-indigo-500/10 text-indigo-700 border border-indigo-200 rounded-full px-2 py-0.5"
+                          x-text="formatTypeName(el.element_type)"></span>
+                </div>
+                <p class="text-sm text-muted-foreground flex-1" x-text="el.description || 'No description provided.'"></p>
+                <div class="border-t border-border pt-3 flex items-center justify-between">
+                    <div class="flex items-center gap-3 text-xs text-muted-foreground">
+                        <span x-show="el.rel_count > 0" class="inline-flex items-center gap-1">
+                            <i data-lucide="git-branch" class="h-3 w-3" aria-hidden="true"></i>
+                            <span x-text="el.rel_count + ' relationships'"></span>
+                        </span>
+                        <span x-show="el.rel_count === 0" class="text-warning">No relationships</span>
+                    </div>
+                    <div class="flex gap-2">
+                        <button @click="openEditModal(el)" class="text-primary hover:text-primary/80" title="Edit">
+                            <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i>
+                        </button>
+                        <button @click="confirmDelete(el)" class="text-destructive hover:text-destructive/80" title="Delete">
+                            <i data-lucide="trash-2" class="h-4 w-4" aria-hidden="true"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </template>
+    </div>
+    <p x-show="elements.length === 0" class="text-center text-muted-foreground py-8">No Strategy elements found.</p>
+</div>

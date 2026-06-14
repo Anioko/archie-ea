@@ -1,0 +1,110 @@
+{# app/reset-password/page.tsx.j2 — Password reset form (token from email link) #}
+"use client"
+
+import { useState, FormEvent, useEffect } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
+import { Loader2 } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { toast } from "sonner"
+
+{% if base_path %}
+const BASE_PATH = "{{ base_path }}"
+{% else %}
+const BASE_PATH = ""
+{% endif %}
+
+export default function ResetPasswordPage() {
+  const router = useRouter()
+  const params = useSearchParams()
+  const token = params.get("token") ?? ""
+
+  const [password, setPassword] = useState("")
+  const [confirm, setConfirm] = useState("")
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (!token) {
+      toast.error("Invalid reset link", { description: "No token found in URL" })
+    }
+  }, [token])
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    if (password !== confirm) {
+      toast.error("Passwords do not match")
+      return
+    }
+    if (password.length < 8) {
+      toast.error("Password must be at least 8 characters")
+      return
+    }
+    setLoading(true)
+    try {
+      const res = await fetch(BASE_PATH + "/api/auth/reset-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, password }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        toast.error("Reset failed", {
+          description: body.detail || "Link may have expired. Request a new one.",
+        })
+        return
+      }
+      toast.success("Password updated", { description: "Please log in with your new password" })
+      router.push(BASE_PATH + "/login")
+    } catch {
+      toast.error("Connection error", { description: "Could not reach the server" })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-background p-4">
+      <Card className="w-full max-w-sm">
+        <CardHeader className="text-center">
+          <CardTitle className="text-2xl font-bold">New password</CardTitle>
+          <CardDescription>Choose a strong password for your account</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="password">New password</Label>
+              <Input
+                id="password"
+                type="password"
+                placeholder="At least 8 characters"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="new-password"
+                required
+                minLength={8}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="confirm">Confirm password</Label>
+              <Input
+                id="confirm"
+                type="password"
+                placeholder="Re-enter your password"
+                value={confirm}
+                onChange={(e) => setConfirm(e.target.value)}
+                autoComplete="new-password"
+                required
+              />
+            </div>
+            <Button type="submit" className="w-full" disabled={loading || !token}>
+              {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {loading ? "Updating..." : "Update password"}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}

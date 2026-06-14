@@ -1,0 +1,87 @@
+# {{ solution_name }}
+
+> Generated from ArchiMate 3.2 architecture by A.R.C.H.I.E. · Blueprint v{{ blueprint_version }}
+
+{% if description %}
+## Overview
+
+{{ description }}
+{% endif %}
+
+## Tech Stack
+
+- **Framework:** {% if language == 'python-flask' %}Flask (Python {{ python_version }}){% elif language == 'python-fastapi' %}FastAPI (Python {{ python_version }}){% elif language and 'go' in language %}Go (Chi){% elif language and 'java' in language %}Java (Spring Boot){% elif language and 'react' in language %}React (Next.js + shadcn/ui){% else %}FastAPI (Python {{ python_version }}){% endif %}
+- **Database:** PostgreSQL{% if language == 'python-flask' %} + Flask-SQLAlchemy + Marshmallow{% elif language == 'python-fastapi' %} + async SQLAlchemy + Pydantic{% endif %}
+- **Auth:** {{ auth_type or 'None' }}{% if auth_type == 'jwt-local' %} (JWT — symmetric secret, HS256){% elif auth_type == 'oauth2' %} (OAuth2 / OIDC){% elif auth_type == 'api-key' %} (API Key — X-API-Key header){% endif %}
+- **Container:** Docker + docker-compose
+{% if business_domain %}- **Domain:** {{ business_domain }}{% endif %}
+{% if solution_type %}- **Solution type:** {{ solution_type }}{% endif %}
+{% if complexity_level %}- **Complexity:** {{ complexity_level }}{% endif %}
+
+## Quick Start
+
+```bash
+docker compose up --build
+```
+
+API available at `http://localhost:{{ port | default('8000') }}`
+{% if language == 'python-flask' %}Swagger UI at `http://localhost:{{ port | default('5000') }}/apidocs` (Flasgger)
+{% elif language == 'python-fastapi' %}Interactive docs at `http://localhost:{{ port | default('8000') }}/docs`
+{% endif %}
+
+---
+
+{% if security_narrative %}
+## Security Model
+
+{{ security_narrative }}
+
+{% endif %}
+{% if nfr_narrative %}
+## Non-Functional Requirements
+
+{{ nfr_narrative }}
+
+{% endif %}
+{% if deployment_narrative %}
+## Deployment Model
+
+{{ deployment_narrative }}
+
+{% endif %}
+
+## Data Model
+
+{% for cls in classes %}
+### {{ cls.name }}
+
+{{ cls.description or '' }}
+
+| Field | Type | Nullable | Notes |
+|-------|------|----------|-------|
+{% for f in cls.get('fields', []) %}| `{{ f.name }}` | `{{ f.type }}` | {{ 'yes' if f.get('nullable') else 'no' }} | {{ f.get('description', '') }} |
+{% endfor %}
+{% if cls.get('relationships') %}
+**Relationships:** {% for r in cls.relationships %}{{ r.type }} → `{{ r.target_class }}`{% if not loop.last %}, {% endif %}{% endfor %}
+{% endif %}
+
+{% endfor %}
+
+## API Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+{% for flow in flows %}| `{{ flow.http_method }}` | `{{ flow.path }}` | {{ flow.name }} |
+{% endfor %}
+
+## Project Structure
+
+```
+{% for f in file_list %}{{ f }}
+{% endfor %}
+```
+
+## Architecture Traceability
+
+See `ARCHITECTURE.md` for full mapping from generated code back to ArchiMate source elements.
+See `DECISIONS.md` for architecture decision records explaining key design choices.

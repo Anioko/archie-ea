@@ -1,0 +1,136 @@
+{# Step 9: Lessons Learned & Outcome Metrics (TOGAF Phase H) #}
+<div class="space-y-6">
+  <div>
+    <h2 class="text-lg font-semibold">Lessons Learned</h2>
+    <p class="text-sm text-muted-foreground">Capture outcome metrics and lessons for future architecture cycles (Phase H).</p>
+  </div>
+
+  {# -- Outcome Metrics -- #}
+  <div>
+    <div class="flex items-center justify-between mb-3">
+      <h3 class="text-sm font-semibold text-foreground">Outcome Metrics</h3>
+      <button type="button"
+              @click="addMetric()"
+              class="inline-flex items-center gap-2 h-8 px-3 rounded-md text-xs font-medium border border-input bg-background hover:bg-accent">
+        <i data-lucide="plus" class="h-3 w-3"></i> Add Metric
+      </button>
+    </div>
+
+    <template x-if="outcomeMetrics.length === 0">
+      <div class="rounded-md border border-dashed border-border p-6 text-center text-muted-foreground">
+        <i data-lucide="bar-chart-2" class="h-6 w-6 mx-auto mb-2"></i>
+        <p class="text-sm">No metrics yet. Add outcome metrics to track solution performance.</p>
+      </div>
+    </template>
+
+    <template x-if="outcomeMetrics.length > 0">
+      <div class="rounded-md border border-border overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="bg-muted/50">
+              <tr>
+                <th class="text-left p-3 font-medium">Metric</th>
+                <th class="text-left p-3 font-medium w-24">Unit</th>
+                <th class="text-left p-3 font-medium w-24">Baseline</th>
+                <th class="text-left p-3 font-medium w-24">Target</th>
+                <th class="text-left p-3 font-medium w-24">Actual</th>
+                <th class="text-center p-3 font-medium w-16">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <template x-for="(metric, idx) in outcomeMetrics" :key="idx">
+                <tr class="border-t border-border">
+                  <td class="p-2">
+                    <input type="text"
+                           class="w-full border border-border rounded px-2 py-1 bg-background text-foreground text-xs"
+                           x-model="metric.metric_name"
+                           placeholder="e.g. Cost Reduction">
+                  </td>
+                  <td class="p-2">
+                    <input type="text"
+                           class="w-full border border-border rounded px-2 py-1 bg-background text-foreground text-xs"
+                           x-model="metric.unit"
+                           placeholder="%">
+                  </td>
+                  <td class="p-2">
+                    <input type="text"
+                           class="w-full border border-border rounded px-2 py-1 bg-background text-foreground text-xs"
+                           x-model="metric.baseline_value">
+                  </td>
+                  <td class="p-2">
+                    <input type="text"
+                           class="w-full border border-border rounded px-2 py-1 bg-background text-foreground text-xs"
+                           x-model="metric.target_value">
+                  </td>
+                  <td class="p-2">
+                    <input type="text"
+                           class="w-full border border-border rounded px-2 py-1 bg-background text-foreground text-xs"
+                           x-model="metric.actual_value">
+                  </td>
+                  <td class="p-2 text-center">
+                    <button aria-label="Delete" type="button"
+                            class="text-destructive hover:text-destructive text-xs"
+                            @click="outcomeMetrics.splice(idx, 1)">
+                      <i data-lucide="trash-2" class="h-3.5 w-3.5"></i>
+                    </button>
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </template>
+  </div>
+
+  {# -- Lessons Learned -- #}
+  <div>
+    <div class="flex items-center justify-between mb-3">
+      <h3 class="text-sm font-semibold text-foreground">Lessons</h3>
+      <button type="button"
+              @click="addLesson()"
+              class="inline-flex items-center gap-2 h-8 px-3 rounded-md text-xs font-medium border border-input bg-background hover:bg-accent">
+        <i data-lucide="plus" class="h-3 w-3"></i> Add Lesson
+      </button>
+    </div>
+
+    <template x-if="lessonsLearned.length === 0">
+      <div class="rounded-md border border-dashed border-border p-6 text-center text-muted-foreground">
+        <i data-lucide="book-open" class="h-6 w-6 mx-auto mb-2"></i>
+        <p class="text-sm">No lessons yet. Record lessons for future architecture cycles.</p>
+      </div>
+    </template>
+
+    <template x-if="lessonsLearned.length > 0">
+      <div class="space-y-3">
+        <template x-for="(lesson, idx) in lessonsLearned" :key="idx">
+          <div class="p-3 rounded-lg border border-border bg-card">
+            <div class="flex items-center gap-3 mb-2">
+              <select class="text-xs border border-border rounded px-2 py-1 bg-background text-foreground"
+                      x-model="lesson.category">
+                <option value="process">Process</option>
+                <option value="technical">Technical</option>
+                <option value="people">People</option>
+                <option value="governance">Governance</option>
+                <option value="other">Other</option>
+              </select>
+              <button aria-label="Delete" type="button"
+                      class="ml-auto text-destructive hover:text-destructive text-xs"
+                      @click="lessonsLearned.splice(idx, 1)">
+                <i data-lucide="trash-2" class="h-3.5 w-3.5"></i>
+              </button>
+            </div>
+            <textarea class="w-full border border-border rounded px-2 py-1 bg-background text-foreground text-xs mb-2"
+                      rows="2"
+                      placeholder="What happened?"
+                      x-model="lesson.description"></textarea>
+            <input type="text"
+                   class="w-full border border-border rounded px-2 py-1 bg-background text-foreground text-xs"
+                   placeholder="Recommendation for future cycles..."
+                   x-model="lesson.recommendation">
+          </div>
+        </template>
+      </div>
+    </template>
+  </div>
+</div>

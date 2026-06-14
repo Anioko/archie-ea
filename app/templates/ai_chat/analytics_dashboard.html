@@ -1,0 +1,287 @@
+{% extends 'layouts/admin_base.html' %}
+
+{% block title %}AI Chat Analytics - {{ config.APP_NAME }}{% endblock %}
+
+{% block content %}
+{% include 'components/admin_sidebar.html' %}
+
+<div class="flex-1 overflow-y-auto p-6 bg-background" role="region" aria-label="AI Chat Analytics Content" x-data="aiChatAnalytics()" x-init="init()">
+  <!-- Page header -->
+  <div class="mb-6 flex items-center justify-between">
+    <div>
+      <h1 class="text-2xl font-bold text-foreground">AI Chat Analytics</h1>
+      <p class="text-sm text-muted-foreground mt-1">Feedback, usage and provider metrics</p>
+    </div>
+    <div class="flex items-center gap-3">
+      <label for="date-range" class="text-sm font-medium text-muted-foreground">Period</label>
+      <select id="date-range"
+              x-model="days"
+              @change="fetchData()"
+              class="rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground shadow-sm focus:outline-none focus:ring-2 focus:ring-ring">
+        <option value="7">Last 7 days</option>
+        <option value="30" selected>Last 30 days</option>
+        <option value="90">Last 90 days</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Loading state -->
+  <template x-if="loading">
+    <div class="flex items-center justify-center py-20">
+      <svg class="animate-spin h-8 w-8 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+      </svg>
+      <span class="ml-3 text-muted-foreground">Loading analytics...</span>
+    </div>
+  </template>
+
+  <!-- Error state -->
+  <template x-if="error && !loading">
+    <div class="rounded-md border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
+      <span x-text="error"></span>
+    </div>
+  </template>
+
+  <template x-if="!loading && !error">
+    <div>
+      <!-- Row 1: Stat cards -->
+      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">
+        <!-- Total Messages -->
+        <div class="rounded-lg border border-border bg-card p-5 shadow-sm">
+          <p class="text-sm font-medium text-muted-foreground">Total Messages</p>
+          <p class="mt-2 text-3xl font-bold text-foreground" x-text="data.total_messages.toLocaleString()"></p>
+          <p class="mt-1 text-xs text-muted-foreground">Last <span x-text="days"></span> days</p>
+        </div>
+        <!-- Positive Feedback % -->
+        <div class="rounded-lg border border-border bg-card p-5 shadow-sm">
+          <p class="text-sm font-medium text-muted-foreground">Positive Feedback</p>
+          <p class="mt-2 text-3xl font-bold text-foreground"><span x-text="data.positive_pct"></span>%</p>
+          <p class="mt-1 text-xs text-muted-foreground">
+            <span x-text="data.feedback_summary.total_positive"></span> up /
+            <span x-text="data.feedback_summary.total_negative"></span> down
+          </p>
+        </div>
+        <!-- Active Users -->
+        <div class="rounded-lg border border-border bg-card p-5 shadow-sm">
+          <p class="text-sm font-medium text-muted-foreground">Active Users</p>
+          <p class="mt-2 text-3xl font-bold text-foreground" x-text="data.active_users.toLocaleString()"></p>
+          <p class="mt-1 text-xs text-muted-foreground">Distinct users</p>
+        </div>
+        <!-- Avg Response Time -->
+        <div class="rounded-lg border border-border bg-card p-5 shadow-sm">
+          <p class="text-sm font-medium text-muted-foreground">Avg Response Time</p>
+          <p class="mt-2 text-3xl font-bold text-foreground"><span x-text="data.avg_response_time_ms"></span><span class="text-lg font-normal text-muted-foreground"> ms</span></p>
+          <p class="mt-1 text-xs text-muted-foreground">Processing time</p>
+        </div>
+      </div>
+
+      <!-- A95-012: AI automation metrics row -->
+      <div id="ai-metrics-widget" class="grid grid-cols-1 gap-4 sm:grid-cols-2 mb-6" aria-label="AI automation metrics">
+        <!-- Routine Decisions Automated -->
+        <div data-slot="card" class="rounded-xl border border-border bg-card p-5 shadow-sm">
+          <p class="text-sm font-medium text-muted-foreground">Routine Decisions Automated</p>
+          <p class="mt-2 text-3xl font-bold text-foreground">
+            <strong id="ai-decisions-count" aria-live="polite">–</strong>
+          </p>
+          <p class="mt-1 text-xs text-muted-foreground">AI-originated actions this session</p>
+        </div>
+        <!-- Solutions Touch-Only-for-Review -->
+        <div data-slot="card" class="rounded-xl border border-border bg-card p-5 shadow-sm">
+          <p class="text-sm font-medium text-muted-foreground">Solutions AI-Drafted</p>
+          <p class="mt-2 text-3xl font-bold text-foreground">
+            <strong id="ai-solutions-count" aria-live="polite">–</strong>
+          </p>
+          <p class="mt-1 text-xs text-muted-foreground">Solutions touch-only-for-review</p>
+        </div>
+      </div>
+      <script>
+      (async function loadAIMetrics() {
+        try {
+          const resp = await fetch('/ai-chat/metrics', { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+          if (!resp.ok) return;
+          const data = await resp.json();
+          const dec = document.getElementById('ai-decisions-count');
+          const sol = document.getElementById('ai-solutions-count');
+          if (dec) dec.textContent = data.routine_decisions_automated ?? 0;
+          if (sol) sol.textContent = data.solutions_touch_only_for_review ?? 0;
+        } catch(e) { /* silently fail — metrics are non-critical */ }
+      })();
+      </script>
+
+      <!-- Row 2: Feedback chart + Usage by domain -->
+      <div class="grid grid-cols-1 gap-6 lg:grid-cols-2 mb-6">
+        <!-- Feedback distribution (CSS bar chart) -->
+        <div class="rounded-lg border border-border bg-card p-5 shadow-sm">
+          <h2 class="text-base font-semibold text-foreground mb-4">Feedback by Domain</h2>
+          <template x-if="Object.keys(data.feedback_summary.by_domain).length === 0">
+            <p class="text-sm text-muted-foreground py-4">No feedback data in this period.</p>
+          </template>
+          <div class="space-y-3">
+            <template x-for="domain in Object.keys(data.feedback_summary.by_domain)" :key="domain">
+              <div>
+                <div class="flex items-center justify-between mb-1">
+                  <span class="text-sm font-medium text-foreground capitalize" x-text="domain"></span>
+                  <span class="text-xs text-muted-foreground">
+                    <span x-text="data.feedback_summary.by_domain[domain].positive"></span> up /
+                    <span x-text="data.feedback_summary.by_domain[domain].negative"></span> down
+                  </span>
+                </div>
+                <div class="flex h-5 w-full rounded-md overflow-hidden bg-muted">
+                  <div class="bg-emerald-500 h-full transition-all duration-300"
+                       :style="'width:' + feedbackBarPct(domain, 'positive') + '%'"
+                       :title="data.feedback_summary.by_domain[domain].positive + ' positive'"></div>
+                  <div class="bg-destructive h-full transition-all duration-300"
+                       :style="'width:' + feedbackBarPct(domain, 'negative') + '%'"
+                       :title="data.feedback_summary.by_domain[domain].negative + ' negative'"></div>
+                </div>
+              </div>
+            </template>
+          </div>
+        </div>
+
+        <!-- Usage by domain table -->
+        <div class="rounded-lg border border-border bg-card p-5 shadow-sm">
+          <h2 class="text-base font-semibold text-foreground mb-4">Usage by Domain</h2>
+          <template x-if="data.usage_by_domain.length === 0">
+            <p class="text-sm text-muted-foreground py-4">No usage data in this period.</p>
+          </template>
+          <div class="overflow-x-auto" x-show="data.usage_by_domain.length > 0" x-cloak>
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="border-b border-border">
+                  <th class="pb-2 text-left font-medium text-muted-foreground">Domain</th>
+                  <th class="pb-2 text-right font-medium text-muted-foreground">Messages</th>
+                  <th class="pb-2 text-right font-medium text-muted-foreground">Share</th>
+                </tr>
+              </thead>
+              <tbody>
+                <template x-for="row in data.usage_by_domain" :key="row.domain">
+                  <tr class="border-b border-border/50">
+                    <td class="py-2 text-foreground capitalize" x-text="row.domain"></td>
+                    <td class="py-2 text-right text-foreground" x-text="row.count.toLocaleString()"></td>
+                    <td class="py-2 text-right text-muted-foreground">
+                      <span x-text="domainSharePct(row.count)"></span>%
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Row 3: Daily usage chart -->
+      <div class="rounded-lg border border-border bg-card p-5 shadow-sm mb-6">
+        <h2 class="text-base font-semibold text-foreground mb-4">Daily Usage</h2>
+        <template x-if="data.daily_usage.length === 0">
+          <p class="text-sm text-muted-foreground py-4">No daily data in this period.</p>
+        </template>
+        <div class="flex items-end gap-px h-40" x-show="data.daily_usage.length > 0" x-cloak>
+          <template x-for="day in data.daily_usage" :key="day.date">
+            <div class="flex-1 group relative flex flex-col items-center justify-end h-full">
+              <div class="w-full bg-primary/80 rounded-t-sm transition-all duration-200 group-hover:bg-primary"
+                   :style="'height:' + dailyBarHeight(day.count) + '%'"
+                   :title="day.date + ': ' + day.count + ' messages'"></div>
+              <!-- Tooltip on hover -->
+              <div class="absolute -top-8 hidden group-hover:block rounded bg-popover border border-border px-2 py-1 text-xs text-popover-foreground shadow whitespace-nowrap z-10">
+                <span x-text="day.date"></span>: <span x-text="day.count"></span>
+              </div>
+            </div>
+          </template>
+        </div>
+        <div class="flex justify-between mt-1 text-xs text-muted-foreground" x-show="data.daily_usage.length > 0" x-cloak>
+          <span x-text="data.daily_usage.length ? data.daily_usage[0].date : ''"></span>
+          <span x-text="data.daily_usage.length ? data.daily_usage[data.daily_usage.length - 1].date : ''"></span>
+        </div>
+      </div>
+
+      <!-- Row 4: Provider stats + Top personas -->
+      <div class="grid grid-cols-1 gap-6 lg:grid-cols-2 mb-6">
+        <!-- Provider stats -->
+        <div class="rounded-lg border border-border bg-card p-5 shadow-sm">
+          <h2 class="text-base font-semibold text-foreground mb-4">Provider Stats</h2>
+          <template x-if="data.provider_stats.length === 0">
+            <p class="text-sm text-muted-foreground py-4">No provider data in this period.</p>
+          </template>
+          <div class="overflow-x-auto" x-show="data.provider_stats.length > 0" x-cloak>
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="border-b border-border">
+                  <th class="pb-2 text-left font-medium text-muted-foreground">Provider</th>
+                  <th class="pb-2 text-right font-medium text-muted-foreground">Messages</th>
+                  <th class="pb-2 text-right font-medium text-muted-foreground">Errors</th>
+                  <th class="pb-2 text-right font-medium text-muted-foreground">Error Rate</th>
+                </tr>
+              </thead>
+              <tbody>
+                <template x-for="row in data.provider_stats" :key="row.provider">
+                  <tr class="border-b border-border/50">
+                    <td class="py-2 text-foreground capitalize" x-text="row.provider"></td>
+                    <td class="py-2 text-right text-foreground" x-text="row.count.toLocaleString()"></td>
+                    <td class="py-2 text-right" :class="row.errors > 0 ? 'text-destructive' : 'text-foreground'" x-text="row.errors"></td>
+                    <td class="py-2 text-right text-muted-foreground">
+                      <span x-text="row.count > 0 ? (row.errors / row.count * 100).toFixed(1) : '0.0'"></span>%
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Top personas -->
+        <div class="rounded-lg border border-border bg-card p-5 shadow-sm">
+          <h2 class="text-base font-semibold text-foreground mb-4">Top Personas</h2>
+          <template x-if="data.usage_by_persona.length === 0">
+            <p class="text-sm text-muted-foreground py-4">No persona data in this period.</p>
+          </template>
+          <div class="space-y-3" x-show="data.usage_by_persona.length > 0" x-cloak>
+            <template x-for="row in data.usage_by_persona" :key="row.persona">
+              <div>
+                <div class="flex items-center justify-between mb-1">
+                  <span class="text-sm font-medium text-foreground capitalize" x-text="row.persona"></span>
+                  <span class="text-xs text-muted-foreground" x-text="row.count.toLocaleString() + ' messages'"></span>
+                </div>
+                <div class="h-3 w-full rounded-md bg-muted overflow-hidden">
+                  <div class="bg-primary h-full rounded-md transition-all duration-300"
+                       :style="'width:' + personaBarPct(row.count) + '%'"></div>
+                </div>
+              </div>
+            </template>
+          </div>
+        </div>
+      </div>
+
+      <!-- Row 5: Top templates -->
+      <div class="rounded-lg border border-border bg-card p-5 shadow-sm mb-6" x-show="data.top_templates.length > 0" x-cloak>
+        <h2 class="text-base font-semibold text-foreground mb-4">Top Prompt Templates</h2>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-border">
+                <th class="pb-2 text-left font-medium text-muted-foreground">#</th>
+                <th class="pb-2 text-left font-medium text-muted-foreground">Template Name</th>
+                <th class="pb-2 text-right font-medium text-muted-foreground">Uses</th>
+              </tr>
+            </thead>
+            <tbody>
+              <template x-for="(tpl, idx) in data.top_templates" :key="tpl.name">
+                <tr class="border-b border-border/50">
+                  <td class="py-2 text-muted-foreground" x-text="idx + 1"></td>
+                  <td class="py-2 text-foreground" x-text="tpl.name"></td>
+                  <td class="py-2 text-right text-foreground" x-text="tpl.count.toLocaleString()"></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </template>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/ai_chat/analytics_charts.js') }}"></script>
+{% endblock %}

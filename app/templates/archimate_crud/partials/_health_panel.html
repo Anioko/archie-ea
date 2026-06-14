@@ -1,0 +1,40 @@
+<!-- Health panel content — loaded inside slide-out -->
+<div class="p-4 space-y-4" x-data="{ health: null, loading: true }" x-init="
+    fetch('/architecture/api/health-scorecard', {headers: {'X-Requested-With': 'XMLHttpRequest'}})
+        .then(r => r.json())
+        .then(d => { health = d; loading = false; })
+        .catch(() => { loading = false; })
+">
+    <div x-show="loading" class="flex items-center justify-center py-12">
+        <svg class="h-5 w-5 animate-spin text-muted-foreground" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+        </svg>
+    </div>
+    <template x-if="health && !loading">
+        <div class="space-y-4">
+            <div class="text-center py-4">
+                <div class="text-5xl font-bold"
+                     :class="health.overall_score >= 70 ? 'text-emerald-600' : (health.overall_score >= 30 ? 'text-amber-600' : 'text-destructive')"
+                     x-text="Math.round(health.overall_score || 0)"></div>
+                <p class="text-sm text-muted-foreground mt-1">Repository Health Score</p>
+            </div>
+            <template x-for="test in (health.tests || [])" :key="test.name">
+                <div class="rounded-md border border-border p-3">
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm font-medium" x-text="test.name"></span>
+                        <span class="text-xs font-semibold px-2 py-0.5 rounded-full"
+                              :class="test.pass ? 'bg-emerald-500/10 text-emerald-600' : 'bg-destructive/10 text-destructive'"
+                              x-text="test.pass ? 'PASS' : 'FAIL'"></span>
+                    </div>
+                    <p class="text-xs text-muted-foreground mt-1" x-text="test.detail || ''"></p>
+                    <div class="mt-2 h-1.5 rounded-full bg-muted overflow-hidden">
+                        <div class="h-full rounded-full transition-all"
+                             :class="test.pass ? 'bg-emerald-500' : 'bg-destructive'"
+                             :style="'width: ' + (test.score || 0) + '%'"></div>
+                    </div>
+                </div>
+            </template>
+        </div>
+    </template>
+</div>

@@ -1,0 +1,329 @@
+{% extends 'layouts/admin_base.html' %}
+{% from "components/card.html" import card, card_header, card_title, card_description, card_content, card_footer %}
+{% from "components/page_header.html" import page_header %}
+{% from "components/data_card.html" import data_card %}
+{% from "components/status_badge.html" import status_badge %}
+{% from "components/workbench_table.html" import workbench_table %}
+{% from "components/modal.html" import modal %}
+
+{% block title %}Vendor Catalogue{% endblock %}
+
+{% block extra_head_js %}
+<meta name="csrf-token" content="{{ csrf_token() }}">
+<script src="{{ url_for('static', filename='js/vendors/list.js') }}" data-vendors-url="{{ url_for('unified_applications.vendors') }}"></script>
+<script>
+  window.__VENDOR_CONFIG__ = { createVendorUrl: '{{ url_for("vendor_management.create_vendor") }}' };
+</script>
+<script src="{{ url_for('static', filename='js/vendors/create_modal.js') }}"></script>
+<script src="{{ url_for('static', filename='js/vendors/vendor_list_table.js') }}"></script>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6" x-data="vendorListTable()" x-cloak>
+
+  {{ page_header(
+      title='Vendor Catalogue',
+      description='Manage and explore your vendor ecosystem',
+      breadcrumbs=[
+          {'label': 'Dashboard', 'href': url_for('main.index')},
+          {'label': 'Vendor Catalogue'}
+      ],
+      actions=[
+          {'text': 'Add Vendor', 'icon': 'plus', 'onclick': 'Platform.modal.open("create-vendor")', 'variant': 'default'},
+          {'text': 'Vendor Options Analysis', 'icon': 'sparkles', 'href': url_for('application_mgmt.vendor_analysis_list'), 'variant': 'outline'}
+      ]
+  ) }}
+
+  {# Metrics Cards #}
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 sm:gap-6 mb-8">
+    {{ data_card(icon='building', icon_color='blue', value=stats.total|default(0), label='Total Vendors', subtitle='In vendor catalogue') }}
+    {{ data_card(icon='check-circle', icon_color='green', value=stats.active|default(0), label='Active Vendors', subtitle=(((stats.active / stats.total) * 100)|round(0)|string ~ '% of total') if stats.total|default(0) > 0 else '0% of total') }}
+    {{ data_card(icon='star', icon_color='purple', value=stats.strategic|default(0), label='Strategic Vendors', subtitle='High-value partnerships') }}
+    {{ data_card(icon='package', icon_color='amber', value=stats.total_products|default(0), label='Product Portfolio', subtitle='Across all vendors') }}
+    {# Portfolio ACV card #}
+    {% if stats.total_acv|default(0) > 1000000 %}
+      {% set acv_display = '$' ~ ('%.1f'|format(stats.total_acv / 1000000)) ~ 'M' %}
+    {% elif stats.total_acv|default(0) > 1000 %}
+      {% set acv_display = '$' ~ ('%.0f'|format(stats.total_acv / 1000)) ~ 'K' %}
+    {% elif stats.total_acv|default(0) > 0 %}
+      {% set acv_display = '$' ~ ('%.0f'|format(stats.total_acv)) %}
+    {% else %}
+      {% set acv_display = '—' %}
+    {% endif %}
+    {{ data_card(icon='banknote', icon_color='cyan', value=acv_display, label='Portfolio ACV', subtitle='Contracted + deployed ACV') }}
+    {# Renewals due card #}
+    {{ data_card(icon='calendar-clock', icon_color='amber' if stats.renewals_due|default(0) > 0 else 'gray', value=stats.renewals_due|default(0), label='Renewals Due (90d)', subtitle='Contracts expiring within 90 days') }}
+  </div>
+
+  {# Main layout: table + side panel #}
+  <div class="flex flex-col lg:flex-row gap-6">
+
+    {# LEFT: Table Card — uses workbench_table macro #}
+    <div class="flex-1">
+      {% call workbench_table(
+          columns=[
+              {'key': 'row_number', 'label': '#'},
+              {'key': 'name', 'label': 'Vendor', 'sortable': true},
+              {'key': 'vendor_type', 'label': 'Type'},
+              {'key': 'products_count', 'label': 'Products'},
+              {'key': 'enterprise_readiness_score', 'label': 'Readiness'},
+              {'key': 'status', 'label': 'Status'},
+              {'key': 'contract_status', 'label': 'Contract'},
+              {'key': 'mcda_score', 'label': 'Score'},
+              {'label': 'Actions', 'align': 'right'},
+          ],
+          filters=[
+              {'key': 'vendor_type', 'label': 'Types', 'options': [
+                  {'value': 'Cloud', 'label': 'Cloud'},
+                  {'value': 'Enterprise', 'label': 'Enterprise'},
+                  {'value': 'Hybrid', 'label': 'Hybrid'},
+              ]},
+              {'key': 'contract_status', 'label': 'Statuses', 'options': [
+                  {'value': 'catalog', 'label': 'Catalog'},
+                  {'value': 'contracted', 'label': 'Contracted'},
+                  {'value': 'deployed', 'label': 'Deployed'},
+                  {'value': 'inactive', 'label': 'Inactive'},
+              ]},
+          ],
+          selectable=true,
+          search_placeholder='Search vendors...',
+          empty_icon='building',
+          empty_message='No vendors found',
+          empty_description='Try adjusting your search or filters',
+          per_page_default=25
+      ) %}
+        {# ── Page-specific cell templates (repeated per row by Alpine x-for) ── #}
+        <td class="px-3 align-middle tabular-nums text-muted-foreground text-sm" x-text="row.row_number"></td>
+        <td class="px-4 py-3 align-middle">
+          <div>
+            <button type="button" @click="openEditModal(row)" class="font-medium text-left hover:text-primary hover:underline transition-colors" x-text="row.name"></button>
+            <template x-if="row.website">
+              <a :href="row.website" target="_blank" class="text-xs text-primary hover:underline block" x-text="row.website"></a>
+            </template>
+          </div>
+        </td>
+        <td class="px-4 py-3 align-middle">
+          <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-muted border border-border" x-text="formatVendorType(row.vendor_type)"></span>
+        </td>
+        <td class="px-4 py-3 align-middle">
+          <span class="text-sm text-muted-foreground" x-text="(row.products_count || 0) + ' product(s)'"></span>
+        </td>
+        <td class="px-4 py-3 align-middle">
+          <div class="flex items-center gap-2">
+            <div class="flex-1 bg-muted h-2 rounded-full overflow-hidden max-w-[100px]">
+              <div class="h-full bg-primary" :style="'width: ' + (row.enterprise_readiness_score || 0) + '%'"></div><!-- inline-style-ok -->
+            </div>
+            <span class="text-sm font-medium" x-text="(row.enterprise_readiness_score || 0) + '%'"></span>
+          </div>
+        </td>
+        <td class="px-4 py-3 align-middle">
+          <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium" :class="statusClass(row.status)" x-text="(row.status || 'unknown')"></span>
+        </td>
+        <td class="px-4 py-3 align-middle">
+          <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium" :class="contractClass(row.contract_status)" x-text="(row.contract_status || 'catalog')"></span>
+        </td>
+        <td class="px-4 py-3 align-middle">
+          <template x-if="$store.vendorScores && $store.vendorScores[row.id] != null">
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-blue-500/10 text-blue-600 border border-blue-500/30"
+                  x-text="$store.vendorScores[row.id] + '/100'"></span>
+          </template>
+          <template x-if="!$store.vendorScores || $store.vendorScores[row.id] == null">
+            <span class="text-xs text-muted-foreground">—</span>
+          </template>
+        </td>
+        <td class="px-4 py-3 align-middle text-right" @click.stop>
+          <div class="flex items-center gap-2 justify-end">
+            <button type="button" @click="window.location.href = '/applications/vendors/' + row.id"
+                    class="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium border border-input bg-background hover:bg-accent transition-colors">
+              <i data-lucide="eye" class="h-3 w-3"></i>
+              View
+            </button>
+            <button type="button" @click.stop="openEditModal(row)"
+                    class="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+              <i data-lucide="pencil" class="h-3 w-3"></i>
+              Edit
+            </button>
+          </div>
+        </td>
+      {% endcall %}
+    </div>
+
+    {# RIGHT: Products side panel — hidden until a vendor is clicked #}
+    <div id="vendor-products-wrapper" class="hidden lg:block w-72 shrink-0">
+      <div id="vendor-products-panel" class="sticky top-4 rounded-xl border bg-card p-4 text-sm text-muted-foreground">
+      </div>
+    </div>
+
+  </div>
+
+  {# Edit Vendor modal #}
+  {% call modal(id='edit-vendor-modal', title='Edit Vendor', size='lg') %}
+    <div class="space-y-4">
+      <div>
+        <label class="block text-sm font-medium mb-1">Vendor Name <span class="text-destructive">*</span></label>
+        <input type="text" x-model="editForm.name" required maxlength="200"
+               class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+               placeholder="Vendor name">
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-medium mb-1">Vendor Type</label>
+          <select x-model="editForm.vendor_type"
+                  class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <option value="">Select type...</option>
+            <option value="software_vendor">Software Vendor</option>
+            <option value="saas_platform">SaaS Platform</option>
+            <option value="cloud_provider">Cloud Provider</option>
+            <option value="systems_integrator">Systems Integrator</option>
+            <option value="consulting_partner">Consulting Partner</option>
+            <option value="managed_service_provider">Managed Service Provider</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">Country</label>
+          <input type="text" x-model="editForm.country"
+                 class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                 placeholder="e.g. United Kingdom">
+        </div>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1">Website</label>
+        <input type="url" x-model="editForm.website"
+               class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+               placeholder="https://example.com">
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1">Status</label>
+        <select x-model="editForm.status"
+                class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <option value="active">Active</option>
+          <option value="inactive">Inactive</option>
+          <option value="catalog">Catalog</option>
+          <option value="contracted">Contracted</option>
+          <option value="deployed">Deployed</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1">Description</label>
+        <textarea x-model="editForm.description" rows="3"
+                  class="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  placeholder="Brief description"></textarea>
+      </div>
+      <div x-show="editError" x-cloak class="rounded-md bg-destructive/10 border border-destructive/20 px-3 py-2 text-sm text-destructive" x-text="editError"></div>
+    </div>
+    <div class="flex justify-end gap-3 mt-6 pt-4 border-t">
+      <button type="button" data-modal-close="edit-vendor-modal"
+              class="inline-flex h-9 items-center justify-center rounded-md border border-input bg-background px-4 text-sm font-medium hover:bg-accent transition-colors">Cancel</button>
+      <button type="button" @click="saveEdit()" :disabled="editSaving"
+              class="inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:pointer-events-none">
+        <i data-lucide="loader-2" class="mr-2 h-4 w-4 animate-spin" x-show="editSaving" x-cloak></i>
+        <span x-text="editSaving ? 'Saving...' : 'Save Changes'"></span>
+      </button>
+    </div>
+  {% endcall %}
+
+  {# Bulk delete confirm modal #}
+  {% call modal(id='bulk-delete-confirm-modal', title='Delete Vendors?', size='sm') %}
+    <p class="text-sm text-muted-foreground mb-4">
+      This will permanently delete the selected vendors and cannot be undone.
+      Type <strong class="text-foreground font-mono">DELETE</strong> to confirm.
+    </p>
+    <input type="text" x-model="deleteConfirmText"
+           class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring mb-4"
+           placeholder="DELETE" @keydown.enter="executeBulkDelete()">
+    <div class="flex justify-end gap-3">
+      <button type="button" data-modal-close="bulk-delete-confirm-modal"
+              class="inline-flex h-9 items-center justify-center rounded-md border border-input bg-background px-4 text-sm font-medium hover:bg-accent transition-colors">Cancel</button>
+      <button type="button" @click="executeBulkDelete()"
+              :disabled="deleteConfirmText !== 'DELETE' || deleteInProgress"
+              class="inline-flex h-9 items-center justify-center rounded-md bg-destructive px-4 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 transition-colors disabled:opacity-50 disabled:pointer-events-none">
+        <i data-lucide="loader-2" class="mr-2 h-4 w-4 animate-spin" x-show="deleteInProgress" x-cloak></i>
+        <span x-text="deleteInProgress ? 'Deleting...' : 'Delete'"></span>
+      </button>
+    </div>
+  {% endcall %}
+
+  {# Create Vendor Modal #}
+  {% call modal(id='create-vendor', title='New Vendor', description='Add a new vendor to the catalogue', size='lg') %}
+    <div x-data="vendorCreateModal()">
+      <form @submit.prevent="submitCreateVendor()" class="space-y-4">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div>
+          <label for="cv-name" class="block text-sm font-medium mb-1">Vendor Name <span class="text-destructive">*</span></label>
+          <input type="text" id="cv-name" name="name" x-model="formData.name" required maxlength="200"
+                 class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                 placeholder="Enter vendor name">
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label for="cv-type" class="block text-sm font-medium mb-1">Vendor Type</label>
+            <select id="cv-type" name="vendor_type" x-model="formData.vendor_type"
+                    class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <option value="">Select type...</option>
+              <option value="software_vendor">Software Vendor</option>
+              <option value="saas_platform">SaaS Platform</option>
+              <option value="cloud_provider">Cloud Provider</option>
+              <option value="systems_integrator">Systems Integrator</option>
+              <option value="consulting_partner">Consulting Partner</option>
+              <option value="managed_service_provider">Managed Service Provider</option>
+            </select>
+          </div>
+          <div>
+            <label for="cv-country" class="block text-sm font-medium mb-1">Country</label>
+            <input type="text" id="cv-country" name="country" x-model="formData.country"
+                   class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                   placeholder="e.g. United Kingdom">
+          </div>
+        </div>
+        <div>
+          <label for="cv-website" class="block text-sm font-medium mb-1">Website</label>
+          <input type="url" id="cv-website" name="website" x-model="formData.website"
+                 class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                 placeholder="https://example.com">
+        </div>
+        <div>
+          <label for="cv-description" class="block text-sm font-medium mb-1">Description</label>
+          <textarea id="cv-description" name="description" x-model="formData.description" rows="3"
+                    class="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    placeholder="Brief description of the vendor"></textarea>
+        </div>
+        <div x-show="errorMsg" x-cloak class="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-sm text-destructive" x-text="errorMsg"></div>
+        <div class="flex justify-end gap-3 pt-2 border-t border-border">
+          <button type="button" @click="Platform.modal.close('create-vendor')"
+                  class="px-4 py-2 text-sm font-medium rounded-md border border-input bg-background hover:bg-accent">Cancel</button>
+          <button type="submit" :disabled="submitting"
+                  class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+            <i data-lucide="loader-2" class="h-4 w-4 animate-spin" x-show="submitting" x-cloak></i>
+            <span x-text="submitting ? 'Creating...' : 'Create Vendor'"></span>
+          </button>
+        </div>
+      </form>
+    </div>
+  {% endcall %}
+
+  {% include 'components/unified_mapping_modal.html' %}
+
+</div>
+
+<script>
+/* FRAG-036: Lazy-load vendor scores from ranking endpoint */
+document.addEventListener('alpine:init', () => {
+  Alpine.store('vendorScores', {});
+});
+document.addEventListener('DOMContentLoaded', function () {
+  fetch('/api/vendors/ranking')
+    .then(r => r.ok ? r.json() : null)
+    .then(data => {
+      if (!data || !data.success) return;
+      const scores = {};
+      (data.ranking || []).forEach(v => {
+        if (v.vendor_option_id) scores[v.vendor_option_id] = v.total_score;
+      });
+      if (window.Alpine && Alpine.store) {
+        Alpine.store('vendorScores', scores);
+      }
+    })
+    .catch(() => {});
+});
+</script>
+{% endblock %}

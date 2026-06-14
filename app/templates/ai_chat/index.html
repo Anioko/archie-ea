@@ -1,0 +1,3353 @@
+{% extends 'layouts/admin_base.html' %}
+
+{% block extra_css %}
+<!-- Marked.js for Markdown rendering in AI Chat -->
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<!-- DOMPurify loaded globally via _head.html (v3.0.8 with SRI) — no duplicate needed -->
+<!-- Custom Styles for Chat Elements -->
+<style>
+    .action-card {
+        border: 1px solid var(--border);
+        border-radius: 0.5rem;
+        padding: 1rem;
+        background: var(--card);
+        color: var(--card-foreground);
+        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        margin: 0.5rem 0;
+    }
+    .action-card-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 0.75rem;
+        border-bottom: 1px solid var(--border);
+        padding-bottom: 0.5rem;
+    }
+    .action-card-title {
+        font-weight: 600;
+        font-size: 0.875rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    .confidence-badge {
+        font-size: 10px;
+        padding: 0.125rem 0.5rem;
+        border-radius: 9999px;
+        font-weight: 500;
+        border: 1px solid;
+    }
+    .confidence-high {
+        background-color: hsl(var(--emerald-500) / 0.05);
+        color: hsl(var(--emerald-700, 142 71% 29%));
+        border-color: hsl(var(--emerald-500) / 0.2);
+    }
+    .confidence-medium {
+        background-color: hsl(var(--amber-500) / 0.05);
+        color: hsl(var(--amber-700, 32 95% 33%));
+        border-color: hsl(var(--amber-500) / 0.2);
+    }
+    .confidence-low {
+        background-color: hsl(var(--destructive) / 0.05);
+        color: hsl(var(--destructive));
+        border-color: hsl(var(--destructive) / 0.2);
+    }
+    .element-item {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.75rem;
+        padding: 0.75rem;
+        border-radius: 0.375rem;
+        transition: background-color 0.15s;
+        border: 1px solid transparent;
+        margin-bottom: 0.5rem;
+    }
+    .element-item:hover {
+        background-color: var(--muted);
+        border-color: var(--border);
+    }
+    .element-checkbox {
+        margin-top: 0.25rem;
+        height: 1rem;
+        width: 1rem;
+        border-radius: 0.25rem;
+        border-color: var(--input);
+    }
+    .element-icon {
+        height: 2rem;
+        width: 2rem;
+        border-radius: 0.5rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background-color: var(--muted);
+        color: var(--muted-foreground);
+        flex-shrink: 0;
+    }
+    .stream-cursor {
+        display: inline-block;
+        animation: blink 1s step-end infinite;
+    }
+    @keyframes blink {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0; }
+    }
+    .follow-up-chip {
+        animation: fadeIn 0.3s ease-out;
+    }
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(4px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    .msg-action-bar {
+        min-height: 28px;
+    }
+    .conf-icon {
+        display: inline;
+        width: 10px;
+        height: 10px;
+        vertical-align: middle;
+        margin-right: 2px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+{% if chat_bootstrap_error %}
+<div class="mx-4 mt-4 rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning-foreground" role="alert">
+    <div class="flex items-start gap-2">
+        <i data-lucide="alert-triangle" class="mt-0.5 h-4 w-4 shrink-0 text-amber-600" aria-hidden="true"></i>
+        <span>{{ chat_bootstrap_error }}</span>
+    </div>
+</div>
+{% endif %}
+<!-- ENT-043: LLM provider health banner (hidden when healthy) -->
+<div x-data="{
+    llmStatus: 'healthy',
+    llmProvider: null,
+    async checkHealth() {
+        try {
+            const r = await fetch('/ai-chat/api/health/llm');
+            const d = await r.json();
+            this.llmStatus = d.status || 'degraded';
+            this.llmProvider = d.provider || null;
+        } catch(_) {
+            this.llmStatus = 'degraded';
+            this.llmProvider = null;
+        }
+    }
+}"
+x-init="checkHealth(); setInterval(() => checkHealth(), 60000)"
+x-cloak>
+    <div x-show="llmStatus !== 'healthy'"
+         class="flex items-center gap-2 bg-warning/10 border-b border-warning/30 px-4 py-2 text-sm text-warning-foreground"
+         role="alert">
+        <i data-lucide="alert-triangle" class="h-4 w-4 shrink-0 text-amber-600" aria-hidden="true"></i><!-- token-migration-ok -->
+        <span x-text="llmProvider ? ('AI provider degraded: ' + llmProvider) : 'AI provider unavailable — responses may be delayed or unavailable'"></span>
+    </div>
+</div>
+<div x-data class="flex h-[calc(100vh-4rem)] flex-col bg-background -mx-4 -my-6">
+    <!-- Enhanced Header with Domain Selection - Responsive -->
+    <header class="flex flex-col lg:flex-row items-start lg:items-center justify-between border-b px-4 lg:px-6 py-3 lg:py-4 bg-muted gap-3">
+        <div class="flex items-center gap-3">
+            <!-- Dynamic Domain Icon -->
+            <div id="domain-icon" class="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground transition-all duration-300">
+                <i data-lucide="bot" class="h-5 w-5" aria-hidden="true"></i>
+            </div>
+            <div>
+                <h1 id="domain-title" class="text-base lg:text-lg font-semibold">Multi-Domain AI Assistant</h1>
+                <p id="domain-description" class="text-xs text-muted-foreground hidden sm:block">Select a domain for specialized assistance</p>
+            </div>
+            <!-- Mobile sidebar toggle -->
+            <button type="button" id="sidebar-toggle" @click="toggleSidebar()" aria-label="Toggle sidebar" class="lg:hidden ml-auto inline-flex h-9 w-9 items-center justify-center rounded-md border border-input bg-background hover:bg-accent transition-colors">
+                <i data-lucide="panel-left" class="h-4 w-4" aria-hidden="true"></i>
+            </button>
+        </div>
+
+        <!-- Domain Selector & Controls - Responsive wrapping -->
+        <div x-data="{ showAdvanced: false }" class="flex flex-wrap items-center gap-2 w-full lg:w-auto">
+            <!-- Domain Selector — always visible, primary context switch -->
+            <div class="relative flex-1 min-w-[140px] max-w-[200px]">
+                <select id="domain-selector"
+                    class="h-9 w-full appearance-none rounded-lg border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring font-medium">
+                    <option value="general">General Assistant</option>
+                    <option value="architecture">Architecture Assistant</option>
+                    <option value="technology">Technology Advisor</option>
+                    <option value="business_capability">Capability Analyst</option>
+                    <option value="gap_analysis">Gap Detection</option>
+                    <option value="vendor_intelligence">Vendor Intelligence</option>
+                    <option value="smart_search">Smart Search</option>
+                </select>
+                <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
+                    <i data-lucide="chevron-down" class="h-4 w-4 text-muted-foreground" aria-hidden="true"></i>
+                </div>
+            </div>
+
+            <!-- Advanced Settings Toggle -->
+            <button type="button" @click="showAdvanced = !showAdvanced"
+                :class="showAdvanced ? 'bg-accent border-primary/40' : ''"
+                class="hidden sm:inline-flex h-9 items-center gap-1.5 rounded-md border border-input bg-background px-2.5 hover:bg-accent transition-colors text-sm shrink-0"
+                title="Role, model, template settings" aria-label="Toggle advanced settings">
+                <i data-lucide="sliders-horizontal" class="h-4 w-4" aria-hidden="true"></i>
+                <span class="hidden lg:inline">Settings</span>
+                <i data-lucide="chevron-down" class="h-3 w-3 transition-transform" :class="showAdvanced ? 'rotate-180' : ''" aria-hidden="true"></i>
+            </button>
+
+            <!-- Advanced Controls — Persona, Model, Template (collapsed by default) -->
+            <div x-show="showAdvanced" x-cloak x-transition:enter="transition ease-out duration-150" x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100"
+                 class="flex flex-wrap items-center gap-2 w-full lg:w-auto">
+                <!-- Persona Selector -->
+                <div class="relative flex-1 min-w-[140px] max-w-[180px]">
+                    <select id="persona-selector"
+                        class="h-9 w-full appearance-none rounded-lg border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring font-medium">
+                        <option value="">Select Role</option>
+                        <optgroup label="AI Architects (governed, live-data)">
+                            <option value="enterprise_architect">AI Enterprise Architect</option>
+                            <option value="solutions_architect">AI Solution Architect</option>
+                            <option value="technology_architect">AI Technical Architect</option>
+                            <option value="data_architect">AI Data Architect</option>
+                        </optgroup>
+                        <optgroup label="Specialist roles">
+                            <option value="application_architect">Application Architect</option>
+                            <option value="integration_architect">Integration Architect</option>
+                            <option value="systems_architect">Systems Architect</option>
+                            <option value="business_architect">Business Architect</option>
+                            <option value="business_analyst">Business Analyst</option>
+                            <option value="product_analyst">Product Analyst</option>
+                            <option value="cio">CIO / IT Executive</option>
+                        </optgroup>
+                    </select>
+                    <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
+                        <i data-lucide="user" class="h-4 w-4 text-muted-foreground" aria-hidden="true"></i>
+                    </div>
+                </div>
+
+                <!-- Model Selector -->
+                <div class="relative flex-1 min-w-[160px] max-w-[220px]">
+                    <select id="model-selector"
+                        class="h-9 w-full appearance-none rounded-lg border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring font-medium">
+                        <option value="">Auto-Select Model</option>
+                    </select>
+                    <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
+                        <i data-lucide="chevron-down" class="h-4 w-4 text-muted-foreground" aria-hidden="true"></i>
+                    </div>
+                </div>
+
+                <!-- Template Selector -->
+                <div class="relative flex-1 min-w-[140px] max-w-[180px]">
+                    <select id="template-selector"
+                        class="h-9 w-full appearance-none rounded-lg border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                        <option value="">Custom Query</option>
+                    </select>
+                    <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
+                        <i data-lucide="chevron-down" class="h-4 w-4 text-muted-foreground" aria-hidden="true"></i>
+                    </div>
+                </div>
+            </div>
+
+            <!-- AI Tools -->
+            <div class="hidden sm:flex items-center gap-1 border-l border-border pl-2">
+                <button type="button" onclick="toggleDocumentUploadPanel()" class="inline-flex h-9 items-center gap-1.5 rounded-md border border-input bg-background px-2.5 hover:bg-accent transition-colors text-sm" title="Upload documents — auto-create ArchiMate elements">
+                    <i data-lucide="file-up" class="h-4 w-4" aria-hidden="true"></i>
+                    <span class="hidden lg:inline">Docs</span>
+                </button>
+                <a href="{{ url_for('unified_ai_chat.entity_matching_view') }}" class="inline-flex h-9 items-center gap-1.5 rounded-md border border-input bg-background px-2.5 hover:bg-accent transition-colors text-sm" title="Entity Matching">
+                    <i data-lucide="git-compare" class="h-4 w-4" aria-hidden="true"></i>
+                    <span class="hidden lg:inline">Match</span>
+                </a>
+            </div>
+
+            <!-- Export Button -->
+            <button type="button" @click="exportConversation()" aria-label="Export conversation" title="Export conversation as Markdown" class="hidden sm:inline-flex h-9 items-center gap-1.5 rounded-md border border-input bg-background px-2.5 hover:bg-accent transition-colors text-sm shrink-0">
+                <i data-lucide="download" class="h-4 w-4" aria-hidden="true"></i>
+                <span class="hidden lg:inline">Export</span>
+            </button>
+
+            <!-- CRUD Approvals Badge (ENT-077) -->
+            <div x-data="approvalManager" x-cloak class="relative shrink-0">
+                <button type="button" data-modal-open="ai-chat-approvals-modal" aria-label="Pending CRUD approvals" title="Pending CRUD approvals"
+                    class="hidden sm:inline-flex h-9 items-center gap-1.5 rounded-md border border-input bg-background px-2.5 hover:bg-accent transition-colors text-sm relative">
+                    <i data-lucide="shield-check" class="h-4 w-4" aria-hidden="true"></i>
+                    <span class="hidden lg:inline">Approvals</span>
+                    <span x-show="pendingCount > 0" x-cloak
+                          x-text="pendingCount"
+                          class="inline-flex items-center justify-center px-1.5 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30 ml-1"></span>
+                </button>
+
+                <!-- Approval Modal (ENT-077) — canonical: data-modal-open/close, hidden attribute -->
+                <div id="ai-chat-approvals-modal"
+                     class="hidden fixed inset-0 z-[100] flex items-center justify-center"
+                     role="dialog"
+                     aria-modal="true"
+                     aria-label="Pending CRUD Approvals">
+                    <!-- Backdrop -->
+                    <div class="absolute inset-0 bg-black/50" data-modal-close="ai-chat-approvals-modal"></div>
+                    <!-- Panel -->
+                    <div class="relative w-full max-w-lg max-h-[80vh] mx-4 rounded-lg border border-border bg-background shadow-lg flex flex-col"
+                         @click.stop>
+                        <!-- Header -->
+                        <div class="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
+                            <h2 class="text-lg font-semibold text-foreground">Pending Approvals</h2>
+                            <button type="button" data-modal-close="ai-chat-approvals-modal" aria-label="Close modal"
+                                class="inline-flex h-8 w-8 items-center justify-center rounded-md hover:bg-accent transition-colors text-muted-foreground">
+                                <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
+                            </button>
+                        </div>
+                        <!-- Body -->
+                        <div class="flex-1 overflow-y-auto px-6 py-4 space-y-3">
+                            <!-- Error banner -->
+                            <div x-show="error" x-cloak class="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-sm text-destructive" x-text="error"></div>
+
+                            <!-- Empty state -->
+                            <template x-if="approvals.length === 0">
+                                <div class="text-center py-8 text-muted-foreground">
+                                    <i data-lucide="check-circle-2" class="h-8 w-8 mx-auto mb-2 opacity-50" aria-hidden="true"></i>
+                                    <p class="text-sm">No pending approvals</p>
+                                </div>
+                            </template>
+
+                            <!-- Approval cards -->
+                            <template x-for="item in approvals" :key="item.id">
+                                <div class="rounded-lg border border-border bg-card p-4 space-y-2">
+                                    <!-- Top row: operation badge + entity type -->
+                                    <div class="flex items-center justify-between">
+                                        <div class="flex items-center gap-2">
+                                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium capitalize"
+                                                  :class="{
+                                                      'bg-green-500/10 text-emerald-600 border border-green-500/30': item.operation_type === 'create',
+                                                      'bg-yellow-500/10 text-amber-600 border border-yellow-500/30': item.operation_type === 'update',
+                                                      'bg-red-500/10 text-destructive border border-red-500/30': item.operation_type === 'delete'
+                                                  }"
+                                                  x-text="item.operation_type"></span>
+                                            <span class="text-sm font-medium text-foreground capitalize" x-text="item.entity_type"></span>
+                                        </div>
+                                        <span class="text-xs text-muted-foreground" x-text="formatDate(item.created_at)"></span>
+                                    </div>
+                                    <!-- Summary -->
+                                    <p class="text-sm text-muted-foreground" x-text="item.summary"></p>
+                                    <!-- Expiry -->
+                                    <p class="text-xs text-muted-foreground">
+                                        Expires: <span x-text="formatDate(item.expires_at)"></span>
+                                    </p>
+
+                                    <!-- Reject reason textarea (shown when rejecting this item) -->
+                                    <template x-if="rejectingId === item.id">
+                                        <div class="space-y-2 pt-1">
+                                            <label :for="'reject-reason-' + item.id" class="text-xs font-medium text-foreground">Rejection reason (optional)</label>
+                                            <textarea :id="'reject-reason-' + item.id"
+                                                      x-model="rejectReason"
+                                                      rows="2"
+                                                      class="w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                                      placeholder="Why are you rejecting this operation?"></textarea>
+                                            <div class="flex gap-2">
+                                                <button type="button" @click="confirmReject(item.id)"
+                                                        :disabled="busyIds[item.id]"
+                                                        class="inline-flex items-center gap-1 rounded-md bg-destructive px-3 py-1.5 text-xs font-medium text-destructive-foreground hover:bg-destructive/90 transition-colors disabled:opacity-50">
+                                                    Confirm Reject
+                                                </button>
+                                                <button type="button" @click="cancelReject()"
+                                                        class="inline-flex items-center gap-1 rounded-md border border-input bg-background px-3 py-1.5 text-xs font-medium hover:bg-accent transition-colors">
+                                                    Cancel
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </template>
+
+                                    <!-- Action buttons (hidden when reject textarea is open for this item) -->
+                                    <template x-if="rejectingId !== item.id">
+                                        <div class="flex gap-2 pt-1">
+                                            <button type="button" @click="approve(item.id)"
+                                                    :disabled="busyIds[item.id]"
+                                                    class="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-emerald-700 transition-colors disabled:opacity-50">
+                                                <i data-lucide="check" class="h-3 w-3" aria-hidden="true"></i>
+                                                Approve
+                                            </button>
+                                            <button type="button" @click="startReject(item.id)"
+                                                    :disabled="busyIds[item.id]"
+                                                    class="inline-flex items-center gap-1 rounded-md bg-destructive/10 border border-destructive/30 px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/20 transition-colors disabled:opacity-50">
+                                                <i data-lucide="x" class="h-3 w-3" aria-hidden="true"></i>
+                                                Reject
+                                            </button>
+                                        </div>
+                                    </template>
+                                </div>
+                            </template>
+                        </div>
+                        <!-- Footer -->
+                        <div class="px-6 py-3 border-t border-border shrink-0 flex justify-end">
+                            <button type="button" data-modal-close="ai-chat-approvals-modal"
+                                class="inline-flex items-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-accent transition-colors">
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Rate Limit Badge — populated by JS after first message; hidden until then -->
+            <span id="rate-limit-badge" class="hidden text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground font-medium" title="AI requests remaining this hour"></span>
+        </div>
+    </header>
+
+    <!-- Main Chat Area with Enhanced Layout -->
+    <div class="flex flex-1 overflow-hidden relative">
+        <!-- Context Sidebar with NL Query and Recommendations - Responsive -->
+        <div id="context-sidebar" class="absolute lg:relative inset-y-0 left-0 z-40 w-72 lg:w-80 border-r bg-muted/30 flex flex-col transform -translate-x-full lg:translate-x-0 transition-transform duration-200 ease-in-out shadow-lg lg:shadow-none max-h-full overflow-hidden">
+            {# Mobile Close Button #}
+            <button type="button" @click="toggleSidebar()" aria-label="Close sidebar" class="lg:hidden absolute top-2 right-2 h-8 w-8 flex items-center justify-center rounded-md hover:bg-accent z-50">
+                <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
+            </button>
+            {# Sidebar Tabs #}
+            <div class="flex border-b border-border">
+                <button type="button" id="tab-context" @click="switchSidebarTab('context')"
+                    class="flex-1 px-3 py-3 text-xs font-bold border-b-2 border-primary text-primary bg-background" aria-label="Action">
+                    Context
+                </button>
+                <button type="button" id="tab-query" @click="switchSidebarTab('query')"
+                    class="flex-1 px-3 py-3 text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors" aria-label="Action">
+                    Query
+                </button>
+                <button type="button" id="tab-alerts" @click="switchSidebarTab('alerts')"
+                    class="flex-1 px-3 py-3 text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors relative" aria-label="Action">
+                    Alerts
+                    <span id="alert-badge" class="hidden absolute top-2.5 right-3 h-4 w-4 bg-destructive text-destructive-foreground text-[9px] rounded-full items-center justify-center font-bold border-2 border-muted/30">0</span>
+                </button>
+                <button type="button" id="tab-history" @click="switchSidebarTab('history')"
+                    class="flex-1 px-3 py-3 text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors" aria-label="Action">
+                    History
+                </button>
+            </div>
+
+            {# Context Tab #}
+            <div id="panel-context" class="flex-1 flex flex-col overflow-hidden">
+                <div class="p-4 border-b shrink-0">
+                    <h2 class="font-semibold text-sm">Context Panel</h2>
+                    <div id="context-description" class="text-xs text-muted-foreground mt-0.5">
+                        Select elements to focus AI analysis on specific data points.
+                    </div>
+                </div>
+
+                <div class="flex-1 overflow-y-auto p-4 min-h-0">
+                    <div id="domain-context">
+                        <div class="flex flex-col items-center justify-center py-16 text-center px-4">
+                            <div class="w-14 h-14 bg-muted rounded-full flex items-center justify-center text-muted-foreground mb-4 opacity-60">
+                                <i data-lucide="inbox" class="h-7 w-7" aria-hidden="true"></i>
+                            </div>
+                            <h3 class="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">No Specific Context</h3>
+                            <p class="text-xs text-muted-foreground">Context is set to Global. Select an item from the sidebar or start a conversation to refine context.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {# Query Tab #}
+            <div id="panel-query" class="hidden flex-1 flex-col overflow-hidden">
+                <div class="p-4 border-b shrink-0">
+                    <h2 class="font-semibold text-sm flex items-center gap-2">
+                        <i data-lucide="database" class="h-4 w-4" aria-hidden="true"></i>
+                        Natural Language Query
+                    </h2>
+                    <p class="text-xs text-muted-foreground">Ask questions about your data</p>
+                </div>
+
+                <div class="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
+                    {# Query Input #}
+                    <div class="relative">
+                        <label for="nl-query-input" class="sr-only">Natural language query</label>
+                        <input type="text" id="nl-query-input"
+                            placeholder="e.g., Show apps without owner..."
+                            class="w-full h-9 px-3 py-2 pr-10 text-sm border rounded-lg bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            >
+                        <button type="button" @click="executeNLQuery()" aria-label="Execute query"
+                            class="absolute right-1 top-1 h-7 px-2 bg-primary text-primary-foreground rounded text-xs">
+                            <i data-lucide="play" class="h-3 w-3" aria-hidden="true"></i>
+                        </button>
+                    </div>
+
+                    {# Example Queries #}
+                    <div class="space-y-2">
+                        <p class="text-xs font-medium text-muted-foreground">Quick queries:</p>
+                        {# Quick-query buttons: first 4 from QUICK_QUERIES in ai_chat.js #}
+                        <div class="flex flex-wrap gap-1">
+                            <button type="button" class="quick-query-btn inline-flex items-center gap-1 rounded-md border border-input bg-background px-3 py-1 text-xs hover:bg-accent" data-quick-query="Show all applications without an assigned owner" aria-label="Quick query: Apps without owner">Apps without owner</button>
+                            <button type="button" class="quick-query-btn inline-flex items-center gap-1 rounded-md border border-input bg-background px-3 py-1 text-xs hover:bg-accent" data-quick-query="List capabilities with maturity below 3" aria-label="Quick query: Low maturity caps">Low maturity caps</button>
+                            <button type="button" class="quick-query-btn inline-flex items-center gap-1 rounded-md border border-input bg-background px-3 py-1 text-xs hover:bg-accent" data-quick-query="Show vendors with contracts expiring in the next 90 days" aria-label="Quick query: Expiring vendors">Expiring vendors</button>
+                            <button type="button" class="quick-query-btn inline-flex items-center gap-1 rounded-md border border-input bg-background px-3 py-1 text-xs hover:bg-accent" data-quick-query="List applications with risk score above 70" aria-label="Quick query: High-risk apps">High-risk apps</button>
+                            <button type="button" class="quick-query-btn inline-flex items-center gap-1 rounded-md border border-input bg-background px-3 py-1 text-xs hover:bg-accent" data-quick-query="/create-capability" aria-label="Quick query: Create capability">Create capability</button>
+                            <button type="button" class="quick-query-btn inline-flex items-center gap-1 rounded-md border border-input bg-background px-3 py-1 text-xs hover:bg-accent" data-quick-query="/map-apqc" aria-label="Quick query: Map APQC framework">Map APQC framework</button>
+                        </div>
+                    </div>
+                    <div class="mt-3 pt-3 border-t border-border">
+                        <button type="button" id="ai-chat-create-solution-btn" class="w-full inline-flex items-center justify-center gap-2 rounded-md border border-primary bg-primary/10 px-3 py-2 text-sm font-medium text-primary hover:bg-primary/20 transition-colors" aria-label="Create a new solution from a brief">
+                            <i data-lucide="plus-circle" class="h-4 w-4" aria-hidden="true"></i>
+                            Create solution from brief
+                        </button>
+                        <p class="text-[10px] text-muted-foreground mt-1.5 text-center">Or type in chat: <em>Create a solution for …</em> or <em>I need a new solution about …</em></p>
+                    </div>
+
+                    {# Query Results #}
+                    <div id="nl-query-results" class="hidden space-y-3">
+                        <div class="flex items-center justify-between">
+                            <h3 class="text-sm font-semibold">Results</h3>
+                            <span id="nl-result-count" class="text-xs text-muted-foreground">0 found</span>
+                        </div>
+                        <div id="nl-query-explanation" class="p-2 bg-primary/5 dark:bg-primary/20 rounded text-xs text-primary dark:text-primary/60"></div>
+                        <div id="nl-results-list" class="space-y-2 max-h-60 overflow-y-auto"></div>
+                    </div>
+                </div>
+            </div>
+
+            {# Alerts Tab #}
+            <div id="panel-alerts" class="hidden flex-1 flex-col overflow-hidden">
+                <div class="p-4 border-b flex items-center justify-between shrink-0">
+                    <div>
+                        <h2 class="font-semibold text-sm flex items-center gap-2">
+                            <i data-lucide="alert-triangle" class="h-4 w-4 text-warning" aria-hidden="true"></i>
+                            Alerts & Insights
+                        </h2>
+                    </div>
+                    <button type="button" @click="refreshRecommendations()" class="text-xs text-primary hover:underline flex items-center gap-1" aria-label="Refresh">
+                        <i data-lucide="refresh-cw" class="h-3 w-3" aria-hidden="true"></i>
+                        Refresh
+                    </button>
+                </div>
+
+                {# Health Score #}
+                <div class="p-4 border-b shrink-0">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-xs font-medium">Portfolio Health</span>
+                        <span id="health-score" class="text-lg font-bold text-success">--</span>
+                    </div>
+                    <div class="w-full bg-muted rounded-full h-2">
+                        <div id="health-bar" class="bg-success h-2 rounded-full transition-all duration-300" style="width: 0%"></div>  <!-- inline-style-ok -->
+                    </div>
+                </div>
+
+                <div class="flex-1 overflow-y-auto p-4 space-y-3 min-h-0">
+                    <div id="alerts-list" class="space-y-2"></div>
+                    <div id="recommendations-list" class="pt-3 border-t">
+                        <h3 class="text-xs font-semibold mb-2 flex items-center gap-1">
+                            <i data-lucide="lightbulb" class="h-3 w-3 text-warning" aria-hidden="true"></i>
+                            Recommendations
+                        </h3>
+                        <div id="recs-content" class="space-y-2"></div>
+                    </div>
+                </div>
+            </div>
+
+            {# History Tab (AIC-110) #}
+            <div id="panel-history" class="hidden flex-1 flex-col overflow-hidden">
+                <div class="p-4 border-b flex items-center justify-between shrink-0">
+                    <h2 class="font-semibold text-sm flex items-center gap-2">
+                        <i data-lucide="clock" class="h-4 w-4 text-muted-foreground" aria-hidden="true"></i>
+                        Saved Sessions
+                    </h2>
+                    <button type="button" @click="loadSessionList()" class="text-xs text-primary hover:underline flex items-center gap-1" aria-label="Refresh sessions">
+                        <i data-lucide="refresh-cw" class="h-3 w-3" aria-hidden="true"></i>
+                        Refresh
+                    </button>
+                </div>
+                <div class="flex-1 overflow-y-auto p-4 space-y-2 min-h-0">
+                    <div id="session-list" class="space-y-2">
+                        <p class="text-xs text-muted-foreground text-center py-8">Click Refresh to load saved sessions</p>
+                    </div>
+                </div>
+            </div>
+
+            {# Context Sidebar Footer #}
+            <div class="p-3 border-t border-border bg-background shrink-0">
+                <button type="button" @click="exportContextLog()" class="w-full inline-flex items-center justify-center gap-2 py-2 rounded-lg border border-border text-xs font-semibold text-muted-foreground hover:bg-accent hover:text-foreground transition-colors" aria-label="Export context log">
+                    <i data-lucide="upload" class="h-3.5 w-3.5" aria-hidden="true"></i>
+                    Export Context Log
+                </button>
+            </div>
+        </div>
+
+        <!-- Mobile Sidebar Backdrop -->
+        <div id="sidebar-backdrop" @click="toggleSidebar()" hidden class="modal-root lg:hidden fixed inset-0 bg-black/50 overflow-y-auto z-30"  role="dialog"></div>
+
+        <!-- Chat Message Area -->
+        <div class="flex-1 flex flex-col min-w-0">
+            <!-- Messages Container -->
+            <div id="messages-container" class="flex-1 overflow-y-auto p-4 space-y-4" aria-live="polite" aria-relevant="additions">
+
+                <!-- Domain Selection Welcome Grid — hidden after first user message -->
+                <div id="domain-welcome-grid" class="max-w-3xl mx-auto py-8 space-y-8">
+                    <div class="text-center space-y-3">
+                        <div class="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-primary/70 text-primary-foreground shadow-lg">
+                            <i data-lucide="bot" class="h-7 w-7" aria-hidden="true"></i>
+                        </div>
+                        <h2 class="text-2xl font-bold text-foreground tracking-tight">How can I help you today?</h2>
+                        <p class="text-sm text-muted-foreground max-w-md mx-auto">Choose a governed AI Architect for a role-specific partner, or pick a domain below.</p>
+                    </div>
+
+                    {# ── AI Architects: governed, evidence-grounded personas (AI-1/PROG-006) ── #}
+                    <div class="space-y-3">
+                        <div class="flex items-center justify-center gap-2">
+                            <span class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Your AI Architects</span>
+                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-primary/10 text-primary border border-primary/30">
+                                <i data-lucide="shield-check" class="h-3 w-3"></i> Evidence-grounded · live data
+                            </span>
+                        </div>
+                        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                            <button type="button" data-persona="enterprise_architect"
+                                    data-prompt="Give me a portfolio health verdict — rationalization picture, capability coverage, and any transformation programme that's drifting."
+                                    class="architect-card group flex flex-col p-4 bg-card border border-border rounded-xl text-left hover:border-primary hover:shadow-md transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                                <span class="w-9 h-9 bg-primary/10 rounded-lg flex items-center justify-center text-primary mb-2.5 group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
+                                    <i data-lucide="building-2" class="h-5 w-5"></i>
+                                </span>
+                                <h3 class="text-sm font-semibold text-foreground">AI Enterprise Architect</h3>
+                                <p class="text-xs text-muted-foreground mt-0.5">Portfolio, capabilities, programme drift.</p>
+                            </button>
+                            <button type="button" data-persona="solutions_architect"
+                                    data-prompt="Help me design a solution — give me 2–3 options with cost/risk trade-offs and what the ARB will ask for."
+                                    class="architect-card group flex flex-col p-4 bg-card border border-border rounded-xl text-left hover:border-primary hover:shadow-md transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                                <span class="w-9 h-9 bg-primary/10 rounded-lg flex items-center justify-center text-primary mb-2.5 group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
+                                    <i data-lucide="puzzle" class="h-5 w-5"></i>
+                                </span>
+                                <h3 class="text-sm font-semibold text-foreground">AI Solution Architect</h3>
+                                <p class="text-xs text-muted-foreground mt-0.5">Design within governance, options &amp; ADRs.</p>
+                            </button>
+                            <button type="button" data-persona="technology_architect"
+                                    data-prompt="Review my integration patterns and technology layer for conformance — flag any blocked patterns or single points of failure."
+                                    class="architect-card group flex flex-col p-4 bg-card border border-border rounded-xl text-left hover:border-primary hover:shadow-md transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                                <span class="w-9 h-9 bg-primary/10 rounded-lg flex items-center justify-center text-primary mb-2.5 group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
+                                    <i data-lucide="server-cog" class="h-5 w-5"></i>
+                                </span>
+                                <h3 class="text-sm font-semibold text-foreground">AI Technical Architect</h3>
+                                <p class="text-xs text-muted-foreground mt-0.5">Conformance, patterns, infrastructure.</p>
+                            </button>
+                            <button type="button" data-persona="data_architect"
+                                    data-prompt="Review my data layer — canonical entities, data-classification coverage, and lineage gaps. Where are the PII risks?"
+                                    class="architect-card group flex flex-col p-4 bg-card border border-border rounded-xl text-left hover:border-primary hover:shadow-md transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                                <span class="w-9 h-9 bg-primary/10 rounded-lg flex items-center justify-center text-primary mb-2.5 group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
+                                    <i data-lucide="database" class="h-5 w-5"></i>
+                                </span>
+                                <h3 class="text-sm font-semibold text-foreground">AI Data Architect</h3>
+                                <p class="text-xs text-muted-foreground mt-0.5">Canonical model, classification, lineage.</p>
+                            </button>
+                        </div>
+                    </div>
+
+                    {# UIQA-004: the personas publish governed work products — link the two AI systems #}
+                    <div class="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 mt-3 text-xs text-muted-foreground">
+                        <span class="text-[10px] uppercase tracking-wider">Their governed work products:</span>
+                        <a href="/solutions/briefings" class="text-primary hover:underline">EA Briefing</a>
+                        <span class="text-border">·</span>
+                        <a href="/solutions/data-stewardship" class="text-primary hover:underline">Data Stewardship</a>
+                        <span class="text-border">·</span>
+                        <a href="/solutions/architect-synthesis" class="text-primary hover:underline">Chief Architect Synthesis</a>
+                    </div>
+
+                    <div class="relative">
+                        <div class="absolute inset-0 flex items-center"><span class="w-full border-t border-border"></span></div>
+                        <div class="relative flex justify-center"><span class="bg-background px-3 text-[10px] uppercase tracking-wider text-muted-foreground">or explore by domain</span></div>
+                    </div>
+
+                    <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+                        <!-- Architecture -->
+                        <button type="button" data-domain="architecture" data-prompt="Analyze my application architecture and suggest ArchiMate improvements"
+                            class="domain-card group flex flex-col p-5 bg-card border border-border rounded-2xl text-left hover:border-primary hover:shadow-lg transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><!-- token-migration-ok -->
+                            <div class="w-12 h-12 bg-primary/5 dark:bg-blue-950 rounded-xl flex items-center justify-center text-primary mb-4 group-hover:bg-primary group-hover:text-primary-foreground transition-colors"><!-- token-migration-ok -->
+                                <i data-lucide="layers" class="h-6 w-6" aria-hidden="true"></i>
+                            </div>
+                            <h3 class="text-sm font-semibold text-foreground">Architecture</h3>
+                            <p class="text-xs text-muted-foreground mt-1">ArchiMate analysis &amp; visual modeling.</p>
+                        </button>
+                        <!-- Technology -->
+                        <button type="button" data-domain="technology" data-prompt="Review my tech stack and identify lifecycle risks"
+                            class="domain-card group flex flex-col p-5 bg-card border border-border rounded-2xl text-left hover:border-emerald-500 hover:shadow-lg transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                            <div class="w-12 h-12 bg-emerald-50 dark:bg-emerald-950 rounded-xl flex items-center justify-center text-emerald-600 mb-4 group-hover:bg-emerald-500 group-hover:text-primary-foreground transition-colors"><!-- token-migration-ok -->
+                                <i data-lucide="cpu" class="h-6 w-6" aria-hidden="true"></i>
+                            </div>
+                            <h3 class="text-sm font-semibold text-foreground">Technology</h3>
+                            <p class="text-xs text-muted-foreground mt-1">Tech stack inventory &amp; lifecycle.</p>
+                        </button>
+                        <!-- Capabilities -->
+                        <button type="button" data-domain="business_capability" data-prompt="Map my business capabilities and identify strategic gaps"
+                            class="domain-card group flex flex-col p-5 bg-card border border-border rounded-2xl text-left hover:border-purple-500 hover:shadow-lg transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                            <div class="w-12 h-12 bg-purple-50 dark:bg-purple-950 rounded-xl flex items-center justify-center text-primary mb-4 group-hover:bg-primary group-hover:text-primary-foreground transition-colors"><!-- token-migration-ok -->
+                                <i data-lucide="building-2" class="h-6 w-6" aria-hidden="true"></i>
+                            </div>
+                            <h3 class="text-sm font-semibold text-foreground">Capabilities</h3>
+                            <p class="text-xs text-muted-foreground mt-1">Business mapping &amp; strategic gaps.</p>
+                        </button>
+                        <!-- Gap Analysis -->
+                        <button type="button" data-domain="gap_analysis" data-prompt="Identify gaps in my current architecture roadmap"
+                            class="domain-card group flex flex-col p-5 bg-card border border-border rounded-2xl text-left hover:border-orange-500 hover:shadow-lg transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                            <div class="w-12 h-12 bg-orange-50 dark:bg-orange-950 rounded-xl flex items-center justify-center text-orange-600 mb-4 group-hover:bg-orange-500 group-hover:text-primary-foreground transition-colors"><!-- token-migration-ok -->
+                                <i data-lucide="git-branch" class="h-6 w-6" aria-hidden="true"></i>
+                            </div>
+                            <h3 class="text-sm font-semibold text-foreground">Gap Analysis</h3>
+                            <p class="text-xs text-muted-foreground mt-1">Roadmap deficiency detection.</p>
+                        </button>
+                        <!-- Vendors -->
+                        <button type="button" data-domain="vendor_intelligence" data-prompt="Analyze my vendor contracts and identify supplier risks"
+                            class="domain-card group flex flex-col p-5 bg-card border border-border rounded-2xl text-left hover:border-cyan-500 hover:shadow-lg transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                            <div class="w-12 h-12 bg-cyan-50 dark:bg-cyan-950 rounded-xl flex items-center justify-center text-cyan-600 mb-4 group-hover:bg-cyan-500 group-hover:text-primary-foreground transition-colors"><!-- token-migration-ok -->
+                                <i data-lucide="briefcase" class="h-6 w-6" aria-hidden="true"></i>
+                            </div>
+                            <h3 class="text-sm font-semibold text-foreground">Vendors</h3>
+                            <p class="text-xs text-muted-foreground mt-1">Contract analysis &amp; supplier risk.</p>
+                        </button>
+                        <!-- Smart Search -->
+                        <button type="button" data-domain="smart_search" data-prompt="Search across my entire enterprise portfolio"
+                            class="domain-card group flex flex-col p-5 bg-primary/5 border border-primary/20 rounded-2xl text-left hover:bg-primary hover:border-primary hover:shadow-lg transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                            <div class="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center text-primary mb-4 group-hover:bg-background/20 group-hover:text-primary-foreground transition-colors"><!-- token-migration-ok -->
+                                <i data-lucide="sparkles" class="h-6 w-6" aria-hidden="true"></i>
+                            </div>
+                            <h3 class="text-sm font-semibold text-foreground group-hover:text-primary-foreground">Smart Search</h3><!-- token-migration-ok -->
+                            <p class="text-xs text-muted-foreground group-hover:text-primary-foreground/70 mt-1">AI-powered enterprise search.</p>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Command hints (populated by ai_chat.js; hidden by default) -->
+            <div id="command-hints" class="hidden px-4 pb-0"></div>
+
+            <!-- Suggestion Chips — hide after first send -->
+            <div id="suggestion-chips" class="px-4 pb-2 flex flex-wrap gap-2">
+                <button type="button" @click="setSuggestion('Review tech stack gaps and identify end-of-life risks')"
+                    class="chip-btn inline-flex items-center gap-1.5 rounded-full border border-border bg-muted px-3 py-1 text-xs font-medium text-foreground hover:bg-accent hover:border-primary/40 transition-colors">
+                    <i data-lucide="alert-triangle" class="h-3 w-3" aria-hidden="true"></i>
+                    Review tech stack gaps
+                </button>
+                <button type="button" @click="setSuggestion('Analyze cloud migration costs and timeline for my core applications')"
+                    class="chip-btn inline-flex items-center gap-1.5 rounded-full border border-border bg-muted px-3 py-1 text-xs font-medium text-foreground hover:bg-accent hover:border-primary/40 transition-colors">
+                    <i data-lucide="cloud" class="h-3 w-3" aria-hidden="true"></i>
+                    Analyze cloud migration costs
+                </button>
+                <button type="button" @click="setSuggestion('Identify duplicate vendor services and consolidation opportunities')"
+                    class="chip-btn inline-flex items-center gap-1.5 rounded-full border border-border bg-muted px-3 py-1 text-xs font-medium text-foreground hover:bg-accent hover:border-primary/40 transition-colors">
+                    <i data-lucide="copy" class="h-3 w-3" aria-hidden="true"></i>
+                    Identify duplicate vendor services
+                </button>
+                <button type="button" @click="setSuggestion('Generate ArchiMate diagram for my application portfolio')"
+                    class="chip-btn inline-flex items-center gap-1.5 rounded-full border border-border bg-muted px-3 py-1 text-xs font-medium text-foreground hover:bg-accent hover:border-primary/40 transition-colors">
+                    <i data-lucide="box" class="h-3 w-3" aria-hidden="true"></i>
+                    Generate ArchiMate diagram
+                </button>
+            </div>
+
+            <!-- Input Area - Always Visible -->
+            <div class="border-t bg-muted/30 px-4 pt-3 pb-4">
+                <form id="chat-form" class="space-y-4">
+                    <div class="flex gap-3 items-end">
+                        <label for="selected-element-id" class="sr-only">Selected element</label>
+                        <input type="hidden" id="selected-element-id" value="">
+                        <div class="flex-1 relative">
+                            <!-- ENT-085: Image attachment preview -->
+                            <div id="image-preview-bar" class="hidden mb-2 flex items-center gap-2 rounded-md border border-input bg-muted/30 px-2 py-1">
+                                <img id="image-preview-thumb" src="" alt="Attached image preview" class="h-12 w-12 rounded object-cover border border-border">
+                                <span id="image-preview-name" class="text-xs text-muted-foreground truncate flex-1"></span>
+                                <button type="button" id="image-remove-btn"
+                                    class="inline-flex h-6 w-6 items-center justify-center rounded hover:bg-destructive/10 text-destructive transition-colors"
+                                    aria-label="Remove attached image" title="Remove image">
+                                    <i data-lucide="x" class="h-3 w-3" aria-hidden="true"></i>
+                                </button>
+                            </div>
+                            <!-- ENT-085: Hidden file input for image upload -->
+                            <input type="file" id="image-upload-input" class="hidden" accept="image/png,image/jpeg,image/gif,image/webp">
+                            <div class="relative rounded-2xl border border-input bg-background focus-within:ring-2 focus-within:ring-primary/20 transition-shadow">
+                            <textarea id="user-input"
+                                rows="3"
+                                class="w-full resize-none rounded-2xl border-0 bg-transparent px-4 py-3 pr-14 text-sm placeholder:text-muted-foreground focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                                placeholder="Ask me about architecture, capabilities, gaps, or vendor analysis..."
+                                ></textarea>
+                                <button type="submit" id="send-btn"
+                                    class="absolute bottom-2.5 right-2.5 inline-flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 shadow-sm"
+                                    aria-label="Send message" title="Send message">
+                                    <i data-lucide="send" class="h-4 w-4" aria-hidden="true"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="flex flex-col gap-2">
+                            <button type="button" id="stop-btn"
+                                class="hidden inline-flex h-10 w-10 items-center justify-center rounded-md border border-destructive/50 bg-destructive/10 hover:bg-destructive/20 text-destructive transition-colors"
+                                aria-label="Stop generation" title="Stop generation">
+                                <i data-lucide="square" class="h-4 w-4" aria-hidden="true"></i>
+                            </button>
+                            <!-- ENT-085: Attach architecture diagram for vision analysis -->
+                            <button
+                                type="button"
+                                id="image-attach-btn"
+                                class="inline-flex h-10 w-10 items-center justify-center rounded-md bg-primary/10 hover:bg-primary/20 text-primary transition-colors"
+                                aria-label="Attach architecture diagram" title="Attach architecture diagram for AI vision analysis"
+                            >
+                                <i data-lucide="image" class="h-4 w-4" aria-hidden="true"></i>
+                            </button>
+                            <button
+                                type="button"
+                                @click="toggleDocumentUploadPanel()"
+                                class="inline-flex h-10 w-10 items-center justify-center rounded-md bg-primary/10 hover:bg-primary/20 text-primary transition-colors"
+                                aria-label="Upload document" title="Upload document for AI analysis and auto-create ArchiMate elements"
+                            >
+                                <i data-lucide="upload-cloud" class="h-4 w-4" aria-hidden="true"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-between text-xs text-muted-foreground">
+                        <p>
+                            <i data-lucide="info" class="h-3 w-3 inline mr-1" aria-hidden="true"></i>
+                            A.R.C.H.I.E. can make mistakes. Verify important architectural decisions independently.
+                        </p>
+                        <p>
+                            <i data-lucide="sparkles" class="h-3 w-3 inline mr-1" aria-hidden="true"></i>
+                            Upload documents to auto-create ArchiMate elements
+                        </p>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Floating Document Upload Panel - Positioned outside input area -->
+            <div id="document-upload-panel" class="hidden fixed bottom-24 right-6 w-[420px] max-h-[600px] overflow-y-auto bg-background border rounded-lg shadow-xl z-50 p-4">
+                {% from 'ai_chat/document_upload.html' import ai_chat_document_upload %}
+                {{ ai_chat_document_upload() }}
+            </div>
+
+            <!-- Entity action modal -->
+            <div id="entity-action-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+                 role="dialog" aria-modal="true" aria-labelledby="entity-action-title">
+                <div class="w-full max-w-sm rounded-xl bg-background p-6 shadow-xl mx-4">
+                    <h2 id="entity-action-title" class="text-lg font-semibold mb-1"></h2>
+                    <p id="entity-action-subtitle" class="text-sm text-muted-foreground mb-4"></p>
+                    <div class="space-y-2">
+                        <button type="button" id="entity-action-view" class="w-full flex items-center gap-3 p-3 rounded-lg border hover:bg-accent transition-colors text-left">
+                            <div class="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                                <i data-lucide="external-link" class="h-5 w-5 text-primary"></i>
+                            </div>
+                            <div>
+                                <div class="font-medium text-sm">View Details</div>
+                                <div id="entity-action-view-desc" class="text-xs text-muted-foreground">Open the full page</div>
+                            </div>
+                        </button>
+                        <button type="button" id="entity-action-ask" class="w-full flex items-center gap-3 p-3 rounded-lg border hover:bg-accent transition-colors text-left">
+                            <div class="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                                <i data-lucide="bot" class="h-5 w-5 text-primary"></i>
+                            </div>
+                            <div>
+                                <div class="font-medium text-sm">Ask AI</div>
+                                <div class="text-xs text-muted-foreground">Get AI analysis and insights</div>
+                            </div>
+                        </button>
+                        <button type="button" id="entity-action-context" class="w-full flex items-center gap-3 p-3 rounded-lg border hover:bg-accent transition-colors text-left">
+                            <div class="h-10 w-10 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+                                <i data-lucide="plus-circle" class="h-5 w-5 text-emerald-600"></i>
+                            </div>
+                            <div>
+                                <div class="font-medium text-sm">Add to Context</div>
+                                <div class="text-xs text-muted-foreground">Use as context for AI queries</div>
+                            </div>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <!-- Create solution from brief modal -->
+        </div>
+
+        <!-- Genome Extraction Panel — only visible when ?mode=genome -->
+        <div x-data="genomePanel()"
+             x-init="window._genomePanelInstance = $data"
+             x-show="isGenomeMode"
+             x-cloak
+             style="display:none"
+             class="w-80 shrink-0 border-l border-border bg-muted/30 flex flex-col h-full overflow-hidden">
+
+            <!-- Header -->
+            <div class="px-4 py-3 border-b border-border flex items-center justify-between shrink-0">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="dna" class="h-4 w-4 text-primary" aria-hidden="true"></i>
+                    <span class="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Genome</span>
+                </div>
+                <span class="text-xs px-2 py-0.5 rounded bg-indigo-500/10 text-primary font-mono border border-indigo-500/20"
+                      x-text="completeness + '%'">0%</span>
+            </div>
+
+            <!-- Progress bar -->
+            <div class="h-0.5 bg-border shrink-0">
+                <div class="h-full bg-primary transition-all duration-500"
+                     :style="'width:' + completeness + '%'"></div>
+            </div>
+
+            <!-- Fields -->
+            <div class="flex-1 overflow-y-auto px-3 py-3 space-y-2 min-h-0">
+                <template x-for="item in genomeItems" :key="item.key">
+                    <div class="rounded border px-3 py-2 text-xs"
+                         :class="{
+                             'border-green-500/30 border-l-2 border-l-green-500 bg-green-500/5': item.status === 'confirmed',
+                             'border-border border-l-2 border-l-amber-500 opacity-60': item.status === 'pending'
+                         }">
+                        <div class="text-muted-foreground uppercase tracking-wider text-[10px] font-semibold mb-0.5"
+                             x-text="item.label"></div>
+                        <div class="text-foreground leading-relaxed" x-text="item.value || '—'"></div>
+                    </div>
+                </template>
+                <div x-show="genomeItems.length === 0"
+                     class="text-muted-foreground text-xs text-center py-8 px-4">
+                    <i data-lucide="message-circle" class="h-8 w-8 mx-auto mb-2 opacity-30" aria-hidden="true"></i>
+                    <p>Start chatting to build the genome</p>
+                </div>
+            </div>
+
+            <!-- Generate button -->
+            <div class="px-3 py-3 border-t border-border shrink-0">
+                <button type="button" @click="generate()"
+                        :disabled="!readyToGenerate"
+                        aria-label="Generate application from genome"
+                        class="w-full py-2 rounded text-sm font-semibold transition-all"
+                        :class="readyToGenerate
+                          ? 'bg-primary hover:bg-primary text-primary-foreground cursor-pointer'
+                          : 'bg-muted text-muted-foreground cursor-not-allowed border border-border'"
+                        x-text="readyToGenerate ? 'Generate Application →' : 'Answer questions to generate'">
+                </button>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script>
+function genomePanel() {
+    return {
+        isGenomeMode: new URLSearchParams(window.location.search).get('mode') === 'genome',
+        genome: {},
+        completeness: 0,
+        readyToGenerate: false,
+        genomeItems: [],
+
+        async extractAfterMessage(conversation) {
+            if (!this.isGenomeMode) return;
+            try {
+                const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
+                const resp = await fetch('/api/codegen/genome/extract', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrf,
+                    },
+                    body: JSON.stringify({ conversation, current_genome: this.genome })
+                });
+                if (!resp.ok) return;
+                const data = await resp.json();
+                if (!data.success) return;
+
+                this.genome = data.genome_partial;
+                this.completeness = data.completeness_pct;
+                this.readyToGenerate = data.ready_to_generate;
+                this._refreshItems();
+            } catch (e) {
+                console.warn('Genome extraction failed:', e);
+            }
+        },
+
+        _refreshItems() {
+            const g = this.genome;
+            const allItems = [
+                {
+                    key: 'problem',
+                    label: 'Problem',
+                    value: g.problem?.statement ? g.problem.statement.slice(0, 100) : '',
+                    status: g.problem?.statement ? 'confirmed' : 'pending'
+                },
+                {
+                    key: 'entities',
+                    label: 'Entities',
+                    value: Object.keys(g.modules || {})
+                        .flatMap(m => Object.keys((g.modules[m]?.entities) || {}))
+                        .join(', '),
+                    status: Object.keys(g.modules || {}).length > 0 ? 'confirmed' : 'pending'
+                },
+                {
+                    key: 'auth',
+                    label: 'Authentication',
+                    value: g.infrastructure?.auth?.provider || '',
+                    status: g.infrastructure?.auth?.provider ? 'confirmed' : 'pending'
+                },
+                {
+                    key: 'tenancy',
+                    label: 'Multi-tenancy',
+                    value: g.security?.multi_tenancy?.enabled != null
+                        ? (g.security.multi_tenancy.enabled ? 'Yes — isolated per org' : 'Single shared system')
+                        : '',
+                    status: g.security?.multi_tenancy?.enabled != null ? 'confirmed' : 'pending'
+                },
+                {
+                    key: 'notifications',
+                    label: 'Notifications',
+                    value: (g.notifications?.channels || []).join(', '),
+                    status: g.notifications?.channels?.length > 0 ? 'confirmed' : 'pending'
+                },
+                {
+                    key: 'payments',
+                    label: 'Payments',
+                    value: g.payments?.provider && g.payments.provider !== 'none' ? g.payments.provider : '',
+                    status: g.payments?.provider && g.payments.provider !== 'none' ? 'confirmed' : 'pending'
+                },
+            ];
+            // Show confirmed items + first pending item
+            const confirmed = allItems.filter(i => i.status === 'confirmed');
+            const firstPending = allItems.find(i => i.status === 'pending');
+            this.genomeItems = firstPending ? [...confirmed, firstPending] : confirmed;
+        },
+
+        generate() {
+            if (!this.readyToGenerate) return;
+            // The old /codegen/workbench destination never existed (404 dead-end).
+            // The Architecture Journey wizard is the canonical idea-to-code flow;
+            // the genome draft is kept in sessionStorage for future prefill work.
+            sessionStorage.setItem('genome_draft', JSON.stringify(this.genome));
+            window.location.href = '/architecture-journey/';
+        }
+    };
+}
+</script>
+
+{# Create Solution Modal — MUST be outside overflow-hidden containers (CLAUDE.md rule) #}
+<div id="ai-chat-create-solution-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50" role="dialog" aria-modal="true" aria-labelledby="ai-chat-create-solution-heading">
+    <div class="w-full max-w-lg rounded-xl bg-background p-6 shadow-xl mx-4">
+        <h2 id="ai-chat-create-solution-heading" class="text-lg font-semibold mb-4">Create solution from brief</h2>
+        <form id="ai-chat-create-solution-form">
+            <div class="mb-4">
+                <label for="ai-chat-solution-title" class="block text-sm font-medium mb-1">Solution title</label>
+                <input id="ai-chat-solution-title" type="text" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" placeholder="e.g. Modernise Customer Portal" required>
+            </div>
+            <div class="mb-4">
+                <label for="ai-chat-solution-brief" class="block text-sm font-medium mb-1">Brief (problem, current state, goals)</label>
+                <textarea id="ai-chat-solution-brief" rows="4" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" placeholder="Describe the problem, current state, budget, and timeline..." required></textarea>
+            </div>
+            <div class="flex justify-end gap-2">
+                <button type="button" id="ai-chat-create-solution-cancel" class="rounded-md border border-input px-4 py-2 text-sm" aria-label="Cancel">Cancel</button>
+                <button type="submit" id="ai-chat-create-solution-submit" class="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90" aria-label="Create solution and generate draft">Create solution</button>
+            </div>
+        </form>
+        <div id="ai-chat-create-solution-status" class="hidden mt-3 text-sm text-muted-foreground"></div>
+    </div>
+</div>
+
+<script>
+    // Domain configuration from server - embedded as JSON
+    window.domainConfig = {{ domain_config | tojson | safe }};
+    window.promptTemplates = {{ prompt_templates | tojson | safe }};
+    window.personaConfig = {{ persona_config.personas | tojson | safe if persona_config else '{}' | safe }};
+    window.csrfToken = '{{ csrf_token() }}';
+</script>
+
+<script>
+    // Enhanced JavaScript for multi-domain chat with persona support
+
+    const fetch = (url, options = {}) => {
+        const requestOptions = { ...options };
+        const method = (requestOptions.method || 'GET').toUpperCase();
+        const headers = new Headers(requestOptions.headers || {});
+        if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method) && !headers.has('X-CSRFToken')) {
+            const csrfToken = (window.getCSRFToken && window.getCSRFToken()) || window.csrfToken || '';
+            if (csrfToken) {
+                headers.set('X-CSRFToken', csrfToken);
+            }
+        }
+        if (!requestOptions.credentials) {
+            requestOptions.credentials = 'same-origin';
+        }
+        requestOptions.headers = headers;
+        return window.fetch(url, requestOptions);
+    };
+
+    const messagesContainer = document.getElementById('messages-container');
+    const chatForm = document.getElementById('chat-form');
+    const userInput = document.getElementById('user-input');
+    const domainSelector = document.getElementById('domain-selector');
+    const templateSelector = document.getElementById('template-selector');
+    const personaSelector = document.getElementById('persona-selector');
+    const modelSelector = document.getElementById('model-selector');
+    const selectedElementIdInput = document.getElementById('selected-element-id');
+
+    // Get configurations from window object
+    let domainConfig = window.domainConfig || {};
+    let promptTemplates = window.promptTemplates || [];
+    let personaConfig = window.personaConfig || {};
+    let currentDomain = 'general';
+    let currentPersona = '';
+    let chatHistory = [];
+    let contextElement = null;
+    let attachedImage = null; // ENT-085: { file, dataUrl, mimeType }
+
+    // Welcome UI helpers — hide suggestion chips on first user send
+    function _hideWelcomeUI() {
+        document.getElementById('suggestion-chips')?.classList.add('hidden');
+        document.getElementById('domain-welcome-grid')?.classList.add('hidden');
+    }
+
+    function setSuggestion(text) {
+        const ta = document.getElementById('user-input');
+        if (ta) {
+            ta.value = text;
+            ta.focus();
+        }
+    }
+
+    // Hide chips on first form submit
+    document.getElementById('chat-form')?.addEventListener('submit', _hideWelcomeUI, { once: true });
+
+    // Load available models
+    async function loadAvailableModels() {
+        try {
+            const response = await fetch('/ai-chat/models');
+            const data = await response.json();
+
+            if (response.ok && data.success) {
+                // Clear existing options
+                modelSelector.innerHTML = '<option value="">Auto-Select Model</option>';
+
+                // Add available models
+                data.models.forEach(model => {
+                    const option = document.createElement('option');
+                    option.value = model.model;
+                    option.textContent = model.display_name;
+
+                    // Add recommended for info
+                    if (model.recommended_for && model.recommended_for.length > 0) {
+                        option.textContent += ` (${model.recommended_for[0]})`;
+                    }
+
+                    if (model.is_fallback) {
+                        option.textContent += ` [Fallback ${model.fallback_order}]`;
+                    }
+
+                    if (model.test_status === 'failed') {
+                        option.textContent += ' [Provider Warning]';
+                    }
+
+                    modelSelector.appendChild(option);
+                });
+
+            } else {
+                modelSelector.innerHTML = '<option value="">Models unavailable</option>';
+                console.error('Failed to load models:', data.error);
+            }
+        } catch (error) {
+            modelSelector.innerHTML = '<option value="">Models unavailable</option>';
+            console.error('Error loading models:', error);
+        }
+    }
+
+    // Tailwind-safe color class mappings (explicit classes for build-time purging)
+    // token-migration-ok — domain-specific color palette for visual differentiation
+    const colorClasses = {
+        'blue': { bg: 'bg-primary', gradient: 'from-blue-500 to-blue-600', text: 'text-primary', badge: 'bg-primary/10 text-primary' }, // token-migration-ok
+        'green': { bg: 'bg-emerald-500', gradient: 'from-green-500 to-green-600', text: 'text-emerald-700', badge: 'bg-emerald-500/10 text-emerald-700' }, // token-migration-ok
+        'purple': { bg: 'bg-primary', gradient: 'from-purple-500 to-purple-600', text: 'text-purple-700', badge: 'bg-purple-100 text-purple-700' }, // token-migration-ok
+        'orange': { bg: 'bg-orange-500', gradient: 'from-orange-500 to-orange-600', text: 'text-orange-700', badge: 'bg-orange-100 text-orange-700' },
+        'indigo': { bg: 'bg-primary', gradient: 'from-indigo-500 to-indigo-600', text: 'text-indigo-700', badge: 'bg-indigo-100 text-indigo-700' }, // token-migration-ok
+        'teal': { bg: 'bg-teal-500', gradient: 'from-teal-500 to-teal-600', text: 'text-teal-700', badge: 'bg-teal-100 text-teal-700' },
+        'slate': { bg: 'bg-slate-500', gradient: 'from-slate-500 to-slate-600', text: 'text-slate-700', badge: 'bg-slate-100 text-slate-700' },
+        'primary': { bg: 'bg-primary', gradient: 'from-primary to-primary/80', text: 'text-primary', badge: 'bg-primary/10 text-primary' },
+        'amber': { bg: 'bg-amber-500', gradient: 'from-amber-500 to-amber-600', text: 'text-amber-700', badge: 'bg-amber-100 text-amber-700' },
+        'cyan': { bg: 'bg-cyan-500', gradient: 'from-cyan-500 to-cyan-600', text: 'text-cyan-700', badge: 'bg-cyan-100 text-cyan-700' },
+        'pink': { bg: 'bg-pink-500', gradient: 'from-pink-500 to-pink-600', text: 'text-pink-700', badge: 'bg-pink-100 text-pink-700' },
+        'violet': { bg: 'bg-violet-500', gradient: 'from-violet-500 to-violet-600', text: 'text-violet-700', badge: 'bg-violet-100 text-violet-700' },
+        'red': { bg: 'bg-destructive', gradient: 'from-red-500 to-red-600', text: 'text-destructive', badge: 'bg-destructive/10 text-destructive' } // token-migration-ok
+    };
+
+    function getColorClass(colorName, type = 'bg') {
+        const colors = colorClasses[colorName] || colorClasses['primary'];
+        return colors[type] || colors.bg;
+    }
+
+    // Initialize domain selector
+    domainSelector.addEventListener('change', (e) => {
+        currentDomain = e.target.value;
+        updateDomainUI(currentDomain);
+        loadDomainContext(currentDomain);
+        updateTemplateOptions(currentDomain);
+    });
+
+    // Initialize persona selector
+    personaSelector.addEventListener('change', (e) => {
+        currentPersona = e.target.value;
+        updatePersonaUI(currentPersona);
+        if (currentPersona && personaConfig[currentPersona]) {
+            // Auto-switch to persona's default domain
+            const defaultDomain = personaConfig[currentPersona].default_domain;
+            if (defaultDomain && defaultDomain !== currentDomain) {
+                domainSelector.value = defaultDomain;
+                currentDomain = defaultDomain;
+                updateDomainUI(currentDomain);
+                loadDomainContext(currentDomain);
+            }
+            // Show sample prompts
+            updateSamplePrompts(currentPersona);
+        }
+    });
+
+    function updatePersonaUI(persona) {
+        if (!persona || !personaConfig[persona]) {
+            // Reset to default
+            document.getElementById('domain-description').textContent = 'Select a domain for specialized assistance';
+            return;
+        }
+        const config = personaConfig[persona];
+        document.getElementById('domain-description').textContent = config.description || config.name;
+        appendSystemMessage(`Persona switched to: ${config.name}`, 'info');
+    }
+
+    function updateSamplePrompts(persona) {
+        if (!persona || !personaConfig[persona]) return;
+        const config = personaConfig[persona];
+        const prompts = config.sample_prompts || [];
+        if (prompts.length > 0) {
+            const promptsHtml = prompts.map(p => `<button type="button" data-action="use-prompt" data-prompt="${p.replace(/"/g, '&quot;')}" class="text-left p-2 rounded-lg border hover:bg-accent text-xs truncate">${p}</button>`).join('');
+            const contextDiv = document.getElementById('domain-context');
+            contextDiv.innerHTML = `
+                <h3 class="font-medium text-sm mb-3">Sample Prompts for ${config.name}</h3>
+                <div class="space-y-2">${promptsHtml}</div>
+                <div class="mt-4 p-3 bg-muted/50 rounded-lg">
+                    <h4 class="font-medium text-xs mb-2">Expertise Areas</h4>
+                    <div class="flex flex-wrap gap-1">
+                        ${(config.expertise || []).map(e => `<span class="text-[10px] px-2 py-0.5 bg-primary/10 text-primary rounded-full">${e}</span>`).join('')}
+                    </div>
+                </div>
+            `;
+        }
+    }
+
+    function usePrompt(prompt) {
+        userInput.value = prompt;
+        userInput.focus();
+    }
+
+    function updateDomainUI(domain) {
+        const config = domainConfig[domain];
+        if (!config) return;
+
+        // Update header
+        document.getElementById('domain-title').textContent = config.name;
+        document.getElementById('domain-description').textContent = config.description;
+
+        // Update icon
+        const iconElement = document.getElementById('domain-icon');
+        iconElement.innerHTML = `<i data-lucide="${config.icon}" class="h-5 w-5"></i>`;
+
+        // Update colors using safe class mapping
+        const bgClass = getColorClass(config.color || 'primary', 'bg');
+        iconElement.className = `flex h-9 w-9 items-center justify-center rounded-lg ${bgClass} text-primary-foreground transition-all duration-300`; // token-migration-ok
+
+        // Re-initialize lucide icons
+        lucide.createIcons();
+    }
+
+    function updateTemplateOptions(domain) {
+        const config = domainConfig[domain];
+        if (!config || !config.templates) return;
+
+        // Clear existing options
+        templateSelector.innerHTML = '';
+
+        // Add domain-specific templates
+        config.templates.forEach(template => {
+            const option = document.createElement('option');
+            option.value = template;
+            option.textContent = template;
+            templateSelector.appendChild(option);
+        });
+
+        // Add custom templates from database
+        promptTemplates.forEach(template => {
+            const customOption = document.createElement('option');
+            customOption.value = template.name;
+            customOption.textContent = template.name;
+            templateSelector.appendChild(customOption);
+        });
+    }
+
+    async function loadDomainContext(domain) {
+        try {
+            const response = await fetch(`/ai-chat/context/${domain}`);
+            const data = await response.json();
+
+            const contextContainer = document.getElementById('domain-context');
+            contextContainer.innerHTML = '';
+
+            if (domain === 'architecture' && data.elements) {
+                contextContainer.innerHTML = `
+                    <h3 class="font-medium text-sm mb-3">ArchiMate Elements</h3>
+                    <div class="space-y-2">
+                        ${data.elements.map(el => `
+                            <div class="rounded-lg border bg-card p-3 shadow-sm cursor-pointer hover:bg-accent transition-colors"
+                                 data-action="select-context" data-id="${el.id}" data-type="archimate_element">
+                                <div class="flex items-center gap-2 mb-1">
+                                    <span class="bg-primary/10 text-primary text-[10px] px-1.5 py-0.5 rounded font-medium">${el.type}</span><!-- token-migration-ok -->
+                                    <span class="font-medium text-sm">${el.name}</span>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            } else if (domain === 'technology' && data.applications) {
+                contextContainer.innerHTML = `
+                    <h3 class="font-medium text-sm mb-3">Applications</h3>
+                    <div class="space-y-2">
+                        ${data.applications.map(app => `
+                            <div class="rounded-lg border bg-card p-3 shadow-sm cursor-pointer hover:bg-accent transition-colors"
+                                 data-action="select-context" data-id="${app.id}" data-type="application">
+                                <div class="flex items-center gap-2 mb-1">
+                                    <span class="bg-emerald-500/10 text-emerald-700 text-[10px] px-1.5 py-0.5 rounded font-medium">Application</span><!-- token-migration-ok -->
+                                    <span class="font-medium text-sm">${app.name}</span>
+                                </div>
+                                <p class="text-xs text-muted-foreground">${app.technology || 'No technology info'}</p>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            } else {
+                contextContainer.innerHTML = `
+                    <div class="text-center py-8 text-muted-foreground">
+                        <i data-lucide="inbox" class="h-8 w-8 mx-auto mb-2 opacity-50"></i>
+                        <p class="text-sm">No specific context available for ${domain}</p>
+                    </div>
+                `;
+            }
+
+            // Re-initialize lucide icons
+            lucide.createIcons();
+
+        } catch (error) {
+            console.error('Error loading domain context:', error);
+        }
+    }
+
+    function selectContext(elementId, contextType) {
+        selectedElementIdInput.value = elementId;
+        contextElement = { id: elementId, type: contextType };
+
+        // Visual feedback
+        appendSystemMessage(`Context set: ${contextType} #${elementId}`, 'info');
+    }
+
+    function handleEnter(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            chatForm.dispatchEvent(new Event('submit'));
+        }
+    }
+
+    // Command Handler
+    async function handleCommand(message) {
+        const parts = message.split(' ');
+        const command = parts[0].toLowerCase();
+        const arg = parts.slice(1).join(' ');
+
+        // Helper to get application ID (from arg or context)
+        const getAppId = () => {
+            if (arg && !isNaN(parseInt(arg))) return parseInt(arg);
+            if (contextElement && contextElement.type === 'application') return contextElement.id;
+            return null;
+        };
+
+        if (command === '/generate-archimate') {
+            const appId = getAppId();
+            if (!appId) {
+                appendSystemMessage('Please provide an Application ID or select an application in Context.', 'error');
+                return true;
+            }
+            await generateArchimatePreview(appId);
+            return true;
+        }
+        else if (command === '/map-apqc') {
+            const appId = getAppId();
+            if (!appId) {
+                appendSystemMessage('Please provide an Application ID or select an application in Context.', 'error');
+                return true;
+            }
+            await mapApqcPreview(appId);
+            return true;
+        }
+
+        return false; // Not a client-side command, let backend handle it
+    }
+
+    // --- Actionable Workflow Functions ---
+
+    // 1. Generate ArchiMate Preview
+    async function generateArchimatePreview(appId) {
+        const loadingId = appendLoadingMessage();
+        try {
+            const response = await fetch('/ai-chat/generate-archimate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ application_id: appId })
+            });
+            const data = await response.json();
+            removeLoadingMessage(loadingId);
+
+            if (data.success && data.preview) {
+                renderActionCard('archimate', data.preview);
+            } else {
+                appendSystemMessage(`Generation failed: ${data.error}`, 'error');
+            }
+        } catch (error) {
+            removeLoadingMessage(loadingId);
+            appendSystemMessage(`Error: ${error.message}`, 'error');
+        }
+    }
+
+    // 2. Map APQC Preview
+    async function mapApqcPreview(appId) {
+        const loadingId = appendLoadingMessage();
+        try {
+            const response = await fetch('/ai-chat/map-apqc', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ application_id: appId })
+            });
+            const data = await response.json();
+            removeLoadingMessage(loadingId);
+
+            if (data.success && data.suggestions) {
+                renderActionCard('apqc', data);
+            } else {
+                appendSystemMessage(`Mapping failed: ${data.error}`, 'error');
+            }
+        } catch (error) {
+            removeLoadingMessage(loadingId);
+            appendSystemMessage(`Error: ${error.message}`, 'error');
+        }
+    }
+
+    // Render Action Card (ArchiMate or APQC)
+    function renderActionCard(type, data) {
+        const div = document.createElement('div');
+        div.className = 'flex gap-4';
+
+        // Avatar
+        const avatar = `<div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-purple-500 to-purple-600 text-primary-foreground shadow-lg"><!-- token-migration-ok -->
+             <i data-lucide="${type === 'archimate' ? 'layers' : 'list-tree'}" class="h-5 w-5"></i>
+           </div>`;
+
+        // Card Content
+        let contentHtml = '';
+        let title = '';
+        let appId = data.application_id;
+
+        if (type === 'archimate') {
+            title = `Generated ArchiMate Elements for ${data.application_name}`;
+            contentHtml = data.elements.map((el, index) => {
+                const confidenceClass = el.confidence > 80 ? 'confidence-high' : (el.confidence > 50 ? 'confidence-medium' : 'confidence-low');
+                const confidenceLabel = el.confidence > 80 ? 'High' : (el.confidence > 50 ? 'Medium' : 'Low');
+                return `
+                <div class="element-item">
+                    <input type="checkbox" class="element-checkbox" id="elem-${index}" checked data-element='${JSON.stringify(el)}'>
+                    <div class="element-icon">
+                        <i data-lucide="box" class="h-4 w-4"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2 mb-1">
+                            <span class="font-medium text-sm truncate">${el.name}</span>
+                            <span class="text-xs text-muted-foreground">(${el.type})</span>
+                            <span class="confidence-badge ${confidenceClass}">${el.confidence}% ${confidenceLabel}</span>
+                        </div>
+                        <p class="text-xs text-muted-foreground line-clamp-2">${el.description || 'No description'}</p>
+                        ${el.reasoning ? `<p class="text-[10px] text-primary dark:text-blue-400 mt-1"><i data-lucide="info" class="h-3 w-3 inline mr-0.5"></i> ${el.reasoning}</p>` : ''}<!-- token-migration-ok -->
+                    </div>
+                </div>`;
+            }).join('');
+        } else if (type === 'apqc') {
+            title = `APQC Process Mappings for ${data.application_name}`;
+            contentHtml = data.suggestions.map((item, index) => {
+                const confidenceClass = item.confidence > 80 ? 'confidence-high' : (item.confidence > 50 ? 'confidence-medium' : 'confidence-low');
+                return `
+                <div class="element-item">
+                    <input type="checkbox" class="element-checkbox" id="map-${index}" ${item.selected ? 'checked' : ''} data-mapping='${JSON.stringify(item)}'>
+                    <div class="element-icon">
+                        <i data-lucide="git-branch" class="h-4 w-4"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2 mb-1">
+                            <span class="font-medium text-sm text-primary">${item.code}</span>
+                            <span class="font-medium text-sm truncate">${item.name}</span>
+                            <span class="confidence-badge ${confidenceClass}">${item.confidence}%</span>
+                        </div>
+                        <p class="text-xs text-muted-foreground">${item.hierarchy}</p>
+                        <p class="text-[10px] text-muted-foreground mt-0.5">Source: ${item.source}</p>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        const bubble = `
+        <div class="rounded-xl bg-muted/50 p-4 text-sm w-full max-w-3xl">
+            <div class="action-card bg-background border shadow-sm">
+                <div class="action-card-header p-3">
+                    <div class="action-card-title">
+                        <i data-lucide="sparkles" class="h-4 w-4 text-primary"></i><!-- token-migration-ok -->
+                        ${title}
+                    </div>
+                </div>
+                <div class="p-3 max-h-96 overflow-y-auto custom-scrollbar">
+                    ${contentHtml}
+                </div>
+                <div class="action-buttons p-3 bg-muted/20 rounded-b-lg">
+                    <button type="button" data-action="apply-ai-action" data-type="${type}" data-app-id="${appId}" class="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 py-2">
+                        <i data-lucide="check" class="mr-2 h-4 w-4"></i> Apply Selected
+                    </button>
+                    <button type="button" data-action="dismiss-action-card" class="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-4 py-2 ml-2">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>`;
+
+        div.innerHTML = avatar + bubble;
+        messagesContainer.appendChild(div);
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        lucide.createIcons();
+    }
+
+    // Apply Action (Called by button)
+    window.applyAction = async (type, appId, btn) => {
+        const card = btn.closest('.action-card');
+        const checkboxes = card.querySelectorAll('input[type="checkbox"]:checked');
+
+        if (checkboxes.length === 0) {
+            Platform.toast.error('Please select at least one item to apply.');
+            return;
+        }
+
+        // Disable button
+        const originalText = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = `<i data-lucide="loader-2" class="mr-2 h-4 w-4 animate-spin"></i> Applying...`;
+        lucide.createIcons();
+
+        try {
+            let endpoint = '';
+            let payload = { application_id: appId };
+
+            if (type === 'archimate') {
+                endpoint = '/ai-chat/apply-archimate';
+                payload.elements = Array.from(checkboxes).map(cb => JSON.parse(cb.dataset.element));
+            } else if (type === 'apqc') {
+                endpoint = '/ai-chat/apply-apqc';
+                payload.mappings = Array.from(checkboxes).map(cb => JSON.parse(cb.dataset.mapping));
+            }
+
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': '{{ csrf_token() }}'
+                },
+                body: JSON.stringify(payload)
+            });
+            const result = await response.json();
+
+            if (result.success) {
+                // Replace card with success message
+                const parent = card.parentElement;
+                parent.innerHTML = `
+                    <div class="p-4 bg-emerald-500/5 dark:bg-green-900/20 border border-emerald-200 dark:border-green-800 rounded-lg text-green-800 dark:text-green-300"><!-- token-migration-ok -->
+                        <div class="flex items-center gap-2 font-semibold">
+                            <i data-lucide="check-circle" class="h-5 w-5"></i>
+                            Success
+                        </div>
+                        <p class="mt-1 text-sm">${result.message}</p>
+                    </div>`;
+                lucide.createIcons();
+            } else {
+                Platform.toast.error(`Error: ${result.error}`);
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+
+        } catch (error) {
+            console.error('Apply error:', error);
+            Platform.toast.error(`Failed to apply changes: ${error.message}`);
+            btn.disabled = false;
+            btn.innerHTML = originalText;
+        }
+    };
+
+    function appendLoadingMessage() {
+        const id = 'loading-' + Date.now();
+        const div = document.createElement('div');
+        div.id = id;
+        div.className = 'flex gap-4';
+        div.innerHTML = `
+            <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-primary/80 text-primary-foreground shadow-lg"><!-- token-migration-ok -->
+                <i data-lucide="bot" class="h-5 w-5"></i>
+            </div>
+            <div class="rounded-xl bg-muted/50 p-4 text-sm">
+                <div class="flex items-center gap-2">
+                    <div class="h-2 w-2 animate-bounce rounded-full bg-primary"></div>
+                    <div class="h-2 w-2 animate-bounce rounded-full bg-primary" style="animation-delay: 0.2s"></div>
+                    <div class="h-2 w-2 animate-bounce rounded-full bg-primary" style="animation-delay: 0.4s"></div>
+                </div>
+            </div>`;
+        messagesContainer.appendChild(div);
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        lucide.createIcons();
+        return id;
+    }
+
+    function removeLoadingMessage(id) {
+        const el = document.getElementById(id);
+        if (el) el.remove();
+    }
+
+    function appendMessage(role, text, metadata = {}) {
+        const isAi = role === 'ai';
+        const div = document.createElement('div');
+        div.className = `flex gap-4 ${isAi ? '' : 'flex-row-reverse'}`;
+
+        // Enhanced avatar with domain styling using safe color classes
+        const domainColor = domainConfig[currentDomain]?.color || 'primary';
+        const avatarGradient = getColorClass(domainColor, 'gradient');
+        const avatarClass = `bg-gradient-to-br ${avatarGradient}`;
+        const avatar = isAi
+            ? `<div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${avatarClass} text-primary-foreground shadow-lg"><!-- token-migration-ok -->
+                 <i data-lucide="${domainConfig[currentDomain]?.icon || 'bot'}" class="h-5 w-5"></i>
+               </div>`
+            : `<div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-secondary text-secondary-foreground">
+                 <i data-lucide="user" class="h-5 w-5"></i>
+               </div>`;
+
+        // Enhanced message bubble with metadata using safe color classes
+        const metadataDomainColor = metadata.domain ? (domainConfig[metadata.domain]?.color || 'blue') : 'blue';
+        const badgeClass = getColorClass(metadataDomainColor, 'badge');
+        const bubble = isAi
+            ? `<div class="rounded-xl bg-muted/50 p-4 text-sm prose dark:prose-invert max-w-3xl">
+                 ${metadata.domain ? `<div class="mb-2">
+                     <span class="px-2 py-1 ${badgeClass} text-xs rounded-full font-medium">
+                         ${domainConfig[metadata.domain]?.name || 'AI'}
+                     </span>
+                     ${metadata.processing_time ? `<span class="ml-2 text-xs text-muted-foreground">${metadata.processing_time}ms</span>` : ''}
+                 </div>` : ''}
+                 <div class="message-content">${marked.parse(text)}</div>
+               </div>`
+            : `<div class="rounded-xl bg-primary text-primary-foreground p-4 text-sm max-w-3xl">
+                 <div class="message-content">${text}</div>
+               </div>`;
+
+        div.innerHTML = avatar + bubble;
+        messagesContainer.appendChild(div);
+
+        // ENT-122: inject "Open in Composer" button for ArchiMate responses
+        if (isAi && metadata.archimate_elements && metadata.archimate_elements.length > 0) {
+            const prefillData = {
+                elements: metadata.archimate_elements,
+                relationships: metadata.archimate_relationships || [],
+                model_name: metadata.archimate_model_name || 'AI Generated Architecture',
+                source: 'ai_chat'
+            };
+            sessionStorage.setItem('archimate_prefill', JSON.stringify(prefillData));
+            const composerBtn = document.createElement('div');
+            composerBtn.className = 'mt-3 ml-12';
+            const elemCount = metadata.archimate_elements.length;
+            const relCount = (metadata.archimate_relationships || []).length;
+            composerBtn.innerHTML = `
+                <a href="/archimate/composer" data-ent121-composer-link
+                   class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors shadow-sm">
+                    <i data-lucide="layout-dashboard" class="h-4 w-4"></i>
+                    Open in Composer — ${elemCount} elements, ${relCount} relationships
+                </a>`;
+            messagesContainer.appendChild(composerBtn);
+        }
+
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+
+        // Re-initialize lucide icons for new elements
+        lucide.createIcons();
+    }
+
+    function appendSystemMessage(text, type = 'info') {
+        const div = document.createElement('div');
+        div.className = 'flex justify-center my-4';
+
+        const bgColor = type === 'info' ? 'bg-primary/5 text-primary border-primary/20' : // token-migration-ok
+                       type === 'error' ? 'bg-destructive/5 text-destructive border-destructive/20' : // token-migration-ok
+                       'bg-muted/50 text-muted-foreground border-border';
+
+        div.innerHTML = `
+            <div class="px-3 py-2 rounded-lg text-xs ${bgColor} border flex items-center gap-2">
+                <i data-lucide="${type === 'info' ? 'info' : type === 'error' ? 'alert-circle' : 'check'}" class="h-3 w-3"></i>
+                ${text}
+            </div>
+        `;
+
+        messagesContainer.appendChild(div);
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        lucide.createIcons();
+    }
+
+    // ==========================================================================
+    // Actionable Chat Commands (PRD Implementation)
+    // ==========================================================================
+
+    async function handleChatCommand(message) {
+        const parts = message.trim().split(/\s+/);
+        const command = parts[0].toLowerCase();
+        const args = parts.slice(1).join(' ');
+
+        const commands = {
+            '/generate-archimate': handleGenerateArchimate,
+            '/map-apqc': handleMapApqc,
+            '/save-insights': handleSaveInsights,
+            '/bulk-process': handleBulkProcess,
+            '/gap-analysis': handleGapAnalysis,
+            '/discover-vendors': handleDiscoverVendors,
+            '/create-diagram': handleCreateDiagram,
+            '/analyze': handleArchitectAnalyze,
+            '/viewpoints': handleArchitectViewpoints,
+            '/arb-ready': handleArbReady,
+            '/help': showCommandHelp
+        };
+
+        if (commands[command]) {
+            await commands[command](args);
+            return true;
+        }
+        return false;
+    }
+
+    async function handleGenerateArchimate(args) {
+        const appId = args.trim() || contextElement?.id;
+        if (!appId) {
+            appendMessage('ai', `**Usage:** \`/generate-archimate [application_id]\`\n\nPlease provide an application ID or select an application from context first.`, { domain: 'architecture' });
+            return;
+        }
+
+        appendSystemMessage(`Generating ArchiMate diagram for application ${appId}…`, 'info');
+
+        try {
+            const response = await fetch('/ai-chat/chat/generate-archimate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ application_id: parseInt(appId), preview_only: false })
+            });
+            const data = await response.json();
+
+            if (data.success) {
+                const solutionId = data.architecture_id;
+                const elementCount = data.elements_created || data.elements?.length || 0;
+                const composerUrl = solutionId ? `/archimate/composer?solution_id=${solutionId}` : `/archimate/composer`;
+
+                appendMessage('ai',
+                    `## ArchiMate Diagram Ready: ${data.application_name}\n\n` +
+                    `Created **${elementCount}** ArchiMate element(s). Opening in Composer…\n\n` +
+                    `[Open Composer →](${composerUrl})`,
+                    { domain: 'architecture' }
+                );
+
+                setTimeout(() => { window.location.href = composerUrl; }, 1500);
+            } else {
+                appendMessage('ai', `**Error:** ${data.error}`, { domain: 'architecture' });
+            }
+        } catch (error) {
+            appendMessage('ai', `**Error:** ${error.message}`, { domain: 'architecture' });
+        }
+    }
+
+    async function applyArchimateElements(appId) {
+        try {
+            const response = await fetch('/ai-chat/chat/generate-archimate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ application_id: parseInt(appId), preview_only: false })
+            });
+            const data = await response.json();
+
+            if (data.success) {
+                appendSystemMessage(`✅ Created ${data.elements_created} ArchiMate elements`, 'info');
+            } else {
+                appendSystemMessage(`❌ ${data.error}`, 'error');
+            }
+        } catch (error) {
+            appendSystemMessage(`❌ ${error.message}`, 'error');
+        }
+    }
+
+    async function handleMapApqc(args) {
+        const appId = args.trim() || contextElement?.id;
+        if (!appId) {
+            appendMessage('ai', `**Usage:** \`/map-apqc [application_id]\`\n\nPlease provide an application ID or select an application from context first.`, { domain: 'business_capability' });
+            return;
+        }
+
+        appendSystemMessage(`Mapping APQC processes for application ${appId}...`, 'info');
+
+        try {
+            const response = await fetch('/ai-chat/chat/map-apqc', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ application_id: parseInt(appId), preview_only: true })
+            });
+            const data = await response.json();
+
+            if (data.success) {
+                const highConf = data.mappings.filter(m => m.confidence >= 0.85);
+                const medConf = data.mappings.filter(m => m.confidence >= 0.7 && m.confidence < 0.85);
+                const lowConf = data.mappings.filter(m => m.confidence < 0.7);
+
+                let responseText = `## APQC Process Mappings for ${data.application_name}
+
+**High Confidence (≥85%):**
+${highConf.length > 0 ? highConf.map(m => `- ✅ ${m.process_code}: ${m.process_name} (${Math.round(m.confidence * 100)}%)`).join('\n') : 'None'}
+
+**Medium Confidence (70-85%):**
+${medConf.length > 0 ? medConf.map(m => `- ⚠️ ${m.process_code}: ${m.process_name} (${Math.round(m.confidence * 100)}%)`).join('\n') : 'None'}
+
+**Low Confidence (<70%):**
+${lowConf.length > 0 ? lowConf.map(m => `- ❓ ${m.process_code}: ${m.process_name} (${Math.round(m.confidence * 100)}%)`).join('\n') : 'None'}
+
+<div class="mt-4 flex gap-2">
+<button type="button" data-action="apply-apqc" data-app-id="${appId}" data-high-conf="1" class="px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-sm hover:bg-primary/90">✅ Apply High Confidence</button>
+<button type="button" data-action="apply-apqc" data-app-id="${appId}" data-high-conf="0" class="px-3 py-1.5 border rounded-lg text-sm hover:bg-accent">Apply All</button>
+</div>`;
+
+                appendMessage('ai', responseText, { domain: 'business_capability' });
+            } else {
+                appendMessage('ai', `**Error:** ${data.error}`, { domain: 'business_capability' });
+            }
+        } catch (error) {
+            appendMessage('ai', `**Error:** ${error.message}`, { domain: 'business_capability' });
+        }
+    }
+
+    async function applyApqcMappings(appId, highConfOnly) {
+        try {
+            const response = await fetch('/ai-chat/chat/map-apqc', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    application_id: parseInt(appId),
+                    preview_only: false,
+                    apply_high_confidence: highConfOnly
+                })
+            });
+            const data = await response.json();
+
+            if (data.success) {
+                appendSystemMessage(`✅ Applied ${data.mappings_applied} APQC mappings — <a href="/applications/${appId}" class="underline font-medium" onclick="window.location.href='/applications/${appId}';return false;"><!-- inline-event-ok -->View Application →</a>`, 'info');
+            } else {
+                appendSystemMessage(`❌ ${data.error}`, 'error');
+            }
+        } catch (error) {
+            appendSystemMessage(`❌ ${error.message}`, 'error');
+        }
+    }
+
+    async function handleSaveInsights(args) {
+        const appId = parseInt(args) || (contextElement?.type === 'Application' ? parseInt(contextElement.id) : null);
+        if (!appId) {
+            appendMessage('ai', `**Save Insights**\n\nTo save insights from our conversation to an application, use:\n\`/save-insights [application_id]\`\n\nOr select an application from context and run \`/save-insights\`.`, { domain: 'general' });
+            return;
+        }
+
+        const lastAiMessage = [...chatHistory].reverse().find(m => m.role === 'assistant' || m.role === 'ai');
+        const insightContent = lastAiMessage?.content || 'AI-generated insight from chat session';
+
+        appendSystemMessage(`Saving insights to application ${appId}...`, 'info');
+
+        try {
+            const response = await fetch('/ai-chat/chat/save-insights', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    application_id: appId,
+                    insights: { description: insightContent }
+                })
+            });
+            const data = await response.json();
+
+            if (data.success) {
+                appendMessage('ai', `## ✅ Insights Saved\n\n**Application:** ${data.application_name}\n**Fields Updated:** ${data.fields_updated?.join(', ') || 'description'}\n\n[View Application →](/applications/${data.application_id})`, { domain: 'general' });
+            } else {
+                appendMessage('ai', `**Error:** ${data.error}`, { domain: 'general' });
+            }
+        } catch (error) {
+            appendMessage('ai', `**Error:** ${error.message}`, { domain: 'general' });
+        }
+    }
+
+    async function handleBulkProcess(args) {
+        const maxApps = parseInt(args) || 10;
+
+        appendSystemMessage(`Starting bulk processing for up to ${maxApps} applications...`, 'info');
+
+        try {
+            const response = await fetch('/ai-chat/chat/bulk-process', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    max_applications: maxApps,
+                    map_capabilities: true,
+                    map_processes: true,
+                    generate_archimate: false,
+                    auto_create: false
+                })
+            });
+            const data = await response.json();
+
+            if (data.success) {
+                let responseText = `## Bulk Processing Results
+
+**Applications Processed:** ${data.total_processed}
+**Capability Mappings Created:** ${data.capability_mappings_created}
+**Process Mappings Created:** ${data.process_mappings_created}
+**ArchiMate Elements Created:** ${data.archimate_elements_created}
+
+${data.applications?.slice(0, 5).map(app => `- ${app.application_name}: ${app.capabilities?.length || 0} caps, ${app.processes?.length || 0} procs`).join('\n') || ''}
+
+Use \`/bulk-process [number]\` to process more applications.`;
+
+                responseText += `\n\n<a href="/applications" onclick="window.location.href='/applications';return false;" class="inline-block mt-2 text-primary underline text-sm"><!-- inline-event-ok --><!-- token-migration-ok -->View Application Portfolio →</a>`;
+
+                appendMessage('ai', responseText, { domain: 'general' });
+            } else {
+                appendMessage('ai', `**Error:** ${data.error}`, { domain: 'general' });
+            }
+        } catch (error) {
+            appendMessage('ai', `**Error:** ${error.message}`, { domain: 'general' });
+        }
+    }
+
+    async function handleGapAnalysis(args) {
+        const analysisType = args.trim() || 'capability';
+
+        appendSystemMessage(`Running ${analysisType} gap analysis...`, 'info');
+
+        try {
+            const response = await fetch('/ai-chat/chat/gap-analysis', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ analysis_type: analysisType })
+            });
+            const data = await response.json();
+
+            if (data.success) {
+                const criticalGaps = data.gaps.filter(g => g.severity === 'high' || g.severity === 'critical');
+
+                let responseText = `## Gap Analysis: ${data.analysis_type}
+
+**Total Gaps Found:** ${data.total_gaps}
+**Critical/High Priority:** ${data.critical_gaps}
+
+### Top Gaps:
+${data.gaps.slice(0, 10).map(g => `
+- **${g.severity === 'high' ? '' : ''} ${g.name}**
+  ${g.description}
+  *Recommendation:* ${g.recommendation}
+  ${g.capability_id ? `<a href="/capability_map/capabilities?id=${g.capability_id}" onclick="window.location.href='/capability_map/capabilities?id=${g.capability_id}';return false;"><!-- inline-event-ok -->→ View Capability</a>` : ''}
+  ${g.process_id ? `<a href="/archimate/composer?process=${g.process_id}" onclick="window.location.href='/archimate/composer?process=${g.process_id}';return false;"><!-- inline-event-ok -->→ Open in Composer</a>` : ''}
+  ${g.vendor_name ? `<a href="/applications?filter_vendor=${encodeURIComponent(g.vendor_name)}" onclick="window.location.href=this.href;return false;"><!-- inline-event-ok -->→ Find Vendors</a>` : ''}
+`).join('\n')}
+
+<div class="mt-4 flex gap-2 flex-wrap">
+<button type="button" data-action="gap-analysis-tab" data-analysis-type="capability" class="px-3 py-1.5 ${analysisType === 'capability' ? 'bg-primary text-primary-foreground' : 'border'} rounded-lg text-sm">Capability</button>
+<button type="button" data-action="gap-analysis-tab" data-analysis-type="vendor" class="px-3 py-1.5 ${analysisType === 'vendor' ? 'bg-primary text-primary-foreground' : 'border'} rounded-lg text-sm">Vendor</button>
+<button type="button" data-action="gap-analysis-tab" data-analysis-type="process" class="px-3 py-1.5 ${analysisType === 'process' ? 'bg-primary text-primary-foreground' : 'border'} rounded-lg text-sm">Process</button>
+<a href="/solutions" class="px-3 py-1.5 border rounded-lg text-sm hover:bg-accent inline-block">Solutions Portfolio</a>
+</div>`;
+
+                appendMessage('ai', responseText, { domain: 'gap_analysis' });
+            } else {
+                appendMessage('ai', `**Error:** ${data.error}`, { domain: 'gap_analysis' });
+            }
+        } catch (error) {
+            appendMessage('ai', `**Error:** ${error.message}`, { domain: 'gap_analysis' });
+        }
+    }
+
+    async function handleDiscoverVendors(args) {
+        const capabilityName = args.trim();
+        if (!capabilityName) {
+            appendMessage('ai', `**Usage:** \`/discover-vendors [capability name]\`\n\nExample: \`/discover-vendors Customer Relationship Management\``, { domain: 'vendor_intelligence' });
+            return;
+        }
+
+        appendSystemMessage(`Discovering vendors for "${capabilityName}"...`, 'info');
+
+        try {
+            const response = await fetch('/ai-chat/chat/discover-vendors', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ capability_name: capabilityName, calculate_tco: true })
+            });
+            const data = await response.json();
+
+            if (data.success) {
+                let responseText = `## Vendor Discovery: ${data.capability_searched}
+
+**Vendors Found:** ${data.vendors_found}
+
+${data.vendors.map((v, i) => `
+### ${i + 1}. <a href="/vendors/${v.vendor_id}" onclick="window.location.href='/vendors/${v.vendor_id}';return false;"><!-- inline-event-ok -->${v.vendor_name}</a> (${Math.round(v.capability_fit * 100)}% fit)
+**Products:** ${v.products.map(p => p.product_name).join(', ')}
+${v.tco_estimate ? `**3-Year TCO:** $${v.tco_estimate.three_year.toLocaleString()}` : ''}
+`).join('\n')}
+
+<div class="mt-4 flex gap-2">
+<button type="button" data-action="discover-vendors" data-capability="${capabilityName.replace(/"/g, '&quot;')}" class="px-3 py-1.5 border rounded-lg text-sm hover:bg-accent">Refresh</button>
+<a href="/applications/vendors" class="px-3 py-1.5 border rounded-lg text-sm hover:bg-accent inline-block">All Vendors</a>
+</div>`;
+
+                appendMessage('ai', responseText, { domain: 'vendor_intelligence' });
+            } else {
+                appendMessage('ai', `**Error:** ${data.error}`, { domain: 'vendor_intelligence' });
+            }
+        } catch (error) {
+            appendMessage('ai', `**Error:** ${error.message}`, { domain: 'vendor_intelligence' });
+        }
+    }
+
+    async function handleCreateDiagram(args) {
+        const solutionId = parseInt(args);
+        if (!solutionId) {
+            appendMessage('ai', `**Usage:** \`/create-diagram [solution_id]\`\n\nCreates an ArchiMate diagram from a solution's elements and opens it in Composer.\n\nExample: \`/create-diagram 42\``, { domain: 'architecture' });
+            return;
+        }
+
+        appendSystemMessage(`Creating diagram for solution ${solutionId}...`, 'info');
+
+        try {
+            const response = await fetch('/ai-chat/chat/create-solution-diagram', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ solution_id: solutionId })
+            });
+            const data = await response.json();
+
+            if (data.success) {
+                appendMessage('ai',
+                    `## Diagram Created: ${data.diagram_name}\n\n` +
+                    `Created **${data.element_count}** ArchiMate element(s). Opening in Composer…\n\n` +
+                    `[Open Composer →](${data.redirect_url})`,
+                    { domain: 'architecture' }
+                );
+                setTimeout(() => { window.location.href = data.redirect_url; }, 1500);
+            } else {
+                appendMessage('ai', `**Error:** ${data.error}`, { domain: 'architecture' });
+            }
+        } catch (error) {
+            appendMessage('ai', `**Error:** ${error.message}`, { domain: 'architecture' });
+        }
+    }
+
+    async function handleArchitectAnalyze(args) {
+        const problemStatement = args.trim();
+        if (!problemStatement || problemStatement.length < 10) {
+            appendMessage('ai', `**Usage:** \`/analyze [problem statement]\`\n\nRuns a full TOGAF ADM analysis on your problem statement.\n\nExample: \`/analyze Modernise customer onboarding to reduce time-to-activate\``, { domain: 'architecture' });
+            return;
+        }
+
+        appendSystemMessage('Running TOGAF ADM analysis... this may take a moment.', 'info');
+
+        try {
+            const response = await fetch('/ai-chat/architect/analyze', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ problem_statement: problemStatement })
+            });
+            const data = await response.json();
+
+            if (data.success) {
+                const phases = data.phases || {};
+                const phaseNames = Object.keys(phases);
+                let responseText = `## TOGAF ADM Analysis\n\n`;
+
+                phaseNames.forEach(phase => {
+                    const p = phases[phase];
+                    if (p && typeof p === 'object') {
+                        responseText += `### ${phase.charAt(0).toUpperCase() + phase.slice(1).replace(/_/g, ' ')}\n`;
+                        if (p.summary) responseText += `${p.summary}\n\n`;
+                        else responseText += `${JSON.stringify(p).slice(0, 200)}\n\n`;
+                    }
+                });
+
+                if (data.solution_id) {
+                    responseText += `\n[View Solution →](/solutions/${data.solution_id})\n\n`;
+                    responseText += `<div class="mt-3 flex gap-2 flex-wrap">`;
+                    responseText += `<button type="button" data-action="architect-viewpoints" data-solution-id="${data.solution_id}" class="px-3 py-1.5 border rounded-lg text-sm hover:bg-accent">Generate Viewpoints</button>`;
+                    responseText += `<button type="button" data-action="arb-ready" data-solution-id="${data.solution_id}" class="px-3 py-1.5 border rounded-lg text-sm hover:bg-accent">Check ARB Readiness</button>`;
+                    responseText += `</div>`;
+                }
+
+                appendMessage('ai', responseText, { domain: 'architecture' });
+            } else {
+                appendMessage('ai', `**Error:** ${data.error}`, { domain: 'architecture' });
+            }
+        } catch (error) {
+            appendMessage('ai', `**Error:** ${error.message}`, { domain: 'architecture' });
+        }
+    }
+
+    async function handleArchitectViewpoints(args) {
+        const solutionId = parseInt(args);
+        if (!solutionId) {
+            appendMessage('ai', `**Usage:** \`/viewpoints [solution_id]\`\n\nGenerates stakeholder viewpoints for a solution.\n\nExample: \`/viewpoints 42\``, { domain: 'architecture' });
+            return;
+        }
+
+        appendSystemMessage(`Generating viewpoints for solution ${solutionId}...`, 'info');
+
+        try {
+            const response = await fetch('/ai-chat/architect/viewpoints', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ solution_id: solutionId })
+            });
+            const data = await response.json();
+
+            if (data.success) {
+                let responseText = `## Stakeholder Viewpoints: ${data.solution_name}\n\nGenerated **${data.viewpoints.length}** viewpoints:\n\n`;
+
+                data.viewpoints.forEach(vp => {
+                    responseText += `### ${vp.name}\n**Elements:** ${vp.element_count}\n`;
+                    if (vp.viewpoint_view_id) {
+                        responseText += `<a href="${vp.composer_url}" onclick="window.location.href='${vp.composer_url}';return false;" class="text-primary underline text-sm"><!-- inline-event-ok --><!-- token-migration-ok -->→ Open in Composer</a>\n\n`;
+                    } else {
+                        responseText += `*(No elements in this layer)*\n\n`;
+                    }
+                });
+
+                appendMessage('ai', responseText, { domain: 'architecture' });
+            } else {
+                appendMessage('ai', `**Error:** ${data.error}`, { domain: 'architecture' });
+            }
+        } catch (error) {
+            appendMessage('ai', `**Error:** ${error.message}`, { domain: 'architecture' });
+        }
+    }
+
+    async function handleArbReady(args) {
+        const solutionId = parseInt(args);
+        if (!solutionId) {
+            appendMessage('ai', `**Usage:** \`/arb-ready [solution_id]\`\n\nScores a solution's ARB readiness.\n\nExample: \`/arb-ready 42\``, { domain: 'architecture' });
+            return;
+        }
+
+        appendSystemMessage(`Checking ARB readiness for solution ${solutionId}...`, 'info');
+
+        try {
+            const response = await fetch('/ai-chat/architect/arb-ready', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ solution_id: solutionId })
+            });
+            const data = await response.json();
+
+            if (data.success) {
+                const gradeColor = data.grade === 'A' ? '' : data.grade === 'B' ? '' : data.grade === 'C' ? '' : '';
+                let responseText = `## ${gradeColor} ARB Readiness: ${data.solution_name}\n\n**Score:** ${data.score}/100  **Grade:** ${data.grade}\n\n`;
+
+                const c = data.criteria || {};
+                responseText += `### Scoring Breakdown\n`;
+                responseText += `- Architectural Principles: ${c.principles_alignment?.score || 0}/${c.principles_alignment?.max || 40}\n`;
+                responseText += `- Technology Standards: ${c.technology_standards?.score || 0}/${c.technology_standards?.max || 30}\n`;
+                responseText += `- Risk Coverage: ${c.risk_coverage?.score || 0}/${c.risk_coverage?.max || 20}\n`;
+                responseText += `- Completeness: ${c.completeness?.score || 0}/${c.completeness?.max || 10}\n\n`;
+
+                if (data.blocking_issues?.length > 0) {
+                    responseText += `### Issues\n`;
+                    data.blocking_issues.forEach(issue => {
+                        const icon = issue.severity === 'blocking' ? '' : '⚠️';
+                        responseText += `- ${icon} **${issue.criterion}:** ${issue.message}\n`;
+                    });
+                    responseText += '\n';
+                }
+
+                if (data.solution_id) {
+                    responseText += `[View Solution →](/solutions/${data.solution_id})`;
+                }
+
+                appendMessage('ai', responseText, { domain: 'architecture' });
+            } else {
+                appendMessage('ai', `**Error:** ${data.error}`, { domain: 'architecture' });
+            }
+        } catch (error) {
+            appendMessage('ai', `**Error:** ${error.message}`, { domain: 'architecture' });
+        }
+    }
+
+    function showCommandHelp() {
+        const helpText = `## Available Commands
+
+### Architecture & Mapping
+- \`/generate-archimate [app_id]\` - Generate ArchiMate 3.2 elements for an application
+- \`/map-apqc [app_id]\` - Map APQC PCF processes for an application
+- \`/create-diagram [solution_id]\` - Create an ArchiMate diagram from a solution and open in Composer
+
+### TOGAF ADM Architect Workflow
+- \`/analyze [problem statement]\` - Run full TOGAF ADM analysis (scope → roadmap → ARB draft)
+- \`/viewpoints [solution_id]\` - Generate 4 stakeholder viewpoints for a solution
+- \`/arb-ready [solution_id]\` - Score ARB readiness (0–100 with grade and blocking issues)
+
+### Analysis
+- \`/gap-analysis [type]\` - Run gap analysis (capability, vendor, or process)
+- \`/discover-vendors [capability]\` - Find vendors for a capability
+
+### Bulk Operations
+- \`/bulk-process [count]\` - Bulk process applications (default: 10)
+
+### Other
+- \`/save-insights [app_id]\` - Save chat insights to application
+- \`/help\` - Show this help message
+
+**Tip:** Select an application from the context panel first, then commands will use it automatically.
+**Architect Workflow:** \`/analyze\` → \`/viewpoints\` → \`/arb-ready\` chains automatically.`;
+
+        appendMessage('ai', helpText, { domain: 'general' });
+    }
+
+    // ==========================================================================
+    // ENT-122: Natural Language ArchiMate Detection
+    // ==========================================================================
+    const ARCHIMATE_NL_PATTERNS = [
+        /\b(draw|create|generate|make|build|design|sketch)\b.{0,60}\b(archimate|archi-mate|architecture diagram|arch diagram)\b/i,
+        /\b(archimate|archi-mate)\b.{0,60}\b(diagram|model|for|of)\b/i,
+        /\b(diagram|model)\b.{0,60}\b(for|of)\b.{0,80}\b(system|application|service|platform|crm|erp|hrm)\b/i,
+        /\b(show|visuali[sz]e|map out)\b.{0,60}\b(architecture|components|layers|system)\b/i,
+    ];
+
+    function detectArchimateFreeformIntent(text) {
+        return ARCHIMATE_NL_PATTERNS.some(p => p.test(text));
+    }
+
+    async function handleArchimateFreeform(description) {
+        const loadingId = 'ent122-loading-' + Date.now();
+        const loadingDiv = document.createElement('div');
+        loadingDiv.id = loadingId;
+        loadingDiv.className = 'flex gap-4';
+        const loadingGradient = getColorClass(domainConfig['architecture']?.color || 'purple', 'gradient');
+        loadingDiv.innerHTML = `
+            <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br ${loadingGradient} text-primary-foreground shadow-lg"><!-- token-migration-ok -->
+                <i data-lucide="layout-dashboard" class="h-5 w-5 animate-pulse"></i>
+            </div>
+            <div class="rounded-xl bg-muted/50 p-4 text-sm flex items-center gap-3">
+                <div class="flex space-x-1">
+                    <div class="w-2 h-2 bg-primary rounded-full animate-bounce" style="animation-delay: 0ms"></div>
+                    <div class="w-2 h-2 bg-primary rounded-full animate-bounce" style="animation-delay: 150ms"></div>
+                    <div class="w-2 h-2 bg-primary rounded-full animate-bounce" style="animation-delay: 300ms"></div>
+                </div>
+                <span class="text-muted-foreground">Generating ArchiMate diagram…</span>
+            </div>`;
+        messagesContainer.appendChild(loadingDiv);
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        lucide.createIcons();
+
+        try {
+            const resp = await fetch('/ai-chat/chat/generate-archimate-description', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ description })
+            });
+            const data = await resp.json();
+            document.getElementById(loadingId)?.remove();
+
+            if (data.success && data.elements && data.elements.length > 0) {
+                const elemCount = data.element_count || data.elements.length;
+                const relCount = data.relationship_count || (data.relationships || []).length;
+                const summary = `**ArchiMate diagram generated** — ${elemCount} elements, ${relCount} relationships.\n\nModel: *${data.model_name || 'Generated Architecture'}*`;
+                appendMessage('ai', summary, {
+                    domain: 'architecture',
+                    archimate_elements: data.elements,
+                    archimate_relationships: data.relationships || [],
+                    archimate_model_name: data.model_name
+                });
+            } else {
+                const errMsg = data.error || 'Could not generate diagram. Try /generate-archimate or add more detail.';
+                appendMessage('ai', `**ArchiMate Generation:** ${errMsg}`, { domain: 'architecture' });
+            }
+        } catch (err) {
+            document.getElementById(loadingId)?.remove();
+            appendMessage('ai', `**Network Error:** ${err.message}`, { domain: 'architecture' });
+        }
+    }
+
+    // Enhanced form submission
+    chatForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const message = userInput.value.trim();
+        if (!message) return;
+
+        // Clear input
+        userInput.value = '';
+        userInput.style.height = 'auto';
+
+        // Add user message to history
+        const timestamp = new Date().toISOString();
+        chatHistory.push({ role: 'user', content: message, timestamp });
+        appendMessage('user', message);
+
+        // Check for client-side commands (actionable architect workflows)
+        if (message.startsWith('/')) {
+            const handled = await handleChatCommand(message);
+            if (handled) return;
+        }
+
+        // ENT-122: intercept NL ArchiMate intent before regular chat
+        if (detectArchimateFreeformIntent(message)) {
+            await handleArchimateFreeform(message);
+            return;
+        }
+
+        // Show loading indicator
+        const loadingId = 'loading-' + Date.now();
+        const loadingDiv = document.createElement('div');
+        loadingDiv.id = loadingId;
+        loadingDiv.className = 'flex gap-4';
+        const loadingGradient = getColorClass(domainConfig[currentDomain]?.color || 'primary', 'gradient');
+        loadingDiv.innerHTML = `
+            <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br ${loadingGradient} text-primary-foreground shadow-lg"><!-- token-migration-ok -->
+                <i data-lucide="${domainConfig[currentDomain]?.icon || 'bot'}" class="h-5 w-5 animate-pulse"></i>
+            </div>
+            <div class="rounded-xl bg-muted/50 p-4 text-sm flex items-center gap-3">
+                <div class="flex space-x-1">
+                    <div class="w-2 h-2 bg-primary rounded-full animate-bounce" style="animation-delay: 0ms"></div>
+                    <div class="w-2 h-2 bg-primary rounded-full animate-bounce" style="animation-delay: 150ms"></div>
+                    <div class="w-2 h-2 bg-primary rounded-full animate-bounce" style="animation-delay: 300ms"></div>
+                </div>
+                <span class="text-muted-foreground">Thinking...</span>
+            </div>
+        `;
+        messagesContainer.appendChild(loadingDiv);
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        lucide.createIcons();
+
+        // ENT-085: clear image attachment after sending
+        const imageForRequest = attachedImage;
+        if (attachedImage) {
+            attachedImage = null;
+            const bar = document.getElementById('image-preview-bar');
+            if (bar) bar.classList.add('hidden');
+        }
+
+        const startTime = performance.now();
+
+        try {
+            const response = await fetch('/ai-chat/message', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    message: message,
+                    domain: currentDomain,
+                    template_name: templateSelector.value,
+                    element_id: selectedElementIdInput.value || null,
+                    context_type: contextElement?.type || null,
+                    persona: currentPersona || null,
+                    model: document.getElementById('model-selector')?.value || null,
+                    // ENT-085: include attached image if present (strip data URL prefix → raw base64)
+                    image_data: imageForRequest ? imageForRequest.dataUrl.split(',')[1] : null,
+                    image_media_type: imageForRequest ? imageForRequest.mimeType : null,
+                })
+            });
+
+            const data = await response.json();
+            const endTime = performance.now();
+            const processingTime = Math.round(endTime - startTime);
+
+            // Remove loading
+            document.getElementById(loadingId).remove();
+
+            if (data.error) {
+                // Enhanced error handling with specific error types
+                let errorIcon = '⚠️';
+                let errorTitle = 'Error';
+                if (data.error_type === 'auth') {
+                    errorIcon = '';
+                    errorTitle = 'Authentication Error';
+                } else if (data.error_type === 'connection') {
+                    errorIcon = '';
+                    errorTitle = 'Connection Error';
+                } else if (data.error_type === 'timeout') {
+                    errorIcon = '⏱️';
+                    errorTitle = 'Timeout Error';
+                } else if (data.error_type === 'rate_limit') {
+                    errorIcon = '';
+                    errorTitle = 'Rate Limit';
+                } else if (data.error_type === 'model_error') {
+                    errorIcon = '';
+                    errorTitle = 'Model Error';
+                }
+                appendMessage('ai', `**${errorIcon} ${errorTitle}:** ${data.error}`, { domain: currentDomain });
+                appendSystemMessage(`${errorTitle}: ${data.error}`, 'error');
+            } else {
+                // Add AI response to history
+                chatHistory.push({
+                    role: 'ai',
+                    content: data.response,
+                    timestamp,
+                    metadata: data.metadata
+                });
+
+                appendMessage('ai', data.response, {
+                    domain: data.domain,
+                    processing_time: data.metadata?.processing_time || processingTime
+                });
+
+                // Genome extraction — fires after every AI response when ?mode=genome
+                if (window._genomePanelInstance) {
+                    await window._genomePanelInstance.extractAfterMessage(chatHistory);
+                }
+            }
+
+        } catch (error) {
+            document.getElementById(loadingId).remove();
+            appendMessage('ai', `**Network Error:** ${error.message}`, { domain: currentDomain });
+            appendSystemMessage(`Network error: ${error.message}`, 'error');
+        }
+    });
+
+    // ==========================================================================
+    // Document Upload Panel Toggle
+    // ==========================================================================
+
+    // UIQA-004: /ai-chat/document-upload redirects here with ?panel=docs
+    if (new URLSearchParams(window.location.search).get('panel') === 'docs') {
+        document.addEventListener('DOMContentLoaded', function() {
+            toggleDocumentUploadPanel();
+        });
+    }
+
+    function toggleDocumentUploadPanel() {
+        const panel = document.getElementById('document-upload-panel');
+        if (panel) {
+            panel.classList.toggle('hidden');
+            // Reinitialize Lucide icons when panel opens
+            if (!panel.classList.contains('hidden') && typeof lucide !== 'undefined') {
+                setTimeout(() => lucide.createIcons(), 100);
+            }
+        }
+    }
+
+    // ==========================================================================
+    // Mobile Sidebar Toggle
+    // ==========================================================================
+
+    function toggleSidebar() {
+        const sidebar = document.getElementById('context-sidebar');
+        const backdrop = document.getElementById('sidebar-backdrop');
+        const isOpen = !sidebar.classList.contains('-translate-x-full');
+
+        if (isOpen) {
+            // Close sidebar
+            sidebar.classList.add('-translate-x-full');
+            backdrop.classList.add('hidden');
+            document.body.classList.remove('overflow-hidden');
+        } else {
+            // Open sidebar
+            sidebar.classList.remove('-translate-x-full');
+            backdrop.classList.remove('hidden');
+            document.body.classList.add('overflow-hidden');
+            // Ensure sidebar is visible on mobile
+            sidebar.style.height = '100%';
+        }
+        setTimeout(() => lucide.createIcons(), 100);
+    }
+
+    // ==========================================================================
+    // Sidebar Tab Management
+    // ==========================================================================
+
+    function switchSidebarTab(tab) {
+        const panels = ['context', 'query', 'alerts'];
+
+        // Hide all panels
+        panels.forEach(panelName => {
+            const panel = document.getElementById('panel-' + panelName);
+            if (panel) {
+                panel.classList.add('hidden');
+                panel.style.display = '';
+            }
+        });
+
+        // Reset all tab styles — remove active state including white background
+        document.querySelectorAll('[id^="tab-"]').forEach(t => {
+            t.classList.remove('border-b-2', 'border-primary', 'text-primary', 'bg-background');
+            t.classList.add('text-muted-foreground');
+        });
+
+        // Show selected panel and style active tab
+        const selectedPanel = document.getElementById('panel-' + tab);
+        const selectedTab = document.getElementById('tab-' + tab);
+
+        if (selectedPanel) {
+            selectedPanel.classList.remove('hidden');
+            selectedPanel.style.display = 'flex';
+        }
+
+        if (selectedTab) {
+            selectedTab.classList.add('border-b-2', 'border-primary', 'text-primary', 'bg-background');
+            selectedTab.classList.remove('text-muted-foreground');
+        }
+
+        // Load data for specific tabs
+        if (tab === 'alerts') {
+            loadRecommendations();
+        }
+
+        lucide.createIcons();
+    }
+
+    // ==========================================================================
+    // Natural Language Query Functions
+    // ==========================================================================
+
+    // The Query tab is a structured ENTITY lookup (it lists apps/vendors/caps by
+    // filter). Advisory questions — recommend / assess / summarize / why / risks /
+    // consolidation — are not entity filters; the entity service degrades them to a
+    // plain list. Detect those and route them to the conversational chat instead,
+    // which answers them properly and records them in history.
+    function isAdvisoryQuery(q) {
+        const s = q.toLowerCase();
+        const lookup = /\b(list|show me|show all|how many|count|find all|get all|display all)\b/.test(s);
+        // Stems use a leading word-boundary only so suffixes match (e.g. "consolidat"
+        // catches consolidate/consolidation, "duplicat" catches duplicates).
+        const advisory = /\b(recommend|advice|advis|assess|evaluat|analy[sz]|summar|overview|brief me|why|how (should|do|can|would)|what should|explain|compare|pros and cons|trade-?off|consolidat|duplicat|overlap|rationali|strateg|roadmap|prioriti|opportunit|optimi|best (approach|option|way)|next step)/.test(s)
+            || /\brisks?\b/.test(s);
+        return advisory && !lookup;
+    }
+
+    async function executeNLQuery() {
+        const input = document.getElementById('nl-query-input');
+        const query = input.value.trim();
+        if (!query) return;
+
+        const resultsDiv = document.getElementById('nl-query-results');
+        const resultsList = document.getElementById('nl-results-list');
+        const explanationDiv = document.getElementById('nl-query-explanation');
+        const countSpan = document.getElementById('nl-result-count');
+
+        resultsDiv.classList.remove('hidden');
+
+        // Advisory question -> hand off to the chat conversation pipeline.
+        if (isAdvisoryQuery(query)) {
+            input.value = '';
+            if (explanationDiv) explanationDiv.classList.add('hidden');
+            if (countSpan) countSpan.textContent = '';
+            resultsList.innerHTML = '<div class="p-3 text-sm text-muted-foreground flex items-start gap-2">'
+                + '<i data-lucide="messages-square" class="h-4 w-4 mt-0.5 shrink-0"></i>'
+                + '<span>That\'s an advisory question — sent to the AI chat for a full answer. See the conversation →</span></div>';
+            lucide.createIcons();
+            userInput.value = query;
+            if (chatForm.requestSubmit) { chatForm.requestSubmit(); }
+            else { chatForm.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true })); }
+            const mc = document.getElementById('messages-container');
+            if (mc) mc.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            return;
+        }
+
+        resultsList.innerHTML = '<div class="text-center py-4"><i data-lucide="loader-2" class="h-5 w-5 animate-spin mx-auto"></i></div>';
+        lucide.createIcons();
+
+        try {
+            const response = await fetch('/ai-chat/nl-query', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    query: query,
+                    persona: currentPersona
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                countSpan.textContent = data.result_count + ' found';
+                explanationDiv.textContent = data.explanation || '';
+                explanationDiv.classList.toggle('hidden', !data.explanation);
+
+                if (data.results && data.results.length > 0) {
+                    resultsList.innerHTML = data.results.map(item => `
+                        <div class="p-2 border rounded-lg hover:bg-accent/50 cursor-pointer" data-action="show-entity" data-entity-type="${item.entity_type}" data-entity-id="${item.id}" data-entity-name="${item.name.replace(/"/g, '&quot;')}">
+                            <div class="flex items-center justify-between mb-1">
+                                <span class="text-sm font-medium">${item.name}</span>
+                                <span class="text-xs bg-muted px-1.5 py-0.5 rounded">${item.entity_type}</span>
+                            </div>
+                            <p class="text-xs text-muted-foreground line-clamp-2">${item.description || item.status || item.business_owner || ''}</p>
+                        </div>
+                    `).join('');
+                } else {
+                    resultsList.innerHTML = '<p class="text-sm text-muted-foreground text-center py-4">No results found</p>';
+                }
+
+                // Show follow-up suggestions
+                if (data.suggestions && data.suggestions.length > 0) {
+                    resultsList.innerHTML += `
+                        <div class="pt-3 border-t mt-3">
+                            <p class="text-xs font-medium text-muted-foreground mb-2">Related queries:</p>
+                            ${data.suggestions.map(s => `
+                                <button type="button" data-quick-query="${s.replace(/"/g, '&quot;')}" class="block text-xs text-primary hover:underline mb-1">→ ${s}</button>
+                            `).join('')}
+                        </div>
+                    `;
+                }
+            } else {
+                resultsList.innerHTML = `
+                    <div class="text-center py-4">
+                        <p class="text-sm text-destructive mb-2">${data.error || 'Query failed'}</p>
+                        ${data.suggestions ? data.suggestions.map(s => `<p class="text-xs text-muted-foreground">${s}</p>`).join('') : ''}
+                    </div>
+                `;
+            }
+        } catch (error) {
+            resultsList.innerHTML = `<p class="text-sm text-destructive text-center py-4">Error: ${error.message}</p>`;
+        }
+
+        lucide.createIcons();
+    }
+
+    function runQuickQuery(query) {
+        // Switch to Query tab first
+        switchSidebarTab('query');
+        // Set the query in the input
+        document.getElementById('nl-query-input').value = query;
+        // Execute the query after a small delay to ensure tab is visible
+        setTimeout(() => executeNLQuery(), 150);
+    }
+
+    // =========================================================================
+    // CSP-safe event delegation — handles all dynamically-injected data-action buttons
+    // =========================================================================
+    document.addEventListener('click', (event) => {
+        // --- quick-query (sidebar NL query suggestions) ---
+        const quickQueryButton = event.target.closest('[data-quick-query]');
+        if (quickQueryButton) {
+            event.preventDefault();
+            runQuickQuery(quickQueryButton.dataset.quickQuery);
+            return;
+        }
+
+        const btn = event.target.closest('[data-action]');
+        if (!btn) return;
+        const action = btn.dataset.action;
+
+        // --- sample prompt ---
+        if (action === 'use-prompt') {
+            usePrompt(btn.dataset.prompt);
+            return;
+        }
+
+        // --- select context item (architecture/technology panel) ---
+        if (action === 'select-context') {
+            selectContext(parseInt(btn.dataset.id), btn.dataset.type);
+            return;
+        }
+
+        // --- apply AI action card ---
+        if (action === 'apply-ai-action') {
+            applyAction(btn.dataset.type, parseInt(btn.dataset.appId), btn);
+            return;
+        }
+
+        // --- dismiss action card ---
+        if (action === 'dismiss-action-card') {
+            const card = btn.closest('.action-card');
+            if (card) card.remove();
+            return;
+        }
+
+        // --- apply APQC mappings ---
+        if (action === 'apply-apqc') {
+            applyApqcMappings(parseInt(btn.dataset.appId), btn.dataset.highConf === '1');
+            return;
+        }
+
+        // --- gap analysis tab switch ---
+        if (action === 'gap-analysis-tab') {
+            handleGapAnalysis(btn.dataset.analysisType);
+            return;
+        }
+
+        // --- rediscover vendors ---
+        if (action === 'discover-vendors') {
+            handleDiscoverVendors(btn.dataset.capability);
+            return;
+        }
+
+        // --- generate architect viewpoints ---
+        if (action === 'architect-viewpoints') {
+            handleArchitectViewpoints(btn.dataset.solutionId);
+            return;
+        }
+
+        // --- check ARB readiness ---
+        if (action === 'arb-ready') {
+            handleArbReady(btn.dataset.solutionId);
+            return;
+        }
+
+        // --- show entity in chat (search sidebar results) ---
+        if (action === 'show-entity') {
+            showEntityInChat(btn.dataset.entityType, parseInt(btn.dataset.entityId), btn.dataset.entityName);
+            return;
+        }
+
+        // --- entity action modal: close ---
+        if (action === 'close-entity-modal') {
+            const modal = document.getElementById('entity-action-modal');
+            if (modal) modal.remove();
+            return;
+        }
+
+        // --- entity action modal: navigate to entity page ---
+        if (action === 'navigate-entity') {
+            navigateToEntity(btn.dataset.entityType, parseInt(btn.dataset.entityId));
+            const modal = document.getElementById('entity-action-modal');
+            if (modal) modal.remove();
+            return;
+        }
+
+        // --- entity action modal: ask AI about entity ---
+        if (action === 'ask-ai-entity') {
+            askAIAboutEntity(btn.dataset.entityType, parseInt(btn.dataset.entityId), btn.dataset.entityName);
+            const modal = document.getElementById('entity-action-modal');
+            if (modal) modal.remove();
+            return;
+        }
+
+        // --- entity action modal: add entity to context ---
+        if (action === 'add-context-entity') {
+            addToContext(btn.dataset.entityType, parseInt(btn.dataset.entityId), btn.dataset.entityName);
+            const modal = document.getElementById('entity-action-modal');
+            if (modal) modal.remove();
+            return;
+        }
+    });
+
+    function showEntityInChat(entityType, entityId, entityName) {
+        // Show options modal for what to do with this entity
+        const modal = document.createElement('div');
+        modal.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-50';
+        modal.id = 'entity-action-modal';
+        modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+
+        modal.innerHTML = `
+            <div class="bg-background rounded-lg border shadow-xl p-6 max-w-md w-full mx-4">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="font-semibold text-lg">${entityName}</h3>
+                    <button aria-label="Close" type="button" data-action="close-entity-modal" class="text-muted-foreground hover:text-foreground">
+                        <i data-lucide="x" class="h-5 w-5"></i>
+                    </button>
+                </div>
+                <p class="text-sm text-muted-foreground mb-4">${entityType} • ID: ${entityId}</p>
+                <div class="space-y-2">
+                    <button type="button" data-action="navigate-entity" data-entity-type="${entityType}" data-entity-id="${entityId}"
+                        class="w-full flex items-center gap-3 p-3 rounded-lg border hover:bg-accent transition-colors text-left">
+                        <div class="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center"><!-- token-migration-ok -->
+                            <i data-lucide="external-link" class="h-5 w-5 text-primary"></i><!-- token-migration-ok -->
+                        </div>
+                        <div>
+                            <div class="font-medium text-sm">View Details</div>
+                            <div class="text-xs text-muted-foreground">Open the full ${entityType.toLowerCase()} page</div>
+                        </div>
+                    </button>
+                    <button type="button" data-action="ask-ai-entity" data-entity-type="${entityType}" data-entity-id="${entityId}" data-entity-name="${entityName.replace(/"/g, '&quot;')}"
+                        class="w-full flex items-center gap-3 p-3 rounded-lg border hover:bg-accent transition-colors text-left">
+                        <div class="h-10 w-10 rounded-lg bg-purple-100 flex items-center justify-center"><!-- token-migration-ok -->
+                            <i data-lucide="bot" class="h-5 w-5 text-primary"></i><!-- token-migration-ok -->
+                        </div>
+                        <div>
+                            <div class="font-medium text-sm">Ask AI</div>
+                            <div class="text-xs text-muted-foreground">Get AI analysis and insights</div>
+                        </div>
+                    </button>
+                    <button type="button" data-action="add-context-entity" data-entity-type="${entityType}" data-entity-id="${entityId}" data-entity-name="${entityName.replace(/"/g, '&quot;')}"
+                        class="w-full flex items-center gap-3 p-3 rounded-lg border hover:bg-accent transition-colors text-left">
+                        <div class="h-10 w-10 rounded-lg bg-emerald-500/10 flex items-center justify-center"><!-- token-migration-ok -->
+                            <i data-lucide="plus-circle" class="h-5 w-5 text-emerald-600"></i><!-- token-migration-ok -->
+                        </div>
+                        <div>
+                            <div class="font-medium text-sm">Add to Context</div>
+                            <div class="text-xs text-muted-foreground">Use as context for AI queries</div>
+                        </div>
+                    </button>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+        lucide.createIcons();
+    }
+
+    function navigateToEntity(entityType, entityId) {
+        // Map entity types to their detail URLs
+        const urlMap = {
+            'Application': `/applications/${entityId}`,
+            'application': `/applications/${entityId}`,
+            'Capability': `/capabilities/${entityId}`,
+            'capability': `/capabilities/${entityId}`,
+            'Vendor': `/vendors/${entityId}`,
+            'vendor': `/vendors/${entityId}`,
+            'Process': `/processes/${entityId}`,
+            'process': `/processes/${entityId}`,
+            'Technology': `/technologies/${entityId}`,
+            'technology': `/technologies/${entityId}`
+        };
+
+        const url = urlMap[entityType] || `/applications/${entityId}`;
+        window.open(url, '_blank');
+    }
+
+    function askAIAboutEntity(entityType, entityId, entityName) {
+        const prompt = `Analyze "${entityName}" (${entityType}, ID: ${entityId}).\n\nPlease provide:\n1. Overview and current status\n2. Key relationships and dependencies\n3. Risk assessment\n4. Improvement recommendations`;
+
+        userInput.value = prompt;
+        chatForm.dispatchEvent(new Event('submit'));
+    }
+
+    function addToContext(entityType, entityId, entityName) {
+        selectedElementIdInput.value = entityId;
+        contextElement = { id: entityId, type: entityType, name: entityName };
+        appendSystemMessage(`Context set: ${entityName} (${entityType})`, 'info');
+    }
+
+    function selectDomainAndPrompt(domain, samplePrompt) {
+        // Switch the domain selector
+        domainSelector.value = domain;
+        currentDomain = domain;
+
+        // Update UI
+        updateDomainUI(domain);
+        loadDomainContext(domain);
+        updateTemplateOptions(domain);
+
+        // Set the sample prompt in the input field
+        userInput.value = samplePrompt;
+        userInput.focus();
+
+        // Show a system message about the switch
+        const domainName = domainConfig[domain]?.name || domain;
+        appendSystemMessage(`Switched to ${domainName}. Press Enter or click Send to use the sample prompt, or type your own question.`, 'info');
+    }
+
+    // Wire domain cards via addEventListener (CSP blocks inline onclick)
+    document.querySelectorAll('.domain-card[data-domain]').forEach(function(card) {
+        card.addEventListener('click', function() {
+            selectDomainAndPrompt(this.dataset.domain, this.dataset.prompt);
+        });
+    });
+
+    // AI-1: wire the welcome-screen AI Architect persona cards. Setting the
+    // (otherwise hidden) persona selector + dispatching 'change' runs the
+    // existing handler, which sets currentPersona, the persona's default
+    // domain, and the role's sample prompts.
+    function selectArchitectPersona(persona, samplePrompt) {
+        if (personaSelector) {
+            personaSelector.value = persona;
+            personaSelector.dispatchEvent(new Event('change', { bubbles: true }));
+        } else {
+            currentPersona = persona;
+        }
+        if (userInput && samplePrompt) {
+            userInput.value = samplePrompt;
+            userInput.focus();
+        }
+        const label = (personaConfig && personaConfig[persona] && personaConfig[persona].name) || persona;
+        try { appendSystemMessage(`${label} engaged — grounded in live platform data. Press Enter to use the suggested prompt, or ask your own.`, 'info'); } catch (e) {}
+    }
+    document.querySelectorAll('.architect-card[data-persona]').forEach(function(card) {
+        card.addEventListener('click', function() {
+            selectArchitectPersona(this.dataset.persona, this.dataset.prompt);
+        });
+    });
+
+    function askAboutRecommendation(title, description) {
+        // Create a prompt asking the AI for help with this recommendation
+        const prompt = `Help me implement this recommendation: "${title}"\n\nContext: ${description}\n\nPlease provide:\n1. Step-by-step implementation plan\n2. Key stakeholders to involve\n3. Potential challenges and mitigations\n4. Expected timeline and milestones`;
+
+        // Set the prompt in the input field
+        userInput.value = prompt;
+
+        // Submit the form
+        chatForm.dispatchEvent(new Event('submit'));
+    }
+
+    // ==========================================================================
+    // Create Solution from Brief — modal handler
+    // ==========================================================================
+
+    function openCreateSolutionModal() { openCreateSolutionModalWithMessage(''); }
+    function openCreateSolutionModalWithMessage(message) {
+        let modal = document.getElementById('ai-chat-create-solution-modal');
+        if (modal) modal.classList.remove('hidden');
+        const briefEl = document.getElementById('ai-chat-solution-brief');
+        if (briefEl && typeof message === 'string' && message.trim()) briefEl.value = message.trim();
+        const titleEl = document.getElementById('ai-chat-solution-title');
+        if (titleEl) titleEl.focus();
+    }
+    function closeCreateSolutionModal() {
+        let modal = document.getElementById('ai-chat-create-solution-modal');
+        if (modal) modal.classList.add('hidden');
+    }
+
+    // Wire the button
+    const createSolBtn = document.getElementById('ai-chat-create-solution-btn');
+    if (createSolBtn) createSolBtn.addEventListener('click', openCreateSolutionModal);
+    const createSolCancel = document.getElementById('ai-chat-create-solution-cancel');
+    if (createSolCancel) createSolCancel.addEventListener('click', closeCreateSolutionModal);
+    const createSolForm = document.getElementById('ai-chat-create-solution-form');
+    if (createSolForm) {
+        createSolForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const titleEl = document.getElementById('ai-chat-solution-title');
+            const briefEl = document.getElementById('ai-chat-solution-brief');
+            const statusEl = document.getElementById('ai-chat-create-solution-status');
+            const submitBtn = createSolForm.querySelector('button[type="submit"]');
+            let title = (titleEl && titleEl.value || '').trim();
+            const brief = (briefEl && briefEl.value || '').trim();
+            if (!title || !brief) return;
+            if (submitBtn) submitBtn.disabled = true;
+            if (statusEl) { statusEl.classList.remove('hidden'); statusEl.textContent = 'Creating solution and generating draft…'; }
+            fetch('/solutions/create-with-draft', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json', 'X-CSRFToken': window.getCSRFToken ? window.getCSRFToken() : ''},
+                body: JSON.stringify({ title: title, brief: brief })
+            }).then(function(resp) { return resp.json().then(function(data) { return { ok: resp.ok, data: data }; }, function() { return { ok: false, data: {} }; }); })
+              .then(function(r) {
+                  if (submitBtn) submitBtn.disabled = false;
+                  if (r.ok && r.data.redirect) {
+                      closeCreateSolutionModal();
+                      appendSystemMessage('Solution created — redirecting to detail page…', 'info');
+                      setTimeout(function() { window.location.href = r.data.redirect; }, 800);
+                  } else {
+                      if (statusEl) statusEl.textContent = 'Error: ' + (r.data.error || 'Could not create solution');
+                  }
+              }).catch(function(err) {
+                  if (submitBtn) submitBtn.disabled = false;
+                  if (statusEl) statusEl.textContent = 'Network error: ' + err.message;
+              });
+        });
+    }
+
+    // ==========================================================================
+    // Recommendations and Alerts Functions
+    // ==========================================================================
+
+    function exportContextLog() {
+        const contextEl = document.getElementById('domain-context');
+        const descEl = document.getElementById('context-description');
+        const lines = [
+            'A.R.C.H.I.E. Context Log',
+            'Exported: ' + new Date().toISOString(),
+            '---',
+            'Domain: ' + (document.getElementById('domain-selector')?.value || 'global'),
+            'Context: ' + (descEl?.textContent?.trim() || 'Global'),
+            '---',
+            contextEl?.innerText?.trim() || 'No context items selected.',
+        ];
+        const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'archie-context-' + Date.now() + '.txt';
+        a.click();
+        URL.revokeObjectURL(url);
+    }
+
+    async function loadRecommendations(refresh = false) {
+        const alertsList = document.getElementById('alerts-list');
+        const recsContent = document.getElementById('recs-content');
+        const healthScore = document.getElementById('health-score');
+        const healthBar = document.getElementById('health-bar');
+        const alertBadge = document.getElementById('alert-badge');
+
+        alertsList.innerHTML = '<div class="text-center py-4"><i data-lucide="loader-2" class="h-5 w-5 animate-spin mx-auto"></i></div>';
+        lucide.createIcons();
+
+        try {
+            const response = await fetch(`/ai-chat/recommendations?persona=${currentPersona}&refresh=${refresh}`);
+            const data = await response.json();
+
+            // Update health score
+            const score = data.health_score || 0;
+            healthScore.textContent = score + '%';
+            healthBar.style.width = score + '%';
+
+            // Color based on score
+            if (score >= 70) { // token-migration-ok — health score status colors
+                healthScore.className = 'text-lg font-bold text-emerald-600'; // token-migration-ok
+                healthBar.className = 'bg-emerald-500 h-2 rounded-full transition-all'; // token-migration-ok
+            } else if (score >= 40) {
+                healthScore.className = 'text-lg font-bold text-amber-600'; // token-migration-ok
+                healthBar.className = 'bg-amber-500 h-2 rounded-full transition-all'; // token-migration-ok
+            } else {
+                healthScore.className = 'text-lg font-bold text-destructive'; // token-migration-ok
+                healthBar.className = 'bg-destructive h-2 rounded-full transition-all'; // token-migration-ok
+            }
+
+            // Update alert badge
+            const criticalCount = (data.summary?.critical_count || 0) + (data.summary?.high_count || 0);
+            if (criticalCount > 0) {
+                alertBadge.textContent = criticalCount > 99 ? '99+' : criticalCount;
+                alertBadge.classList.remove('hidden');
+                alertBadge.style.display = 'flex';
+            } else {
+                alertBadge.classList.add('hidden');
+                alertBadge.style.display = 'none';
+            }
+
+            // Render alerts with action links (no inline onclick — use addEventListener)
+            if (data.alerts && data.alerts.length > 0) {
+                let alertHtml = '';
+                data.alerts.slice(0, 5).forEach(function(alert) {
+                    let actions = '';
+                    if (alert.action_url) {
+                        actions += '<a href="' + alert.action_url + '" class="inline-flex items-center gap-1 text-xs text-primary hover:underline font-medium"><i data-lucide="external-link" class="h-3 w-3"></i>' + (alert.action_label || 'Open') + '</a>';
+                    }
+                    if (alert.query) {
+                        actions += (actions ? '<span class="text-muted-foreground mx-1">|</span>' : '');
+                        actions += '<button type="button" class="text-xs text-primary hover:underline js-alert-query" data-query="' + alert.query.replace(/"/g, '&quot;') + '"><i data-lucide="search" class="h-3 w-3 inline"></i> Ask AI</button>';
+                    }
+                    alertHtml += '<div class="p-3 border rounded-lg mb-2 ' + getPriorityBorderClass(alert.priority) + '">' +
+                        '<div class="flex items-start justify-between gap-2 mb-1">' +
+                        '<span class="text-sm font-medium">' + alert.title + '</span>' +
+                        '<span class="text-xs px-1.5 py-0.5 rounded shrink-0 ' + getPriorityBadgeClass(alert.priority) + '">' + alert.priority + '</span>' +
+                        '</div>' +
+                        '<p class="text-xs text-muted-foreground mb-2">' + alert.description + '</p>' +
+                        '<div class="flex items-center gap-1 flex-wrap">' + actions + '</div></div>';
+                });
+                alertsList.innerHTML = alertHtml;
+                alertsList.querySelectorAll('.js-alert-query').forEach(function(btn) {
+                    btn.addEventListener('click', function() { runQuickQuery(this.dataset.query); });
+                });
+            } else {
+                alertsList.innerHTML = '<p class="text-sm text-center text-muted-foreground py-4"><i data-lucide="check-circle" class="h-5 w-5 mx-auto mb-2 text-emerald-500"></i>No active alerts</p>'; // token-migration-ok
+            }
+
+            // Render recommendations with details (steps, benefits, timeline)
+            if (data.recommendations && data.recommendations.length > 0) {
+                let recHtml = '';
+                data.recommendations.slice(0, 3).forEach(function(rec) {
+                    let details = '';
+                    if (rec.steps && rec.steps.length > 0) {
+                        details += '<div class="mt-2 text-[11px] text-muted-foreground space-y-1">';
+                        if (rec.timeline) details += '<div><strong>Timeline:</strong> ' + rec.timeline + ' · <strong>Effort:</strong> ' + (rec.effort || 'TBD') + '</div>';
+                        details += '<div class="font-medium mt-1">Steps:</div><ol class="list-decimal pl-4 space-y-0.5">';
+                        rec.steps.forEach(function(s) { details += '<li>' + s + '</li>'; });
+                        details += '</ol>';
+                        if (rec.benefits && rec.benefits.length > 0) {
+                            details += '<div class="font-medium mt-1">Benefits:</div><ul class="list-disc pl-4">';
+                            rec.benefits.forEach(function(b) { details += '<li>' + b + '</li>'; });
+                            details += '</ul>';
+                        }
+                        details += '</div>';
+                    }
+                    recHtml += '<div class="p-2 border rounded-lg mb-2 bg-gradient-to-r from-primary/5 to-transparent">' +
+                        '<div class="flex items-center justify-between mb-1">' +
+                        '<span class="text-xs font-medium">' + rec.title + '</span>' +
+                        '<span class="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded">' + (rec.impact_score || 0) + '%</span>' +
+                        '</div>' +
+                        '<p class="text-[11px] text-muted-foreground">' + (rec.description || '').substring(0, 100) + '</p>' +
+                        details +
+                        '<div class="flex gap-2 mt-2">' +
+                        '<button type="button" class="text-[10px] text-primary hover:underline js-rec-item" data-title="' + (rec.title || '').replace(/"/g, '&quot;') + '" data-desc="' + (rec.description || '').substring(0, 200).replace(/"/g, '&quot;') + '"><i data-lucide="message-circle" class="h-3 w-3 inline"></i> Ask AI to help</button>' +
+                        '</div></div>';
+                });
+                recsContent.innerHTML = recHtml;
+                recsContent.querySelectorAll('.js-rec-item').forEach(function(el) {
+                    el.addEventListener('click', function() {
+                        askAboutRecommendation(this.dataset.title, this.dataset.desc);
+                    });
+                });
+            } else {
+                recsContent.innerHTML = '<p class="text-xs text-muted-foreground">No recommendations at this time.</p>';
+            }
+
+        } catch (error) {
+            alertsList.innerHTML = `<p class="text-sm text-destructive text-center py-4">Error loading data</p>`;
+        }
+
+        lucide.createIcons();
+    }
+
+    function refreshRecommendations() {
+        loadRecommendations(true);
+    }
+
+    function getPriorityBorderClass(priority) {
+        const classes = {
+            'critical': 'border-l-4 border-l-red-500',
+            'high': 'border-l-4 border-l-orange-500',
+            'medium': 'border-l-4 border-l-yellow-500',
+            'low': 'border-l-4 border-l-blue-500'
+        };
+        return classes[priority] || '';
+    }
+
+    function getPriorityBadgeClass(priority) { // token-migration-ok — priority badge colors
+        const classes = {
+            'critical': 'bg-destructive/10 text-red-800', // token-migration-ok
+            'high': 'bg-orange-100 text-orange-800',
+            'medium': 'bg-amber-500/10 text-yellow-800', // token-migration-ok
+            'low': 'bg-primary/10 text-primary/90' // token-migration-ok
+        };
+        return classes[priority] || 'bg-muted text-foreground';
+    }
+
+    // ==========================================================================
+    // Document Upload Event Listeners
+    // ==========================================================================
+
+    // Listen for document analysis results to add to chat
+    window.addEventListener('add-document-analysis', (e) => {
+        const { filename, summary, elementsFound, elementsCreated, confidence } = e.detail || {};
+        const message = `**Document Analyzed: ${filename || 'Unknown'}**
+
+${summary || 'Document has been analyzed.'}
+
+**Results:**
+- Elements Found: ${elementsFound || 0}
+- Elements Created: ${elementsCreated || 0}
+- Confidence: ${confidence || 'Medium'}
+
+Would you like me to provide more details about the extracted elements or help you with follow-up questions?`;
+        appendMessage('ai', message, { domain: currentDomain });
+    });
+
+    // Listen for notification events
+    window.addEventListener('show-notification', (e) => {
+        const { type, message } = e.detail || {};
+        appendSystemMessage(message || 'Notification', type || 'info');
+    });
+
+    // Listen for questions from document panel
+    window.addEventListener('ask-question', (e) => {
+        const { question, context } = e.detail || {};
+        if (question) {
+            userInput.value = question;
+            if (context) {
+                userInput.value += `\n\n[Context: ${context}]`;
+            }
+            chatForm.dispatchEvent(new Event('submit'));
+        }
+    });
+
+    // Listen for entity linking requests
+    window.addEventListener('link-to-entity', (e) => {
+        const { entityType, entityId, entityName, documentId } = e.detail || {};
+        appendSystemMessage(`Linking document to ${entityType}: ${entityName} (ID: ${entityId})`, 'info');
+    });
+
+    // Listen for entity creation requests
+    window.addEventListener('create-entity', (e) => {
+        const { entityType, entityData } = e.detail || {};
+        appendSystemMessage(`Creating new ${entityType}: ${entityData?.name || 'Unknown'}`, 'info');
+    });
+
+    // ==========================================================================
+    // Initialize on Load
+    // ==========================================================================
+
+    // Initialize on load
+    document.addEventListener('DOMContentLoaded', () => {
+        updateDomainUI(currentDomain);
+        loadDomainContext(currentDomain);
+        updateTemplateOptions(currentDomain);
+        loadAvailableModels(); // Load available models
+
+        // Load initial alert count
+        loadRecommendations();
+
+        // ENT-085: Wire image attach button → file picker
+        const imageAttachBtn = document.getElementById('image-attach-btn');
+        const imageUploadInput = document.getElementById('image-upload-input');
+        const imagePreviewBar = document.getElementById('image-preview-bar');
+        const imagePreviewThumb = document.getElementById('image-preview-thumb');
+        const imagePreviewName = document.getElementById('image-preview-name');
+        const imageRemoveBtn = document.getElementById('image-remove-btn');
+
+        if (imageAttachBtn && imageUploadInput) {
+            imageAttachBtn.addEventListener('click', () => imageUploadInput.click());
+
+            imageUploadInput.addEventListener('change', () => {
+                const file = imageUploadInput.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    attachedImage = { file, dataUrl: e.target.result, mimeType: file.type };
+                    imagePreviewThumb.src = e.target.result;
+                    imagePreviewName.textContent = file.name;
+                    imagePreviewBar.classList.remove('hidden');
+                    imageAttachBtn.classList.add('text-primary', 'bg-primary/10');
+                };
+                reader.readAsDataURL(file);
+                imageUploadInput.value = '';
+            });
+
+            imageRemoveBtn.addEventListener('click', () => {
+                attachedImage = null;
+                imagePreviewBar.classList.add('hidden');
+                imagePreviewThumb.src = '';
+                imagePreviewName.textContent = '';
+                imageAttachBtn.classList.remove('text-primary', 'bg-primary/10');
+            });
+        }
+
+        // Update welcome message with interactive domain cards
+        messagesContainer.innerHTML = `
+            <div id="domain-welcome-grid" class="max-w-3xl mx-auto py-8 space-y-8">
+                <div class="text-center space-y-3">
+                    <div class="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-primary/70 text-primary-foreground shadow-lg">
+                        <i data-lucide="bot" class="h-7 w-7"></i>
+                    </div>
+                    <h2 class="text-2xl font-bold text-foreground tracking-tight">How can I help you today?</h2>
+                    <p class="text-sm text-muted-foreground max-w-md mx-auto">Choose a governed AI Architect for a role-specific partner, or pick a domain below.</p>
+                </div>
+                <div class="space-y-3">
+                    <div class="flex items-center justify-center gap-2">
+                        <span class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Your AI Architects</span>
+                        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-primary/10 text-primary border border-primary/30">
+                            <i data-lucide="shield-check" class="h-3 w-3"></i> Evidence-grounded · live data
+                        </span>
+                    </div>
+                    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                        <button type="button" data-persona="enterprise_architect" data-prompt="Give me a portfolio health verdict — rationalization picture, capability coverage, and any transformation programme that's drifting."
+                            class="architect-card group flex flex-col p-4 bg-card border border-border rounded-xl text-left hover:border-primary hover:shadow-md transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                            <span class="w-9 h-9 bg-primary/10 rounded-lg flex items-center justify-center text-primary mb-2.5 group-hover:bg-primary group-hover:text-primary-foreground transition-colors"><i data-lucide="building-2" class="h-5 w-5"></i></span>
+                            <span class="text-sm font-semibold block text-foreground">AI Enterprise Architect</span>
+                            <span class="text-xs text-muted-foreground mt-0.5">Portfolio, capabilities, programme drift.</span>
+                        </button>
+                        <button type="button" data-persona="solutions_architect" data-prompt="Help me design a solution — give me 2-3 options with cost/risk trade-offs and what the ARB will ask for."
+                            class="architect-card group flex flex-col p-4 bg-card border border-border rounded-xl text-left hover:border-primary hover:shadow-md transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                            <span class="w-9 h-9 bg-primary/10 rounded-lg flex items-center justify-center text-primary mb-2.5 group-hover:bg-primary group-hover:text-primary-foreground transition-colors"><i data-lucide="puzzle" class="h-5 w-5"></i></span>
+                            <span class="text-sm font-semibold block text-foreground">AI Solution Architect</span>
+                            <span class="text-xs text-muted-foreground mt-0.5">Design within governance, options &amp; ADRs.</span>
+                        </button>
+                        <button type="button" data-persona="technology_architect" data-prompt="Review my integration patterns and technology layer for conformance — flag any blocked patterns or single points of failure."
+                            class="architect-card group flex flex-col p-4 bg-card border border-border rounded-xl text-left hover:border-primary hover:shadow-md transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                            <span class="w-9 h-9 bg-primary/10 rounded-lg flex items-center justify-center text-primary mb-2.5 group-hover:bg-primary group-hover:text-primary-foreground transition-colors"><i data-lucide="server-cog" class="h-5 w-5"></i></span>
+                            <span class="text-sm font-semibold block text-foreground">AI Technical Architect</span>
+                            <span class="text-xs text-muted-foreground mt-0.5">Conformance, patterns, infrastructure.</span>
+                        </button>
+                        <button type="button" data-persona="data_architect" data-prompt="Review my data layer — canonical entities, data-classification coverage, and lineage gaps. Where are the PII risks?"
+                            class="architect-card group flex flex-col p-4 bg-card border border-border rounded-xl text-left hover:border-primary hover:shadow-md transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                            <span class="w-9 h-9 bg-primary/10 rounded-lg flex items-center justify-center text-primary mb-2.5 group-hover:bg-primary group-hover:text-primary-foreground transition-colors"><i data-lucide="database" class="h-5 w-5"></i></span>
+                            <span class="text-sm font-semibold block text-foreground">AI Data Architect</span>
+                            <span class="text-xs text-muted-foreground mt-0.5">Canonical model, classification, lineage.</span>
+                        </button>
+                    </div>
+                </div>
+                <div class="relative">
+                    <div class="absolute inset-0 flex items-center"><span class="w-full border-t border-border"></span></div>
+                    <div class="relative flex justify-center"><span class="bg-background px-3 text-[10px] uppercase tracking-wider text-muted-foreground">or explore by domain</span></div>
+                </div>
+                <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+                        <button type="button" data-domain="architecture" data-prompt="Analyze my ArchiMate model and identify potential improvements"
+                            class="domain-card group flex flex-col p-5 bg-card border border-border rounded-2xl text-left hover:border-primary hover:shadow-lg transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><!-- token-migration-ok -->
+                            <div class="w-12 h-12 bg-primary/5 dark:bg-blue-950 rounded-xl flex items-center justify-center text-primary mb-4 group-hover:bg-primary group-hover:text-primary-foreground transition-colors"><!-- token-migration-ok -->
+                                <i data-lucide="layers" class="h-6 w-6"></i>
+                            </div>
+                            <span class="text-sm font-semibold block text-foreground">Architecture</span>
+                            <span class="text-xs text-muted-foreground mt-1">ArchiMate analysis &amp; visual modeling.</span>
+                        </button>
+                        <button type="button" data-domain="technology" data-prompt="Review my technology stack and recommend modernization opportunities"
+                            class="domain-card group flex flex-col p-5 bg-card border border-border rounded-2xl text-left hover:border-emerald-500 hover:shadow-lg transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                            <div class="w-12 h-12 bg-emerald-50 dark:bg-emerald-950 rounded-xl flex items-center justify-center text-emerald-600 mb-4 group-hover:bg-emerald-500 group-hover:text-primary-foreground transition-colors"><!-- token-migration-ok -->
+                                <i data-lucide="cpu" class="h-6 w-6"></i>
+                            </div>
+                            <span class="text-sm font-semibold block text-foreground">Technology</span>
+                            <span class="text-xs text-muted-foreground mt-1">Tech stack inventory &amp; lifecycle.</span>
+                        </button>
+                        <button type="button" data-domain="business_capability" data-prompt="Map our business capabilities and identify gaps"
+                            class="domain-card group flex flex-col p-5 bg-card border border-border rounded-2xl text-left hover:border-purple-500 hover:shadow-lg transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                            <div class="w-12 h-12 bg-purple-50 dark:bg-purple-950 rounded-xl flex items-center justify-center text-primary mb-4 group-hover:bg-primary group-hover:text-primary-foreground transition-colors"><!-- token-migration-ok -->
+                                <i data-lucide="building-2" class="h-6 w-6"></i>
+                            </div>
+                            <span class="text-sm font-semibold block text-foreground">Capabilities</span>
+                            <span class="text-xs text-muted-foreground mt-1">Business mapping &amp; strategic gaps.</span>
+                        </button>
+                        <button type="button" data-domain="gap_analysis" data-prompt="Identify gaps between current and target architecture"
+                            class="domain-card group flex flex-col p-5 bg-card border border-border rounded-2xl text-left hover:border-orange-500 hover:shadow-lg transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                            <div class="w-12 h-12 bg-orange-50 dark:bg-orange-950 rounded-xl flex items-center justify-center text-orange-600 mb-4 group-hover:bg-orange-500 group-hover:text-primary-foreground transition-colors"><!-- token-migration-ok -->
+                                <i data-lucide="git-branch" class="h-6 w-6"></i>
+                            </div>
+                            <span class="text-sm font-semibold block text-foreground">Gap Analysis</span>
+                            <span class="text-xs text-muted-foreground mt-1">Roadmap deficiency detection.</span>
+                        </button>
+                        <button type="button" data-domain="vendor_intelligence" data-prompt="Analyze our vendor portfolio and contract risks"
+                            class="domain-card group flex flex-col p-5 bg-card border border-border rounded-2xl text-left hover:border-cyan-500 hover:shadow-lg transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                            <div class="w-12 h-12 bg-cyan-50 dark:bg-cyan-950 rounded-xl flex items-center justify-center text-cyan-600 mb-4 group-hover:bg-cyan-500 group-hover:text-primary-foreground transition-colors"><!-- token-migration-ok -->
+                                <i data-lucide="briefcase" class="h-6 w-6"></i>
+                            </div>
+                            <span class="text-sm font-semibold block text-foreground">Vendors</span>
+                            <span class="text-xs text-muted-foreground mt-1">Contract analysis &amp; supplier risk.</span>
+                        </button>
+                        <button type="button" data-domain="smart_search" data-prompt="Search across all architecture artifacts"
+                            class="domain-card group flex flex-col p-5 bg-primary/5 border border-primary/20 rounded-2xl text-left hover:bg-primary hover:border-primary hover:shadow-lg transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                            <div class="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center text-primary mb-4 group-hover:bg-background/20 group-hover:text-primary-foreground transition-colors"><!-- token-migration-ok -->
+                                <i data-lucide="sparkles" class="h-6 w-6"></i>
+                            </div>
+                            <span class="text-sm font-semibold block text-foreground group-hover:text-primary-foreground">Smart Search</span><!-- token-migration-ok -->
+                            <span class="text-xs text-muted-foreground mt-1 group-hover:text-primary-foreground/70">AI-powered enterprise search.</span>
+                        </button>
+                </div>
+            </div>
+        `;
+        lucide.createIcons();
+        // Wire domain cards after rendering welcome screen (CSP blocks inline onclick)
+        document.querySelectorAll('.domain-card[data-domain]').forEach(function(card) {
+            card.addEventListener('click', function() {
+                selectDomainAndPrompt(this.dataset.domain, this.dataset.prompt);
+            });
+        });
+        // AI-1: re-wire the AI Architect persona cards (welcome grid is rebuilt here)
+        document.querySelectorAll('.architect-card[data-persona]').forEach(function(card) {
+            card.addEventListener('click', function() {
+                selectArchitectPersona(this.dataset.persona, this.dataset.prompt);
+            });
+        });
+
+        // A95-005: Handle deep-link context params from entity detail pages.
+        // Supports:
+        //   ?context=application&id=<app_id>   (application detail page)
+        //   ?element_id=<id>&context_type=vendor&domain=vendor_intelligence  (vendor detail "Ask AI")
+        const urlParams = new URLSearchParams(window.location.search);
+        const deepLinkContext = urlParams.get('context');
+        const deepLinkId = urlParams.get('id');
+        const elementId = urlParams.get('element_id');
+        const contextType = urlParams.get('context_type');
+        const deepLinkDomain = urlParams.get('domain');
+
+        if (deepLinkContext === 'application' && deepLinkId && !isNaN(parseInt(deepLinkId))) {
+            const appId = parseInt(deepLinkId);
+            selectedElementIdInput.value = appId;
+            contextElement = { id: appId, type: 'application' };
+            if (domainSelector) {
+                domainSelector.value = 'technology';
+                currentDomain = 'technology';
+                updateDomainUI('technology');
+                loadDomainContext('technology');
+            }
+            if (userInput) {
+                userInput.value = `/generate-archimate ${appId}`;
+            }
+            appendSystemMessage(`Application context loaded (ID: ${appId}). Ready to generate ArchiMate model.`, 'info');
+        } else if (elementId && contextType && !isNaN(parseInt(elementId))) {
+            // Generic entity deep-link: ?element_id=<id>&context_type=<type>&domain=<domain>
+            const entityId = parseInt(elementId);
+            selectedElementIdInput.value = entityId;
+            contextElement = { id: entityId, type: contextType };
+            const targetDomain = deepLinkDomain || 'general';
+            if (domainSelector && domainConfig[targetDomain]) {
+                domainSelector.value = targetDomain;
+                currentDomain = targetDomain;
+                updateDomainUI(targetDomain);
+                loadDomainContext(targetDomain);
+            }
+            // Build a context-aware welcome message
+            const entityLabel = contextType.charAt(0).toUpperCase() + contextType.slice(1).replace(/_/g, ' ');
+            if (userInput && userInput.value === '') {
+                if (contextType === 'vendor') {
+                    userInput.value = `Analyze this vendor — what are the key risks, capability gaps, and strategic recommendations?`;
+                }
+            }
+            appendSystemMessage(`${entityLabel} context loaded (ID: ${entityId}). Ask me anything about this ${contextType.replace(/_/g, ' ')}.`, 'info');
+        }
+    });
+</script>
+<script src="{{ url_for('static', filename='js/ai_chat/document_upload.js') }}"></script>
+<script src="{{ url_for('static', filename='js/ai_chat/approval_modal.js') }}"></script>
+{% endblock %}

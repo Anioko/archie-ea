@@ -1,0 +1,62 @@
+{# shadcn/ui Input Component #}
+{% macro input(
+    id='',
+    name='',
+    type='text',
+    placeholder='',
+    value='',
+    disabled=false,
+    required=false,
+    class='',
+    error=none,
+    aria_describedby=none
+) %}
+    <input
+        {% if id %}id="{{ id }}"{% endif %}
+        {% if name %}name="{{ name }}"{% endif %}
+        type="{{ type }}"
+        {% if placeholder %}placeholder="{{ placeholder }}"{% endif %}
+        {% if value %}value="{{ value }}"{% endif %}
+        {% if disabled %}disabled{% endif %}
+        {% if required %}required aria-required="true"{% endif %}
+        {% if error %}aria-invalid="true"{% endif %}
+        {% if aria_describedby %}aria-describedby="{{ aria_describedby }}"{% elif error and id %}aria-describedby="{{ id }}-error"{% endif %}
+        class="flex h-10 w-full rounded-md border {% if error %}border-destructive{% else %}border-input{% endif %} bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 {{ class }}"
+    />
+    {% if error and id %}
+    <p id="{{ id }}-error" class="text-sm text-destructive mt-1" role="alert">{{ error }}</p>
+    {% endif %}
+{% endmacro %}
+
+{% macro label(for='', required=false, class='') %}
+    <label {% if for %}for="{{ for }}"{% endif %} class="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 {{ class }}">
+        {{ caller() }}{% if required %}<span class="text-destructive ml-1">*</span>{% endif %}
+    </label>
+{% endmacro %}
+
+{% macro textarea(
+    id='',
+    name='',
+    placeholder='',
+    rows=3,
+    disabled=false,
+    required=false,
+    class='',
+    error=none,
+    aria_describedby=none
+) %}
+    <textarea
+        {% if id %}id="{{ id }}"{% endif %}
+        {% if name %}name="{{ name }}"{% endif %}
+        {% if placeholder %}placeholder="{{ placeholder }}"{% endif %}
+        {% if disabled %}disabled{% endif %}
+        {% if required %}required aria-required="true"{% endif %}
+        {% if error %}aria-invalid="true"{% endif %}
+        {% if aria_describedby %}aria-describedby="{{ aria_describedby }}"{% elif error and id %}aria-describedby="{{ id }}-error"{% endif %}
+        rows="{{ rows }}"
+        class="flex min-h-[80px] w-full rounded-md border {% if error %}border-destructive{% else %}border-input{% endif %} bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 {{ class }}"
+    >{{ caller() if caller }}</textarea>
+    {% if error and id %}
+    <p id="{{ id }}-error" class="text-sm text-destructive mt-1" role="alert">{{ error }}</p>
+    {% endif %}
+{% endmacro %}

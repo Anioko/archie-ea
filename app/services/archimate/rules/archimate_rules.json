@@ -1,0 +1,275 @@
+{
+  "layers": {
+    "motivation": ["Stakeholder", "Driver", "Assessment", "Goal", "Outcome", "Principle", "Requirement", "Constraint", "Meaning", "Value"],
+    "strategy": ["Resource", "Capability", "ValueStream", "CourseOfAction"],
+    "business": ["BusinessActor", "BusinessRole", "BusinessCollaboration", "BusinessInterface", "BusinessProcess", "BusinessFunction", "BusinessInteraction", "BusinessEvent", "BusinessService", "BusinessObject", "Contract", "Representation", "Product"],
+    "application": ["ApplicationComponent", "ApplicationCollaboration", "ApplicationInterface", "ApplicationFunction", "ApplicationInteraction", "ApplicationProcess", "ApplicationEvent", "ApplicationService", "DataObject"],
+    "technology": ["Node", "Device", "SystemSoftware", "TechnologyCollaboration", "TechnologyInterface", "Path", "CommunicationNetwork", "TechnologyFunction", "TechnologyProcess", "TechnologyInteraction", "TechnologyEvent", "TechnologyService", "Artifact"],
+    "physical": ["Equipment", "Facility", "DistributionNetwork", "Material"],
+    "implementation": ["WorkPackage", "Deliverable", "ImplementationEvent", "Plateau", "Gap"],
+    "other": ["Grouping", "Location", "Junction", "RelationshipConnector"]
+  },
+  "layer_aliases": {
+    "strategic": "strategy",
+    "business layer": "business",
+    "application layer": "application",
+    "tech": "technology",
+    "technology layer": "technology",
+    "physical layer": "physical",
+    "implementation & migration": "implementation"
+  },
+  "relationship_types": [
+    "Composition",
+    "Aggregation",
+    "Assignment",
+    "Realization",
+    "Serving",
+    "Access",
+    "Influence",
+    "Triggering",
+    "Flow",
+    "Specialization",
+    "Association",
+    "Used-By",
+    "Derivation"
+  ],
+  "relationship_aliases": {
+    "UsedBy": "Serving",
+    "Used-By": "Serving",
+    "Uses": "Serving",
+    "Realizes": "Realization",
+    "Implements": "Realization",
+    "Specialises": "Specialization",
+    "FlowsTo": "Flow",
+    "Influences": "Influence",
+    "AssignedTo": "Assignment",
+    "Aggregates": "Aggregation",
+    "Composes": "Composition",
+    "Triggers": "Triggering",
+    "Accesses": "Access"
+  },
+  "relationship_rules": {
+    "BusinessProcess:BusinessService": ["Realization", "Flow"],
+    "BusinessProcess:ApplicationService": ["Serving", "Access"],
+    "BusinessProcess:BusinessFunction": ["Composition", "Aggregation", "Flow", "Triggering"],
+    "BusinessProcess:BusinessObject": ["Access"],
+    "BusinessProcess:BusinessEvent": ["Triggering", "Flow"],
+    "BusinessActor:BusinessRole": ["Assignment"],
+    "BusinessActor:BusinessProcess": ["Assignment"],
+    "BusinessRole:BusinessProcess": ["Assignment"],
+    "BusinessRole:BusinessFunction": ["Assignment"],
+    "BusinessRole:BusinessInteraction": ["Assignment"],
+    "BusinessService:BusinessProcess": ["Realization"],
+    "BusinessService:ApplicationService": ["Serving"],
+    "BusinessFunction:BusinessService": ["Realization"],
+    "BusinessProcess:BusinessProcess": ["Composition", "Aggregation", "Flow", "Triggering"],
+    "BusinessProcess:BusinessActor": ["Assignment"],
+    "BusinessFunction:BusinessFunction": ["Composition", "Aggregation"],
+    "BusinessActor:BusinessActor": ["Composition", "Aggregation"],
+    "BusinessEvent:BusinessProcess": ["Triggering"],
+    "BusinessEvent:BusinessEvent": ["Triggering"],
+    "BusinessService:BusinessService": ["Composition", "Aggregation", "Serving"],
+    "ApplicationComponent:ApplicationService": ["Realization", "Assignment"],
+    "ApplicationComponent:ApplicationFunction": ["Composition", "Aggregation"],
+    "ApplicationComponent:DataObject": ["Access", "Composition"],
+    "ApplicationComponent:TechnologyService": ["Serving"],
+    "ApplicationComponent:ApplicationInterface": ["Composition", "Aggregation", "Assignment"],
+    "ApplicationService:BusinessService": ["Realization", "Serving"],
+    "ApplicationService:ApplicationInterface": ["Assignment"],
+    "ApplicationFunction:ApplicationService": ["Realization"],
+    "ApplicationFunction:DataObject": ["Access"],
+    "ApplicationComponent:ApplicationComponent": ["Composition", "Aggregation", "Flow", "Serving"],
+    "ApplicationFunction:ApplicationFunction": ["Composition", "Aggregation", "Flow"],
+    "ApplicationProcess:ApplicationProcess": ["Composition", "Aggregation", "Flow", "Triggering"],
+    "ApplicationProcess:DataObject": ["Access"],
+    "ApplicationService:ApplicationService": ["Composition", "Aggregation", "Serving"],
+    "DataObject:BusinessObject": ["Realization"],
+    "DataObject:DataObject": ["Composition", "Aggregation", "Specialization"],
+    "Node:TechnologyService": ["Realization", "Assignment"],
+    "Node:SystemSoftware": ["Composition", "Aggregation", "Assignment"],
+    "Node:Device": ["Composition", "Aggregation"],
+    "Node:Artifact": ["Assignment"],
+    "Node:ApplicationComponent": ["Assignment"],
+    "Device:TechnologyService": ["Realization"],
+    "SystemSoftware:TechnologyService": ["Realization"],
+    "SystemSoftware:ApplicationComponent": ["Assignment"],
+    "TechnologyService:ApplicationService": ["Serving", "Realization"],
+    "TechnologyService:ApplicationComponent": ["Serving"],
+    "TechnologyService:TechnologyService": ["Composition", "Aggregation", "Serving"],
+    "Artifact:DataObject": ["Realization"],
+    "CommunicationNetwork:Path": ["Composition", "Aggregation"],
+    "CommunicationNetwork:Node": ["Composition", "Aggregation"],
+    "Path:Node": ["Association"],
+    "TechnologyFunction:ApplicationFunction": ["Serving"],
+    "TechnologyProcess:TechnologyService": ["Realization", "Serving"],
+    "TechnologyEvent:TechnologyProcess": ["Triggering"],
+    "Stakeholder:Driver": ["Association"],
+    "Stakeholder:Assessment": ["Association"],
+    "Stakeholder:Goal": ["Association"],
+    "Stakeholder:Requirement": ["Association"],
+    "Driver:Assessment": ["Association"],
+    "Driver:Goal": ["Influence", "Association"],
+    "Driver:Driver": ["Aggregation"],
+    "Assessment:Goal": ["Influence"],
+    "Assessment:Driver": ["Influence"],
+    "Goal:Outcome": ["Realization"],
+    "Goal:Requirement": ["Realization"],
+    "Goal:Principle": ["Influence"],
+    "Goal:Goal": ["Realization", "Aggregation", "Composition"],
+    "Outcome:Value": ["Association"],
+    "Outcome:Goal": ["Realization"],
+    "Principle:Requirement": ["Influence"],
+    "Principle:Goal": ["Influence"],
+    "Principle:Principle": ["Aggregation"],
+    "Requirement:Constraint": ["Specialization"],
+    "Requirement:BusinessService": ["Realization"],
+    "Requirement:ApplicationService": ["Realization"],
+    "Requirement:TechnologyService": ["Realization"],
+    "Requirement:Requirement": ["Aggregation", "Specialization"],
+    "Constraint:Requirement": ["Influence"],
+    "Constraint:Constraint": ["Aggregation"],
+    "Capability:Resource": ["Aggregation"],
+    "Capability:BusinessProcess": ["Realization"],
+    "Capability:BusinessFunction": ["Realization"],
+    "Capability:ApplicationComponent": ["Realization"],
+    "Capability:Goal": ["Realization"],
+    "Capability:Outcome": ["Realization"],
+    "Capability:Capability": ["Composition", "Aggregation", "Specialization"],
+    "CourseOfAction:Capability": ["Realization"],
+    "CourseOfAction:Goal": ["Realization"],
+    "CourseOfAction:BusinessActor": ["Assignment"],
+    "CourseOfAction:WorkPackage": ["Realization"],
+    "CourseOfAction:ApplicationComponent": ["Realization"],
+    "ValueStream:Capability": ["Aggregation"],
+    "Resource:Capability": ["Assignment"],
+    "WorkPackage:Deliverable": ["Realization", "Aggregation"],
+    "WorkPackage:BusinessActor": ["Assignment"],
+    "WorkPackage:ApplicationComponent": ["Realization"],
+    "WorkPackage:WorkPackage": ["Composition", "Aggregation", "Triggering"],
+    "WorkPackage:Capability": ["Realization"],
+    "Deliverable:ApplicationComponent": ["Realization"],
+    "Deliverable:Artifact": ["Realization"],
+    "Plateau:Gap": ["Aggregation"],
+    "Plateau:Plateau": ["Triggering"],
+    "Plateau:WorkPackage": ["Association", "Realization"],
+    "Gap:WorkPackage": ["Association"],
+    "Gap:Deliverable": ["Association"],
+    "Equipment:Facility": ["Composition", "Aggregation", "Assignment"],
+    "Equipment:Device": ["Realization"],
+    "Facility:DistributionNetwork": ["Composition", "Aggregation"],
+    "Facility:Location": ["Association"],
+    "Material:Artifact": ["Realization"],
+    "Material:Product": ["Realization"],
+    "Location:BusinessActor": ["Assignment", "Association"],
+    "Location:ApplicationComponent": ["Assignment", "Association"],
+    "Grouping:BusinessProcess": ["Aggregation", "Composition"],
+    "Grouping:ApplicationComponent": ["Aggregation", "Composition"],
+    "Grouping:Capability": ["Aggregation", "Composition"],
+    "Grouping:Goal": ["Aggregation", "Composition"],
+    "Grouping:Grouping": ["Aggregation", "Composition"],
+    "Junction:BusinessProcess": ["Association", "Flow"],
+    "Junction:ApplicationProcess": ["Association", "Flow"],
+    "Junction:TechnologyProcess": ["Association", "Flow"],
+    "RelationshipConnector:RelationshipConnector": ["Association"]
+  },
+  "cardinality_rules": {
+    "Capability": {
+      "outbound": {
+        "min": 1,
+        "types": ["Realization", "Aggregation", "Serving"],
+        "severity": "warning",
+        "message": "Capability must realize or aggregate downstream behavior"
+      },
+      "inbound": {
+        "min": 1,
+        "types": ["Aggregation", "Serving"],
+        "severity": "warning",
+        "message": "Capability should be aggregated by value streams or referenced by strategy elements"
+      }
+    },
+    "BusinessProcess": {
+      "outbound": {
+        "min": 1,
+        "types": ["Realization", "Flow", "Triggering", "Access"],
+        "severity": "warning",
+        "message": "BusinessProcess should connect to services, data, or events"
+      },
+      "inbound": {
+        "min": 1,
+        "types": ["Assignment", "Triggering", "Flow", "Serving"],
+        "severity": "warning",
+        "message": "BusinessProcess should be triggered or assigned from business actors/roles"
+      }
+    },
+    "Requirement": {
+      "outbound": {
+        "min": 1,
+        "types": ["Realization", "Influence", "Serving", "Specialization"],
+        "severity": "warning",
+        "message": "Requirement needs realization or influence relationship"
+      },
+      "inbound": {
+        "min": 1,
+        "types": ["Influence", "Realization", "Specialization"],
+        "severity": "warning",
+        "message": "Requirement should trace back to goals, principles, or higher-level requirements"
+      }
+    },
+    "Goal": {
+      "outbound": {
+        "min": 1,
+        "types": ["Realization", "Aggregation", "Influence"],
+        "severity": "warning",
+        "message": "Goal should decompose or realize outcomes/requirements"
+      },
+      "inbound": {
+        "min": 1,
+        "types": ["Influence", "Realization", "Aggregation"],
+        "severity": "warning",
+        "message": "Goal should be influenced or realized by drivers, outcomes, or capabilities"
+      }
+    },
+    "ApplicationComponent": {
+      "outbound": {
+        "min": 1,
+        "types": ["Serving", "Realization", "Assignment", "Composition"],
+        "severity": "warning",
+        "message": "ApplicationComponent must expose services or contain structure"
+      },
+      "inbound": {
+        "min": 1,
+        "types": ["Assignment", "Serving", "Realization", "Aggregation"],
+        "severity": "warning",
+        "message": "ApplicationComponent should be realized or used by technology or business elements"
+      }
+    },
+    "TechnologyService": {
+      "outbound": {
+        "min": 1,
+        "types": ["Serving", "Realization", "Aggregation"],
+        "severity": "warning",
+        "message": "TechnologyService should support application or lower layers"
+      },
+      "inbound": {
+        "min": 1,
+        "types": ["Realization", "Assignment", "Serving"],
+        "severity": "warning",
+        "message": "TechnologyService should be realized by technology functions/components"
+      }
+    },
+    "DataObject": {
+      "outbound": {
+        "min": 1,
+        "types": ["Realization", "Specialization"],
+        "severity": "warning",
+        "message": "DataObject should realize or specialize business objects"
+      },
+      "inbound": {
+        "min": 1,
+        "types": ["Access", "Composition", "Aggregation"],
+        "severity": "info",
+        "message": "DataObject should be accessed or structured by application behavior"
+      }
+    }
+  }
+}

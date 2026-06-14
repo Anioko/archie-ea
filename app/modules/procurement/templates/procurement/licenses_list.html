@@ -1,0 +1,83 @@
+{% extends 'layouts/admin_base.html' %}
+{% block title %}License Entitlements{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-6">
+    <div class="flex items-center justify-between mb-6">
+        <div>
+            <h1 class="text-2xl font-bold">License Entitlements</h1>
+            <p class="text-muted-foreground">Track software licenses and utilization</p>
+        </div>
+        <a href="{{ url_for('procurement.compliance_dashboard') }}"
+           class="inline-flex items-center gap-2 px-4 py-2 rounded-md border border-border hover:bg-accent transition-colors">
+            <i data-lucide="shield-check" class="w-4 h-4"></i>
+            Compliance Status
+        </a>
+    </div>
+
+    {% if licenses %}
+    <div class="bg-card border border-border rounded-lg overflow-hidden">
+        <table class="w-full">
+            <thead class="bg-muted/50">
+                <tr>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Product</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Vendor</th>
+                    <th class="px-4 py-3 text-center text-xs font-medium text-muted-foreground uppercase">Entitled</th>
+                    <th class="px-4 py-3 text-center text-xs font-medium text-muted-foreground uppercase">Consumed</th>
+                    <th class="px-4 py-3 text-center text-xs font-medium text-muted-foreground uppercase">Utilization</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Status</th>
+                    <th class="px-4 py-3 text-right text-xs font-medium text-muted-foreground uppercase">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-border">
+                {% for license in licenses %}
+                <tr class="hover:bg-muted/30 transition-colors">
+                    <td class="px-4 py-3">
+                        <div class="font-medium">{{ license.product_name }}</div>
+                        <div class="text-sm text-muted-foreground">{{ license.license_type or 'N/A' }}</div>
+                    </td>
+                    <td class="px-4 py-3 text-sm">{{ license.vendor.name if license.vendor else 'N/A' }}</td>
+                    <td class="px-4 py-3 text-center font-medium">{{ license.entitled_quantity or 0 }}</td>
+                    <td class="px-4 py-3 text-center font-medium">{{ license.consumed_quantity or 0 }}</td>
+                    <td class="px-4 py-3 text-center">
+                        {% set util = (license.consumed_quantity or 0) / (license.entitled_quantity or 1) * 100 %}
+                        <div class="flex items-center justify-center gap-2">
+                            <div class="w-16 h-2 bg-muted rounded-full overflow-hidden">
+                                <div class="h-full rounded-full
+                                    {% if util > 100 %}bg-red-500
+                                    {% elif util > 90 %}bg-amber-500
+                                    {% else %}bg-green-500{% endif %}"
+                                     style="width: {{ min(util, 100) }}%"></div>
+                            </div>
+                            <span class="text-sm">{{ "{:.0f}".format(util) }}%</span>
+                        </div>
+                    </td>
+                    <td class="px-4 py-3">
+                        <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium
+                            {% if license.compliance_status == 'compliant' %}bg-green-100 text-green-800
+                            {% elif license.compliance_status == 'warning' %}bg-amber-100 text-amber-800
+                            {% else %}bg-red-100 text-red-800{% endif %}">
+                            {{ license.compliance_status or 'unknown' }}
+                        </span>
+                    </td>
+                    <td class="px-4 py-3 text-right">
+                        <a href="{{ url_for('procurement.license_detail', license_id=license.id) }}"
+                           class="text-primary hover:underline text-sm">View</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="bg-card border border-border rounded-lg p-12 text-center">
+        <div class="w-16 h-16 mx-auto mb-4 bg-muted rounded-full flex items-center justify-center">
+            <i data-lucide="key" class="w-8 h-8 text-muted-foreground"></i>
+        </div>
+        <h3 class="text-lg font-medium mb-2">No license entitlements</h3>
+        <p class="text-muted-foreground">License tracking data will appear here once imported.</p>
+    </div>
+    {% endif %}
+</div>
+<script>if (typeof lucide !== 'undefined') lucide.createIcons();</script>
+{% endblock %}

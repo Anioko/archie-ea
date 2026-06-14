@@ -1,0 +1,34 @@
+{# salesforce_apex/sfdx_project.json.j2 #}
+{# Generates sfdx-project.json — Salesforce DX project configuration. #}
+{# Context: solution_id, bundle_id, solution_name, spec_hash #}
+{% set managed_package = is_managed_package if is_managed_package is defined else false %}
+{% set sf_namespace = namespace_prefix if namespace_prefix is defined else '' %}
+{% set sf_package_name = package_name if package_name is defined else solution_name %}
+{% set sf_package_mode = package_mode if package_mode is defined else 'unmanaged' %}
+{% set sf_version_name = package_version_name if package_version_name is defined else 'ver 1.0' %}
+{% set sf_version_number = package_version_number if package_version_number is defined else '1.0.0.NEXT' %}
+{
+    "packageDirectories": [
+        {
+            "path": "force-app/main/default",
+            "default": true{% if managed_package %},
+            "package": "{{ sf_package_name }}",
+            "versionName": "{{ sf_version_name }}",
+            "versionNumber": "{{ sf_version_number }}"
+            {% endif %}
+        }
+    ],
+    "name": "{{ solution_name | lower | replace(' ', '-') }}",
+    "namespace": "{{ sf_namespace }}",
+    "sfdcLoginUrl": "https://login.salesforce.com",
+    "sourceApiVersion": "60.0",
+    "packageAliases": {},
+    "archie": {
+        "solution_id": {{ solution_id }},
+        "bundle_id": "{{ bundle_id }}",
+        "spec_hash": "{{ spec_hash }}",
+        "generated_at": "{{ generated_at }}",
+        "package_mode": "{{ sf_package_mode }}",
+        "package_name": "{{ sf_package_name }}"
+    }
+}

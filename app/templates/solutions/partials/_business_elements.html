@@ -1,0 +1,376 @@
+{# Phase B — Business Layer Elements (ArchiMate 3.2 Business layer)
+   Included in solutions/detail.html within solutionDetail() x-data scope #}
+<div x-data="{ bizElementsExpanded: false }">
+    <div class="flex items-center justify-between mb-2">
+        <div class="flex items-center gap-2">
+            <h3 class="text-sm font-semibold text-foreground">Business Elements</h3>
+            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30">Phase B</span>
+        </div>
+        <div class="flex items-center gap-1 sad-actions">
+            <button type="button" @click="$dispatch('open-archimate-picker', {phase: 'B', elementType: 'BusinessProcess', linkEndpoint: '/api/solutions/{{ solution.id }}/elements'})"
+                class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium text-amber-600 hover:bg-amber-500/10 border border-amber-500/30 transition-colors"
+                title="Link an existing ArchiMate Business element">
+                <i data-lucide="link" class="w-3 h-3" aria-hidden="true"></i> Link ArchiMate
+            </button>
+            <button type="button" @click="openEntityModal('business_element')"
+                class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+                <i data-lucide="plus" class="w-3 h-3" aria-hidden="true"></i> Add
+            </button>
+        </div>
+    </div>
+    <template x-if="sadBusinessElements.length > 0">
+        <div class="overflow-x-auto border border-border rounded-lg">
+            <table class="w-full text-sm">
+                <thead class="bg-muted/50 border-b border-border">
+                    <tr>
+                        <th class="text-left px-3 py-2 text-xs font-semibold text-foreground">Name</th>
+                        <th class="text-left px-3 py-2 text-xs font-semibold text-foreground">Type</th>
+                        <th class="text-left px-3 py-2 text-xs font-semibold text-foreground">APQC Process</th>
+                        <th class="text-left px-3 py-2 text-xs font-semibold text-foreground">Owner</th>
+                        <th class="text-left px-3 py-2 text-xs font-semibold text-foreground">Status</th>
+                        <th class="text-left px-3 py-2 text-xs font-semibold text-foreground w-16 sad-actions"></th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-border/50">
+                    <template x-for="(item, idx) in sadBusinessElements" :key="item.id">
+                        <tr class="group hover:bg-muted/30 transition-colors" x-show="bizElementsExpanded || idx < 8" x-cloak>
+                            <td class="px-3 py-2">
+                                <template x-if="item.archimate_layer && item.archimate_element_type && item.archimate_element_id">
+                                  <a :href="'/' + item.archimate_layer + '/' + item.archimate_element_type + '/' + item.archimate_element_id"
+                                     target="_blank" class="font-medium text-primary hover:underline" x-text="item.name"></a>
+                                </template>
+                                <template x-if="!(item.archimate_layer && item.archimate_element_type && item.archimate_element_id)">
+                                  <span class="font-semibold text-foreground" x-text="item.name"></span>
+                                </template>
+                                <p class="text-xs text-muted-foreground mt-0.5 line-clamp-1" x-text="item.description" x-show="item.description" x-cloak></p>
+                            </td>
+                            <td class="px-3 py-2">
+                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-primary border border-blue-500/30" x-text="item.element_type?.replace('_', ' ')"></span>
+                            </td>
+                            <td class="px-3 py-2">
+                                <span x-show="item.apqc_process_name" x-cloak class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30" x-text="item.apqc_process_name"></span>
+                                <span x-show="!item.apqc_process_name" x-cloak class="text-muted-foreground">&mdash;</span>
+                            </td>
+                            <td class="px-3 py-2 text-muted-foreground" x-text="item.owner || '\u2014'"></td>
+                            <td class="px-3 py-2">
+                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
+                                      :class="item.status === 'current' ? 'bg-emerald-500/10 text-emerald-600' : item.status === 'target' ? 'bg-primary/10 text-primary' : 'bg-amber-500/10 text-amber-600'"
+                                      x-text="item.status"></span>
+                            </td>
+                            <td class="px-3 py-2 sad-actions">
+                                <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <button type="button" @click="openEntityModal('business_element', item)" class="text-muted-foreground hover:text-foreground p-1 rounded-md" title="Edit">
+                                        <i data-lucide="pencil" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                                    </button>
+                                    <button type="button" @click="confirmDeleteEntity('business_element', item)" class="text-muted-foreground hover:text-destructive p-1 rounded-md" title="Delete">
+                                        <i data-lucide="trash-2" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+            <button x-show="sadBusinessElements.length > 8" x-cloak
+                    @click="bizElementsExpanded = !bizElementsExpanded" type="button"
+                    class="w-full py-2 text-xs font-medium text-primary hover:bg-muted/50 transition-colors border-t border-border">
+                <span x-text="bizElementsExpanded ? 'Show less' : 'Show all ' + sadBusinessElements.length + ' elements'"></span>
+            </button>
+        </div>
+    </template>
+    <template x-if="sadBusinessElements.length === 0">
+        <p class="text-sm text-muted-foreground italic">No business elements documented yet. Add actors, roles, services, processes, or functions.</p>
+    </template>
+</div>
+
+{# Gaps & Architecture Impact — W2-BCD-gaps #}
+<div class="mt-6" x-data="{ openGap: null }">
+    <div class="flex items-center gap-2 mb-3">
+        <h3 class="text-sm font-semibold text-foreground">Gaps &amp; Architecture Impact</h3>
+        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30">Phase B / C / D</span>
+    </div>
+    <p class="text-xs text-muted-foreground mb-3">Delta between baseline and target architecture states</p>
+
+    <div x-show="gapsLoading" x-cloak class="flex items-center gap-2 text-sm text-muted-foreground py-2">
+        <svg class="animate-spin w-4 h-4 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+        </svg>
+        Loading gaps...
+    </div>
+
+    <template x-if="!gapsLoading && gaps.length === 0">
+        <p class="text-sm text-muted-foreground italic">No capability gaps identified for this solution.</p>
+    </template>
+
+    <template x-if="!gapsLoading && gaps.length > 0">
+        <div class="space-y-2">
+            <template x-for="gap in gaps" :key="gap.id">
+                <div class="border border-border rounded-lg overflow-hidden">
+                    {# Accordion header #}
+                    <button type="button"
+                        @click="openGap = (openGap === gap.id ? null : gap.id)"
+                        class="w-full flex items-center gap-2 px-3 py-2.5 text-left hover:bg-muted/30 transition-colors">
+                        {# Gap type badge #}
+                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium flex-shrink-0"
+                            :class="{
+                                'bg-indigo-500/10 text-primary border border-indigo-500/30': gap.gap_type === 'capability',
+                                'bg-blue-500/10 text-primary border border-blue-500/30': gap.gap_type === 'process',
+                                'bg-amber-500/10 text-amber-600 border border-amber-500/30': gap.gap_type === 'data',
+                                'bg-teal-500/10 text-teal-600 border border-teal-500/30': gap.gap_type === 'technology',
+                                'bg-purple-500/10 text-primary border border-purple-500/30': gap.gap_type === 'integration',
+                                'bg-gray-500/10 text-muted-foreground border border-gray-500/30': !['capability','process','data','technology','integration'].includes(gap.gap_type)
+                            }"
+                            x-text="gap.gap_type?.replace(/_/g, ' ')"></span>
+                        {# Description truncated #}
+                        <span class="flex-1 text-sm text-foreground truncate" x-text="gap.description?.length > 100 ? gap.description.slice(0, 100) + '…' : gap.description"></span>
+                        {# Impact level badge #}
+                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium flex-shrink-0"
+                            :class="{
+                                'bg-red-500/10 text-destructive border border-red-500/30': gap.impact_level === 'critical' || gap.impact_level === 'high',
+                                'bg-amber-500/10 text-amber-600 border border-amber-500/30': gap.impact_level === 'medium',
+                                'bg-green-500/10 text-emerald-600 border border-green-500/30': gap.impact_level === 'low'
+                            }"
+                            x-text="gap.impact_level"></span>
+                        {# Priority badge #}
+                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-muted text-muted-foreground border border-border flex-shrink-0"
+                            x-text="'P' + gap.priority" x-show="gap.priority !== null && gap.priority !== undefined" x-cloak></span>
+                        {# Chevron #}
+                        <svg class="w-4 h-4 text-muted-foreground flex-shrink-0 transition-transform"
+                            :class="openGap === gap.id ? 'rotate-180' : ''"
+                            xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                        </svg>
+                    </button>
+
+                    {# Accordion body #}
+                    <div x-show="openGap === gap.id" x-cloak class="border-t border-border px-3 py-3 bg-muted/10 space-y-3">
+                        {# Current / Target states — two columns #}
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <p class="text-[10px] font-semibold text-foreground uppercase tracking-wide mb-1">Current State</p>
+                                <span x-show="gap.current_state" x-cloak x-text="gap.current_state" class="text-sm text-foreground"></span>
+                                <span x-show="!gap.current_state" x-cloak class="text-sm text-muted-foreground italic">Not defined</span>
+                            </div>
+                            <div>
+                                <p class="text-[10px] font-semibold text-foreground uppercase tracking-wide mb-1">Target State</p>
+                                <span x-show="gap.target_state" x-cloak x-text="gap.target_state" class="text-sm text-foreground"></span>
+                                <span x-show="!gap.target_state" x-cloak class="text-sm text-muted-foreground italic">Not defined</span>
+                            </div>
+                        </div>
+
+                        {# Solution Options #}
+                        <div>
+                            <p class="text-[10px] font-semibold text-foreground uppercase tracking-wide mb-2">Solution Options</p>
+                            <template x-if="gap.solution_options && gap.solution_options.length > 0">
+                                <div class="space-y-2">
+                                    <template x-for="opt in gap.solution_options" :key="opt.id">
+                                        <div class="flex items-start gap-2 rounded-md bg-background border border-border px-2.5 py-2">
+                                            <div class="flex-1 min-w-0">
+                                                <span class="text-sm font-semibold text-foreground block" x-text="opt.title"></span>
+                                                <span class="text-xs text-muted-foreground" x-text="opt.approach" x-show="opt.approach" x-cloak></span>
+                                            </div>
+                                            <span x-show="opt.estimated_effort" x-cloak
+                                                class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-primary/10 text-primary border border-primary/30 flex-shrink-0"
+                                                x-text="opt.estimated_effort"></span>
+                                        </div>
+                                    </template>
+                                </div>
+                            </template>
+                            <template x-if="!gap.solution_options || gap.solution_options.length === 0">
+                                <p class="text-xs text-muted-foreground italic">No solution options defined.</p>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+            </template>
+        </div>
+    </template>
+</div>
+
+{# Architecture Model Elements — ArchiMate B/C/D layer views #}
+<div class="mt-6" x-data="{ activeArchLayer: 'business', archModelExpanded: false }">
+    <div class="flex items-center gap-2 mb-3">
+        <h3 class="text-sm font-semibold text-foreground">Architecture Model Elements</h3>
+        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30">Phase B / C / D</span>
+    </div>
+
+    {# Sub-tab bar #}
+    <div class="flex gap-1 mb-3 border-b border-border pb-2">
+        <button type="button"
+            @click="activeArchLayer = 'business'"
+            :class="activeArchLayer === 'business' ? 'bg-blue-500/10 text-primary border border-blue-500/30' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'"
+            class="inline-flex items-center px-3 py-1 rounded-md text-xs font-medium transition-colors">
+            Business Layer
+        </button>
+        <button type="button"
+            @click="activeArchLayer = 'application'"
+            :class="activeArchLayer === 'application' ? 'bg-purple-500/10 text-primary border border-purple-500/30' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'"
+            class="inline-flex items-center px-3 py-1 rounded-md text-xs font-medium transition-colors">
+            Application Layer
+        </button>
+        <button type="button"
+            @click="activeArchLayer = 'data'"
+            :class="activeArchLayer === 'data' ? 'bg-amber-500/10 text-amber-600 border border-amber-500/30' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'"
+            class="inline-flex items-center px-3 py-1 rounded-md text-xs font-medium transition-colors">
+            Data Layer
+        </button>
+    </div>
+
+    {# Business Layer tab #}
+    <template x-if="activeArchLayer === 'business'">
+        <div>
+            <template x-if="(archimateElements || []).filter(e => e.layer === 'business').length > 0">
+                <div class="overflow-x-auto border border-border rounded-lg">
+                    <table class="w-full text-sm">
+                        <thead class="bg-muted/50 border-b border-border">
+                            <tr>
+                                <th class="text-left px-3 py-2 text-xs font-semibold text-foreground">Element</th>
+                                <th class="text-left px-3 py-2 text-xs font-semibold text-foreground">Baseline State</th>
+                                <th class="text-left px-3 py-2 text-xs font-semibold text-foreground">Target State</th>
+                                <th class="text-left px-3 py-2 text-xs font-semibold text-foreground">Δ Gap</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-border/50">
+                            <template x-for="(el, idx) in (archimateElements || []).filter(e => e.layer === 'business')" :key="el.id">
+                                <tr class="group hover:bg-muted/30 transition-colors" x-show="archModelExpanded || idx < 5" x-cloak>
+                                    <td class="px-3 py-2">
+                                        <span class="font-semibold text-foreground" x-text="el.name"></span>
+                                        <span class="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-primary border border-blue-500/30" x-text="el.element_type?.replace(/_/g, ' ')"></span>
+                                    </td>
+                                    <td class="px-3 py-2">
+                                        <span x-show="el.baseline_state" x-cloak x-text="el.baseline_state" class="text-foreground"></span>
+                                        <span x-show="!el.baseline_state" x-cloak class="text-muted-foreground italic text-xs">Not defined</span>
+                                    </td>
+                                    <td class="px-3 py-2">
+                                        <span x-show="el.target_state" x-cloak x-text="el.target_state" class="text-foreground"></span>
+                                        <span x-show="!el.target_state" x-cloak class="text-muted-foreground italic text-xs">Not defined</span>
+                                    </td>
+                                    <td class="px-3 py-2">
+                                        <span x-show="el.baseline_state && el.target_state && el.baseline_state !== el.target_state" x-cloak
+                                              class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-500/10 text-destructive border border-red-500/30">Gap</span>
+                                        <span x-show="el.baseline_state && el.target_state && el.baseline_state === el.target_state" x-cloak
+                                              class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30">Aligned</span>
+                                        <span x-show="!el.baseline_state || !el.target_state" x-cloak
+                                              class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-muted text-muted-foreground border border-border">TBD</span>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                    <button x-show="(archimateElements || []).filter(e => e.layer === 'business').length > 5" x-cloak
+                            @click="archModelExpanded = !archModelExpanded" type="button"
+                            class="w-full py-2 text-xs font-medium text-primary hover:bg-muted/50 transition-colors border-t border-border">
+                        <span x-text="archModelExpanded ? 'Show less' : 'Show all ' + (archimateElements || []).filter(e => e.layer === 'business').length + ' elements'"></span>
+                    </button>
+                </div>
+            </template>
+            <template x-if="(archimateElements || []).filter(e => e.layer === 'business').length === 0">
+                <p class="text-sm text-muted-foreground italic">No business layer elements linked to this solution.</p>
+            </template>
+        </div>
+    </template>
+
+    {# Application Layer tab #}
+    <template x-if="activeArchLayer === 'application'">
+        <div>
+            <template x-if="(archimateElements || []).filter(e => e.layer === 'application').length > 0">
+                <div class="overflow-x-auto border border-border rounded-lg">
+                    <table class="w-full text-sm">
+                        <thead class="bg-muted/50 border-b border-border">
+                            <tr>
+                                <th class="text-left px-3 py-2 text-xs font-semibold text-foreground">Element</th>
+                                <th class="text-left px-3 py-2 text-xs font-semibold text-foreground">Baseline State</th>
+                                <th class="text-left px-3 py-2 text-xs font-semibold text-foreground">Target State</th>
+                                <th class="text-left px-3 py-2 text-xs font-semibold text-foreground">Δ Gap</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-border/50">
+                            <template x-for="(el, idx) in (archimateElements || []).filter(e => e.layer === 'application')" :key="el.id">
+                                <tr class="group hover:bg-muted/30 transition-colors" x-show="archModelExpanded || idx < 5" x-cloak>
+                                    <td class="px-3 py-2">
+                                        <span class="font-semibold text-foreground" x-text="el.name"></span>
+                                        <span class="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-500/10 text-primary border border-purple-500/30" x-text="el.element_type?.replace(/_/g, ' ')"></span>
+                                    </td>
+                                    <td class="px-3 py-2">
+                                        <span x-show="el.baseline_state" x-cloak x-text="el.baseline_state" class="text-foreground"></span>
+                                        <span x-show="!el.baseline_state" x-cloak class="text-muted-foreground italic text-xs">Not defined</span>
+                                    </td>
+                                    <td class="px-3 py-2">
+                                        <span x-show="el.target_state" x-cloak x-text="el.target_state" class="text-foreground"></span>
+                                        <span x-show="!el.target_state" x-cloak class="text-muted-foreground italic text-xs">Not defined</span>
+                                    </td>
+                                    <td class="px-3 py-2">
+                                        <span x-show="el.baseline_state && el.target_state && el.baseline_state !== el.target_state" x-cloak
+                                              class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-500/10 text-destructive border border-red-500/30">Gap</span>
+                                        <span x-show="el.baseline_state && el.target_state && el.baseline_state === el.target_state" x-cloak
+                                              class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30">Aligned</span>
+                                        <span x-show="!el.baseline_state || !el.target_state" x-cloak
+                                              class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-muted text-muted-foreground border border-border">TBD</span>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                    <button x-show="(archimateElements || []).filter(e => e.layer === 'application').length > 5" x-cloak
+                            @click="archModelExpanded = !archModelExpanded" type="button"
+                            class="w-full py-2 text-xs font-medium text-primary hover:bg-muted/50 transition-colors border-t border-border">
+                        <span x-text="archModelExpanded ? 'Show less' : 'Show all ' + (archimateElements || []).filter(e => e.layer === 'application').length + ' elements'"></span>
+                    </button>
+                </div>
+            </template>
+            <template x-if="(archimateElements || []).filter(e => e.layer === 'application').length === 0">
+                <p class="text-sm text-muted-foreground italic">No application layer elements linked to this solution.</p>
+            </template>
+        </div>
+    </template>
+
+    {# Data Layer tab #}
+    <template x-if="activeArchLayer === 'data'">
+        <div>
+            <template x-if="(archimateElements || []).filter(e => e.layer === 'data' || e.layer === 'application' && e.element_type?.toLowerCase().includes('data')).length > 0">
+                <div class="overflow-x-auto border border-border rounded-lg">
+                    <table class="w-full text-sm">
+                        <thead class="bg-muted/50 border-b border-border">
+                            <tr>
+                                <th class="text-left px-3 py-2 text-xs font-semibold text-foreground">Element</th>
+                                <th class="text-left px-3 py-2 text-xs font-semibold text-foreground">Baseline State</th>
+                                <th class="text-left px-3 py-2 text-xs font-semibold text-foreground">Target State</th>
+                                <th class="text-left px-3 py-2 text-xs font-semibold text-foreground">Δ Gap</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-border/50">
+                            <template x-for="(el, idx) in (archimateElements || []).filter(e => e.layer === 'data' || e.layer === 'application' && e.element_type?.toLowerCase().includes('data'))" :key="el.id">
+                                <tr class="group hover:bg-muted/30 transition-colors" x-show="archModelExpanded || idx < 5" x-cloak>
+                                    <td class="px-3 py-2">
+                                        <span class="font-semibold text-foreground" x-text="el.name"></span>
+                                        <span class="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/10 text-amber-600 border border-amber-500/30" x-text="el.element_type?.replace(/_/g, ' ')"></span>
+                                    </td>
+                                    <td class="px-3 py-2">
+                                        <span x-show="el.baseline_state" x-cloak x-text="el.baseline_state" class="text-foreground"></span>
+                                        <span x-show="!el.baseline_state" x-cloak class="text-muted-foreground italic text-xs">Not defined</span>
+                                    </td>
+                                    <td class="px-3 py-2">
+                                        <span x-show="el.target_state" x-cloak x-text="el.target_state" class="text-foreground"></span>
+                                        <span x-show="!el.target_state" x-cloak class="text-muted-foreground italic text-xs">Not defined</span>
+                                    </td>
+                                    <td class="px-3 py-2">
+                                        <span x-show="el.baseline_state && el.target_state && el.baseline_state !== el.target_state" x-cloak
+                                              class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-500/10 text-destructive border border-red-500/30">Gap</span>
+                                        <span x-show="el.baseline_state && el.target_state && el.baseline_state === el.target_state" x-cloak
+                                              class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30">Aligned</span>
+                                        <span x-show="!el.baseline_state || !el.target_state" x-cloak
+                                              class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-muted text-muted-foreground border border-border">TBD</span>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </template>
+            <template x-if="(archimateElements || []).filter(e => e.layer === 'data' || e.layer === 'application' && e.element_type?.toLowerCase().includes('data')).length === 0">
+                <p class="text-sm text-muted-foreground italic">No data layer elements linked to this solution.</p>
+            </template>
+        </div>
+    </template>
+</div>

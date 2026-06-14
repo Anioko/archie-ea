@@ -1,0 +1,77 @@
+{# Data Card / KPI Card Component
+
+   Stats/metric display card following the project convention:
+   rounded-xl border border-input bg-background with icon in colored rounded-lg box.
+
+   Usage:
+   {% from 'components/data_card.html' import data_card %}
+
+   {{ data_card(
+       icon='layout-grid',
+       icon_color='blue',
+       value='150',
+       label='Total Applications',
+       subtitle='In portfolio',
+       trend_value='+12%',
+       trend_direction='up'
+   ) }}
+
+   {{ data_card(
+       icon='alert-triangle',
+       icon_color='red',
+       value='5',
+       label='Critical Issues',
+       subtitle='Needs attention'
+   ) }}
+#}
+
+{% macro data_card(
+    icon='bar-chart-2',
+    icon_color='blue',
+    value='0',
+    label='',
+    subtitle='',
+    trend_value='',
+    trend_direction='',
+    class=''
+) %}
+    {% set color_map = {
+        'blue': 'bg-primary',
+        'green': 'bg-emerald-500',
+        'red': 'bg-destructive',
+        'amber': 'bg-amber-500',
+        'purple': 'bg-primary',
+        'indigo': 'bg-primary',
+        'cyan': 'bg-cyan-500',
+        'gray': 'bg-muted/50'
+    } %}
+
+    {% set trend_styles = {
+        'up': {'icon': 'trending-up', 'color': 'text-success'},
+        'down': {'icon': 'trending-down', 'color': 'text-destructive'},
+        'neutral': {'icon': 'minus', 'color': 'text-muted-foreground'}
+    } %}
+
+    <div class="rounded-xl border border-input bg-background hover:border-primary/50 hover:shadow-sm transition-all duration-200 p-5 {{ class }}">
+        <div class="flex items-start gap-4">
+            <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg {{ color_map[icon_color] or color_map['blue'] }}">
+                <i data-lucide="{{ icon }}" class="h-5 w-5 text-primary-foreground" aria-hidden="true"></i>
+            </div>
+            <div class="flex-1 min-w-0">
+                <p class="text-sm font-medium text-muted-foreground">{{ label }}</p>
+                <div class="flex items-baseline gap-2 mt-1">
+                    <p class="text-2xl font-bold tracking-tight">{{ value }}</p>
+                    {% if trend_value and trend_direction %}
+                    <span class="inline-flex items-center gap-0.5 text-xs font-medium {{ trend_styles[trend_direction].color or 'text-muted-foreground' }}">
+                        <i data-lucide="{{ trend_styles[trend_direction].icon or 'minus' }}" class="w-3 h-3" aria-hidden="true"></i>
+                        {{ trend_value }}
+                    </span>
+                    {% endif %}
+                </div>
+                {% if subtitle %}
+                <p class="text-xs text-muted-foreground mt-1">{{ subtitle }}</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+{% endmacro %}

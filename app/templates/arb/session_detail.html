@@ -1,0 +1,140 @@
+{% extends "layouts/admin_base.html" %}
+{% from "components/page_header.html" import page_header %}
+{% from "components/card.html" import card, card_header, card_title, card_description, card_content %}
+{% from "components/status_badge.html" import status_badge %}
+{% from "components/sol_confirm_modal.html" import sol_confirm_modal %}
+
+{% block title %}ARB Session {{ session.board_number }}{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+    {{ page_header(
+        title=session.name,
+        description='Session ' ~ session.board_number,
+        breadcrumbs=[
+            {'label': 'Dashboard', 'href': url_for('main.index')},
+            {'label': 'Governance', 'href': url_for('arb.dashboard')},
+            {'label': 'ARB Sessions', 'href': url_for('arb.sessions')},
+            {'label': session.board_number}
+        ],
+        actions=[
+            {'text': 'Back to Sessions', 'icon': 'arrow-left', 'href': url_for('arb.sessions'), 'variant': 'outline'}
+        ]
+    ) }}
+
+    <div class="flex items-center justify-end gap-2">
+        {% set status_variant_map = {'completed': 'success', 'scheduled': 'primary', 'cancelled': 'error', 'draft': 'warning'} %}
+        {{ status_badge(session.status|title, status_variant_map[session.status]|default('neutral')) }}
+        {% if session.status in ['scheduled', 'draft'] %}
+        <form method="POST" action="{{ url_for('arb.cancel_session', id=session.id) }}" class="inline"
+              onsubmit="return confirm('Cancel this session?')">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit"
+                    class="px-3 py-1.5 text-xs font-medium text-amber-600 border border-amber-300 rounded-lg hover:bg-amber-50">
+                Cancel Session
+            </button>
+        </form>
+        {% endif %}
+        {% if session.status in ['draft', 'cancelled'] %}
+        <div x-data="{ activeModal: null, _formAction: '{{ url_for('arb.delete_session', id=session.id) }}' }">
+            <button type="button"
+                    @click="activeModal = 'confirm-delete-arb-session'"
+                    class="px-3 py-1.5 text-xs font-medium text-destructive border border-destructive/30 rounded-lg hover:bg-destructive/5">
+                Delete
+            </button>
+            {{ sol_confirm_modal(
+                'confirm-delete-arb-session',
+                'Delete ARB Session',
+                '"Delete this session? This cannot be undone."',
+                confirm_handler="$el.closest('div').querySelector('form').submit()"
+            ) }}
+            <form id="arb-delete-form-{{ session.id }}" method="POST" action="{{ url_for('arb.delete_session', id=session.id) }}" class="hidden">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            </form>
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {% call card() %}
+            {% call card_header() %}
+                {% call card_title() %}Details{% endcall %}
+            {% endcall %}
+            {% call card_content() %}
+                <dl class="space-y-2 text-sm">
+                    <div class="flex justify-between">
+                        <dt class="text-muted-foreground">Scheduled</dt>
+                        <dd class="text-foreground">{{ session.scheduled_date.strftime('%d %b %Y %H:%M') if session.scheduled_date else 'TBD' }}</dd>
+                    </div>
+                    <div class="flex justify-between">
+                        <dt class="text-muted-foreground">Duration</dt>
+                        <dd class="text-foreground">{{ session.duration_minutes }} min</dd>
+                    </div>
+                    <div class="flex justify-between">
+                        <dt class="text-muted-foreground">Location</dt>
+                        <dd class="text-foreground">{{ session.location or 'Not set' }}</dd>
+                    </div>
+                </dl>
+            {% endcall %}
+        {% endcall %}
+
+        {% call card() %}
+            {% call card_header() %}
+                {% call card_title() %}Participants{% endcall %}
+            {% endcall %}
+            {% call card_content() %}
+                <dl class="space-y-2 text-sm">
+                    <div class="flex justify-between">
+                        <dt class="text-muted-foreground">Chair</dt>
+                        <dd class="text-foreground">{{ session.chair.first_name if session.chair else 'Unassigned' }} {{ session.chair.last_name if session.chair else '' }}</dd>
+                    </div>
+                    <div class="flex justify-between">
+                        <dt class="text-muted-foreground">Secretary</dt>
+                        <dd class="text-foreground">{{ session.secretary.first_name if session.secretary else 'None' }} {{ session.secretary.last_name if session.secretary else '' }}</dd>
+                    </div>
+                    <div class="flex justify-between">
+                        <dt class="text-muted-foreground">Board Members</dt>
+                        <dd class="text-foreground">{{ session.board_members|length if session.board_members else 0 }}</dd>
+                    </div>
+                </dl>
+            {% endcall %}
+        {% endcall %}
+
+        {% call card() %}
+            {% call card_header() %}
+                {% call card_title() %}Description{% endcall %}
+            {% endcall %}
+            {% call card_content() %}
+                <p class="text-sm text-foreground">{{ session.description or 'No description provided.' }}</p>
+            {% endcall %}
+        {% endcall %}
+    </div>
+
+    {% call card() %}
+        {% call card_header() %}
+            {% call card_title() %}Review Items{% endcall %}
+            {% call card_description() %}Reviews assigned to this ARB session.{% endcall %}
+        {% endcall %}
+        {% call card_content() %}
+            <div class="divide-y divide-border -mx-6">
+                {% if session.review_items %}
+                    {% for item in session.review_items %}
+                    <a href="{{ url_for('arb.review_detail', id=item.id) }}" class="block px-6 py-4 hover:bg-muted/30">
+                        <div class="flex justify-between items-center">
+                            <div>
+                                <span class="text-sm font-medium text-foreground">{{ item.title }}</span>
+                                <span class="text-xs text-muted-foreground ml-2">{{ item.review_number }}</span>
+                            </div>
+                            {% set item_status_map = {'approved': 'success', 'rejected': 'error', 'pending': 'warning', 'in_review': 'info', 'draft': 'neutral'} %}
+                            {{ status_badge(item.status|title, item_status_map[item.status]|default('neutral')) }}
+                        </div>
+                    </a>
+                    {% endfor %}
+                {% else %}
+                    <div class="px-6 py-8 text-center text-muted-foreground text-sm">No review items assigned to this session.</div>
+                {% endif %}
+            </div>
+        {% endcall %}
+    {% endcall %}
+</div>
+{% endblock %}

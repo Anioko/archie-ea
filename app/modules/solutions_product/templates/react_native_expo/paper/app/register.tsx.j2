@@ -1,0 +1,159 @@
+{# paper/app/register.tsx.j2 — Paper register screen, no NativeWind, no lucide icons #}
+{# Rendered only when auth == "jwt-local". #}
+import { useState } from "react"
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from "react-native"
+import { useRouter } from "expo-router"
+import {
+  Button,
+  HelperText,
+  Surface,
+  Text,
+  TextInput,
+} from "react-native-paper"
+import Toast from "react-native-toast-message"
+import { useAuth } from "@/providers/AuthProvider"
+import { authApi } from "@/lib/api"
+
+// Style constants — no inline object literals to avoid Jinja2/JSX double-brace collision
+const S = StyleSheet.create({
+  flex: { flex: 1, backgroundColor: "#f8fafc" },
+  scroll: { flexGrow: 1, justifyContent: "center", alignItems: "center", paddingHorizontal: 24, paddingVertical: 40 },
+  title: { color: "#0f172a", marginBottom: 4 },
+  subtitle: { color: "#64748b", marginBottom: 32 },
+  card: { width: "100%", borderRadius: 20, padding: 24, marginBottom: 24 },
+  inputField: { marginBottom: 4, backgroundColor: "#ffffff" },
+  inputSpacing: { marginBottom: 8 },
+  submitBtn: { marginTop: 8, borderRadius: 12, paddingVertical: 4 },
+  footerRow: { marginTop: 20 },
+  footerText: { color: "#64748b", textAlign: "center", fontSize: 14 },
+  footerLink: { color: "#4f46e5", fontWeight: "600" },
+  submitContent: { paddingVertical: 6 },
+})
+
+export default function RegisterScreen() {
+  const { signIn } = useAuth()
+  const router = useRouter()
+  const [fullName, setFullName] = useState("")
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
+  const [showPassword, setShowPassword] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [emailError, setEmailError] = useState("")
+  const [passwordError, setPasswordError] = useState("")
+
+  async function handleRegister() {
+    setEmailError("")
+    setPasswordError("")
+    if (!email) { setEmailError("Email is required"); return }
+    if (!password) { setPasswordError("Password is required"); return }
+    if (password.length < 8) { setPasswordError("Password must be at least 8 characters"); return }
+
+    setLoading(true)
+    try {
+      const { access_token } = await authApi.register(email, password, fullName || undefined)
+      await signIn(access_token)
+      router.replace("/")
+    } catch (err) {
+      Toast.show({
+        type: "error",
+        text1: "Registration failed",
+        text2: err instanceof Error ? err.message : "Could not reach the server",
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      style={S.flex}
+    >
+      <ScrollView contentContainerStyle={S.scroll} keyboardShouldPersistTaps="handled">
+
+        <Text variant="headlineMedium" style={S.title}>Create Account</Text>
+        <Text variant="bodyMedium" style={S.subtitle}>{{ solution_name }}</Text>
+
+        {/* Form card */}
+        <Surface style={S.card} elevation={1}>
+
+          {/* Full name (optional) */}
+          <TextInput
+            label="Full name (optional)"
+            mode="outlined"
+            value={fullName}
+            onChangeText={setFullName}
+            autoComplete="name"
+            style={S.inputField}
+            accessibilityLabel="Full name"
+            left={<TextInput.Icon icon="account-outline" />}
+          />
+          <View style={S.inputSpacing} />
+
+          {/* Email */}
+          <TextInput
+            label="Email *"
+            mode="outlined"
+            value={email}
+            onChangeText={setEmail}
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoComplete="email"
+            style={S.inputField}
+            error={!!emailError}
+            accessibilityLabel="Email"
+            left={<TextInput.Icon icon="email-outline" />}
+          />
+          <HelperText type="error" visible={!!emailError}>{emailError}</HelperText>
+
+          <View style={S.inputSpacing} />
+
+          {/* Password */}
+          <TextInput
+            label="Password * (min 8 characters)"
+            mode="outlined"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry={!showPassword}
+            autoComplete="new-password"
+            style={S.inputField}
+            error={!!passwordError}
+            accessibilityLabel="Password"
+            left={<TextInput.Icon icon="lock-outline" />}
+            right={
+              <TextInput.Icon
+                icon={showPassword ? "eye-off-outline" : "eye-outline"}
+                onPress={() => setShowPassword((v) => !v)}
+                accessibilityLabel={showPassword ? "Hide password" : "Show password"}
+              />
+            }
+          />
+          <HelperText type="error" visible={!!passwordError}>{passwordError}</HelperText>
+
+          <Button
+            mode="contained"
+            onPress={handleRegister}
+            disabled={loading}
+            loading={loading}
+            style={S.submitBtn}
+            contentStyle={S.submitContent}
+            buttonColor="#4f46e5"
+            accessibilityLabel="Create account"
+          >
+            {loading ? "Creating account…" : "Create Account"}
+          </Button>
+        </Surface>
+
+        <View style={S.footerRow}>
+          <Text style={S.footerText}>
+            Already have an account?{" "}
+            <Text style={S.footerLink} onPress={() => router.back()}>
+              Sign in
+            </Text>
+          </Text>
+        </View>
+
+      </ScrollView>
+    </KeyboardAvoidingView>
+  )
+}

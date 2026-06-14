@@ -1,0 +1,468 @@
+{% extends "layouts/admin_base.html" %}
+{% from "components/page_header.html" import page_header %}
+
+{% block title %}{{ rollup.programme.name }} — {% if show_drift %}Drift History{% else %}Programme Cockpit{% endif %}{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 sm:px-6 lg:px-8 py-6 max-w-7xl"
+     x-data="programmeCockpit({{ rollup.programme.id }})">
+    {{ page_header(
+        title=rollup.programme.name,
+        description=rollup.programme.description or 'Programme governance cockpit',
+        breadcrumbs=[
+            {'label': 'Dashboard', 'href': url_for('main.index')},
+            {'label': 'Programmes', 'href': url_for('solution_design.programmes_list')},
+            {'label': rollup.programme.name}
+        ]
+    ) }}
+
+    {# ── Headline strip ─────────────────────────────────────────────── #}
+    <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mt-6">
+        <div class="border border-border rounded-xl bg-card p-4">
+            <p class="text-xs text-muted-foreground uppercase tracking-wider">Type</p>
+            <p class="text-lg font-bold mt-1
+                {% if rollup.programme.initiative_type == 'brownfield' %}text-amber-600{% else %}text-emerald-600{% endif %}">
+                {{ rollup.programme.initiative_type | title }}</p>
+            <p class="text-xs text-muted-foreground mt-0.5">{{ rollup.programme.target_platform or '—' }}</p>
+        </div>
+        <div class="border border-border rounded-xl bg-card p-4">
+            <p class="text-xs text-muted-foreground uppercase tracking-wider">Solutions</p>
+            <p class="text-2xl font-bold text-foreground mt-1" data-testid="member-count">{{ rollup.member_count }}</p>
+            <p class="text-xs text-muted-foreground mt-0.5">avg maturity {{ rollup.avg_maturity }}%</p>
+        </div>
+        <a href="{{ url_for('solution_design.programme_fit_gap', initiative_id=rollup.programme.id) }}"
+           class="border border-border rounded-xl bg-card p-4 hover:border-primary/40 transition-colors block" data-testid="clean-core-card">
+            <p class="text-xs text-muted-foreground uppercase tracking-wider">Clean-Core Score</p>
+            {% if rollup.fit_gap.clean_core_score is not none %}
+            <p class="text-2xl font-bold mt-1
+                {% if rollup.fit_gap.clean_core_score >= 70 %}text-emerald-600{% elif rollup.fit_gap.clean_core_score >= 40 %}text-amber-600{% else %}text-destructive{% endif %}">
+                {{ rollup.fit_gap.clean_core_score }}%{% if rollup.fit_gap.clean_core_target %}<span class="text-sm font-medium text-muted-foreground"> / {{ rollup.fit_gap.clean_core_target }}% target</span>{% endif %}</p>
+            <p class="text-xs text-primary mt-0.5">{{ rollup.fit_gap.total }} entries → Fit-Gap Workbench</p>
+            {% else %}
+            <p class="text-lg font-semibold text-muted-foreground mt-1">No fit-gap data</p>
+            <p class="text-xs text-primary mt-0.5">Open Fit-Gap Workbench →</p>
+            {% endif %}
+        </a>
+        <div class="border border-border rounded-xl bg-card p-4">
+            <p class="text-xs text-muted-foreground uppercase tracking-wider">Risks</p>
+            <p class="text-2xl font-bold text-foreground mt-1">{{ rollup.risks.total }}</p>
+            <p class="text-xs text-muted-foreground mt-0.5">
+                {{ rollup.risks.by_impact.get('high', 0) + rollup.risks.by_impact.get('critical', 0) }} high/critical
+            </p>
+        </div>
+        <div class="border border-border rounded-xl bg-card p-4">
+            <p class="text-xs text-muted-foreground uppercase tracking-wider">ARB Approved</p>
+            <p class="text-2xl font-bold text-foreground mt-1">{{ rollup.arb_pipeline.approved }}<span class="text-sm text-muted-foreground font-normal">/{{ rollup.member_count }}</span></p>
+            <p class="text-xs text-muted-foreground mt-0.5">{{ rollup.arb_pipeline.arb_review + rollup.arb_pipeline.under_review }} in review</p>
+        </div>
+    </div>
+
+    {# ── AI on contact — review captured when the landscape was imported (PROG-013) ── #}
+    {% if import_review is defined and import_review %}
+    <div class="mt-6 border border-border rounded-xl bg-card overflow-hidden" data-testid="import-ai-review">
+        <div class="flex items-center justify-between px-5 py-4 border-b border-border">
+            <div class="flex items-center gap-2">
+                <i data-lucide="sparkles" class="h-4 w-4 text-primary"></i>
+                <div>
+                    <h2 class="text-sm font-semibold text-foreground">AI review on import</h2>
+                    <p class="text-xs text-muted-foreground mt-0.5">
+                        ARCHIE reviewed this landscape automatically when it landed
+                        ({{ import_review.source|replace('_',' ') }}{% if import_review.taken_at %} · {{ import_review.taken_at[:10] }}{% endif %}).
+                    </p>
+                </div>
+            </div>
+            {% if import_review.flagged_total %}
+            <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-medium bg-amber-500/10 text-amber-600 border border-amber-500/30">
+                <i data-lucide="alert-triangle" class="h-3 w-3"></i> {{ import_review.flagged_total }} flagged
+            </span>
+            {% else %}
+            <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30">
+                <i data-lucide="check" class="h-3 w-3"></i> No high/critical issues
+            </span>
+            {% endif %}
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-border">
+            {# Conformance side #}
+            <div class="p-5">
+                <div class="flex items-center justify-between">
+                    <p class="text-xs font-medium uppercase tracking-wider text-muted-foreground">Conformance</p>
+                    {% if import_review.conformance %}
+                    <a href="{{ url_for('solution_design.solution_review_packet', solution_id=import_review.conformance.solution_id) }}"
+                       class="text-xs text-primary hover:underline">Review packet →</a>
+                    {% endif %}
+                </div>
+                {% if import_review.conformance %}
+                <p class="text-3xl font-bold mt-1 {% if import_review.conformance.score >= 80 %}text-emerald-600{% elif import_review.conformance.score >= 50 %}text-amber-600{% else %}text-destructive{% endif %}">
+                    {{ import_review.conformance.score }}<span class="text-sm text-muted-foreground">/100</span></p>
+                <p class="text-xs text-muted-foreground">{{ import_review.conformance.flagged }} flagged finding{{ '' if import_review.conformance.flagged == 1 else 's' }}</p>
+                <ul class="mt-3 space-y-1.5">
+                    {% for f in import_review.conformance.findings %}
+                    <li class="flex items-start gap-2 text-xs">
+                        <span class="mt-0.5 inline-block w-1.5 h-1.5 rounded-full shrink-0 {% if f.severity in ['critical','high'] %}bg-destructive{% else %}bg-muted-foreground/50{% endif %}"></span>
+                        <span class="text-foreground">{{ f.title }}</span>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="text-sm text-muted-foreground mt-2">No conformance review recorded.</p>
+                {% endif %}
+            </div>
+            {# Stewardship side #}
+            <div class="p-5">
+                <div class="flex items-center justify-between">
+                    <p class="text-xs font-medium uppercase tracking-wider text-muted-foreground">Data stewardship</p>
+                    <a href="{{ url_for('solution_design.data_stewardship') }}" class="text-xs text-primary hover:underline">Open stewardship →</a>
+                </div>
+                {% if import_review.stewardship %}
+                <p class="text-3xl font-bold mt-1 text-foreground">{{ import_review.stewardship.finding_count }}<span class="text-sm text-muted-foreground"> finding{{ '' if import_review.stewardship.finding_count == 1 else 's' }}</span></p>
+                <p class="text-xs text-muted-foreground">{{ import_review.stewardship.flagged }} flagged</p>
+                <ul class="mt-3 space-y-1.5">
+                    {% for f in import_review.stewardship.findings %}
+                    <li class="flex items-start gap-2 text-xs">
+                        <span class="mt-0.5 inline-block w-1.5 h-1.5 rounded-full shrink-0 {% if f.severity in ['critical','high'] %}bg-destructive{% else %}bg-muted-foreground/50{% endif %}"></span>
+                        <span class="text-foreground">{{ f.title }}</span>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="text-sm text-muted-foreground mt-2">No stewardship review recorded.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {# ── Drift History (only shown on /drift page) ───────────────── #}
+    {% if show_drift %}
+    <div class="mt-6 border border-border rounded-xl bg-card overflow-hidden" data-testid="drift-history">
+        <div class="flex items-center justify-between px-5 py-4 border-b border-border">
+            <div>
+                <h2 class="text-sm font-semibold text-foreground">Drift History</h2>
+                <p class="text-xs text-muted-foreground mt-0.5">All governance snapshots, most recent first</p>
+            </div>
+            <div class="flex items-center gap-2">
+                <a href="{{ url_for('solution_design.programme_cockpit', initiative_id=rollup.programme.id) }}"
+                   class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border border-border bg-background hover:bg-accent">
+                    ← Back to Cockpit
+                </a>
+                <button type="button" id="js-take-snapshot-btn"
+                        class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border border-input bg-background hover:bg-accent">
+                    Take Snapshot
+                </button>
+            </div>
+        </div>
+        {% if snapshots %}
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-border text-sm">
+                <thead class="bg-muted/30">
+                    <tr>
+                        <th class="px-5 py-2 text-left text-xs font-medium text-muted-foreground uppercase">Date</th>
+                        <th class="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase">Clean-Core Score</th>
+                        <th class="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase">Baseline Systems</th>
+                        <th class="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase">Drift Flagged</th>
+                        <th class="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase">Drift Reasons</th>
+                        <th class="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase">Source</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-border">
+                    {% for snap in snapshots %}
+                    <tr class="hover:bg-accent/40">
+                        <td class="px-5 py-2.5 text-muted-foreground whitespace-nowrap">{{ snap.taken_at[:19].replace('T', ' ') if snap.taken_at else '—' }}</td>
+                        <td class="px-3 py-2.5">
+                            {% if snap.clean_core_score is not none %}
+                            <span class="font-semibold
+                                {% if snap.clean_core_score >= 70 %}text-emerald-600
+                                {% elif snap.clean_core_score >= 40 %}text-amber-600
+                                {% else %}text-destructive{% endif %}">
+                                {{ snap.clean_core_score }}%
+                            </span>
+                            {% else %}—{% endif %}
+                        </td>
+                        <td class="px-3 py-2.5 text-foreground">{{ snap.baseline_app_count or '—' }}</td>
+                        <td class="px-3 py-2.5">
+                            {% if snap.drift and snap.drift.flagged %}
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive border border-destructive/30">Drifted</span>
+                            {% else %}
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30">Clean</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-3 py-2.5 text-muted-foreground text-xs">
+                            {% if snap.drift and snap.drift.reasons %}
+                            {{ snap.drift.reasons | join('; ') }}
+                            {% else %}—{% endif %}
+                        </td>
+                        <td class="px-3 py-2.5 text-muted-foreground">{{ snap.source or '—' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="px-5 py-10 text-center text-sm text-muted-foreground">
+            No snapshots captured yet. Use "Take Snapshot" to record the current governance state.
+        </div>
+        {% endif %}
+    </div>
+    <script>
+    document.getElementById('js-take-snapshot-btn').addEventListener('click', async function() {
+        this.disabled = true;
+        this.textContent = 'Capturing…';
+        const csrf = document.querySelector('meta[name=csrf-token]')?.content || '';
+        try {
+            const r = await fetch('/solutions/programmes/{{ rollup.programme.id }}/api/snapshot', {
+                method: 'POST', headers: { 'X-CSRFToken': csrf }
+            });
+            if (r.ok) { window.location.reload(); }
+            else { Platform.toast.error('Snapshot failed'); this.disabled = false; this.textContent = 'Take Snapshot'; }
+        } catch(e) { Platform.toast.error('Snapshot failed'); this.disabled = false; this.textContent = 'Take Snapshot'; }
+    });
+    </script>
+    {% endif %}
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
+        {# ── Member solutions ───────────────────────────────────────── #}
+        <div class="lg:col-span-2 border border-border rounded-xl bg-card overflow-hidden">
+            <div class="px-5 py-3 border-b border-border flex items-center justify-between">
+                <h2 class="text-sm font-semibold text-foreground">Member Solutions</h2>
+                <div class="flex items-center gap-2" @click.outside="pickerOpen = false">
+                    <div class="relative">
+                        <input type="text" x-model="pickerQuery" @input.debounce.300ms="searchSolutions()"
+                               @focus="searchSolutions()"
+                               placeholder="Add solution — search…"
+                               class="h-8 w-56 rounded-md border border-input bg-background px-3 text-xs">
+                        <div x-cloak x-show="pickerOpen && pickerResults.length"
+                             class="absolute right-0 top-9 z-20 w-72 border border-border rounded-md bg-popover shadow-md max-h-56 overflow-y-auto divide-y divide-border">
+                            <template x-for="s in pickerResults" :key="s.id">
+                                <button type="button" @click="assignSolution(s.id)"
+                                        class="w-full text-left px-3 py-2 hover:bg-accent">
+                                    <span class="text-xs font-medium text-foreground" x-text="s.name"></span>
+                                    <span class="text-[10px] text-muted-foreground ml-2"
+                                          x-text="'Phase ' + (s.adm_phase || '?') + ' · ' + s.governance_status"></span>
+                                </button>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% if rollup.members %}
+            <table class="min-w-full divide-y divide-border text-sm">
+                <thead class="bg-muted/30">
+                    <tr>
+                        <th class="px-5 py-2 text-left text-xs font-medium text-muted-foreground uppercase">Solution</th>
+                        <th class="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase">Phase</th>
+                        <th class="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase">Governance</th>
+                        <th class="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase">Maturity</th>
+                        <th class="px-3 py-2"></th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-border">
+                    {% for m in rollup.members %}
+                    <tr class="hover:bg-accent/40">
+                        <td class="px-5 py-2.5">
+                            <a href="/solutions/{{ m.id }}" class="text-foreground hover:text-primary font-medium">{{ m.name }}</a>
+                        </td>
+                        <td class="px-3 py-2.5 text-muted-foreground">{{ m.adm_phase or '—' }}</td>
+                        <td class="px-3 py-2.5">
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium
+                                {% if m.governance_status == 'approved' %}bg-emerald-500/10 text-emerald-600 border border-emerald-500/30
+                                {% elif m.governance_status in ('arb_review', 'under_review') %}bg-amber-500/10 text-amber-600 border border-amber-500/30
+                                {% elif m.governance_status == 'rejected' %}bg-destructive/10 text-destructive border border-destructive/30
+                                {% else %}bg-muted text-muted-foreground border border-border{% endif %}">
+                                {{ m.governance_status | replace('_', ' ') | title }}
+                            </span>
+                        </td>
+                        <td class="px-3 py-2.5">
+                            <div class="flex items-center gap-2">
+                                <div class="w-16 h-1.5 rounded-full bg-muted overflow-hidden">
+                                    <div class="h-full bg-primary" style="width: {{ m.maturity }}%"></div>
+                                </div>
+                                <span class="text-xs text-muted-foreground">{{ m.maturity }}%</span>
+                            </div>
+                        </td>
+                        <td class="px-3 py-2.5 text-right">
+                            <button type="button" @click="unassignSolution({{ m.id }})"
+                                    class="text-muted-foreground hover:text-destructive" aria-label="Remove from programme">
+                                <i data-lucide="x" class="h-3.5 w-3.5"></i>
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="px-5 py-10 text-center text-sm text-muted-foreground">
+                No solutions assigned yet — use the search box above to add the in-flight solutions this programme governs.
+            </div>
+            {% endif %}
+        </div>
+
+        {# ── Right rail: fit-gap + risks + waves + vendors ───────────── #}
+        <div class="space-y-6">
+            <div class="border border-border rounded-xl bg-card p-5">
+                <h2 class="text-sm font-semibold text-foreground mb-3">Fit-Gap Breakdown</h2>
+                {% if rollup.fit_gap.total %}
+                <div class="space-y-2">
+                    {% for ft, n in rollup.fit_gap.counts | dictsort %}
+                    <div class="flex items-center justify-between text-xs">
+                        <span class="text-muted-foreground">{{ ft | replace('_', ' ') | title }}</span>
+                        <div class="flex items-center gap-2">
+                            <div class="w-24 h-1.5 rounded-full bg-muted overflow-hidden">
+                                <div class="h-full {% if ft in ('standard', 'configuration') %}bg-emerald-500{% elif ft in ('extension', 'isv_solution') %}bg-amber-500{% else %}bg-destructive{% endif %}"
+                                     style="width: {{ (n / rollup.fit_gap.total * 100) | round }}%"></div>
+                            </div>
+                            <span class="font-medium text-foreground w-6 text-right">{{ n }}</span>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-xs text-muted-foreground">No fit-gap entries on member solutions yet.</p>
+                {% endif %}
+            </div>
+
+            <div class="border border-border rounded-xl bg-card p-5">
+                <h2 class="text-sm font-semibold text-foreground mb-3">ARB Pipeline</h2>
+                <div class="space-y-2">
+                    {% for stage, label in [('draft', 'Draft'), ('arb_review', 'Submitted'), ('under_review', 'Under Review'), ('approved', 'Approved'), ('rejected', 'Rejected')] %}
+                    <div class="flex items-center justify-between text-xs">
+                        <span class="text-muted-foreground">{{ label }}</span>
+                        <span class="font-medium text-foreground">{{ rollup.arb_pipeline[stage] }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            {% if rollup.waves %}
+            <div class="border border-border rounded-xl bg-card p-5">
+                <h2 class="text-sm font-semibold text-foreground mb-3">Transition Waves</h2>
+                <ol class="space-y-2">
+                    {% for w in rollup.waves %}
+                    <li class="flex items-start gap-2 text-xs">
+                        <span class="shrink-0 w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center font-semibold">{{ loop.index }}</span>
+                        <div>
+                            <p class="text-foreground font-medium">{{ w.name }}</p>
+                            <p class="text-muted-foreground">{{ w.solution_name }}{% if w.target_date %} · {{ w.target_date }}{% endif %}</p>
+                        </div>
+                    </li>
+                    {% endfor %}
+                </ol>
+            </div>
+            {% endif %}
+
+            {# PROG-005: governance trend + drift #}
+            <div class="border border-border rounded-xl bg-card p-5" data-testid="trend-panel"
+                 x-data="trendPanel({{ rollup.programme.id }})" x-init="load()">
+                <div class="flex items-center justify-between mb-3">
+                    <h2 class="text-sm font-semibold text-foreground">Governance Trend</h2>
+                    <button type="button" @click="takeSnapshot()" :disabled="busy"
+                            class="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md border border-input bg-background hover:bg-accent disabled:opacity-50">
+                        <span x-text="busy ? 'Capturing…' : 'Take Snapshot'"></span>
+                    </button>
+                </div>
+                <template x-if="snapshots.length">
+                    <ol class="space-y-2">
+                        <template x-for="s in snapshots.slice(0, 6)" :key="s.id">
+                            <li class="flex items-start gap-2 text-xs">
+                                <span class="shrink-0 mt-0.5 w-2 h-2 rounded-full"
+                                      :class="s.drift && s.drift.flagged ? 'bg-destructive' : 'bg-emerald-500'"></span>
+                                <div class="min-w-0">
+                                    <p class="text-foreground">
+                                        <span class="font-semibold" x-text="(s.clean_core_score ?? '—') + (s.clean_core_score != null ? '%' : '')"></span>
+                                        <span class="text-muted-foreground" x-text="' clean-core · ' + s.baseline_app_count + ' baseline systems · ' + s.source"></span>
+                                    </p>
+                                    <p class="text-muted-foreground" x-text="new Date(s.taken_at).toLocaleString()"></p>
+                                    <template x-if="s.drift && s.drift.flagged">
+                                        <p class="text-destructive" x-text="(s.drift.reasons || []).join('; ')"></p>
+                                    </template>
+                                </div>
+                            </li>
+                        </template>
+                    </ol>
+                </template>
+                <p x-cloak x-show="!snapshots.length" class="text-xs text-muted-foreground">
+                    No snapshots yet — captured automatically on landscape imports, or take one now.
+                </p>
+            </div>
+
+            {% if rollup.vendors %}
+            <div class="border border-border rounded-xl bg-card p-5">
+                <h2 class="text-sm font-semibold text-foreground mb-3">Vendor Footprint</h2>
+                <div class="flex flex-wrap gap-1.5">
+                    {% for v in rollup.vendors %}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs bg-muted text-muted-foreground border border-border">
+                        {{ v.name }} <span class="ml-1 text-foreground font-medium">{{ v.count }}</span>
+                    </span>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_head_js %}
+<script>
+    function trendPanel(programmeId) {
+        return {
+            programmeId: programmeId,
+            snapshots: [],
+            busy: false,
+            _csrf() { return document.querySelector('meta[name=csrf-token]')?.content || ''; },
+            async load() {
+                try {
+                    const r = await fetch('/solutions/programmes/' + this.programmeId + '/api/snapshots');
+                    const d = await r.json();
+                    this.snapshots = d.snapshots || [];
+                } catch (e) { this.snapshots = []; }
+            },
+            async takeSnapshot() {
+                this.busy = true;
+                try {
+                    const r = await fetch('/solutions/programmes/' + this.programmeId + '/api/snapshot', {
+                        method: 'POST',
+                        headers: { 'X-CSRFToken': this._csrf() },
+                    });
+                    if (r.ok) { await this.load(); }
+                } finally { this.busy = false; }
+            },
+        };
+    }
+
+    function programmeCockpit(programmeId) {
+        return {
+            programmeId: programmeId,
+            pickerQuery: '',
+            pickerResults: [],
+            pickerOpen: false,
+            _csrf() { return document.querySelector('meta[name=csrf-token]')?.content || ''; },
+            async searchSolutions() {
+                const r = await fetch('/solutions/programmes/api/unassigned-solutions?q=' + encodeURIComponent(this.pickerQuery));
+                const d = await r.json();
+                this.pickerResults = d.results || [];
+                this.pickerOpen = true;
+            },
+            async assignSolution(solutionId) {
+                const r = await fetch('/solutions/programmes/' + this.programmeId + '/solutions', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this._csrf() },
+                    body: JSON.stringify({ solution_id: solutionId }),
+                });
+                const d = await r.json();
+                if (d.success) { window.location.reload(); }
+                else { Platform.toast.error(d.error || 'Assignment failed'); }
+            },
+            async unassignSolution(solutionId) {
+                if (!(await Platform.modal.confirm('Remove this solution from the programme? The solution itself is not deleted.'))) return;
+                const r = await fetch('/solutions/programmes/' + this.programmeId + '/solutions/' + solutionId, {
+                    method: 'DELETE',
+                    headers: { 'X-CSRFToken': this._csrf() },
+                });
+                const d = await r.json();
+                if (d.success) { window.location.reload(); }
+                else { Platform.toast.error(d.error || 'Removal failed'); }
+            },
+        };
+    }
+</script>
+{% endblock %}

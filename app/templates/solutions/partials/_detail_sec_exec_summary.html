@@ -1,0 +1,373 @@
+{# WARNING: THIS FILE IS NOT REGISTERED #}
+{# Partial: Executive Summary content (sec-1)
+   Included via {% call section_shell(...) %} — no <section>, header, or comment thread here.
+   All Alpine.js + Jinja variables in scope from parent solutionDetail() x-data. #}
+
+{# Read view — prototype: border-l-4 violet callout #}
+<div>
+    {% set _desc = solution.description %}
+    {% set _vp   = solution.business_value or solution.value_proposition %}
+    {% if _desc or _vp %}
+        <div class="border-l-4 border-l-violet-500 rounded-r-lg bg-card/50 px-5 py-4">
+            {% if _desc %}<p class="text-sm text-foreground/90 leading-relaxed{% if _vp %} mb-3{% endif %}">{{ _desc }}</p>{% endif %}
+            {% if _vp %}<p class="text-sm text-foreground/90 leading-relaxed">{{ _vp }}</p>{% endif %}
+        </div>
+    {% else %}
+        <p class="text-sm text-muted-foreground/60 italic">No executive summary defined. The executive summary captures the business problem, proposed solution approach, and expected outcomes for ARB review.
+            <a href="{{ url_for('solution_design.edit_solution', solution_id=solution.id) }}" class="text-primary hover:underline">Add one on the Edit page →</a>
+        </p>
+    {% endif %}
+</div>
+
+{# ── Action Cards: Smart Populate / Bootstrap / Refine Names ── #}
+{# Only show when solution has minimal data (first-use onboarding). Hide for clean read view. #}
+<div class="mt-6 space-y-3" x-show="drivers.length === 0 && goals.length === 0 && linkedCapabilities.length === 0 && linkedApplications.length === 0" x-cloak>
+
+    {# ── GUIDED WIZARD: 4-step first-use experience ── #}
+    <div x-show="wizardShouldShow() && !wizardDismissed" x-cloak>
+        <div class="rounded-xl border-2 border-primary/30 bg-primary/5 p-4">
+            <div class="flex items-center justify-between mb-3">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="rocket" class="w-4 h-4 text-primary" aria-hidden="true"></i>
+                    <h4 class="font-semibold text-foreground text-sm">Getting Started</h4>
+                </div>
+                <div class="flex items-center gap-2">
+                    <div class="flex items-center gap-0.5">
+                        <template x-for="s in [1,2,3,4]" :key="s">
+                            <button @click="wizardStep = s"
+                                    class="w-6 h-6 rounded-full text-[10px] font-bold transition-colors"
+                                    :class="s === wizardStep ? 'bg-primary text-primary-foreground' : s < wizardStep ? 'bg-emerald-500/15 text-emerald-700' : 'bg-muted text-muted-foreground'"
+                                    x-text="s"></button>
+                        </template>
+                    </div>
+                    <button aria-label="Close" @click="wizardDismiss()" class="text-muted-foreground hover:text-foreground">
+                        <i data-lucide="x" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                    </button>
+                </div>
+            </div>
+            <p class="text-xs text-muted-foreground mb-3">4 steps to a submission-ready solution.</p>
+
+            {# Step 1 #}
+            <div x-show="wizardStep === 1" class="rounded-lg border border-border p-3">
+                <h5 class="text-xs font-semibold mb-2">Step 1: Describe the Problem</h5>
+                <button @click="previewSmartDefaults()" :disabled="smartDefaultsLoading"
+                        class="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50">
+                    <i data-lucide="database" class="h-3 w-3" :class="smartDefaultsLoading && 'animate-spin'" aria-hidden="true"></i>
+                    <span x-text="smartDefaultsLoading ? 'Searching...' : 'Smart Populate'"></span>
+                </button>
+            </div>
+            {# Step 2 #}
+            <div x-show="wizardStep === 2" class="rounded-lg border border-border p-3">
+                <h5 class="text-xs font-semibold mb-2">Step 2: Map Capabilities</h5>
+                <div class="relative">
+                    <input type="text" x-model="capabilityPickerQuery"
+                           @input="capTreeVisible = true; if(capTreeAll.length === 0) { loadCapabilityTree() } else { filterCapabilityTree() }"
+                           placeholder="Search capabilities..."
+                           class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring">
+                </div>
+            </div>
+            {# Step 3 #}
+            <div x-show="wizardStep === 3" class="rounded-lg border border-border p-3">
+                <h5 class="text-xs font-semibold mb-2">Step 3: Link Applications</h5>
+                <div class="relative">
+                    <input type="text" x-model="appPickerQuery" @input="searchApplications()"
+                           @keydown.escape="appPickerOpen = false"
+                           placeholder="Search applications..." {# entity-picker-ok — wired to searchApplications() API #}
+                           class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring">
+                    <div x-show="appPickerOpen && appPickerResults.length > 0" x-cloak
+                         @click.outside="appPickerOpen = false"
+                         class="absolute z-50 mt-1 w-full max-h-36 overflow-y-auto rounded-md border border-border bg-popover shadow-md">
+                        <template x-for="app in appPickerResults.slice(0, 6)" :key="'qs-app-' + app.id">
+                            <button @click="addApplication(app)"
+                                    class="w-full flex items-start gap-2 px-2.5 py-1.5 text-xs text-left hover:bg-accent transition-colors">
+                                <i data-lucide="app-window" class="w-3.5 h-3.5 text-violet-500 shrink-0 mt-0.5" aria-hidden="true"></i>
+                                <span class="flex-1 truncate font-medium" x-text="app.name || app.app_name"></span>
+                            </button>
+                        </template>
+                    </div>
+                </div>
+            </div>
+            {# Step 4 #}
+            <div x-show="wizardStep === 4" class="rounded-lg border border-border p-3">
+                <h5 class="text-xs font-semibold mb-2">Step 4: Add Vendor Products</h5>
+                <div class="relative">
+                    <input type="text" x-model="vendorProductPickerQuery" @input="searchVendorProducts()"
+                           @keydown.escape="vendorProductPickerOpen = false"
+                           placeholder="Search vendor products..." {# entity-picker-ok — wired to searchVendorProducts() API #}
+                           class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring">
+                    <div x-show="vendorProductPickerOpen && vendorProductPickerResults.length > 0" x-cloak
+                         @click.outside="vendorProductPickerOpen = false"
+                         class="absolute z-50 mt-1 w-full max-h-36 overflow-y-auto rounded-md border border-border bg-popover shadow-md">
+                        <template x-for="vp in vendorProductPickerResults.slice(0, 6)" :key="'qs-vp-' + vp.id">
+                            <button @click="addVendorProduct(vp)"
+                                    class="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-left hover:bg-accent transition-colors">
+                                <i data-lucide="package" class="w-3.5 h-3.5 text-primary shrink-0" aria-hidden="true"></i>
+                                <span class="flex-1 truncate font-medium" x-text="vp.name || vp.product_name"></span>
+                            </button>
+                        </template>
+                    </div>
+                </div>
+            </div>
+
+            {# Wizard nav #}
+            <div class="flex items-center justify-between mt-3 pt-3 border-t border-border">
+                <button @click="wizardPrev()" x-show="wizardStep > 1"
+                        class="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium border border-border rounded-md hover:bg-accent">
+                    <i data-lucide="arrow-left" class="w-3 h-3" aria-hidden="true"></i> Prev
+                </button>
+                <span x-show="wizardStep === 1"></span>
+                <div class="flex items-center gap-2">
+                    <button @click="wizardDismiss()" class="text-[10px] text-muted-foreground hover:text-foreground">Skip</button>
+                    <button x-show="wizardStep < 4" @click="wizardNext()"
+                            class="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-primary text-primary-foreground rounded-md hover:bg-primary/90">
+                        Next <i data-lucide="arrow-right" class="w-3 h-3" aria-hidden="true"></i>
+                    </button>
+                    <button x-show="wizardStep === 4" @click="wizardDismiss()"
+                            class="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-emerald-600 text-white rounded-md hover:bg-emerald-700">
+                        <i data-lucide="check" class="w-3 h-3" aria-hidden="true"></i> Done
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# ── Smart Populate ── #}
+    <div x-show="!smartDefaultsDone" x-cloak>
+        <template x-if="!smartDefaultsPreview && !smartDefaultsDone">
+            <div class="rounded-xl border-2 border-dashed border-primary/40 bg-primary/5 p-4">
+                <div class="flex items-center gap-3">
+                    <div class="flex items-center justify-center w-9 h-9 rounded-lg bg-primary/10 shrink-0">
+                        <i data-lucide="database" class="h-5 w-5 text-primary" aria-hidden="true"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <h4 class="font-semibold text-sm text-foreground">Smart Populate</h4>
+                        <p class="text-xs text-muted-foreground mt-0.5">Find capabilities, apps, and vendor products from platform data.</p>
+                    </div>
+                    <button @click="previewSmartDefaults()" :disabled="smartDefaultsLoading"
+                            class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 shrink-0">
+                        <i data-lucide="search" class="h-3.5 w-3.5" :class="smartDefaultsLoading && 'animate-spin'" aria-hidden="true"></i>
+                        <span x-text="smartDefaultsLoading ? 'Searching...' : 'Populate'"></span>
+                    </button>
+                </div>
+            </div>
+        </template>
+
+        <template x-if="smartDefaultsPreview && !smartDefaultsDone">
+            <div class="rounded-xl border border-primary/30 bg-primary/5 p-4 space-y-3">
+                <div class="flex items-center justify-between">
+                    <h4 class="font-semibold text-sm text-foreground">Found real data to populate</h4>
+                    <span class="text-[10px] text-muted-foreground" x-text="smartDefaultsPreview.summary"></span>
+                </div>
+                <div class="flex flex-wrap gap-1.5">
+                    <template x-for="cap in (smartDefaultsPreview.capabilities || [])" :key="cap.id">
+                        <label class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium border cursor-pointer"
+                               :class="cap.selected ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30' : 'bg-muted/50 text-muted-foreground border-border line-through'">
+                            <input type="checkbox" x-model="cap.selected" class="h-2.5 w-2.5 rounded">
+                            <span x-text="cap.name"></span>
+                        </label>
+                    </template>
+                    <template x-for="app in (smartDefaultsPreview.applications || [])" :key="app.id">
+                        <label class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium border cursor-pointer"
+                               :class="app.selected ? 'bg-blue-500/10 text-blue-600 border-blue-500/30' : 'bg-muted/50 text-muted-foreground border-border line-through'">
+                            <input type="checkbox" x-model="app.selected" class="h-2.5 w-2.5 rounded">
+                            <span x-text="app.name"></span>
+                        </label>
+                    </template>
+                    <template x-for="vp in (smartDefaultsPreview.vendor_products || [])" :key="vp.id">
+                        <label class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium border cursor-pointer"
+                               :class="vp.selected ? 'bg-violet-500/10 text-violet-600 border-violet-500/30' : 'bg-muted/50 text-muted-foreground border-border line-through'">
+                            <input type="checkbox" x-model="vp.selected" class="h-2.5 w-2.5 rounded">
+                            <span x-text="vp.name"></span>
+                        </label>
+                    </template>
+                    <template x-for="drv in (smartDefaultsPreview.drivers || [])" :key="'d-' + drv.name">
+                        <label class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium border cursor-pointer"
+                               :class="drv.selected ? 'bg-amber-500/10 text-amber-600 border-amber-500/30' : 'bg-muted/50 text-muted-foreground border-border line-through'">
+                            <input type="checkbox" x-model="drv.selected" class="h-2.5 w-2.5 rounded">
+                            <span x-text="'Driver: ' + drv.name"></span>
+                        </label>
+                    </template>
+                    <template x-for="g in (smartDefaultsPreview.goals || [])" :key="'g-' + g.name">
+                        <label class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium border cursor-pointer"
+                               :class="g.selected ? 'bg-sky-500/10 text-sky-600 border-sky-500/30' : 'bg-muted/50 text-muted-foreground border-border line-through'">
+                            <input type="checkbox" x-model="g.selected" class="h-2.5 w-2.5 rounded">
+                            <span x-text="'Goal: ' + g.name"></span>
+                        </label>
+                    </template>
+                    <template x-for="c in (smartDefaultsPreview.constraints || [])" :key="'c-' + c.name">
+                        <label class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium border cursor-pointer"
+                               :class="c.selected ? 'bg-red-500/10 text-red-600 border-red-500/30' : 'bg-muted/50 text-muted-foreground border-border line-through'">
+                            <input type="checkbox" x-model="c.selected" class="h-2.5 w-2.5 rounded">
+                            <span x-text="'Constraint: ' + c.name"></span>
+                        </label>
+                    </template>
+                </div>
+                <div class="flex gap-2 pt-2 border-t border-primary/20">
+                    <button @click="applySmartDefaults()" :disabled="smartDefaultsLoading"
+                            class="px-3 py-1.5 text-xs font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50">
+                        <span x-text="smartDefaultsLoading ? 'Creating...' : 'Confirm'"></span>
+                    </button>
+                    <button @click="smartDefaultsPreview = null" class="px-3 py-1.5 text-xs font-medium border border-border rounded-lg hover:bg-accent">Cancel</button>
+                </div>
+            </div>
+        </template>
+
+        <template x-if="smartDefaultsDone">
+            <div class="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4">
+                <div class="flex items-center gap-2 mb-3">
+                    <i data-lucide="check-circle" class="h-5 w-5 text-emerald-500 shrink-0" aria-hidden="true"></i>
+                    <h4 class="font-semibold text-sm text-emerald-700">Populated</h4>
+                </div>
+                <template x-if="smartDefaultsResult">
+                    <div class="flex flex-wrap gap-2 mb-3 text-xs">
+                        <span x-show="smartDefaultsResult.capabilities > 0" class="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-600"><span x-text="smartDefaultsResult.capabilities"></span> cap</span>
+                        <span x-show="smartDefaultsResult.applications > 0" class="px-2 py-0.5 rounded bg-blue-500/10 text-blue-600"><span x-text="smartDefaultsResult.applications"></span> app</span>
+                        <span x-show="smartDefaultsResult.vendor_products > 0" class="px-2 py-0.5 rounded bg-violet-500/10 text-violet-600"><span x-text="smartDefaultsResult.vendor_products"></span> vp</span>
+                    </div>
+                </template>
+                <div class="flex gap-2">
+                    <button @click="reloadAfterSmartDefaults()" class="px-3 py-1.5 text-xs font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90">View Results</button>
+                    <button @click="revertSmartDefaults()" :disabled="smartDefaultsLoading || !smartDefaultsCreatedIds"
+                            class="px-3 py-1.5 text-xs font-medium border border-destructive/30 text-destructive rounded-lg hover:bg-destructive/10 disabled:opacity-50">
+                        <span x-text="smartDefaultsLoading ? 'Reverting...' : 'Revert'"></span>
+                    </button>
+                </div>
+            </div>
+        </template>
+
+        <template x-if="smartDefaultsError">
+            <div class="text-xs text-destructive flex items-center gap-2 mt-2">
+                <i data-lucide="alert-circle" class="h-3.5 w-3.5" aria-hidden="true"></i>
+                <span x-text="smartDefaultsError"></span>
+                <button @click="smartDefaultsError = null" class="underline ml-1">dismiss</button>
+            </div>
+        </template>
+    </div>
+
+    {# ── Bootstrap Architecture ── #}
+    <div x-data="{ bootstrapPreview: null, bootstrapLoading: false, bootstrapDone: false, bootstrapError: null }"
+         x-show="!bootstrapDone" x-cloak>
+        <template x-if="!bootstrapPreview && !bootstrapDone">
+            <div class="rounded-xl border-2 border-dashed border-amber-500/40 bg-amber-500/5 p-4">
+                <div class="flex items-center gap-3">
+                    <div class="flex items-center justify-center w-9 h-9 rounded-lg bg-amber-500/10 shrink-0">
+                        <i data-lucide="sparkles" class="h-5 w-5 text-amber-600" aria-hidden="true"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <h4 class="font-semibold text-sm text-foreground">Bootstrap Architecture</h4>
+                        <p class="text-xs text-muted-foreground mt-0.5">Generate a full chain from the solution description.</p>
+                    </div>
+                    <button @click="bootstrapLoading = true; (window.Platform ? Platform.fetch : fetch)('/api/solutions/{{ solution.id }}/bootstrap-architecture', {method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''}, body: JSON.stringify({dry_run: true})}).then(r => r.json ? r.json() : r).then(d => { bootstrapPreview = d; bootstrapLoading = false; }).catch(e => { bootstrapError = e.message; bootstrapLoading = false; })"
+                            :disabled="bootstrapLoading"
+                            class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-amber-500 text-white rounded-lg hover:bg-amber-600 disabled:opacity-50 shrink-0">
+                        <i data-lucide="zap" class="h-3.5 w-3.5" :class="bootstrapLoading && 'animate-spin'" aria-hidden="true"></i>
+                        <span x-text="bootstrapLoading ? 'Analyzing...' : 'Bootstrap'"></span>
+                    </button>
+                </div>
+            </div>
+        </template>
+
+        <template x-if="bootstrapPreview && !bootstrapDone">
+            <div class="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 space-y-3">
+                <h4 class="font-semibold text-sm text-amber-700">Would create <span x-text="bootstrapPreview.count"></span> elements</h4>
+                <div class="flex flex-wrap gap-1.5">
+                    <template x-for="item in (bootstrapPreview.would_create || [])" :key="item.type + item.name">
+                        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium border border-border bg-background"
+                              x-text="item.type"></span>
+                    </template>
+                </div>
+                <div class="flex gap-2 pt-2 border-t border-amber-500/20">
+                    <button @click="bootstrapLoading = true; (window.Platform ? Platform.fetch : fetch)('/api/solutions/{{ solution.id }}/bootstrap-architecture', {method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''}, body: JSON.stringify({dry_run: false})}).then(r => r.json ? r.json() : r).then(d => { if (d.error) { bootstrapError = d.error; } else { bootstrapDone = true; setTimeout(() => window.location.reload(), 1000); } bootstrapLoading = false; }).catch(e => { bootstrapError = e.message; bootstrapLoading = false; })"
+                            :disabled="bootstrapLoading"
+                            class="px-3 py-1.5 text-xs font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50">
+                        <span x-text="bootstrapLoading ? 'Creating...' : 'Confirm'"></span>
+                    </button>
+                    <button @click="bootstrapPreview = null" class="px-3 py-1.5 text-xs font-medium border border-border rounded-lg hover:bg-accent">Cancel</button>
+                </div>
+            </div>
+        </template>
+
+        <template x-if="bootstrapDone">
+            <div class="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4 text-center">
+                <i data-lucide="check-circle" class="h-6 w-6 text-emerald-500 mx-auto mb-1" aria-hidden="true"></i>
+                <p class="text-xs font-semibold text-emerald-700">Bootstrapped. Reloading...</p>
+            </div>
+        </template>
+
+        <template x-if="bootstrapError">
+            <div class="text-xs text-destructive flex items-center gap-2 mt-2">
+                <i data-lucide="alert-circle" class="h-3.5 w-3.5" aria-hidden="true"></i>
+                <span x-text="bootstrapError"></span>
+                <button @click="bootstrapError = null" class="underline ml-1">dismiss</button>
+            </div>
+        </template>
+    </div>
+
+    {# ── Refine Element Names ── #}
+    <div x-data="{ refinePreview: null, refineLoading: false, refineDone: false, refineError: null }"
+         x-show="!refineDone" x-cloak>
+        <template x-if="!refinePreview && !refineDone">
+            <div class="rounded-xl border border-dashed border-violet-500/40 bg-violet-500/5 p-3">
+                <div class="flex items-center gap-3">
+                    <div class="flex items-center justify-center w-8 h-8 rounded-lg bg-violet-500/10 shrink-0">
+                        <i data-lucide="wand-2" class="h-4 w-4 text-violet-600" aria-hidden="true"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <h4 class="font-semibold text-xs text-foreground">Refine Element Names</h4>
+                        <p class="text-[10px] text-muted-foreground">AI-improve auto-generated names.</p>
+                    </div>
+                    <button @click="refineLoading = true; (window.Platform ? Platform.fetch : fetch)('/api/solutions/{{ solution.id }}/refine-names', {method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''}, body: JSON.stringify({dry_run: true})}).then(r => r.json ? r.json() : r).then(d => { refinePreview = d; refineLoading = false; }).catch(e => { refineError = e.message; refineLoading = false; })"
+                            :disabled="refineLoading"
+                            class="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium bg-violet-500 text-white rounded-lg hover:bg-violet-600 disabled:opacity-50 shrink-0">
+                        <i data-lucide="wand-2" class="h-3 w-3" :class="refineLoading && 'animate-spin'" aria-hidden="true"></i>
+                        <span x-text="refineLoading ? 'Analyzing...' : 'Refine'"></span>
+                    </button>
+                </div>
+            </div>
+        </template>
+
+        <template x-if="refinePreview && !refineDone">
+            <div class="rounded-xl border border-violet-500/30 bg-violet-500/5 p-4 space-y-3">
+                <h4 class="font-semibold text-sm text-violet-700"><span x-text="refinePreview.total"></span> elements to refine</h4>
+                <div class="space-y-1.5 max-h-48 overflow-y-auto">
+                    <template x-for="item in (refinePreview.refined || [])" :key="item.id">
+                        <div class="flex items-start gap-2 text-[10px] p-1.5 rounded bg-background border border-border">
+                            <span class="px-1 py-0.5 rounded bg-violet-500/10 text-violet-600 font-medium shrink-0" x-text="item.type"></span>
+                            <div class="min-w-0 flex-1">
+                                <p class="text-muted-foreground line-through" x-text="item.before"></p>
+                                <p class="font-medium text-foreground" x-text="item.after"></p>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+                <template x-if="refinePreview.total === 0">
+                    <p class="text-xs text-muted-foreground">All names look good.</p>
+                </template>
+                <div class="flex gap-2 pt-2 border-t border-violet-500/20" x-show="refinePreview.total > 0">
+                    <button @click="refineLoading = true; (window.Platform ? Platform.fetch : fetch)('/api/solutions/{{ solution.id }}/refine-names', {method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''}, body: JSON.stringify({dry_run: false})}).then(r => r.json ? r.json() : r).then(d => { if (d.error) { refineError = d.error; } else { refineDone = true; setTimeout(() => window.location.reload(), 1000); } refineLoading = false; }).catch(e => { refineError = e.message; refineLoading = false; })"
+                            :disabled="refineLoading"
+                            class="px-3 py-1.5 text-xs font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50">
+                        <span x-text="refineLoading ? 'Applying...' : 'Confirm'"></span>
+                    </button>
+                    <button @click="refinePreview = null" class="px-3 py-1.5 text-xs font-medium border border-border rounded-lg hover:bg-accent">Cancel</button>
+                </div>
+            </div>
+        </template>
+
+        <template x-if="refineDone">
+            <div class="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4 text-center">
+                <i data-lucide="check-circle" class="h-6 w-6 text-emerald-500 mx-auto mb-1" aria-hidden="true"></i>
+                <p class="text-xs font-semibold text-emerald-700">Names refined. Reloading...</p>
+            </div>
+        </template>
+
+        <template x-if="refineError">
+            <div class="text-xs text-destructive flex items-center gap-2 mt-2">
+                <i data-lucide="alert-circle" class="h-3.5 w-3.5" aria-hidden="true"></i>
+                <span x-text="refineError"></span>
+                <button @click="refineError = null" class="underline ml-1">dismiss</button>
+            </div>
+        </template>
+    </div>
+
+</div>{# end action cards #}

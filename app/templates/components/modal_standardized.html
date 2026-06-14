@@ -1,0 +1,151 @@
+{# Standardized Modal Template
+   
+   This template demonstrates the unified Platform.modal approach.
+   
+   Key principles:
+   - Platform.modal manages visibility using data modal attributes
+   - Alpine.js manages data and reactivity only
+   - No x-show on modal root elements
+   - Use data-modal-open and data-modal-close consistently
+   - CSRF tokens included in forms
+   
+   Usage:
+   {% include 'components/modal_standardized.html' %}
+#}
+
+{# Standardized Modal Structure #}
+<div id="my-modal" data-modal="my-modal" hidden role="dialog" aria-modal="true" aria-labelledby="my-modal-title" aria-describedby="my-modal-description">
+  <div class="modal-backdrop" data-modal-backdrop aria-hidden="true"></div>
+  
+  <div class="modal-panel flex items-center justify-center p-4 fixed inset-0 z-50">
+    <div class="bg-card rounded-lg shadow-xl w-full max-w-lg border flex flex-col max-h-[90vh]">
+      <!-- Header -->
+      <div class="flex items-center justify-between p-6 border-b shrink-0">
+        <div>
+          <h2 id="my-modal-title" class="text-lg font-semibold">Modal Title</h2>
+          <p id="my-modal-description" class="text-sm text-muted-foreground mt-0.5">Modal description</p>
+        </div>
+        <button data-modal-close="my-modal" aria-label="Close modal" class="h-8 w-8 rounded-md hover:bg-muted flex items-center justify-center">
+          <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
+        </button>
+      </div>
+      
+      <!-- Content with Alpine.js data management -->
+      <div class="p-6 overflow-y-auto flex-1">
+        <div x-data="myModalData()" x-init="init()">
+          <form @submit.prevent="submitForm()" class="space-y-4">
+            <!-- CSRF Token for security -->
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            
+            <!-- Form Content -->
+            <div class="space-y-4">
+              <div>
+                <label for="field-name" class="block text-sm font-medium mb-1">Field Label <span class="text-destructive" aria-hidden="true">*</span></label>
+                <input id="field-name" type="text" x-model="formData.name" required
+                  class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  placeholder="Enter value">
+              </div>
+              
+              <!-- Load more fields here -->
+            </div>
+            
+            <div x-show="errorMessage" x-cloak class="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-sm text-destructive" x-text="errorMessage" role="alert"></div>
+            
+            <!-- Actions -->
+            <div class="flex justify-end gap-3 pt-2 border-t">
+              <button type="button" data-modal-close="my-modal" 
+                class="px-4 py-2 text-sm font-medium rounded-md border border-input bg-background hover:bg-accent">
+                Cancel
+              </button>
+              <button type="submit" :disabled="submitting"
+                class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                <i data-lucide="loader-2" class="h-4 w-4 animate-spin" x-show="submitting" x-cloak aria-hidden="true"></i>
+                <span x-text="submitting ? 'Saving...' : 'Save'"></span>
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Example Alpine.js component for modal data management
+function myModalData() {
+  return {
+    formData: {
+      name: '',
+      // add other form fields
+    },
+    submitting: false,
+    errorMessage: null,
+    
+    init() {
+      // Hook into Platform.modal lifecycle for data initialization
+      Platform.modal.on('my-modal', 'open', (payload) => {
+        // Initialize form data here if needed
+        this.resetForm();
+      });
+      
+      Platform.modal.on('my-modal', 'close', (result) => {
+        // Cleanup data here
+        this.resetForm();
+      });
+    },
+    
+    resetForm() {
+      this.formData = { name: '' };
+      this.errorMessage = null;
+      this.submitting = false;
+    },
+    
+    async submitForm() {
+      if (this.submitting) return;
+      this.submitting = true;
+      this.errorMessage = null;
+      
+      try {
+        const formData = new FormData(this.$el.closest('form'));
+        const response = await fetch('/api/endpoint', {
+          method: 'POST',
+          body: formData,
+          headers: {
+            'X-CSRFToken': formData.get('csrf_token')
+          }
+        });
+        
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+        }
+        
+        const data = await response.json();
+        Platform.modal.close('my-modal', data); // Close modal with result
+        
+      } catch (error) {
+        console.error('Form submission error:', error);
+        this.errorMessage = error.message || 'An error occurred. Please try again.';
+      } finally {
+        this.submitting = false;
+      }
+    }
+  };
+}
+</script>
+
+{##
+# Guidelines for migrating existing modals:
+# 1. Remove x-show from modal root elements
+# 2. Replace @click="Platform.modal.close()" with data-modal-close
+# 3. Add hidden attribute to modal root
+# 4. Add CSRF tokens to forms
+# 5. Use Platform.modal lifecycle hooks instead of Alpine for modal events
+# 6. Keep Alpine for form data management and reactivity only
+#
+# Example migration:
+# BEFORE: <div [alpine-show]="open" id="my-modal">
+# AFTER:  <div hidden id="my-modal" data-modal="my-modal">
+#
+# BEFORE: <button @click="Platform.modal.close('my-modal')">
+# AFTER:  <button data-modal-close="my-modal">
+#}

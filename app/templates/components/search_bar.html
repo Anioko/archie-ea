@@ -1,0 +1,47 @@
+{# shadcn/ui Search Bar Component
+
+   A unified search bar with icon and optional filters.
+   
+   Usage:
+   {% from 'components/search_bar.html' import search_bar %}
+   
+   {{ search_bar(
+       placeholder='Search applications...',
+       model='searchQuery',
+       show_filter=true
+   ) }}
+#}
+
+{% macro search_bar(
+    id='search-bar',
+    placeholder='Search...',
+    model='searchQuery',
+    show_filter=false,
+    class=''
+) %}
+<div class="flex items-center gap-2 {{ class }}">
+    <div class="relative flex-1">
+        <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"></i>
+        <input 
+            id="{{ id }}"
+            type="text" 
+            x-model="{{ model }}"
+            placeholder="{{ placeholder }}"
+            class="flex h-10 w-full rounded-md border border-input bg-background pl-10 pr-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            aria-label="{{ placeholder }}"
+        />
+    </div>
+    
+    {% if show_filter %}
+    <button 
+        @click="showFilters = !showFilters"
+        class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium h-10 px-4 border border-input bg-background hover:bg-accent hover:text-accent-foreground"
+        aria-label="Toggle filters"
+        :aria-expanded="showFilters"
+    >
+        <i data-lucide="filter" class="h-4 w-4 mr-2"></i>
+        Filters
+    </button>
+    {% endif %}
+</div>
+{% endmacro %}

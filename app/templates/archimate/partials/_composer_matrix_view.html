@@ -1,0 +1,102 @@
+{# CMP-041: Matrix View — Cross-reference table between two element types #}
+<div x-show="matrixViewOpen" x-cloak
+     class="fixed inset-0 z-50 flex items-center justify-center"
+     role="dialog" aria-modal="true" aria-label="Matrix View"
+     @keydown.escape.window="matrixViewOpen = false"
+     @keydown.tab.prevent>
+    <div class="absolute inset-0 bg-black/50" @click="matrixViewOpen = false"></div>
+    <div class="relative bg-background border border-border rounded-lg shadow-xl w-[90vw] max-w-6xl max-h-[85vh] flex flex-col"
+         @click.stop>
+        {# Header #}
+        <div class="flex items-center justify-between px-6 py-4 border-b border-border">
+            <div class="flex items-center gap-3">
+                <i data-lucide="table-2" class="w-5 h-5 text-primary"></i>
+                <h2 class="text-lg font-semibold text-foreground">Matrix View</h2>
+            </div>
+            <div class="flex items-center gap-3">
+                <button class="inline-flex items-center gap-2 px-3 py-1.5 bg-muted text-foreground border border-border rounded-md text-sm font-medium hover:bg-accent transition-colors"
+                        @click="exportMatrixCsv()">
+                    <i data-lucide="download" class="w-3.5 h-3.5"></i> Export CSV
+                </button>
+                <button class="text-muted-foreground hover:text-foreground" @click="matrixViewOpen = false">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+        </div>
+
+        {# Type selectors #}
+        <div class="flex items-center gap-4 px-6 py-3 border-b border-border bg-muted/50">
+            <div class="flex items-center gap-2">
+                <label class="text-sm font-medium text-muted-foreground">Rows:</label>
+                <select class="px-3 py-1.5 bg-background border border-border rounded-md text-sm"
+                        x-model="matrixRowType" @change="fetchMatrix()">
+                    <option value="BusinessProcess">Business Process</option>
+                    <option value="BusinessFunction">Business Function</option>
+                    <option value="BusinessService">Business Service</option>
+                    <option value="BusinessActor">Business Actor</option>
+                    <option value="Capability">Capability</option>
+                </select>
+            </div>
+            <div class="flex items-center gap-2">
+                <label class="text-sm font-medium text-muted-foreground">Columns:</label>
+                <select class="px-3 py-1.5 bg-background border border-border rounded-md text-sm"
+                        x-model="matrixColType" @change="fetchMatrix()">
+                    <option value="ApplicationComponent">Application Component</option>
+                    <option value="ApplicationService">Application Service</option>
+                    <option value="DataObject">Data Object</option>
+                    <option value="Node">Node</option>
+                    <option value="SystemSoftware">System Software</option>
+                </select>
+            </div>
+            <span class="text-xs text-muted-foreground ml-auto"
+                  x-text="matrixRows.length + ' rows x ' + matrixCols.length + ' cols'"></span>
+        </div>
+
+        {# Matrix table #}
+        <div class="flex-1 overflow-auto p-4">
+            <template x-if="matrixLoading">
+                <div class="text-center py-12 text-muted-foreground">Loading matrix...</div>
+            </template>
+            <template x-if="!matrixLoading && matrixRows.length === 0">
+                <div class="text-center py-12 text-muted-foreground">
+                    No elements found for the selected types.
+                </div>
+            </template>
+            <template x-if="!matrixLoading && matrixRows.length > 0">
+                <div class="overflow-x-auto">
+                    <table class="min-w-full border-collapse text-sm">
+                        <thead>
+                            <tr>
+                                <th class="sticky left-0 z-10 bg-muted px-3 py-2 text-left font-semibold text-muted-foreground border border-border min-w-[180px]"
+                                    x-text="matrixRowType.replace(/([A-Z])/g, ' $1').trim()"></th>
+                                <template x-for="col in matrixCols" :key="col.id">
+                                    <th class="px-3 py-2 text-center font-medium text-foreground border border-border min-w-[120px] bg-muted"
+                                        style="writing-mode: vertical-lr; text-orientation: mixed; max-height: 140px;"
+                                        x-text="col.name"></th>
+                                </template>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <template x-for="row in matrixRows" :key="row.id">
+                                <tr>
+                                    <td class="sticky left-0 z-10 bg-background px-3 py-2 font-medium text-foreground border border-border"
+                                        x-text="row.name"></td>
+                                    <template x-for="col in matrixCols" :key="col.id">
+                                        <td class="px-2 py-1.5 text-center border border-border cursor-pointer hover:bg-accent/50 transition-colors"
+                                            :class="matrixCellType(row.id, col.id) ? 'bg-primary/10' : ''"
+                                            @click="matrixCellClick(row.id, col.id)"
+                                            :title="matrixCellType(row.id, col.id) || 'Click to create relationship'">
+                                            <span class="text-xs font-medium"
+                                                  :class="matrixCellType(row.id, col.id) ? 'text-primary' : 'text-muted-foreground/30'"
+                                                  x-text="matrixCellAbbrev(row.id, col.id)"></span>
+                                        </td>
+                                    </template>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </template>
+        </div>
+    </div>
+</div>

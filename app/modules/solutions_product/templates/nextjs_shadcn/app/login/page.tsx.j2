@@ -1,0 +1,166 @@
+{# app/login/page.tsx.j2 — Login page (jwt-local or OIDC dev mode) #}
+{# Context: solution_name, auth #}
+"use client"
+
+import { useState, FormEvent, Suspense } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
+import { Loader2, AlertCircle } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { toast } from "sonner"
+
+{% if base_path %}
+const BASE_PATH = "{{ base_path }}"
+{% else %}
+const BASE_PATH = ""
+{% endif %}
+
+function LoginPageContent() {
+  const router = useRouter()
+  const params = useSearchParams()
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
+  const [loading, setLoading] = useState(false)
+  const [failCount, setFailCount] = useState(0)
+  const [lockedUntil, setLockedUntil] = useState<number | null>(null)
+
+  const isLocked = lockedUntil !== null && Date.now() < lockedUntil
+  const MAX_ATTEMPTS = 5
+  const LOCKOUT_MS = 15 * 60 * 1000  // 15 minutes
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    if (isLocked) {
+      const mins = Math.ceil((lockedUntil! - Date.now()) / 60000)
+      toast.error("Account temporarily locked", {
+        description: `Too many failed attempts. Try again in ${mins} minute${mins !== 1 ? "s" : ""}.`,
+      })
+      return
+    }
+    if (!email{% if auth == "jwt-local" %} || !password{% endif %}) {
+      toast.error("Please fill in all fields")
+      return
+    }
+    setLoading(true)
+    try {
+      const res = await fetch(BASE_PATH + "/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        const newCount = failCount + 1
+        setFailCount(newCount)
+        if (newCount >= MAX_ATTEMPTS) {
+          setLockedUntil(Date.now() + LOCKOUT_MS)
+          toast.error("Account temporarily locked", {
+            description: "Too many failed attempts. Try again in 15 minutes.",
+          })
+        } else {
+          const remaining = MAX_ATTEMPTS - newCount
+          toast.error("Login failed", {
+            description: body.detail || `Invalid credentials. ${remaining} attempt${remaining !== 1 ? "s" : ""} remaining.`,
+          })
+        }
+        return
+      }
+      setFailCount(0)
+      setLockedUntil(null)
+      const { access_token, refresh_token } = await res.json()
+      localStorage.setItem("token", access_token)
+      if (refresh_token) localStorage.setItem("refresh_token", refresh_token)
+      document.cookie = `token=${access_token}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`
+      toast.success("Welcome back!")
+      // Redirect to ?from= param, always ensuring the BASE_PATH prefix is present
+      // so we stay inside the generated app and don't land on the ARCHIE platform.
+      const raw = params.get("from") || "/"
+      const dest = BASE_PATH && !raw.startsWith(BASE_PATH) ? BASE_PATH + raw : raw
+      window.location.href = dest
+    } catch {
+      toast.error("Connection error", { description: "Could not reach the server" })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-background p-4">
+      <Card className="w-full max-w-sm">
+        <CardHeader className="text-center">
+          <CardTitle className="text-2xl font-bold">{{ solution_name }}</CardTitle>
+          <CardDescription>Sign in to your account</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                placeholder="name@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                autoComplete="email"
+                required
+              />
+            </div>
+{% if auth == "jwt-local" %}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="password">Password</Label>
+                <a
+                  href={BASE_PATH + "/forgot-password"}
+                  className="text-xs text-muted-foreground hover:text-foreground underline-offset-4 hover:underline"
+                >
+                  Forgot password?
+                </a>
+              </div>
+              <Input
+                id="password"
+                type="password"
+                placeholder="Enter your password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="current-password"
+                required
+                disabled={isLocked}
+              />
+            </div>
+{% endif %}
+            {isLocked && (
+              <div className="flex items-center gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                <span>
+                  Too many failed attempts. Try again in{" "}
+                  {Math.ceil((lockedUntil! - Date.now()) / 60000)} minute(s).
+                </span>
+              </div>
+            )}
+            <Button type="submit" className="w-full" disabled={loading || isLocked}>
+              {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {loading ? "Signing in..." : "Sign in"}
+            </Button>
+{% if auth == "jwt-local" %}
+            {process.env.NODE_ENV === "development" && (
+              <p className="text-center text-xs text-muted-foreground">
+                Dev: admin@example.com / admin123
+              </p>
+            )}
+{% endif %}
+          </form>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginPageContent />
+    </Suspense>
+  )
+}

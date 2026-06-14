@@ -1,0 +1,102 @@
+{# shadcn/ui Skeleton Component
+   Standardized skeleton loading screens for data-heavy pages.
+
+   Usage:
+   {% from 'components/skeleton.html' import skeleton, skeleton_table, skeleton_list,
+      skeleton_text, skeleton_card, skeleton_avatar %}
+
+   Basic block:
+   {{ skeleton(class='h-8 w-full') }}
+
+   Table (applications list, vendor list):
+   <div x-show="loading" x-cloak>
+     {{ skeleton_table(rows=8, columns=5) }}
+   </div>
+
+   List (capability map):
+   <div x-show="loading" x-cloak>
+     {{ skeleton_list(rows=6) }}
+   </div>
+
+   Text lines:
+   {{ skeleton_text(lines=3) }}
+
+   Card:
+   {{ skeleton_card() }}
+#}
+
+{% macro skeleton(class='') %}
+<div class="animate-pulse rounded-md bg-muted {{ class }}" aria-hidden="true"></div>
+{% endmacro %}
+
+{# Configurable table skeleton — use for applications list, vendor list, etc. #}
+{% macro skeleton_table(rows=5, columns=4, class='') %}
+<div class="w-full rounded-lg border overflow-hidden {{ class }}" role="status" aria-label="Loading table data">
+    <span class="sr-only">Loading…</span>
+    {# Header row #}
+    <div class="border-b bg-muted/50 px-4 py-3">
+        <div class="flex items-center gap-4">
+            {% for c in range(columns) %}
+            <div class="h-4 bg-muted rounded animate-pulse {% if loop.first %}w-1/4{% elif loop.last %}w-16{% else %}flex-1{% endif %}"></div>
+            {% endfor %}
+        </div>
+    </div>
+    {# Data rows #}
+    {% for r in range(rows) %}
+    <div class="border-b px-4 py-3 {% if r % 2 == 0 %}bg-background{% else %}bg-muted/10{% endif %}">
+        <div class="flex items-center gap-4">
+            {% for c in range(columns) %}
+            <div class="h-4 bg-muted rounded animate-pulse {% if loop.first %}w-1/4{% elif loop.last %}w-16{% else %}flex-1{% endif %}"></div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endmacro %}
+
+{# Configurable list skeleton — use for capability map, sidebar lists, etc. #}
+{% macro skeleton_list(rows=5, class='') %}
+<div class="space-y-2 {{ class }}" role="status" aria-label="Loading list">
+    <span class="sr-only">Loading…</span>
+    {% for r in range(rows) %}
+    <div class="flex items-center gap-3 rounded-md border bg-card px-4 py-3">
+        <div class="h-8 w-8 rounded-full bg-muted animate-pulse shrink-0"></div>
+        <div class="flex-1 space-y-1.5">
+            <div class="h-4 bg-muted rounded animate-pulse w-1/2"></div>
+            <div class="h-3 bg-muted rounded animate-pulse w-3/4"></div>
+        </div>
+        <div class="h-6 w-16 bg-muted rounded animate-pulse shrink-0"></div>
+    </div>
+    {% endfor %}
+</div>
+{% endmacro %}
+
+{% macro skeleton_text(lines=3, class='') %}
+<div class="space-y-2 {{ class }}" role="status" aria-label="Loading text">
+    <span class="sr-only">Loading…</span>
+    {% for i in range(lines) %}
+    <div class="h-4 bg-muted rounded animate-pulse {% if loop.last and lines > 1 %}w-4/5{% else %}w-full{% endif %}"></div>
+    {% endfor %}
+</div>
+{% endmacro %}
+
+{% macro skeleton_card(class='') %}
+<div class="rounded-lg border bg-card p-6 {{ class }}" role="status" aria-label="Loading card">
+    <span class="sr-only">Loading…</span>
+    <div class="space-y-3">
+        <div class="h-4 bg-muted rounded animate-pulse w-1/2"></div>
+        <div class="h-4 bg-muted rounded animate-pulse"></div>
+        <div class="h-4 bg-muted rounded animate-pulse w-4/5"></div>
+    </div>
+</div>
+{% endmacro %}
+
+{% macro skeleton_avatar(size='default', class='') %}
+{% set sizes = {
+    'sm': 'h-8 w-8',
+    'default': 'h-10 w-10',
+    'lg': 'h-12 w-12',
+    'xl': 'h-16 w-16'
+} %}
+<div class="rounded-full bg-muted animate-pulse {{ sizes[size] }} {{ class }}" aria-hidden="true"></div>
+{% endmacro %}

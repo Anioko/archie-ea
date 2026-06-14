@@ -1,0 +1,518 @@
+{% extends "layouts/admin_base.html" %}
+{% from "components/page_header.html" import page_header %}
+{% from 'components/status_badge.html' import status_badge %}
+{% from 'components/data_card.html' import data_card %}
+{% from 'components/modal.html' import modal %}
+{% from 'components/card.html' import card, card_header, card_title, card_description, card_content %}
+
+{% block title %}ARB Dashboard{% endblock %}
+
+{% block guided_mode_steps %}
+<script id="guided-mode-steps-data" type="application/json">
+[
+  {"title": "Step 1 — Pending Reviews", "text": "The queue shows submissions awaiting ARB decision. Click a submission to open the full blueprint."},
+  {"title": "Step 2 — Decision Actions", "text": "Use 'Approve', 'Approve with Conditions', or 'Reject' buttons inside the submission detail view."},
+  {"title": "Step 3 — Sessions", "text": "ARB Sessions group decisions by meeting date. Navigate to /arb/sessions to see the session calendar."}
+]
+</script>
+{% endblock %}
+
+{% from 'components/inline_hint.html' import inline_hint %}
+{% block page_hint %}
+{{ inline_hint(
+    hint_id='arb_dashboard',
+    text='This is the ARB governance hub. Reviewers action submissions; solution architects track their submissions here.',
+    action_text='View pending reviews',
+    action_href='/arb/reviews'
+) }}
+{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+    {{ page_header(
+        title='Architecture Review Board',
+        description='Governance overview and decision tracking',
+        breadcrumbs=[
+            {'label': 'Dashboard', 'href': url_for('main.index')},
+            {'label': 'Governance'},
+            {'label': 'ARB Dashboard'}
+        ],
+        actions=[
+            {'text': 'Sessions', 'icon': 'calendar', 'href': url_for('arb.sessions'), 'variant': 'outline'},
+            {'text': 'Reviews', 'icon': 'clipboard-list', 'href': url_for('arb.reviews'), 'variant': 'outline'},
+            {'text': 'New Review', 'icon': 'plus', 'onclick': "Platform.modal.open('create-arb-review')", 'variant': 'default'}
+        ]
+    ) }}
+
+    <!-- Summary Metrics -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {{ data_card(icon='clipboard-list', icon_color='blue', value=dashboard_data.metrics.total_items, label='Total Reviews', subtitle='All review items') }}
+        {{ data_card(icon='clock', icon_color='amber', value=dashboard_data.metrics.pending_items, label='Pending', subtitle='Awaiting decision') }}
+        {{ data_card(icon='check-circle', icon_color='green', value=dashboard_data.metrics.approved_items, label='Approved', subtitle='Decisions made') }}
+        {{ data_card(icon='trending-up', icon_color='purple', value=("%.1f"|format(dashboard_data.metrics.approval_rate)) ~ '%', label='Approval Rate', subtitle='Of completed reviews') }}
+    </div>
+
+    <!-- Analytics Summary -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {{ data_card(icon='timer', icon_color='cyan', value=("%.1f"|format(cycle_time.avg_days)) ~ ' days', label='Cycle Time', subtitle='Average review time') }}
+        {{ data_card(icon='alert-triangle', icon_color='red', value=overdue_items|length, label='Overdue Items', subtitle='Requiring attention') }}
+        {{ data_card(icon='shield-check', icon_color='indigo', value=standards_summary.mandatory_count ~ '/' ~ standards_summary.total_standards, label='Standards Compliance', subtitle='Mandatory standards') }}
+    </div>
+
+    <!-- Status Breakdown (PH-011-06) -->
+    <div class="bg-card border border-border rounded-lg p-6 shadow-sm">
+        <h2 class="text-base font-semibold text-foreground mb-4">Review Status Overview</h2>
+        <div class="flex items-center gap-6 flex-wrap">
+            <div class="flex-1 min-w-[200px]">
+                <canvas id="arbStatusChart" height="160"></canvas>
+            </div>
+            <div class="space-y-2 text-sm min-w-[180px]">
+                <div class="flex items-center gap-2">
+                    <span class="inline-block w-3 h-3 rounded-full bg-amber-500"></span>
+                    <span class="text-muted-foreground">Pending / In Review</span>
+                    <span class="ml-auto font-semibold">{{ dashboard_data.metrics.pending_items }}</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="inline-block w-3 h-3 rounded-full bg-emerald-500"></span>
+                    <span class="text-muted-foreground">Approved</span>
+                    <span class="ml-auto font-semibold">{{ dashboard_data.metrics.approved_items }}</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="inline-block w-3 h-3 rounded-full bg-destructive"></span>
+                    <span class="text-muted-foreground">Rejected</span>
+                    <span class="ml-auto font-semibold">{{ dashboard_data.metrics.rejected_items }}</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="inline-block w-3 h-3 rounded-full bg-zinc-400"></span>
+                    <span class="text-muted-foreground">Total</span>
+                    <span class="ml-auto font-semibold">{{ dashboard_data.metrics.total_items }}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pending Reviews (PH-011-02, PH-011-03, PH-011-05) -->
+    <div class="bg-card border border-border rounded-lg overflow-hidden shadow-sm">
+        <div class="px-6 py-4 border-b border-border flex items-center justify-between">
+            <div>
+                <h2 class="text-lg font-semibold text-foreground">Pending Reviews</h2>
+                <p class="text-sm text-muted-foreground mt-1">Items awaiting Architecture Review Board decision</p>
+            </div>
+            <form method="GET" class="flex items-center gap-2">
+                <input type="hidden" name="search" value="{{ request.args.get('search', '') }}">
+                <select name="pending_status" class="rounded-md border border-input bg-background px-3 py-1.5 text-sm" onchange="this.form.submit()" aria-label="Filter by status">
+                    <option value="all" {% if pending_status == 'all' %}selected{% endif %}>All Statuses</option>
+                    <option value="draft" {% if pending_status == 'draft' %}selected{% endif %}>Draft</option>
+                    <option value="submitted" {% if pending_status == 'submitted' %}selected{% endif %}>Submitted</option>
+                    <option value="pending" {% if pending_status == 'pending' %}selected{% endif %}>Pending</option>
+                    <option value="under_review" {% if pending_status == 'under_review' %}selected{% endif %}>Under Review</option>
+                </select>
+            </form>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full border-collapse">
+                <thead>
+                    <tr>
+                        <th class="bg-muted/50 text-left px-4 py-3 text-sm font-medium text-muted-foreground border-b border-border">Review #</th>
+                        <th class="bg-muted/50 text-left px-4 py-3 text-sm font-medium text-muted-foreground border-b border-border">Title</th>
+                        <th class="bg-muted/50 text-left px-4 py-3 text-sm font-medium text-muted-foreground border-b border-border">Solution</th>
+                        <th class="bg-muted/50 text-left px-4 py-3 text-sm font-medium text-muted-foreground border-b border-border">Status</th>
+                        <th class="bg-muted/50 text-left px-4 py-3 text-sm font-medium text-muted-foreground border-b border-border">Priority</th>
+                        <th class="bg-muted/50 text-left px-4 py-3 text-sm font-medium text-muted-foreground border-b border-border">Submitted</th>
+                        <th class="bg-muted/50 text-left px-4 py-3 text-sm font-medium text-muted-foreground border-b border-border">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y">
+                    {% if pending_reviews %}
+                        {% for review in pending_reviews %}
+                        <tr class="border-b border-border hover:bg-muted/50 transition-colors" id="arb-row-{{ review.id }}">
+                            <td class="px-4 py-3 text-sm border-b border-border">
+                                <span class="font-mono text-xs text-primary">{{ review.review_number or ('#' ~ review.id) }}</span>
+                            </td>
+                            <td class="px-4 py-3 text-sm border-b border-border">
+                                <a href="{{ url_for('arb.review_detail', id=review.id) }}"
+                                   class="text-foreground hover:text-primary font-medium">
+                                    {{ review.title|truncate(50) }}
+                                </a>
+                            </td>
+                            <td class="px-4 py-3 text-sm border-b border-border">
+                                {% if review.solution %}
+                                <span class="text-foreground">{{ review.solution.name|truncate(35) }}</span>
+                                {% else %}
+                                <span class="text-xs text-muted-foreground">—</span>
+                                {% endif %}
+                            </td>
+                            <td class="px-4 py-3 text-sm border-b border-border">
+                                {% if review.status == 'under_review' %}
+                                {{ status_badge('Under Review', 'info') }}
+                                {% elif review.status == 'submitted' %}
+                                {{ status_badge('Submitted', 'warning') }}
+                                {% elif review.status == 'draft' %}
+                                {{ status_badge('Draft', 'neutral') }}
+                                {% else %}
+                                {{ status_badge(review.status|capitalize, 'neutral') }}
+                                {% endif %}
+                            </td>
+                            <td class="px-4 py-3 text-sm border-b border-border">
+                                {% if review.priority == 'critical' %}
+                                <span class="inline-flex items-center px-2 py-0.5 text-xs rounded bg-red-500/10 text-destructive border border-red-500/30">Critical</span>
+                                {% elif review.priority == 'high' %}
+                                <span class="inline-flex items-center px-2 py-0.5 text-xs rounded bg-amber-500/10 text-amber-600 border border-amber-500/30">High</span>
+                                {% elif review.priority == 'medium' %}
+                                <span class="inline-flex items-center px-2 py-0.5 text-xs rounded bg-blue-500/10 text-primary border border-blue-500/30">Medium</span>
+                                {% else %}
+                                <span class="text-xs text-muted-foreground">{{ review.priority|default('—')|capitalize }}</span>
+                                {% endif %}
+                            </td>
+                            <td class="px-4 py-3 text-sm border-b border-border text-muted-foreground">
+                                {% if review.submitted_at %}
+                                {{ review.submitted_at.strftime('%Y-%m-%d') }}
+                                {% elif review.created_at %}
+                                {{ review.created_at.strftime('%Y-%m-%d') }}
+                                {% else %}—{% endif %}
+                            </td>
+                            <td class="px-4 py-3 text-sm border-b border-border">
+                                <div class="flex items-center gap-1">
+                                    <a href="{{ url_for('arb.review_detail', id=review.id) }}"
+                                       class="inline-flex items-center px-2 py-1 text-xs bg-secondary text-secondary-foreground rounded hover:bg-secondary/80">
+                                        <i data-lucide="eye" class="w-3 h-3 mr-1" aria-hidden="true"></i>View
+                                    </a>
+                                    {% if review.status in ('submitted', 'pending', 'draft') %}
+                                    <button type="button"
+                                            class="inline-flex items-center px-2 py-1 text-xs bg-blue-500/10 text-primary border border-blue-500/30 rounded hover:bg-blue-500/20"
+                                            data-review-id="{{ review.id }}" data-arb-action="review"
+                                            aria-label="Begin Review">
+                                        <i data-lucide="play" class="w-3 h-3 mr-1" aria-hidden="true"></i>Begin
+                                    </button>
+                                    {% endif %}
+                                    {% if review.status == 'under_review' %}
+                                    <button type="button"
+                                            class="inline-flex items-center px-2 py-1 text-xs bg-emerald-500/10 text-emerald-600 border border-emerald-500/30 rounded hover:bg-emerald-500/20"
+                                            data-review-id="{{ review.id }}" data-arb-action="approve"
+                                            aria-label="Approve">
+                                        <i data-lucide="check" class="w-3 h-3 mr-1" aria-hidden="true"></i>Approve
+                                    </button>
+                                    <button type="button"
+                                            class="inline-flex items-center px-2 py-1 text-xs bg-red-500/10 text-destructive border border-red-500/30 rounded hover:bg-red-500/20"
+                                            data-review-id="{{ review.id }}" data-arb-action="reject"
+                                            aria-label="Reject">
+                                        <i data-lucide="x" class="w-3 h-3 mr-1" aria-hidden="true"></i>Reject
+                                    </button>
+                                    {% endif %}
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="7" class="text-center py-8 text-muted-foreground">
+                                <i data-lucide="check-circle" class="w-10 h-10 mx-auto mb-2 text-emerald-500" aria-hidden="true"></i>
+                                <p>No pending reviews{% if pending_status != 'all' %} with status "{{ pending_status }}"{% endif %}</p>
+                            </td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+        {% if pending_reviews|length == 15 %}
+        <div class="px-6 py-3 bg-muted/30 text-sm text-muted-foreground">
+            Showing top 15 pending items. <a href="{{ url_for('arb.reviews') }}" class="text-primary hover:underline">View all reviews →</a>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Decisions Table -->
+    <div class="bg-card border border-border rounded-lg overflow-hidden shadow-sm">
+        <div class="px-6 py-4 border-b border-border">
+            <h2 class="text-lg font-semibold text-foreground">Recent Decisions</h2>
+            <p class="text-sm text-muted-foreground mt-1">Architecture Review Board decisions and outcomes</p>
+        </div>
+
+        <!-- Filters -->
+        <div class="p-4 border-b bg-muted/20">
+            <form method="GET" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-muted-foreground mb-1">Search</label>
+                    <input type="text" name="search" value="{{ request.args.get('search', '') }}" 
+                           placeholder="Search by title..."
+                           class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" aria-label="Search by title...">
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-muted-foreground mb-1">Capability</label>
+                    <input type="number" name="capability_id" value="{{ request.args.get('capability_id', '') }}"
+                           placeholder="Capability ID"
+                           class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" aria-label="Capability ID">
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-muted-foreground mb-1">Date From</label>
+                    <input type="date" name="date_from" value="{{ request.args.get('date_from', '') }}"
+                           class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" aria-label="Date From">
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-muted-foreground mb-1">Date To</label>
+                    <input type="date" name="date_to" value="{{ request.args.get('date_to', '') }}"
+                           class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" aria-label="Date To">
+                </div>
+                
+                <div class="md:col-span-2 lg:col-span-4 flex gap-2">
+                    <button type="submit" class="inline-flex items-center px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 text-sm" aria-label="Submit">
+                        <i data-lucide="filter" class="w-4 h-4 mr-1" aria-hidden="true"></i>
+                        Apply Filters
+                    </button>
+                    <a href="{{ url_for('arb.dashboard') }}" class="inline-flex items-center px-4 py-2 bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/80 text-sm">
+                        <i data-lucide="x" class="w-4 h-4 mr-1" aria-hidden="true"></i>
+                        Clear
+                    </a>
+                </div>
+            </form>
+        </div>
+
+        <!-- Decisions Table -->
+        <div class="overflow-x-auto">
+            <table class="w-full border-collapse">
+                <thead>
+                    <tr>
+                        <th class="bg-muted/50 text-left px-4 py-3 text-sm font-medium text-muted-foreground border-b border-border">Review #</th>
+                        <th class="bg-muted/50 text-left px-4 py-3 text-sm font-medium text-muted-foreground border-b border-border">Title</th>
+                        <th class="bg-muted/50 text-left px-4 py-3 text-sm font-medium text-muted-foreground border-b border-border">Decision</th>
+                        <th class="bg-muted/50 text-left px-4 py-3 text-sm font-medium text-muted-foreground border-b border-border">Capabilities</th>
+                        <th class="bg-muted/50 text-left px-4 py-3 text-sm font-medium text-muted-foreground border-b border-border">Applications</th>
+                        <th class="bg-muted/50 text-left px-4 py-3 text-sm font-medium text-muted-foreground border-b border-border">Decided By</th>
+                        <th class="bg-muted/50 text-left px-4 py-3 text-sm font-medium text-muted-foreground border-b border-border">Date</th>
+                        <th class="bg-muted/50 text-left px-4 py-3 text-sm font-medium text-muted-foreground border-b border-border">Priority</th>
+                        <th class="bg-muted/50 text-left px-4 py-3 text-sm font-medium text-muted-foreground border-b border-border">SLA</th>
+                        <th class="bg-muted/50 text-left px-4 py-3 text-sm font-medium text-muted-foreground border-b border-border">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y">
+                    {% if decisions %}
+                        {% for review in decisions %}
+                        <tr class="border-b border-border hover:bg-muted/50 transition-colors">
+                            <td class="px-4 py-3 text-sm border-b border-border">
+                                <span class="font-mono text-xs text-primary">{{ review.review_number }}</span>
+                            </td>
+                            <td class="px-4 py-3 text-sm border-b border-border">
+                                <a href="{{ url_for('arb.review_detail', id=review.id) }}" 
+                                   class="text-foreground hover:text-primary font-medium">
+                                    {{ review.title|truncate(50) }}
+                                </a>
+                            </td>
+                            <td class="px-4 py-3 text-sm border-b border-border">
+                                {% if review.decision == 'approved' %}
+                                {{ status_badge('Approved', 'success') }}
+                                {% elif review.decision == 'approved_with_conditions' %}
+                                {{ status_badge('Approved*', 'warning') }}
+                                {% elif review.decision == 'rejected' %}
+                                {{ status_badge('Rejected', 'error') }}
+                                {% elif review.decision == 'deferred' %}
+                                {{ status_badge('Deferred', 'neutral') }}
+                                {% else %}
+                                {{ status_badge(review.decision|default('Pending', true), 'neutral') }}
+                                {% endif %}
+                            </td>
+                            <td class="px-4 py-3 text-sm border-b border-border">
+                                {% if review.capability_links %}
+                                    {% for link in review.capability_links[:2] %}
+                                        {% if link.capability %}
+                                        <span class="inline-block px-2 py-0.5 text-xs bg-primary/10 text-primary rounded mr-1">
+                                            {{ link.capability.name|truncate(20) }}
+                                        </span>
+                                        {% endif %}
+                                    {% endfor %}
+                                    {% if review.capability_links|length > 2 %}
+                                    <span class="text-xs text-muted-foreground">+{{ review.capability_links|length - 2 }}</span>
+                                    {% endif %}
+                                {% else %}
+                                <span class="text-xs text-muted-foreground">—</span>
+                                {% endif %}
+                            </td>
+                            <td class="px-4 py-3 text-sm border-b border-border">
+                                {% if application_names_by_review.get(review.id) %}
+                                <span class="text-sm text-foreground">{{ application_names_by_review[review.id]|join(', ')|truncate(40) }}</span>
+                                {% elif review.solution %}
+                                <span class="text-sm text-foreground">{{ review.solution.name|truncate(30) }}</span>
+                                {% elif review.architecture_model %}
+                                <span class="text-sm text-foreground">{{ review.architecture_model.name|truncate(30) }}</span>
+                                {% else %}
+                                <span class="text-xs text-muted-foreground">—</span>
+                                {% endif %}
+                            </td>
+                            <td class="px-4 py-3 text-sm border-b border-border">
+                                {% if review.decided_by %}
+                                <span class="text-sm text-foreground">{{ review.decided_by.first_name }} {{ review.decided_by.last_name }}</span>
+                                {% else %}
+                                <span class="text-xs text-muted-foreground">—</span>
+                                {% endif %}
+                            </td>
+                            <td class="px-4 py-3 text-sm border-b border-border">
+                                {% if review.decision_date %}
+                                <span class="text-sm text-muted-foreground">{{ review.decision_date.strftime('%Y-%m-%d') }}</span>
+                                {% else %}
+                                <span class="text-xs text-muted-foreground">—</span>
+                                {% endif %}
+                            </td>
+                            <td class="px-4 py-3 text-sm border-b border-border">
+                                {% if review.priority %}
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium
+                                    {% if review.priority == 'critical' %}bg-destructive/10 text-red-800
+                                    {% elif review.priority == 'high' %}bg-orange-100 text-orange-800
+                                    {% elif review.priority == 'medium' %}bg-amber-100 text-amber-800
+                                    {% else %}bg-slate-100 text-slate-700{% endif %}">
+                                    {{ review.priority|title }}
+                                </span>
+                                {% else %}
+                                <span class="text-xs text-muted-foreground">—</span>
+                                {% endif %}
+                            </td>
+                            <td class="px-4 py-3 text-sm border-b border-border">
+                                {% set sla = sla_data_by_review.get(review.id) %}
+                                {% if sla %}
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium {{ sla.cls }}">
+                                    {{ sla.txt }}
+                                </span>
+                                {% else %}
+                                <span class="text-xs text-muted-foreground">—</span>
+                                {% endif %}
+                            </td>
+                            <td class="px-4 py-3 text-sm border-b border-border">
+                                <a href="{{ url_for('arb.review_detail', id=review.id) }}"
+                                   class="inline-flex items-center px-2 py-1 text-xs bg-secondary text-secondary-foreground rounded hover:bg-secondary/80">
+                                    <i data-lucide="eye" class="w-3 h-3 mr-1" aria-hidden="true"></i>
+                                    View
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="10" class="text-center py-8">
+                                <i data-lucide="inbox" class="w-12 h-12 mx-auto text-muted-foreground mb-2" aria-hidden="true"></i>
+                                <p class="text-muted-foreground">No decisions found</p>
+                                {% if request.args.get('search') or request.args.get('capability_id') or request.args.get('date_from') %}
+                                <p class="text-sm text-muted-foreground mt-1">Try adjusting your filters</p>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="px-6 py-3 bg-muted/30 text-sm text-muted-foreground">
+            Showing {{ decisions|length }} of up to 200 recent decisions
+        </div>
+    </div>
+
+    <!-- Quick Links -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {% call card() %}
+            {% call card_header() %}
+                {% call card_title() %}Upcoming Sessions{% endcall %}
+                {% call card_description() %}Review scheduled ARB meetings.{% endcall %}
+            {% endcall %}
+            {% call card_content() %}
+                <a href="{{ url_for('arb.sessions') }}"
+                   class="inline-flex items-center px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90">
+                    <i data-lucide="calendar" class="w-4 h-4 mr-2" aria-hidden="true"></i>
+                    View Sessions
+                </a>
+            {% endcall %}
+        {% endcall %}
+
+        {% call card() %}
+            {% call card_header() %}
+                {% call card_title() %}Pending Reviews{% endcall %}
+                {% call card_description() %}Items awaiting ARB review.{% endcall %}
+            {% endcall %}
+            {% call card_content() %}
+                <a href="{{ url_for('arb.reviews') }}"
+                   class="inline-flex items-center px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90">
+                    <i data-lucide="clipboard-list" class="w-4 h-4 mr-2" aria-hidden="true"></i>
+                    View Reviews
+                </a>
+            {% endcall %}
+        {% endcall %}
+    </div>
+</div>
+
+{% include 'arb/_create_review_modal.html' %}
+
+{% endblock %}
+
+{% block extra_head_js %}
+<script>
+  window.__ARB_CONFIG__ = window.__ARB_CONFIG__ || {};
+  window.__ARB_CONFIG__.createReviewUrl = '{{ url_for("arb.create_review") }}';
+  window.__ARB_CONFIG__.formDataUrl = '{{ url_for("arb.api_form_data") }}';
+</script>
+<script src="{{ url_for('static', filename='js/arb/dashboard.js') }}"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+(function () {
+  // Status breakdown donut chart (PH-011-06)
+  const ctx = document.getElementById('arbStatusChart');
+  if (!ctx) return;
+  const pending = {{ dashboard_data.metrics.pending_items | int }};
+  const approved = {{ dashboard_data.metrics.approved_items | int }};
+  const rejected = {{ dashboard_data.metrics.rejected_items | int }};
+  const total = {{ dashboard_data.metrics.total_items | int }};
+  const other = Math.max(0, total - pending - approved - rejected);
+  new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: ['Pending / In Review', 'Approved', 'Rejected', 'Other'],
+      datasets: [{
+        data: [pending, approved, rejected, other],
+        backgroundColor: ['#f59e0b', '#10b981', '#ef4444', '#9ca3af'],
+        borderWidth: 2,
+        borderColor: 'transparent',
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${ctx.raw}` } }
+      },
+      cutout: '65%'
+    }
+  });
+})();
+
+// Quick approve/reject actions (PH-011-05)
+async function arbQuickAction(itemId, action) {
+  const labels = { review: 'Begin Review', approve: 'Approve', reject: 'Reject' };
+  if (!(await Platform.modal.confirm(`${labels[action] || action} this review item?`))) return;
+  const url = `/arb/api/arb/${itemId}/${action}`;
+  fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || '' },
+    body: JSON.stringify({})
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.success) {
+      const row = document.getElementById('arb-row-' + itemId);
+      if (row) row.style.opacity = '0.4';
+      window.location.reload();
+    } else {
+      Platform.toast.error('Action failed: ' + (d.error || 'Unknown error'));
+    }
+  })
+  .catch(() => Platform.toast.error('Network error. Please try again.'));
+}
+
+// CSP-safe event delegation for ARB quick action buttons
+document.addEventListener('click', function (e) {
+    let btn = e.target.closest('[data-arb-action]');
+    if (!btn) return;
+    let reviewId = btn.dataset.reviewId;
+    let action = btn.dataset.arbAction;
+    if (reviewId && action) arbQuickAction(Number(reviewId), action);
+});
+</script>
+{% endblock %}

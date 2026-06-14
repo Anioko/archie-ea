@@ -1,0 +1,155 @@
+{# Entity detail view — one generated per entity #}
+{# Context: ent (entity dict with fields, status_field, state_transitions, related_entities) #}
+
+<div x-data="entityDetail_{{ ent.name_snake }}()" x-init="init()">
+    <!-- Loading state -->
+    <div x-show="loading" class="py-12 text-center">
+        <div class="w-6 h-6 border-2 border-zinc-700 border-t-blue-500 rounded-full animate-spin mx-auto"></div>
+    </div>
+
+    <div x-show="!loading && item" x-cloak>
+        <!-- Header -->
+        <div class="flex items-center justify-between mb-6">
+            <div class="flex items-center gap-3">
+                <button @click="navigate('/{{ ent.name_snake }}s')" class="text-zinc-500 hover:text-zinc-300">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+                </button>
+                <h2 class="text-xl font-bold">{{ ent.name_display }} <span class="text-zinc-500" x-text="`#${item.id}`"></span></h2>
+{% if ent.status_field %}
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium border"
+                      :class="statusBadgeClass(item.{{ ent.status_field }})"
+                      x-text="item.{{ ent.status_field }} || 'N/A'"></span>
+{% endif %}
+            </div>
+            <div class="flex items-center gap-2">
+                <button @click="openEditForm(item)" class="px-3 py-1.5 text-sm font-medium rounded-md border border-zinc-700 text-zinc-300 hover:text-zinc-100 hover:border-zinc-600 transition-colors">Edit</button>
+                <button @click="confirmDeleteItem(item.id)" class="px-3 py-1.5 text-sm font-medium rounded-md border border-red-700/50 text-red-400 hover:text-red-300 hover:border-red-600 transition-colors">Delete</button>
+            </div>
+        </div>
+
+{% if ent.state_transitions %}
+        <!-- State machine visualization -->
+        <div class="mb-6 p-4 rounded-lg border border-zinc-800 bg-zinc-900">
+            <h3 class="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-3">Status Workflow</h3>
+            <div class="flex items-center gap-2 overflow-x-auto pb-2">
+{% for state in ent.all_states %}
+                <div class="flex items-center gap-2 flex-shrink-0">
+                    <div class="px-3 py-1.5 rounded-md text-xs font-medium border transition-colors"
+                         :class="item.{{ ent.status_field }} === '{{ state }}' ? 'bg-blue-600 text-white border-blue-600' : 'bg-zinc-800 text-zinc-400 border-zinc-700'">
+                        {{ state }}
+                    </div>
+{% if not loop.last %}
+                    <svg class="w-4 h-4 text-zinc-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+{% endif %}
+                </div>
+{% endfor %}
+            </div>
+            <!-- Transition action buttons -->
+            <div class="flex gap-2 mt-3">
+{% for transition in ent.state_transitions %}
+                <button x-show="item.{{ ent.status_field }} === '{{ transition.from_state }}'"
+                        @click="executeTransition('{{ transition.to_state }}', '{{ transition.action }}')"
+                        class="px-3 py-1.5 text-xs font-medium rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-colors">
+                    {{ transition.action }}
+                </button>
+{% endfor %}
+            </div>
+        </div>
+{% endif %}
+
+        <!-- Field details -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+            <div class="rounded-lg border border-zinc-800 bg-zinc-900 p-5">
+                <h3 class="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-4">Details</h3>
+                <dl class="space-y-3">
+{% for field in ent.fields %}
+                    <div class="flex justify-between items-start gap-4">
+                        <dt class="text-xs text-zinc-500 whitespace-nowrap">{{ field.display_name }}</dt>
+{% if field.type == 'boolean' %}
+                        <dd class="text-sm text-right">
+                            <span :class="item.{{ field.name }} ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' : 'bg-zinc-500/10 text-zinc-400 border-zinc-500/30'"
+                                  class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border"
+                                  x-text="item.{{ field.name }} ? 'Yes' : 'No'"></span>
+                        </dd>
+{% elif field.name == ent.status_field %}
+                        <dd class="text-sm text-right">
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border"
+                                  :class="statusBadgeClass(item.{{ field.name }})"
+                                  x-text="item.{{ field.name }} || 'N/A'"></span>
+                        </dd>
+{% elif field.type == 'date-time' %}
+                        <dd class="text-sm text-zinc-300 text-right" x-text="item.{{ field.name }} ? new Date(item.{{ field.name }}).toLocaleString() : '-'"></dd>
+{% elif field.type == 'text' %}
+                        <dd class="text-sm text-zinc-300 text-right max-w-sm break-words" x-text="item.{{ field.name }} || '-'"></dd>
+{% else %}
+                        <dd class="text-sm text-zinc-300 text-right" x-text="item.{{ field.name }} ?? '-'"></dd>
+{% endif %}
+                    </div>
+{% endfor %}
+                </dl>
+            </div>
+
+            <!-- Audit trail -->
+            <div class="rounded-lg border border-zinc-800 bg-zinc-900 p-5">
+                <h3 class="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-4">Audit Trail</h3>
+                <dl class="space-y-3">
+                    <div class="flex justify-between">
+                        <dt class="text-xs text-zinc-500">ID</dt>
+                        <dd class="text-sm text-zinc-300 font-mono" x-text="item.id"></dd>
+                    </div>
+                    <div class="flex justify-between">
+                        <dt class="text-xs text-zinc-500">Created</dt>
+                        <dd class="text-sm text-zinc-300" x-text="item.created_at ? new Date(item.created_at).toLocaleString() : '-'"></dd>
+                    </div>
+                    <div class="flex justify-between">
+                        <dt class="text-xs text-zinc-500">Updated</dt>
+                        <dd class="text-sm text-zinc-300" x-text="item.updated_at ? new Date(item.updated_at).toLocaleString() : '-'"></dd>
+                    </div>
+                    <template x-if="item.created_by">
+                        <div class="flex justify-between">
+                            <dt class="text-xs text-zinc-500">Created By</dt>
+                            <dd class="text-sm text-zinc-300" x-text="item.created_by"></dd>
+                        </div>
+                    </template>
+                </dl>
+            </div>
+        </div>
+
+{% if ent.related_entities %}
+        <!-- Related entities -->
+        <div class="mb-6">
+            <h3 class="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-3">Related</h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+{% for rel in ent.related_entities %}
+                <div class="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+                    <div class="flex items-center justify-between mb-3">
+                        <h4 class="text-sm font-medium">{{ rel.name_display }}</h4>
+                        <button @click="navigate('/{{ rel.name_snake }}s')" class="text-xs text-blue-400 hover:text-blue-300">View all</button>
+                    </div>
+                    <div x-data="{ relItems: [] }" x-init="loadRelated('{{ rel.api_base_path }}', '{{ ent.name_snake }}_id', item.id).then(d => relItems = d)">
+                        <template x-for="ri in relItems.slice(0, 5)" :key="ri.id">
+                            <div class="flex items-center justify-between py-1.5 border-b border-zinc-800 last:border-0 cursor-pointer hover:bg-zinc-800/30 px-2 rounded"
+                                 @click="navigate(`/{{ rel.name_snake }}s/${ri.id}`)">
+                                <span class="text-sm text-zinc-300 truncate" x-text="ri.{{ rel.label_field || 'id' }}"></span>
+{% if rel.status_field %}
+                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border"
+                                      :class="statusBadgeClass(ri.{{ rel.status_field }})"
+                                      x-text="ri.{{ rel.status_field }}"></span>
+{% endif %}
+                            </div>
+                        </template>
+                        <div x-show="!relItems.length" class="text-xs text-zinc-500 py-2">No related {{ rel.name_plural | lower }}</div>
+                    </div>
+                </div>
+{% endfor %}
+            </div>
+        </div>
+{% endif %}
+    </div>
+
+    <!-- Not found state -->
+    <div x-show="!loading && !item" x-cloak class="py-12 text-center">
+        <p class="text-zinc-500">{{ ent.name_display }} not found</p>
+        <button @click="navigate('/{{ ent.name_snake }}s')" class="mt-2 text-sm text-blue-400 hover:text-blue-300">Back to list</button>
+    </div>
+</div>

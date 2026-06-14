@@ -1,0 +1,737 @@
+{% extends 'layouts/admin_base.html' %}
+{% from 'components/metrics_card.html' import metrics_card %}
+{% from 'components/skeleton.html' import skeleton_table %}
+{% from 'components/empty_state.html' import empty_state %}
+
+{% block title %}Applications{% endblock %}
+
+{% block content %}
+    {# Rationalization model internals (success flags, version, raw metadata)
+       are diagnostic, not user-facing — removed from the portfolio header.
+       Model calibration lives on the Rationalization page itself. #}
+
+{#
+  ============================================================
+  APPLICATIONS LIST — CLEAN REWRITE
+  Data contract (from Flask route application_list()):
+    applications       list[ApplicationComponent]
+    total_count        int
+    portfolio_total    int
+    current_page       int   (1-based)
+    total_pages        int
+    page_size          int
+    has_prev           bool
+    has_next           bool
+    filters            dict {search, type, status, process_level, capability_level, domain}
+    filter_options     dict {component_types, lifecycle_statuses, process_levels, capability_levels, domains}
+    stats              dict {total, active_portfolio, strategic, tactical, sunset_decom_pipeline, decommissioned}
+    include_decom      bool — full portfolio when true (default false: active portfolio only)
+    qs_include_decom_true / qs_include_decom_false — toggle query strings
+    currency_symbol    str
+  ============================================================
+#}
+{%- set STATUS_MAP = {
+  'production':        {'label': 'Production',       'cls': 'bg-success/10 text-emerald-800 dark:bg-success/30 dark:text-success'},
+  'active':            {'label': 'Active',            'cls': 'bg-success/10 text-emerald-800 dark:bg-success/30 dark:text-success'},
+  'done':              {'label': 'Done',              'cls': 'bg-success/10 text-emerald-800 dark:bg-success/30 dark:text-success'},
+  'operational':       {'label': 'Operational',       'cls': 'bg-success/10 text-emerald-800 dark:bg-success/30 dark:text-success'},
+  '2.1 strategic':     {'label': '2.1 STRATEGIC',     'cls': 'bg-success/10 text-emerald-800 dark:bg-success/30 dark:text-success'},
+  '2.2 tactical':      {'label': '2.2 TACTICAL',      'cls': 'bg-primary/10 text-primary dark:bg-primary/30 dark:text-primary/80'},
+  '1. undetermined':   {'label': '1. UNDETERMINED',   'cls': 'bg-muted text-muted-foreground dark:bg-foreground dark:text-muted-foreground'},
+  '3. sunset':         {'label': '3. SUNSET',         'cls': 'bg-warning/10 text-warning dark:bg-warning/30 dark:text-warning/80'},
+  '4.1 decom decided': {'label': '4.1 DECOM DECIDED', 'cls': 'bg-destructive/10 text-destructive dark:bg-destructive/30 dark:text-destructive/80'},
+  '4.2 decom planned': {'label': '4.2 DECOM PLANNED', 'cls': 'bg-destructive/10 text-destructive dark:bg-destructive/30 dark:text-destructive/80'},
+  '4.3 read-only':     {'label': '4.3 READ-ONLY',     'cls': 'bg-destructive/10 text-destructive dark:bg-destructive/30 dark:text-destructive/80'},
+  '4.4 stopped':       {'label': '4.4 STOPPED',       'cls': 'bg-destructive/10 text-destructive dark:bg-destructive/30 dark:text-destructive/80'},
+  '5. decommissioned': {'label': '5. DECOMMISSIONED', 'cls': 'bg-destructive/10 text-destructive dark:bg-destructive/30 dark:text-destructive/80'},
+  'development':       {'label': 'Development',       'cls': 'bg-primary/10 text-primary dark:bg-primary/30 dark:text-primary/80'},
+  'testing':           {'label': 'Testing',            'cls': 'bg-primary/10 text-primary dark:bg-primary/30 dark:text-primary/80'},
+  'staging':           {'label': 'Staging',            'cls': 'bg-primary/10 text-primary dark:bg-primary/30 dark:text-primary/80'},
+  'in_process':        {'label': 'In Process',         'cls': 'bg-primary/10 text-primary dark:bg-primary/30 dark:text-primary/80'},
+  'planned':           {'label': 'Planned',            'cls': 'bg-muted text-muted-foreground dark:bg-foreground dark:text-muted-foreground'},
+  'not_started':       {'label': 'Not Started',        'cls': 'bg-muted text-muted-foreground dark:bg-foreground dark:text-muted-foreground'},
+  'retired':           {'label': 'Retired',            'cls': 'bg-destructive/10 text-destructive dark:bg-destructive/30 dark:text-destructive/80'},
+  'deprecated':        {'label': 'Deprecated',         'cls': 'bg-destructive/10 text-destructive dark:bg-destructive/30 dark:text-destructive/80'},
+  'decommissioned':    {'label': 'Decommissioned',     'cls': 'bg-destructive/10 text-destructive dark:bg-destructive/30 dark:text-destructive/80'}
+} -%}
+{%- set CRIT_MAP = {
+  'critical': 'bg-destructive/10 text-destructive dark:bg-destructive/30 dark:text-destructive/80',
+  'high':     'bg-warning/10 text-warning dark:bg-warning/30 dark:text-warning/80',
+  'medium':   'bg-warning/10 text-warning dark:bg-warning/30 dark:text-warning/80',
+  'low':      'bg-muted text-muted-foreground dark:bg-foreground dark:text-muted-foreground'
+} -%}
+
+<div
+  id="app-portfolio-root"
+  x-data="appPortfolio()"
+  x-init="init()"
+  class="space-y-6"
+>
+
+  {# ─ PAGE HEADER ─ #}
+  <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+    <div>
+      <nav aria-label="Breadcrumb" class="mb-1">
+        <ol class="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <li><a href="{{ url_for('main.index') }}" class="hover:text-foreground transition-colors">Dashboard</a></li>
+          <li aria-hidden="true"><i data-lucide="chevron-right" class="h-3 w-3 inline" aria-hidden="true"></i></li>
+          <li class="text-foreground font-medium" aria-current="page">Applications</li>
+        </ol>
+      </nav>
+      <h1 class="text-2xl font-bold tracking-tight text-foreground">Applications</h1>
+      <p class="text-sm text-muted-foreground mt-0.5">Manage your application portfolio across the enterprise.</p>
+    </div>
+    <div class="flex flex-wrap items-center gap-2 shrink-0">
+      <button type="button" data-testid="btn-import" data-modal-open="application-import-modal"
+        class="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-input bg-background text-sm font-medium hover:bg-accent transition-colors" aria-label="Action">
+        <i data-lucide="upload" class="h-4 w-4" aria-hidden="true"></i>Import
+      </button>
+      <button type="button" data-testid="btn-export" @click="exportCSV()"
+        class="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-input bg-background text-sm font-medium hover:bg-accent transition-colors" aria-label="Export">
+        <i data-lucide="download" class="h-4 w-4" aria-hidden="true"></i>Export
+      </button>
+      <a href="{{ url_for('consolidation_list.dashboard') }}" data-testid="btn-consolidation"
+        class="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-input bg-background text-sm font-medium hover:bg-accent transition-colors">
+        <i data-lucide="layers-2" class="h-4 w-4" aria-hidden="true"></i>Consolidation
+      </a>
+      <a href="{{ url_for('solution_design.list_solutions') }}" data-testid="btn-design-solution"
+        class="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-input bg-background text-sm font-medium hover:bg-accent transition-colors">
+        <i data-lucide="star" class="h-4 w-4" aria-hidden="true"></i>Design Solution
+      </a>
+      <button type="button" data-testid="btn-match-vendors" @click="openUnifiedMappingModalDiscovery({context:'vendor'})"
+        class="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-input bg-background text-sm font-medium hover:bg-accent transition-colors" aria-label="Match vendors">
+        <i data-lucide="package" class="h-4 w-4" aria-hidden="true"></i>Vendor Match
+      </button>
+      <button type="button" data-testid="btn-add-application" data-modal-open="modal-create"
+        class="inline-flex items-center gap-1.5 h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors" aria-label="Action">
+        <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i>Add Application
+      </button>
+    </div>
+  </div>
+
+  {# ─ STATS CARDS ─ #}
+  <div class="grid grid-cols-2 lg:grid-cols-5 gap-3" role="region" aria-label="Portfolio statistics">
+    {{ metrics_card(title='Active Portfolio', value=stats.active_portfolio, icon='layout-grid', description='All non-decommissioned applications', class='min-h-[120px]') }}
+    {{ metrics_card(title='Strategic', value=stats.strategic, icon='check-circle', value_class='text-success', description='Strategic investments', class='min-h-[120px]') }}
+    {{ metrics_card(title='Tactical', value=stats.tactical, icon='code-2', value_class='text-primary', description='Tactical / maintain', class='min-h-[120px]') }}
+    {{ metrics_card(title='Sunset/Decom Pipeline', value=stats.sunset_decom_pipeline, icon='archive', value_class='text-warning', description='Sunset or decommission planned', class='min-h-[120px]') }}
+    {{ metrics_card(title='Decommissioned', value=stats.decommissioned, icon='alert-triangle', value_class='text-destructive', description='Retired from the estate', class='min-h-[120px]') }}
+  </div>
+
+  {# ─ DATA QUALITY BANNER ─ #}
+  <div class="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 mb-4">
+    <div class="flex items-center gap-2 mb-2">
+      <i data-lucide="alert-triangle" class="h-4 w-4 text-amber-500"></i>
+      <span class="text-sm font-medium text-amber-700">Data Quality</span>
+    </div>
+    <div class="flex flex-wrap gap-4 text-xs text-muted-foreground">
+      <span>Owner: 0/{{ stats.total }}</span>
+      <span>Vendor: 0/{{ stats.total }}</span>
+      <span>Decommissioned: {{ stats.decommissioned }}/{{ stats.total }}</span>
+    </div>
+  </div>
+
+  {# ── BIZBOK: Application Cooperation Viewpoint (collapsible) ── #}
+  <div x-data="{ appDiagramOpen: false, appDiagramLoaded: false }" class="mb-4">
+    <button type="button" @click="appDiagramOpen = !appDiagramOpen; if(appDiagramOpen && !appDiagramLoaded) {
+        fetch('/api/archimate/viewpoints/application_cooperation/diagram?limit=25')
+            .then(r => r.json())
+            .then(d => {
+                if (!d.success || !d.elements.length) return;
+                let el = document.getElementById('app-cooperation-diagram');
+                if (!el || typeof ComposerRenderer === 'undefined') return;
+                let r = ComposerRenderer.create(el, {mode:'view', width:'100%', height:300});
+                r.loadElements(d.elements, d.relationships);
+                r.fitToContent();
+                appDiagramLoaded = true;
+            }).catch(() => {});
+    }" class="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 transition-transform" :class="appDiagramOpen ? 'rotate-90' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+      Application Cooperation Viewpoint
+    </button>
+    <div x-show="appDiagramOpen" x-cloak x-transition class="mt-3">
+      <div class="rounded-xl border border-border bg-card overflow-hidden">
+        <div class="bg-muted/20 px-5 py-2 border-b border-border flex items-center justify-between">
+          <span class="text-xs font-medium text-muted-foreground">Application Cooperation Viewpoint</span>
+          <a href="/archimate/composer" class="text-[10px] text-primary hover:underline">Full Composer →</a>
+        </div>
+        <div id="app-cooperation-diagram" class="w-full" style="min-height:300px;"></div>
+      </div>
+    </div>
+  </div>
+
+  {# ─ MAIN TABLE CARD ─ #}
+  <div data-slot="card" class="rounded-xl border bg-card shadow-sm" role="region" aria-label="Applications table">
+    <div class="flex items-center justify-between px-4 py-3 border-b gap-3 flex-wrap">
+      <p class="text-sm text-muted-foreground">Track and manage all applications across your enterprise architecture.</p>
+      {% if total_count %}<span class="text-xs font-medium bg-muted text-muted-foreground px-2.5 py-1 rounded-full" data-testid="total-count-badge">{{ total_count }} total</span>{% endif %}
+    </div>
+    {# PLT-019: BU scope indicator #}
+    {% if bu_filter_active and not show_all_override %}
+    <div class="flex items-center gap-2 px-4 py-2 border-b bg-primary/5" data-testid="bu-scope-indicator" role="status" aria-live="polite">
+        <i data-lucide="filter" class="h-3.5 w-3.5 text-primary shrink-0" aria-hidden="true"></i>
+        <span class="text-xs text-primary font-medium">Showing: {{ bu_name }} ({{ total_count }} app{{ 's' if total_count != 1 else '' }})</span>
+        <a href="{{ request.path }}?bu=all" class="ml-auto text-xs text-muted-foreground hover:text-foreground underline underline-offset-2" aria-label="Show all applications across all business units">Show all</a>
+    </div>
+    {% elif show_all_override %}
+    <div class="flex items-center gap-2 px-4 py-2 border-b bg-muted/30" data-testid="bu-scope-indicator-all" role="status">
+        <i data-lucide="globe" class="h-3.5 w-3.5 text-muted-foreground shrink-0" aria-hidden="true"></i>
+        <span class="text-xs text-muted-foreground">Showing: All ({{ total_count }} app{{ 's' if total_count != 1 else '' }})</span>
+    </div>
+    {% endif %}
+    <div x-show="loading" x-cloak class="p-6" aria-hidden="true" data-testid="skeleton-loader">
+      {{ skeleton_table(rows=6, columns=10) }}
+    </div>
+    <div class="px-4 py-3 border-b bg-muted/20" data-testid="filter-bar">
+      <div class="flex flex-wrap gap-3 items-end">
+        <div class="flex-1 min-w-[180px] max-w-xs">
+          <label for="filter-search" class="block text-xs font-medium text-muted-foreground mb-1">Search</label>
+          <div class="relative">
+            <i data-lucide="search" class="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" aria-hidden="true"></i>
+            <input id="filter-search" type="search" name="search" autocomplete="off" data-testid="filter-search"
+              x-model="filters.search" @input.debounce.300ms="onFilterChange()"
+              placeholder="Name, description, stack..." value="{{ filters.search }}"
+              class="flex h-9 w-full rounded-md border border-input bg-background pl-8 pr-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          </div>
+        </div>
+        <div class="min-w-[140px]">
+          <label for="filter-type" class="block text-xs font-medium text-muted-foreground mb-1">Type</label>
+          <select id="filter-type" data-testid="filter-type" x-model="filters.type" @change="onFilterChange()"
+            class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <option value="">All types</option>
+            {% for t in filter_options.component_types %}<option value="{{ t }}" {% if filters.type == t %}selected{% endif %}>{{ t }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="min-w-[180px]">
+          <label for="filter-status" class="block text-xs font-medium text-muted-foreground mb-1">Lifecycle Status</label>
+          <select id="filter-status" name="status" data-testid="filter-lifecycle-status" x-model="filters.status" @change="onFilterChange()"
+            class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <option value="">All lifecycle statuses</option>
+            {% for s in filter_options.lifecycle_statuses %}<option value="{{ s.value }}" {% if filters.status == s.value %}selected{% endif %}>{{ s.label }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="min-w-[140px]">
+          <label for="filter-domain" class="block text-xs font-medium text-muted-foreground mb-1">Domain</label>
+          <select id="filter-domain" data-testid="filter-domain" x-model="filters.domain" @change="onFilterChange()"
+            class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <option value="">All domains</option>
+            {% for d in filter_options.domains %}<option value="{{ d }}" {% if filters.domain == d %}selected{% endif %}>{{ d }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="min-w-[130px]">
+          <label for="filter-cap-level" class="block text-xs font-medium text-muted-foreground mb-1">Cap. Level</label>
+          <select id="filter-cap-level" data-testid="filter-capability-level" x-model="filters.capability_level" @change="onFilterChange()"
+            class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <option value="">All levels</option>
+            {% for l in filter_options.capability_levels %}<option value="{{ l }}" {% if filters.capability_level == l %}selected{% endif %}>{{ l }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="flex items-end">
+          <button type="button" data-testid="btn-clear-filters" @click="clearFilters()" x-show="hasActiveFilters()" x-cloak
+            class="h-9 px-3 rounded-md border border-input bg-background text-sm text-muted-foreground hover:bg-accent hover:text-foreground transition-colors inline-flex items-center gap-1.5" aria-label="Filter">
+            <i data-lucide="x" class="h-3.5 w-3.5" aria-hidden="true"></i>Clear
+          </button>
+        </div>
+        {# APP-031: default active portfolio; optional full portfolio including decommissioned #}
+        <div class="flex items-end pb-0.5 min-w-[220px]" data-testid="include-decom-toggle-wrap">
+          <label class="inline-flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
+            <input type="checkbox"
+              data-testid="include-decom-checkbox"
+              class="rounded border-input h-4 w-4 text-primary"
+              {% if include_decom %}checked{% endif %}
+              data-href-on="{{ request.path }}?{{ qs_include_decom_true|e }}"
+              data-href-off="{{ request.path }}?{{ qs_include_decom_false|e }}"
+              @change="window.location.href = $event.target.checked ? $event.target.dataset.hrefOn : $event.target.dataset.hrefOff">
+            <span>Include decommissioned (<span data-testid="decom-count-label">{{ stats.decommissioned }}</span>)</span>
+          </label>
+        </div>
+      </div>
+    </div>
+    <div x-show="!loading && selectedIds.size > 0" x-cloak
+      x-transition:enter="transition ease-out duration-150" x-transition:enter-start="opacity-0 -translate-y-1" x-transition:enter-end="opacity-100 translate-y-0"
+      class="flex items-center gap-3 px-4 py-2.5 bg-primary/5 border-b" role="toolbar" aria-label="Bulk actions" data-testid="bulk-toolbar">
+      <span class="text-sm font-medium text-foreground" x-text="`${selectedIds.size} selected`"></span>
+      <div class="flex items-center gap-2 ml-2">
+        <button type="button" data-testid="bulk-btn-export" @click="bulkExportSelected()"
+          class="h-8 px-3 rounded-md border border-input bg-background text-xs font-medium hover:bg-accent transition-colors inline-flex items-center gap-1.5" aria-label="Export">
+          <i data-lucide="download" class="h-3.5 w-3.5" aria-hidden="true"></i>Export
+        </button>
+        <!-- inline-event-ok --><button type="button" data-testid="bulk-btn-map" @click="openUnifiedMappingModalDiscovery({context:'capability', ids: [...selectedIds]})"
+          class="h-8 px-3 rounded-md border border-input bg-background text-xs font-medium hover:bg-accent transition-colors inline-flex items-center gap-1.5" aria-label="Map selected applications">
+          <i data-lucide="git-branch" class="h-3.5 w-3.5" aria-hidden="true"></i>Map
+        </button>
+        {# PLT-020: Bulk lifecycle update #}
+        <div class="relative" x-data="{ lcOpen: false }">
+          <button type="button" data-testid="bulk-btn-lifecycle" @click="lcOpen = !lcOpen"
+            class="h-8 px-3 rounded-md border border-input bg-background text-xs font-medium hover:bg-accent transition-colors inline-flex items-center gap-1.5" aria-label="Update lifecycle" aria-haspopup="true" :aria-expanded="lcOpen">
+            <i data-lucide="refresh-cw" class="h-3.5 w-3.5" aria-hidden="true"></i>Lifecycle
+          </button>
+          <!-- alpine-scope-ok --> <!-- modal-a11y-ok -->
+          <div x-show="lcOpen" x-cloak @click.away="lcOpen = false"
+            class="absolute left-0 mt-1 w-40 bg-card border border-border rounded-md shadow-lg z-50" role="menu">
+            {% for stage in ['2.1 STRATEGIC','2.2 TACTICAL','1. UNDETERMINED','3. SUNSET','4.1 DECOM DECIDED','4.2 DECOM PLANNED','5. DECOMMISSIONED'] %}
+            <button type="button" @click="bulkUpdateLifecycle('{{ stage }}'); lcOpen = false" role="menuitem"
+              class="w-full text-left px-3 py-1.5 text-xs hover:bg-accent transition-colors">{{ stage }}</button>
+            {% endfor %}
+          </div>
+        </div>
+        {# PLT-021: Bulk assign owner #}
+        <button type="button" data-testid="bulk-btn-assign-owner" @click="promptBulkAssignOwner()"
+          class="h-8 px-3 rounded-md border border-input bg-background text-xs font-medium hover:bg-accent transition-colors inline-flex items-center gap-1.5" aria-label="Assign owner">
+          <i data-lucide="user-check" class="h-3.5 w-3.5" aria-hidden="true"></i>Owner
+        </button>
+        {# PLT-022: Bulk tag #}
+        <button type="button" data-testid="bulk-btn-tag" @click="promptBulkTag()"
+          class="h-8 px-3 rounded-md border border-input bg-background text-xs font-medium hover:bg-accent transition-colors inline-flex items-center gap-1.5" aria-label="Add tag">
+          <i data-lucide="tag" class="h-3.5 w-3.5" aria-hidden="true"></i>Tag
+        </button>
+        {% if current_user.is_admin() or current_user.role_archetype == 'architect' %}
+        <button type="button" data-testid="bulk-btn-delete" @click="confirmBulkDelete()"
+          class="h-8 px-3 rounded-md border border-destructive/30 bg-destructive/5 text-destructive text-xs font-medium hover:bg-destructive/10 transition-colors inline-flex items-center gap-1.5" aria-label="Delete">
+          <i data-lucide="trash-2" class="h-3.5 w-3.5" aria-hidden="true"></i>Delete
+        </button>
+        {% endif %}
+      </div>
+      <button type="button" @click="clearSelection()" class="ml-auto h-7 w-7 rounded-md hover:bg-muted flex items-center justify-center" aria-label="Clear selection">
+        <i data-lucide="x" class="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true"></i>
+      </button>
+    </div>
+
+    {# ─ Desktop table ─ #}
+    <div class="hidden lg:block overflow-x-auto">
+      {% if applications %}
+
+    <!-- FRAG-007: Bulk Actions Bar -->
+    <div x-data="{ selectedApps: [], bulkAction: '', bulkLoading: false }" class="mb-4" x-show="selectedApps.length > 0" x-cloak>
+        <div class="flex items-center gap-3 p-3 rounded-lg border border-primary/20 bg-primary/5">
+            <span class="text-sm font-medium text-foreground" x-text="selectedApps.length + ' selected'"></span>
+            <select x-model="bulkAction" class="h-8 rounded-md border border-input bg-background px-3 text-sm">
+                <option value="">Choose action...</option>
+                <option value="lifecycle">Change Lifecycle</option>
+                <option value="tag">Add Tag</option>
+                <option value="owner">Assign Owner</option>
+            </select>
+            <button type="button" @click="if(bulkAction && !bulkLoading) {
+                bulkLoading = true;
+                const url = '/applications/api/bulk-' + (bulkAction === 'lifecycle' ? 'lifecycle' : bulkAction === 'tag' ? 'tag' : 'assign-owner');
+                fetch(url, {method:'POST', headers:{'Content-Type':'application/json', 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''},
+                    body: JSON.stringify({application_ids: selectedApps, value: prompt('Enter value:')})
+                }).then(r => r.json()).then(d => { bulkLoading = false; if(d.success) location.reload(); else Platform.toast.error(d.error || 'Failed'); })
+                .catch(() => { bulkLoading = false; });
+            }" :disabled="!bulkAction || bulkLoading"
+                class="inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors">
+                Apply
+            </button>
+        </div>
+    </div>
+
+<table class="w-full border-collapse" data-testid="applications-table">
+        <thead>
+          <tr class="bg-muted/40 border-b">
+            <th class="px-4 py-3 w-10 text-left">
+              <input type="checkbox" id="select-all-desktop" data-testid="select-all"
+                :checked="allSelected()" :indeterminate="someSelected()"
+                @change="toggleSelectAll($event.target.checked)"
+                class="rounded border-input h-4 w-4 cursor-pointer" aria-label="Select all">
+            </th>
+            <th class="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider w-20">ID</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider min-w-[180px]">Application</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider min-w-[120px]">Type</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider w-10" title="ArchiMate linked">AM</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider min-w-[160px]">Lifecycle Status</th>
+            {# Hidden until data enrichment — Criticality, Business Owner, Vendor #}
+            {#
+            <th class="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider min-w-[130px]">Criticality</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider min-w-[140px]">Business Owner</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider min-w-[130px]">Vendor</th>
+            #}
+            <th class="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider min-w-[150px]">Capability</th>
+            <th class="px-4 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider min-w-[180px]">Actions</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y">
+          {% for app in applications %}
+          {%- set sk = (app.lifecycle_status or app.deployment_status or 'planned').lower() -%}
+          {%- set si = STATUS_MAP.get(sk, {'label': app.lifecycle_status or app.deployment_status or 'Unknown', 'cls': 'bg-muted text-muted-foreground'}) -%}
+          {%- set ck = (app.business_criticality or '').lower() -%}
+          {%- set cc = CRIT_MAP.get(ck, 'bg-muted text-muted-foreground dark:bg-foreground dark:text-muted-foreground') -%}
+          {%- set pc = app.capability_mappings[0] if app.capability_mappings else none -%}
+          <tr class="border-b hover:bg-muted/30 transition-colors" data-app-id="{{ app.id }}" data-testid="app-row-{{ app.id }}">
+            <td class="px-4 py-3">
+              <input type="checkbox" class="row-select rounded border-input h-4 w-4 cursor-pointer"
+                :checked="selectedIds.has({{ app.id }})"
+                @change="toggleRow({{ app.id }}, $event.target.checked)"
+                aria-label="Select {{ app.name | e }}" data-testid="row-select-{{ app.id }}">
+            </td>
+            <td class="px-4 py-3"><span class="text-xs font-mono text-muted-foreground">{{ app.id }}</span></td>
+            <td class="px-4 py-3">
+              <p class="font-medium text-sm text-foreground truncate max-w-[200px]" title="{{ app.name | e }}">{{ app.name }}</p>
+              {% if app.description %}<p class="text-xs text-muted-foreground truncate max-w-[200px]">{{ app.description[:80] }}{% if app.description | length > 80 %}…{% endif %}</p>{% endif %}
+            </td>
+            <td class="px-4 py-3"><span class="text-sm text-muted-foreground">{{ app.application_category or '—' }}</span></td>
+            <td class="px-4 py-3 text-center">
+              {% if app.archimate_element_id %}
+              <span class="inline-block h-2.5 w-2.5 rounded-full bg-primary" title="ArchiMate linked"></span>
+              {% else %}
+              <span class="inline-block h-2.5 w-2.5 rounded-full bg-muted-foreground/30" title="No ArchiMate link"></span>
+              {% endif %}
+            </td>
+            <td class="px-4 py-3">
+              <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium {{ si.cls }}">{{ si.label }}</span>
+            </td>
+            {# Hidden until data enrichment — Criticality, Business Owner, Vendor #}
+            {#
+            <td class="px-4 py-3">
+              {% if app.business_criticality %}
+              <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium {{ cc }}">{{ app.business_criticality }}</span>
+              {% else %}<span class="text-xs text-muted-foreground">—</span>{% endif %}
+            </td>
+            <td class="px-4 py-3"><span class="text-sm text-muted-foreground truncate max-w-[140px] block">{{ app.business_owner or '—' }}</span></td>
+            <td class="px-4 py-3">
+              <span class="text-sm text-muted-foreground truncate max-w-[130px] block">
+                {%- if app.vendor_name %}{{ app.vendor_name }}
+                {%- elif app.primary_vendor_product is defined and app.primary_vendor_product %}{{ app.primary_vendor_product.name }}
+                {%- else %}—{%- endif %}
+              </span>
+            </td>
+            #}
+            <td class="px-4 py-3">
+              {% if pc and pc.business_capability %}
+              <span class="text-xs text-muted-foreground truncate max-w-[150px] block" title="{{ pc.business_capability.name | e }}">{{ pc.business_capability.name }}</span>
+              {% else %}<span class="text-xs text-muted-foreground">Not mapped</span>{% endif %}
+            </td>
+            <td class="px-4 py-3 text-right">
+              <div class="flex gap-1 justify-end">
+                <a href="{{ url_for('unified_applications.application_detail', id=app.id) }}"
+                  data-testid="btn-view-{{ app.id }}"
+                  class="inline-flex items-center justify-center h-8 px-3 rounded-md text-sm font-medium hover:bg-accent transition-colors">View</a>
+                <a href="{{ url_for('unified_applications.application_edit', id=app.id) }}"
+                  data-testid="btn-edit-{{ app.id }}"
+                  class="inline-flex items-center justify-center h-8 px-3 rounded-md text-sm font-medium hover:bg-accent transition-colors">Edit</a>
+                <div class="relative" x-data="{ mapOpen: false }"
+                  data-app-map-id="{{ app.id }}"
+                  data-app-map-name="{{ app.name | e }}">
+                  <button type="button" @click="mapOpen = !mapOpen" @click.outside="mapOpen = false" @keydown.escape="mapOpen = false"
+                    :aria-expanded="mapOpen.toString()" aria-haspopup="menu"
+                    aria-label="Map application {{ app.name }}"
+                    class="inline-flex items-center justify-center h-8 px-3 rounded-md text-sm font-medium border border-input bg-background hover:bg-accent transition-colors">
+                    <i data-lucide="link" class="h-4 w-4" aria-hidden="true"></i>
+                  </button>
+                  <!-- modal-a11y-ok: dropdown menu, not a dialog --><div x-show="mapOpen" x-transition x-cloak
+                    class="absolute right-0 mt-1 w-52 bg-card border rounded-md shadow-lg z-30 py-1" role="menu">
+                    <button type="button" @click="(() => { const el = $el.closest('[data-app-map-id]'); if (el) openMappingForApp(el.dataset.appMapId, el.dataset.appMapName, 'capability'); mapOpen=false; })()"
+                      class="w-full text-left px-4 py-2 text-sm hover:bg-accent flex items-center gap-2" role="menuitem" aria-label="Map to Capabilities">
+                      <i data-lucide="box" class="h-4 w-4 text-primary" aria-hidden="true"></i>Map to Capabilities
+                    </button>
+                    <button type="button" @click="(() => { const el = $el.closest('[data-app-map-id]'); if (el) openMappingForApp(el.dataset.appMapId, el.dataset.appMapName, 'apqc'); mapOpen=false; })()"
+                      class="w-full text-left px-4 py-2 text-sm hover:bg-accent flex items-center gap-2" role="menuitem" aria-label="Map to APQC">
+                      <i data-lucide="git-branch" class="h-4 w-4 text-success" aria-hidden="true"></i>Map to APQC
+                    </button>
+                    <button type="button" @click="(() => { const el = $el.closest('[data-app-map-id]'); if (el) openMappingForApp(el.dataset.appMapId, el.dataset.appMapName, 'vendor'); mapOpen=false; })()"
+                      class="w-full text-left px-4 py-2 text-sm hover:bg-accent flex items-center gap-2" role="menuitem" aria-label="Map to Vendors">
+                      <i data-lucide="package" class="h-4 w-4 text-primary" aria-hidden="true"></i>Map to Vendors
+                    </button>
+                    <div class="border-t my-1"></div>
+                    <button type="button" @click="(() => { const el = $el.closest('[data-app-map-id]'); if (el) openMappingForApp(el.dataset.appMapId, el.dataset.appMapName, 'archimate'); mapOpen=false; })()"
+                      class="w-full text-left px-4 py-2 text-sm hover:bg-accent flex items-center gap-2" role="menuitem" aria-label="Map to ArchiMate">
+                      <i data-lucide="layers" class="h-4 w-4 text-warning" aria-hidden="true"></i>Map to ArchiMate
+                    </button>
+                  </div>
+                </div>
+                {% if current_user.is_admin() or current_user.role_archetype == 'architect' %}
+                <form method="POST" action="{{ url_for('unified_applications.application_delete', id=app.id) }}"
+                  @submit.prevent="if (confirm('Delete {{ app.name | e }}? This cannot be undone.')) $el.submit()">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button type="submit" data-testid="btn-delete-{{ app.id }}"
+                    class="inline-flex items-center justify-center h-8 px-3 rounded-md text-sm font-medium text-destructive hover:bg-destructive/10 transition-colors"
+                    aria-label="Delete {{ app.name }}">
+                    <i data-lucide="trash-2" class="h-4 w-4" aria-hidden="true"></i>
+                  </button>
+                </form>
+                {% endif %}
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="py-16 px-6 text-center">
+        <div class="flex h-16 w-16 items-center justify-center rounded-full bg-muted mx-auto mb-4">
+          <i data-lucide="layout-grid" class="h-8 w-8 text-muted-foreground" aria-hidden="true"></i>
+        </div>
+        <h2 class="text-lg font-semibold mb-2">No applications found</h2>
+        <p class="text-sm text-muted-foreground mb-6 max-w-md mx-auto">
+          {% if filters.search or filters.type or filters.status or filters.domain or filters.capability_level %}
+          No applications match your current filters.
+          {% else %}
+            {# PLT-040: Role-aware empty state CTAs #}
+            {% if current_user.enterprise_role == 'platform_admin' or current_user.is_admin() %}
+            Your application portfolio is empty. Import from Abacus or add manually.
+            {% else %}
+            Ask your admin to sync the application portfolio from Abacus.
+            {% endif %}
+          {% endif %}
+        </p>
+        <div class="flex flex-col sm:flex-row gap-3 justify-center">
+          {% if filters.search or filters.type or filters.status or filters.domain or filters.capability_level %}
+          <button type="button" @click="clearFilters()"
+            class="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-lg border border-input bg-background hover:bg-accent text-sm font-medium" aria-label="Filter">
+            <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>Clear Filters
+          </button>
+          {% elif current_user.enterprise_role == 'platform_admin' or current_user.is_admin() %}
+          <a href="/admin/abacus-settings"
+            class="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 text-sm font-medium">
+            <i data-lucide="download" class="h-4 w-4" aria-hidden="true"></i>Import from Abacus
+          </a>
+          <button type="button" data-modal-open="modal-create"
+            class="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-lg border border-input bg-background hover:bg-accent text-sm font-medium" aria-label="Action">
+            <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i>Add Application
+          </button>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+    </div>
+    {# ─ Mobile cards ─ #}
+    <div class="lg:hidden">
+      {% if applications %}
+      <div class="divide-y" data-testid="mobile-cards">
+        {% for app in applications %}
+        {%- set sk = (app.lifecycle_status or app.deployment_status or 'planned').lower() -%}
+        {%- set si = STATUS_MAP.get(sk, {'label': app.lifecycle_status or app.deployment_status or 'Unknown', 'cls': 'bg-muted text-muted-foreground'}) -%}
+        {%- set pc = app.capability_mappings[0] if app.capability_mappings else none -%}
+        <div class="p-4 hover:bg-muted/30 transition-colors" data-app-id="{{ app.id }}" data-testid="mobile-card-{{ app.id }}">
+          <div class="flex items-start justify-between mb-3">
+            <div class="flex items-start gap-3 min-w-0">
+              <input type="checkbox" class="row-select mt-1 rounded border-input h-4 w-4 cursor-pointer"
+                :checked="selectedIds.has({{ app.id }})"
+                @change="toggleRow({{ app.id }}, $event.target.checked)"
+                aria-label="Select {{ app.name | e }}">
+              <div class="min-w-0">
+                <h3 class="font-semibold text-base mb-0.5 truncate">{{ app.name }}</h3>
+                <p class="text-xs text-muted-foreground">ID: {{ app.id }}</p>
+                {% if app.description %}<p class="text-xs text-muted-foreground mt-1">{{ app.description[:100] }}{% if app.description | length > 100 %}…{% endif %}</p>{% endif %}
+              </div>
+            </div>
+            <a href="{{ url_for('unified_applications.application_detail', id=app.id) }}"
+              class="inline-flex items-center justify-center h-8 w-8 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 shrink-0 ml-2"
+              aria-label="View {{ app.name | e }}">
+              <i data-lucide="eye" class="h-4 w-4" aria-hidden="true"></i>
+            </a>
+          </div>
+          <div class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+            <div>
+              <p class="text-xs text-muted-foreground mb-0.5">Status</p>
+              <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium {{ si.cls }}">{{ si.label }}</span>
+            </div>
+            <div>
+              <p class="text-xs text-muted-foreground mb-0.5">Owner</p>
+              <p class="text-sm font-medium truncate">{{ app.business_owner or '—' }}</p>
+            </div>
+            <div>
+              <p class="text-xs text-muted-foreground mb-0.5">Vendor</p>
+              <p class="text-sm text-muted-foreground truncate">
+                {%- if app.vendor_name %}{{ app.vendor_name }}
+                {%- elif app.primary_vendor_product is defined and app.primary_vendor_product %}{{ app.primary_vendor_product.name }}
+                {%- else %}—{%- endif %}
+              </p>
+            </div>
+            <div>
+              <p class="text-xs text-muted-foreground mb-0.5">Capability</p>
+              {% if pc and pc.business_capability %}
+              <p class="text-sm text-muted-foreground truncate">{{ pc.business_capability.name }}</p>
+              {% else %}<p class="text-sm text-muted-foreground">Not mapped</p>{% endif %}
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      {{ empty_state(icon='layout-grid', title='No applications found.', padding='py-12') }}
+      {% endif %}
+    </div>
+    {# ─ Pagination footer ─ #}
+    <div class="px-4 py-3 border-t bg-muted/20" data-testid="pagination-footer" role="navigation" aria-label="pagination">
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div class="text-sm text-muted-foreground" data-testid="pagination-info">
+          {% if total_count and applications %}
+          Showing <span class="font-medium text-foreground">{{ ((current_page-1)*page_size+1) if applications|length>0 else 0 }}</span>–<span class="font-medium text-foreground">{{ (current_page-1)*page_size+applications|length }}</span> of <span class="font-medium text-foreground">{{ total_count }}</span>
+          {% elif applications %}<span class="font-medium text-foreground">{{ applications|length }}</span> application{{ 's' if applications|length!=1 else '' }}
+          {% else %}No applications{% endif %}
+        </div>
+        <div class="flex items-center gap-3">
+          <div class="flex items-center gap-2">
+            <label for="page-size-select" class="text-sm text-muted-foreground">Show:</label>
+            <select id="page-size-select" data-testid="page-size-select" @change="changePageSize($event.target.value)"
+              class="h-8 w-16 rounded-md border border-input bg-background px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              {% for sz in [25,50,100] %}<option value="{{ sz }}" {% if page_size==sz %}selected{% endif %}>{{ sz }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="flex items-center gap-1">
+            <button type="button" id="prev-page" data-testid="btn-prev-page" @click="goToPage({{ current_page }}-1)"
+              aria-label="Previous page" {% if not has_prev %}disabled{% endif %}
+              class="flex h-8 w-8 items-center justify-center rounded-md border border-input bg-background hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+              <i data-lucide="chevron-left" class="h-4 w-4" aria-hidden="true"></i>
+            </button>
+            <span class="text-sm text-muted-foreground px-2 min-w-[90px] text-center" data-testid="page-indicator">
+              Page <span class="font-medium text-foreground">{{ current_page }}</span> of <span class="font-medium text-foreground">{{ total_pages }}</span>
+            </span>
+            <button type="button" id="next-page" data-testid="btn-next-page" @click="goToPage({{ current_page }}+1)"
+              aria-label="Next page" {% if not has_next %}disabled{% endif %}
+              class="flex h-8 w-8 items-center justify-center rounded-md border border-input bg-background hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+              <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>{# end table card #}
+</div>{# end app-portfolio-root #}
+
+{# ─ Include existing unified mapping modal ─ #}
+{% include 'components/unified_mapping_modal.html' %}
+{# ─ Include import modal ─ #}
+{% include 'application_mgmt/application_import_modal.html' %}
+
+{# ─ Create Application Modal ─ #}
+<div id="modal-create" hidden role="dialog" aria-modal="true" aria-labelledby="modal-create-title"
+  class="modal-root fixed inset-0 z-[1000] bg-black/50 items-center justify-center p-4" data-modal-backdrop="modal-create" aria-hidden="true">
+  <div class="bg-card rounded-xl shadow-xl w-full max-w-lg border flex flex-col max-h-[90vh]">
+    <div class="flex items-center justify-between p-6 border-b shrink-0">
+      <div>
+        <h2 id="modal-create-title" class="text-lg font-semibold">New Application</h2>
+        <p class="text-sm text-muted-foreground mt-0.5">Register a new application in the portfolio.</p>
+      </div>
+      <!-- inline-event-ok --><button type="button" @click="Platform.modal.close('modal-create')" aria-label="Close"
+        class="h-8 w-8 rounded-md hover:bg-muted flex items-center justify-center">
+        <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
+      </button>
+    </div>
+    <div class="p-6 overflow-y-auto flex-1" x-data="applicationCreateForm()">
+      <form @submit.prevent="submit()" class="space-y-4">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div class="sm:col-span-2">
+            <label for="ca-name" class="block text-sm font-medium mb-1">Application Name <span class="text-destructive" aria-hidden="true">*</span></label>
+            <input id="ca-name" type="text" x-model="form.name" required maxlength="255" placeholder="e.g. Customer Portal"
+              class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          </div>
+          <div>
+            <label for="ca-code" class="block text-sm font-medium mb-1">Application Code</label>
+            <input id="ca-code" type="text" x-model="form.application_code" maxlength="50" placeholder="e.g. CUST-PORTAL"
+              class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          </div>
+          <div>
+            <label for="ca-type" class="block text-sm font-medium mb-1">Application Type</label>
+            <select id="ca-type" x-model="form.application_type"
+              class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <option value="">Select type...</option>
+              <option value="application">Application</option>
+              <option value="service">Service</option>
+              <option value="platform">Platform</option>
+              <option value="infrastructure">Infrastructure</option>
+              <option value="integration">Integration</option>
+              <option value="database">Database</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          <div>
+            <label for="ca-criticality" class="block text-sm font-medium mb-1">Criticality</label>
+            <select id="ca-criticality" x-model="form.criticality"
+              class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <option value="">Select...</option>
+              <option value="critical">Critical</option>
+              <option value="high">High</option>
+              <option value="medium">Medium</option>
+              <option value="low">Low</option>
+            </select>
+          </div>
+          <div>
+            <label for="ca-status" class="block text-sm font-medium mb-1">Deployment Status</label>
+            <select id="ca-status" x-model="form.deployment_status"
+              class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <option value="">Select...</option>
+              <option value="production">Production</option>
+              <option value="staging">Staging</option>
+              <option value="development">Development</option>
+              <option value="retired">Retired</option>
+              <option value="planned">Planned</option>
+            </select>
+          </div>
+          <div x-data="userSearchWidget(() => form.business_owner, v => { form.business_owner = v; })" @click.outside="ushow = false">
+            <label for="ca-owner" class="block text-sm font-medium mb-1">Business Owner</label>
+            <div class="relative">
+              <input id="ca-owner" type="text" x-model="form.business_owner" @input.debounce.300ms="usearch()" maxlength="255" placeholder="Search by name or email..."
+                class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" autocomplete="off">
+              <div x-show="ushow" x-cloak class="absolute z-20 mt-1 w-full bg-popover border border-border rounded-md shadow-lg max-h-40 overflow-y-auto">
+                <template x-for="u in ures" :key="u.id">
+                  <button type="button" @click="uselect(u)" class="w-full px-3 py-1.5 text-left text-sm hover:bg-muted flex items-center justify-between">
+                    <span x-text="u.name" class="font-medium"></span>
+                    <span x-text="u.email" class="text-xs text-muted-foreground"></span>
+                  </button>
+                </template>
+              </div>
+            </div>
+          </div>
+          <div class="sm:col-span-2">
+            <label for="ca-description" class="block text-sm font-medium mb-1">Description</label>
+            <textarea id="ca-description" x-model="form.description" rows="2" maxlength="2000" placeholder="Brief description"
+              class="flex min-h-[64px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"></textarea>
+          </div>
+        </div>
+        <div x-show="errorMsg" x-cloak class="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-sm text-destructive" x-text="errorMsg" role="alert"></div>
+        <div class="flex justify-end gap-3 pt-2 border-t">
+          <!-- inline-event-ok --><button type="button" @click="Platform.modal.close('modal-create')"
+            class="px-4 py-2 text-sm font-medium rounded-md border border-input bg-background hover:bg-accent" aria-label="Action">Cancel</button>
+          <button type="submit" :disabled="submitting"
+            class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50" aria-label="Submit">
+            <i data-lucide="loader-2" class="h-4 w-4 animate-spin" x-show="submitting" x-cloak aria-hidden="true"></i>
+            <span x-text="submitting ? 'Creating...' : 'Add Application'">Add Application</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{# ─ Notification toast ─ #}
+<div aria-live="polite" aria-atomic="true"
+  x-data x-show="$store.appToast && $store.appToast.visible" x-cloak
+  x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0 translate-y-2"
+  x-transition:enter-end="opacity-100 translate-y-0"
+  class="fixed bottom-4 right-4 z-[60] flex items-center gap-3 px-4 py-3 rounded-lg shadow-lg max-w-sm text-sm font-medium bg-foreground text-background">
+  <span x-text="$store.appToast ? $store.appToast.message : ''"></span>
+</div>
+
+{% endblock %}
+
+{% block extra_head_js %}
+<script>
+  window.__APP_CONFIG__ = window.__APP_CONFIG__ || {};
+  window.__APP_CONFIG__.createApplicationUrl = '{{ url_for("unified_applications.application_create") }}';
+  if (document.body) {
+    document.body.dataset.currencySymbol = '{{ currency_symbol | default("£") | e }}';
+  }
+</script>
+<script>
+function userSearchWidget(getVal, setVal) {
+    return {
+        ures: [], ushow: false,
+        async usearch() {
+            const q = getVal();
+            if (!q || q.length < 2) { this.ures = []; this.ushow = false; return; }
+            try {
+                const r = await fetch('/api/users', { headers: { 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || '' } });
+                const d = await r.json();
+                if (d.success) { const lq = q.toLowerCase(); this.ures = d.users.filter(u => u.name.toLowerCase().includes(lq) || u.email.toLowerCase().includes(lq)).slice(0, 5); this.ushow = this.ures.length > 0; }
+            } catch (e) {}
+        },
+        uselect(u) { setVal(u.name); this.ushow = false; this.ures = []; }
+    };
+}
+</script>
+<script src="{{ url_for('static', filename='js/applications/list.js') }}?v=2"></script>
+<script src="https://cdn.jsdelivr.net/npm/jointjs@3.7.7/dist/joint.min.js" crossorigin="anonymous"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jointjs@3.7.7/dist/joint.min.css" crossorigin="anonymous">
+<script src="{{ url_for('static', filename='js/archimate/composer_renderer.js') }}"></script>
+{% endblock %}

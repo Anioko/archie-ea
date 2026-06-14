@@ -1,0 +1,362 @@
+{# ── Blueprint Header: Document title + sticky completeness strip ── #}
+{# Variables: solution, scores (dict of section_id -> {element, relationship, traceability, overall}) #}
+
+{% set sections = [
+    ('executive_summary', 'Exec Summary'),
+    ('vision_motivation', 'Motivation'),
+    ('value_stream_map', 'Value Stream'),
+    ('business_process_view', 'Business'),
+    ('application_cooperation', 'Application'),
+    ('data_information', 'Data'),
+    ('deployment_view', 'Deployment'),
+    ('network_communication', 'Network'),
+    ('gap_analysis', 'Gaps'),
+    ('transition_roadmap', 'Roadmap'),
+    ('work_packages', 'Work Pkg'),
+    ('security_viewpoint', 'Security'),
+    ('nfr_satisfaction', 'NFRs'),
+    ('requirements_traceability', 'Trace')
+] %}
+
+{# ── Collect 0%-score sections for quick-add strip ── #}
+{% set _qa_ns = namespace(zero=[]) %}
+{% for _qa_sid, _qa_lbl in sections %}
+    {% set _qa_s = scores.get(_qa_sid, {}) if scores else {} %}
+    {% if (_qa_s.get('overall', 0) if _qa_s else 0) == 0 %}
+        {% set _qa_ns.zero = _qa_ns.zero + [(_qa_sid, _qa_lbl)] %}
+    {% endif %}
+{% endfor %}
+
+{# ── Document title bar ── #}
+<div class="mb-4">
+    <div class="flex items-center justify-between">
+        <div class="min-w-0 flex-1">
+            <h1 class="text-2xl font-bold text-foreground truncate">{{ solution.name }}</h1>
+            <p class="mt-1 text-sm text-muted-foreground">
+                Solution Architecture Blueprint
+                {% if solution.solution_type %}
+                    <span class="mx-1.5 text-border">&middot;</span>
+                    <span>{{ solution.solution_type }}</span>
+                {% endif %}
+                {% if solution.status %}
+                    <span class="mx-1.5 text-border">&middot;</span>
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30">{{ solution.status }}</span>
+                {% endif %}
+            </p>
+        </div>
+        <div class="flex items-center gap-2 shrink-0 ml-4">
+            <a href="{{ url_for('solution_design.view_solution', solution_id=solution.id) }}?edit=1"
+               class="inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium border border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+               title="Add or edit drivers, goals, options, risks, and other entities">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                Manage Entities
+            </a>
+            <button type="button"
+                    id="bp-header-save-template-btn"
+                    class="inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium border border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+                    title="Save this solution as a reusable template">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/></svg>
+                Save as Template
+            </button>
+<script>
+(function() {
+    const btn = document.getElementById('bp-header-save-template-btn');
+    if (btn) {
+        btn.addEventListener('click', function() {
+            const modal = document.getElementById('save-as-template-modal');
+            if (modal) modal.classList.remove('hidden');
+        });
+    }
+})();
+</script>
+            <a href="{{ url_for('codegen.workbench_page', solution_id=solution.id) }}"
+               class="inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium border border-emerald-500/40 text-emerald-700 bg-emerald-500/10 hover:bg-emerald-500/20 transition-colors"
+               title="Open the Code Workbench to view and edit generated code for this solution">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
+                Code Workbench
+            </a>
+            <button type="button"
+               id="btn-export-oef-{{ solution.id }}"
+               class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border border-border bg-card text-foreground hover:bg-accent transition-colors"
+               title="Download ArchiMate Open Exchange Format XML for import into Archi, Sparx EA, BizzDesign, etc.">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                </svg>
+                <span id="btn-export-oef-label-{{ solution.id }}">Export OEF</span>
+            </button>
+<script>
+(function() {
+    let _oefBtn = document.getElementById('btn-export-oef-{{ solution.id }}');
+    if (_oefBtn) _oefBtn.addEventListener('click', function() { archieDownloadOef({{ solution.id }}); });
+})();
+function archieDownloadOef(solutionId) {
+    let btn = document.getElementById('btn-export-oef-' + solutionId);
+    let lbl = document.getElementById('btn-export-oef-label-' + solutionId);
+    if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; }
+    if (lbl) lbl.textContent = 'Exporting…';
+    fetch('/solutions/' + solutionId + '/export-oef')
+        .then(function(r) {
+            if (!r.ok) {
+                return r.json().then(function(d) {
+                    let msg = d.error || 'Export failed — no architecture elements found for this solution.';
+                    archieShowBanner(msg, 'error');
+                }).catch(function() {
+                    archieShowBanner('Export failed — no architecture elements found for this solution.', 'error');
+                });
+            }
+            return r.blob().then(function(blob) {
+                let url = URL.createObjectURL(blob);
+                let a = document.createElement('a');
+                a.href = url;
+                a.download = 'solution_' + solutionId + '_archimate_oef.xml';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            });
+        })
+        .catch(function() {
+            archieShowBanner('Network error — could not export OEF.', 'error');
+        })
+        .finally(function() {
+            if (btn) { btn.disabled = false; btn.style.opacity = ''; }
+            if (lbl) lbl.textContent = 'Export OEF';
+        });
+}
+function archieShowBanner(msg, type) {
+    if (window.Platform && Platform.toast) {
+        if (type === 'error') Platform.toast.error(msg);
+        else Platform.toast.success(msg);
+        return;
+    }
+    let existing = document.getElementById('archie-oef-banner');
+    if (existing) existing.remove();
+    let div = document.createElement('div');
+    div.id = 'archie-oef-banner';
+    let bg = type === 'error' ? '#fee2e2' : '#dcfce7';
+    let border = type === 'error' ? '#fca5a5' : '#86efac';
+    let color = type === 'error' ? '#991b1b' : '#166534';
+    div.style.cssText = 'position:fixed;top:1rem;right:1rem;z-index:9999;padding:0.75rem 1rem;border-radius:0.5rem;border:1px solid ' + border + ';background:' + bg + ';color:' + color + ';font-size:0.875rem;font-weight:500;max-width:24rem;box-shadow:0 4px 12px rgba(0,0,0,0.15);display:flex;align-items:center;gap:0.5rem;';
+    let _iconSpan = document.createElement('span');
+    _iconSpan.innerHTML = '<svg style="flex-shrink:0;width:1rem;height:1rem;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>';
+    let _msgSpan = document.createElement('span');
+    _msgSpan.textContent = msg;
+    let _dismissBtn = document.createElement('button');
+    _dismissBtn.style.cssText = 'margin-left:auto;opacity:0.6;background:none;border:none;cursor:pointer;font-size:1rem;line-height:1;';
+    _dismissBtn.title = 'Dismiss';
+    _dismissBtn.textContent = '\u2715';
+    _dismissBtn.addEventListener('click', function() { div.remove(); });
+    div.appendChild(_iconSpan);
+    div.appendChild(_msgSpan);
+    div.appendChild(_dismissBtn);
+    document.body.appendChild(div);
+    setTimeout(function() { if (div.parentElement) div.remove(); }, 6000);
+}
+</script>
+            <a href="{{ url_for('solution_design.export_solution_blueprint', solution_id=solution.id) }}"
+               target="_blank"
+               class="inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium border border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+                Export PDF
+            </a>
+            {# AI Copilot button — opens slide-out panel #}
+            <button type="button"
+                    @click="$dispatch('blueprint-chat-toggle')"
+                    class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium
+                           bg-violet-500/10 text-violet-600 border border-violet-500/30
+                           hover:bg-violet-500/20 transition-colors"
+                    title="Open AI Architecture Copilot">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                </svg>
+                Ask AI
+            </button>
+            {# More actions (⋮) dropdown — Delete and other destructive/secondary actions #}
+            <div class="relative" x-data="{bpHdrMoreOpen: false}" @keydown.escape.window="bpHdrMoreOpen = false" @click.outside="bpHdrMoreOpen = false">
+                <button type="button"
+                        @click="bpHdrMoreOpen = !bpHdrMoreOpen"
+                        class="inline-flex items-center justify-center w-7 h-7 rounded-md text-muted-foreground border border-input bg-background hover:bg-accent hover:text-foreground transition-colors"
+                        title="More actions" :aria-expanded="bpHdrMoreOpen">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"/>
+                    </svg>
+                </button>
+                <div x-show="bpHdrMoreOpen" x-cloak
+                     class="absolute right-0 mt-1 w-44 rounded-md border border-border bg-popover shadow-lg z-50 py-1 text-sm"
+                     role="menu">
+                    <a href="{{ url_for('solution_design.view_solution', solution_id=solution.id) }}?edit=1"
+                       role="menuitem"
+                       class="flex items-center gap-2 px-3 py-2 text-foreground hover:bg-accent transition-colors"
+                       @click="bpHdrMoreOpen = false">
+                        <svg class="w-3.5 h-3.5 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                        Manage Entities
+                    </a>
+                    <hr class="my-1 border-border">
+                    <button type="button"
+                            data-action="delete-solution"
+                            data-solution-id="{{ solution.id }}"
+                            data-solution-name="{{ solution.name|e }}"
+                            role="menuitem"
+                            class="w-full flex items-center gap-2 px-3 py-2 text-destructive hover:bg-destructive/10 transition-colors text-left"
+                            @click="bpHdrMoreOpen = false">
+                        <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                        Delete Solution
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+(function() {
+    async function deleteSolutionBp(solutionId, solutionName) {
+        if (!(await Platform.modal.confirm('Delete "' + solutionName + '"? This cannot be undone.'))) return;
+        let csrf = document.querySelector('meta[name="csrf-token"]');
+        fetch('/solutions/' + solutionId + '/delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf ? csrf.content : '' }
+        }).then(function(r) { return r.json(); }).then(function(d) {
+            if (d.success) { window.location.href = '/solutions/'; }
+            else { alert(d.error || 'Delete failed'); }
+        }).catch(function(e) { alert('Delete failed: ' + e.message); });
+    }
+    document.addEventListener('click', function(e) {
+        let btn = e.target.closest('[data-action="delete-solution"]');
+        if (!btn) return;
+        let sid = btn.dataset.solutionId;
+        let sname = btn.dataset.solutionName || '';
+        if (sid) deleteSolutionBp(Number(sid), sname);
+    });
+})();
+</script>
+
+{# ── Sticky completeness strip ── #}
+<div x-data="{ activeSection: '' }"
+     x-init="
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(e => {
+                if (e.isIntersecting) activeSection = e.target.id;
+            });
+        }, { rootMargin: '-120px 0px -60% 0px', threshold: 0.1 });
+        document.querySelectorAll('[data-bp-section]').forEach(el => observer.observe(el));
+     "
+     class="sticky top-0 z-30 bg-background/95 backdrop-blur-sm border-b border-border -mx-6 px-6 py-2 mb-6">
+    <div class="flex items-center gap-1 overflow-x-auto scrollbar-thin">
+        {% for section_id, label in sections %}
+        {% set score = scores.get(section_id, {}) if scores else {} %}
+        {% set pct = score.get('overall', 0) if score else 0 %}
+        {% set elem_pct = score.get('element', 0) if score else 0 %}
+        {% set rel_pct = score.get('relationship', 0) if score else 0 %}
+        {% set trace_pct = score.get('traceability', 0) if score else 0 %}
+        {% if section_id == 'executive_summary' %}
+            {% set _tip = label ~ ': ' ~ pct ~ '%' ~ '\nWord count score — need 100 words to reach 100%.' ~ ('\nCurrently ' ~ (pct | string) ~ '% complete.' if pct < 100 else '\nComplete!') %}
+        {% elif section_id in ['application_cooperation', 'data_information', 'deployment_view'] %}
+            {% set spec_pct = score.get('spec_completeness', 0) if score else 0 %}
+            {% set sq_pct = score.get('spec_quality', 0) if score else 0 %}
+            {% set _tip = label ~ ': ' ~ pct ~ '%' ~ '\nElements: ' ~ elem_pct ~ '%  ·  Relationships: ' ~ rel_pct ~ '%  ·  Traceability: ' ~ trace_pct ~ '%' ~ '\nSpec completeness: ' ~ spec_pct ~ '%  ·  Spec quality: ' ~ sq_pct ~ '%' %}
+        {% else %}
+            {% set _tip = label ~ ': ' ~ pct ~ '%' ~ '\nElements: ' ~ elem_pct ~ '%  ·  Relationships: ' ~ rel_pct ~ '%  ·  Traceability: ' ~ trace_pct ~ '%' %}
+        {% endif %}
+        <button type="button"
+                @click="
+                    const el = document.getElementById('{{ section_id }}');
+                    if (el) {
+                        const y = el.getBoundingClientRect().top + window.pageYOffset - 120;
+                        window.scrollTo({ top: y, behavior: 'smooth' });
+                    }
+                "
+                :class="activeSection === '{{ section_id }}' ? 'ring-1 ring-primary bg-primary/5' : ''"
+                class="flex flex-col items-center min-w-[72px] px-2 py-1.5 rounded-md hover:bg-muted/50 transition-colors cursor-pointer shrink-0 group"
+                title="{{ _tip }}">
+            {# Label #}
+            <span class="text-[10px] font-medium truncate max-w-[68px] leading-tight"
+                  :class="activeSection === '{{ section_id }}' ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground'">{{ label }}</span>
+            {# Progress bar #}
+            <div class="mt-1 w-full h-1 bg-muted rounded-full overflow-hidden">
+                <div class="h-full rounded-full transition-all duration-300
+                    {% if pct >= 80 %}bg-emerald-500
+                    {% elif pct >= 40 %}bg-amber-500
+                    {% elif pct >= 1 %}bg-destructive
+                    {% else %}bg-muted-foreground/20
+                    {% endif %}"
+                     style="width: {{ pct }}%"></div>
+            </div>
+            {# Percentage #}
+            <span class="text-[11px] font-medium mt-0.5
+                {% if pct >= 80 %}text-emerald-600
+                {% elif pct >= 40 %}text-amber-600
+                {% elif pct >= 1 %}text-destructive
+                {% else %}text-muted-foreground
+                {% endif %}">{{ pct }}%</span>
+        </button>
+        {% endfor %}
+    </div>
+
+    {# ── Not-started quick-add row ── #}
+    {% if _qa_ns.zero %}
+    <div class="flex items-center gap-1.5 mt-1.5 pt-1.5 border-t border-border/40 overflow-x-auto scrollbar-thin">
+        <span class="text-[11px] font-semibold text-destructive/60 uppercase tracking-wide shrink-0 leading-none">Empty:</span>
+        {% for _qs_id, _qs_lbl in _qa_ns.zero %}
+        <button type="button"
+                @click="
+                    (function(){var el=document.getElementById('{{ _qs_id }}');if(el){var y=el.getBoundingClientRect().top+window.pageYOffset-120;window.scrollTo({top:y,behavior:'smooth'});}})();
+                    {% if _qs_id == 'vision_motivation' %}openAdd('driver');
+                    {% elif _qs_id == 'transition_roadmap' %}openAdd('plateau');
+                    {% elif _qs_id == 'nfr_satisfaction' %}openAdd('requirement');
+                    {% elif _qs_id == 'security_viewpoint' %}openAdd('risk');
+                    {% elif _qs_id in ['value_stream_map', 'business_process_view', 'application_cooperation', 'data_information', 'deployment_view', 'network_communication'] %}linkElements('{{ _qs_id }}');
+                    {% endif %}
+                "
+                class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium
+                       border border-destructive/30 text-destructive/80 bg-destructive/5
+                       hover:bg-destructive/15 hover:text-destructive transition-colors shrink-0">
+            <svg class="w-2.5 h-2.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+            </svg>
+            {{ _qs_lbl }}
+        </button>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {# Persona filter bar — J3 journey: ARB/Architect/Executive/Developer view filters #}
+    <div x-data="{ activePersona: '' }" class="flex items-center gap-2 mt-2 pt-2 border-t border-border/50">
+        <span class="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide shrink-0">View as:</span>
+        <button type="button" data-persona="arb"
+                @click="activePersona = activePersona === 'arb' ? '' : 'arb'"
+                :class="activePersona === 'arb' ? 'bg-primary/10 text-primary border-primary/30' : 'text-muted-foreground border-border hover:text-foreground hover:bg-muted/50'"
+                class="px-2 py-0.5 rounded text-[10px] font-medium border transition-colors">ARB</button>
+        <button type="button" data-persona="architect"
+                @click="activePersona = activePersona === 'architect' ? '' : 'architect'"
+                :class="activePersona === 'architect' ? 'bg-primary/10 text-primary border-primary/30' : 'text-muted-foreground border-border hover:text-foreground hover:bg-muted/50'"
+                class="px-2 py-0.5 rounded text-[10px] font-medium border transition-colors">Architect</button>
+        <button type="button" data-persona="executive"
+                @click="activePersona = activePersona === 'executive' ? '' : 'executive'"
+                :class="activePersona === 'executive' ? 'bg-primary/10 text-primary border-primary/30' : 'text-muted-foreground border-border hover:text-foreground hover:bg-muted/50'"
+                class="px-2 py-0.5 rounded text-[10px] font-medium border transition-colors">Executive</button>
+        <button type="button" data-persona="developer"
+                @click="activePersona = activePersona === 'developer' ? '' : 'developer'"
+                :class="activePersona === 'developer' ? 'bg-primary/10 text-primary border-primary/30' : 'text-muted-foreground border-border hover:text-foreground hover:bg-muted/50'"
+                class="px-2 py-0.5 rounded text-[10px] font-medium border transition-colors">Developer</button>
+    </div>
+
+    {# Proactive AI Insights — loaded after page render, non-blocking #}
+    <div x-data="copilotInsights({{ solution.id }})" x-init="load()">
+        <template x-if="insights.length > 0">
+            <div class="flex items-start gap-2 flex-wrap mt-2 pt-2 border-t border-border/50">
+                <span class="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mt-1.5 shrink-0">Insights</span>
+                <template x-for="insight in insights" :key="insight.id">
+                    <div :class="severityClasses(insight.severity)"
+                         class="flex items-center gap-2 px-2.5 py-1 rounded-md border text-[10px] font-medium">
+                        <span x-text="insight.title" class="max-w-[280px] truncate"></span>
+                        <button @click="discuss(insight)"
+                                class="underline decoration-dotted shrink-0 hover:no-underline">Discuss</button>
+                        <button @click="dismiss(insight)"
+                                class="opacity-50 hover:opacity-100 shrink-0 ml-0.5">✕</button>
+                    </div>
+                </template>
+            </div>
+        </template>
+    </div>
+</div>

@@ -1,0 +1,28 @@
+{# shadcn/ui Breadcrumb Component #}
+{% macro breadcrumb(class='') %}
+<nav aria-label="breadcrumb" class="{{ class }}">
+    <ol class="flex flex-wrap items-center gap-1.5 break-words text-sm text-muted-foreground sm:gap-2.5">
+        {{ caller() }}
+    </ol>
+</nav>
+{% endmacro %}
+
+{% macro breadcrumb_item(href='', active=false, class='') %}
+<li class="inline-flex items-center gap-1.5 {{ class }}">
+    {% if not active and href %}
+    <a href="{{ href }}" class="transition-colors hover:text-foreground">
+        {{ caller() }}
+    </a>
+    {% else %}
+    <span {% if active %}aria-current="page" class="font-normal text-foreground"{% endif %}>
+        {{ caller() }}
+    </span>
+    {% endif %}
+</li>
+{% endmacro %}
+
+{% macro breadcrumb_separator(class='') %}
+<li role="presentation" aria-hidden="true" class="[&>svg]:size-3.5 {{ class }}">
+    <i data-lucide="chevron-right" class="h-4 w-4"></i>
+</li>
+{% endmacro %}

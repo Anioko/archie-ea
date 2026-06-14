@@ -1,0 +1,86 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'components/page_header.html' import page_header %}
+{% from 'components/metrics_card.html' import metrics_card %}
+
+{% block title %}Framework Migration{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    {{ page_header(
+        title='Framework Migration',
+        description='Manage and monitor framework version migrations'
+    ) }}
+
+    <div data-slot="card" class="rounded-xl border bg-card shadow-sm">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-border">
+                    <th class="px-6 py-3 text-left font-medium text-muted-foreground">Migration</th>
+                    <th class="px-6 py-3 text-left font-medium text-muted-foreground">Source Framework</th>
+                    <th class="px-6 py-3 text-left font-medium text-muted-foreground">Owner</th>
+                    <th class="px-6 py-3 text-left font-medium text-muted-foreground">Progress</th>
+                    <th class="px-6 py-3 text-left font-medium text-muted-foreground">Status</th>
+                    <th class="px-6 py-3 text-left font-medium text-muted-foreground">Created</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-border">
+                {% for migration in migrations %}
+                <tr class="hover:bg-muted/30">
+                    <td class="px-6 py-3">
+                        <p class="font-medium text-foreground">{{ migration.migration_name }}</p>
+                        {% if migration.migration_description %}
+                        <p class="text-xs text-muted-foreground mt-0.5 truncate max-w-xs">{{ migration.migration_description }}</p>
+                        {% endif %}
+                    </td>
+                    <td class="px-6 py-3 text-muted-foreground">
+                        {{ migration.source_framework_name or '—' }}
+                        {% if migration.source_framework_version %}
+                        <span class="text-xs ml-1">v{{ migration.source_framework_version }}</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-6 py-3 text-muted-foreground">{{ migration.migration_owner or '—' }}</td>
+                    <td class="px-6 py-3">
+                        <div class="flex items-center gap-2">
+                            <div class="w-20 bg-muted rounded-full h-1.5">
+                                <div class="bg-primary h-1.5 rounded-full"
+                                     style="width: {{ [migration.migration_percentage or 0, 100] | min }}%"></div>
+                            </div>
+                            <span class="text-xs text-muted-foreground">
+                                {{ migration.items_migrated or 0 }}/{{ migration.total_items_to_migrate or 0 }}
+                            </span>
+                        </div>
+                    </td>
+                    <td class="px-6 py-3">
+                        {% set s = migration.status or 'planned' %}
+                        {% if s == 'completed' %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-success/10 text-success border border-success/30">Completed</span>
+                        {% elif s == 'in_progress' %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-warning/10 text-warning border border-warning/30">In Progress</span>
+                        {% elif s == 'failed' %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive border border-destructive/30">Failed</span>
+                        {% elif s == 'cancelled' %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground border border-border">Cancelled</span>
+                        {% else %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30">Planned</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-6 py-3 text-muted-foreground text-xs">
+                        {{ migration.created_at.strftime('%d %b %Y') if migration.created_at else '—' }}
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="6" class="px-6 py-12 text-center">
+                        <div class="flex flex-col items-center gap-3 text-muted-foreground">
+                            <i data-lucide="arrow-right-left" class="w-10 h-10 opacity-30" aria-hidden="true"></i>
+                            <p class="text-sm font-medium">No migrations found</p>
+                            <p class="text-xs">Create a migration mapping to move from a legacy framework.</p>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,559 @@
+{% extends 'layouts/admin_base.html' %}
+{% from 'components/page_header.html' import page_header %}
+{% from 'components/modal.html' import modal %}
+{% from 'components/metrics_card.html' import metrics_card %}
+{% from 'components/skeleton.html' import skeleton_table %}
+{% import 'components/card.html' as card %}
+{% import 'components/badge.html' as badge %}
+{% import 'components/table.html' as table %}
+{% import 'components/progress.html' as progress %}
+{% import 'components/button.html' as button %}
+
+{% block title %}Batch Import Dashboard{% endblock %}
+
+{% block extra_head_js %}
+<script src="{{ url_for('static', filename='js/batch_import/batch_jobs_table.js') }}"></script>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6" x-data="batchImportDashboard()">
+
+    {{ page_header(
+        title='Batch Import',
+        description='Manage bulk application imports and ArchiMate element generation',
+        breadcrumbs=[
+            {'label': 'Home', 'href': url_for('admin.dashboard')},
+            {'label': 'Batch Import'}
+        ],
+        actions=[
+            {'text': 'New Import Job', 'icon': 'plus', 'href': url_for('batch_import_view.new_import'), 'variant': 'default'}
+        ]
+    ) }}
+
+    {# ── Stats Cards (v4 SectionCards pattern) ─────────────────────────── #}
+    <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        {{ metrics_card(
+            title='Total Jobs',
+            value_alpine='stats.totalJobs',
+            icon='folder',
+            description='All time import jobs'
+        ) }}
+        {{ metrics_card(
+            title='Processing',
+            value_alpine='stats.processing',
+            icon='loader-2',
+            icon_class='animate-spin',
+            description='Currently running',
+            value_class='text-primary'
+        ) }}
+        {{ metrics_card(
+            title='Elements Generated',
+            value_alpine='stats.elementsGenerated.toLocaleString()',
+            icon='boxes',
+            description='ArchiMate elements created',
+            value_class='text-success'
+        ) }}
+        {{ metrics_card(
+            title='Total Cost',
+            value_alpine="'$' + stats.totalCost.toFixed(2)",
+            value='$0.00',
+            icon='dollar-sign',
+            description='LLM API usage'
+        ) }}
+    </div>
+
+    {# ── Jobs Table (canonical batchJobsTable pattern) ──────────────────── #}
+    <div x-data="batchJobsTable()" data-slot="card" class="rounded-xl border bg-card shadow-sm">
+
+        {# Toolbar #}
+        <div class="flex flex-col gap-3 p-4 border-b sm:flex-row sm:items-center sm:justify-between">
+            <div class="flex items-center gap-2 flex-1">
+                <div class="relative flex-1 max-w-sm">
+                    <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" aria-hidden="true"></i>
+                    <input
+                        type="search"
+                        placeholder="Search jobs…"
+                        class="flex h-9 w-full rounded-md border border-input bg-background pl-9 pr-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        aria-label="Search batch import jobs"
+                        @input.debounce.300ms="setSearch($event.target.value)"
+                    >
+                </div>
+                <select class="h-9 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        x-model="filterStatus"
+                        aria-label="Filter by status">
+                    <option value="">All statuses</option>
+                    <option value="pending">Pending</option>
+                    <option value="processing">Processing</option>
+                    <option value="paused">Paused</option>
+                    <option value="completed">Completed</option>
+                    <option value="failed">Failed</option>
+                    <option value="cancelled">Cancelled</option>
+                </select>
+            </div>
+            <div class="flex items-center gap-2 shrink-0">
+                <label class="text-sm text-muted-foreground sr-only" for="bj-per-page">Per page</label>
+                <select id="bj-per-page"
+                        class="h-9 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        @change="setPerPage($event.target.value)">
+                    <option value="10">10 / page</option>
+                    <option value="20" selected>20 / page</option>
+                    <option value="50">50 / page</option>
+                    <option value="100">100 / page</option>
+                </select>
+            </div>
+        </div>
+
+        {# Bulk action bar — visible when rows are selected #}
+        <div x-show="_selectedIds.length > 0" x-cloak
+             x-cloak
+             x-transition:enter="transition ease-out duration-150"
+             x-transition:enter-start="opacity-0 -translate-y-1"
+             x-transition:enter-end="opacity-100 translate-y-0"
+             class="flex items-center gap-3 px-4 py-2 bg-primary/5 border-b text-sm"
+             role="status"
+             aria-live="polite">
+            <span class="font-medium" x-text="selectionCount()"></span>
+            <div class="h-4 w-px bg-border"></div>
+            <button type="button"
+                    @click="confirmBulkDelete()"
+                    class="inline-flex items-center gap-1.5 text-destructive hover:text-destructive/80 font-medium transition-colors"
+                    aria-label="Delete selected jobs">
+                <i data-lucide="trash-2" class="h-4 w-4" aria-hidden="true"></i>
+                Delete selected
+            </button>
+            <button type="button"
+                    @click="clearSelection()"
+                    class="ml-auto inline-flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors"
+                    aria-label="Clear selection">
+                <i data-lucide="x" class="h-3.5 w-3.5" aria-hidden="true"></i>
+                Clear
+            </button>
+        </div>
+
+        {# Table #}
+        <div class="overflow-x-auto" aria-live="polite" aria-atomic="false">
+            <table class="w-full caption-bottom text-sm" role="grid" aria-label="Batch import jobs table">
+                <thead class="border-b bg-muted/40">
+                    <tr>
+                        <th class="w-10 h-12 px-3 align-middle" scope="col">
+                            <input type="checkbox"
+                                   class="h-4 w-4 rounded border-input text-primary focus:ring-ring cursor-pointer"
+                                   :checked="items.length > 0 && items.every(function(r){ return _selectedIds.indexOf(r.id) !== -1; })"
+                                   @change="toggleSelectAll()"
+                                   aria-label="Select all on this page">
+                        </th>
+                        <th class="w-12 px-3 h-12 text-right align-middle font-medium text-muted-foreground tabular-nums" scope="col">#</th>
+                        <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground" scope="col">Job Name / File</th>
+                        <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground" scope="col">Type</th>
+                        <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground" scope="col">Status</th>
+                        <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground" scope="col">Progress</th>
+                        <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground" scope="col">Started At</th>
+                        <th class="h-12 px-4 text-right align-middle font-medium text-muted-foreground" scope="col">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="[&_tr:last-child]:border-0">
+                    <tr x-show="loading" x-cloak>
+                        <td colspan="8" class="px-4 py-12 text-center">
+                            <div class="flex flex-col items-center gap-2">
+                                <i data-lucide="loader-2" class="h-6 w-6 text-muted-foreground animate-spin" aria-hidden="true"></i>
+                                <p class="text-sm text-muted-foreground">Loading jobs…</p>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr x-show="!loading && errorMsg" x-cloak>
+                        <td colspan="8" class="px-4 py-12 text-center text-destructive text-sm" x-text="errorMsg"></td>
+                    </tr>
+                    <tr x-show="!loading && !errorMsg && items.length === 0" x-cloak>
+                        <td colspan="8" class="px-4 py-12 text-center">
+                            <div class="flex flex-col items-center gap-2">
+                                <i data-lucide="inbox" class="h-8 w-8 text-muted-foreground/40" aria-hidden="true"></i>
+                                <p class="text-sm text-muted-foreground">No import jobs found</p>
+                                <a href="{{ url_for('batch_import_view.new_import') }}"
+                                   class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 py-2 mt-2 transition-colors">
+                                    <i data-lucide="plus" class="mr-2 h-4 w-4" aria-hidden="true"></i>
+                                    Create First Import
+                                </a>
+                            </div>
+                        </td>
+                    </tr>
+                    <template x-for="item in items" :key="item.id">
+                        <tr class="border-b transition-colors hover:bg-muted/50"
+                            :class="_selectedIds.indexOf(item.id) !== -1 ? 'bg-primary/5' : ''">
+                            <td class="w-10 px-3 align-middle" @click.stop>
+                                <input type="checkbox"
+                                       class="h-4 w-4 rounded border-input text-primary focus:ring-ring cursor-pointer"
+                                       :checked="_selectedIds.indexOf(item.id) !== -1"
+                                       @change="handleRowCheckboxClick($event, $index)"
+                                       :aria-label="'Select job ' + (item.name || item.file_name)">
+                            </td>
+                            <td class="px-3 py-3 text-right tabular-nums text-muted-foreground text-sm" x-text="item.row_number"></td>
+                            <td class="px-4 py-3 align-middle">
+                                <a :href="'/batch-import/jobs/' + item.id"
+                                   class="font-medium hover:text-primary hover:underline transition-colors"
+                                   x-text="item.name || item.file_name"
+                                   @click.stop></a>
+                            </td>
+                            <td class="px-4 py-3 align-middle text-sm text-muted-foreground" x-text="item.job_type || '&mdash;'"></td>
+                            <td class="px-4 py-3 align-middle">
+                                <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold"
+                                      :class="statusClass(item.status)"
+                                      x-text="item.status"></span>
+                            </td>
+                            <td class="px-4 py-3 align-middle">
+                                <div class="w-28">
+                                    <div class="flex items-center gap-1.5 mb-1">
+                                        <span class="text-xs font-medium tabular-nums" x-text="(item.progress || 0) + '%'"></span>
+                                    </div>
+                                    <div class="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                                        <div class="h-full bg-primary transition-all"
+                                             :style="'width: ' + (item.progress || 0) + '%'"></div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="px-4 py-3 align-middle text-sm text-muted-foreground" x-text="item.started_at || '&mdash;'"></td>
+                            <td class="px-4 py-3 align-middle text-right" @click.stop>
+                                <a :href="'/batch-import/jobs/' + item.id"
+                                   class="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                   :aria-label="'View job ' + (item.name || item.file_name)">
+                                    <i data-lucide="eye" class="h-3 w-3" aria-hidden="true"></i>
+                                    View
+                                </a>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+
+        {# Pagination #}
+        <div x-show="totalItems > pageSize" x-cloak class="border-t px-4 py-3 bg-muted/30 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <p class="text-sm text-muted-foreground" aria-live="polite">
+                Showing <span class="font-medium text-foreground" x-text="pageStart"></span>–<span class="font-medium text-foreground" x-text="pageEnd"></span>
+                of <span class="font-medium text-foreground" x-text="totalItems"></span> jobs
+            </p>
+            <nav class="flex items-center gap-1" aria-label="Pagination">
+                <button class="inline-flex items-center justify-center h-8 px-2.5 rounded-md border border-input bg-background hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        :disabled="!hasPrev" @click="prevPage()" aria-label="Previous page">
+                    <i data-lucide="chevron-left" class="h-4 w-4" aria-hidden="true"></i>
+                </button>
+                <template x-for="(pg, idx) in getVisiblePages()" :key="'pg-' + idx">
+                    <span>
+                        <button x-show="pg !== '...'" x-cloak
+                                class="min-w-[2rem] h-8 rounded-md text-sm font-medium transition-colors"
+                                :class="pg === page ? 'bg-primary text-primary-foreground' : 'hover:bg-muted text-muted-foreground'"
+                                @click="goToPage(pg)" x-text="pg"></button>
+                        <span x-show="pg === '...'" x-cloak class="min-w-[2rem] h-8 inline-flex items-center justify-center text-sm text-muted-foreground">&hellip;</span>
+                    </span>
+                </template>
+                <button class="inline-flex items-center justify-center h-8 px-2.5 rounded-md border border-input bg-background hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        :disabled="!hasNext" @click="nextPage()" aria-label="Next page">
+                    <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
+                </button>
+            </nav>
+        </div>
+
+        {# ── Bulk Delete Confirmation Modal ── #}
+        {% call modal(id='bulk-delete-confirm-modal', title='Delete Import Jobs?', size='sm') %}
+            <p class="text-sm text-muted-foreground mb-4">
+                This will permanently delete the selected import jobs and cannot be undone.
+                Type <strong class="text-foreground font-mono">DELETE</strong> to confirm.
+            </p>
+            <input type="text"
+                   x-model="deleteConfirmText"
+                   class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring mb-4"
+                   placeholder="DELETE"
+                   @keydown.enter="executeBulkDelete()"
+                   aria-label="Type DELETE to confirm">
+            <div class="flex justify-end gap-3">
+                <button type="button"
+                        data-modal-close="bulk-delete-confirm-modal"
+                        class="inline-flex h-9 items-center justify-center rounded-md border border-input bg-background px-4 text-sm font-medium hover:bg-accent transition-colors">
+                    Cancel
+                </button>
+                <button type="button"
+                        @click="executeBulkDelete()"
+                        :disabled="deleteConfirmText !== 'DELETE' || deleteInProgress"
+                        class="inline-flex h-9 items-center justify-center rounded-md bg-destructive px-4 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 transition-colors disabled:opacity-50 disabled:pointer-events-none">
+                    <i data-lucide="loader-2" class="mr-2 h-4 w-4 animate-spin" x-show="deleteInProgress" x-cloak aria-hidden="true"></i>
+                    <span x-text="deleteInProgress ? 'Deleting…' : 'Delete'"></span>
+                </button>
+            </div>
+        {% endcall %}
+
+    </div>{# /batchJobsTable #}
+
+        {# ── Cancel Confirmation Modal (uses shared modal component) ──────── #}
+    {% call modal(id='cancel-import-job', title='Cancel Import Job', description='This action cannot be undone', size='sm') %}
+        <p class="text-sm text-muted-foreground mb-4">
+            Are you sure you want to cancel the job "<span x-text="cancelJobData?.name" class="font-medium text-foreground"></span>"?
+            Any unprocessed batches will be discarded.
+        </p>
+        <div class="flex justify-end gap-2">
+            <button
+                @click="Platform.modal.close('cancel-import-job')"
+                class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent h-10 px-4 py-2 transition-colors"
+                aria-label="Keep import job">
+                Keep Job
+            </button>
+            <button
+                @click="cancelJob(cancelJobData?.id)"
+                class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-destructive text-destructive-foreground hover:bg-destructive/90 h-10 px-4 py-2 transition-colors"
+                aria-label="Confirm cancel import job">
+                Cancel Job
+            </button>
+        </div>
+    {% endcall %}
+</div>
+
+<script>
+function batchImportDashboard() {
+    return {
+        loading: true,
+        jobs: [],
+        stats: {
+            totalJobs: 0,
+            processing: 0,
+            elementsGenerated: 0,
+            totalCost: 0
+        },
+        filterStatus: 'all',
+        searchQuery: '',
+        sortKey: 'created_at',
+        sortOrder: 'desc',
+        currentPage: 1,
+        perPage: 10,
+        cancelJobData: null,
+
+        statusOptions: [
+            { value: 'pending', label: 'Pending', activeClass: 'bg-slate-600 text-primary-foreground', inactiveClass: 'bg-muted text-muted-foreground hover:bg-muted dark:bg-foreground dark:text-muted-foreground' },
+            { value: 'processing', label: 'Processing', activeClass: 'bg-primary text-primary-foreground', inactiveClass: 'bg-primary/10 text-primary hover:bg-primary/20 dark:bg-primary/30 dark:text-primary/80' },
+            { value: 'paused', label: 'Paused', activeClass: 'bg-warning text-primary-foreground', inactiveClass: 'bg-warning/10 text-warning hover:bg-warning/20 dark:bg-warning/30 dark:text-warning' },
+            { value: 'completed', label: 'Completed', activeClass: 'bg-success text-primary-foreground', inactiveClass: 'bg-success/10 text-success hover:bg-success/20 dark:bg-success/30 dark:text-success/80' },
+            { value: 'failed', label: 'Failed', activeClass: 'bg-destructive text-primary-foreground', inactiveClass: 'bg-destructive/10 text-destructive hover:bg-destructive/20 dark:bg-destructive/30 dark:text-destructive/80' },
+            { value: 'cancelled', label: 'Cancelled', activeClass: 'bg-muted-foreground text-primary-foreground', inactiveClass: 'bg-muted text-muted-foreground hover:bg-accent dark:bg-muted dark:text-muted-foreground' }
+        ],
+
+        _normStatus(status) {
+            return String(status || '').toLowerCase();
+        },
+
+        init() {
+            this.loadJobs();
+            setInterval(() => {
+                const modalOpen = window.Platform && window.Platform.modal && window.Platform.modal.isOpen('cancel-import-job');
+                if (!modalOpen) {
+                    this.loadJobs(true);
+                }
+            }, 30000);
+        },
+
+        get filteredJobs() {
+            let filtered = this.jobs;
+
+            if (this.filterStatus !== 'all') {
+                filtered = filtered.filter(j => this._normStatus(j.status) === this.filterStatus);
+            }
+
+            if (this.searchQuery) {
+                const query = this.searchQuery.toLowerCase();
+                filtered = filtered.filter(j =>
+                    j.name.toLowerCase().includes(query) ||
+                    j.mode.toLowerCase().includes(query)
+                );
+            }
+
+            filtered = [...filtered].sort((a, b) => {
+                let aVal = a[this.sortKey];
+                let bVal = b[this.sortKey];
+
+                if (this.sortKey === 'created_at') {
+                    aVal = new Date(aVal);
+                    bVal = new Date(bVal);
+                }
+
+                if (this.sortOrder === 'asc') {
+                    return aVal > bVal ? 1 : -1;
+                }
+                return aVal < bVal ? 1 : -1;
+            });
+
+            return filtered;
+        },
+
+        get totalPages() {
+            return Math.ceil(this.filteredJobs.length / this.perPage);
+        },
+
+        get startIndex() {
+            return (this.currentPage - 1) * this.perPage;
+        },
+
+        get endIndex() {
+            return this.startIndex + this.perPage;
+        },
+
+        get paginatedJobs() {
+            return this.filteredJobs.slice(this.startIndex, this.endIndex);
+        },
+
+        sortBy(key) {
+            if (this.sortKey === key) {
+                this.sortOrder = this.sortOrder === 'asc' ? 'desc' : 'asc';
+            } else {
+                this.sortKey = key;
+                this.sortOrder = 'asc';
+            }
+        },
+
+        getStatusBadgeClass(status) {
+            const classes = {
+                'pending': 'border-transparent bg-muted text-muted-foreground dark:bg-foreground dark:text-muted-foreground',
+                'processing': 'border-transparent bg-primary/10 text-primary dark:bg-primary/30 dark:text-primary/80',
+                'paused': 'border-transparent bg-warning/10 text-warning dark:bg-warning/30 dark:text-warning',
+                'completed': 'border-transparent bg-success/10 text-success dark:bg-success/30 dark:text-success/80',
+                'failed': 'border-transparent bg-destructive/10 text-destructive dark:bg-destructive/30 dark:text-destructive/80',
+                'cancelled': 'border-transparent bg-muted text-muted-foreground dark:bg-muted dark:text-muted-foreground'
+            };
+            return classes[this._normStatus(status)] || classes['pending'];
+        },
+
+        formatDate(dateStr) {
+            const date = new Date(dateStr);
+            return date.toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        },
+
+        async loadJobs(silent = false) {
+            if (!silent) this.loading = true;
+
+            try {
+                const response = await fetch('/api/batch-import/jobs');
+                const data = await response.json();
+
+                if (data.success) {
+                    this.jobs = data.jobs;
+                    this.stats = data.stats;
+                }
+            } catch (error) {
+                console.error('Failed to load jobs:', error);
+                if (!silent) {
+                    this.showToast('Failed to load import jobs', 'error');
+                }
+            } finally {
+                this.loading = false;
+            }
+        },
+
+        refreshJobs() {
+            this.loadJobs();
+        },
+
+        async startJob(jobId) {
+            try {
+                const response = await fetch(`/api/batch-import/jobs/${jobId}/start`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    this.showToast('Job started successfully', 'success');
+                    this.loadJobs(true);
+                } else {
+                    this.showToast(data.message || data.error || 'Failed to start job', 'error');
+                }
+            } catch (error) {
+                console.error('Failed to start job:', error);
+                this.showToast('Failed to start job', 'error');
+            }
+        },
+
+        async pauseJob(jobId) {
+            try {
+                const response = await fetch(`/api/batch-import/jobs/${jobId}/pause`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    this.showToast('Job paused', 'success');
+                    this.loadJobs(true);
+                } else {
+                    this.showToast(data.message || data.error || 'Failed to pause job', 'error');
+                }
+            } catch (error) {
+                console.error('Failed to pause job:', error);
+                this.showToast('Failed to pause job', 'error');
+            }
+        },
+
+        async resumeJob(jobId) {
+            try {
+                const response = await fetch(`/api/batch-import/jobs/${jobId}/resume`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    this.showToast('Job resumed', 'success');
+                    this.loadJobs(true);
+                } else {
+                    this.showToast(data.message || data.error || 'Failed to resume job', 'error');
+                }
+            } catch (error) {
+                console.error('Failed to resume job:', error);
+                this.showToast('Failed to resume job', 'error');
+            }
+        },
+
+        confirmCancel(job) {
+            this.cancelJobData = job;
+            Platform.modal.open('cancel-import-job');
+        },
+
+        async cancelJob(jobId) {
+            try {
+                const response = await fetch(`/api/batch-import/jobs/${jobId}/cancel`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    this.showToast('Job cancelled', 'success');
+                    this.loadJobs(true);
+                } else {
+                    this.showToast(data.message || data.error || 'Failed to cancel job', 'error');
+                }
+            } catch (error) {
+                console.error('Failed to cancel job:', error);
+                this.showToast('Failed to cancel job', 'error');
+            } finally {
+                Platform.modal.close('cancel-import-job');
+                this.cancelJobData = null;
+            }
+        },
+
+        showToast(message, type = 'info') {
+            if (window.showToast) {
+                window.showToast(message, type);
+            } else {
+            }
+        }
+    };
+}
+</script>
+
+<script>
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
+</script>
+{% endblock %}

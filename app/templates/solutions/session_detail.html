@@ -1,0 +1,1403 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'components/status_badge.html' import status_badge %}
+
+{% block title %}{{ session.name }}{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 sm:px-6 lg:px-8 py-8 max-w-7xl" x-data="sessionDetail()">
+    {# Breadcrumbs #}
+    <nav class="flex items-center gap-2 text-sm text-muted-foreground mb-6">
+        <a href="{{ url_for('main.index') }}" class="hover:text-foreground transition-colors">Dashboard</a>
+        <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
+        <a href="{{ url_for('solution_design.list_solutions') }}" class="hover:text-foreground transition-colors">Solutions</a>
+        <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
+        <span class="text-foreground font-medium">{{ session.name }}</span>
+    </nav>
+
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-8">
+        <div class="flex items-center gap-4">
+            <a href="{{ url_for('solution_design.list_solutions') }}"
+               class="p-2 rounded-md hover:bg-accent transition-colors">
+                <i data-lucide="arrow-left" class="h-5 w-5" aria-hidden="true"></i>
+            </a>
+            <div>
+                <h1 class="text-4xl font-bold tracking-tight">{{ session.name }}</h1>
+                <p class="text-muted-foreground mt-1">
+                    Created {{ session.created_at.strftime('%Y-%m-%d %H:%M') }} •
+                    Version {{ session.current_version }} •
+                    {% if session.status.value == 'completed' %}
+                    {{ status_badge(session.status.value|replace('_', ' ')|title, 'success') }}
+                    {% elif session.status.value == 'in_progress' %}
+                    {{ status_badge(session.status.value|replace('_', ' ')|title, 'info') }}
+                    {% else %}
+                    {{ status_badge(session.status.value|replace('_', ' ')|title, 'neutral') }}
+                    {% endif %}
+                </p>
+            </div>
+        </div>
+
+        <div class="flex gap-2">
+            <button @click="resumeAnalysis"
+                    class="inline-flex items-center gap-2 h-10 px-4 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium" aria-label="Resume analysis">
+                <i data-lucide="play" class="h-4 w-4" aria-hidden="true"></i>
+                Resume Analysis
+            </button>
+            <button @click="exportSession"
+                    class="inline-flex items-center gap-2 h-10 px-4 rounded-lg border border-input hover:bg-accent transition-colors text-sm font-medium" aria-label="Export">
+                <i data-lucide="download" class="h-4 w-4" aria-hidden="true"></i>
+                Export
+            </button>
+        </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="border-b border-border mb-6">
+        <nav class="flex gap-6">
+            <button @click="activeTab = 'overview'"
+                    :class="activeTab === 'overview' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'"
+                    class="pb-3 border-b-2 font-medium text-sm transition-colors" aria-label="Show overview tab">
+                Overview
+            </button>
+            <button @click="activeTab = 'problem'"
+                    :class="activeTab === 'problem' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'"
+                    class="pb-3 border-b-2 font-medium text-sm transition-colors" aria-label="Show problem definition tab">
+                Problem Definition
+            </button>
+            <button @click="activeTab = 'motivational'"
+                    :class="activeTab === 'motivational' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'"
+                    class="pb-3 border-b-2 font-medium text-sm transition-colors" aria-label="Show motivational elements tab">
+                Motivational Elements
+            </button>
+            <button @click="activeTab = 'recommendations'"
+                    :class="activeTab === 'recommendations' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'"
+                    class="pb-3 border-b-2 font-medium text-sm transition-colors" aria-label="Show recommendations tab">
+                Recommendations
+            </button>
+            <button @click="activeTab = 'options_analysis'; if (!analysisLoaded) loadAnalysisResults()"
+                    :class="activeTab === 'options_analysis' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'"
+                    class="pb-3 border-b-2 font-medium text-sm transition-colors" aria-label="Show options analysis tab">
+                Options Analysis
+            </button>
+            <button @click="activeTab = 'ai_design'"
+                    :class="activeTab === 'ai_design' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'"
+                    class="pb-3 border-b-2 font-medium text-sm transition-colors" aria-label="Show AI design tab">
+                AI Design
+            </button>
+            <button @click="activeTab = 'versions'"
+                    :class="activeTab === 'versions' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'"
+                    class="pb-3 border-b-2 font-medium text-sm transition-colors" aria-label="Show versions tab">
+                Versions ({{ session.versions|length }})
+            </button>
+        </nav>
+    </div>
+
+    <!-- Overview Tab -->
+    <div x-show="activeTab === 'overview'" x-cloak class="space-y-6">
+        <div class="bg-card rounded-lg border border-border p-6">
+            <h2 class="text-2xl font-bold mb-4">Session Overview</h2>
+
+            {% if session.description %}
+            <p class="text-muted-foreground mb-6">{{ session.description }}</p>
+            {% endif %}
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div>
+                    <div class="text-sm font-medium text-muted-foreground mb-1">Status</div>
+                    <div class="text-lg font-semibold">{{ session.status.value|replace('_', ' ')|title }}</div>
+                </div>
+                <div>
+                    <div class="text-sm font-medium text-muted-foreground mb-1">Created By</div>
+                    <div class="text-lg font-semibold">{{ session.created_by.username if session.created_by else 'Unknown' }}</div>
+                </div>
+                <div>
+                    <div class="text-sm font-medium text-muted-foreground mb-1">Last Updated</div>
+                    <div class="text-lg font-semibold">{{ session.updated_at.strftime('%Y-%m-%d %H:%M') }}</div>
+                </div>
+            </div>
+
+            {% if session.tags %}
+            <div class="mt-6">
+                <div class="text-sm font-medium text-muted-foreground mb-2">Tags</div>
+                <div class="flex flex-wrap gap-2">
+                    {% for tag in session.tags %}
+                    <span class="inline-flex items-center px-3 py-1 rounded-full text-sm bg-muted">
+                        {{ tag }}
+                    </span>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Quick Stats -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div class="bg-card rounded-lg border border-border p-4">
+                <div class="flex items-center gap-3">
+                    <div class="p-2 rounded-lg bg-primary/10">
+                        <i data-lucide="target" class="h-5 w-5 text-primary" aria-hidden="true"></i>
+                    </div>
+                    <div>
+                        <div class="text-2xl font-bold">{{ problem.drivers|length if problem and problem.drivers else 0 }}</div>
+                        <div class="text-sm text-muted-foreground">Drivers</div>
+                    </div>
+                </div>
+            </div>
+            <div class="bg-card rounded-lg border border-border p-4">
+                <div class="flex items-center gap-3">
+                    <div class="p-2 rounded-lg bg-success/10">
+                        <i data-lucide="flag" class="h-5 w-5 text-success" aria-hidden="true"></i>
+                    </div>
+                    <div>
+                        <div class="text-2xl font-bold">{{ problem.goals|length if problem and problem.goals else 0 }}</div>
+                        <div class="text-sm text-muted-foreground">Goals</div>
+                    </div>
+                </div>
+            </div>
+            <div class="bg-card rounded-lg border border-border p-4">
+                <div class="flex items-center gap-3">
+                    <div class="p-2 rounded-lg bg-accent">
+                        <i data-lucide="list-checks" class="h-5 w-5 text-primary" aria-hidden="true"></i>
+                    </div>
+                    <div>
+                        <div class="text-2xl font-bold">{{ problem.requirements|length if problem and problem.requirements else 0 }}</div>
+                        <div class="text-sm text-muted-foreground">Requirements</div>
+                    </div>
+                </div>
+            </div>
+            <div class="bg-card rounded-lg border border-border p-4">
+                <div class="flex items-center gap-3">
+                    <div class="p-2 rounded-lg bg-warning/10">
+                        <i data-lucide="lightbulb" class="h-5 w-5 text-warning" aria-hidden="true"></i>
+                    </div>
+                    <div>
+                        <div class="text-2xl font-bold">{{ session.recommendations|length if session.recommendations else 0 }}</div>
+                        <div class="text-sm text-muted-foreground">Recommendations</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Problem Definition Tab -->
+    <div x-show="activeTab === 'problem'" x-cloak class="space-y-6">
+        {% if problem %}
+        <div class="bg-card rounded-lg border border-border p-6">
+            <h2 class="text-2xl font-bold mb-4">Problem Description</h2>
+            <p class="text-foreground whitespace-pre-wrap">{{ problem.problem_description }}</p>
+        </div>
+
+        {% if problem.capabilities %}
+        <div class="bg-card rounded-lg border border-border p-6">
+            <h2 class="text-2xl font-bold mb-4">Capabilities ({{ problem.capabilities|length }})</h2>
+            <div class="space-y-3">
+                {% for cap_mapping in problem.capabilities %}
+                <div class="flex items-center justify-between p-3 rounded-lg bg-muted">
+                    <div>
+                        <div class="font-medium">{{ cap_mapping.capability.name if cap_mapping.capability else 'Unknown' }}</div>
+                        {% if cap_mapping.notes %}
+                        <div class="text-sm text-muted-foreground mt-1">{{ cap_mapping.notes }}</div>
+                        {% endif %}
+                    </div>
+                    <div class="flex items-center gap-4 text-sm">
+                        <span class="px-2 py-1 rounded bg-background">{{ cap_mapping.support_level.value|title }}</span>
+                        {% if cap_mapping.coverage_percentage %}
+                        <span class="text-muted-foreground">{{ cap_mapping.coverage_percentage }}% coverage</span>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="bg-card rounded-lg border border-border p-6">
+                <h3 class="text-lg font-bold mb-3">Budget</h3>
+                <p class="text-2xl font-bold text-primary">
+                    £{{ "{:,.0f}".format(problem.budget_min) if problem.budget_min else 'N/A' }} -
+                    £{{ "{:,.0f}".format(problem.budget_max) if problem.budget_max else 'N/A' }}
+                </p>
+            </div>
+            <div class="bg-card rounded-lg border border-border p-6">
+                <h3 class="text-lg font-bold mb-3">Timeline</h3>
+                <p class="text-2xl font-bold text-primary">
+                    {{ problem.timeline_months or 'N/A' }} months
+                </p>
+            </div>
+        </div>
+        {% else %}
+        <div class="bg-card rounded-lg border border-border p-12 text-center">
+            <p class="text-muted-foreground">No problem definition yet</p>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Motivational Elements Tab -->
+    <div x-show="activeTab === 'motivational'" x-cloak class="space-y-6">
+        {% if problem %}
+        <!-- Analyze Problem Action Bar -->
+        <div class="flex items-center justify-between">
+            <div>
+                <h2 class="text-2xl font-bold">Motivation Layer</h2>
+                <p class="text-sm text-muted-foreground">AI-generated drivers, goals, requirements, and constraints</p>
+            </div>
+            <button type="button" @click="analyzeProblem()"
+                    :disabled="analyzingProblem"
+                    x-cloak
+                    class="inline-flex items-center gap-2 h-10 px-4 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors text-sm font-medium"
+                    aria-label="Analyze problem with AI">
+                <span x-show="analyzingProblem" x-cloak>
+                    <svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                    </svg>
+                </span>
+                <span x-show="!analyzingProblem" x-cloak>
+                    <i data-lucide="brain" class="h-4 w-4" aria-hidden="true"></i>
+                </span>
+                <span x-show="analyzingProblem" x-cloak>Analyzing...</span>
+                <span x-show="!analyzingProblem" x-cloak>Analyze Problem</span>
+            </button>
+        </div>
+        <!-- Drivers -->
+        {% if problem.drivers %}
+        <div class="bg-card rounded-lg border border-border p-6">
+            <h2 class="text-2xl font-bold mb-4 flex items-center gap-2">
+                <i data-lucide="zap" class="h-6 w-6 text-primary" aria-hidden="true"></i>
+                Drivers ({{ problem.drivers|length }})
+            </h2>
+            <div class="space-y-3">
+                {% for driver in problem.drivers %}
+                <div class="p-4 rounded-lg border border-border">
+                    <div class="flex items-start justify-between">
+                        <div class="flex-1">
+                            <h4 class="font-semibold mb-1">{{ driver.name }}</h4>
+                            <p class="text-sm text-muted-foreground">{{ driver.description }}</p>
+                        </div>
+                        {{ status_badge(driver.driver_type.value|title, 'info') }}
+                    </div>
+                    {% if driver.impact_level %}
+                    <div class="mt-2 flex items-center gap-2 text-sm">
+                        <span class="text-muted-foreground">Impact:</span>
+                        <div class="flex gap-1">
+                            {% for i in range(5) %}
+                            <div class="w-2 h-2 rounded-full {% if i < driver.impact_level %}bg-primary{% else %}bg-border{% endif %}"></div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Goals -->
+        {% if problem.goals %}
+        <div class="bg-card rounded-lg border border-border p-6">
+            <h2 class="text-2xl font-bold mb-4 flex items-center gap-2">
+                <i data-lucide="target" class="h-6 w-6 text-success" aria-hidden="true"></i>
+                Goals ({{ problem.goals|length }})
+            </h2>
+            <div class="space-y-3">
+                {% for goal in problem.goals %}
+                <div class="p-4 rounded-lg border border-border">
+                    <h4 class="font-semibold mb-1">{{ goal.name }}</h4>
+                    <p class="text-sm text-muted-foreground mb-2">{{ goal.description }}</p>
+                    {% if goal.measurement_criteria %}
+                    <div class="text-xs text-muted-foreground">
+                        <span class="font-medium">Success Criteria:</span> {{ goal.measurement_criteria }}
+                    </div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Requirements -->
+        {% if problem.requirements %}
+        <div class="bg-card rounded-lg border border-border p-6">
+            <h2 class="text-2xl font-bold mb-4 flex items-center gap-2">
+                <i data-lucide="check-square" class="h-6 w-6 text-primary" aria-hidden="true"></i>
+                Requirements ({{ problem.requirements|length }})
+            </h2>
+            <div class="space-y-2">
+                {% for req in problem.requirements %}
+                <div class="flex items-start gap-3 p-3 rounded-lg bg-muted">
+                    <div class="mt-1">
+                        {% if req.is_mandatory %}
+                        <i data-lucide="star" class="h-4 w-4 text-warning" aria-hidden="true"></i>
+                        {% else %}
+                        <i data-lucide="circle" class="h-4 w-4 text-muted-foreground" aria-hidden="true"></i>
+                        {% endif %}
+                    </div>
+                    <div class="flex-1">
+                        <div class="font-medium">{{ req.name }}</div>
+                        <div class="text-sm text-muted-foreground">{{ req.description }}</div>
+                    </div>
+                    <span class="px-2 py-1 rounded text-xs bg-background">{{ req.requirement_type.value|title }}</span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Constraints -->
+        {% if problem.constraints %}
+        <div class="bg-card rounded-lg border border-border p-6">
+            <h2 class="text-2xl font-bold mb-4 flex items-center gap-2">
+                <i data-lucide="alert-triangle" class="h-6 w-6 text-warning" aria-hidden="true"></i>
+                Constraints ({{ problem.constraints|length }})
+            </h2>
+            <div class="space-y-2">
+                {% for constraint in problem.constraints %}
+                <div class="p-3 rounded-lg bg-warning/5 border border-warning/20">
+                    <div class="font-medium">{{ constraint.name }}</div>
+                    <div class="text-sm text-muted-foreground">{{ constraint.description }}</div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+        {% else %}
+        <div class="bg-card rounded-lg border border-border p-12 text-center">
+            <p class="text-muted-foreground mb-4">No motivational elements generated yet</p>
+            <button type="button" @click="analyzeProblem()"
+                    :disabled="analyzingProblem"
+                    x-cloak
+                    class="inline-flex items-center gap-2 h-10 px-6 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors text-sm font-medium"
+                    aria-label="Analyze problem with AI">
+                <span x-show="analyzingProblem" x-cloak>Analyzing...</span>
+                <span x-show="!analyzingProblem" x-cloak>Analyze Problem</span>
+            </button>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Recommendations Tab -->
+    <div x-show="activeTab === 'recommendations'" x-cloak class="space-y-4">
+        {% if session.recommendations %}
+        {% for rec in session.recommendations %}
+        <div class="bg-card rounded-lg border border-border p-6">
+            <div class="flex items-start justify-between mb-4">
+                <div>
+                    <h3 class="text-xl font-bold">{{ rec.option_type.value|upper }}</h3>
+                    <p class="text-sm text-muted-foreground">Rank #{{ rec.rank }} • Score: {{ rec.score }}/100</p>
+                </div>
+                <div class="text-right">
+                    {% if rec.estimated_cost_min and rec.estimated_cost_max %}
+                    <div class="text-lg font-bold text-primary">
+                        £{{ "{:,.0f}".format(rec.estimated_cost_min) }} - £{{ "{:,.0f}".format(rec.estimated_cost_max) }}
+                    </div>
+                    {% endif %}
+                    {% if rec.timeline_months %}
+                    <div class="text-sm text-muted-foreground">{{ rec.timeline_months }} months</div>
+                    {% endif %}
+                </div>
+            </div>
+
+            {% if rec.justification %}
+            <p class="text-sm mb-4">{{ rec.justification }}</p>
+            {% endif %}
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {% if rec.pros %}
+                <div>
+                    <h4 class="font-semibold text-sm mb-2 text-success">✓ Pros</h4>
+                    <ul class="space-y-1">
+                        {% for pro in rec.pros %}
+                        <li class="text-sm">• {{ pro }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% endif %}
+                {% if rec.cons %}
+                <div>
+                    <h4 class="font-semibold text-sm mb-2 text-destructive">✗ Cons</h4>
+                    <ul class="space-y-1">
+                        {% for con in rec.cons %}
+                        <li class="text-sm">• {{ con }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+        {% else %}
+        <div class="bg-card rounded-lg border border-border p-12 text-center">
+            <p class="text-muted-foreground">No recommendations generated yet</p>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Options Analysis Tab -->
+    <div x-show="activeTab === 'options_analysis'" x-cloak class="space-y-6">
+        <!-- Loading State -->
+        <template x-if="analysisLoading">
+            <div class="bg-card rounded-lg border border-border p-12 text-center">
+                <div class="inline-flex items-center gap-3">
+                    <svg class="animate-spin h-6 w-6 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                    </svg>
+                    <span class="text-lg font-medium">Running options analysis...</span>
+                </div>
+                <p class="text-muted-foreground mt-2 text-sm">Analyzing Buy/Build/Reuse options, vendors, and capability gaps</p>
+            </div>
+        </template>
+
+        <!-- No Results State -->
+        <template x-if="!analysisLoading && analysisResults.length === 0 && !analysisError">
+            <div class="bg-card rounded-lg border border-border p-12 text-center">
+                <div class="mx-auto mb-4 p-4 rounded-full bg-muted w-16 h-16 flex items-center justify-center">
+                    <i data-lucide="bar-chart-3" class="h-8 w-8 text-muted-foreground" aria-hidden="true"></i>
+                </div>
+                <h3 class="text-xl font-bold mb-2">No Options Analysis Yet</h3>
+                <p class="text-muted-foreground mb-6 max-w-md mx-auto">
+                    Run a multi-criteria options analysis to compare Buy, Build, Reuse, and Hybrid approaches
+                    based on your problem definition, budget, and timeline constraints.
+                </p>
+                <button @click="runOptionsAnalysis()"
+                        :disabled="!hasProblemDefinition"
+                        class="inline-flex items-center gap-2 h-10 px-6 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium" aria-label="Run options analysis">
+                    <i data-lucide="play" class="h-4 w-4" aria-hidden="true"></i>
+                    Run Options Analysis
+                </button>
+                <template x-if="!hasProblemDefinition">
+                    <p class="text-sm text-warning mt-3">A problem definition is required before running analysis.</p>
+                </template>
+            </div>
+        </template>
+
+        <!-- Results -->
+        <template x-if="!analysisLoading && analysisResults.length > 0">
+            <div class="space-y-6">
+                <!-- Header with Re-run Button -->
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h2 class="text-2xl font-bold">Options Comparison</h2>
+                        <p class="text-sm text-muted-foreground mt-1"
+                           x-text="analysisResults.length + ' options analyzed and ranked by score'"></p>
+                    </div>
+                    <button @click="runOptionsAnalysis()"
+                            class="inline-flex items-center gap-2 h-9 px-4 rounded-lg border border-input hover:bg-accent transition-colors text-sm font-medium" aria-label="Re-run options analysis">
+                        <i data-lucide="refresh-cw" class="h-4 w-4" aria-hidden="true"></i>
+                        Re-run Analysis
+                    </button>
+                </div>
+
+                <!-- Score Comparison Bar Chart -->
+                <div class="bg-card rounded-lg border border-border p-6">
+                    <h3 class="text-lg font-bold mb-4">Score Comparison</h3>
+                    <div class="space-y-3">
+                        <template x-for="(rec, idx) in analysisResults" :key="rec.option_type">
+                            <div class="flex items-center gap-4">
+                                <div class="w-20 text-sm font-semibold" x-text="rec.option_type"></div>
+                                <div class="flex-1 bg-muted rounded-full h-8 overflow-hidden relative">
+                                    <div class="h-full rounded-full transition-all duration-500 flex items-center justify-end pr-3"
+                                         :class="idx === 0 ? 'bg-primary' : idx === 1 ? 'bg-primary' : idx === 2 ? 'bg-primary' : 'bg-warning'"
+                                         :style="'width: ' + Math.max(rec.score, 5) + '%'">
+                                        <span class="text-xs font-bold text-primary-foreground" x-text="rec.score.toFixed(1)"></span>
+                                    </div>
+                                </div>
+                                <div class="w-16 text-right text-sm text-muted-foreground"
+                                     x-text="rec.score.toFixed(1) + '/100'"></div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- Option Cards Grid -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <template x-for="(rec, idx) in analysisResults" :key="rec.option_type + '-card'">
+                        <div class="bg-card rounded-lg border border-border overflow-hidden"
+                             :class="idx === 0 ? 'ring-2 ring-primary' : ''">
+                            <!-- Card Header -->
+                            <div class="p-4 border-b border-border"
+                                 :class="idx === 0 ? 'bg-primary/5' : 'bg-muted/50'">
+                                <div class="flex items-start justify-between">
+                                    <div class="flex items-center gap-2">
+                                        <template x-if="idx === 0">
+                                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-primary text-primary-foreground">
+                                                #1 RECOMMENDED
+                                            </span>
+                                        </template>
+                                        <template x-if="idx > 0">
+                                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-muted text-foreground"
+                                                  x-text="'#' + rec.rank"></span>
+                                        </template>
+                                        <h3 class="text-lg font-bold" x-text="rec.option_type"></h3>
+                                    </div>
+                                    <div class="flex items-center gap-1.5">
+                                        <span class="text-2xl font-bold" x-text="rec.score.toFixed(1)"></span>
+                                        <span class="text-sm text-muted-foreground">/100</span>
+                                    </div>
+                                </div>
+                                <p class="text-sm text-muted-foreground mt-1" x-text="rec.justification || ''"></p>
+                            </div>
+
+                            <!-- Card Body -->
+                            <div class="p-4 space-y-4">
+                                <!-- Cost & Timeline -->
+                                <div class="grid grid-cols-2 gap-3">
+                                    <div class="p-3 rounded-lg bg-muted/50">
+                                        <div class="text-xs font-medium text-muted-foreground mb-1">Estimated Cost</div>
+                                        <div class="text-sm font-bold">
+                                            <template x-if="rec.estimated_cost_min && rec.estimated_cost_max">
+                                                <span x-text="'\u00a3' + Number(rec.estimated_cost_min).toLocaleString() + ' - \u00a3' + Number(rec.estimated_cost_max).toLocaleString()"></span>
+                                            </template>
+                                            <template x-if="!rec.estimated_cost_min">
+                                                <span>Contact vendor</span>
+                                            </template>
+                                        </div>
+                                    </div>
+                                    <div class="p-3 rounded-lg bg-muted/50">
+                                        <div class="text-xs font-medium text-muted-foreground mb-1">Timeline</div>
+                                        <div class="text-sm font-bold"
+                                             x-text="rec.timeline_months ? rec.timeline_months + ' months' : 'TBD'"></div>
+                                    </div>
+                                </div>
+
+                                <!-- Confidence Bar -->
+                                <div>
+                                    <div class="flex items-center justify-between text-xs mb-1">
+                                        <span class="font-medium text-muted-foreground">Confidence</span>
+                                        <span class="font-bold"
+                                              x-text="rec.confidence ? (rec.confidence * 100).toFixed(0) + '%' : 'N/A'"></span>
+                                    </div>
+                                    <div class="w-full bg-muted rounded-full h-2">
+                                        <div class="h-2 rounded-full transition-all duration-300"
+                                             :class="rec.confidence > 0.7 ? 'bg-success' : rec.confidence > 0.4 ? 'bg-warning' : 'bg-destructive'"
+                                             :style="'width: ' + (rec.confidence ? rec.confidence * 100 : 0) + '%'"></div>
+                                    </div>
+                                </div>
+
+                                <!-- Pros -->
+                                <div x-show="rec.pros && rec.pros.length > 0" x-cloak>
+                                    <button @click="rec._showPros = !rec._showPros"
+                                            class="flex items-center gap-1 text-sm font-semibold text-success mb-2 hover:underline" aria-label="Toggle pros list">
+                                        <i data-lucide="chevron-down" class="h-3.5 w-3.5 transition-transform"
+                                           :class="rec._showPros ? 'rotate-180' : ''"></i>
+                                        Pros (<span x-text="rec.pros.length"></span>)
+                                    </button>
+                                    <ul x-show="rec._showPros" x-cloak class="space-y-1 pl-1">
+                                        <template x-for="pro in rec.pros" :key="pro">
+                                            <li class="text-sm flex items-start gap-2">
+                                                <span class="text-success mt-0.5 shrink-0">+</span>
+                                                <span x-text="pro"></span>
+                                            </li>
+                                        </template>
+                                    </ul>
+                                </div>
+
+                                <!-- Cons -->
+                                <div x-show="rec.cons && rec.cons.length > 0" x-cloak>
+                                    <button @click="rec._showCons = !rec._showCons"
+                                            class="flex items-center gap-1 text-sm font-semibold text-destructive mb-2 hover:underline" aria-label="Toggle cons list">
+                                        <i data-lucide="chevron-down" class="h-3.5 w-3.5 transition-transform"
+                                           :class="rec._showCons ? 'rotate-180' : ''"></i>
+                                        Cons (<span x-text="rec.cons.length"></span>)
+                                    </button>
+                                    <ul x-show="rec._showCons" x-cloak class="space-y-1 pl-1">
+                                        <template x-for="con in rec.cons" :key="con">
+                                            <li class="text-sm flex items-start gap-2">
+                                                <span class="text-destructive mt-0.5 shrink-0">-</span>
+                                                <span x-text="con"></span>
+                                            </li>
+                                        </template>
+                                    </ul>
+                                </div>
+
+                                <!-- Accept Recommendation -->
+                                <div x-show="rec.id" x-cloak class="pt-3 border-t border-border mt-3">
+                                    <button type="button"
+                                        @click="acceptRecommendation(rec.id)"
+                                        :disabled="acceptingRec === rec.id"
+                                        class="inline-flex items-center px-3 py-1.5 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                                        aria-label="Accept recommendation and create solution">
+                                        <span x-show="acceptingRec === rec.id" x-cloak>Creating Solution...</span>
+                                        <span x-show="acceptingRec !== rec.id" x-cloak>Accept &amp; Create Solution</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+
+                <!-- Scenario What-If Controls -->
+                <div class="bg-card rounded-lg border border-border p-6" x-data="{ showScenario: false }">
+                    <button @click="showScenario = !showScenario" class="flex items-center justify-between w-full text-left" aria-label="Toggle what-if scenario analysis">
+                        <h3 class="text-lg font-bold flex items-center gap-2">
+                            <i data-lucide="sliders-horizontal" class="h-5 w-5 text-warning" aria-hidden="true"></i>
+                            What-If Scenario Analysis
+                        </h3>
+                        <svg class="w-5 h-5 text-muted-foreground transition-transform" :class="showScenario ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                        </svg>
+                    </button>
+
+                    <div x-show="showScenario" x-cloak x-transition class="mt-6 space-y-6">
+                        <p class="text-sm text-muted-foreground">Adjust criteria weights to simulate how option rankings would change. Weights must sum to 100%.</p>
+
+                        <div class="grid grid-cols-1 md:grid-cols-5 gap-6">
+                            <div>
+                                <label class="text-sm font-medium flex justify-between mb-2">
+                                    <span>Cost</span>
+                                    <span class="text-primary tabular-nums" x-text="scenarioWeights.cost + '%'"></span>
+                                </label>
+                                <input type="range" min="5" max="50" step="5"
+                                       x-model.number="scenarioWeights.cost"
+                                       class="w-full h-2 bg-secondary rounded-full appearance-none cursor-pointer accent-primary" aria-label="Adjust cost weight">
+                            </div>
+                            <div>
+                                <label class="text-sm font-medium flex justify-between mb-2">
+                                    <span>Capability</span>
+                                    <span class="text-primary tabular-nums" x-text="scenarioWeights.capability + '%'"></span>
+                                </label>
+                                <input type="range" min="5" max="50" step="5"
+                                       x-model.number="scenarioWeights.capability"
+                                       class="w-full h-2 bg-secondary rounded-full appearance-none cursor-pointer accent-primary" aria-label="Adjust capability weight">
+                            </div>
+                            <div>
+                                <label class="text-sm font-medium flex justify-between mb-2">
+                                    <span>Risk</span>
+                                    <span class="text-primary tabular-nums" x-text="scenarioWeights.risk + '%'"></span>
+                                </label>
+                                <input type="range" min="5" max="50" step="5"
+                                       x-model.number="scenarioWeights.risk"
+                                       class="w-full h-2 bg-secondary rounded-full appearance-none cursor-pointer accent-primary" aria-label="Adjust risk weight">
+                            </div>
+                            <div>
+                                <label class="text-sm font-medium flex justify-between mb-2">
+                                    <span>Strategic Fit</span>
+                                    <span class="text-primary tabular-nums" x-text="scenarioWeights.strategic_fit + '%'"></span>
+                                </label>
+                                <input type="range" min="5" max="50" step="5"
+                                       x-model.number="scenarioWeights.strategic_fit"
+                                       class="w-full h-2 bg-secondary rounded-full appearance-none cursor-pointer accent-primary" aria-label="Adjust strategic fit weight">
+                            </div>
+                            <div>
+                                <label class="text-sm font-medium flex justify-between mb-2">
+                                    <span>Implementation</span>
+                                    <span class="text-primary tabular-nums" x-text="scenarioWeights.implementation + '%'"></span>
+                                </label>
+                                <input type="range" min="5" max="50" step="5"
+                                       x-model.number="scenarioWeights.implementation"
+                                       class="w-full h-2 bg-secondary rounded-full appearance-none cursor-pointer accent-primary" aria-label="Adjust implementation weight">
+                            </div>
+                        </div>
+
+                        <!-- Weight Sum Indicator & Recalculate -->
+                        <div class="flex items-center justify-between">
+                            <div class="text-sm">
+                                <span class="text-muted-foreground">Total weight: </span>
+                                <span class="font-bold tabular-nums"
+                                      :class="scenarioWeightSum === 100 ? 'text-success' : 'text-destructive'"
+                                      x-text="scenarioWeightSum + '%'"></span>
+                            </div>
+                            <button @click="recalculateScenario()"
+                                    :disabled="scenarioWeightSum !== 100 || scenarioLoading"
+                                    class="inline-flex items-center gap-2 h-9 px-4 rounded-lg bg-warning text-primary-foreground hover:bg-warning transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed" aria-label="Recalculate scenario rankings">
+                                <svg class="h-4 w-4" :class="scenarioLoading ? 'animate-spin' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                                </svg>
+                                <span x-text="scenarioLoading ? 'Recalculating...' : 'Recalculate Rankings'"></span>
+                            </button>
+                        </div>
+
+                        <!-- Scenario Results -->
+                        <template x-if="scenarioResults.length > 0">
+                            <div class="border-t border-border pt-4">
+                                <h4 class="font-semibold mb-3">Scenario Rankings</h4>
+                                <div class="space-y-2">
+                                    <template x-for="(sr, idx) in scenarioResults" :key="sr.option_type">
+                                        <div class="flex items-center justify-between p-3 rounded-lg bg-muted">
+                                            <div class="flex items-center gap-3">
+                                                <span class="inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold"
+                                                      :class="idx === 0 ? 'bg-success/10 text-success' : 'bg-background text-foreground'"
+                                                      x-text="'#' + (idx + 1)"></span>
+                                                <span class="font-medium" x-text="sr.option_type"></span>
+                                            </div>
+                                            <div class="flex items-center gap-4">
+                                                <div class="w-24 bg-background rounded-full h-2">
+                                                    <div class="h-2 rounded-full bg-warning" :style="'width:' + Math.max(sr.score, 5) + '%'"></div>
+                                                </div>
+                                                <span class="text-sm font-bold tabular-nums w-12 text-right" x-text="sr.score.toFixed(1)"></span>
+                                            </div>
+                                        </div>
+                                    </template>
+                                </div>
+                                <p class="text-xs text-muted-foreground mt-3">Rankings recalculated with custom weights. Original analysis scores remain unchanged.</p>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- Analysis Metadata -->
+                <div class="bg-muted/50 rounded-lg border border-border p-4">
+                    <div class="flex items-center gap-2 text-sm text-muted-foreground">
+                        <i data-lucide="info" class="h-4 w-4" aria-hidden="true"></i>
+                        <span>Analysis powered by 4-phase orchestrator: Buy/Build/Reuse evaluation, existing application scan, vendor research, and capability gap assessment.</span>
+                    </div>
+                </div>
+            </div>
+        </template>
+
+        <!-- Error State -->
+        <template x-if="analysisError">
+            <div class="bg-destructive/5 border border-destructive/20 rounded-lg p-4">
+                <div class="flex items-center gap-2 text-destructive">
+                    <i data-lucide="alert-circle" class="h-5 w-5" aria-hidden="true"></i>
+                    <span class="font-medium">Analysis Error</span>
+                </div>
+                <p class="text-sm text-destructive mt-1" x-text="analysisError"></p>
+                <button @click="analysisError = null"
+                        class="mt-2 text-sm text-destructive hover:underline" aria-label="Dismiss analysis error">Dismiss</button>
+            </div>
+        </template>
+    </div>
+
+    <!-- AI Design Tab -->
+    <div x-show="activeTab === 'ai_design'" x-cloak class="space-y-6">
+        <!-- Tab Header -->
+        <div class="bg-card rounded-lg border border-border p-6">
+            <div class="flex items-start justify-between">
+                <div>
+                    <h2 class="text-2xl font-bold flex items-center gap-2">
+                        <i data-lucide="brain" class="h-6 w-6 text-primary" aria-hidden="true"></i>
+                        AI-Powered Solution Design
+                    </h2>
+                    <p class="text-muted-foreground mt-1">
+                        Generate architecture elements, detect patterns, create requirements,
+                        and build implementation roadmaps using AI analysis of your problem definition.
+                    </p>
+                </div>
+                <template x-if="!hasProblemDefinition">
+                    <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-warning/5 border border-warning/20 text-warning text-sm">
+                        <i data-lucide="alert-triangle" class="h-4 w-4" aria-hidden="true"></i>
+                        Problem definition required
+                    </span>
+                </template>
+            </div>
+        </div>
+
+        <!-- Section 1: Architecture Elements -->
+        <div class="bg-card rounded-lg border border-border overflow-hidden">
+            <div class="p-5 border-b border-border bg-muted/30">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <div class="p-2 rounded-lg bg-primary/10">
+                            <i data-lucide="layers" class="h-5 w-5 text-primary" aria-hidden="true"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-lg font-bold">Architecture Elements</h3>
+                            <p class="text-sm text-muted-foreground">ArchiMate elements across all 6 layers</p>
+                        </div>
+                    </div>
+                    <button @click="generateAIElements()"
+                            :disabled="!hasProblemDefinition || aiLoading.elements"
+                            class="inline-flex items-center gap-2 h-9 px-4 rounded-lg bg-primary text-primary-foreground hover:bg-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium" aria-label="Generate architecture elements">
+                        <svg x-show="aiLoading.elements" x-cloak class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                        </svg>
+                        <i x-show="!aiLoading.elements" x-cloak data-lucide="sparkles" class="h-4 w-4"></i>
+                        <span x-text="aiLoading.elements ? 'Generating...' : aiGenerated.elements ? 'Regenerate' : 'Generate Elements'"></span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Elements Results -->
+            <template x-if="aiGenerated.elements && Object.keys(aiElements).length > 0">
+                <div class="p-5 space-y-4">
+                    <div class="flex items-center gap-2 text-sm text-muted-foreground mb-2">
+                        <i data-lucide="info" class="h-4 w-4" aria-hidden="true"></i>
+                        <span x-text="'Source: ' + (aiElementsSource === 'ai' ? 'AI-generated' : 'Template-based fallback')"></span>
+                    </div>
+                    <template x-for="layer in ['motivation', 'strategy', 'business', 'application', 'technology', 'implementation']" :key="layer">
+                        <div x-show="aiElements[layer] && aiElements[layer].length > 0" x-cloak>
+                            <button @click="aiExpandedLayers[layer] = !aiExpandedLayers[layer]"
+                                    class="flex items-center justify-between w-full text-left p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors" aria-label="Toggle architecture layer details">
+                                <div class="flex items-center gap-2">
+                                    <svg class="w-4 h-4 text-muted-foreground transition-transform" :class="aiExpandedLayers[layer] ? 'rotate-90' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                                    </svg>
+                                    <span class="font-semibold text-sm capitalize" x-text="layer"></span>
+                                    <span class="text-xs text-muted-foreground px-1.5 py-0.5 rounded bg-background"
+                                          x-text="aiElements[layer].length + ' elements'"></span>
+                                </div>
+                            </button>
+                            <div x-show="aiExpandedLayers[layer]" x-cloak x-transition class="mt-2 ml-6 space-y-2">
+                                <template x-for="elem in aiElements[layer]" :key="elem.name">
+                                    <div class="flex items-start gap-3 p-3 rounded-lg border border-border">
+                                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-primary/10 text-primary shrink-0 mt-0.5"
+                                              x-text="elem.element_type"></span>
+                                        <div>
+                                            <div class="font-medium text-sm" x-text="elem.name"></div>
+                                            <div class="text-xs text-muted-foreground mt-0.5" x-text="elem.description"></div>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </template>
+            <!-- Apply Elements Button -->
+            <template x-if="aiGenerated.elements && Object.keys(aiElements).length > 0">
+                <div class="p-5 pt-0">
+                    <button type="button" @click="applyElements()"
+                            :disabled="applyingElements || !APP_CONFIG.solutionId"
+                            x-cloak
+                            class="inline-flex items-center gap-2 h-9 px-4 rounded-lg border border-input hover:bg-accent disabled:opacity-50 transition-colors text-sm font-medium"
+                            aria-label="Apply elements to solution">
+                        <span x-show="applyingElements" x-cloak>Applying...</span>
+                        <span x-show="!applyingElements" x-cloak>Apply to Solution</span>
+                    </button>
+                </div>
+            </template>
+        </div>
+
+        <!-- Section 2: Pattern Detection -->
+        <div class="bg-card rounded-lg border border-border overflow-hidden">
+            <div class="p-5 border-b border-border bg-muted/30">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <div class="p-2 rounded-lg bg-success/10">
+                            <i data-lucide="puzzle" class="h-5 w-5 text-success" aria-hidden="true"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-lg font-bold">Pattern Detection</h3>
+                            <p class="text-sm text-muted-foreground">Match architecture patterns from the pattern library</p>
+                        </div>
+                    </div>
+                    <button @click="detectAIPatterns()"
+                            :disabled="!hasProblemDefinition || aiLoading.patterns"
+                            class="inline-flex items-center gap-2 h-9 px-4 rounded-lg bg-success text-primary-foreground hover:bg-success disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium" aria-label="Detect architecture patterns">
+                        <svg x-show="aiLoading.patterns" x-cloak class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                        </svg>
+                        <i x-show="!aiLoading.patterns" x-cloak data-lucide="scan" class="h-4 w-4"></i>
+                        <span x-text="aiLoading.patterns ? 'Detecting...' : aiGenerated.patterns ? 'Re-detect' : 'Detect Patterns'"></span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Pattern Results -->
+            <template x-if="aiGenerated.patterns && aiPatterns.length > 0">
+                <div class="p-5 space-y-4">
+                    <div class="flex items-center gap-2 text-sm mb-2">
+                        <span class="font-medium" x-text="aiPatternMatchCount + ' pattern(s) matched'"></span>
+                        <span class="text-muted-foreground" x-text="'out of ' + aiPatterns.length + ' available'"></span>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <template x-for="pattern in aiPatterns" :key="pattern.pattern_id">
+                            <div class="rounded-lg border p-4 transition-colors"
+                                 :class="pattern.is_match ? 'border-green-300 bg-success/5/50' : 'border-border bg-muted/20 opacity-60'">
+                                <div class="flex items-start justify-between mb-2">
+                                    <h4 class="font-semibold text-sm" x-text="pattern.name"></h4>
+                                    <span class="text-xs font-bold px-2 py-0.5 rounded"
+                                          :class="pattern.is_match ? 'bg-success/10 text-success' : 'bg-muted text-muted-foreground'"
+                                          x-text="(pattern.confidence * 100).toFixed(0) + '% match'"></span>
+                                </div>
+                                <p class="text-xs text-muted-foreground mb-3" x-text="pattern.description"></p>
+
+                                <!-- Confidence bar -->
+                                <div class="w-full bg-muted rounded-full h-1.5 mb-2">
+                                    <div class="h-1.5 rounded-full transition-all duration-300"
+                                         :class="pattern.is_match ? 'bg-success' : 'bg-muted-foreground/30'"
+                                         :style="'width: ' + Math.max(pattern.confidence * 100, 3) + '%'"></div>
+                                </div>
+
+                                <!-- Matched triggers -->
+                                <template x-if="pattern.matched_triggers.length > 0">
+                                    <div class="flex flex-wrap gap-1 mt-2">
+                                        <template x-for="trigger in pattern.matched_triggers" :key="trigger">
+                                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-success/10 text-success"
+                                                  x-text="trigger"></span>
+                                        </template>
+                                    </div>
+                                </template>
+
+                                <!-- Pattern elements (collapsed) -->
+                                <template x-if="pattern.is_match">
+                                    <div class="mt-3" x-data="{ showElems: false }">
+                                        <button @click="showElems = !showElems" class="text-xs text-success hover:underline flex items-center gap-1" aria-label="Toggle pattern elements">
+                                            <svg class="w-3 h-3 transition-transform" :class="showElems ? 'rotate-90' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                                            </svg>
+                                            <span x-text="pattern.elements.length + ' elements'"></span>
+                                        </button>
+                                        <div x-show="showElems" x-cloak x-transition class="mt-2 space-y-1">
+                                            <template x-for="elem in pattern.elements" :key="elem.name">
+                                                <div class="flex items-center gap-2 text-xs p-1.5 rounded bg-background">
+                                                    <span class="text-muted-foreground w-32 shrink-0" x-text="elem.type"></span>
+                                                    <span class="font-medium" x-text="elem.name"></span>
+                                                </div>
+                                            </template>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </template>
+        </div>
+
+        <!-- Section 3: Requirements Generation -->
+        <div class="bg-card rounded-lg border border-border overflow-hidden">
+            <div class="p-5 border-b border-border bg-muted/30">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <div class="p-2 rounded-lg bg-accent">
+                            <i data-lucide="list-checks" class="h-5 w-5 text-primary" aria-hidden="true"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-lg font-bold">Requirements Generation</h3>
+                            <p class="text-sm text-muted-foreground">Functional, non-functional, and constraint requirements</p>
+                        </div>
+                    </div>
+                    <button @click="generateAIRequirements()"
+                            :disabled="!hasProblemDefinition || aiLoading.requirements"
+                            class="inline-flex items-center gap-2 h-9 px-4 rounded-lg bg-primary text-primary-foreground hover:bg-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium" aria-label="Generate requirements">
+                        <svg x-show="aiLoading.requirements" x-cloak class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                        </svg>
+                        <i x-show="!aiLoading.requirements" x-cloak data-lucide="sparkles" class="h-4 w-4"></i>
+                        <span x-text="aiLoading.requirements ? 'Generating...' : aiGenerated.requirements ? 'Regenerate' : 'Generate Requirements'"></span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Requirements Results -->
+            <template x-if="aiGenerated.requirements && aiRequirements.length > 0">
+                <div class="p-5 space-y-4">
+                    <div class="flex items-center gap-2 text-sm text-muted-foreground mb-2">
+                        <i data-lucide="info" class="h-4 w-4" aria-hidden="true"></i>
+                        <span x-text="aiRequirements.length + ' requirements generated (' + (aiRequirementsSource === 'ai' ? 'AI-generated' : 'template-based fallback') + ')'"></span>
+                    </div>
+
+                    <!-- Group by category -->
+                    <template x-for="category in ['Functional', 'Non-Functional', 'Constraint']" :key="category">
+                        <div x-show="aiRequirements.filter(r => r.category === category).length > 0" x-cloak>
+                            <h4 class="font-semibold text-sm mb-2 flex items-center gap-2">
+                                <span :class="category === 'Functional' ? 'text-primary' : category === 'Non-Functional' ? 'text-primary' : 'text-warning'"
+                                      x-text="category"></span>
+                                <span class="text-xs text-muted-foreground px-1.5 py-0.5 rounded bg-muted"
+                                      x-text="aiRequirements.filter(r => r.category === category).length"></span>
+                            </h4>
+                            <div class="space-y-2 mb-4">
+                                <template x-for="req in aiRequirements.filter(r => r.category === category)" :key="req.title">
+                                    <div class="p-3 rounded-lg border border-border">
+                                        <div class="flex items-start justify-between gap-3">
+                                            <div class="flex-1">
+                                                <div class="font-medium text-sm" x-text="req.title"></div>
+                                                <div class="text-xs text-muted-foreground mt-1" x-text="req.description"></div>
+                                            </div>
+                                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium shrink-0"
+                                                  :class="req.priority === 'critical' ? 'bg-destructive/10 text-destructive' :
+                                                           req.priority === 'high' ? 'bg-warning/10 text-warning' :
+                                                           req.priority === 'medium' ? 'bg-warning/10 text-warning' :
+                                                           'bg-muted text-muted-foreground'"
+                                                  x-text="req.priority"></span>
+                                        </div>
+                                        <template x-if="req.acceptance_criteria && req.acceptance_criteria.length > 0">
+                                            <div class="mt-2 pt-2 border-t border-border">
+                                                <div class="text-xs font-medium text-muted-foreground mb-1">Acceptance Criteria:</div>
+                                                <ul class="space-y-0.5">
+                                                    <template x-for="ac in req.acceptance_criteria" :key="ac">
+                                                        <li class="text-xs text-muted-foreground flex items-start gap-1.5">
+                                                            <span class="text-success mt-0.5 shrink-0">&#10003;</span>
+                                                            <span x-text="ac"></span>
+                                                        </li>
+                                                    </template>
+                                                </ul>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </template>
+            <!-- Apply Requirements Button -->
+            <template x-if="aiGenerated.requirements && aiRequirements.length > 0">
+                <div class="p-5 pt-0">
+                    <button type="button" @click="applyRequirements()"
+                            :disabled="applyingRequirements"
+                            x-cloak
+                            class="inline-flex items-center gap-2 h-9 px-4 rounded-lg border border-input hover:bg-accent disabled:opacity-50 transition-colors text-sm font-medium"
+                            aria-label="Apply requirements to problem definition">
+                        <span x-show="applyingRequirements" x-cloak>Applying...</span>
+                        <span x-show="!applyingRequirements" x-cloak>Apply to Problem Definition</span>
+                    </button>
+                </div>
+            </template>
+        </div>
+
+        <!-- Section 4: Implementation Roadmap -->
+        <div class="bg-card rounded-lg border border-border overflow-hidden">
+            <div class="p-5 border-b border-border bg-muted/30">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <div class="p-2 rounded-lg bg-warning/10">
+                            <i data-lucide="map" class="h-5 w-5 text-warning" aria-hidden="true"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-lg font-bold">Implementation Roadmap</h3>
+                            <p class="text-sm text-muted-foreground">Work packages organized by implementation phase</p>
+                        </div>
+                    </div>
+                    <button @click="generateAIRoadmap()"
+                            :disabled="!hasProblemDefinition || aiLoading.roadmap"
+                            class="inline-flex items-center gap-2 h-9 px-4 rounded-lg bg-warning text-primary-foreground hover:bg-warning disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium" aria-label="Generate implementation roadmap">
+                        <svg x-show="aiLoading.roadmap" x-cloak class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                        </svg>
+                        <i x-show="!aiLoading.roadmap" x-cloak data-lucide="sparkles" class="h-4 w-4"></i>
+                        <span x-text="aiLoading.roadmap ? 'Generating...' : aiGenerated.roadmap ? 'Regenerate' : 'Generate Roadmap'"></span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Roadmap Results -->
+            <template x-if="aiGenerated.roadmap && aiRoadmap.length > 0">
+                <div class="p-5 space-y-5">
+                    <div class="flex items-center gap-2 text-sm text-muted-foreground mb-2">
+                        <i data-lucide="info" class="h-4 w-4" aria-hidden="true"></i>
+                        <span x-text="aiRoadmap.length + ' work packages across 4 phases (' + (aiRoadmapSource === 'ai' ? 'AI-generated' : 'template-based fallback') + ')'"></span>
+                    </div>
+
+                    <!-- Phase Groups -->
+                    <template x-for="phase in [
+                        {id: 'phase1', label: 'Phase 1: Foundation', color: 'blue'},
+                        {id: 'phase2', label: 'Phase 2: Core Features', color: 'green'},
+                        {id: 'phase3', label: 'Phase 3: Enhancement', color: 'purple'},
+                        {id: 'phase4', label: 'Phase 4: Go-Live', color: 'amber'}
+                    ]" :key="phase.id">
+                        <div x-show="aiRoadmap.filter(r => r.phase === phase.id).length > 0" x-cloak>
+                            <div class="flex items-center gap-2 mb-3">
+                                <div class="w-3 h-3 rounded-full"
+                                     :class="phase.color === 'blue' ? 'bg-primary' : phase.color === 'green' ? 'bg-success' : phase.color === 'purple' ? 'bg-primary' : 'bg-warning'"></div>
+                                <h4 class="font-semibold text-sm" x-text="phase.label"></h4>
+                                <span class="text-xs text-muted-foreground px-1.5 py-0.5 rounded bg-muted"
+                                      x-text="aiRoadmap.filter(r => r.phase === phase.id).length + ' packages'"></span>
+                                <span class="text-xs text-muted-foreground"
+                                      x-text="aiRoadmap.filter(r => r.phase === phase.id).reduce((sum, r) => sum + (r.duration_weeks || 0), 0) + ' weeks total'"></span>
+                            </div>
+                            <div class="space-y-2 ml-5 border-l-2 pl-4"
+                                 :class="phase.color === 'blue' ? 'border-primary/20' : phase.color === 'green' ? 'border-success/20' : phase.color === 'purple' ? 'border-primary/20' : 'border-warning/20'">
+                                <template x-for="item in aiRoadmap.filter(r => r.phase === phase.id)" :key="item.name">
+                                    <div class="p-3 rounded-lg border border-border bg-card">
+                                        <div class="flex items-start justify-between gap-3">
+                                            <div class="flex-1">
+                                                <div class="font-medium text-sm" x-text="item.name"></div>
+                                                <div class="text-xs text-muted-foreground mt-0.5" x-text="item.description"></div>
+                                            </div>
+                                            <div class="flex items-center gap-2 shrink-0">
+                                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
+                                                      :class="item.priority === 'critical' ? 'bg-destructive/10 text-destructive' :
+                                                               item.priority === 'high' ? 'bg-warning/10 text-warning' :
+                                                               item.priority === 'medium' ? 'bg-warning/10 text-warning' :
+                                                               'bg-muted text-muted-foreground'"
+                                                      x-text="item.priority"></span>
+                                                <span class="text-xs text-muted-foreground tabular-nums"
+                                                      x-text="item.duration_weeks ? item.duration_weeks + 'w' : ''"></span>
+                                            </div>
+                                        </div>
+                                        <!-- Duration bar -->
+                                        <div class="mt-2 w-full bg-muted rounded-full h-1.5">
+                                            <div class="h-1.5 rounded-full transition-all duration-300"
+                                                 :class="phase.color === 'blue' ? 'bg-primary/40' : phase.color === 'green' ? 'bg-success/40' : phase.color === 'purple' ? 'bg-purple-400' : 'bg-warning/40'"
+                                                 :style="'width: ' + Math.min(100, (item.duration_weeks || 1) * 10) + '%'"></div>
+                                        </div>
+                                        <!-- Dependencies -->
+                                        <template x-if="item.dependencies && item.dependencies.length > 0">
+                                            <div class="mt-2 flex flex-wrap gap-1">
+                                                <span class="text-xs text-muted-foreground">Depends on:</span>
+                                                <template x-for="dep in item.dependencies" :key="dep">
+                                                    <span class="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground" x-text="dep"></span>
+                                                </template>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </template>
+            <!-- Apply Roadmap Button -->
+            <template x-if="aiGenerated.roadmap && aiRoadmap.length > 0">
+                <div class="p-5 pt-0">
+                    <button type="button" @click="applyRoadmap()"
+                            :disabled="applyingRoadmap || !APP_CONFIG.solutionId"
+                            x-cloak
+                            class="inline-flex items-center gap-2 h-9 px-4 rounded-lg border border-input hover:bg-accent disabled:opacity-50 transition-colors text-sm font-medium"
+                            aria-label="Apply roadmap to solution">
+                        <span x-show="applyingRoadmap" x-cloak>Applying...</span>
+                        <span x-show="!applyingRoadmap" x-cloak>Apply to Solution</span>
+                    </button>
+                </div>
+            </template>
+        </div>
+    </div>
+
+    <!-- Versions Tab -->
+    <div x-show="activeTab === 'versions'" x-cloak class="space-y-4">
+        {% if session.versions %}
+        {% for version in session.versions %}
+        <div class="bg-card rounded-lg border border-border p-4 flex items-center justify-between">
+            <div>
+                <h4 class="font-semibold">Version {{ version.version_number }}{% if version.version_name %}: {{ version.version_name }}{% endif %}</h4>
+                <p class="text-sm text-muted-foreground">{{ version.created_at.strftime('%Y-%m-%d %H:%M') }} by {{ version.created_by.username if version.created_by else 'Unknown' }}</p>
+                {% if version.description %}
+                <p class="text-sm mt-1">{{ version.description }}</p>
+                {% endif %}
+            </div>
+            <span class="px-4 py-2 rounded-md border border-input text-sm text-muted-foreground cursor-not-allowed opacity-50" title="Version restore not yet implemented">
+                v{{ version.version_number }}
+            </span>
+        </div>
+        {% endfor %}
+        {% else %}
+        <div class="bg-card rounded-lg border border-border p-12 text-center">
+            <p class="text-muted-foreground">No versions saved yet</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+function sessionDetail() {
+    return {
+        activeTab: 'overview',
+        analysisResults: [],
+        analysisLoading: false,
+        analysisLoaded: false,
+        analysisError: null,
+        hasProblemDefinition: {{ 'true' if problem else 'false' }},
+
+        // AI Design state
+        aiElements: {},
+        aiElementsSource: '',
+        aiRequirements: [],
+        aiRequirementsSource: '',
+        aiRoadmap: [],
+        aiRoadmapSource: '',
+        aiPatterns: [],
+        aiPatternMatchCount: 0,
+        aiLoading: { elements: false, requirements: false, roadmap: false, patterns: false },
+        aiGenerated: { elements: false, requirements: false, roadmap: false, patterns: false },
+        aiExpandedLayers: { motivation: true, strategy: true, business: true, application: true, technology: true, implementation: true },
+
+        // Scenario what-if state
+        scenarioWeights: { cost: 25, capability: 25, risk: 20, strategic_fit: 15, implementation: 15 },
+        scenarioLoading: false,
+        scenarioResults: [],
+
+        get scenarioWeightSum() {
+            return this.scenarioWeights.cost + this.scenarioWeights.capability +
+                   this.scenarioWeights.risk + this.scenarioWeights.strategic_fit +
+                   this.scenarioWeights.implementation;
+        },
+
+        resumeAnalysis() {
+            window.location.href = '/solutions/architect/workspace?session_id={{ session.id }}';
+        },
+
+        exportSession() {
+            window.location.href = '/solutions/architect/sessions/{{ session.id }}/export/pdf';
+        },
+
+        async loadAnalysisResults() {
+            if (this.analysisLoaded) return;
+            try {
+                const response = await fetch('/solutions/architect/api/sessions/{{ session.id }}/analysis-results', {
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await response.json();
+                if (data.success && data.has_results) {
+                    this.analysisResults = data.recommendations.map(rec => ({
+                        ...rec,
+                        _showPros: false,
+                        _showCons: false
+                    }));
+                }
+                this.analysisLoaded = true;
+            } catch (err) {
+                console.error('Failed to load analysis results:', err);
+                this.analysisLoaded = true;
+            }
+        },
+
+        async runOptionsAnalysis() {
+            this.analysisLoading = true;
+            this.analysisError = null;
+            try {
+                const response = await fetch('/solutions/architect/api/sessions/{{ session.id }}/run-analysis', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await response.json();
+                if (data.success) {
+                    this.analysisResults = data.recommendations.map((rec, idx) => ({
+                        option_type: rec.option_type,
+                        rank: idx + 1,
+                        score: rec.score || 0,
+                        confidence: rec.score ? Math.min(1.0, rec.score / 100.0) : 0,
+                        estimated_cost_min: rec.estimated_cost ? rec.estimated_cost * 0.8 : null,
+                        estimated_cost_max: rec.estimated_cost ? rec.estimated_cost * 1.2 : null,
+                        timeline_months: rec.timeline_months,
+                        pros: rec.pros || [],
+                        cons: rec.cons || [],
+                        justification: rec.description || '',
+                        _showPros: false,
+                        _showCons: false
+                    }));
+                    this.analysisLoaded = true;
+                } else {
+                    this.analysisError = data.error || 'Analysis failed. Please try again.';
+                }
+            } catch (err) {
+                this.analysisError = 'Network error. Please check your connection and try again.';
+                console.error('Options analysis error:', err);
+            } finally {
+                this.analysisLoading = false;
+            }
+        },
+
+        async generateAIElements() {
+            this.aiLoading.elements = true;
+            try {
+                const response = await fetch('/solutions/architect/api/sessions/{{ session.id }}/ai-elements', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await response.json();
+                if (data.success && data.suggestions) {
+                    this.aiElements = data.suggestions;
+                    this.aiElementsSource = data.source || 'unknown';
+                    this.aiGenerated.elements = true;
+                }
+            } catch (err) {
+                console.error('AI elements generation error:', err);
+            } finally {
+                this.aiLoading.elements = false;
+            }
+        },
+
+        async detectAIPatterns() {
+            this.aiLoading.patterns = true;
+            try {
+                const response = await fetch('/solutions/architect/api/sessions/{{ session.id }}/ai-patterns', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await response.json();
+                if (data.success && data.patterns) {
+                    this.aiPatterns = data.patterns;
+                    this.aiPatternMatchCount = data.match_count || 0;
+                    this.aiGenerated.patterns = true;
+                }
+            } catch (err) {
+                console.error('Pattern detection error:', err);
+            } finally {
+                this.aiLoading.patterns = false;
+            }
+        },
+
+        async generateAIRequirements() {
+            this.aiLoading.requirements = true;
+            try {
+                const response = await fetch('/solutions/architect/api/sessions/{{ session.id }}/ai-requirements', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await response.json();
+                if (data.success && data.requirements) {
+                    this.aiRequirements = data.requirements;
+                    this.aiRequirementsSource = data.source || 'unknown';
+                    this.aiGenerated.requirements = true;
+                }
+            } catch (err) {
+                console.error('AI requirements generation error:', err);
+            } finally {
+                this.aiLoading.requirements = false;
+            }
+        },
+
+        async generateAIRoadmap() {
+            this.aiLoading.roadmap = true;
+            try {
+                const response = await fetch('/solutions/architect/api/sessions/{{ session.id }}/ai-roadmap', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await response.json();
+                if (data.success && data.roadmap_items) {
+                    this.aiRoadmap = data.roadmap_items;
+                    this.aiRoadmapSource = data.source || 'unknown';
+                    this.aiGenerated.roadmap = true;
+                }
+            } catch (err) {
+                console.error('AI roadmap generation error:', err);
+            } finally {
+                this.aiLoading.roadmap = false;
+            }
+        },
+
+        async recalculateScenario() {
+            if (this.scenarioWeightSum !== 100 || this.analysisResults.length === 0) return;
+            this.scenarioLoading = true;
+            try {
+                // Client-side recalculation using the existing scores and new weights
+                const weights = {
+                    cost: this.scenarioWeights.cost / 100,
+                    capability: this.scenarioWeights.capability / 100,
+                    risk: this.scenarioWeights.risk / 100,
+                    strategic_fit: this.scenarioWeights.strategic_fit / 100,
+                    implementation: this.scenarioWeights.implementation / 100,
+                };
+
+                // Recalculate weighted scores for each option
+                const recalculated = this.analysisResults.map(rec => {
+                    // Map option scores to weight dimensions
+                    // score is already 0-100; apply weight redistribution
+                    const baseScore = rec.score || 0;
+                    const costFactor = weights.cost / 0.25;
+                    const capFactor = weights.capability / 0.25;
+                    const riskFactor = weights.risk / 0.20;
+                    const stratFactor = weights.strategic_fit / 0.15;
+                    const implFactor = weights.implementation / 0.15;
+                    const avgFactor = (costFactor + capFactor + riskFactor + stratFactor + implFactor) / 5;
+                    const adjustedScore = Math.min(100, Math.max(0, baseScore * avgFactor));
+
+                    return {
+                        option_type: rec.option_type,
+                        score: Math.round(adjustedScore * 10) / 10,
+                    };
+                });
+
+                // Sort by score descending
+                recalculated.sort((a, b) => b.score - a.score);
+                this.scenarioResults = recalculated;
+            } catch (err) {
+                console.error('Scenario recalculation error:', err);
+            } finally {
+                this.scenarioLoading = false;
+            }
+        }
+    }
+}
+</script>
+{% endblock %}

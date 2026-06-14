@@ -1,0 +1,203 @@
+{% extends "layouts/admin_base.html" %}
+{% from "components/page_header.html" import page_header %}
+{% from 'components/empty_state.html' import empty_state %}
+
+{% block title %}Audit Log{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 sm:px-6 lg:px-8 py-6 max-w-7xl">
+    {{ page_header(
+        title='Audit Log',
+        description='Query and filter audit trail entries for compliance review',
+        breadcrumbs=[
+            {'label': 'Dashboard', 'href': url_for('main.index')},
+            {'label': 'Admin', 'href': url_for('admin.dashboard')},
+            {'label': 'Audit Log'}
+        ]
+    ) }}
+
+    <!-- Filters -->
+    <form method="get" action="{{ url_for('admin.audit_log_viewer') }}" class="mt-6 rounded-xl border bg-card p-4">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
+            <div>
+                <label for="date_from" class="block text-xs font-medium text-muted-foreground mb-1">From Date</label>
+                <input type="date" id="date_from" name="date_from" value="{{ date_from }}"
+                       class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm">
+            </div>
+            <div>
+                <label for="date_to" class="block text-xs font-medium text-muted-foreground mb-1">To Date</label>
+                <input type="date" id="date_to" name="date_to" value="{{ date_to }}"
+                       class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm">
+            </div>
+            <div>
+                <label for="user_email" class="block text-xs font-medium text-muted-foreground mb-1">User Email</label>
+                <!-- entity-picker-ok: search filter, not entity creation -->
+                <input type="text" id="user_email" name="user_email" value="{{ user_email }}" placeholder="Search by email"
+                       class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm">
+            </div>
+            <div>
+                <label for="action" class="block text-xs font-medium text-muted-foreground mb-1">Action</label>
+                <select id="action" name="action"
+                        class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm">
+                    <option value="">All Actions</option>
+                    {% for a in action_types %}
+                    <option value="{{ a }}" {{ 'selected' if action_filter == a else '' }}>{{ a }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="entity_type" class="block text-xs font-medium text-muted-foreground mb-1">Entity Type</label>
+                <select id="entity_type" name="entity_type"
+                        class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm">
+                    <option value="">All Types</option>
+                    {% for et in entity_types %}
+                    <option value="{{ et }}" {{ 'selected' if entity_type_filter == et else '' }}>{{ et }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="q" class="block text-xs font-medium text-muted-foreground mb-1">Search</label>
+                <input type="text" id="q" name="q" value="{{ search_q }}" placeholder="Search description..."
+                       class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm">
+            </div>
+        </div>
+        <div class="flex items-center gap-3 mt-3">
+            <button type="submit"
+                    class="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
+                <i data-lucide="search" class="h-4 w-4 mr-1.5"></i> Filter
+            </button>
+            <a href="{{ url_for('admin.audit_log_viewer') }}"
+               class="inline-flex items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-accent transition-colors">
+                Clear
+            </a>
+            <a href="{{ url_for('admin.audit_log_viewer', date_from=date_from, date_to=date_to, user_email=user_email, action=action_filter, entity_type=entity_type_filter, q=search_q, export='csv') }}"
+               class="inline-flex items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-accent transition-colors ml-auto">
+                <i data-lucide="download" class="h-4 w-4 mr-1.5"></i> Export CSV
+            </a>
+        </div>
+    </form>
+
+    <!-- Results summary -->
+    <div class="flex items-center justify-between mt-6 mb-3">
+        <p class="text-sm text-muted-foreground">
+            Showing {{ entries|length }} of {{ total }} entries
+            {% if page > 1 %} (page {{ page }} of {{ total_pages }}){% endif %}
+        </p>
+    </div>
+
+    <!-- Results table -->
+    <div class="rounded-xl border bg-card overflow-hidden" x-data="{ expanded: {} }">
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b bg-muted/50">
+                        <th class="px-4 py-3 text-left font-medium text-muted-foreground w-8"></th>
+                        <th class="px-4 py-3 text-left font-medium text-muted-foreground">Timestamp</th>
+                        <th class="px-4 py-3 text-left font-medium text-muted-foreground">User</th>
+                        <th class="px-4 py-3 text-left font-medium text-muted-foreground">Action</th>
+                        <th class="px-4 py-3 text-left font-medium text-muted-foreground">Entity</th>
+                        <th class="px-4 py-3 text-left font-medium text-muted-foreground">Description</th>
+                        <th class="px-4 py-3 text-left font-medium text-muted-foreground">Status</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-border">
+                    {% for entry in entries %}
+                    <tr class="hover:bg-muted/30 transition-colors cursor-pointer"
+                        @click="expanded[{{ entry.id }}] = !expanded[{{ entry.id }}]">
+                        <td class="px-4 py-3">
+                            <i data-lucide="chevron-right" class="h-4 w-4 text-muted-foreground transition-transform"
+                               :class="expanded[{{ entry.id }}] ? 'rotate-90' : ''"></i>
+                        </td>
+                        <td class="px-4 py-3 whitespace-nowrap text-muted-foreground">
+                            {{ entry.timestamp.strftime('%Y-%m-%d %H:%M:%S') if entry.timestamp else '-' }}
+                        </td>
+                        <td class="px-4 py-3 whitespace-nowrap">{{ entry.user_email or '-' }}</td>
+                        <td class="px-4 py-3">
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium
+                                {% if entry.action == 'create' %}bg-emerald-500/10 text-emerald-600 border border-emerald-500/30
+                                {% elif entry.action == 'delete' %}bg-red-500/10 text-destructive border border-red-500/30
+                                {% elif entry.action == 'update' %}bg-amber-500/10 text-amber-600 border border-amber-500/30
+                                {% elif entry.action == 'login' %}bg-blue-500/10 text-primary border border-blue-500/30
+                                {% else %}bg-muted text-muted-foreground border border-border{% endif %}">
+                                {{ entry.action }}
+                            </span>
+                        </td>
+                        <td class="px-4 py-3">
+                            <span class="text-muted-foreground">{{ entry.entity_type }}</span>
+                            {% if entry.entity_name %}
+                            <span class="text-foreground font-medium ml-1">{{ entry.entity_name }}</span>
+                            {% elif entry.entity_id %}
+                            <span class="text-muted-foreground ml-1">#{{ entry.entity_id }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-3 max-w-xs truncate" title="{{ entry.description or '' }}">
+                            {{ entry.description or '-' }}
+                        </td>
+                        <td class="px-4 py-3">
+                            {% if entry.status == 'success' %}
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30">success</span>
+                            {% else %}
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-red-500/10 text-destructive border border-red-500/30">{{ entry.status }}</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <!-- Expanded detail row -->
+                    <tr x-show="expanded[{{ entry.id }}]" x-cloak class="bg-muted/20">
+                        <td colspan="7" class="px-4 py-4">
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                                {% if entry.old_values %}
+                                <div>
+                                    <h4 class="font-medium text-muted-foreground mb-2">Previous Values</h4>
+                                    <pre class="rounded-md bg-background border border-border p-3 text-xs overflow-x-auto max-h-48">{{ entry.old_values | tojson(indent=2) }}</pre>
+                                </div>
+                                {% endif %}
+                                {% if entry.new_values %}
+                                <div>
+                                    <h4 class="font-medium text-muted-foreground mb-2">New Values</h4>
+                                    <pre class="rounded-md bg-background border border-border p-3 text-xs overflow-x-auto max-h-48">{{ entry.new_values | tojson(indent=2) }}</pre>
+                                </div>
+                                {% endif %}
+                                {% if not entry.old_values and not entry.new_values %}
+                                <div class="col-span-2 text-muted-foreground">No value changes recorded for this entry.</div>
+                                {% endif %}
+                                <div class="col-span-2 flex gap-6 text-xs text-muted-foreground border-t border-border pt-3 mt-1">
+                                    {% if entry.ip_address %}<span>IP: {{ entry.ip_address }}</span>{% endif %}
+                                    {% if entry.request_id %}<span>Request ID: {{ entry.request_id }}</span>{% endif %}
+                                    {% if entry.error_message %}<span class="text-destructive">Error: {{ entry.error_message }}</span>{% endif %}
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="7">
+                            {{ empty_state(icon='file-search', title='No audit log entries found matching your filters.',
+                                           class='py-8') }}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Pagination -->
+    {% if total_pages > 1 %}
+    <nav class="flex items-center justify-center gap-1 mt-6" aria-label="Audit log pagination">
+        {% if page > 1 %}
+        <a href="{{ url_for('admin.audit_log_viewer', page=page-1, date_from=date_from, date_to=date_to, user_email=user_email, action=action_filter, entity_type=entity_type_filter, q=search_q) }}"
+           class="inline-flex items-center justify-center rounded-md border border-input bg-background px-3 py-1.5 text-sm hover:bg-accent transition-colors">
+            Previous
+        </a>
+        {% endif %}
+        <span class="px-3 py-1.5 text-sm text-muted-foreground">Page {{ page }} of {{ total_pages }}</span>
+        {% if page < total_pages %}
+        <a href="{{ url_for('admin.audit_log_viewer', page=page+1, date_from=date_from, date_to=date_to, user_email=user_email, action=action_filter, entity_type=entity_type_filter, q=search_q) }}"
+           class="inline-flex items-center justify-center rounded-md border border-input bg-background px-3 py-1.5 text-sm hover:bg-accent transition-colors">
+            Next
+        </a>
+        {% endif %}
+    </nav>
+    {% endif %}
+</div>
+{% endblock %}

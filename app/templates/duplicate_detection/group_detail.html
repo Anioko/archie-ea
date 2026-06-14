@@ -1,0 +1,500 @@
+{% extends "layouts/admin_base.html" %}
+{% from "components/page_header.html" import page_header %}
+
+{% block title %}{{ group.group_name }} - Duplicate Detection{% endblock %}
+
+{% block content %}
+<div class="flex-1 space-y-6 p-4 md:p-8" x-data="groupDetail()" x-init="init()">
+
+    {{ page_header(
+        title=group.group_name,
+        description=group.description or 'Duplicate application group detected for consolidation review',
+        breadcrumbs=[
+            {'label': 'Dashboard', 'href': url_for('main.index')},
+            {'label': 'Duplicate Detection', 'href': url_for('unified_duplicate.simple_dashboard')},
+            {'label': group.group_name}
+        ],
+        actions=[
+            {'text': 'Add to Consolidation', 'icon': 'arrow-right-circle', 'onclick': 'addToConsolidation()', 'variant': 'default'},
+            {'text': 'Dismiss', 'icon': 'x-circle', 'onclick': 'dismissGroup()', 'variant': 'destructive'}
+        ]
+    ) }}
+
+    {# Metadata Badges #}
+    <div class="flex flex-wrap items-center gap-2">
+        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium"
+              :class="typeBadgeClass('{{ group.duplicate_type }}')">
+            {{ (group.duplicate_type or 'unknown') | capitalize }}
+        </span>
+        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium"
+              :class="priorityBadgeClass('{{ group.consolidation_priority }}')">
+            {{ (group.consolidation_priority or 'medium') | capitalize }} Priority
+        </span>
+        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-slate-500/10 text-slate-600 border border-slate-500/30">
+            <i data-lucide="layers" class="w-3 h-3 mr-1" aria-hidden="true"></i>
+            {{ group.applications | length }} Application{{ 's' if group.applications | length != 1 else '' }}
+        </span>
+        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-blue-500/10 text-primary border border-blue-500/30">
+            <i data-lucide="scan-line" class="w-3 h-3 mr-1" aria-hidden="true"></i>
+            {{ (group.overall_similarity_score * 100) | round | int }}% Similarity
+        </span>
+    </div>
+
+    {# Summary Stat Cards #}
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="rounded-xl border border-input bg-background hover:border-primary/50 hover:shadow-sm transition-all duration-200 p-5">
+            <div class="flex items-start gap-4">
+                <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-primary">
+                    <i data-lucide="layers" class="h-5 w-5 text-primary-foreground" aria-hidden="true"></i>
+                </div>
+                <div class="flex-1 min-w-0">
+                    <p class="text-sm font-medium text-muted-foreground">Applications</p>
+                    <p class="text-2xl font-bold tracking-tight mt-1">{{ group.applications | length }}</p>
+                    <p class="text-xs text-muted-foreground mt-1">In this group</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="rounded-xl border border-input bg-background hover:border-primary/50 hover:shadow-sm transition-all duration-200 p-5">
+            <div class="flex items-start gap-4">
+                <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-primary">
+                    <i data-lucide="scan-line" class="h-5 w-5 text-primary-foreground" aria-hidden="true"></i>
+                </div>
+                <div class="flex-1 min-w-0">
+                    <p class="text-sm font-medium text-muted-foreground">Overall Similarity</p>
+                    <p class="text-2xl font-bold tracking-tight mt-1">{{ (group.overall_similarity_score * 100) | round | int }}%</p>
+                    <p class="text-xs text-muted-foreground mt-1">Aggregate match score</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="rounded-xl border border-input bg-background hover:border-primary/50 hover:shadow-sm transition-all duration-200 p-5">
+            <div class="flex items-start gap-4">
+                <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-success">
+                    <i data-lucide="piggy-bank" class="h-5 w-5 text-primary-foreground" aria-hidden="true"></i>
+                </div>
+                <div class="flex-1 min-w-0">
+                    <p class="text-sm font-medium text-muted-foreground">Estimated Savings</p>
+                    <p class="text-2xl font-bold tracking-tight mt-1">{{ currency_symbol }}{{ '{:,.0f}'.format(group.estimated_savings or 0) }}</p>
+                    <p class="text-xs text-muted-foreground mt-1">Annual cost reduction</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="rounded-xl border border-input bg-background hover:border-primary/50 hover:shadow-sm transition-all duration-200 p-5">
+            <div class="flex items-start gap-4">
+                {% set priority_color = {'high': 'bg-destructive', 'medium': 'bg-amber-600', 'low': 'bg-emerald-600'} %}
+                <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg {{ priority_color.get(group.consolidation_priority, 'bg-amber-600') }}">
+                    <i data-lucide="signal" class="h-5 w-5 text-primary-foreground" aria-hidden="true"></i>
+                </div>
+                <div class="flex-1 min-w-0">
+                    <p class="text-sm font-medium text-muted-foreground">Consolidation Priority</p>
+                    <p class="text-2xl font-bold tracking-tight mt-1">{{ (group.consolidation_priority or 'Medium') | capitalize }}</p>
+                    <p class="text-xs text-muted-foreground mt-1">Recommended urgency</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# Similarity Breakdown — computed client-side from app metadata when server values are 0 #}
+    <div data-slot="card" class="rounded-xl border bg-card shadow-sm p-6">
+        <h2 class="text-lg font-semibold text-foreground mb-4">Similarity Breakdown</h2>
+        <div class="space-y-4">
+            {# token-migration-ok: chart colors must be visually distinct per category #}
+            <template x-for="item in breakdownBars" :key="item.label">
+                <div>
+                    <div class="flex items-center justify-between mb-1.5">
+                        <span class="text-sm font-medium text-foreground" x-text="item.label"></span>
+                        <span class="text-sm font-medium text-muted-foreground" x-text="item.pct + '%'"></span>
+                    </div>
+                    <div class="h-2.5 w-full rounded-full bg-muted overflow-hidden">
+                        <div class="h-full rounded-full transition-all duration-500"
+                             :class="item.color"
+                             :style="'width: ' + item.pct + '%'"></div>
+                    </div>
+                </div>
+            </template>
+        </div>
+    </div>
+
+    {# Applications Table #}
+    <div data-slot="card" class="rounded-xl border bg-card shadow-sm">
+        <div class="p-4 sm:p-6 border-b">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h2 class="text-lg font-semibold text-foreground">Applications in Group</h2>
+                    <p class="text-sm text-muted-foreground mt-1">{{ group.applications | length }} application{{ 's' if group.applications | length != 1 else '' }} identified as duplicates</p>
+                </div>
+                <p x-show="selectedApps.length > 0" x-cloak class="text-sm font-medium text-primary">
+                    <span x-text="selectedApps.length"></span> selected
+                </p>
+            </div>
+        </div>
+
+        {# Selection Action Bar #}
+        <div x-show="selectedApps.length > 0" x-cloak class="p-4 sm:p-6 border-b bg-primary/5">
+            <div class="flex items-center justify-between gap-4">
+                <p class="text-sm font-medium text-foreground">
+                    <span x-text="selectedApps.length"></span> application<span x-show="selectedApps.length !== 1" x-cloak>s</span> selected
+                </p>
+                <div class="flex items-center gap-2">
+                    <button type="button" @click="addSelectedToConsolidation()"
+                            class="inline-flex items-center justify-center h-8 px-4 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors" aria-label="Add selected to consolidation list">
+                        <i data-lucide="arrow-right-circle" class="w-3.5 h-3.5 mr-1.5" aria-hidden="true"></i>
+                        Add Selected to Consolidation
+                    </button>
+                    <button type="button" @click="selectedApps = []"
+                            class="inline-flex items-center justify-center h-8 px-3 rounded-md text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors" aria-label="Clear selection">
+                        <i data-lucide="x" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="w-full border-collapse">
+                <thead class="bg-muted/50 border-b">
+                    <tr>
+                        <th class="px-4 py-3 w-10">
+                            <input type="checkbox" @change="toggleSelectAllApps()" :checked="isAllAppsSelected()"
+                                   class="rounded border-input" aria-label="Select all applications">
+                        </th>
+                        <th class="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Name</th>
+                        <th class="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Status</th>
+                        <th class="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Owner</th>
+                        <th class="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Technology Stack</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y">
+                    {% for app in group.applications %}
+                    <tr class="hover:bg-muted/30 transition-colors" :class="selectedApps.includes({{ app.id }}) ? 'bg-primary/5' : ''">
+                        <td class="px-4 py-3 w-10">
+                            <input type="checkbox" :checked="selectedApps.includes({{ app.id }})" @change="toggleSelectApp({{ app.id }})"
+                                   class="rounded border-input" aria-label="Select {{ app.name }}">
+                        </td>
+                        <td class="px-4 py-3">
+                            <p class="text-sm font-medium text-foreground">{{ app.name }}</p>
+                            {% if app.description %}
+                            <p class="text-xs text-muted-foreground mt-0.5 truncate max-w-[300px]">{{ app.description }}</p>
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-3">
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-slate-500/10 text-slate-600 border border-slate-500/30">
+                                {{ app.status or 'Unknown' }}
+                            </span>
+                        </td>
+                        <td class="px-4 py-3 text-sm text-foreground">{{ app.application_owner or 'Unassigned' }}</td>
+                        <td class="px-4 py-3 text-sm text-muted-foreground">{{ app.technology_stack or 'Not specified' }}</td>
+                    </tr>
+                    {% endfor %}
+                    {% if not group.applications %}
+                    <tr>
+                        <td colspan="5" class="px-4 py-8 text-center text-sm text-muted-foreground">No applications found in this group.</td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    {# Intelligence Tabs #}
+    <div data-slot="card" class="rounded-xl border bg-card shadow-sm">
+        <div class="border-b">
+            <nav class="flex -mb-px" aria-label="Intelligence tabs">
+                <button type="button" @click="switchTab('confidence')"
+                        :class="activeTab === 'confidence' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground hover:border-muted-foreground/30'"
+                        class="px-4 sm:px-6 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap"
+                        aria-label="Confidence Analysis tab">
+                    <i data-lucide="bar-chart-3" class="w-4 h-4 inline-block mr-1.5 -mt-0.5" aria-hidden="true"></i>
+                    Confidence
+                </button>
+                <button type="button" @click="switchTab('merge')"
+                        :class="activeTab === 'merge' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground hover:border-muted-foreground/30'"
+                        class="px-4 sm:px-6 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap"
+                        aria-label="Merge Preview tab">
+                    <i data-lucide="git-merge" class="w-4 h-4 inline-block mr-1.5 -mt-0.5" aria-hidden="true"></i>
+                    Merge Preview
+                </button>
+                <button type="button" @click="switchTab('impact')"
+                        :class="activeTab === 'impact' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground hover:border-muted-foreground/30'"
+                        class="px-4 sm:px-6 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap"
+                        aria-label="Impact Analysis tab">
+                    <i data-lucide="shield-alert" class="w-4 h-4 inline-block mr-1.5 -mt-0.5" aria-hidden="true"></i>
+                    Impact Analysis
+                </button>
+            </nav>
+        </div>
+
+        {# Confidence Tab #}
+        <div x-show="activeTab === 'confidence'" x-cloak class="p-4 sm:p-6">
+            <template x-if="confidence.loading">
+                <div class="text-center py-8">
+                    <i data-lucide="loader" class="w-6 h-6 mx-auto text-primary animate-spin mb-3" aria-hidden="true"></i>
+                    <p class="text-sm text-muted-foreground">Loading confidence analysis...</p>
+                </div>
+            </template>
+            <template x-if="confidence.error">
+                <div class="text-center py-8">
+                    <i data-lucide="alert-circle" class="w-6 h-6 mx-auto text-destructive mb-3" aria-hidden="true"></i>
+                    <p class="text-sm text-destructive" x-text="confidence.error"></p>
+                </div>
+            </template>
+            <template x-if="!confidence.loading && !confidence.error && confidence.data">
+                <div class="space-y-6">
+                    {# Aggregate Stats #}
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        <div class="rounded-lg border border-input bg-background p-3">
+                            <p class="text-[11px] uppercase tracking-wide text-muted-foreground">Avg Confidence</p>
+                            <p class="text-lg font-semibold text-foreground mt-1" x-text="formatPercent(confidence.data.aggregate.avg_confidence)"></p>
+                        </div>
+                        <div class="rounded-lg border border-input bg-background p-3">
+                            <p class="text-[11px] uppercase tracking-wide text-muted-foreground">Min Confidence</p>
+                            <p class="text-lg font-semibold text-foreground mt-1" x-text="formatPercent(confidence.data.aggregate.min_confidence)"></p>
+                        </div>
+                        <div class="rounded-lg border border-input bg-background p-3">
+                            <p class="text-[11px] uppercase tracking-wide text-muted-foreground">Max Confidence</p>
+                            <p class="text-lg font-semibold text-foreground mt-1" x-text="formatPercent(confidence.data.aggregate.max_confidence)"></p>
+                        </div>
+                        <div class="rounded-lg border border-input bg-background p-3">
+                            <p class="text-[11px] uppercase tracking-wide text-muted-foreground">Pairs Analyzed</p>
+                            <p class="text-lg font-semibold text-foreground mt-1" x-text="confidence.data.pair_count"></p>
+                        </div>
+                    </div>
+
+                    {# Distribution Badges #}
+                    <div class="flex flex-wrap gap-2">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30">
+                            High: <span class="ml-1 font-bold" x-text="confidence.data.aggregate.distribution.high"></span>
+                        </span>
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-amber-500/10 text-amber-600 border border-amber-500/30">
+                            Medium: <span class="ml-1 font-bold" x-text="confidence.data.aggregate.distribution.medium"></span>
+                        </span>
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive border border-destructive/30">
+                            Low: <span class="ml-1 font-bold" x-text="confidence.data.aggregate.distribution.low"></span>
+                        </span>
+                    </div>
+
+                    {# Pairwise Table #}
+                    <div class="overflow-x-auto">
+                        <table class="w-full border-collapse">
+                            <thead class="bg-muted/50 border-b">
+                                <tr>
+                                    <th class="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">App 1</th>
+                                    <th class="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">App 2</th>
+                                    <th class="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Score</th>
+                                    <th class="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Confidence</th>
+                                    <th class="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Match Type</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y">
+                                <template x-for="pair in confidence.data.pairs" :key="pair.app1_id + '-' + pair.app2_id">
+                                    <tr class="hover:bg-muted/30 transition-colors">
+                                        <td class="px-4 py-3 text-sm font-medium text-foreground" x-text="pair.app1_name"></td>
+                                        <td class="px-4 py-3 text-sm font-medium text-foreground" x-text="pair.app2_name"></td>
+                                        <td class="px-4 py-3 text-sm text-foreground" x-text="formatPercent(pair.similarity_score)"></td>
+                                        <td class="px-4 py-3">
+                                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium"
+                                                  :class="confidenceBadgeClass(pair.confidence_level)"
+                                                  x-text="(pair.confidence_level || 'unknown').charAt(0).toUpperCase() + (pair.confidence_level || 'unknown').slice(1)"></span>
+                                        </td>
+                                        <td class="px-4 py-3">
+                                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium"
+                                                  :class="typeBadgeClass(pair.match_type)"
+                                                  x-text="(pair.match_type || 'unknown').charAt(0).toUpperCase() + (pair.match_type || 'unknown').slice(1)"></span>
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </template>
+        </div>
+
+        {# Merge Preview Tab #}
+        <div x-show="activeTab === 'merge'" x-cloak class="p-4 sm:p-6">
+            <template x-if="mergePreview.loading">
+                <div class="text-center py-8">
+                    <i data-lucide="loader" class="w-6 h-6 mx-auto text-primary animate-spin mb-3" aria-hidden="true"></i>
+                    <p class="text-sm text-muted-foreground">Loading merge preview...</p>
+                </div>
+            </template>
+            <template x-if="mergePreview.error">
+                <div class="text-center py-8">
+                    <i data-lucide="alert-circle" class="w-6 h-6 mx-auto text-destructive mb-3" aria-hidden="true"></i>
+                    <p class="text-sm text-destructive" x-text="mergePreview.error"></p>
+                </div>
+            </template>
+            <template x-if="!mergePreview.loading && !mergePreview.error && mergePreview.data">
+                <div class="space-y-6">
+                    {# Merge Summary #}
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        <div class="rounded-lg border border-input bg-background p-3">
+                            <p class="text-[11px] uppercase tracking-wide text-muted-foreground">Fields Matching</p>
+                            <p class="text-lg font-semibold text-emerald-600 mt-1" x-text="mergePreview.data.merge_summary.fields_matching"></p>
+                        </div>
+                        <div class="rounded-lg border border-input bg-background p-3">
+                            <p class="text-[11px] uppercase tracking-wide text-muted-foreground">Fields Conflicting</p>
+                            <p class="text-lg font-semibold text-amber-600 mt-1" x-text="mergePreview.data.merge_summary.fields_conflicting"></p>
+                        </div>
+                        <div class="rounded-lg border border-input bg-background p-3">
+                            <p class="text-[11px] uppercase tracking-wide text-muted-foreground">Fields Missing</p>
+                            <p class="text-lg font-semibold text-muted-foreground mt-1" x-text="mergePreview.data.merge_summary.fields_missing"></p>
+                        </div>
+                        <div class="rounded-lg border border-input bg-background p-3">
+                            <p class="text-[11px] uppercase tracking-wide text-muted-foreground">Total Compared</p>
+                            <p class="text-lg font-semibold text-foreground mt-1" x-text="mergePreview.data.merge_summary.total_fields_compared"></p>
+                        </div>
+                    </div>
+
+                    {# Per-Duplicate Conflict Tables #}
+                    <template x-for="dup in mergePreview.data.duplicates" :key="dup.app_id">
+                        <div class="space-y-3">
+                            <h3 class="text-sm font-semibold text-foreground">
+                                Field Comparison: <span class="text-primary" x-text="mergePreview.data.primary.name"></span>
+                                vs <span class="text-primary" x-text="dup.app_name"></span>
+                            </h3>
+                            <div class="overflow-x-auto">
+                                <table class="w-full border-collapse">
+                                    <thead class="bg-muted/50 border-b">
+                                        <tr>
+                                            <th class="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Field</th>
+                                            <th class="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Primary Value</th>
+                                            <th class="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Duplicate Value</th>
+                                            <th class="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Status</th>
+                                            <th class="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Recommendation</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y">
+                                        <template x-for="field in dup.field_conflicts" :key="field.field">
+                                            <tr class="hover:bg-muted/30 transition-colors">
+                                                <td class="px-4 py-3 text-sm font-medium text-foreground" x-text="field.label"></td>
+                                                <td class="px-4 py-3 text-sm text-foreground max-w-[200px] truncate" x-text="field.primary_value || '—'"></td>
+                                                <td class="px-4 py-3 text-sm text-foreground max-w-[200px] truncate" x-text="field.duplicate_value || '—'"></td>
+                                                <td class="px-4 py-3">
+                                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium"
+                                                          :class="conflictStatusClass(field.status)"
+                                                          x-text="(field.status || 'unknown').replace('_', ' ')"></span>
+                                                </td>
+                                                <td class="px-4 py-3">
+                                                    <span class="text-xs text-muted-foreground" x-text="(field.recommendation || '').replace(/_/g, ' ')"></span>
+                                                </td>
+                                            </tr>
+                                        </template>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </template>
+        </div>
+
+        {# Impact Analysis Tab #}
+        <div x-show="activeTab === 'impact'" x-cloak class="p-4 sm:p-6">
+            <template x-if="impact.loading">
+                <div class="text-center py-8">
+                    <i data-lucide="loader" class="w-6 h-6 mx-auto text-primary animate-spin mb-3" aria-hidden="true"></i>
+                    <p class="text-sm text-muted-foreground">Loading impact analysis...</p>
+                </div>
+            </template>
+            <template x-if="impact.error">
+                <div class="text-center py-8">
+                    <i data-lucide="alert-circle" class="w-6 h-6 mx-auto text-destructive mb-3" aria-hidden="true"></i>
+                    <p class="text-sm text-destructive" x-text="impact.error"></p>
+                </div>
+            </template>
+            <template x-if="!impact.loading && !impact.error && impact.data">
+                <div class="space-y-6">
+                    {# Total Impact Summary #}
+                    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                        <div class="rounded-lg border border-input bg-background p-3">
+                            <p class="text-[11px] uppercase tracking-wide text-muted-foreground">Processes Affected</p>
+                            <p class="text-lg font-semibold text-foreground mt-1" x-text="impact.data.total_impact.processes_affected"></p>
+                        </div>
+                        <div class="rounded-lg border border-input bg-background p-3">
+                            <p class="text-[11px] uppercase tracking-wide text-muted-foreground">Capabilities Affected</p>
+                            <p class="text-lg font-semibold text-foreground mt-1" x-text="impact.data.total_impact.capabilities_affected"></p>
+                        </div>
+                        <div class="rounded-lg border border-input bg-background p-3">
+                            <p class="text-[11px] uppercase tracking-wide text-muted-foreground">Integrations</p>
+                            <p class="text-lg font-semibold text-foreground mt-1" x-text="impact.data.total_impact.integrations_affected"></p>
+                        </div>
+                        <div class="rounded-lg border border-input bg-background p-3">
+                            <p class="text-[11px] uppercase tracking-wide text-muted-foreground">Users Affected</p>
+                            <p class="text-lg font-semibold text-foreground mt-1" x-text="formatNumber(impact.data.total_impact.total_users_affected)"></p>
+                        </div>
+                        <div class="rounded-lg border border-input bg-background p-3">
+                            <p class="text-[11px] uppercase tracking-wide text-muted-foreground">Consolidation Risk</p>
+                            <p class="text-lg font-semibold mt-1"
+                               :class="{'text-destructive': impact.data.consolidation_risk === 'high', 'text-amber-600': impact.data.consolidation_risk === 'medium', 'text-emerald-600': impact.data.consolidation_risk === 'low'}"
+                               x-text="(impact.data.consolidation_risk || 'unknown').charAt(0).toUpperCase() + (impact.data.consolidation_risk || 'unknown').slice(1)"></p>
+                        </div>
+                    </div>
+
+                    {# Per-App Impact Table #}
+                    <div class="overflow-x-auto">
+                        <table class="w-full border-collapse">
+                            <thead class="bg-muted/50 border-b">
+                                <tr>
+                                    <th class="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Application</th>
+                                    <th class="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Dependencies</th>
+                                    <th class="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Users</th>
+                                    <th class="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Criticality</th>
+                                    <th class="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">Risk</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y">
+                                <template x-for="app in impact.data.applications" :key="app.app_id">
+                                    <tr class="hover:bg-muted/30 transition-colors">
+                                        <td class="px-4 py-3">
+                                            <div class="flex items-center gap-2">
+                                                <span class="text-sm font-medium text-foreground" x-text="app.name"></span>
+                                                <span x-show="app.is_primary" x-cloak
+                                                      class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-primary/10 text-primary border border-primary/30">Primary</span>
+                                            </div>
+                                        </td>
+                                        <td class="px-4 py-3 text-sm text-foreground" x-text="app.dependency_count"></td>
+                                        <td class="px-4 py-3 text-sm text-foreground" x-text="formatNumber(app.user_count)"></td>
+                                        <td class="px-4 py-3 text-sm text-foreground" x-text="app.business_criticality"></td>
+                                        <td class="px-4 py-3">
+                                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium"
+                                                  :class="riskBadgeClass(app.risk_level)"
+                                                  x-text="(app.risk_level || 'unknown').charAt(0).toUpperCase() + (app.risk_level || 'unknown').slice(1)"></span>
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </template>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block extra_head_js %}
+<script>
+    window.__GROUP_CONFIG__ = {
+        groupId: {{ group.id }},
+        appIds: {{ group.applications | map(attribute='id') | list | tojson }},
+        currencySymbol: '{{ currency_symbol }}',
+        confidenceUrl: '{{ url_for("unified_duplicate.api_group_confidence", group_id=group.id) }}',
+        mergePreviewUrl: '{{ url_for("unified_duplicate.api_group_merge_preview", group_id=group.id) }}',
+        impactUrl: '{{ url_for("unified_duplicate.api_group_impact", group_id=group.id) }}',
+        addToConsolidationUrl: '{{ url_for("unified_duplicate.api_add_group_to_consolidation", group_id=group.id) }}',
+        ignoreUrl: '{{ url_for("unified_duplicate.api_ignore_group", group_id=group.id) }}',
+        dashboardUrl: '{{ url_for("unified_duplicate.simple_dashboard") }}',
+        breakdown: {
+            functional: {{ group.functional_similarity or 0 }},
+            capability: {{ group.capability_similarity or 0 }},
+            technical: {{ group.technical_similarity or 0 }},
+            data: {{ group.data_similarity or 0 }}
+        },
+        applications: {{ group.applications | tojson }}
+    };
+</script>
+<script src="{{ url_for('static', filename='js/duplicate_detection/group_detail.js') }}?v=1"></script>
+{% endblock %}

@@ -1,0 +1,105 @@
+{% extends 'layouts/admin_base.html' %}
+{% from 'components/page_header.html' import page_header %}
+
+{% block title %}Investment Matrix{% endblock %}
+
+{% block breadcrumb %}
+{% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
+{{ breadcrumb_nav(items=[
+    {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
+    {'text': 'Enterprise Architecture'},
+    {'text': 'Enterprise', 'current': true}
+]) }}
+{% endblock %}
+
+{% block content %}
+<div class="flex flex-col space-y-8 animate-in fade-in duration-500">
+    {{ page_header(
+        title='Investment Matrix',
+        description='Prioritize capability investments based on strategic value and risk.'
+    ) }}
+
+    <!-- Investment Matrix Visualization -->
+    <div data-slot="card" class="rounded-xl border bg-card p-6">
+        <h3 class="font-semibold mb-4">Investment Priority Matrix</h3>
+        <div class="grid grid-cols-2 gap-4 h-96">
+            <!-- High Value / High Risk -->
+            <div class="rounded-lg bg-warning/10 border border-warning/20 p-4">
+                <div class="text-sm font-medium text-warning mb-2">Transform (High Value / High Risk)</div>
+                <div class="space-y-2">
+                    {% for cap in capabilities|default([]) if cap.strategic_importance == 'critical' %}
+                    <div class="text-xs bg-background/50 rounded p-2">{{ cap.name }}</div>
+                    {% endfor %}
+                </div>
+            </div>
+            <!-- High Value / Low Risk -->
+            <div class="rounded-lg bg-success/10 border border-success/20 p-4">
+                <div class="text-sm font-medium text-success mb-2">Invest (High Value / Low Risk)</div>
+                <div class="space-y-2">
+                    {% for cap in capabilities|default([]) if cap.strategic_importance == 'high' %}
+                    <div class="text-xs bg-background/50 rounded p-2">{{ cap.name }}</div>
+                    {% endfor %}
+                </div>
+            </div>
+            <!-- Low Value / High Risk -->
+            <div class="rounded-lg bg-destructive/10 border border-destructive/20 p-4">
+                <div class="text-sm font-medium text-destructive mb-2">Divest (Low Value / High Risk)</div>
+                <div class="space-y-2">
+                    {% for cap in capabilities|default([]) if cap.strategic_importance == 'low' %}
+                    <div class="text-xs bg-background/50 rounded p-2">{{ cap.name }}</div>
+                    {% endfor %}
+                </div>
+            </div>
+            <!-- Low Value / Low Risk -->
+            <div class="rounded-lg bg-primary/10 border border-primary/20 p-4">
+                <div class="text-sm font-medium text-primary mb-2">Maintain (Low Value / Low Risk)</div>
+                <div class="space-y-2">
+                    {% for cap in capabilities|default([]) if cap.strategic_importance == 'medium' %}
+                    <div class="text-xs bg-background/50 rounded p-2">{{ cap.name }}</div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Capabilities List -->
+    <div data-slot="card" class="rounded-xl border bg-card">
+        <div class="p-6">
+            <h3 class="font-semibold mb-4">All Capabilities</h3>
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead>
+                        <tr class="border-b">
+                            <th class="text-left p-3 font-medium">Capability</th>
+                            <th class="text-left p-3 font-medium">Strategic Importance</th>
+                            <th class="text-left p-3 font-medium">Current Maturity</th>
+                            <th class="text-left p-3 font-medium">Target Maturity</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y">
+                        {% for cap in capabilities|default([]) %}
+                        <tr class="border-b hover:bg-muted/50">
+                            <td class="p-3">{{ cap.name|default('N/A') }}</td>
+                            <td class="p-3">
+                                <span class="px-2 py-1 text-xs rounded-full
+                                    {% if cap.strategic_importance == 'critical' %}bg-destructive/20 text-destructive
+                                    {% elif cap.strategic_importance == 'high' %}bg-warning/20 text-warning
+                                    {% else %}bg-muted text-muted-foreground{% endif %}">
+                                    {{ cap.strategic_importance|default('Normal')|title }}
+                                </span>
+                            </td>
+                            <td class="p-3">{{ cap.current_maturity|default(0) }}</td>
+                            <td class="p-3">{{ cap.target_maturity|default(5) }}</td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="4" class="p-6 text-center text-muted-foreground">No capabilities found</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

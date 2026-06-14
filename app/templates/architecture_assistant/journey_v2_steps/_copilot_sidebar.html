@@ -1,0 +1,159 @@
+{# Copilot Sidebar — real-time AI suggestion panel.
+   Collapsible right-hand panel visible on all steps.
+   Controlled by Alpine.store('copilot'). #}
+
+{# Toggle button (always visible) #}
+<button @click="$store.copilot.toggle()"
+        class="fixed right-4 top-1/2 -translate-y-1/2 z-40 p-2 rounded-l-lg bg-card border border-r-0 border-border shadow-md hover:bg-accent transition-colors"
+        :class="$store.copilot.sidebarOpen ? 'hidden' : ''"
+        title="AI Copilot">
+  <svg class="w-5 h-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+  </svg>
+  <template x-if="$store.copilot.count > 0">
+    <span class="absolute -top-1 -right-1 w-4 h-4 bg-amber-500 text-primary-foreground text-[10px] font-bold rounded-full flex items-center justify-center"
+          x-text="$store.copilot.count"></span>
+  </template>
+</button>
+
+{# Sidebar panel #}
+<div x-show="$store.copilot.sidebarOpen"
+     x-cloak
+     x-transition:enter="transition ease-out duration-200"
+     x-transition:enter-start="translate-x-full"
+     x-transition:enter-end="translate-x-0"
+     x-transition:leave="transition ease-in duration-150"
+     x-transition:leave-start="translate-x-0"
+     x-transition:leave-end="translate-x-full"
+     class="fixed right-0 top-0 h-full w-80 z-40 bg-card border-l border-border shadow-xl flex flex-col overflow-hidden">
+
+  {# Header #}
+  <div class="px-4 py-3 border-b border-border flex items-center justify-between flex-shrink-0">
+    <div class="flex items-center gap-2">
+      <svg class="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+      </svg>
+      <h3 class="text-sm font-semibold text-foreground">AI Copilot</h3>
+      <template x-if="$store.copilot.count > 0">
+        <span class="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-500/10 text-amber-600 border border-amber-500/30"
+              x-text="$store.copilot.count + ' suggestions'"></span>
+      </template>
+    </div>
+    <button @click="$store.copilot.toggle()"
+            class="text-muted-foreground hover:text-foreground transition-colors">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+      </svg>
+    </button>
+  </div>
+
+  {# Enhance All button #}
+  <div class="px-4 py-2 border-b border-border flex-shrink-0">
+    <button @click="$store.copilot.reviewStep(solutionId, currentStep, _gatherStepData(currentStep))"
+            :disabled="$store.copilot.loading"
+            class="w-full px-3 py-1.5 text-xs font-medium bg-primary/10 text-primary rounded-md hover:bg-primary/20 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5">
+      <template x-if="$store.copilot.loading">
+        <span class="animate-spin h-3 w-3 border-2 border-primary border-t-transparent rounded-full"></span>
+      </template>
+      <template x-if="!$store.copilot.loading">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+        </svg>
+      </template>
+      Enhance All Fields
+    </button>
+  </div>
+
+  {# Suggestions list #}
+  <div class="flex-1 overflow-y-auto px-4 py-3">
+    {# Empty state #}
+    <template x-if="$store.copilot.suggestions.length === 0 && !$store.copilot.loading">
+      <div class="text-center py-8">
+        <svg class="w-8 h-8 text-muted-foreground/50 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M5 13l4 4L19 7"/>
+        </svg>
+        <p class="text-xs text-muted-foreground">No suggestions yet.</p>
+        <p class="text-xs text-muted-foreground mt-1">Click "Enhance All" or start editing fields.</p>
+      </div>
+    </template>
+
+    {# Suggestion cards #}
+    <div class="space-y-2">
+      <template x-for="suggestion in $store.copilot.suggestions" :key="suggestion.suggestion_id">
+        <div class="border rounded-lg p-3 transition-colors"
+             :class="{
+               'border-destructive/30 bg-destructive/5': suggestion.severity === 'missing',
+               'border-amber-500/30 bg-amber-500/5': suggestion.severity === 'weak',
+               'border-primary/30 bg-primary/5': suggestion.severity === 'improvement',
+             }">
+          {# Severity badge + field name #}
+          <div class="flex items-center gap-1.5 mb-1.5">
+            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
+                  :class="{
+                    'bg-destructive/10 text-destructive': suggestion.severity === 'missing',
+                    'bg-amber-500/10 text-amber-600': suggestion.severity === 'weak',
+                    'bg-primary/10 text-primary': suggestion.severity === 'improvement',
+                  }"
+                  x-text="suggestion.severity"></span>
+            <span class="text-xs font-medium text-foreground truncate" x-text="suggestion.field_name"></span>
+          </div>
+
+          {# Rationale #}
+          <p class="text-xs text-muted-foreground mb-2" x-text="suggestion.rationale"></p>
+
+          {# Suggested value (if present) #}
+          <template x-if="suggestion.suggested_value">
+            <div class="bg-card border border-border rounded p-2 mb-2">
+              <p class="text-xs text-foreground" x-text="suggestion.suggested_value"></p>
+            </div>
+          </template>
+
+          {# Impact #}
+          <p class="text-[10px] text-muted-foreground mb-2" x-text="suggestion.impact"></p>
+
+          {# Actions #}
+          <div class="flex items-center gap-2">
+            <template x-if="suggestion.suggested_value">
+              <button @click="$store.copilot.acceptSuggestion(suggestion)"
+                      class="px-2 py-1 text-[10px] font-medium bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors">
+                Accept
+              </button>
+            </template>
+            <button @click="$store.copilot.rejectSuggestion(suggestion)"
+                    class="px-2 py-1 text-[10px] font-medium text-muted-foreground hover:text-foreground transition-colors">
+              Dismiss
+            </button>
+          </div>
+        </div>
+      </template>
+    </div>
+  </div>
+
+  {# Quick question input — replaces "Ask A.R.C.H.I.E." for wizard context #}
+  <div class="px-4 py-3 border-t border-border flex-shrink-0">
+    <div class="flex items-center gap-2">
+      <input type="text" placeholder="Ask about this step..."
+             x-ref="copilotQuestion"
+             @keydown.enter="
+                const q = $refs.copilotQuestion.value.trim();
+                if (q) {
+                    $store.copilot.reviewField(solutionId, currentStep, '_question', q);
+                    $refs.copilotQuestion.value = '';
+                }
+             "
+             class="flex-1 rounded-md border border-input bg-background px-2.5 py-1.5 text-xs focus:ring-1 focus:ring-ring focus:outline-none placeholder:text-muted-foreground">
+      <button @click="
+                const q = $refs.copilotQuestion.value.trim();
+                if (q) {
+                    $store.copilot.reviewField(solutionId, currentStep, '_question', q);
+                    $refs.copilotQuestion.value = '';
+                }
+              "
+              class="p-1.5 rounded-md text-primary hover:bg-primary/10 transition-colors">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+</div>

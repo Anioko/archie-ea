@@ -1,0 +1,281 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'components/page_header.html' import page_header %}
+{% from 'components/metrics_card.html' import metrics_card %}
+
+{% block title %}Application Architecture{% endblock %}
+
+{% block breadcrumb %}
+{% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
+{{ breadcrumb_nav(items=[
+    {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
+    {'text': 'Enterprise Architecture'},
+    {'text': 'Enterprise', 'current': true}
+]) }}
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- Page Header -->
+    {{ page_header(
+        title='Application Architecture',
+        description='ArchiMate 3.2 Application Layer — Components, Services &amp; Interfaces',
+        breadcrumbs=[
+            {'label': 'Dashboard', 'href': url_for('main.index')},
+            {'label': 'Application Architecture'}
+        ],
+        actions=[
+            {'text': 'ArchiMate Elements', 'icon': 'boxes', 'href': url_for('archimate_crud.dashboard'), 'variant': 'outline'}
+        ]
+    ) }}
+
+    <!-- Metrics Cards -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+        {{ metrics_card(title='Application Components', value=component_count or 0, icon='layout-grid') }}
+        {{ metrics_card(title='Application Services', value=service_count or 0, icon='zap') }}
+        {{ metrics_card(title='Application Interfaces', value=interface_count or 0, icon='plug') }}
+        {{ metrics_card(title='App-to-App Dependencies', value=dependency_count or 0, icon='git-merge') }}
+    </div>
+
+    <!-- ArchiMate Layer Context Banner -->
+    <div class="rounded-lg border border-input bg-muted/30 px-5 py-3 flex items-start gap-3">
+        <i data-lucide="info" class="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" aria-hidden="true"></i>
+        <p class="text-sm text-muted-foreground">
+            <span class="font-medium text-foreground">ArchiMate 3.2 Application Layer:</span>
+            ApplicationComponent &rarr; <em>realizes</em> &rarr; ApplicationService &rarr; <em>serving</em> &rarr; BusinessProcess.
+            Components are realized by Technology Nodes.
+        </p>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="rounded-xl border-2 border-input bg-background p-6">
+        <h2 class="text-xl font-semibold mb-4">Quick Actions</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <a href="{{ url_for('unified_applications.application_list') }}"
+               class="flex items-center gap-3 p-4 rounded-lg border-2 border-input bg-background hover:border-primary/50 hover:shadow-sm transition-all duration-200">
+                <i data-lucide="layout-grid" class="w-5 h-5 text-muted-foreground" aria-hidden="true"></i>
+                <span class="text-sm font-medium">Application Portfolio</span>
+            </a>
+            <a href="{{ url_for('archimate_crud.dashboard') }}"
+               class="flex items-center gap-3 p-4 rounded-lg border-2 border-input bg-background hover:border-primary/50 hover:shadow-sm transition-all duration-200">
+                <i data-lucide="boxes" class="w-5 h-5 text-muted-foreground" aria-hidden="true"></i>
+                <span class="text-sm font-medium">ArchiMate Elements</span>
+            </a>
+            <a href="{{ url_for('archimate_crud.dashboard') }}?layer=technology"
+               class="flex items-center gap-3 p-4 rounded-lg border-2 border-input bg-background hover:border-primary/50 hover:shadow-sm transition-all duration-200">
+                <i data-lucide="cpu" class="w-5 h-5 text-muted-foreground" aria-hidden="true"></i>
+                <span class="text-sm font-medium">Technology Architecture</span>
+            </a>
+            <a href="{{ url_for('implementation_planning.implementation_dashboard') }}"
+               class="flex items-center gap-3 p-4 rounded-lg border-2 border-input bg-background hover:border-primary/50 hover:shadow-sm transition-all duration-200">
+                <i data-lucide="milestone" class="w-5 h-5 text-muted-foreground" aria-hidden="true"></i>
+                <span class="text-sm font-medium">Implementation Roadmap</span>
+            </a>
+        </div>
+    </div>
+
+    <!-- Application Component Inventory -->
+    <div class="rounded-xl border-2 border-input bg-background overflow-hidden">
+        <div class="p-6 border-b border-input flex items-center justify-between bg-muted/30">
+            <div>
+                <h2 class="text-xl font-semibold">Application Component Inventory</h2>
+                <p class="text-sm text-muted-foreground mt-1">
+                    ArchiMate ApplicationComponent elements — showing up to 50
+                </p>
+            </div>
+            <a href="{{ url_for('unified_applications.application_list') }}"
+               class="inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline">
+                <i data-lucide="arrow-right" class="w-4 h-4" aria-hidden="true"></i>
+                View all
+            </a>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm text-left">
+                <thead class="bg-muted/50 text-muted-foreground font-medium border-b border-input">
+                    <tr>
+                        <th class="px-6 py-3">Component</th>
+                        <th class="px-6 py-3">Type</th>
+                        <th class="px-6 py-3">Lifecycle</th>
+                        <th class="px-6 py-3">Domain</th>
+                        <th class="px-6 py-3">Tech Stack</th>
+                        <th class="px-6 py-3">Criticality</th>
+                        <th class="px-6 py-3 text-right">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-input">
+                    {% for component in components %}
+                    <tr class="hover:bg-muted/30 transition-colors">
+                        <!-- Component name + vendor -->
+                        <td class="px-6 py-3">
+                            <div class="font-medium text-foreground">{{ component.name }}</div>
+                            {% if component.vendor_name %}
+                            <div class="text-[11px] text-muted-foreground mt-0.5">{{ component.vendor_name }}</div>
+                            {% endif %}
+                        </td>
+                        <!-- Type badge -->
+                        <td class="px-6 py-3">
+                            {% if component.component_type %}
+                            <span class="px-2 py-0.5 bg-muted text-muted-foreground rounded text-[11px] border border-border whitespace-nowrap">
+                                {{ component.component_type | replace('_', ' ') | title }}
+                            </span>
+                            {% else %}
+                            <span class="text-muted-foreground italic text-xs">—</span>
+                            {% endif %}
+                        </td>
+                        <!-- Lifecycle badge -->
+                        <td class="px-6 py-3">
+                            {% set ls = component.lifecycle_status %}
+                            {% if ls in ('production', 'operational') %}
+                            <span class="px-2 py-0.5 rounded text-[11px] font-medium border bg-green-500/10 text-emerald-700 border-emerald-200">
+                                {{ ls | title }}
+                            </span>
+                            {% elif ls in ('development', 'testing', 'planning') %}
+                            <span class="px-2 py-0.5 rounded text-[11px] font-medium border bg-blue-500/10 text-primary border-primary/20">
+                                {{ ls | title }}
+                            </span>
+                            {% elif ls in ('deprecated', 'retirement', 'retired') %}
+                            <span class="px-2 py-0.5 rounded text-[11px] font-medium border bg-orange-500/10 text-orange-700 border-orange-200">
+                                {{ ls | title }}
+                            </span>
+                            {% elif ls %}
+                            <span class="px-2 py-0.5 rounded text-[11px] font-medium border bg-muted text-muted-foreground border-border">
+                                {{ ls | title }}
+                            </span>
+                            {% else %}
+                            <span class="text-muted-foreground italic text-xs">—</span>
+                            {% endif %}
+                        </td>
+                        <!-- Domain -->
+                        <td class="px-6 py-3 text-muted-foreground text-xs">
+                            {% if component.business_domain %}
+                            {{ component.business_domain[:30] }}{% if component.business_domain | length > 30 %}…{% endif %}
+                            {% else %}—{% endif %}
+                        </td>
+                        <!-- Tech Stack tags -->
+                        <td class="px-6 py-3">
+                            <div class="flex flex-wrap gap-1">
+                                {% for tech in component.technology_stack[:3] %}
+                                <span class="px-1.5 py-0.5 bg-muted text-muted-foreground rounded text-[10px] border border-border">{{ tech }}</span>
+                                {% endfor %}
+                                {% if component.technology_stack | length > 3 %}
+                                <span class="px-1.5 py-0.5 bg-muted text-muted-foreground rounded text-[10px] border border-border">
+                                    +{{ component.technology_stack | length - 3 }} more
+                                </span>
+                                {% endif %}
+                                {% if not component.technology_stack %}
+                                <span class="text-muted-foreground italic text-[11px]">—</span>
+                                {% endif %}
+                            </div>
+                        </td>
+                        <!-- Criticality badge -->
+                        <td class="px-6 py-3">
+                            {% set crit = component.criticality %}
+                            {% if crit == 'mission_critical' %}
+                            <span class="px-2 py-0.5 rounded text-[11px] font-medium border bg-red-500/10 text-destructive border-destructive/20">Mission Critical</span>
+                            {% elif crit == 'high' %}
+                            <span class="px-2 py-0.5 rounded text-[11px] font-medium border bg-orange-500/10 text-orange-700 border-orange-200">High</span>
+                            {% elif crit == 'medium' %}
+                            <span class="px-2 py-0.5 rounded text-[11px] font-medium border bg-yellow-500/10 text-amber-700 border-amber-200">Medium</span>
+                            {% elif crit == 'low' %}
+                            <span class="px-2 py-0.5 rounded text-[11px] font-medium border bg-muted text-muted-foreground border-border">Low</span>
+                            {% elif crit %}
+                            <span class="px-2 py-0.5 rounded text-[11px] font-medium border bg-muted text-muted-foreground border-border">{{ crit | title }}</span>
+                            {% else %}
+                            <span class="text-muted-foreground italic text-xs">—</span>
+                            {% endif %}
+                        </td>
+                        <!-- Actions -->
+                        <td class="px-6 py-3 text-right">
+                            <a href="{{ url_for('unified_applications.application_detail', id=component.id) }}"
+                               class="text-sm font-medium text-primary hover:underline">View</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+
+                    {% if not components %}
+                    <tr>
+                        <td colspan="7" class="px-6 py-14 text-center text-muted-foreground">
+                            <div class="flex flex-col items-center gap-3">
+                                <i data-lucide="inbox" class="h-10 w-10 opacity-20" aria-hidden="true"></i>
+                                <p class="text-sm">No application components found. Import applications to populate the Application Architecture inventory.</p>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- ArchiMate Viewpoints -->
+    <div class="rounded-xl border-2 border-input bg-background p-6">
+        <h2 class="text-xl font-semibold mb-1">Application Layer Viewpoints</h2>
+        <p class="text-sm text-muted-foreground mb-5">Standard ArchiMate 3.2 viewpoints for Application Architects</p>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+
+            <!-- Application Cooperation Viewpoint -->
+            <div class="rounded-lg border border-input bg-muted/20 p-5 flex flex-col gap-3">
+                <div class="flex items-center gap-2">
+                    <span class="flex h-8 w-8 items-center justify-center rounded bg-primary/10">
+                        <i data-lucide="network" class="h-4 w-4 text-primary" aria-hidden="true"></i>
+                    </span>
+                    <span class="font-semibold text-sm">Application Cooperation Viewpoint</span>
+                </div>
+                <p class="text-xs text-muted-foreground flex-1">
+                    Shows how ApplicationComponents interact via ApplicationInterfaces and ApplicationCollaborations.
+                </p>
+                <a href="{{ url_for('archimate_crud.dashboard') }}"
+                   class="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline mt-auto">
+                    Open in ArchiMate Elements
+                    <i data-lucide="arrow-right" class="h-3 w-3" aria-hidden="true"></i>
+                </a>
+            </div>
+
+            <!-- Application Usage Viewpoint -->
+            <div class="rounded-lg border border-input bg-muted/20 p-5 flex flex-col gap-3">
+                <div class="flex items-center gap-2">
+                    <span class="flex h-8 w-8 items-center justify-center rounded bg-primary/10">
+                        <i data-lucide="users" class="h-4 w-4 text-primary" aria-hidden="true"></i>
+                    </span>
+                    <span class="font-semibold text-sm">Application Usage Viewpoint</span>
+                </div>
+                <p class="text-xs text-muted-foreground flex-1">
+                    Shows which BusinessProcesses are served by ApplicationServices.
+                </p>
+                <a href="{{ url_for('unified_applications.application_list') }}"
+                   class="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline mt-auto">
+                    Open Application Portfolio
+                    <i data-lucide="arrow-right" class="h-3 w-3" aria-hidden="true"></i>
+                </a>
+            </div>
+
+            <!-- Technology Realization Viewpoint -->
+            <div class="rounded-lg border border-input bg-muted/20 p-5 flex flex-col gap-3">
+                <div class="flex items-center gap-2">
+                    <span class="flex h-8 w-8 items-center justify-center rounded bg-primary/10">
+                        <i data-lucide="server" class="h-4 w-4 text-primary" aria-hidden="true"></i>
+                    </span>
+                    <span class="font-semibold text-sm">Technology Realization Viewpoint</span>
+                </div>
+                <p class="text-xs text-muted-foreground flex-1">
+                    Shows how Technology Nodes realize ApplicationComponents.
+                </p>
+                <a href="{{ url_for('archimate_crud.dashboard') }}?layer=technology"
+                   class="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline mt-auto">
+                    Open Technology Architecture
+                    <i data-lucide="arrow-right" class="h-3 w-3" aria-hidden="true"></i>
+                </a>
+            </div>
+
+        </div>
+    </div>
+
+</div>
+
+<script>
+// Initialize Lucide icons
+if (typeof lucide !== 'undefined') {
+    lucide.createIcons();
+}
+</script>
+{% endblock %}

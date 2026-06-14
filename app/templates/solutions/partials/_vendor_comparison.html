@@ -1,0 +1,369 @@
+{# Vendor Comparison Matrix — Phase E side-by-side TCO and scoring #}
+<div id="vendor-comparison"
+     x-data="vendorComparison({{ solution.id }})"
+     x-init="init()"
+     class="bg-card rounded-xl border border-border shadow-sm p-6">
+
+    <div class="flex items-center justify-between mb-4">
+        <h3 class="text-lg font-semibold text-foreground">Vendor Comparison</h3>
+        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-violet-500/10 text-violet-600 border border-violet-500/30">Phase E</span>
+    </div>
+
+    {# Loading state #}
+    <div x-show="loading" x-cloak class="flex items-center justify-center py-12">
+        <svg class="animate-spin h-6 w-6 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+        </svg>
+        <span class="ml-2 text-sm text-muted-foreground">Loading comparison data...</span>
+    </div>
+
+    {# Empty state #}
+    <div x-show="!loading && !hasData" x-cloak class="text-center py-12">
+        <svg class="mx-auto h-12 w-12 text-muted-foreground/50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2"/>
+        </svg>
+        <p class="mt-3 text-sm text-muted-foreground">No products shortlisted for comparison.</p>
+        <p class="mt-1 text-xs text-muted-foreground">Add vendor products to the shortlist first.</p>
+    </div>
+
+    {# Comparison table #}
+    <div x-show="!loading && hasData" x-cloak>
+        {# MCDA Weight sliders #}
+        <div class="mb-6 bg-muted/30 rounded-lg p-4 border border-border">
+            <h3 class="text-sm font-medium text-foreground mb-3">Evaluation Criteria Weights</h3>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <template x-for="criterion in criteria" :key="criterion.key">
+                    <div>
+                        <div class="flex items-center justify-between mb-1">
+                            <label class="text-xs font-medium text-muted-foreground" x-text="criterion.label"></label>
+                            <span class="text-xs font-semibold text-foreground" x-text="weights[criterion.key] + '%'"></span>
+                        </div>
+                        <input type="range" min="0" max="100" step="5"
+                               x-model.number="weights[criterion.key]"
+                               @input="recalculate()"
+                               :aria-label="'Weight for ' + criterion.label"
+                               class="w-full h-1.5 rounded-full appearance-none bg-border cursor-pointer accent-violet-600">
+                        <p class="text-[10px] text-muted-foreground mt-0.5" x-text="criterion.description"></p>
+                    </div>
+                </template>
+            </div>
+            <p class="text-xs text-muted-foreground mt-2">
+                Total weight: <span class="font-semibold" x-text="totalWeight + '%'"
+                                    :class="totalWeight === 100 ? 'text-emerald-600' : 'text-amber-600'"></span>
+                <span x-show="totalWeight !== 100" x-cloak class="text-amber-600"> (should equal 100%)</span>
+            </p>
+        </div>
+
+        {# Main comparison table #}
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b border-border">
+                        <th class="text-left py-3 px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider w-48">Criteria</th>
+                        <template x-for="product in products" :key="product.id">
+                            <th class="text-center py-3 px-3 min-w-[180px]">
+                                <div class="text-sm font-semibold text-foreground" x-text="product.name"></div>
+                                <div class="text-xs text-muted-foreground" x-text="product.vendor_name"></div>
+                                <div x-show="product.is_selected" x-cloak
+                                     class="inline-flex items-center mt-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30">
+                                    Selected Winner
+                                </div>
+                            </th>
+                        </template>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-border">
+                    {# TCO Row #}
+                    <tr class="hover:bg-muted/30">
+                        <td class="py-3 px-3">
+                            <div class="text-sm font-medium text-foreground">TCO (3-Year)</div>
+                            <div class="text-xs text-muted-foreground">Lower cost = higher score</div>
+                        </td>
+                        <template x-for="product in products" :key="'tco-' + product.id">
+                            <td class="text-center py-3 px-3">
+                                <template x-if="product.tco">
+                                    <div>
+                                        <div class="text-sm font-semibold text-foreground" x-text="formatCurrency(product.tco.total_3yr)"></div>
+                                        <div class="mt-1 mx-auto w-24 h-1.5 rounded-full bg-border overflow-hidden">
+                                            <div class="h-full rounded-full bg-violet-500 transition-all"
+                                                 :style="'width:' + (product.tco_score || 0) + '%'"></div>
+                                        </div>
+                                        <div class="text-[10px] text-muted-foreground mt-0.5" x-text="(product.tco_score != null ? product.tco_score + '/100' : 'N/A')"></div>
+                                    </div>
+                                </template>
+                                <template x-if="!product.tco">
+                                    <span class="text-xs text-muted-foreground">No pricing data</span>
+                                </template>
+                            </td>
+                        </template>
+                    </tr>
+                    {# Capability Row #}
+                    <tr class="hover:bg-muted/30">
+                        <td class="py-3 px-3">
+                            <div class="text-sm font-medium text-foreground">Capability Coverage</div>
+                            <div class="text-xs text-muted-foreground">Average of product ratings</div>
+                        </td>
+                        <template x-for="product in products" :key="'cap-' + product.id">
+                            <td class="text-center py-3 px-3">
+                                <template x-if="product.capability_score != null">
+                                    <div>
+                                        <div class="text-sm font-semibold text-foreground" x-text="product.capability_score + '/100'"></div>
+                                        <div class="mt-1 mx-auto w-24 h-1.5 rounded-full bg-border overflow-hidden">
+                                            <div class="h-full rounded-full bg-primary transition-all"
+                                                 :style="'width:' + product.capability_score + '%'"></div>
+                                        </div>
+                                    </div>
+                                </template>
+                                <template x-if="product.capability_score == null">
+                                    <span class="text-xs text-muted-foreground">No ratings</span>
+                                </template>
+                            </td>
+                        </template>
+                    </tr>
+                    {# Risk Row #}
+                    <tr class="hover:bg-muted/30">
+                        <td class="py-3 px-3">
+                            <div class="text-sm font-medium text-foreground">Risk Profile</div>
+                            <div class="text-xs text-muted-foreground">Lower risk = higher score</div>
+                        </td>
+                        <template x-for="product in products" :key="'risk-' + product.id">
+                            <td class="text-center py-3 px-3">
+                                <div>
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium"
+                                          :class="{
+                                              'bg-emerald-500/10 text-emerald-600 border border-emerald-500/30': product.risk.overall === 'low',
+                                              'bg-amber-500/10 text-amber-600 border border-amber-500/30': product.risk.overall === 'medium',
+                                              'bg-destructive/10 text-destructive border border-destructive/30': product.risk.overall === 'high'
+                                          }"
+                                          x-text="product.risk.overall.charAt(0).toUpperCase() + product.risk.overall.slice(1)">
+                                    </span>
+                                    <div class="text-[10px] text-muted-foreground mt-1" x-text="product.risk.risk_count + ' indicator(s)'"></div>
+                                </div>
+                            </td>
+                        </template>
+                    </tr>
+                    {# Market Position Row #}
+                    <tr class="hover:bg-muted/30">
+                        <td class="py-3 px-3">
+                            <div class="text-sm font-medium text-foreground">Market Position</div>
+                            <div class="text-xs text-muted-foreground">Leader/Challenger scoring</div>
+                        </td>
+                        <template x-for="product in products" :key="'mkt-' + product.id">
+                            <td class="text-center py-3 px-3">
+                                <div class="text-sm font-medium text-foreground" x-text="product.market_position || 'Unknown'"></div>
+                                <div class="text-[10px] text-muted-foreground" x-text="product.market_score + '/100'"></div>
+                            </td>
+                        </template>
+                    </tr>
+                </tbody>
+                {# Weighted Total Footer #}
+                <tfoot>
+                    <tr class="border-t-2 border-border bg-muted/20">
+                        <td class="py-4 px-3">
+                            <div class="text-sm font-bold text-foreground">Weighted Total</div>
+                            <div class="text-xs text-muted-foreground">MCDA composite score</div>
+                        </td>
+                        <template x-for="product in products" :key="'total-' + product.id">
+                            <td class="text-center py-4 px-3">
+                                <div class="text-lg font-bold"
+                                     :class="product.id === winnerId ? 'text-emerald-600' : 'text-foreground'"
+                                     x-text="getWeightedScore(product).toFixed(1)"></div>
+                                <div x-show="product.id === winnerId" x-cloak
+                                     class="inline-flex items-center mt-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-500/10 text-emerald-600 border border-emerald-500/30">
+                                    Highest Score
+                                </div>
+                            </td>
+                        </template>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+
+        {# Action buttons #}
+        <div class="mt-6 flex flex-wrap items-center gap-3">
+            <template x-for="product in products" :key="'btn-' + product.id">
+                <button @click="openDecisionModal(product)"
+                        class="inline-flex items-center px-3 py-2 text-sm font-medium rounded-lg border transition-colors"
+                        :class="product.is_selected
+                            ? 'bg-emerald-500/10 text-emerald-700 border-emerald-500/30 hover:bg-emerald-500/20'
+                            : 'bg-card text-foreground border-border hover:bg-muted/50'">
+                    <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                    <span x-text="product.is_selected ? 'Selected: ' + product.name : 'Select ' + product.name"></span>
+                </button>
+            </template>
+        </div>
+    </div>
+
+    {# Decision Modal #}
+    <div x-show="showDecisionModal" x-cloak
+         role="dialog" aria-modal="true" aria-labelledby="vendor-decision-title"
+         class="fixed inset-0 z-50 flex items-center justify-center"
+         @keydown.escape.window="showDecisionModal = false">
+        <div class="fixed inset-0 bg-foreground/50" @click="showDecisionModal = false"></div>
+        <div class="relative bg-card rounded-xl border border-border shadow-xl max-w-lg w-full mx-4 p-6"
+             x-trap.noscroll="showDecisionModal"
+             @click.stop>
+            <h3 id="vendor-decision-title" class="text-lg font-semibold text-foreground mb-1">Confirm Vendor Selection</h3>
+            <p class="text-sm text-muted-foreground mb-4">
+                Select <span class="font-medium text-foreground" x-text="selectedProduct?.name"></span>
+                from <span class="font-medium text-foreground" x-text="selectedProduct?.vendor_name"></span>
+                as the winning vendor for this solution.
+            </p>
+
+            <div class="mb-4">
+                <label for="decision-rationale" class="block text-sm font-medium text-foreground mb-1">
+                    Decision Rationale <span class="text-destructive">*</span>
+                </label>
+                <textarea id="decision-rationale"
+                          x-model="decisionRationale"
+                          rows="4"
+                          class="w-full rounded-lg border border-border bg-background text-foreground px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/50 focus:border-violet-500"
+                          placeholder="Explain why this vendor was selected..."></textarea>
+                <p x-show="rationaleError" x-cloak class="text-xs text-destructive mt-1" x-text="rationaleError"></p>
+            </div>
+
+            <div class="flex items-center justify-end gap-3">
+                <button @click="showDecisionModal = false"
+                        class="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground rounded-lg border border-border hover:bg-muted/50 transition-colors">
+                    Cancel
+                </button>
+                <button @click="submitDecision()"
+                        :disabled="submitting"
+                        class="px-4 py-2 text-sm font-medium text-primary-foreground bg-violet-600 hover:bg-violet-700 rounded-lg transition-colors disabled:opacity-50">
+                    <span x-show="!submitting" x-cloak>Confirm Selection</span>
+                    <span x-show="submitting" x-cloak>Saving...</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('alpine:init', () => {
+    Alpine.data('vendorComparison', (solutionId) => ({
+        solutionId: solutionId,
+        loading: true,
+        hasData: false,
+        products: [],
+        criteria: [],
+        weights: {},
+        winnerId: null,
+        showDecisionModal: false,
+        selectedProduct: null,
+        decisionRationale: '',
+        rationaleError: '',
+        submitting: false,
+
+        get totalWeight() {
+            return Object.values(this.weights).reduce((sum, w) => sum + w, 0);
+        },
+
+        async init() {
+            await this.fetchComparison();
+        },
+
+        async fetchComparison() {
+            this.loading = true;
+            try {
+                const resp = await fetch(`/solutions/${this.solutionId}/vendor-evaluation/comparison`);
+                const data = await resp.json();
+                if (data.success) {
+                    this.products = data.products || [];
+                    this.criteria = data.criteria || [];
+                    this.hasData = data.has_data;
+                    this.winnerId = data.winner_product_id;
+
+                    // Initialise weights from defaults
+                    this.weights = {};
+                    for (const c of this.criteria) {
+                        this.weights[c.key] = c.default_weight;
+                    }
+                }
+            } catch (err) {
+                console.error('Failed to load comparison data', err);
+            } finally {
+                this.loading = false;
+            }
+        },
+
+        getWeightedScore(product) {
+            let total = 0;
+            let weightSum = 0;
+            for (const c of this.criteria) {
+                const score = product[c.key];
+                const weight = this.weights[c.key] || 0;
+                if (score != null) {
+                    total += score * weight;
+                    weightSum += weight;
+                }
+            }
+            return weightSum > 0 ? total / weightSum : 0;
+        },
+
+        recalculate() {
+            // Determine highest-scoring product
+            let bestId = null;
+            let bestScore = -1;
+            for (const p of this.products) {
+                const s = this.getWeightedScore(p);
+                if (s > bestScore) {
+                    bestScore = s;
+                    bestId = p.id;
+                }
+            }
+            this.winnerId = bestId;
+        },
+
+        formatCurrency(value) {
+            if (value == null) return 'N/A';
+            return new Intl.NumberFormat('en-US', {
+                style: 'currency',
+                currency: 'USD',
+                maximumFractionDigits: 0,
+            }).format(value);
+        },
+
+        openDecisionModal(product) {
+            this.selectedProduct = product;
+            this.decisionRationale = '';
+            this.rationaleError = '';
+            this.showDecisionModal = true;
+        },
+
+        async submitDecision() {
+            if (!this.decisionRationale.trim()) {
+                this.rationaleError = 'Please provide a rationale for this decision.';
+                return;
+            }
+            this.rationaleError = '';
+            this.submitting = true;
+
+            try {
+                const resp = await fetch(`/solutions/${this.solutionId}/vendor-evaluation/decision`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        product_id: this.selectedProduct.id,
+                        rationale: this.decisionRationale.trim(),
+                        criteria_weights: this.weights,
+                    }),
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    this.showDecisionModal = false;
+                    await this.fetchComparison();
+                } else {
+                    this.rationaleError = data.error || 'Failed to record decision.';
+                }
+            } catch (err) {
+                this.rationaleError = 'Network error. Please try again.';
+            } finally {
+                this.submitting = false;
+            }
+        },
+    }));
+});
+</script>

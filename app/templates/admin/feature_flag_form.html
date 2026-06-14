@@ -1,0 +1,150 @@
+{% extends 'layouts/admin_base.html' %}
+{% from 'components/page_header.html' import page_header %}
+
+{% block content %}
+<div class="space-y-6">
+    {{ page_header(
+        title=action ~ ' Feature Flag',
+        breadcrumbs=[
+            {'label': 'Feature Flags', 'href': url_for('admin.feature_flags')},
+            {'label': action ~ ' Feature Flag'}
+        ]
+    ) }}
+
+    <div class="bg-card rounded-lg border border-border shadow-sm p-6">
+        <form method="POST" action="">
+            {{ form.hidden_tag() }}
+
+            <div class="space-y-6">
+                <!-- Key -->
+                <div>
+                    <label for="{{ form.key.id }}" class="block text-sm font-medium mb-2">
+                        {{ form.key.label }}
+                        <span class="text-destructive">*</span>
+                    </label>
+                    {{ form.key(class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50") }}
+                    {% if form.key.description %}
+                    <p class="text-xs text-muted-foreground mt-1">{{ form.key.description }}</p>
+                    {% endif %}
+                    {% if form.key.errors %}
+                    <p class="text-xs text-destructive mt-1">{{ form.key.errors[0] }}</p>
+                    {% endif %}
+                </div>
+
+                <!-- Name -->
+                <div>
+                    <label for="{{ form.name.id }}" class="block text-sm font-medium mb-2">
+                        {{ form.name.label }}
+                        <span class="text-destructive">*</span>
+                    </label>
+                    {{ form.name(class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50") }}
+                    {% if form.name.errors %}
+                    <p class="text-xs text-destructive mt-1">{{ form.name.errors[0] }}</p>
+                    {% endif %}
+                </div>
+
+                <!-- Description -->
+                <div>
+                    <label for="{{ form.description.id }}" class="block text-sm font-medium mb-2">
+                        {{ form.description.label }}
+                    </label>
+                    {{ form.description(rows=3, class="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50") }}
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <!-- Feature Type -->
+                    <div>
+                        <label for="{{ form.feature_type.id }}" class="block text-sm font-medium mb-2">
+                            {{ form.feature_type.label }}
+                            <span class="text-destructive">*</span>
+                        </label>
+                        {{ form.feature_type(class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2") }}
+                    </div>
+
+                    <!-- State -->
+                    <div>
+                        <label for="{{ form.state.id }}" class="block text-sm font-medium mb-2">
+                            {{ form.state.label }}
+                            <span class="text-destructive">*</span>
+                        </label>
+                        {{ form.state(class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2") }}
+                    </div>
+                </div>
+
+                <!-- Enabled -->
+                <div class="flex items-center space-x-2">
+                    {{ form.enabled(class="h-4 w-4 rounded border-input") }}
+                    <label for="{{ form.enabled.id }}" class="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                        {{ form.enabled.label }}
+                    </label>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <!-- Sidebar Label -->
+                    <div>
+                        <label for="{{ form.sidebar_label.id }}" class="block text-sm font-medium mb-2">
+                            {{ form.sidebar_label.label }}
+                        </label>
+                        {{ form.sidebar_label(class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2") }}
+                        {% if form.sidebar_label.description %}
+                        <p class="text-xs text-muted-foreground mt-1">{{ form.sidebar_label.description }}</p>
+                        {% endif %}
+                    </div>
+
+                    <!-- Sidebar Icon -->
+                    <div>
+                        <label for="{{ form.sidebar_icon.id }}" class="block text-sm font-medium mb-2">
+                            {{ form.sidebar_icon.label }}
+                        </label>
+                        {{ form.sidebar_icon(class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2", placeholder="package") }}
+                        {% if form.sidebar_icon.description %}
+                        <p class="text-xs text-muted-foreground mt-1">{{ form.sidebar_icon.description }}</p>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- Routes -->
+                <div>
+                    <label for="{{ form.routes.id }}" class="block text-sm font-medium mb-2">
+                        {{ form.routes.label }}
+                    </label>
+                    {{ form.routes(rows=4, class="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background font-mono placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2", placeholder='["/solutions/*", "/solution-architect/*"]') }}
+                    {% if form.routes.description %}
+                    <p class="text-xs text-muted-foreground mt-1">{{ form.routes.description }}</p>
+                    {% endif %}
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <!-- Parent Key -->
+                    <div>
+                        <label for="{{ form.parent_id.id }}" class="block text-sm font-medium mb-2">
+                            {{ form.parent_id.label }}
+                        </label>
+                        {{ form.parent_id(class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2") }}
+                        {% if form.parent_id.description %}
+                        <p class="text-xs text-muted-foreground mt-1">{{ form.parent_id.description }}</p>
+                        {% endif %}
+                    </div>
+
+                    <!-- Sort Order -->
+                    <div>
+                        <label for="{{ form.sort_order.id }}" class="block text-sm font-medium mb-2">
+                            {{ form.sort_order.label }}
+                        </label>
+                        {{ form.sort_order(class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2") }}
+                    </div>
+                </div>
+
+                <!-- Submit -->
+                <div class="flex items-center gap-4 pt-4">
+                    {{ form.submit(class="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 bg-primary text-primary-foreground hover:bg-primary/90 h-10 py-2 px-4") }}
+                    <a href="{{ url_for('admin.feature_flags') }}"
+                       class="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground h-10 py-2 px-4">
+                        Cancel
+                    </a>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

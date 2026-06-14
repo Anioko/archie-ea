@@ -1,0 +1,53 @@
+<div class="bg-background rounded-lg shadow-sm border border-border p-4">
+    <h3 class="text-lg font-semibold text-foreground mb-4">Context</h3>
+
+    <div id="contextContainer">
+        {% if mode == 'enhancement' and app_id %}
+        <div class="text-center py-8">
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+            <p class="text-sm text-muted-foreground mt-2">Loading application context...</p>
+        </div>
+        {% elif mode == 'architecture' and view_id %}
+        <div class="text-center py-8">
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+            <p class="text-sm text-muted-foreground mt-2">Loading architecture context...</p>
+        </div>
+        {% else %}
+        <div class="text-center py-8">
+            <svg class="mx-auto h-12 w-12 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+            </svg>
+            <p class="text-sm text-muted-foreground mt-2">No context loaded</p>
+            <p class="text-xs text-muted-foreground mt-1">
+                {% if mode == 'enhancement' %}
+                Select an application to generate code
+                {% else %}
+                Select an architecture view to generate code
+                {% endif %}
+            </p>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Context Actions -->
+    <div class="mt-4 pt-4 border-t border-border">
+        <button @click="selectContext()" class="w-full px-4 py-2 text-sm bg-muted text-foreground/80 rounded-lg hover:bg-muted transition-colors" aria-label="Action">
+            {% if mode == 'enhancement' %}
+            Select Application
+            {% else %}
+            Select Architecture View
+            {% endif %}
+        </button>
+    </div>
+</div>
+
+<script>
+function selectContext() {
+    const mode = document.getElementById('currentMode').value;
+    if (mode === 'enhancement') {
+        window.location.href = '/applications/';
+    } else {
+        window.location.href = '/enterprise/architecture';
+    }
+}
+</script>

@@ -1,0 +1,39 @@
+{% extends "layouts/admin_base.html" %}
+
+{% block title %}AI Dedupe Insights{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="flex items-center gap-4 mb-8">
+        <a href="{{ url_for('ai.ai_dashboard') }}" class="text-muted-foreground hover:text-foreground">
+            <i data-lucide="arrow-left" class="w-5 h-5" aria-hidden="true"></i>
+        </a>
+        <div>
+            <h1 class="text-3xl font-bold text-foreground">AI Deduplication Insights</h1>
+            <p class="text-muted-foreground mt-1">Run #{{ run.id if run else '—' }}</p>
+        </div>
+    </div>
+
+    {% if ai_insights %}
+    <div class="space-y-4">
+        {% for insight in ai_insights %}
+        <div data-slot="card" class="rounded-xl border bg-card shadow-sm p-5">
+            <h3 class="font-medium text-foreground">{{ insight.title|default('Insight') }}</h3>
+            <p class="text-sm text-muted-foreground mt-1">{{ insight.description|default(insight.message|default('')) }}</p>
+            {% if insight.confidence %}
+            <div class="mt-2">
+                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30">
+                    Confidence: {{ insight.confidence }}%
+                </span>
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div data-slot="card" class="rounded-xl border bg-card shadow-sm p-8 text-center text-muted-foreground">
+        No AI insights available for this run.
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

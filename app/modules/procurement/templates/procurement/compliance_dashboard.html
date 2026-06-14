@@ -1,0 +1,149 @@
+{% extends 'layouts/admin_base.html' %}
+{% block title %}License Compliance{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-6">
+    <div class="flex items-center justify-between mb-6">
+        <div>
+            <h1 class="text-2xl font-bold">License Compliance</h1>
+            <p class="text-muted-foreground">Monitor license compliance across the organization</p>
+        </div>
+        <a href="{{ url_for('procurement.licenses_list') }}"
+           class="inline-flex items-center gap-2 px-4 py-2 rounded-md border border-border hover:bg-accent transition-colors">
+            <i data-lucide="list" class="w-4 h-4"></i>
+            All Licenses
+        </a>
+    </div>
+
+    <!-- Summary Cards -->
+    <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+        <div class="bg-card border border-border rounded-lg p-4">
+            <div class="text-sm text-muted-foreground mb-1">Total Licenses</div>
+            <div class="text-2xl font-bold">{{ summary.total }}</div>
+        </div>
+        <div class="bg-card border border-green-500/50 rounded-lg p-4">
+            <div class="flex items-center gap-2 text-sm text-green-600 dark:text-green-400 mb-1">
+                <i data-lucide="check-circle" class="w-4 h-4"></i>
+                Compliant
+            </div>
+            <div class="text-2xl font-bold text-green-600 dark:text-green-400">{{ summary.compliant }}</div>
+        </div>
+        <div class="bg-card border border-amber-500/50 rounded-lg p-4">
+            <div class="flex items-center gap-2 text-sm text-amber-600 dark:text-amber-400 mb-1">
+                <i data-lucide="alert-triangle" class="w-4 h-4"></i>
+                Warning
+            </div>
+            <div class="text-2xl font-bold text-amber-600 dark:text-amber-400">{{ summary.warning }}</div>
+        </div>
+        <div class="bg-card border border-red-500/50 rounded-lg p-4">
+            <div class="flex items-center gap-2 text-sm text-red-600 dark:text-red-400 mb-1">
+                <i data-lucide="x-circle" class="w-4 h-4"></i>
+                Violation
+            </div>
+            <div class="text-2xl font-bold text-red-600 dark:text-red-400">{{ summary.violation }}</div>
+        </div>
+        <div class="bg-card border border-border rounded-lg p-4">
+            <div class="text-sm text-muted-foreground mb-1">Overall Utilization</div>
+            <div class="text-2xl font-bold">{{ "{:.0f}".format(summary.utilization) }}%</div>
+        </div>
+    </div>
+
+    <!-- Utilization Overview -->
+    <div class="bg-card border border-border rounded-lg p-6 mb-6">
+        <h2 class="text-lg font-semibold mb-4">License Utilization Overview</h2>
+        <div class="flex items-center gap-4 mb-4">
+            <div class="flex-1">
+                <div class="flex justify-between text-sm mb-1">
+                    <span class="text-muted-foreground">Consumed</span>
+                    <span>{{ summary.total_consumed }} / {{ summary.total_entitled }} licenses</span>
+                </div>
+                <div class="h-4 bg-muted rounded-full overflow-hidden">
+                    {% set util = summary.utilization %}
+                    <div class="h-full rounded-full transition-all
+                        {% if util > 100 %}bg-red-500
+                        {% elif util > 90 %}bg-amber-500
+                        {% elif util > 70 %}bg-blue-500
+                        {% else %}bg-green-500{% endif %}"
+                         style="width: {{ min(util, 100) }}%"></div>
+                </div>
+            </div>
+        </div>
+        <div class="grid grid-cols-3 gap-4 text-center text-sm">
+            <div>
+                <div class="text-muted-foreground">Entitled</div>
+                <div class="font-bold text-lg">{{ summary.total_entitled }}</div>
+            </div>
+            <div>
+                <div class="text-muted-foreground">Consumed</div>
+                <div class="font-bold text-lg">{{ summary.total_consumed }}</div>
+            </div>
+            <div>
+                <div class="text-muted-foreground">Available</div>
+                <div class="font-bold text-lg text-green-600">{{ summary.total_entitled - summary.total_consumed }}</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- License List with Compliance Issues -->
+    {% set violations = licenses | selectattr('compliance_status', 'equalto', 'violation') | list %}
+    {% set warnings = licenses | selectattr('compliance_status', 'equalto', 'warning') | list %}
+
+    {% if violations %}
+    <div class="bg-card border border-red-500/50 rounded-lg p-6 mb-6">
+        <h2 class="text-lg font-semibold text-red-600 dark:text-red-400 mb-4 flex items-center gap-2">
+            <i data-lucide="alert-circle" class="w-5 h-5"></i>
+            License Violations ({{ violations | length }})
+        </h2>
+        <div class="space-y-3">
+            {% for license in violations %}
+            <div class="flex items-center justify-between p-3 bg-red-50 dark:bg-red-900/20 rounded-lg">
+                <div>
+                    <div class="font-medium">{{ license.product_name }}</div>
+                    <div class="text-sm text-muted-foreground">
+                        Consumed: {{ license.consumed_quantity }} / Entitled: {{ license.entitled_quantity }}
+                    </div>
+                </div>
+                <a href="{{ url_for('procurement.license_detail', license_id=license.id) }}"
+                   class="text-primary hover:underline text-sm">View</a>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    {% if warnings %}
+    <div class="bg-card border border-amber-500/50 rounded-lg p-6">
+        <h2 class="text-lg font-semibold text-amber-600 dark:text-amber-400 mb-4 flex items-center gap-2">
+            <i data-lucide="alert-triangle" class="w-5 h-5"></i>
+            Licenses at Risk ({{ warnings | length }})
+        </h2>
+        <div class="space-y-3">
+            {% for license in warnings %}
+            <div class="flex items-center justify-between p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg">
+                <div>
+                    <div class="font-medium">{{ license.product_name }}</div>
+                    <div class="text-sm text-muted-foreground">
+                        Consumed: {{ license.consumed_quantity }} / Entitled: {{ license.entitled_quantity }}
+                        ({{ "{:.0f}".format((license.consumed_quantity or 0) / (license.entitled_quantity or 1) * 100) }}% utilized)
+                    </div>
+                </div>
+                <a href="{{ url_for('procurement.license_detail', license_id=license.id) }}"
+                   class="text-primary hover:underline text-sm">View</a>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    {% if summary.total == 0 %}
+    <div class="bg-card border border-border rounded-lg p-12 text-center">
+        <div class="w-16 h-16 mx-auto mb-4 bg-muted rounded-full flex items-center justify-center">
+            <i data-lucide="shield-check" class="w-8 h-8 text-muted-foreground"></i>
+        </div>
+        <h3 class="text-lg font-medium mb-2">No license data</h3>
+        <p class="text-muted-foreground">License compliance data will appear once licenses are imported.</p>
+    </div>
+    {% endif %}
+</div>
+<script>if (typeof lucide !== 'undefined') lucide.createIcons();</script>
+{% endblock %}

@@ -1,0 +1,164 @@
+{% extends "layouts/admin_base.html" %}
+{% from "components/page_header.html" import page_header %}
+
+{% block title %}New Change Request{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+    {{ page_header(
+        title='New Change Request',
+        description='Raise a Phase H change request to initiate an architecture change cycle',
+        breadcrumbs=[
+            {'label': 'Dashboard', 'href': url_for('main.index')},
+            {'label': 'ARB', 'href': url_for('arb.dashboard')},
+            {'label': 'Change Requests', 'href': url_for('arb.change_request_list')},
+            {'label': 'New'}
+        ]
+    ) }}
+
+    <div class="bg-card border border-border rounded-lg p-6">
+        <form x-data="{
+            submitting: false,
+            title: '', description: '', trigger_type: '', capability_id: '', solution_id: '',
+            pendingFiles: [],
+            docType: 'supporting',
+            addFiles(event) {
+                for (const f of event.target.files) this.pendingFiles.push(f);
+                event.target.value = '';
+            },
+            removeFile(idx) { this.pendingFiles.splice(idx, 1); },
+            async submit() {
+                this.submitting = true;
+                const csrf = document.querySelector('meta[name=csrf-token]')?.content || '';
+                const payload = {title: this.title, description: this.description, trigger_type: this.trigger_type};
+                if (this.capability_id) payload.capability_id = parseInt(this.capability_id);
+                if (this.solution_id) payload.solution_id = parseInt(this.solution_id);
+                const r = await fetch('/arb/api/change-requests', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrf},
+                    body: JSON.stringify(payload)
+                });
+                if (!r.ok) { this.submitting = false; Platform.toast.error('Submission failed'); return; }
+                const cr = await r.json();
+                const crId = cr.id;
+                // Upload any attached files against the new change request
+                for (const file of this.pendingFiles) {
+                    const fd = new FormData();
+                    fd.append('file', file);
+                    fd.append('document_type', this.docType);
+                    await fetch(`/arb/api/change-requests/${crId}/documents`, {
+                        method: 'POST', headers: {'X-CSRFToken': csrf}, body: fd
+                    });
+                }
+                window.location.href = '/arb/change-requests';
+            }
+        }" @submit.prevent="submit()" class="space-y-5">
+
+            <!-- Title -->
+            <div>
+                <label for="cr-title" class="block text-sm font-medium text-foreground mb-1">
+                    Title <span class="text-destructive">*</span>
+                </label>
+                <input id="cr-title" type="text" x-model="title" required
+                       placeholder="Brief title for this change request"
+                       class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring">
+            </div>
+
+            <!-- Description -->
+            <div>
+                <label for="cr-description" class="block text-sm font-medium text-foreground mb-1">
+                    Description <span class="text-destructive">*</span>
+                </label>
+                <textarea id="cr-description" x-model="description" required rows="5"
+                          placeholder="Describe the change, its rationale, and expected impact"
+                          class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-y"></textarea>
+            </div>
+
+            <!-- Trigger Type -->
+            <div>
+                <label for="cr-trigger-type" class="block text-sm font-medium text-foreground mb-1">
+                    Trigger Type <span class="text-destructive">*</span>
+                </label>
+                <select id="cr-trigger-type" x-model="trigger_type" required
+                        class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                    <option value="">Select trigger type…</option>
+                    {% for tt in trigger_types %}
+                    <option value="{{ tt }}">{{ tt | replace('_', ' ') | title }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Optional fields -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label for="cr-capability-id" class="block text-sm font-medium text-foreground mb-1">
+                        Linked Capability ID
+                    </label>
+                    <input id="cr-capability-id" type="number" x-model="capability_id" min="1"
+                           placeholder="Optional"
+                           class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring">
+                </div>
+                <div>
+                    <label for="cr-solution-id" class="block text-sm font-medium text-foreground mb-1">
+                        Linked Solution ID
+                    </label>
+                    <input id="cr-solution-id" type="number" x-model="solution_id" min="1"
+                           placeholder="Optional"
+                           class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring">
+                </div>
+            </div>
+
+            <!-- Supporting Documents -->
+            <div class="space-y-2">
+                <label class="block text-sm font-medium text-foreground">
+                    Supporting Documents <span class="text-xs text-muted-foreground font-normal">(optional)</span>
+                </label>
+                <p class="text-xs text-muted-foreground">Attach impact assessments, cost analyses, architecture diagrams, or other evidence. Max 50 MB per file.</p>
+
+                <!-- Document type selector -->
+                <div class="flex items-center gap-3">
+                    <select x-model="docType" class="rounded-md border border-input bg-background px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring">
+                        <option value="supporting">Supporting</option>
+                        <option value="evidence">Evidence</option>
+                        <option value="decision">Decision Record</option>
+                        <option value="minutes">Meeting Minutes</option>
+                    </select>
+                    <label class="inline-flex items-center gap-1.5 cursor-pointer rounded-md border border-dashed border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors">
+                        <i data-lucide="plus" class="w-3.5 h-3.5"></i> Add file
+                        <input type="file" class="sr-only" multiple @change="addFiles($event)"
+                               accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.txt,.md,.png,.jpg,.jpeg,.gif,.zip">
+                    </label>
+                </div>
+
+                <!-- Pending file list -->
+                <ul x-show="pendingFiles.length > 0" x-cloak class="space-y-1">
+                    <template x-for="(f, idx) in pendingFiles" :key="idx">
+                        <li class="flex items-center gap-2 text-xs text-foreground">
+                            <i data-lucide="file" class="w-3.5 h-3.5 text-muted-foreground flex-shrink-0"></i>
+                            <span class="flex-1 truncate" x-text="f.name"></span>
+                            <button aria-label="Remove" type="button" @click="removeFile(idx)"
+                                    class="text-muted-foreground hover:text-destructive">
+                                <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                            </button>
+                        </li>
+                    </template>
+                </ul>
+            </div>
+
+            <!-- Actions -->
+            <div class="flex items-center gap-3 pt-2 border-t border-border">
+                <button type="submit"
+                        :disabled="submitting"
+                        class="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                    <span x-show="!submitting" x-cloak>Submit Change Request</span>
+                    <span x-show="submitting" x-cloak>Submitting…</span>
+                </button>
+                <a href="{{ url_for('arb.change_request_list') }}"
+                   class="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                    Cancel
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

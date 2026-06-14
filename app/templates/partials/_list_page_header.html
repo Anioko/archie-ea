@@ -1,0 +1,53 @@
+{#
+  List Page Header Partial
+
+  Provides consistent breadcrumbs, title, description, and action buttons for list pages.
+
+  Parameters:
+    - breadcrumb_label: The label shown in breadcrumbs (e.g., "Application Vendors")
+    - page_title: Main heading (e.g., "Application Vendors")
+    - page_description: Subheading text
+    - actions: List of action button HTML strings (rendered with |safe)
+
+  Usage:
+    {% include 'partials/_list_page_header.html' with context %}
+
+  Example:
+    {% set actions = [
+      '<a href="..." class="...">Add New</a>',
+      '<button @click="..." aria-label="Action">Analysis</button>'
+    ] %}
+    {% set breadcrumb_label = "Vendors" %}
+    {% set page_title = "Application Vendors" %}
+    {% set page_description = "Manage software vendors..." %}
+    {% include 'partials/_list_page_header.html' %}
+#}
+
+<!-- Breadcrumbs -->
+<nav class="flex items-center gap-2 text-sm text-muted-foreground mb-6">
+  <a href="{{ url_for('main.index') }}" class="hover:text-foreground transition-colors">Dashboard</a>
+  <i data-lucide="chevron-right" class="h-4 w-4"></i>
+  <span class="text-foreground font-medium">{{ breadcrumb_label }}</span>
+</nav>
+
+<!-- Page Header -->
+<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+  <div>
+    <h1 class="text-2xl sm:text-3xl font-bold tracking-tight">{{ page_title }}</h1>
+    {% if page_description %}
+    <p class="text-muted-foreground mt-1">{{ page_description }}</p>
+    {% endif %}
+  </div>
+  {# Actions container - supports both string-based actions and custom_actions_html block #}
+  {% if actions and actions|length > 0 %}
+  <div class="flex flex-col sm:flex-row gap-3" id="page-header-actions">
+    {% for action in actions %}
+      {{ action | sanitize_html }}
+    {% endfor %}
+  </div>
+  {% elif custom_actions_html %}
+  <div class="flex flex-col sm:flex-row gap-3" id="page-header-actions">
+    {{ custom_actions_html | sanitize_html }}
+  </div>
+  {% endif %}
+</div>

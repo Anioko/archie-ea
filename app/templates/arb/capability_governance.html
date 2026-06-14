@@ -1,0 +1,205 @@
+{% extends "layouts/admin_base.html" %}
+{% from "components/page_header.html" import page_header %}
+{% from 'components/status_badge.html' import status_badge %}
+
+{% block title %}Capability Governance — {{ capability_name }}{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+    {{ page_header(
+        title=capability_name,
+        description=capability_description or 'Governance panel: decisions, change requests, and history.',
+        breadcrumbs=[
+            {'label': 'Dashboard', 'href': url_for('main.index')},
+            {'label': 'ARB', 'href': url_for('arb.reviews')},
+            {'label': 'Capability Governance'}
+        ]
+    ) }}
+
+    <div x-data="{
+        loading: true,
+        data: null,
+        async init() {
+            const r = await fetch('/api/arb/capabilities/{{ capability_id }}/governance');
+            this.data = await r.json();
+            this.loading = false;
+        }
+    }">
+        <!-- Loading spinner -->
+        <div x-show="loading" x-cloak class="flex justify-center py-12">
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        </div>
+
+        <div x-show="!loading" x-cloak class="space-y-6">
+
+            <!-- Active Strategic Decision -->
+            <div class="bg-card border border-border rounded-lg overflow-hidden">
+                <div class="px-6 py-4 border-b border-border bg-muted/30 flex items-center gap-3">
+                    <i data-lucide="shield" class="w-5 h-5 text-primary dark:text-purple-400" aria-hidden="true"></i>
+                    <h2 class="text-base font-semibold text-foreground">Active Strategic Decision</h2>
+                </div>
+                <div class="p-6">
+                    <template x-if="data && data.active_strategic_decision">
+                        <div class="space-y-3">
+                            <div class="flex flex-wrap items-start gap-3">
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300">
+                                    Strategic
+                                </span>
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 text-green-800 dark:bg-green-900/30 dark:text-green-300"
+                                      x-text="data.active_strategic_decision.status ? data.active_strategic_decision.status.replace(/_/g, ' ') : 'Unknown'">
+                                </span>
+                            </div>
+                            <h3 class="text-lg font-semibold text-foreground" x-text="data.active_strategic_decision.title"></h3>
+                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm text-muted-foreground">
+                                <div>
+                                    <span class="font-medium text-foreground">Authority Level</span>
+                                    <p x-text="data.active_strategic_decision.authority_level ? data.active_strategic_decision.authority_level.replace(/_/g, ' ') : '—'"></p>
+                                </div>
+                                <div>
+                                    <span class="font-medium text-foreground">Valid From</span>
+                                    <p x-text="data.active_strategic_decision.valid_from ? data.active_strategic_decision.valid_from.substring(0, 10) : '—'"></p>
+                                </div>
+                                <div>
+                                    <span class="font-medium text-foreground">Valid Until</span>
+                                    <p x-text="data.active_strategic_decision.valid_until ? data.active_strategic_decision.valid_until.substring(0, 10) : 'Open-ended'"></p>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                    <template x-if="!data || !data.active_strategic_decision">
+                        <div class="flex flex-col items-center gap-2 py-6 text-muted-foreground">
+                            <i data-lucide="shield-off" class="w-8 h-8 opacity-30" aria-hidden="true"></i>
+                            <p class="text-sm">No active strategic decision</p>
+                        </div>
+                    </template>
+                </div>
+            </div>
+
+            <!-- Active Tactical Decisions -->
+            <div class="bg-card border border-border rounded-lg overflow-hidden">
+                <div class="px-6 py-4 border-b border-border bg-muted/30 flex items-center gap-3">
+                    <i data-lucide="layers" class="w-5 h-5 text-primary dark:text-blue-400" aria-hidden="true"></i>
+                    <h2 class="text-base font-semibold text-foreground">Active Tactical Decisions</h2>
+                    <span class="ml-auto text-xs text-muted-foreground" x-text="data && data.active_tactical_decisions ? data.active_tactical_decisions.length + ' decision(s)' : ''"></span>
+                </div>
+                <div class="p-6">
+                    <template x-if="data && data.active_tactical_decisions && data.active_tactical_decisions.length > 0">
+                        <div class="space-y-3">
+                            <template x-for="d in data.active_tactical_decisions" :key="d.id">
+                                <div class="flex flex-wrap items-center gap-3 border border-border rounded-md px-4 py-3 bg-muted/10 hover:bg-muted/30 transition-colors">
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary/90 dark:bg-primary/20 dark:text-primary/80">
+                                        Tactical
+                                    </span>
+                                    <span class="text-xs font-mono text-muted-foreground" x-text="d.decision_id || ''"></span>
+                                    <span class="font-medium text-foreground flex-1" x-text="d.title"></span>
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 text-green-800 dark:bg-green-900/30 dark:text-green-300"
+                                          x-text="d.status ? d.status.replace(/_/g, ' ') : 'Unknown'">
+                                    </span>
+                                    <span class="text-xs text-muted-foreground" x-text="d.authority_level ? d.authority_level.replace(/_/g, ' ') : '—'"></span>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+                    <template x-if="!data || !data.active_tactical_decisions || data.active_tactical_decisions.length === 0">
+                        <div class="flex flex-col items-center gap-2 py-6 text-muted-foreground">
+                            <i data-lucide="layers" class="w-8 h-8 opacity-30" aria-hidden="true"></i>
+                            <p class="text-sm">No tactical decisions</p>
+                        </div>
+                    </template>
+                </div>
+            </div>
+
+            <!-- Open Change Requests -->
+            <div class="bg-card border border-border rounded-lg overflow-hidden">
+                <div class="px-6 py-4 border-b border-border bg-muted/30 flex items-center gap-3">
+                    <i data-lucide="git-pull-request" class="w-5 h-5 text-amber-600 dark:text-amber-400" aria-hidden="true"></i>
+                    <h2 class="text-base font-semibold text-foreground">Open Change Requests</h2>
+                </div>
+                <template x-if="data && data.open_change_requests && data.open_change_requests.length > 0">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead class="bg-muted/50 border-b border-border">
+                                <tr>
+                                    <th class="px-4 py-3 text-left font-medium text-muted-foreground">Reference</th>
+                                    <th class="px-4 py-3 text-left font-medium text-muted-foreground">Title</th>
+                                    <th class="px-4 py-3 text-left font-medium text-muted-foreground">Trigger Type</th>
+                                    <th class="px-4 py-3 text-left font-medium text-muted-foreground">Status</th>
+                                    <th class="px-4 py-3 text-left font-medium text-muted-foreground">Raised By</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-border">
+                                <template x-for="cr in data.open_change_requests" :key="cr.id">
+                                    <tr class="hover:bg-muted/30 transition-colors">
+                                        <td class="px-4 py-3 font-mono text-xs text-muted-foreground" x-text="cr.reference || cr.id"></td>
+                                        <td class="px-4 py-3">
+                                            <a :href="cr.id ? '/arb/change-requests/' + cr.id : '#'"
+                                               class="font-medium text-foreground hover:text-primary hover:underline transition-colors"
+                                               x-text="cr.title || '—'"></a>
+                                        </td>
+                                        <td class="px-4 py-3 text-muted-foreground" x-text="cr.trigger_type ? cr.trigger_type.replace(/_/g, ' ') : '—'"></td>
+                                        <td class="px-4 py-3">
+                                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300"
+                                                  x-text="cr.status ? cr.status.replace(/_/g, ' ') : 'Open'">
+                                            </span>
+                                        </td>
+                                        <td class="px-4 py-3 text-muted-foreground text-xs" x-text="cr.raised_by || cr.submitter || '—'"></td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                </template>
+                <template x-if="!data || !data.open_change_requests || data.open_change_requests.length === 0">
+                    <div class="flex flex-col items-center gap-2 py-6 text-muted-foreground">
+                        <i data-lucide="git-pull-request" class="w-8 h-8 opacity-30" aria-hidden="true"></i>
+                        <p class="text-sm">No open change requests</p>
+                    </div>
+                </template>
+            </div>
+
+            <!-- Decision History -->
+            <div class="bg-card border border-border rounded-lg overflow-hidden">
+                <div class="px-6 py-4 border-b border-border bg-muted/30 flex items-center gap-3">
+                    <i data-lucide="history" class="w-5 h-5 text-muted-foreground" aria-hidden="true"></i>
+                    <h2 class="text-base font-semibold text-foreground">Decision History</h2>
+                </div>
+                <div class="p-6">
+                    <template x-if="data && data.decision_history && data.decision_history.length > 0">
+                        <div class="space-y-3">
+                            <template x-for="h in data.decision_history" :key="h.id">
+                                <details class="border border-border rounded-md group">
+                                    <summary class="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-muted/30 transition-colors list-none">
+                                        <i data-lucide="chevron-right" class="w-4 h-4 text-muted-foreground group-open:rotate-90 transition-transform" aria-hidden="true"></i>
+                                        <span class="text-xs font-mono text-muted-foreground" x-text="h.decision_id || ''"></span>
+                                        <span class="font-medium text-foreground flex-1" x-text="h.title"></span>
+                                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-muted text-foreground/70">
+                                            Superseded
+                                        </span>
+                                    </summary>
+                                    <div class="px-4 pb-4 pt-2 text-sm text-muted-foreground space-y-1 border-t border-border bg-muted/10">
+                                        <p>
+                                            <span class="font-medium text-foreground">Superseded by:</span>
+                                            <span x-text="h.superseded_by_id ? 'Decision #' + h.superseded_by_id : 'Unknown'"></span>
+                                        </p>
+                                        <p>
+                                            <span class="font-medium text-foreground">Created:</span>
+                                            <span x-text="h.created_at ? h.created_at.substring(0, 10) : '—'"></span>
+                                        </p>
+                                    </div>
+                                </details>
+                            </template>
+                        </div>
+                    </template>
+                    <template x-if="!data || !data.decision_history || data.decision_history.length === 0">
+                        <div class="flex flex-col items-center gap-2 py-6 text-muted-foreground">
+                            <i data-lucide="history" class="w-8 h-8 opacity-30" aria-hidden="true"></i>
+                            <p class="text-sm">No history</p>
+                        </div>
+                    </template>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+{% endblock %}

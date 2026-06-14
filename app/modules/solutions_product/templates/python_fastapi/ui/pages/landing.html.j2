@@ -1,0 +1,217 @@
+{# landing.html.j2 — Public landing page generated from genome problem statement + modules.
+   This is the first thing anyone sees. No login required.
+   Context (from ARCHIE): solution_name, solution_id, product, entities, problem_statement, success_metrics #}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ product_name }} — {{ product_tagline if product_tagline else 'Built with ARCHIE' }}</title>
+{% if product_favicon %}
+    <link rel="icon" href="{{ product_favicon }}">
+{% endif %}
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = { theme: { extend: { colors: {
+            primary: { DEFAULT: '{{ primary_color }}', 50: '{{ primary_color }}0d', 100: '{{ primary_color }}1a', 600: '{{ primary_color }}', 700: '{{ primary_color }}dd' },
+            accent: '{{ accent_color }}',
+        }}}}
+    </script>
+    <style>
+        .gradient-bg { background: linear-gradient(135deg, {{ primary_color }}08 0%, {{ accent_color }}08 100%); }
+    </style>
+</head>
+<body class="bg-white text-zinc-900 antialiased">
+
+{# ── Navigation ── #}
+<nav class="sticky top-0 z-50 bg-white/80 backdrop-blur-sm border-b border-zinc-100">
+    <div class="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+{% if product_logo %}
+            <img src="{{ product_logo }}" alt="{{ product_name }}" class="h-8 w-8 rounded">
+{% endif %}
+            <span class="text-lg font-bold text-zinc-900">{{ product_name }}</span>
+        </div>
+        <div class="flex items-center gap-4">
+            <a href="#features" class="text-sm text-zinc-600 hover:text-zinc-900 transition hidden sm:block">Features</a>
+            <a href="#modules" class="text-sm text-zinc-600 hover:text-zinc-900 transition hidden sm:block">Modules</a>
+{% raw %}
+            <a href="/auth/login" class="text-sm text-zinc-600 hover:text-zinc-900 transition">Sign In</a>
+            <a href="/auth/register" class="px-4 py-2 text-sm font-medium bg-primary text-white rounded-lg hover:opacity-90 transition">Get Started</a>
+{% endraw %}
+        </div>
+    </div>
+</nav>
+
+{# ── Hero ── #}
+<section class="gradient-bg">
+    <div class="max-w-6xl mx-auto px-6 py-24 lg:py-32">
+        <div class="max-w-3xl">
+{% if product_tagline %}
+            <p class="text-sm font-medium text-primary mb-4">{{ product_tagline }}</p>
+{% endif %}
+            <h1 class="text-4xl lg:text-5xl font-bold text-zinc-900 leading-tight mb-6">
+                {{ product_name }}
+            </h1>
+{% if problem_statement %}
+            <p class="text-lg text-zinc-600 leading-relaxed mb-8">
+                {{ problem_statement }}
+            </p>
+{% endif %}
+            <div class="flex flex-wrap gap-3">
+{% raw %}
+                <a href="/auth/register" class="px-6 py-3 text-sm font-semibold bg-primary text-white rounded-lg hover:opacity-90 transition shadow-lg shadow-primary/25">
+                    Start Free &rarr;
+                </a>
+                <a href="/docs" target="_blank" class="px-6 py-3 text-sm font-semibold border border-zinc-200 text-zinc-700 rounded-lg hover:bg-zinc-50 transition">
+                    API Documentation
+                </a>
+{% endraw %}
+            </div>
+        </div>
+    </div>
+</section>
+
+{# ── Success Metrics ── #}
+{% if success_metrics %}
+<section class="border-b border-zinc-100">
+    <div class="max-w-6xl mx-auto px-6 py-12">
+        <div class="grid grid-cols-2 lg:grid-cols-{{ [success_metrics | length, 4] | min }} gap-8">
+{% for metric in success_metrics[:4] %}
+            <div class="text-center">
+                <div class="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-3">
+                    <svg class="w-6 h-6 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                </div>
+                <p class="text-sm text-zinc-600">{{ metric }}</p>
+            </div>
+{% endfor %}
+        </div>
+    </div>
+</section>
+{% endif %}
+
+{# ── Features (generated from genome modules) ── #}
+<section id="features" class="py-20">
+    <div class="max-w-6xl mx-auto px-6">
+        <div class="text-center mb-12">
+            <h2 class="text-3xl font-bold text-zinc-900 mb-3">Everything you need</h2>
+            <p class="text-zinc-500 max-w-lg mx-auto">Built from enterprise architecture blueprints. Every feature is traced back to a business requirement.</p>
+        </div>
+        <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+{% set feature_icons = ['M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2', 'M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z', 'M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15', 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z', 'M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z', 'M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12'] %}
+            <div class="bg-white border border-zinc-200 rounded-xl p-6 hover:shadow-md transition-shadow">
+                <div class="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-4">
+                    <svg class="w-5 h-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                </div>
+                <h3 class="font-semibold text-zinc-900 mb-2">Full-Text Search</h3>
+                <p class="text-sm text-zinc-500">Search across all records instantly. Find anything with Ctrl+K.</p>
+            </div>
+            <div class="bg-white border border-zinc-200 rounded-xl p-6 hover:shadow-md transition-shadow">
+                <div class="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-4">
+                    <svg class="w-5 h-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="{{ feature_icons[1] }}"/></svg>
+                </div>
+                <h3 class="font-semibold text-zinc-900 mb-2">Enterprise Auth</h3>
+                <p class="text-sm text-zinc-500">Email verification, password reset, role-based access, token refresh.</p>
+            </div>
+            <div class="bg-white border border-zinc-200 rounded-xl p-6 hover:shadow-md transition-shadow">
+                <div class="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-4">
+                    <svg class="w-5 h-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="{{ feature_icons[2] }}"/></svg>
+                </div>
+                <h3 class="font-semibold text-zinc-900 mb-2">State Machines</h3>
+                <p class="text-sm text-zinc-500">Automated workflows with guard conditions and transition tracking.</p>
+            </div>
+            <div class="bg-white border border-zinc-200 rounded-xl p-6 hover:shadow-md transition-shadow">
+                <div class="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-4">
+                    <svg class="w-5 h-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="{{ feature_icons[3] }}"/></svg>
+                </div>
+                <h3 class="font-semibold text-zinc-900 mb-2">Export & Reports</h3>
+                <p class="text-sm text-zinc-500">Export any data as CSV or JSON. Download reports in one click.</p>
+            </div>
+            <div class="bg-white border border-zinc-200 rounded-xl p-6 hover:shadow-md transition-shadow">
+                <div class="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-4">
+                    <svg class="w-5 h-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="{{ feature_icons[4] }}"/></svg>
+                </div>
+                <h3 class="font-semibold text-zinc-900 mb-2">Email Notifications</h3>
+                <p class="text-sm text-zinc-500">Automated emails for verification, password reset, and alerts.</p>
+            </div>
+            <div class="bg-white border border-zinc-200 rounded-xl p-6 hover:shadow-md transition-shadow">
+                <div class="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-4">
+                    <svg class="w-5 h-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="{{ feature_icons[5] }}"/></svg>
+                </div>
+                <h3 class="font-semibold text-zinc-900 mb-2">File Storage</h3>
+                <p class="text-sm text-zinc-500">Upload documents and images. S3-compatible with local fallback.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+{# ── Modules (from genome) ── #}
+<section id="modules" class="py-20 bg-zinc-50">
+    <div class="max-w-6xl mx-auto px-6">
+        <div class="text-center mb-12">
+            <h2 class="text-3xl font-bold text-zinc-900 mb-3">Built for your domain</h2>
+            <p class="text-zinc-500 max-w-lg mx-auto">Every module maps to a real business capability from the architecture blueprint.</p>
+        </div>
+        <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+{% for entity in entities %}
+            <div class="bg-white border border-zinc-200 rounded-xl p-5 flex items-start gap-4">
+                <div class="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 text-primary font-bold text-sm">
+                    {{ entity.name_display[0] }}
+                </div>
+                <div>
+                    <h3 class="font-semibold text-zinc-900">{{ entity.name_display }}</h3>
+                    <p class="text-sm text-zinc-500 mt-1">
+{% if entity.status_field %}
+                        {{ entity.states | length }} states &middot;
+{% endif %}
+                        {{ entity.fields | length }} fields &middot; Full CRUD
+                    </p>
+                </div>
+            </div>
+{% endfor %}
+        </div>
+    </div>
+</section>
+
+{# ── CTA ── #}
+<section class="py-20">
+    <div class="max-w-3xl mx-auto px-6 text-center">
+        <h2 class="text-3xl font-bold text-zinc-900 mb-4">Ready to get started?</h2>
+        <p class="text-zinc-500 mb-8">Create your account and start managing your data in minutes.</p>
+        <div class="flex justify-center gap-3">
+{% raw %}
+            <a href="/auth/register" class="px-8 py-3 text-sm font-semibold bg-primary text-white rounded-lg hover:opacity-90 transition shadow-lg shadow-primary/25">
+                Create Free Account &rarr;
+            </a>
+            <a href="/docs" target="_blank" class="px-8 py-3 text-sm font-semibold border border-zinc-200 text-zinc-700 rounded-lg hover:bg-zinc-50 transition">
+                View API Docs
+            </a>
+{% endraw %}
+        </div>
+    </div>
+</section>
+
+{# ── Footer ── #}
+<footer class="border-t border-zinc-100 py-8">
+    <div class="max-w-6xl mx-auto px-6 flex flex-wrap items-center justify-between gap-4">
+        <p class="text-sm text-zinc-400">&copy; {{ now_year }} {{ product_name }}. Generated by ARCHIE.</p>
+        <div class="flex gap-4 text-sm text-zinc-400">
+{% if product and product.terms_url %}
+            <a href="{{ product.terms_url }}" class="hover:text-zinc-600 transition">Terms</a>
+{% endif %}
+{% if product and product.privacy_url %}
+            <a href="{{ product.privacy_url }}" class="hover:text-zinc-600 transition">Privacy</a>
+{% endif %}
+{% if product and product.support_email %}
+            <a href="mailto:{{ product.support_email }}" class="hover:text-zinc-600 transition">Support</a>
+{% endif %}
+{% raw %}
+            <a href="/docs" class="hover:text-zinc-600 transition">API</a>
+            <a href="/health" class="hover:text-zinc-600 transition">Status</a>
+{% endraw %}
+        </div>
+    </div>
+</footer>
+
+</body>
+</html>

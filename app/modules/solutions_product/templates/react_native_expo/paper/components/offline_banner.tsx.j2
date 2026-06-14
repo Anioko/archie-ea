@@ -1,0 +1,65 @@
+{# Offline / syncing status banner — Paper Banner component #}
+import { useState, useEffect } from "react"
+import { StyleSheet } from "react-native"
+import { Banner, Text } from "react-native-paper"
+import { MaterialCommunityIcons } from "@expo/vector-icons"
+import { useIsOnline, getPendingCount } from "@/lib/offline_cache"
+
+const OFFLINE_ICON = () => <MaterialCommunityIcons name="wifi-off" size={20} color="#dc2626" />
+const SYNCING_ICON = () => <MaterialCommunityIcons name="sync" size={20} color="#ca8a04" />
+
+const OFFLINE_ACTIONS: never[] = []
+const SYNCING_ACTIONS: never[] = []
+
+export function OfflineBanner() {
+  const isOnline = useIsOnline()
+  const [pendingCount, setPendingCount] = useState(0)
+
+  useEffect(() => {
+    getPendingCount().then(setPendingCount)
+    const interval = setInterval(() => getPendingCount().then(setPendingCount), 5000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const showOffline = !isOnline
+  const showSyncing = isOnline && pendingCount > 0
+
+  if (!showOffline && !showSyncing) return null
+
+  if (showOffline) {
+    return (
+      <Banner
+        visible={true}
+        icon={OFFLINE_ICON}
+        actions={OFFLINE_ACTIONS}
+        style={styles.offlineBanner}
+      >
+        <Text style={styles.offlineText}>
+          {pendingCount > 0
+            ? `Offline — ${pendingCount} change${pendingCount !== 1 ? "s" : ""} queued`
+            : "Offline — changes will sync when reconnected"}
+        </Text>
+      </Banner>
+    )
+  }
+
+  return (
+    <Banner
+      visible={true}
+      icon={SYNCING_ICON}
+      actions={SYNCING_ACTIONS}
+      style={styles.syncingBanner}
+    >
+      <Text style={styles.syncingText}>
+        Syncing {pendingCount} pending change{pendingCount !== 1 ? "s" : ""}…
+      </Text>
+    </Banner>
+  )
+}
+
+const styles = StyleSheet.create({
+  offlineBanner: { backgroundColor: "#fef2f2" },
+  offlineText: { color: "#991b1b", fontSize: 13, fontWeight: "600" },
+  syncingBanner: { backgroundColor: "#fefce8" },
+  syncingText: { color: "#854d0e", fontSize: 13, fontWeight: "600" },
+})

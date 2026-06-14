@@ -1,0 +1,30 @@
+{# 
+Toast Notification Container Component
+Include this in your base template to enable toast notifications site-wide
+#}
+
+{# Toast notifications are handled by Platform.toast (core/04-toast.js).
+   That module creates #platform-toast-container dynamically and provides
+   window.toast / window.showToast shims for backward compatibility.
+   Flash messages are converted to toasts below. #}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const t = (window.Platform && window.Platform.toast) || window.toast;
+    if (!t) return;
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                {% set toast_type = 'info' %}
+                {% if category == 'error' or category == 'danger' %}
+                    {% set toast_type = 'error' %}
+                {% elif category == 'success' %}
+                    {% set toast_type = 'success' %}
+                {% elif category == 'warning' %}
+                    {% set toast_type = 'warning' %}
+                {% endif %}
+                t.{{ toast_type }}({{ message|tojson }});
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+});
+</script>

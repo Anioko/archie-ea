@@ -1,0 +1,220 @@
+{# Component Specifications — collapsible cards per ApplicationComponent
+   Included inside Application Cooperation section of blueprint.html
+   Requires Alpine.js data context with componentSpecsMixin merged in #}
+
+<div class="mt-6 space-y-3">
+    <h4 class="text-sm font-semibold text-foreground flex items-center gap-2">
+        <span class="w-2 h-2 rounded-full bg-blue-500 inline-block"></span>
+        Component Specifications
+    </h4>
+
+    <template x-for="elem in (sectionElements['application_cooperation'] || [])" :key="elem.element_id || elem.id">
+        <div class="border border-border rounded-lg overflow-hidden">
+            {# Header: collapsible #}
+            <button
+                class="w-full flex items-center justify-between px-4 py-3 bg-muted/30 hover:bg-muted/50 transition-colors text-left"
+                x-on:click="toggleSpecExpanded(elem.element_id || elem.id)"
+            >
+                <div class="flex items-center gap-2">
+                    <svg class="w-4 h-4 text-muted-foreground transition-transform"
+                         :class="specExpanded[elem.element_id || elem.id] ? 'rotate-90' : ''"
+                         xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                    </svg>
+                    <span class="text-sm font-medium text-foreground" x-text="elem.element_name || elem.name"></span>
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-muted text-muted-foreground"
+                          x-text="elem.element_type || elem.type"></span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <template x-if="componentSpecs[elem.element_id || elem.id] && componentSpecs[elem.element_id || elem.id].spec_data && componentSpecs[elem.element_id || elem.id].spec_data.fields_status === 'confirmed'">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30">Confirmed</span>
+                    </template>
+                    <template x-if="componentSpecs[elem.element_id || elem.id] && componentSpecs[elem.element_id || elem.id].spec_data && componentSpecs[elem.element_id || elem.id].spec_data.fields_status === 'proposed'">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-amber-500/10 text-amber-600 border border-amber-500/30">Proposed</span>
+                    </template>
+                    <template x-if="!componentSpecs[elem.element_id || elem.id] || !componentSpecs[elem.element_id || elem.id].spec_data">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground border border-border">No Spec</span>
+                    </template>
+                </div>
+            </button>
+
+            {# Body: tabs for fields, api_contract, business_rules #}
+            <div x-show="specExpanded[elem.element_id || elem.id]" x-collapse class="border-t border-border">
+                {# Tab bar #}
+                <div class="flex border-b border-border">
+                    <button class="px-4 py-2 text-xs font-medium transition-colors"
+                            :class="(activeSpecTab[elem.element_id || elem.id] || 'fields') === 'fields' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'"
+                            x-on:click="setSpecTab(elem.element_id || elem.id, 'fields')">Data Model</button>
+                    <button class="px-4 py-2 text-xs font-medium transition-colors"
+                            :class="activeSpecTab[elem.element_id || elem.id] === 'api_contract' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'"
+                            x-on:click="setSpecTab(elem.element_id || elem.id, 'api_contract')">API Contract</button>
+                    <button class="px-4 py-2 text-xs font-medium transition-colors"
+                            :class="activeSpecTab[elem.element_id || elem.id] === 'business_rules' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'"
+                            x-on:click="setSpecTab(elem.element_id || elem.id, 'business_rules')">Business Rules</button>
+                </div>
+
+                {# ═══ Tab content: Fields ═══ #}
+                <div x-show="(activeSpecTab[elem.element_id || elem.id] || 'fields') === 'fields'" class="p-4">
+                    <div class="flex justify-between items-center mb-3">
+                        <span class="text-xs text-muted-foreground"
+                              x-text="'Version ' + ((componentSpecs[elem.element_id || elem.id] && componentSpecs[elem.element_id || elem.id].spec_data) ? (componentSpecs[elem.element_id || elem.id].spec_data.fields_version || 0) : 0)"></span>
+                        <div class="flex gap-2">
+                            <button class="inline-flex items-center px-3 py-1 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 rounded-md transition-colors"
+                                    x-on:click="inferSpec(elem.element_id || elem.id)"
+                                    :disabled="specLoading[elem.element_id || elem.id]">
+                                <span x-show="!specLoading[elem.element_id || elem.id]">Infer Fields</span>
+                                <span x-show="specLoading[elem.element_id || elem.id]">Inferring...</span>
+                            </button>
+                            <template x-if="componentSpecs[elem.element_id || elem.id] && componentSpecs[elem.element_id || elem.id].spec_data && componentSpecs[elem.element_id || elem.id].spec_data.fields_status === 'proposed'">
+                                <button class="inline-flex items-center px-3 py-1 text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-white rounded-md transition-colors"
+                                        x-on:click="confirmSpec(elem.element_id || elem.id, 'fields')">Confirm</button>
+                            </template>
+                        </div>
+                    </div>
+
+                    {# Fields table #}
+                    <template x-if="componentSpecs[elem.element_id || elem.id] && componentSpecs[elem.element_id || elem.id].spec_data && componentSpecs[elem.element_id || elem.id].spec_data.fields">
+                        <div class="overflow-x-auto rounded-lg border border-border">
+                            <table class="w-full text-xs">
+                                <thead>
+                                    <tr class="border-b border-border bg-muted/30">
+                                        <th class="text-left py-2 px-3 text-muted-foreground font-medium">Name</th>
+                                        <th class="text-left py-2 px-3 text-muted-foreground font-medium">Type</th>
+                                        <th class="text-left py-2 px-3 text-muted-foreground font-medium">Required</th>
+                                        <th class="text-left py-2 px-3 text-muted-foreground font-medium">Description</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-border">
+                                    <template x-for="field in componentSpecs[elem.element_id || elem.id].spec_data.fields" :key="field.name">
+                                        <tr class="hover:bg-muted/30 transition-colors">
+                                            <td class="py-2 px-3 text-foreground font-mono text-xs" x-text="field.name"></td>
+                                            <td class="py-2 px-3 text-muted-foreground" x-text="field.type + (field.format ? '(' + field.format + ')' : '')"></td>
+                                            <td class="py-2 px-3">
+                                                <span :class="field.required ? 'text-emerald-600' : 'text-muted-foreground'" x-text="field.required ? 'Yes' : 'No'"></span>
+                                            </td>
+                                            <td class="py-2 px-3 text-muted-foreground" x-text="field.description || ''"></td>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </div>
+                    </template>
+
+                    <template x-if="!componentSpecs[elem.element_id || elem.id] || !componentSpecs[elem.element_id || elem.id].spec_data || !componentSpecs[elem.element_id || elem.id].spec_data.fields">
+                        <p class="text-xs text-muted-foreground/60 italic">No fields defined. Click "Infer Fields" to generate from requirements.</p>
+                    </template>
+                </div>
+
+                {# ═══ Tab content: API Contract ═══ #}
+                <div x-show="activeSpecTab[elem.element_id || elem.id] === 'api_contract'" class="p-4">
+                    <div class="flex justify-between items-center mb-3">
+                        <span class="text-xs text-muted-foreground"
+                              x-text="'Version ' + ((componentSpecs[elem.element_id || elem.id] && componentSpecs[elem.element_id || elem.id].spec_data) ? (componentSpecs[elem.element_id || elem.id].spec_data.api_contract_version || 0) : 0)"></span>
+                        <div class="flex gap-2">
+                            <button class="inline-flex items-center px-3 py-1 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 rounded-md transition-colors"
+                                    x-on:click="inferSpec(elem.element_id || elem.id)"
+                                    :disabled="specLoading[elem.element_id || elem.id]">
+                                <span x-show="!specLoading[elem.element_id || elem.id]">Infer Contract</span>
+                                <span x-show="specLoading[elem.element_id || elem.id]">Inferring...</span>
+                            </button>
+                            <template x-if="componentSpecs[elem.element_id || elem.id] && componentSpecs[elem.element_id || elem.id].spec_data && componentSpecs[elem.element_id || elem.id].spec_data.api_contract_status === 'proposed'">
+                                <button class="inline-flex items-center px-3 py-1 text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-white rounded-md transition-colors"
+                                        x-on:click="confirmSpec(elem.element_id || elem.id, 'api_contract')">Confirm</button>
+                            </template>
+                        </div>
+                    </div>
+
+                    <template x-if="componentSpecs[elem.element_id || elem.id] && componentSpecs[elem.element_id || elem.id].spec_data && componentSpecs[elem.element_id || elem.id].spec_data.api_contract">
+                        <div class="space-y-3">
+                            {# Endpoints list #}
+                            <template x-if="componentSpecs[elem.element_id || elem.id].spec_data.api_contract.endpoints">
+                                <div class="overflow-x-auto rounded-lg border border-border">
+                                    <table class="w-full text-xs">
+                                        <thead>
+                                            <tr class="border-b border-border bg-muted/30">
+                                                <th class="text-left py-2 px-3 text-muted-foreground font-medium">Method</th>
+                                                <th class="text-left py-2 px-3 text-muted-foreground font-medium">Path</th>
+                                                <th class="text-left py-2 px-3 text-muted-foreground font-medium">Description</th>
+                                                <th class="text-left py-2 px-3 text-muted-foreground font-medium">Auth</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="divide-y divide-border">
+                                            <template x-for="ep in componentSpecs[elem.element_id || elem.id].spec_data.api_contract.endpoints" :key="ep.path + ep.method">
+                                                <tr class="hover:bg-muted/30 transition-colors">
+                                                    <td class="py-2 px-3">
+                                                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold"
+                                                              :class="ep.method === 'GET' ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/30' :
+                                                                      ep.method === 'POST' ? 'bg-blue-500/10 text-blue-600 border border-blue-500/30' :
+                                                                      ep.method === 'PUT' ? 'bg-amber-500/10 text-amber-600 border border-amber-500/30' :
+                                                                      ep.method === 'DELETE' ? 'bg-red-500/10 text-red-600 border border-red-500/30' :
+                                                                      'bg-muted text-muted-foreground'"
+                                                              x-text="ep.method"></span>
+                                                    </td>
+                                                    <td class="py-2 px-3 font-mono text-foreground" x-text="ep.path"></td>
+                                                    <td class="py-2 px-3 text-muted-foreground" x-text="ep.description || ''"></td>
+                                                    <td class="py-2 px-3 text-muted-foreground" x-text="ep.auth || 'required'"></td>
+                                                </tr>
+                                            </template>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+
+                    <template x-if="!componentSpecs[elem.element_id || elem.id] || !componentSpecs[elem.element_id || elem.id].spec_data || !componentSpecs[elem.element_id || elem.id].spec_data.api_contract">
+                        <p class="text-xs text-muted-foreground/60 italic">No API contract defined. Click "Infer Contract" to generate from component fields.</p>
+                    </template>
+                </div>
+
+                {# ═══ Tab content: Business Rules ═══ #}
+                <div x-show="activeSpecTab[elem.element_id || elem.id] === 'business_rules'" class="p-4">
+                    <div class="flex justify-between items-center mb-3">
+                        <span class="text-xs text-muted-foreground">Business Rules</span>
+                        <div class="flex gap-2">
+                            <button class="inline-flex items-center px-3 py-1 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 rounded-md transition-colors"
+                                    x-on:click="inferSpec(elem.element_id || elem.id)"
+                                    :disabled="specLoading[elem.element_id || elem.id]">
+                                <span x-show="!specLoading[elem.element_id || elem.id]">Infer Rules</span>
+                                <span x-show="specLoading[elem.element_id || elem.id]">Inferring...</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <template x-if="componentSpecs[elem.element_id || elem.id] && componentSpecs[elem.element_id || elem.id].spec_data && componentSpecs[elem.element_id || elem.id].spec_data.business_rules">
+                        <div class="space-y-2">
+                            <template x-for="rule in componentSpecs[elem.element_id || elem.id].spec_data.business_rules" :key="rule.id || rule.name">
+                                <div class="flex items-start justify-between p-3 rounded-lg border border-border bg-muted/20">
+                                    <div class="min-w-0 flex-1">
+                                        <div class="flex items-center gap-2 mb-1">
+                                            <span class="text-xs font-medium text-foreground" x-text="rule.name"></span>
+                                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium"
+                                                  :class="rule.status === 'confirmed' ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/30' :
+                                                          rule.status === 'proposed' ? 'bg-amber-500/10 text-amber-600 border border-amber-500/30' :
+                                                          'bg-muted text-muted-foreground'"
+                                                  x-text="rule.status || 'draft'"></span>
+                                        </div>
+                                        <p class="text-xs text-muted-foreground" x-text="rule.description || rule.condition || ''"></p>
+                                    </div>
+                                    <template x-if="rule.status === 'proposed'">
+                                        <button class="shrink-0 ml-3 inline-flex items-center px-2 py-1 text-[10px] font-medium bg-emerald-600 hover:bg-emerald-700 text-white rounded-md transition-colors"
+                                                x-on:click="confirmSpec(elem.element_id || elem.id, 'business_rules', rule.id || rule.name)">Confirm</button>
+                                    </template>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+
+                    <template x-if="!componentSpecs[elem.element_id || elem.id] || !componentSpecs[elem.element_id || elem.id].spec_data || !componentSpecs[elem.element_id || elem.id].spec_data.business_rules">
+                        <p class="text-xs text-muted-foreground/60 italic">No business rules defined. Click "Infer Rules" to generate from requirements and domain context.</p>
+                    </template>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    {# Empty state when no elements in section #}
+    <template x-if="!(sectionElements['application_cooperation'] || []).length">
+        <p class="text-xs text-muted-foreground/60 italic">Link Application Components to this section to define component specifications.</p>
+    </template>
+</div>

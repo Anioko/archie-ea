@@ -1,0 +1,72 @@
+{# shadcn/ui Card Component (v4-aligned)
+   
+   Matches shadcn/ui v4 New York card structure with data-slot attributes
+   for parent-child CSS targeting and container queries.
+
+   Usage:
+   {% import 'components/card.html' as card %}
+
+   {% call card.card() %}
+       {% call card.card_header() %}
+           {% call card.card_description() %}Total Revenue{% endcall %}
+           {% call card.card_title(class='tabular-nums') %}$1,250.00{% endcall %}
+           {% call card.card_action() %}
+               {% call badge.badge(variant='outline') %}+12.5%{% endcall %}
+           {% endcall %}
+       {% endcall %}
+       {% call card.card_footer(direction='col') %}
+           <div class="line-clamp-1 flex gap-2 font-medium">
+               Trending up this month
+           </div>
+           <div class="text-muted-foreground">Visitors for last 6 months</div>
+       {% endcall %}
+   {% endcall %}
+#}
+
+{% macro card(class='') %}
+    <div data-slot="card" class="rounded-xl border bg-card text-card-foreground shadow-sm {{ class }}">
+        {{ caller() }}
+    </div>
+{% endmacro %}
+
+{% macro card_header(class='') %}
+    <div data-slot="card-header" class="relative flex flex-col space-y-1.5 p-6 {{ class }}">
+        {{ caller() }}
+    </div>
+{% endmacro %}
+
+{% macro card_title(class='') %}
+    <h3 data-slot="card-title" class="text-2xl font-semibold leading-none tracking-tight {{ class }}">
+        {{ caller() }}
+    </h3>
+{% endmacro %}
+
+{% macro card_description(class='') %}
+    <p data-slot="card-description" class="text-sm text-muted-foreground {{ class }}">
+        {{ caller() }}
+    </p>
+{% endmacro %}
+
+{% macro card_action(class='') %}
+    <div data-slot="card-action" class="absolute top-4 right-4 {{ class }}">
+        {{ caller() }}
+    </div>
+{% endmacro %}
+
+{% macro card_content(class='') %}
+    <div data-slot="card-content" class="p-6 pt-0 {{ class }}">
+        {{ caller() }}
+    </div>
+{% endmacro %}
+
+{% macro card_footer(class='', direction='row') %}
+    {% if direction == 'col' %}
+    <div data-slot="card-footer" class="flex flex-col items-start gap-1.5 p-6 pt-0 text-sm {{ class }}">
+        {{ caller() }}
+    </div>
+    {% else %}
+    <div data-slot="card-footer" class="flex items-center p-6 pt-0 {{ class }}">
+        {{ caller() }}
+    </div>
+    {% endif %}
+{% endmacro %}

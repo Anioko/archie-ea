@@ -1,0 +1,142 @@
+{% extends "layouts/admin_base.html" %}
+{% block title %}Edit — {{ application.name }}{% endblock %}
+
+{% block breadcrumb %}
+{% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
+{{ breadcrumb_nav(items=[
+    {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
+    {'text': 'Applications', 'href': url_for('unified_applications.application_list')},
+    {'text': 'Edit', 'current': true}
+]) }}
+{% endblock %}
+
+{% block content %}
+<div class="container mx-auto max-w-3xl py-8 px-4">
+
+  <nav class="flex items-center gap-2 text-sm text-muted-foreground mb-6">
+    <a href="{{ url_for('unified_applications.application_list') }}" class="hover:text-foreground">Applications</a>
+    <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
+    <a href="{{ url_for('unified_applications.application_detail', id=application.id) }}" class="hover:text-foreground">{{ application.name }}</a>
+    <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
+    <span class="text-foreground">Edit</span>
+  </nav>
+
+  <h1 class="text-2xl font-bold mb-6">Edit Application</h1>
+
+  <form method="POST" action="{{ url_for('unified_applications.application_edit', id=application.id) }}" class="space-y-8">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="updated_at" value="{{ application.updated_at.isoformat() if application.updated_at else '' }}">
+
+    {# ── Identity ── #}
+    <section class="rounded-xl border border-border bg-card p-6 space-y-4">
+      <h2 class="text-lg font-semibold">Identity</h2>
+
+      <div>
+        <label for="name" class="block text-sm font-medium mb-1">Application Name <span class="text-destructive">*</span></label>
+        <input type="text" id="name" name="name" value="{{ application.name or '' }}" required
+               class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+      </div>
+
+      <div>
+        <label for="description" class="block text-sm font-medium mb-1">Description</label>
+        <textarea id="description" name="description" rows="3"
+                  class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">{{ application.description or '' }}</textarea>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label for="application_code" class="block text-sm font-medium mb-1">Application Code</label>
+          <!-- entity-picker-ok: readonly, Abacus-managed ID -->
+          <input type="text" id="application_code" name="application_code" value="{{ application.application_code or '' }}"
+                 class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" readonly>
+          <p class="text-xs text-muted-foreground mt-1">Managed by Abacus sync</p>
+        </div>
+        <div>
+          <label for="application_type" class="block text-sm font-medium mb-1">Application Type</label>
+          <!-- entity-picker-ok: free-text classification, no canonical type list -->
+          <input type="text" id="application_type" name="application_type" value="{{ application.component_type or '' }}"
+                 class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+        </div>
+      </div>
+    </section>
+
+    {# ── Ownership ── #}
+    <section class="rounded-xl border border-border bg-card p-6 space-y-4">
+      <h2 class="text-lg font-semibold">Ownership</h2>
+      <p class="text-sm text-muted-foreground">Assign owners to enable governance and accountability.</p>
+
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div>
+          <label for="business_owner" class="block text-sm font-medium mb-1">Business Owner</label>
+          <!-- entity-picker-ok: owners are free-text names, not platform users — Abacus has no structured user data -->
+          <input type="text" id="business_owner" name="business_owner" value="{{ application.business_owner or '' }}"
+                 placeholder="e.g. Jane Smith"
+                 class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+        </div>
+        <div>
+          <label for="technical_owner" class="block text-sm font-medium mb-1">Technical Owner</label>
+          <!-- entity-picker-ok: owners are free-text names -->
+          <input type="text" id="technical_owner" name="technical_owner" value="{{ application.technical_owner or '' }}"
+                 placeholder="e.g. John Doe"
+                 class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+        </div>
+        <div>
+          <label for="business_purpose" class="block text-sm font-medium mb-1">Business Purpose</label>
+          <input type="text" id="business_purpose" name="business_purpose" value="{{ application.business_purpose or '' }}"
+                 placeholder="e.g. Customer data management"
+                 class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+        </div>
+      </div>
+    </section>
+
+    {# ── Classification ── #}
+    <section class="rounded-xl border border-border bg-card p-6 space-y-4">
+      <h2 class="text-lg font-semibold">Classification</h2>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label for="criticality" class="block text-sm font-medium mb-1">Business Criticality</label>
+          <select id="criticality" name="criticality"
+                  class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+            <option value="">Not set</option>
+            {% for val in ['Critical', 'High', 'Medium', 'Low'] %}
+            <option value="{{ val }}" {% if application.business_criticality == val %}selected{% endif %}>{{ val }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label for="deployment_status" class="block text-sm font-medium mb-1">Deployment Status</label>
+          <select id="deployment_status" name="deployment_status"
+                  class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+            {% for val in ['production', 'development', 'testing', 'retired'] %}
+            <option value="{{ val }}" {% if application.deployment_status == val %}selected{% endif %}>{{ val | title }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label for="business_domain" class="block text-sm font-medium mb-1">Business Domain</label>
+          <input type="text" id="business_domain" name="business_domain" value="{{ application.business_domain or '' }}"
+                 placeholder="e.g. Manufacturing, Finance, HR"
+                 class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+        </div>
+        <div>
+          <label for="technology_stack" class="block text-sm font-medium mb-1">Technology Stack</label>
+          <input type="text" id="technology_stack" name="technology_stack" value="{{ application.technology_stack or '' }}"
+                 placeholder="e.g. Java, Spring Boot, PostgreSQL"
+                 class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+        </div>
+      </div>
+    </section>
+
+    {# ── Actions ── #}
+    <div class="flex items-center justify-between pt-2">
+      <a href="{{ url_for('unified_applications.application_detail', id=application.id) }}"
+         class="text-sm text-muted-foreground hover:text-foreground">Cancel</a>
+      <button type="submit"
+              class="inline-flex items-center gap-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-6 text-sm font-medium transition-colors">
+        <i data-lucide="save" class="h-4 w-4" aria-hidden="true"></i> Save Changes
+      </button>
+    </div>
+  </form>
+</div>
+{% endblock %}

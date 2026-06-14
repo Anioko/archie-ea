@@ -1,0 +1,30 @@
+{# app/(protected)/layout.tsx — Composes Sidebar + Topbar with RequireAuth wrapper.
+   Context: solution_name, modules (list of {slug, display_name_plural, user_facing, module_type, icon}), entity_slugs (list) #}
+"use client"
+
+// Prevent Next.js from statically pre-rendering auth-gated routes
+export const dynamic = "force-dynamic"
+
+import { RequireAuth } from "@/components/require-auth"
+import { Sidebar } from "@/components/layout/sidebar"
+import { Topbar } from "@/components/layout/topbar"
+
+export default function ProtectedLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <RequireAuth>
+      {/* Sidebar handles desktop (collapsible with tooltips) and mobile (hamburger + overlay drawer) */}
+      <div className="flex h-screen overflow-hidden bg-background">
+        <Sidebar />
+        <div className="flex flex-1 flex-col min-w-0 overflow-hidden">
+          {/* Topbar: breadcrumbs, search, notifications, user avatar + logout */}
+          <Topbar />
+          <main className="flex-1 overflow-y-auto">
+            <div className="container mx-auto p-6 max-w-7xl">
+              {children}
+            </div>
+          </main>
+        </div>
+      </div>
+    </RequireAuth>
+  )
+}

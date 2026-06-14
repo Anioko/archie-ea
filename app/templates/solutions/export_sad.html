@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SAD — {{ solution.name }}</title>
+    <style><!-- inline-style-ok -->
+        /* Print-optimized styling for Solution Architecture Document */
+        :root {
+            --primary: #2563eb;
+            --muted: #6b7280;
+            --border: #e5e7eb;
+            --bg-light: #f9fafb;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+            font-size: 11pt;
+            line-height: 1.6;
+            color: #1f2937;
+            max-width: 210mm;
+            margin: 0 auto;
+            padding: 20mm;
+        }
+
+        @media print {
+            body { padding: 15mm; max-width: none; }
+            .no-print { display: none !important; }
+            .page-break { page-break-before: always; }
+            @page { margin: 15mm 20mm; size: A4; }
+            @page :first { margin-top: 0; }
+        }
+
+        /* Print button bar */
+        .print-bar {
+            position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+            background: #1e293b; color: white; padding: 12px 24px;
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .print-bar button {
+            background: var(--primary); color: white; border: none;
+            padding: 8px 20px; border-radius: 6px; font-size: 13px;
+            font-weight: 600; cursor: pointer;
+        }
+        .print-bar button:hover { opacity: 0.9; }
+        .print-bar span { font-size: 13px; opacity: 0.7; }
+
+        /* Cover page */
+        .cover {
+            min-height: 80vh; display: flex; flex-direction: column;
+            justify-content: center; padding: 40px 0;
+        }
+        .cover h1 { font-size: 28pt; font-weight: 700; color: #0f172a; margin-bottom: 12px; }
+        .cover .subtitle { font-size: 14pt; color: var(--muted); margin-bottom: 40px; }
+        .cover .meta-grid {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+            border-top: 2px solid var(--primary); padding-top: 24px;
+        }
+        .cover .meta-item { }
+        .cover .meta-label { font-size: 9pt; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+        .cover .meta-value { font-size: 11pt; font-weight: 600; color: #1f2937; }
+
+        /* Document maturity badge */
+        .maturity-badge {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 4px 12px; border-radius: 20px; font-size: 10pt; font-weight: 600;
+        }
+        .maturity-high { background: #dcfce7; color: #166534; }
+        .maturity-medium { background: #fef3c7; color: #92400e; }
+        .maturity-low { background: #fee2e2; color: #991b1b; }
+
+        /* TOC */
+        .toc { margin: 24px 0 40px; }
+        .toc h2 { font-size: 14pt; margin-bottom: 12px; color: #0f172a; }
+        .toc ol { padding-left: 20px; }
+        .toc li { margin-bottom: 6px; font-size: 10.5pt; color: var(--muted); }
+        .toc a { color: inherit; text-decoration: none; }
+
+        /* Sections */
+        h2.section-title {
+            font-size: 16pt; font-weight: 700; color: #0f172a;
+            border-bottom: 2px solid var(--primary); padding-bottom: 8px;
+            margin: 32px 0 16px;
+        }
+        h3 { font-size: 12pt; font-weight: 600; color: #374151; margin: 20px 0 8px; }
+
+        p, li { font-size: 10.5pt; margin-bottom: 8px; }
+
+        /* Tables */
+        table {
+            width: 100%; border-collapse: collapse; margin: 12px 0 24px;
+            font-size: 9.5pt;
+        }
+        th {
+            background: var(--bg-light); font-weight: 600; text-align: left;
+            padding: 8px 10px; border: 1px solid var(--border);
+            font-size: 8.5pt; text-transform: uppercase; letter-spacing: 0.03em; color: var(--muted);
+        }
+        td { padding: 7px 10px; border: 1px solid var(--border); vertical-align: top; }
+        tr:nth-child(even) td { background: #fafafa; }
+
+        /* Status badges */
+        .badge {
+            display: inline-block; padding: 2px 8px; border-radius: 10px;
+            font-size: 8pt; font-weight: 600; text-transform: uppercase;
+        }
+        .badge-active { background: #dcfce7; color: #166534; }
+        .badge-sunset, .badge-deprecated { background: #fef3c7; color: #92400e; }
+        .badge-retired, .badge-decommissioned { background: #fee2e2; color: #991b1b; }
+        .badge-draft { background: #e0e7ff; color: #3730a3; }
+        .badge-high, .badge-critical { background: #fee2e2; color: #991b1b; }
+        .badge-medium { background: #fef3c7; color: #92400e; }
+        .badge-low { background: #dcfce7; color: #166534; }
+
+        /* Empty state */
+        .empty-state {
+            padding: 16px; background: var(--bg-light); border-radius: 6px;
+            color: var(--muted); font-style: italic; font-size: 10pt;
+            border-left: 3px solid var(--border);
+        }
+
+        /* Footer */
+        .doc-footer {
+            margin-top: 60px; padding-top: 16px;
+            border-top: 1px solid var(--border);
+            font-size: 8.5pt; color: var(--muted);
+            display: flex; justify-content: space-between;
+        }
+    </style>
+</head>
+<body>
+    <!-- Print action bar (hidden in print) -->
+    <div class="print-bar no-print">
+        <div>
+            <strong>Solution Architecture Document</strong> — {{ solution.name }}
+        </div>
+        <div style="display:flex;gap:12px;align-items:center;"><!-- inline-style-ok -->
+            <span>Use your browser's Print (Ctrl+P) to save as PDF</span>
+            <button id="sad-print-btn">Print / Save as PDF</button><!-- inline-event-ok -->
+            <button id="sad-close-btn" style="background:#475569;">Close</button><!-- inline-event-ok --><!-- inline-style-ok -->
+        </div>
+    </div>
+    <div style="height:50px" class="no-print"></div><!-- inline-style-ok -->
+
+    <!-- COVER PAGE -->
+    <div class="cover">
+        <div style="margin-bottom:24px;"><!-- inline-style-ok -->
+            <span style="font-size:10pt;font-weight:600;color:var(--primary);letter-spacing:0.05em;">A.R.C.H.I.E. — SOLUTION ARCHITECTURE DOCUMENT</span><!-- inline-style-ok -->
+        </div>
+        <h1>{{ solution.name }}</h1>
+        <div class="subtitle">{{ solution.description[:200] if solution.description else 'No description provided.' }}{{ '...' if solution.description and solution.description|length > 200 else '' }}</div>
+
+        <div class="meta-grid">
+            <div class="meta-item">
+                <div class="meta-label">Solution Type</div>
+                <div class="meta-value">{{ solution.solution_type or '—' }}</div>
+            </div>
+            <div class="meta-item">
+                <div class="meta-label">Business Domain</div>
+                <div class="meta-value">{{ solution.business_domain or '—' }}</div>
+            </div>
+            <div class="meta-item">
+                <div class="meta-label">Status</div>
+                <div class="meta-value">{{ solution.status or 'Draft' }}</div>
+            </div>
+            <div class="meta-item">
+                <div class="meta-label">ADM Phase</div>
+                <div class="meta-value">Phase {{ solution.adm_phase or 'A' }}</div>
+            </div>
+            <div class="meta-item">
+                <div class="meta-label">Owner</div>
+                <div class="meta-value">{{ solution.solution_owner or '—' }}</div>
+            </div>
+            <div class="meta-item">
+                <div class="meta-label">Technical Lead</div>
+                <div class="meta-value">{{ solution.technical_lead or '—' }}</div>
+            </div>
+            <div class="meta-item">
+                <div class="meta-label">Document Maturity</div>
+                <div class="meta-value">
+                    {% set mat = maturity_score|default(0) %}
+                    <span class="maturity-badge {% if mat >= 70 %}maturity-high{% elif mat >= 40 %}maturity-medium{% else %}maturity-low{% endif %}">
+                        {{ mat }} / 100
+                    </span>
+                </div>
+            </div>
+            <div class="meta-item">
+                <div class="meta-label">Governance Status</div>
+                <div class="meta-value">{{ solution.governance_status or 'draft' }}</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TABLE OF CONTENTS -->
+    <div class="page-break"></div>
+    <div class="toc">
+        <h2>Table of Contents</h2>
+        <ol>
+            <li><a href="#linked-apps">Linked Applications</a></li>
+            <li><a href="#drivers">Architecture Drivers</a></li>
+            <li><a href="#goals">Goals & Objectives</a></li>
+            <li><a href="#requirements">Requirements</a></li>
+            <li><a href="#constraints">Constraints</a></li>
+            <li><a href="#archimate">ArchiMate Elements</a></li>
+            <li><a href="#risks">Risk Assessment</a></li>
+            <li><a href="#tco">Total Cost of Ownership</a></li>
+            <li><a href="#metrics">Success Metrics</a></li>
+            <li><a href="#arb">ARB Review History</a></li>
+        </ol>
+    </div>
+
+    <!-- SECTION: LINKED APPLICATIONS -->
+    <h2 class="section-title" id="linked-apps">1. Linked Applications</h2>
+    {% if applications %}
+    <table>
+        <thead>
+            <tr><th>#</th><th>Application</th><th>Status</th><th>Criticality</th><th>Technology</th></tr>
+        </thead>
+        <tbody>
+            {% for app in applications %}
+            <tr>
+                <td>{{ loop.index }}</td>
+                <td><strong>{{ app.name }}</strong></td>
+                <td><span class="badge badge-{{ (app.lifecycle_status or 'active')|lower|replace(' ', '-') }}">{{ app.lifecycle_status or 'Active' }}</span></td>
+                <td>{{ app.criticality or '—' }}</td>
+                <td>{{ app.technology_stack[:60] if app.technology_stack else '—' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">Not yet completed — link applications that this solution impacts, replaces, or introduces.</div>
+    {% endif %}
+
+    <!-- SECTION: DRIVERS -->
+    <h2 class="section-title" id="drivers">2. Architecture Drivers</h2>
+    {% set drivers = analysis_data.get('drivers', []) if analysis_data else [] %}
+    {% if drivers %}
+    <table>
+        <thead><tr><th>Driver</th><th>Type</th><th>Description</th></tr></thead>
+        <tbody>
+            {% for d in drivers %}
+            <tr>
+                <td><strong>{{ d.name }}</strong></td>
+                <td>{{ d.driver_type.value if d.driver_type else 'internal' }}</td>
+                <td>{{ d.description or '—' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">Not yet completed — identify the business and technology drivers motivating this solution.</div>
+    {% endif %}
+
+    <!-- SECTION: GOALS -->
+    <h2 class="section-title" id="goals">3. Goals & Objectives</h2>
+    {% set goals = analysis_data.get('goals', []) if analysis_data else [] %}
+    {% if goals %}
+    <table>
+        <thead><tr><th>Goal</th><th>Description</th></tr></thead>
+        <tbody>
+            {% for g in goals %}
+            <tr><td><strong>{{ g.name }}</strong></td><td>{{ g.description or '—' }}</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">Not yet completed — define measurable goals that this solution must achieve.</div>
+    {% endif %}
+
+    <!-- SECTION: REQUIREMENTS -->
+    <h2 class="section-title" id="requirements">4. Requirements</h2>
+    {% set requirements = analysis_data.get('requirements', []) if analysis_data else [] %}
+    {% if requirements %}
+    <table>
+        <thead><tr><th>Requirement</th><th>Type</th><th>Priority</th><th>Description</th></tr></thead>
+        <tbody>
+            {% for r in requirements %}
+            <tr>
+                <td><strong>{{ r.name }}</strong></td>
+                <td>{{ r.requirement_type or 'functional' }}</td>
+                <td>{{ r.priority or '—' }}</td>
+                <td>{{ r.description or '—' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">Not yet completed — capture functional and non-functional requirements.</div>
+    {% endif %}
+
+    <!-- SECTION: CONSTRAINTS -->
+    <h2 class="section-title" id="constraints">5. Constraints</h2>
+    {% set constraints = analysis_data.get('constraints', []) if analysis_data else [] %}
+    {% if constraints %}
+    <table>
+        <thead><tr><th>Constraint</th><th>Type</th><th>Description</th></tr></thead>
+        <tbody>
+            {% for c in constraints %}
+            <tr>
+                <td><strong>{{ c.name }}</strong></td>
+                <td>{{ c.constraint_type.value if c.constraint_type else 'general' }}</td>
+                <td>{{ c.description or '—' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">Not yet completed — document constraints (budget, timeline, regulatory, technology mandates).</div>
+    {% endif %}
+
+    <!-- SECTION: ARCHIMATE ELEMENTS -->
+    <div class="page-break"></div>
+    <h2 class="section-title" id="archimate">6. ArchiMate Elements</h2>
+    {% if archimate_elements %}
+    <table>
+        <thead><tr><th>Element</th><th>Type</th><th>Layer</th><th>Role</th></tr></thead>
+        <tbody>
+            {% for el in archimate_elements %}
+            <tr>
+                <td><strong>{{ el.name }}</strong></td>
+                <td>{{ el.element_type or el.type or '—' }}</td>
+                <td>{{ el.layer or '—' }}</td>
+                <td>{{ el.role or '—' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">Not yet completed — link ArchiMate elements that represent this solution's architecture.</div>
+    {% endif %}
+
+    <!-- SECTION: TRACEABILITY CHAIN -->
+    <h2 class="section-title" id="traceability">7. Traceability Chain</h2>
+    {% if traceability_chain %}
+    <p>Cross-layer relationships showing how motivation drives architecture through to implementation.</p>
+    <table>
+        <thead><tr><th>Source</th><th>Type</th><th>Relationship</th><th>Target</th><th>Type</th></tr></thead>
+        <tbody>
+            {% for t in traceability_chain %}
+            <tr>
+                <td><strong>{{ t.source_name }}</strong></td>
+                <td>{{ t.source_type }}</td>
+                <td style="text-align:center;color:var(--primary);font-weight:600;">{{ t.relationship }}</td><!-- inline-style-ok -->
+                <td><strong>{{ t.target_name }}</strong></td>
+                <td>{{ t.target_type }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">No traceability relationships yet.</div>
+    {% endif %}
+
+    <!-- SECTION: RISKS -->
+    <h2 class="section-title" id="risks">8. Risk Assessment</h2>
+    {% if risks %}
+    <table>
+        <thead><tr><th>Risk</th><th>Impact</th><th>Likelihood</th><th>Status</th><th>Mitigation</th></tr></thead>
+        <tbody>
+            {% for r in risks %}
+            <tr>
+                <td><strong>{{ r.risk_description or r.description or '—' }}</strong></td>
+                <td><span class="badge badge-{{ (r.impact or 'medium')|lower }}">{{ r.impact or '—' }}</span></td>
+                <td>{{ r.probability or r.likelihood or '—' }}</td>
+                <td>{{ r.status or 'open' }}</td>
+                <td>{{ r.mitigation or '—' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">Not yet completed — identify and assess architecture risks with mitigation strategies.</div>
+    {% endif %}
+
+    <!-- SECTION: TCO -->
+    <h2 class="section-title" id="tco">8. Total Cost of Ownership</h2>
+    {% if tco_items %}
+    {% set total_cost = tco_items|map(attribute='amount')|select('number')|sum %}
+    <p><strong>Total Estimated Cost:</strong> {{ "{:,.0f}".format(total_cost) }}</p>
+    <table>
+        <thead><tr><th>Category</th><th>Year</th><th>Recurring</th><th>Amount</th></tr></thead>
+        <tbody>
+            {% for t in tco_items %}
+            <tr>
+                <td>{{ t.cost_category or '—' }}</td>
+                <td>Year {{ t.year or '—' }}</td>
+                <td>{{ 'Recurring' if t.is_recurring else 'One-time' }}</td>
+                <td>{{ "{:,.0f}".format(t.amount or 0) }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">Not yet completed — break down costs by category (licensing, infrastructure, migration, training, support).</div>
+    {% endif %}
+
+    <!-- SECTION: METRICS -->
+    <h2 class="section-title" id="metrics">9. Success Metrics</h2>
+    {% if metrics %}
+    <table>
+        <thead><tr><th>Metric</th><th>Baseline</th><th>Target</th></tr></thead>
+        <tbody>
+            {% for m in metrics %}
+            <tr>
+                <td><strong>{{ m.name }}</strong></td>
+                <td>{{ m.baseline_value or '—' }}</td>
+                <td>{{ m.target_value or '—' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">Not yet completed — define measurable success criteria with baseline and target values.</div>
+    {% endif %}
+
+    <!-- SECTION: ARB REVIEW -->
+    <h2 class="section-title" id="arb">10. ARB Review History</h2>
+    {% if arb_reviews %}
+    <table>
+        <thead><tr><th>Submitted</th><th>Reviewer</th><th>Decision</th><th>Notes</th></tr></thead>
+        <tbody>
+            {% for r in arb_reviews %}
+            <tr>
+                <td>{{ r.created_at.strftime('%Y-%m-%d') if r.created_at else '—' }}</td>
+                <td>{{ r.reviewer.email if r.reviewer else '—' }}</td>
+                <td><span class="badge badge-{{ (r.status or 'draft')|lower }}">{{ r.status or 'pending' }}</span></td>
+                <td>{{ r.review_notes[:100] if r.review_notes else '—' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">No ARB reviews yet — submit this solution for Architecture Review Board assessment.</div>
+    {% endif %}
+
+    <!-- FOOTER -->
+    <div class="doc-footer">
+        <span>Generated by A.R.C.H.I.E. Enterprise Architecture Platform</span>
+        <span>{{ export_timestamp }}</span>
+    </div>
+    <script>
+        document.getElementById('sad-print-btn').addEventListener('click', function() { window.print(); });
+        document.getElementById('sad-close-btn').addEventListener('click', function() { window.close(); });
+    </script>
+</body>
+</html>

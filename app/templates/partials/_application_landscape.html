@@ -1,0 +1,226 @@
+{#
+  Application Landscape Partial — SA-011
+
+  Renders three toggled views of the application landscape for TOGAF Phase C.
+
+  Context variables expected:
+    pattern_distribution  — list of {pattern, count, pct}
+    disposition_grid      — list of {app_id, app_name, domain, disposition, arch_pattern}
+    sad_sections          — dict; uses sad_sections.sad_06_integration_architecture
+                            which should contain {integration_count, by_type}
+#}
+
+<div x-data="{ activeTab: 'patterns' }" class="space-y-4">
+
+  {# ── Tab navigation ── #}
+  <div class="flex gap-1 border-b border-border pb-0">
+    <button
+      @click="activeTab = 'patterns'"
+      :class="activeTab === 'patterns'
+        ? 'border-b-2 border-primary text-primary font-semibold'
+        : 'text-muted-foreground hover:text-foreground'"
+      class="px-4 py-2 text-sm transition-colors"
+      type="button"
+    >
+      Arch Patterns
+    </button>
+    <button
+      @click="activeTab = 'dispositions'"
+      :class="activeTab === 'dispositions'
+        ? 'border-b-2 border-primary text-primary font-semibold'
+        : 'text-muted-foreground hover:text-foreground'"
+      class="px-4 py-2 text-sm transition-colors"
+      type="button"
+    >
+      Disposition Grid
+    </button>
+    <button
+      @click="activeTab = 'integration'"
+      :class="activeTab === 'integration'
+        ? 'border-b-2 border-primary text-primary font-semibold'
+        : 'text-muted-foreground hover:text-foreground'"
+      class="px-4 py-2 text-sm transition-colors"
+      type="button"
+    >
+      Integration Topology
+    </button>
+  </div>
+
+  {# ══════════════════════════════════════════════════
+     Tab 1 — Arch Pattern Distribution
+  ══════════════════════════════════════════════════ #}
+  <div x-show="activeTab === 'patterns'" x-cloak>
+    {% if pattern_distribution %}
+    <div class="space-y-3">
+      {% for item in pattern_distribution %}
+      {%- set pattern_lower = item.pattern | lower %}
+      {%- if 'monolith' in pattern_lower %}
+        {%- set bar_color = 'bg-destructive' %}
+        {%- set badge_color = 'bg-destructive/10 text-red-800' %}
+      {%- elif 'legacy' in pattern_lower %}
+        {%- set bar_color = 'bg-orange-500' %}
+        {%- set badge_color = 'bg-orange-100 text-orange-800' %}
+      {%- elif 'microservice' in pattern_lower %}
+        {%- set bar_color = 'bg-emerald-500' %}
+        {%- set badge_color = 'bg-emerald-500/10 text-green-800' %}
+      {%- elif 'saas' in pattern_lower %}
+        {%- set bar_color = 'bg-primary' %}
+        {%- set badge_color = 'bg-primary/10 text-primary/90' %}
+      {%- else %}
+        {%- set bar_color = 'bg-muted/70' %}
+        {%- set badge_color = 'bg-muted text-foreground' %}
+      {%- endif %}
+      <div class="flex items-center gap-3">
+        <span class="w-32 shrink-0 text-sm font-medium text-foreground truncate" title="{{ item.pattern }}">
+          {{ item.pattern }}
+        </span>
+        <div class="flex-1 rounded-full bg-muted h-3 overflow-hidden">
+          {%- set pct_int = (item.pct | int) %}
+          {%- if pct_int <= 5 %}
+            {%- set w_class = 'w-[5%]' %}
+          {%- elif pct_int <= 10 %}
+            {%- set w_class = 'w-[10%]' %}
+          {%- elif pct_int <= 20 %}
+            {%- set w_class = 'w-1/5' %}
+          {%- elif pct_int <= 25 %}
+            {%- set w_class = 'w-1/4' %}
+          {%- elif pct_int <= 33 %}
+            {%- set w_class = 'w-1/3' %}
+          {%- elif pct_int <= 40 %}
+            {%- set w_class = 'w-2/5' %}
+          {%- elif pct_int <= 50 %}
+            {%- set w_class = 'w-1/2' %}
+          {%- elif pct_int <= 60 %}
+            {%- set w_class = 'w-3/5' %}
+          {%- elif pct_int <= 66 %}
+            {%- set w_class = 'w-2/3' %}
+          {%- elif pct_int <= 75 %}
+            {%- set w_class = 'w-3/4' %}
+          {%- elif pct_int <= 80 %}
+            {%- set w_class = 'w-4/5' %}
+          {%- elif pct_int <= 90 %}
+            {%- set w_class = 'w-[90%]' %}
+          {%- else %}
+            {%- set w_class = 'w-full' %}
+          {%- endif %}
+          <div class="{{ bar_color }} {{ w_class }} h-full rounded-full transition-all duration-300"></div>
+        </div>
+        <span class="w-8 text-right text-sm tabular-nums text-muted-foreground">{{ item.pct }}%</span>
+        <span class="px-2 py-0.5 rounded-full text-xs font-medium {{ badge_color }}">{{ item.count }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="flex flex-col items-center justify-center py-12 text-center text-muted-foreground">
+      <i data-lucide="bar-chart-2" class="h-10 w-10 mb-3 opacity-30"></i>
+      <p class="text-sm">No pattern data available.</p>
+    </div>
+    {% endif %}
+  </div>
+
+  {# ══════════════════════════════════════════════════
+     Tab 2 — Application Disposition Grid
+  ══════════════════════════════════════════════════ #}
+  <div x-show="activeTab === 'dispositions'" x-cloak>
+    {% if disposition_grid %}
+    {%- set disposition_order = ['Retire', 'Replace', 'Re-engineer', 'Retain', 'Review'] %}
+    {%- set grouped = {} %}
+    {%- for app in disposition_grid %}
+      {%- set disp = app.disposition if app.disposition else 'Review' %}
+      {%- if disp not in grouped %}
+        {%- set _ = grouped.update({disp: []}) %}
+      {%- endif %}
+      {%- set _ = grouped[disp].append(app) %}
+    {%- endfor %}
+
+    <div class="space-y-6">
+      {%- for disp in disposition_order %}
+        {%- if disp in grouped %}
+        {%- if disp == 'Retire' %}
+          {%- set section_color = 'border-destructive/50' %}
+          {%- set badge_color = 'bg-destructive/10 text-destructive' %}
+          {%- set header_color = 'text-destructive' %}
+        {%- elif disp == 'Replace' %}
+          {%- set section_color = 'border-amber-400/50' %}
+          {%- set badge_color = 'bg-amber-100 text-amber-800' %}
+          {%- set header_color = 'text-amber-700' %}
+        {%- elif disp == 'Re-engineer' %}
+          {%- set section_color = 'border-blue-400/50' %}
+          {%- set badge_color = 'bg-primary/10 text-primary/90' %}
+          {%- set header_color = 'text-primary' %}
+        {%- elif disp == 'Retain' %}
+          {%- set section_color = 'border-green-400/50' %}
+          {%- set badge_color = 'bg-emerald-500/10 text-green-800' %}
+          {%- set header_color = 'text-emerald-700' %}
+        {%- else %}
+          {%- set section_color = 'border-border' %}
+          {%- set badge_color = 'bg-muted text-muted-foreground' %}
+          {%- set header_color = 'text-muted-foreground' %}
+        {%- endif %}
+        <div class="rounded-lg border {{ section_color }} p-4">
+          <div class="flex items-center gap-2 mb-3">
+            <span class="px-2.5 py-1 rounded-full text-xs font-semibold {{ badge_color }}">{{ disp }}</span>
+            <span class="text-xs text-muted-foreground">{{ grouped[disp] | length }} application{{ 's' if grouped[disp] | length != 1 }}</span>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+            {%- for app in grouped[disp] %}
+            <div class="flex flex-col gap-1 rounded-md border border-border bg-background p-3 hover:bg-muted/40 transition-colors">
+              <span class="text-sm font-medium text-foreground leading-tight">{{ app.app_name }}</span>
+              <span class="text-xs text-muted-foreground">{{ app.domain }}</span>
+              {% if app.arch_pattern %}
+              <span class="mt-1 self-start px-2 py-0.5 rounded-full text-xs font-medium bg-secondary text-secondary-foreground">
+                {{ app.arch_pattern }}
+              </span>
+              {% endif %}
+            </div>
+            {%- endfor %}
+          </div>
+        </div>
+        {%- endif %}
+      {%- endfor %}
+    </div>
+    {% else %}
+    <div class="flex flex-col items-center justify-center py-12 text-center text-muted-foreground">
+      <i data-lucide="layout-grid" class="h-10 w-10 mb-3 opacity-30"></i>
+      <p class="text-sm">No application disposition data available.</p>
+    </div>
+    {% endif %}
+  </div>
+
+  {# ══════════════════════════════════════════════════
+     Tab 3 — Integration Topology Summary
+  ══════════════════════════════════════════════════ #}
+  <div x-show="activeTab === 'integration'" x-cloak>
+    {%- set integration_data = sad_sections.sad_06_integration_architecture if sad_sections else None %}
+    {% if integration_data %}
+    <div class="space-y-4">
+      <div class="flex items-center gap-6 rounded-lg border border-border bg-muted/30 p-4">
+        <div class="text-center">
+          <p class="text-2xl font-bold tabular-nums">{{ integration_data.integration_count }}</p>
+          <p class="text-xs text-muted-foreground mt-1">Total Integrations</p>
+        </div>
+        {% if integration_data.by_type %}
+        <div class="flex-1 grid grid-cols-2 sm:grid-cols-3 gap-3">
+          {%- for type_name, type_count in integration_data.by_type.items() %}
+          <div class="rounded-md border border-border bg-background p-3 text-center">
+            <p class="text-lg font-semibold tabular-nums">{{ type_count }}</p>
+            <p class="text-xs text-muted-foreground truncate" title="{{ type_name }}">{{ type_name }}</p>
+          </div>
+          {%- endfor %}
+        </div>
+        {% endif %}
+      </div>
+
+      {% if integration_data.by_type is not defined or not integration_data.by_type %}
+      <p class="text-xs text-muted-foreground">Integration breakdown by type not available.</p>
+      {% endif %}
+    </div>
+    {% else %}
+    <div class="flex flex-col items-center justify-center py-12 text-center text-muted-foreground">
+      <i data-lucide="network" class="h-10 w-10 mb-3 opacity-30"></i>
+      <p class="text-sm">No integration topology data available.</p>
+    </div>
+    {% endif %}
+  </div>
+
+</div>

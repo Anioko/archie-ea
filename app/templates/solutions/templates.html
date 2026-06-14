@@ -1,0 +1,142 @@
+﻿{% extends "layouts/admin_base.html" %}
+{% from "components/page_header.html" import page_header %}
+{% from "components/modal.html" import modal %}
+
+{% block title %}Solution Templates{% endblock %}
+
+{% block content %}
+<!-- modal-a11y-ok -->
+<div class="container mx-auto px-4 sm:px-6 lg:px-8 py-6 max-w-7xl"
+     x-data="solutionTemplateCatalogue()">
+    {{ page_header(
+        title='Solution Design Templates',
+        description='Start with a pre-built scaffold for common architecture patterns',
+        breadcrumbs=[
+            {'label': 'Dashboard', 'href': url_for('main.index')},
+            {'label': 'Solutions Management', 'href': url_for('solution_design.list_solutions')},
+            {'label': 'Templates'}
+        ]
+    ) }}
+
+    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 mt-6" id="template-grid">
+        {% for tpl in templates %}
+        <div data-slot="card" class="rounded-xl border bg-card shadow-sm flex flex-col">
+            <div class="p-6 flex-1">
+                <div class="flex items-start justify-between mb-3">
+                    <h3 class="text-base font-semibold leading-tight">{{ tpl.name }}</h3>
+                    <span class="ml-3 inline-flex items-center rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary whitespace-nowrap">
+                        {{ tpl.element_count }} elements
+                    </span>
+                </div>
+                <p class="text-sm text-muted-foreground leading-relaxed">{{ tpl.description }}</p>
+            </div>
+            <div class="px-6 pb-6">
+                <button
+                    type="button"
+                    class="w-full inline-flex items-center justify-center gap-2 rounded-lg border border-input bg-background px-4 py-2 text-sm font-medium shadow-sm hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors"
+                    @click="selectTemplate('{{ tpl.id }}', '{{ tpl.name | e }}')"
+                    aria-label="Use template: {{ tpl.name | e }}"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+                         fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                         stroke-linejoin="round" aria-hidden="true">
+                        <rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/>
+                        <rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/>
+                    </svg>
+                    Use this template
+                </button>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+{# Name-capture modal using Platform.modal #}
+{% call modal(id='template-name-modal', title='Name your solution', size='sm') %}
+<div x-data="solutionTemplateCatalogue()" @open-template-modal.window="receiveName($event)">
+    <p class="text-sm text-muted-foreground mb-4">
+        Creating from template: <strong x-text="selectedTemplateName"></strong>
+    </p>
+    <div class="space-y-4">
+        <div>
+            <label for="solution-name-input" class="block text-sm font-medium mb-1">Solution name</label>
+            <input id="solution-name-input" type="text" x-model="solutionName"
+                   class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                   placeholder="e.g. My Microservices Platform" />
+        </div>
+        <div class="flex justify-end gap-3 pt-2">
+            <button type="button"
+                    data-modal-close="template-name-modal"
+                    class="inline-flex items-center justify-center rounded-lg border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-accent transition-colors">
+                Cancel
+            </button>
+            <button type="button"
+                    class="inline-flex items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+                    @click="doCreate()"
+                    :disabled="!solutionName.trim()">
+                Create Solution
+            </button>
+        </div>
+    </div>
+</div>
+{% endcall %}
+
+<script>
+function solutionTemplateCatalogue() {
+    return {
+        selectedTemplateId: '',
+        selectedTemplateName: '',
+        solutionName: '',
+
+        selectTemplate(templateId, templateName) {
+            this.selectedTemplateId = templateId;
+            this.selectedTemplateName = templateName;
+            this.solutionName = templateName;
+            Platform.modal.open('template-name-modal');
+            // Notify the modal's separate Alpine instance so it gets template context
+            window.dispatchEvent(new CustomEvent('open-template-modal', {
+                detail: { templateId: templateId, templateName: templateName }
+            }));
+            this.$nextTick(function () {
+                let input = document.getElementById('solution-name-input');
+                if (input) { input.focus(); input.select(); }
+            });
+        },
+
+        receiveName(event) {
+            if (event.detail && event.detail.templateId) {
+                this.selectedTemplateId = event.detail.templateId;
+                this.selectedTemplateName = event.detail.templateName;
+                this.solutionName = event.detail.templateName;
+            }
+        },
+
+        doCreate() {
+            let name = this.solutionName.trim();
+            if (!name) return;
+            let tid = this.selectedTemplateId;
+            Platform.modal.close('template-name-modal');
+            fetch("{{ url_for('solution_design.create_solution_from_template') }}", {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': (document.querySelector('meta[name="csrf-token"]') || {}).content || ''
+                },
+                body: JSON.stringify({ template_id: tid, solution_name: name })
+            })
+            .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
+            .then(function (res) {
+                if (res.ok && res.data.success) {
+                    window.location.href = res.data.redirect || '/solutions/' + res.data.solution_id;
+                } else {
+                    Platform.toast.error('Could not create solution: ' + (res.data.error || 'unknown error'));
+                }
+            })
+            .catch(function (err) {
+                Platform.toast.error('Request failed: ' + err.message);
+            });
+        }
+    };
+}
+</script>
+{% endblock %}

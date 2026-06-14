@@ -1,0 +1,120 @@
+{% extends 'layouts/admin_base.html' %}
+{% from 'components/page_header.html' import page_header %}
+{% import 'macros/form_macros.html' as f %}
+
+{% set deletion_endpoint = 'admin.delete_user_request' %}
+
+{% set endpoints = [
+    ('admin.user_info', 'User information'),
+    ('admin.set_user_password', 'Set password'),
+    ('admin.change_user_email', 'Change email address'),
+    ('admin.change_account_type', 'Change account type'),
+    (deletion_endpoint, 'Delete user')
+] %}
+
+{% macro navigation(items) %}
+    <nav class="space-y-1">
+        {% for route, name in items %}
+            {% set href = url_for(route, user_id=user.id) %}
+            <a href="{{ href }}" class="block px-3 py-2 text-sm font-medium rounded-md transition-colors {% if request.endpoint == route %}bg-accent text-accent-foreground{% else %}text-muted-foreground hover:bg-accent hover:text-accent-foreground{% endif %}">
+                {{ name }}
+            </a>
+        {% endfor %}
+    </nav>
+{% endmacro %}
+
+{% macro user_info(user) %}
+    <div class="rounded-lg border bg-card text-card-foreground shadow-sm overflow-hidden">
+        <div class="border-b bg-muted/50 px-6 py-3">
+            <h3 class="font-semibold">User Information</h3>
+        </div>
+        <div class="divide-y">
+            <div class="px-6 py-4 grid grid-cols-3 gap-4">
+                <dt class="text-sm font-medium text-muted-foreground">Full name</dt>
+                <dd class="text-sm col-span-2">{{ user.full_name() }}</dd>
+            </div>
+            <div class="px-6 py-4 grid grid-cols-3 gap-4">
+                <dt class="text-sm font-medium text-muted-foreground">Email address</dt>
+                <dd class="text-sm col-span-2">{{ user.email }}</dd>
+            </div>
+            <div class="px-6 py-4 grid grid-cols-3 gap-4">
+                <dt class="text-sm font-medium text-muted-foreground">Account type</dt>
+                <dd class="text-sm col-span-2">{{ user.role.name if user.role else 'No Role' }}</dd>
+            </div>
+            <div class="px-6 py-4 grid grid-cols-3 gap-4">
+                <dt class="text-sm font-medium text-muted-foreground">Confirmed</dt>
+                <dd class="text-sm col-span-2">{{ 'Yes' if user.confirmed else 'No' }}</dd>
+            </div>
+            <div class="px-6 py-4 grid grid-cols-3 gap-4">
+                <dt class="text-sm font-medium text-muted-foreground">Password set</dt>
+                <dd class="text-sm col-span-2">{{ 'Yes' if user.password_hash else 'No' }}</dd>
+            </div>
+            <div class="px-6 py-4 grid grid-cols-3 gap-4">
+                <dt class="text-sm font-medium text-muted-foreground">Login ready</dt>
+                <dd class="text-sm col-span-2">{{ 'Yes' if user.confirmed and user.password_hash else 'No' }}</dd>
+            </div>
+        </div>
+    </div>
+{% endmacro %}
+
+{% block content %}
+    <div class="max-w-6xl mx-auto">
+        <a href="{{ url_for('admin.registered_users') }}" class="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors mb-6">
+            <i data-lucide="chevron-left" class="w-4 h-4" aria-hidden="true"></i>
+            Back to all users
+        </a>
+        
+        {{ page_header(
+        title='{{ user.full_name() }}',
+        description='View and manage {{ user.full_name() }}'s account.'
+    ) }}
+
+        <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+            <div class="lg:col-span-1">
+                {{ navigation(endpoints) }}
+            </div>
+            <div class="lg:col-span-3">
+                {% if request.endpoint == deletion_endpoint %}
+                    <div class="rounded-lg border border-destructive bg-destructive/10 p-6 mb-6">
+                        <div class="flex gap-3">
+                            <i data-lucide="alert-circle" class="w-5 h-5 text-destructive flex-shrink-0 mt-0.5" aria-hidden="true"></i>
+                            <div>
+                                <h3 class="font-semibold text-destructive mb-1">
+                                    This action is permanent
+                                </h3>
+                                <p class="text-sm text-destructive/90">
+                                    Deleting a user account is not a reversible change. Any information associated
+                                    with this account will be removed, and cannot be recovered.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div x-data="{ confirmed: false }" class="rounded-lg border bg-card text-card-foreground shadow-sm p-6">
+                        <div class="flex items-start gap-3 mb-4">
+                            <input type="checkbox" x-model="confirmed" id="delete-confirm" class="h-4 w-4 rounded border-input mt-0.5 cursor-pointer">
+                            <label for="delete-confirm" class="text-sm cursor-pointer select-none">
+                                I understand that this action cannot be undone.
+                            </label>
+                        </div>
+                        <a :href="confirmed ? '{{ url_for('admin.delete_user', user_id=user.id) }}' : '#'" 
+                           :class="confirmed ? '' : 'pointer-events-none opacity-50'" 
+                           class="inline-flex items-center justify-center rounded-md bg-destructive text-destructive-foreground hover:bg-destructive/90 h-10 px-4 py-2 text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+                            Delete this user
+                        </a>
+                    </div>
+                {% elif form %}
+                    <div class="rounded-lg border bg-card text-card-foreground shadow-sm p-6">
+                        {{ f.render_form(form) }}
+                    </div>
+                {% else %}
+                    {{ user_info(user) }}
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <script>
+        lucide.createIcons();
+    </script>
+{% endblock %}

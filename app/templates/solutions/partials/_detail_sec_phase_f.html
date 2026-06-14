@@ -1,0 +1,228 @@
+{# WARNING: THIS FILE IS NOT REGISTERED #}
+{# Phase F — Delivery & Transition content (sec-6)
+   Included via {% call section_shell(...) %} — content only, no shell.
+   Prototype: Migration tab → Gantt chart (hero) + TCO stat cards + metrics table. #}
+
+                        {# Implementation Roadmap — Gantt chart (prototype hero element) #}
+                        <div>
+                            <div class="flex items-center gap-3 mb-4">
+                                <div class="w-1 h-5 rounded-full bg-sky-500"></div>
+                                <p class="text-sm font-semibold text-foreground">Implementation Roadmap</p>
+                                <span class="text-xs text-muted-foreground" x-show="workPackages && workPackages.length > 0" x-text="'(' + workPackages.length + ' work packages)'"></span>
+                            </div>
+                            {{ gantt_timeline(
+                                endpoint=url_for('solution_design.api_solution_gantt_data', solution_id=solution.id),
+                                container_id='solution-gantt',
+                                title='',
+                                subtitle='',
+                                crud_endpoint=url_for('solution_design.edit_solution', solution_id=solution.id)
+                            ) }}
+                        </div>
+
+                        {# BIZBOK: Implementation & Migration Viewpoint (supplementary diagram) #}
+                        <div class="rounded-xl border border-border bg-card overflow-hidden mb-4">
+                            <div class="bg-muted/20 px-5 py-2 border-b border-border flex items-center justify-between">
+                                <span class="text-xs font-medium text-muted-foreground">Implementation & Migration Viewpoint</span>
+                                <span class="text-[10px] text-muted-foreground">Work Packages → Deliverables</span>
+                            </div>
+                            <div id="viewpoint-diagram-migration" class="w-full" style="min-height:250px;"></div>
+                        </div>
+
+                        {# Implementation Timeline — compact bar with plateau markers #}
+                        {% if solution.planned_start_date or solution.target_completion_date %}
+                        <div>
+                            <div class="flex items-center gap-3 mb-3">
+                                <div class="w-1 h-5 rounded-full bg-sky-500"></div>
+                                <p class="text-sm font-semibold text-foreground">Timeline</p>
+                            </div>
+                            <div class="flex items-center justify-between text-sm text-muted-foreground mb-2">
+                                {% if solution.planned_start_date %}
+                                <span>Start: <span class="font-medium text-foreground">{{ solution.planned_start_date.strftime('%b %Y') }}</span></span>
+                                {% else %}<span></span>{% endif %}
+                                {% if solution.target_completion_date %}
+                                <span>Target: <span class="font-medium text-foreground">{{ solution.target_completion_date.strftime('%b %Y') }}</span></span>
+                                {% endif %}
+                            </div>
+                            <div class="relative h-3 rounded-full bg-muted overflow-hidden mb-1">
+                                {% if solution.planned_start_date and solution.target_completion_date %}
+                                    {% set total_days = (solution.target_completion_date - solution.planned_start_date).days %}
+                                    {% if total_days > 0 %}
+                                    <div class="absolute inset-y-0 left-0 rounded-full bg-primary/80 transition-all"
+                                         style="width: 0%;"
+                                         x-init="
+                                            let start = new Date('{{ solution.planned_start_date.isoformat() }}');
+                                            let end = new Date('{{ solution.target_completion_date.isoformat() }}');
+                                            let now = new Date();
+                                            let totalMs = end - start;
+                                            let elapsedMs = now - start;
+                                            let pct = totalMs > 0 ? Math.min(100, Math.max(2, (elapsedMs / totalMs) * 100)) : 0;
+                                            $el.style.width = pct + '%';
+                                         "></div>
+                                    {% endif %}
+                                {% else %}
+                                    <div class="absolute inset-y-0 left-0 rounded-full bg-primary/30 w-0"></div>
+                                {% endif %}
+                            </div>
+                            {# Plateau milestone markers #}
+                            <div :class="{'hidden': !plateaus || plateaus.length === 0}" class="mt-3 space-y-1.5">
+                                <template x-for="(p, idx) in (plateaus || []).slice().sort((a,b) => new Date(a.target_date||0) - new Date(b.target_date||0))" :key="p.id || idx">
+                                    <div class="flex items-center gap-3 text-xs">
+                                        <div class="w-2.5 h-2.5 rotate-45 bg-amber-400 border border-amber-500 shrink-0"></div>
+                                        <span class="font-medium text-foreground" x-text="p.name || ('Plateau ' + (idx+1))"></span>
+                                        <span class="text-muted-foreground" x-text="p.target_date ? new Date(p.target_date).toLocaleDateString('en-GB', {month:'short', year:'numeric'}) : 'TBD'"></span>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                        {% endif %}
+
+                        {# TCO — stat cards (prototype pattern: Year 1 / Year 2 / Year 3-5 avg / 5yr NPV) #}
+                        <div :class="{'hidden': !tcoItems || tcoItems.length === 0}">
+                            <div class="flex items-center gap-3 mb-4">
+                                <div class="w-1 h-5 rounded-full bg-sky-500"></div>
+                                <p class="text-sm font-semibold text-foreground">Total Cost of Ownership</p>
+                            </div>
+                            {# Summary stat cards #}
+                            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3" x-show="advancedTcoLoaded && advancedTco">
+                                <div class="rounded-xl border border-border bg-card p-4 text-center">
+                                    <p class="text-xl font-bold text-foreground tabular-nums"
+                                       x-text="advancedTco && advancedTco.cost_breakdown && advancedTco.cost_breakdown.year_1 != null ? '$' + Number(advancedTco.cost_breakdown.year_1).toLocaleString() : '\u2014'"></p>
+                                    <p class="text-[10px] text-muted-foreground mt-1">Year 1</p>
+                                </div>
+                                <div class="rounded-xl border border-border bg-card p-4 text-center">
+                                    <p class="text-xl font-bold text-foreground tabular-nums"
+                                       x-text="advancedTco && advancedTco.cost_breakdown && advancedTco.cost_breakdown.year_2 != null ? '$' + Number(advancedTco.cost_breakdown.year_2).toLocaleString() : '\u2014'"></p>
+                                    <p class="text-[10px] text-muted-foreground mt-1">Year 2</p>
+                                </div>
+                                <div class="rounded-xl border border-border bg-card p-4 text-center">
+                                    <p class="text-xl font-bold text-foreground tabular-nums"
+                                       x-text="advancedTco && advancedTco.cost_breakdown && advancedTco.cost_breakdown.year_3_5_avg != null ? '$' + Number(advancedTco.cost_breakdown.year_3_5_avg).toLocaleString() : '\u2014'"></p>
+                                    <p class="text-[10px] text-muted-foreground mt-1">Year 3-5 avg</p>
+                                </div>
+                                <div class="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4 text-center">
+                                    <p class="text-xl font-bold text-emerald-400 tabular-nums"
+                                       x-text="advancedTco && advancedTco.total_cost != null ? '$' + Number(advancedTco.total_cost).toLocaleString() : '\u2014'"></p>
+                                    <p class="text-[10px] text-emerald-400/70 mt-1">5yr NPV</p>
+                                </div>
+                            </div>
+                            {# Fallback: TCO items table when no advanced data #}
+                            <div x-show="!advancedTcoLoaded || !advancedTco" class="rounded-xl border border-border bg-card overflow-hidden">
+                            <table class="w-full text-sm">
+                                <thead><tr class="border-b border-border bg-muted/30">
+                                    <th class="text-left px-5 py-2 text-xs font-medium text-muted-foreground">Item</th>
+                                    <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground w-[80px]">Category</th>
+                                    <th class="text-right px-3 py-2 text-xs font-medium text-muted-foreground w-[100px]">Amount</th>
+                                </tr></thead>
+                                <tbody class="divide-y divide-border">
+                                    <template x-for="item in tcoItems" :key="item.id">
+                                        <tr class="hover:bg-muted/20">
+                                            <td class="px-5 py-2.5 text-foreground" x-text="item.option_label || item.notes || item.cost_category"></td>
+                                            <td class="px-3 py-2.5 text-xs text-muted-foreground capitalize" x-text="item.cost_category || 'opex'"></td>
+                                            <td class="px-3 py-2.5 text-right font-mono text-xs text-foreground tabular-nums" x-text="item.amount ? '$' + item.amount.toLocaleString() : '\u2014'"></td>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                            </div>
+                            {# Load advanced TCO button #}
+                            <div class="mt-3" x-show="!advancedTcoLoaded && !advancedTcoLoading" x-cloak>
+                                <button @click="loadAdvancedTco()"
+                                        class="inline-flex items-center gap-2 text-xs text-primary hover:underline">
+                                    <i data-lucide="calculator" class="w-3.5 h-3.5"></i>
+                                    Load Advanced TCO Analysis
+                                </button>
+                            </div>
+                            <div x-show="advancedTcoLoading" x-cloak class="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
+                                <i data-lucide="loader-circle" class="w-4 h-4 animate-spin"></i>
+                                Calculating TCO...
+                            </div>
+                        </div>
+
+                        {# Success Metrics — data table #}
+                        <div :class="{'hidden': metrics.length === 0}">
+                            <div class="flex items-center gap-3 mb-4">
+                                <div class="w-1 h-5 rounded-full bg-sky-500"></div>
+                                <p class="text-sm font-semibold text-foreground">Success Metrics</p>
+                                <span class="text-xs text-muted-foreground" x-text="'(' + metrics.length + ')'"></span>
+                            </div>
+                            <div class="rounded-xl border border-border bg-card overflow-hidden">
+                            <table class="w-full text-sm">
+                                <thead><tr class="border-b border-border bg-muted/30">
+                                    <th class="text-left px-5 py-2 text-xs font-medium text-muted-foreground">Metric</th>
+                                    <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground w-[100px]">Baseline</th>
+                                    <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground w-[100px]">Target</th>
+                                    <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground w-[100px]">Actual</th>
+                                    <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground w-[100px]">Status</th>
+                                </tr></thead>
+                                <tbody class="divide-y divide-border">
+                                    <template x-for="m in metrics" :key="m.id">
+                                        <tr class="hover:bg-muted/20">
+                                            <td class="px-5 py-2.5 text-foreground" x-text="m.name"></td>
+                                            <td class="px-3 py-2.5 text-muted-foreground font-mono text-xs" x-text="m.baseline_value || '\u2014'"></td>
+                                            <td class="px-3 py-2.5 text-foreground font-mono text-xs font-medium" x-text="m.target_value || '\u2014'"></td>
+                                            <td class="px-3 py-2.5 font-mono text-xs" :class="m.actual_value ? 'text-foreground font-medium' : 'text-muted-foreground'" x-text="m.actual_value || '\u2014'"></td>
+                                            <td class="px-3 py-2.5">
+                                                <span class="text-[10px] font-medium px-1.5 py-0.5 rounded"
+                                                      :class="m.status === 'achieved' ? 'bg-emerald-500/10 text-emerald-400'
+                                                            : m.status === 'on_track' ? 'bg-blue-500/10 text-primary'
+                                                            : m.status === 'at_risk' ? 'bg-amber-500/10 text-amber-400'
+                                                            : 'bg-muted text-muted-foreground'"
+                                                      x-text="(m.status || 'not_measured').replace(/_/g, ' ')"></span>
+                                            </td>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                            </div>
+                        </div>
+
+                        {# Cost Forecasts — AI-assisted #}
+                        <div class="mt-3" x-show="!costForecastsLoaded && !costForecastsLoading" x-cloak>
+                            <button @click="loadCostForecasts()"
+                                    class="inline-flex items-center gap-2 text-xs text-primary hover:underline">
+                                <i data-lucide="trending-up" class="w-3.5 h-3.5"></i>
+                                Load Cost Forecasts
+                            </button>
+                        </div>
+                        <div x-show="costForecastsLoading" x-cloak class="flex items-center gap-2 text-sm text-muted-foreground">
+                            <i data-lucide="loader-circle" class="w-4 h-4 animate-spin"></i>
+                            Loading cost forecasts...
+                        </div>
+                        <div x-show="costForecastsLoaded && costForecasts" x-cloak>
+                            <div class="flex items-center gap-3 mb-3">
+                                <div class="w-1 h-5 rounded-full bg-violet-500"></div>
+                                <p class="text-sm font-semibold text-foreground">Cost Forecasts</p>
+                                <span class="inline-flex items-center gap-1 text-[10px] text-violet-600 font-medium"><i data-lucide="sparkles" class="h-3 w-3"></i>AI-Assisted</span>
+                            </div>
+                            <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 mb-4">
+                                <div class="rounded-xl border border-border bg-card p-4 text-center">
+                                    <p class="text-xl font-bold text-foreground tabular-nums"
+                                       x-text="costForecasts && costForecasts.suggestion && costForecasts.suggestion.total != null ? '$' + Number(costForecasts.suggestion.total).toLocaleString() : '\u2014'"></p>
+                                    <p class="text-[10px] text-muted-foreground mt-1">Estimated Total</p>
+                                </div>
+                                <div class="rounded-xl border border-border bg-card p-4 text-center">
+                                    <p class="text-xl font-bold text-foreground"
+                                       x-text="costForecasts && costForecasts.confidence != null ? (costForecasts.confidence * 100).toFixed(0) + '%' : '\u2014'"></p>
+                                    <p class="text-[10px] text-muted-foreground mt-1">Confidence</p>
+                                </div>
+                                <div class="rounded-xl border border-border bg-card p-4 text-center">
+                                    <p class="text-xl font-bold text-foreground"
+                                       x-text="costForecasts && costForecasts.phase ? costForecasts.phase : '\u2014'"></p>
+                                    <p class="text-[10px] text-muted-foreground mt-1">ADM Phase</p>
+                                </div>
+                            </div>
+                            <template x-if="costForecasts && costForecasts.suggestion && costForecasts.suggestion.components">
+                                <div class="rounded-xl border border-border bg-card divide-y divide-border overflow-hidden">
+                                    <template x-for="entry in Object.entries(costForecasts.suggestion.components || {})" :key="entry[0]">
+                                        <div class="flex items-center justify-between px-5 py-2.5 text-sm hover:bg-muted/20">
+                                            <span class="text-muted-foreground capitalize" x-text="String(entry[0]).replace(/_/g,' ')"></span>
+                                            <span class="font-mono text-xs tabular-nums text-foreground"
+                                                  x-text="'$' + Number(entry[1]).toLocaleString()"></span>
+                                        </div>
+                                    </template>
+                                </div>
+                            </template>
+                        </div>
+                        <div x-show="costForecastsLoaded && !costForecasts" x-cloak>
+                            <p class="text-sm text-muted-foreground py-4">No cost forecast data available.</p>
+                        </div>

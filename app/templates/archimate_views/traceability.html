@@ -1,0 +1,532 @@
+﻿{% extends "layouts/admin_base.html" %}
+{% from 'components/page_header.html' import page_header %}
+
+{% block title %}Requirements Traceability{% endblock %}
+
+{% block breadcrumb %}
+{% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
+{{ breadcrumb_nav(items=[
+    {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
+    {'text': 'Architecture Elements', 'href': url_for('archimate_crud.dashboard')},
+    {'text': 'Views & Analysis'},
+    {'text': 'Traceability Matrix', 'current': true}
+]) }}
+{% endblock %}
+{% block page_title %}Cross-Layer Traceability Matrix{% endblock %}
+
+{% block content %}
+<style>
+    #matrix-view tbody tr:hover td { background-color: hsl(var(--accent)); }
+    #matrix-view tbody tr:hover td .inline-flex { transform: scale(1.02); transition: transform 0.15s; }
+</style>
+{% set rel_abbrev = {
+    'RealizationRelationship': 'Rlz',
+    'ServingRelationship': 'Srv',
+    'AssignmentRelationship': 'Asgn',
+    'CompositionRelationship': 'Cmp',
+    'AggregationRelationship': 'Agg',
+    'AssociationRelationship': 'Asc',
+    'AccessRelationship': 'Acc'
+} %}
+<div class="space-y-6">
+    {{ page_header(
+        title="Cross-Layer Traceability Matrix",
+        description="Shows how ApplicationComponent elements trace upward to Strategy/Business and downward to Technology layers"
+    ) }}
+
+    {% set orphan_groups = [
+        ('Drivers', gap_analysis.orphaned_drivers | default([], true), '/applications/0/drivers/'),
+        ('Goals', gap_analysis.orphaned_goals | default([], true), '/applications/0/goals/'),
+        ('Requirements', gap_analysis.orphaned_requirements | default([], true), '/requirements/'),
+        ('Capabilities', gap_analysis.orphaned_capabilities | default([], true), '/capability-maturity/edit/')
+    ] %}
+    {% set total_orphans = (gap_analysis.orphaned_drivers | default([], true) | length)
+        + (gap_analysis.orphaned_goals | default([], true) | length)
+        + (gap_analysis.orphaned_requirements | default([], true) | length)
+        + (gap_analysis.orphaned_capabilities | default([], true) | length) %}
+
+    <div x-data="{ matrixSearch: '', gapOpen: false }">
+
+    <!-- TRC-011: direction toggle / TRC-015: pivot type selector -->
+    <form method="get" class="rounded-lg border border-border bg-card p-3 shadow-sm">
+        <div class="flex flex-wrap items-center gap-3">
+            <label for="direction" class="text-sm font-medium text-foreground">Direction:</label>
+            <select
+                id="direction"
+                name="direction"
+                class="rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+            >
+                <option value="forward" {% if direction == 'forward' %}selected{% endif %}>Top-Down</option>
+                <option value="inverse" {% if direction == 'inverse' %}selected{% endif %}>Bottom-Up</option>
+            </select>
+            {% if direction == 'forward' and pivot_types %}
+            <label for="pivot_type" class="text-sm font-medium text-foreground">Pivot element:</label>
+            <select
+                id="pivot_type"
+                name="pivot_type"
+                class="rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+            >
+                {% for pt in pivot_types %}
+                <option value="{{ pt.type }}" {% if pt.type == current_pivot_type %}selected{% endif %}>
+                    {{ pt.type }} ({{ pt.layer }}, {{ pt.count }})
+                </option>
+                {% endfor %}
+            </select>
+            {% endif %}
+            <input type="hidden" name="plateau" value="{{ current_plateau or '' }}">
+            <button
+                type="submit"
+                class="inline-flex items-center rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+            >
+                Apply
+            </button>
+        </div>
+    </form>
+
+    <!-- TRC-017: server-side search + scope filter -->
+    <form method="get" class="flex items-center gap-3 justify-between flex-wrap">
+        <input type="hidden" name="direction" value="{{ direction }}">
+        <input type="hidden" name="pivot_type" value="{{ current_pivot_type }}">
+        <input type="hidden" name="plateau" value="{{ current_plateau or '' }}">
+        <div class="relative flex-1 max-w-sm">
+            <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"></i>
+            <input
+                type="text"
+                name="search"
+                value="{{ current_search }}"
+                placeholder="Search by element name…"
+                class="w-full rounded-md border border-input bg-background pl-9 pr-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+            >
+        </div>
+        <select name="scope"
+                class="rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground">
+            <option value="" {% if not current_scope %}selected{% endif %}>All scopes</option>
+            <option value="enterprise" {% if current_scope == 'enterprise' %}selected{% endif %}>Enterprise</option>
+            <option value="application" {% if current_scope == 'application' %}selected{% endif %}>Application</option>
+            <option value="cross-cutting" {% if current_scope == 'cross-cutting' %}selected{% endif %}>Cross-cutting</option>
+        </select>
+        <button type="submit"
+                class="inline-flex items-center rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
+            Search
+        </button>
+        {% if current_search or current_scope %}
+        <a href="{{ url_for('architect_ui.traceability_matrix', direction=direction, pivot_type=current_pivot_type) }}"
+           class="inline-flex items-center gap-1 rounded-md border border-input px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent transition-colors">
+            <i data-lucide="x" class="h-3.5 w-3.5"></i>
+            Clear
+        </a>
+        {% endif %}
+        <a href="/api/archimate/traceability/export"
+           class="inline-flex items-center gap-2 rounded-md bg-secondary px-4 py-2 text-sm font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors">
+            <i data-lucide="download" class="h-4 w-4"></i>
+            Export CSV
+        </a>
+    </form>
+
+    <!-- TRC-010: plateau filter -->
+    <div class="rounded-lg border border-border bg-card p-3 shadow-sm">
+        <div class="flex flex-wrap items-center gap-2">
+            <span class="text-sm font-medium text-foreground">Plateau:</span>
+            {% for label, value in [('All', None), ('Baseline', 'Baseline'), ('Transition', 'Transition'), ('Target', 'Target')] %}
+            <a
+                href="{{ url_for('architect_ui.traceability_matrix', pivot_type=current_pivot_type, plateau=value, direction=direction) if value else url_for('architect_ui.traceability_matrix', pivot_type=current_pivot_type, direction=direction) }}"
+                class="inline-flex items-center rounded-md px-3 py-1.5 text-sm font-medium transition-colors {{ 'bg-primary text-primary-foreground shadow-sm' if current_plateau == value or (not current_plateau and not value) else 'bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground' }}"
+            >
+                {{ label }}
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- TRC-008: gap/orphan analysis panel -->
+    <section class="rounded-lg border border-border bg-card p-4 shadow-sm">
+        <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div class="space-y-3 flex-1">
+                <div class="flex items-center gap-2">
+                    <h2 class="text-sm font-semibold text-foreground">Coverage and gap analysis</h2>
+                    <span class="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                        {{ total_orphans }} orphaned
+                    </span>
+                </div>
+                <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                    {% for label, cov in [
+                        ('Drivers → Goals', gap_analysis.coverage.drivers_with_goals),
+                        ('Goals → Requirements', gap_analysis.coverage.goals_with_requirements),
+                        ('Requirements → Capabilities', gap_analysis.coverage.requirements_with_capabilities),
+                        ('Capabilities → Applications', gap_analysis.coverage.capabilities_with_apps)
+                    ] %}
+                    {% set percent = ((cov.count / cov.total) * 100) | round(0) if cov.total else 0 %}
+                    <div class="rounded-md border border-border/60 bg-background p-3">
+                        <div class="flex items-center justify-between gap-2">
+                            <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">{{ label }}</p>
+                            <span class="text-xs font-semibold text-foreground">{{ percent }}%</span>
+                        </div>
+                        <div class="mt-2 h-2 rounded-full bg-muted overflow-hidden">
+                            <div class="h-full rounded-full bg-primary transition-all" :style="'width: {{ percent }}%;'"></div>
+                        </div>
+                        <p class="mt-2 text-xs text-muted-foreground">{{ cov.count }} of {{ cov.total }} connected</p>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            <button
+                type="button"
+                @click="gapOpen = !gapOpen"
+                :aria-expanded="gapOpen.toString()"
+                class="inline-flex items-center justify-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm font-medium text-foreground shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground"
+            >
+                <i data-lucide="list-tree" class="h-4 w-4"></i>
+                <span x-text="gapOpen ? 'Hide gap panel' : 'Show gap panel'"></span>
+            </button>
+        </div>
+
+        <div x-show="gapOpen" x-cloak x-trap.noscroll="gapOpen" @keydown.escape.window="gapOpen = false" role="dialog" aria-modal="true" tabindex="-1" class="mt-4 border-t border-border pt-4">
+            {% if total_orphans %}
+            <div class="grid gap-4 lg:grid-cols-2">
+                {% for title, items, href_prefix in orphan_groups if items %}
+                <section class="rounded-md border border-border/60 bg-background p-3">
+                    <div class="flex items-center justify-between gap-2">
+                        <h3 class="text-sm font-semibold text-foreground">{{ title }}</h3>
+                        <span class="text-xs text-muted-foreground">{{ items | length }} orphaned</span>
+                    </div>
+                    <ul class="mt-3 space-y-2">
+                        {% for item in items[:8] %}
+                        <li>
+                            <a href="{{ href_prefix }}{{ item.id }}"
+                               class="inline-flex items-center gap-2 text-sm text-primary hover:underline">
+                                <i data-lucide="arrow-up-right" class="h-3.5 w-3.5"></i>
+                                <span>{{ item.name }}</span>
+                            </a>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </section>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200">
+                All elements are connected across the current traceability chain.
+            </div>
+            {% endif %}
+        </div>
+    </section>
+
+    <!-- View toggle -->
+    <div class="flex items-center gap-2">
+        <div class="inline-flex rounded-lg border border-border p-1 bg-muted/30" x-data="{ view: 'sankey' }">
+            <button type="button" @click="view = 'sankey'; document.getElementById('sankey-view').style.display = ''; document.getElementById('matrix-view').style.display = 'none'; if (window.createTraceabilitySankey) window.createTraceabilitySankey('#sankey-container', '/architecture/api/traceability/sankey?direction={{ direction }}&plateau={{ current_plateau or '' }}');"
+                    :class="view === 'sankey' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'"
+                    class="inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors">
+                <i data-lucide="git-merge" class="h-4 w-4" aria-hidden="true"></i>
+                Sankey
+            </button>
+            <button type="button" @click="view = 'matrix'; document.getElementById('sankey-view').style.display = 'none'; document.getElementById('matrix-view').style.display = '';"
+                    :class="view === 'matrix' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'"
+                    class="inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors">
+                <i data-lucide="table" class="h-4 w-4" aria-hidden="true"></i>
+                Matrix
+            </button>
+        </div>
+    </div>
+
+    <!-- Sankey view -->
+    <div id="sankey-view" class="rounded-lg border border-border bg-card shadow-sm overflow-hidden" style="min-height: 500px;">
+        <div id="sankey-container" style="width: 100%; min-height: 500px;"></div>
+    </div>
+
+    <!-- Matrix table -->
+    <div id="matrix-view" style="display: none;" class="rounded-lg border border-border bg-card shadow-sm overflow-hidden">
+        {% if matrix %}
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead class="border-b border-border bg-muted/50 sticky top-0 z-10">
+                    <tr class="border-b border-border bg-muted/50">
+                        <th class="px-4 py-3 text-left font-semibold text-foreground">{{ 'Technology Element' if direction == 'inverse' else 'Application Component' }}</th>
+                        <th class="px-4 py-3 text-left font-semibold text-foreground">
+                            <span class="inline-flex items-center gap-1.5">
+                                <span class="h-2.5 w-2.5 rounded-full bg-fuchsia-500"></span>
+                                Motivation / Goals
+                            </span>
+                        </th>
+                        <th class="px-4 py-3 text-left font-semibold text-foreground">
+                            <span class="inline-flex items-center gap-1.5">
+                                <span class="h-2.5 w-2.5 rounded-full bg-violet-500"></span>
+                                Strategy Layer
+                            </span>
+                        </th>
+                        <th class="px-4 py-3 text-left font-semibold text-foreground">
+                            <span class="inline-flex items-center gap-1.5">
+                                <span class="h-2.5 w-2.5 rounded-full bg-emerald-500"></span>
+                                Business Layer
+                            </span>
+                        </th>
+                        <th class="px-4 py-3 text-left font-semibold text-foreground">
+                            <span class="inline-flex items-center gap-1.5">
+                                <span class="h-2.5 w-2.5 rounded-full bg-amber-500"></span>
+                                {{ 'Impact Assessment' if direction == 'inverse' else 'Technology Layer' }}
+                            </span>
+                        </th>
+                        <th class="px-4 py-3 text-left font-semibold text-foreground">
+                            <span class="inline-flex items-center gap-1.5">
+                                <span class="h-2.5 w-2.5 rounded-full bg-sky-500"></span>
+                                Data Objects
+                            </span>
+                        </th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-border">
+                    {% for row in matrix %}
+                    <tr class="hover:bg-muted/30 transition-colors">
+                        <!-- Application Component -->
+                        <td class="px-4 py-3">
+                            <a href="{{ url_for('architect_ui.element_traceability', element_id=row.application.id) }}"
+                               class="inline-flex items-center gap-1.5 font-medium text-foreground hover:text-primary transition-colors">
+                                <span>{{ row.application.name }}</span>
+                                {% if row.application.type %}
+                                <span class="inline-flex items-center rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary ring-1 ring-inset ring-primary/20">
+                                    {{ row.application.type }}
+                                </span>
+                                {% endif %}
+                            </a>
+                        </td>
+
+                        <!-- Motivation -->
+                        <td class="px-4 py-3">
+                            <div class="flex flex-wrap gap-1.5">
+                                {% for el in row.motivation | default([], true) %}
+                                {% set relationship_label = el.relationship_type | replace('Relationship', '') if el.relationship_type else none %}
+                                <span
+                                    {% if relationship_label %}title="{{ relationship_label }}"{% endif %}
+                                    class="inline-flex items-center gap-1.5 rounded-full bg-fuchsia-500/10 px-2.5 py-0.5 text-xs font-medium text-fuchsia-700 dark:text-fuchsia-300 ring-1 ring-inset ring-fuchsia-500/20"
+                                >
+                                    {{ el.name }}
+                                    {% if el.type %}
+                                    <span class="inline-flex items-center rounded-full bg-fuchsia-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-fuchsia-800 dark:text-fuchsia-200">
+                                        {{ el.type }}
+                                    </span>
+                                    {% endif %}
+                                    {% if el.relationship_type %}
+                                    <span class="inline-flex items-center rounded-full bg-fuchsia-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-fuchsia-800 dark:text-fuchsia-200">
+                                        {{ rel_abbrev.get(el.relationship_type, el.relationship_type | replace('Relationship', '')) }}
+                                    </span>
+                                    {% endif %}
+                                </span>
+                                {% endfor %}
+                                {% if not row.motivation | default([], true) %}
+                                <span class="text-xs text-muted-foreground">—</span>
+                                {% endif %}
+                            </div>
+                        </td>
+
+                        <!-- Strategy -->
+                        <td class="px-4 py-3">
+                            <div class="flex flex-wrap gap-1.5">
+                                {% for el in row.strategy %}
+                                {% set relationship_label = el.relationship_type | replace('Relationship', '') if el.relationship_type else none %}
+                                <span
+                                    {% if relationship_label %}title="{{ relationship_label }}"{% endif %}
+                                    class="inline-flex items-center gap-1.5 rounded-full bg-violet-500/10 px-2.5 py-0.5 text-xs font-medium text-violet-700 dark:text-violet-300 ring-1 ring-inset ring-violet-500/20"
+                                >
+                                    {{ el.name }}
+                                    {% if el.type %}
+                                    <span class="inline-flex items-center rounded-full bg-violet-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-violet-800 dark:text-violet-200">
+                                        {{ el.type }}
+                                    </span>
+                                    {% endif %}
+                                    {% if el.relationship_type %}
+                                    <span class="inline-flex items-center rounded-full bg-violet-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-800 dark:text-violet-200">
+                                        {{ rel_abbrev.get(el.relationship_type, el.relationship_type | replace('Relationship', '')) }}
+                                    </span>
+                                    {% endif %}
+                                </span>
+                                {% endfor %}
+                                {% if not row.strategy %}
+                                <span class="text-xs text-muted-foreground">—</span>
+                                {% endif %}
+                            </div>
+                        </td>
+
+                        <!-- Business -->
+                        <td class="px-4 py-3">
+                            <div class="flex flex-wrap gap-1.5">
+                                {% for el in row.business %}
+                                {% set relationship_label = el.relationship_type | replace('Relationship', '') if el.relationship_type else none %}
+                                <span
+                                    {% if relationship_label %}title="{{ relationship_label }}"{% endif %}
+                                    class="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-300 ring-1 ring-inset ring-emerald-500/20"
+                                >
+                                    {{ el.name }}
+                                    {% if el.type %}
+                                    <span class="inline-flex items-center rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-800 dark:text-emerald-200">
+                                        {{ el.type }}
+                                    </span>
+                                    {% endif %}
+                                    {% if el.relationship_type %}
+                                    <span class="inline-flex items-center rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-800 dark:text-emerald-200">
+                                        {{ rel_abbrev.get(el.relationship_type, el.relationship_type | replace('Relationship', '')) }}
+                                    </span>
+                                    {% endif %}
+                                </span>
+                                {% endfor %}
+                                {% if not row.business %}
+                                <span class="text-xs text-muted-foreground">—</span>
+                                {% endif %}
+                            </div>
+                        </td>
+
+                        <!-- Technology / impact -->
+                        <td class="px-4 py-3">
+                            {% if direction == 'inverse' %}
+                            <a href="{{ url_for('architect_ui.impact_analysis', element_id=row.application.id) }}"
+                               class="inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline">
+                                <i data-lucide="activity" class="h-4 w-4"></i>
+                                Impact Assessment
+                            </a>
+                            {% else %}
+                            <div class="flex flex-wrap gap-1.5">
+                                {% for el in row.technology %}
+                                {% set relationship_label = el.relationship_type | replace('Relationship', '') if el.relationship_type else none %}
+                                <span
+                                    {% if relationship_label %}title="{{ relationship_label }}"{% endif %}
+                                    class="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-2.5 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-300 ring-1 ring-inset ring-amber-500/20"
+                                >
+                                   {{ el.name }}
+                                    {% if el.type %}
+                                    <span class="inline-flex items-center rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800 dark:text-amber-200">
+                                        {{ el.type }}
+                                    </span>
+                                    {% endif %}
+                                    {% if el.relationship_type %}
+                                    <span class="inline-flex items-center rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-200">
+                                        {{ rel_abbrev.get(el.relationship_type, el.relationship_type | replace('Relationship', '')) }}
+                                    </span>
+                                    {% endif %}
+                                </span>
+                                {% endfor %}
+                                {% if not row.technology %}
+                                <span class="text-xs text-muted-foreground">—</span>
+                                {% endif %}
+                            </div>
+                            {% endif %}
+                        </td>
+
+                        <!-- Data -->
+                        <td class="px-4 py-3">
+                            <div class="flex flex-wrap gap-1.5">
+                                {% for el in row.data | default([], true) %}
+                                {% set relationship_label = el.relationship_type | replace('Relationship', '') if el.relationship_type else none %}
+                                <span
+                                    {% if relationship_label %}title="{{ relationship_label }}"{% endif %}
+                                    class="inline-flex items-center gap-1.5 rounded-full bg-sky-500/10 px-2.5 py-0.5 text-xs font-medium text-sky-700 dark:text-sky-300 ring-1 ring-inset ring-sky-500/20"
+                                >
+                                    {{ el.name }}
+                                    {% if el.type %}
+                                    <span class="inline-flex items-center rounded-full bg-sky-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-sky-800 dark:text-sky-200">
+                                        {{ el.type }}
+                                    </span>
+                                    {% endif %}
+                                    {% if el.relationship_type %}
+                                    <span class="inline-flex items-center rounded-full bg-sky-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-800 dark:text-sky-200">
+                                        {{ rel_abbrev.get(el.relationship_type, el.relationship_type | replace('Relationship', '')) }}
+                                    </span>
+                                    {% endif %}
+                                </span>
+                                {% endfor %}
+                                {% if not row.data | default([], true) %}
+                                <span class="text-xs text-muted-foreground">—</span>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {# Show call-to-action when every row has zero connected elements #}
+        {% set ns = namespace(aligned=0) %}
+        {% for row in matrix %}
+            {% if row.strategy or row.business or row.technology %}
+                {% set ns.aligned = ns.aligned + 1 %}
+            {% endif %}
+        {% endfor %}
+        {% if ns.aligned == 0 %}
+        <div class="mx-4 mb-4 mt-2 rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-900/50 dark:bg-amber-950/20 p-4">
+            <div class="flex items-start gap-3">
+                <i data-lucide="triangle-alert" class="h-5 w-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5"></i>
+                <div class="flex-1 min-w-0">
+                    <p class="text-sm font-medium text-amber-800 dark:text-amber-200">No cross-layer relationships modelled yet</p>
+                    <p class="text-sm text-amber-700 dark:text-amber-300 mt-1">
+                        All {{ matrix | length }} application components show no alignment because no ArchiMate relationships connect
+                        them to Strategy, Business, or Technology layers. Use the ArchiMate Composer to define cross-layer relationships.
+                    </p>
+                    <a href="{{ url_for('archimate.composer_page') }}"
+                       class="mt-3 inline-flex items-center gap-2 rounded-md bg-amber-600 px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-amber-700 transition-colors">
+                        <i data-lucide="git-merge" class="h-4 w-4"></i>
+                        Open ArchiMate Composer
+                    </a>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        {% else %}
+        <div class="flex flex-col items-center justify-center py-16 text-center px-4">
+            <i data-lucide="git-merge" class="h-12 w-12 text-muted-foreground/40 mb-4"></i>
+            <p class="text-muted-foreground font-medium">No ApplicationComponent elements found.</p>
+            <p class="text-sm text-muted-foreground mt-1">Add ArchiMate elements to build the traceability matrix.</p>
+            <a href="{{ url_for('archimate_crud.dashboard') }}"
+               class="mt-4 inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
+                <i data-lucide="plus" class="h-4 w-4"></i>
+                Add ArchiMate Elements
+            </a>
+        </div>
+        {% endif %}
+        {# TRC-016: pagination controls #}
+        {% if total_pages is defined and total_pages > 1 %}
+        <div class="flex items-center justify-between border-t border-border px-4 py-3">
+            <p class="text-sm text-muted-foreground">
+                Showing {{ (current_page - 1) * page_size + 1 }}–{{ [current_page * page_size, total_count] | min }} of {{ total_count }} elements
+            </p>
+            <div class="flex items-center gap-1">
+                {% if current_page > 1 %}
+                <a href="{{ url_for('architect_ui.traceability_matrix', pivot_type=current_pivot_type, plateau=current_plateau or '', direction=direction, page=current_page - 1) }}"
+                   class="inline-flex items-center rounded-md border border-input bg-background px-2.5 py-1.5 text-sm font-medium text-foreground hover:bg-accent transition-colors">
+                    <i data-lucide="chevron-left" class="h-4 w-4"></i>
+                </a>
+                {% endif %}
+                {% for p in range(1, total_pages + 1) %}
+                {% if p == current_page %}
+                <span class="inline-flex items-center rounded-md bg-primary px-2.5 py-1.5 text-sm font-medium text-primary-foreground">{{ p }}</span>
+                {% elif p <= 3 or p >= total_pages - 2 or (p >= current_page - 1 and p <= current_page + 1) %}
+                <a href="{{ url_for('architect_ui.traceability_matrix', pivot_type=current_pivot_type, plateau=current_plateau or '', direction=direction, page=p) }}"
+                   class="inline-flex items-center rounded-md border border-input bg-background px-2.5 py-1.5 text-sm font-medium text-foreground hover:bg-accent transition-colors">{{ p }}</a>
+                {% elif p == 4 or p == total_pages - 3 %}
+                <span class="px-1 text-muted-foreground">…</span>
+                {% endif %}
+                {% endfor %}
+                {% if current_page < total_pages %}
+                <a href="{{ url_for('architect_ui.traceability_matrix', pivot_type=current_pivot_type, plateau=current_plateau or '', direction=direction, page=current_page + 1) }}"
+                   class="inline-flex items-center rounded-md border border-input bg-background px-2.5 py-1.5 text-sm font-medium text-foreground hover:bg-accent transition-colors">
+                    <i data-lucide="chevron-right" class="h-4 w-4"></i>
+                </a>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    </div><!-- /x-data matrixSearch -->
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/d3-sankey@0.12.3/dist/d3-sankey.min.js"></script>
+<script src="{{ url_for('static', filename='js/archimate_views/traceability_sankey.js') + '?v=2' }}"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    if (window.createTraceabilitySankey) {
+        window.createTraceabilitySankey('#sankey-container', '/architecture/api/traceability/sankey?direction={{ direction }}&plateau={{ current_plateau or "" }}');
+    }
+});
+</script>
+{% endblock %}

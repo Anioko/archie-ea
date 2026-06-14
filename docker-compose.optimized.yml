@@ -1,0 +1,190 @@
+# Docker Compose with optimized builds
+# Run with: docker-compose -f docker-compose.optimized.yml up --build
+
+version: '3.8'
+
+services:
+  # PostgreSQL database
+  postgres:
+    image: postgres:15-alpine
+    container_name: flask-postgres
+    environment:
+      POSTGRES_DB: flask_app
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - flask-network
+
+  # Redis cache
+  redis:
+    image: redis:7-alpine
+    container_name: flask-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - flask-network
+
+  # Flask application (production)
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.optimized
+      target: runtime
+      cache_from:
+        - flask-app:latest
+    container_name: flask-web
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      - FLASK_ENV=production
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/flask_app
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=${SECRET_KEY:-super-secret-key-change-in-production}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+    volumes:
+      - ./uploads:/app/uploads
+      - ./logs:/app/logs
+    ports:
+      - "5000:5000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - flask-network
+    restart: unless-stopped
+
+  # Flask application (development with hot reload)
+  web-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.optimized
+      target: development
+    container_name: flask-web-dev
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      - FLASK_ENV=development
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/flask_app
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=dev-secret-key
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+    volumes:
+      - .:/app  # Mount entire directory for hot reload
+      - /app/__pycache__
+      - /app/.pytest_cache
+    ports:
+      - "5001:5000"
+    networks:
+      - flask-network
+    profiles:
+      - dev  # Only starts with --profile dev
+
+  # Nginx reverse proxy (production)
+  nginx:
+    image: nginx:alpine
+    container_name: flask-nginx
+    depends_on:
+      - web
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./app/static:/usr/share/nginx/html/static:ro
+      - certbot_webroot:/var/www/certbot:ro
+      # SSL certs: use ./ssl/ for self-signed (dev) or certbot_certs for Let's Encrypt (prod)
+      # Uncomment ONE of the following two lines:
+      - ./ssl:/etc/nginx/ssl:ro                 # Self-signed (default)
+      # - certbot_certs:/etc/nginx/ssl:ro       # Let's Encrypt (uncomment for production)
+    ports:
+      - "80:80"
+      - "443:443"
+    networks:
+      - flask-network
+    profiles:
+      - production
+    restart: unless-stopped
+
+  # Let's Encrypt certificate automation (production)
+  certbot:
+    image: certbot/certbot:latest
+    container_name: flask-certbot
+    volumes:
+      - certbot_webroot:/var/www/certbot
+      - certbot_certs:/etc/letsencrypt
+    # Initial cert: docker compose run certbot certonly --webroot -w /var/www/certbot -d yourdomain.com
+    # Renewal runs every 12 hours, only renews if within 30 days of expiry
+    entrypoint: /bin/sh -c "trap exit TERM; while :; do certbot renew --quiet; sleep 12h & wait $${!}; done"
+    networks:
+      - flask-network
+    profiles:
+      - production
+    restart: unless-stopped
+
+  # Automated database backup (runs daily at 2 AM UTC)
+  backup:
+    image: postgres:15-alpine
+    container_name: flask-backup
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - PGHOST=postgres
+      - PGPORT=5432
+      - PGUSER=postgres
+      - PGPASSWORD=postgres
+      - PGDATABASE=flask_app
+      - BACKUP_RETENTION=${BACKUP_RETENTION:-30}
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-}
+      - BACKUP_NOTIFY_EMAIL=${BACKUP_NOTIFY_EMAIL:-}
+    volumes:
+      - ./backups:/backups
+      - ./scripts/database:/scripts:ro
+    # Run backup daily at 2 AM UTC via crond
+    entrypoint: ["/bin/sh", "-c", "echo '0 2 * * * /scripts/backup_docker_entry.sh >> /backups/cron.log 2>&1' | crontab - && echo \"Backup scheduler started (daily 2AM UTC)\" && crond -f -l 2"]
+    networks:
+      - flask-network
+    profiles:
+      - production
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  certbot_webroot:
+    driver: local
+  certbot_certs:
+    driver: local
+
+networks:
+  flask-network:
+    driver: bridge

@@ -1,0 +1,630 @@
+            {# Vendor Products (TOGAF Phase C) — Information Systems Architecture #}
+            <div id="phase-c-vendor-products" class="bg-card rounded-xl border border-border shadow-sm p-6 transition-all relative mb-6"
+                 x-show="isSectionActive('C') || isSectionActive('E')" x-cloak
+                 :class="isSectionActive('C') ? 'ring-1 ring-primary/10' : ''">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="flex items-center gap-3">
+                        <i data-lucide="package" class="w-4 h-4 text-muted-foreground flex-shrink-0" aria-hidden="true"></i>
+                        <div>
+                            <h3 class="text-lg font-semibold text-foreground">Vendor Products</h3>
+                            <p class="text-sm text-muted-foreground">Technology products linked to this solution</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground border border-border"
+                              x-text="(linkedVendorProducts || []).length + ' linked'"></span>
+                        <button type="button" @click="openManageModal('vendor_product')"
+                            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+                            <i data-lucide="plus" class="w-3.5 h-3.5" aria-hidden="true"></i> Link Product
+                        </button>
+                        <button @click="generatePhase('C')"
+                                :disabled="generateLoading === 'C'"
+                                class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-amber-500/30 text-amber-600 rounded-md hover:bg-amber-500/10 disabled:opacity-50"
+                                aria-label="Generate missing Phase C elements">
+                            <i data-lucide="sparkles" class="h-3.5 w-3.5" :class="generateLoading === 'C' && 'animate-spin'" aria-hidden="true"></i>
+                            <span x-text="generateLoading === 'C' ? 'Generating...' : 'Generate Missing'"></span>
+                        </button>
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive border border-destructive/30">Phase C</span>
+                    </div>
+                </div>
+
+                {# Generate Missing Preview Panel (BPP-014) #}
+                <template x-if="generatePreview && generatePreview.phase === 'C'">
+                    <div class="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 space-y-3">
+                        <div class="flex items-center justify-between">
+                            <h4 class="text-sm font-medium text-amber-700">
+                                Would create <span x-text="generatePreview.count"></span> elements
+                            </h4>
+                            <span class="text-xs text-muted-foreground"
+                                  x-text="'Completeness: ' + Math.round((generatePreview.completeness_before || 0) * 100) + '% → ' + Math.round((generatePreview.completeness_after || 0) * 100) + '%'"></span>
+                        </div>
+                        <div class="space-y-1.5 max-h-48 overflow-y-auto">
+                            <template x-for="item in (generatePreview.would_create || [])" :key="item.type + item.name">
+                                <div class="flex items-center gap-2 text-xs">
+                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium"
+                                          :class="item.direction === 'upstream' ? 'bg-blue-500/10 text-blue-600' : 'bg-emerald-500/10 text-emerald-600'"
+                                          x-text="item.direction === 'upstream' ? 'up' : 'down'"></span>
+                                    <span class="font-medium" x-text="item.type"></span>
+                                    <span class="text-muted-foreground truncate" x-text="item.name"></span>
+                                </div>
+                            </template>
+                        </div>
+                        <template x-if="generatePreview.count === 0">
+                            <p class="text-xs text-muted-foreground">All required elements already exist. Phase is complete.</p>
+                        </template>
+                        <div class="flex gap-2 pt-2 border-t border-amber-500/20" x-show="generatePreview.count > 0">
+                            <button @click="confirmGenerate()" :disabled="generateLoading"
+                                    class="px-3 py-1.5 text-xs font-medium bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50">
+                                <span x-text="generateLoading ? 'Creating...' : 'Confirm'"></span>
+                            </button>
+                            <button @click="cancelGenerate()"
+                                    class="px-3 py-1.5 text-xs font-medium border border-border rounded-md hover:bg-accent">Cancel</button>
+                        </div>
+                    </div>
+                </template>
+                <template x-if="generateError && !generateLoading">
+                    <div class="mt-2 text-xs text-destructive flex items-center gap-1">
+                        <i data-lucide="alert-circle" class="h-3 w-3" aria-hidden="true"></i>
+                        <span x-text="generateError"></span>
+                        <button @click="generateError = null" class="ml-1 underline">dismiss</button>
+                    </div>
+                </template>
+
+                <template x-if="linkedVendorProducts && linkedVendorProducts.length > 0">
+                    <div class="overflow-x-auto border border-border rounded-lg">
+                        <table class="w-full text-sm">
+                            <thead class="bg-muted/50 border-b border-border">
+                                <tr>
+                                    <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground">Product</th>
+                                    <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground">Vendor</th>
+                                    <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground">Category</th>
+                                    <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground">Implementation</th>
+                                    <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground w-16"></th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-border/50">
+                                <template x-for="vp in linkedVendorProducts" :key="vp.id">
+                                    <tr class="group hover:bg-muted/30 transition-colors">
+                                        <td class="px-3 py-2">
+                                            <template x-if="vp.vendor_id">
+                                                <a :href="'/vendors/' + vp.vendor_id" target="_blank"
+                                                   class="font-medium text-primary hover:underline" x-text="vp.name"></a>
+                                            </template>
+                                            <template x-if="!vp.vendor_id">
+                                                <span class="font-medium text-foreground" x-text="vp.name"></span>
+                                            </template>
+                                            <p class="text-xs text-muted-foreground mt-0.5" x-text="vp.licensing_model" x-show="vp.licensing_model" x-cloak></p>
+                                        </td>
+                                        <td class="px-3 py-2 text-muted-foreground" x-text="vp.vendor_name || 'Unknown'"></td>
+                                        <td class="px-3 py-2">
+                                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-violet-500/10 text-violet-600 border border-violet-500/30"
+                                                  x-text="vp.product_family_name || 'General'"
+                                                  x-show="vp.product_family_name" x-cloak></span>
+                                            <span class="text-xs text-muted-foreground" x-show="!vp.product_family_name" x-cloak>&mdash;</span>
+                                        </td>
+                                        <td class="px-3 py-2">
+                                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
+                                                  :class="vp.implementation_type === 'licensed' ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/30' :
+                                                           vp.implementation_type === 'customized' ? 'bg-amber-500/10 text-amber-600 border border-amber-500/30' :
+                                                           vp.implementation_type === 'integrated' ? 'bg-primary/10 text-primary border border-primary/30' :
+                                                           'bg-muted text-muted-foreground border border-border'"
+                                                  x-text="vp.implementation_type || 'not set'"></span>
+                                        </td>
+                                        <td class="px-3 py-2">
+                                            <button type="button" @click="unlinkEntity('vendor_product', vp.id)"
+                                                class="text-muted-foreground hover:text-destructive p-1 rounded-md opacity-0 group-hover:opacity-100 transition-opacity" title="Remove product link">
+                                                <i data-lucide="x" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                </template>
+                <template x-if="!linkedVendorProducts || linkedVendorProducts.length === 0">
+                    <div class="text-center py-6 border-2 border-dashed border-border rounded-lg">
+                        <i data-lucide="package" class="w-8 h-8 mx-auto mb-2 text-muted-foreground opacity-50" aria-hidden="true"></i>
+                        <p class="text-sm text-muted-foreground">No vendor products linked to this solution.</p>
+                        <p class="text-xs text-muted-foreground mt-1">Click <strong>Link Product</strong> to associate vendor products from the catalogue.</p>
+                        <p class="text-xs text-muted-foreground mt-2 italic">
+                            <i data-lucide="sparkles" class="h-3 w-3 inline-block mr-1 text-primary/60"></i>
+                            A.R.C.H.I.E. suggests: Link at least 3 applications to demonstrate the solution's application landscape scope.
+                        </p>
+                    </div>
+                </template>
+            </div>
+
+            {# ENT-096: Data Access Matrix (Phase C — Information Systems Architecture) #}
+            <div id="phase-c-data-access" class="bg-card rounded-xl border border-border shadow-sm p-6 transition-all relative mb-6"
+                 x-show="isSectionActive('C') || isSectionActive('E')" x-cloak
+                 x-data="{
+                     damLoading: false,
+                     damError: null,
+                     damLoaded: false,
+                     appComponents: [],
+                     dataObjects: [],
+                     accessMap: {},
+
+                     get solutionId() {
+                         return window.__SOLUTION_CONFIG__ ? window.__SOLUTION_CONFIG__.solutionId : null;
+                     },
+
+                     accessKey(appId, dataId) { return appId + '-' + dataId; },
+
+                     accessLabel(appId, dataId) {
+                         const v = this.accessMap[this.accessKey(appId, dataId)];
+                         if (!v) return '—';
+                         if (v.access_type === 'read') return 'R';
+                         if (v.access_type === 'write') return 'W';
+                         if (v.access_type === 'readwrite') return 'RW';
+                         return '—';
+                     },
+
+                     accessClass(appId, dataId) {
+                         const v = this.accessMap[this.accessKey(appId, dataId)];
+                         if (!v) return 'bg-muted/30 text-muted-foreground hover:bg-muted/50';
+                         if (v.access_type === 'read') return 'bg-blue-500/10 text-primary border-blue-500/30';
+                         if (v.access_type === 'write') return 'bg-amber-500/10 text-amber-600 border-amber-500/30';
+                         if (v.access_type === 'readwrite') return 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30';
+                         return 'bg-muted/30 text-muted-foreground hover:bg-muted/50';
+                     },
+
+                     async loadMatrix() {
+                         if (!this.solutionId) return;
+                         this.damLoading = true;
+                         this.damError = null;
+                         try {
+                             const elRes = await fetch('/api/solutions/' + this.solutionId + '/archimate-elements', {credentials:'same-origin'});
+                             if (!elRes.ok) throw new Error('HTTP ' + elRes.status);
+                             const elData = await elRes.json();
+                             const allEls = [];
+                             for (const [layer, items] of Object.entries(elData.elements_by_layer || {})) {
+                                 for (const el of items) allEls.push(el);
+                             }
+                             this.appComponents = allEls.filter(e => (e.type || '').includes('ApplicationComponent') || (e.type || '').includes('ApplicationService'));
+                             this.dataObjects = allEls.filter(e => (e.type || '').includes('DataObject') || (e.type || '').includes('DataEntity') || (e.type || '').includes('DatabaseInstance'));
+
+                             const relRes = await fetch('/api/solutions/' + this.solutionId + '/relationships?type=access', {credentials:'same-origin'});
+                             if (relRes.ok) {
+                                 const relData = await relRes.json();
+                                 for (const r of (relData.relationships || [])) {
+                                     const key = this.accessKey(r.source?.id || r.source_element_id, r.target?.id || r.target_element_id);
+                                     this.accessMap[key] = { id: r.id, access_type: r.access_type || 'read' };
+                                 }
+                             }
+                         } catch(e) {
+                             this.damError = e.message;
+                         } finally {
+                             this.damLoading = false;
+                             this.damLoaded = true;
+                         }
+                     },
+
+                     async toggleAccess(appId, dataId) {
+                         const key = this.accessKey(appId, dataId);
+                         const current = this.accessMap[key];
+                         const cycle = [null, 'read', 'write', 'readwrite'];
+                         const curIdx = current ? cycle.indexOf(current.access_type) : 0;
+                         const nextIdx = (curIdx + 1) % cycle.length;
+                         const nextType = cycle[nextIdx];
+
+                         try {
+                             if (current && current.id) {
+                                 await fetch('/api/solutions/' + this.solutionId + '/relationships/' + current.id, {
+                                     method: 'DELETE', credentials: 'same-origin'
+                                 });
+                                 delete this.accessMap[key];
+                             }
+                             if (nextType) {
+                                 const res = await fetch('/api/solutions/' + this.solutionId + '/relationships', {
+                                     method: 'POST',
+                                     headers: {'Content-Type': 'application/json'},
+                                     credentials: 'same-origin',
+                                     body: JSON.stringify({
+                                         source_element_id: appId,
+                                         target_element_id: dataId,
+                                         relationship_type: 'access'
+                                     })
+                                 });
+                                 if (res.ok) {
+                                     const data = await res.json();
+                                     this.accessMap[key] = { id: data.id, access_type: nextType };
+                                 }
+                             }
+                         } catch(e) {
+                             this.damError = e.message;
+                         }
+                     }
+                 }"
+                 x-init="loadMatrix()">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="flex items-center gap-3">
+                        <i data-lucide="database" class="w-4 h-4 text-muted-foreground flex-shrink-0" aria-hidden="true"></i>
+                        <div>
+                            <h3 class="text-lg font-semibold text-foreground">Data Access Matrix</h3>
+                            <p class="text-sm text-muted-foreground">Component-to-data-object access relationships</p>
+                        </div>
+                    </div>
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive border border-destructive/30">Phase C</span>
+                </div>
+
+                <template x-if="damLoading">
+                    <div class="flex items-center justify-center py-6">
+                        <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-primary"></div>
+                        <span class="ml-2 text-sm text-muted-foreground">Loading matrix…</span>
+                    </div>
+                </template>
+
+                <template x-if="damError">
+                    <div class="mb-3 p-3 rounded-md bg-destructive/10 text-destructive text-sm" x-text="damError"></div>
+                </template>
+
+                <template x-if="damLoaded && appComponents.length > 0 && dataObjects.length > 0">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm border border-border rounded-lg">
+                            <thead class="bg-muted/50">
+                                <tr>
+                                    <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground border-r border-border">Component</th>
+                                    <template x-for="dobj in dataObjects" :key="dobj.id">
+                                        <th class="text-center px-2 py-2 text-xs font-medium text-muted-foreground min-w-[60px]">
+                                            <span x-text="(dobj.name || '').substring(0, 12)" :title="dobj.name"></span>
+                                        </th>
+                                    </template>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-border/50">
+                                <template x-for="app in appComponents" :key="app.id">
+                                    <tr class="hover:bg-muted/20 transition-colors">
+                                        <td class="px-3 py-2 font-medium text-foreground border-r border-border text-xs" x-text="app.name" :title="app.type"></td>
+                                        <template x-for="dobj in dataObjects" :key="'cell-' + app.id + '-' + dobj.id">
+                                            <td class="text-center px-1 py-1">
+                                                <button
+                                                    @click="toggleAccess(app.id, dobj.id)"
+                                                    class="w-full px-2 py-1 rounded text-xs font-medium border transition-colors cursor-pointer"
+                                                    :class="accessClass(app.id, dobj.id)"
+                                                    :title="'Click to toggle: none → R → W → RW → none'"
+                                                    x-text="accessLabel(app.id, dobj.id)"
+                                                ></button>
+                                            </td>
+                                        </template>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                        <div class="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
+                            <span><strong>R</strong> = Read</span>
+                            <span><strong>W</strong> = Write</span>
+                            <span><strong>RW</strong> = Read/Write</span>
+                            <span><strong>—</strong> = No access</span>
+                        </div>
+                    </div>
+                </template>
+
+                <template x-if="damLoaded && !damLoading && (appComponents.length === 0 || dataObjects.length === 0)">
+                    <div class="text-center py-6 border-2 border-dashed border-border rounded-lg">
+                        <i data-lucide="database" class="w-8 h-8 mx-auto mb-2 text-muted-foreground opacity-50" aria-hidden="true"></i>
+                        <p class="text-sm text-muted-foreground">
+                            <template x-if="appComponents.length === 0 && dataObjects.length === 0">
+                                <span>Link ApplicationComponent and DataObject elements to enable the access matrix.</span>
+                            </template>
+                            <template x-if="appComponents.length === 0 && dataObjects.length > 0">
+                                <span>Link ApplicationComponent elements to this solution to populate rows.</span>
+                            </template>
+                            <template x-if="appComponents.length > 0 && dataObjects.length === 0">
+                                <span>Link DataObject elements to this solution to populate columns.</span>
+                            </template>
+                        </p>
+                        <p class="text-xs text-muted-foreground mt-2 italic">
+                            <i data-lucide="sparkles" class="h-3 w-3 inline-block mr-1 text-primary/60"></i>
+                            A.R.C.H.I.E. suggests: Link at least 3 applications to demonstrate the solution's application landscape scope.
+                        </p>
+                    </div>
+                </template>
+            </div>
+
+            {# Solution Options (TOGAF Phase E) — Alpine-driven CRUD + AI Analysis #}
+            <div id="phase-e" class="bg-card rounded-xl border border-border shadow-sm p-6 transition-all relative "
+                 x-show="isSectionActive('E')" x-cloak
+                 :class="isSectionActive('E') ? 'ring-1 ring-primary/10' : ''">
+                <div x-show="isSectionFuture('E')" x-cloak class="absolute inset-0 bg-background/60 z-10 flex items-center justify-center rounded-xl">
+                    <p class="text-sm text-muted-foreground font-medium">Complete Phase <span x-text="currentPhase"></span> to unlock</p>
+                </div>
+                <div class="flex items-center justify-between mb-4">
+                    <div class="flex items-center gap-3">
+                        <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-500 flex-shrink-0" x-show="isSectionCompleted('E')" x-cloak aria-hidden="true"></i>
+                        <i data-lucide="circle-dot" class="w-4 h-4 text-primary flex-shrink-0" x-show="isSectionActive('E')" x-cloak aria-hidden="true"></i>
+                        <i data-lucide="circle" class="w-4 h-4 text-muted-foreground flex-shrink-0" x-show="isSectionFuture('E')" x-cloak aria-hidden="true"></i>
+                        <h3 class="text-lg font-semibold text-foreground">Solution Options</h3>
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30">ArchiMate CourseOfAction</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        {% if llm_available %}
+                        <button type="button" @click="aiSuggestElements('E')" :disabled="suggestingElements"
+                                class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium text-primary hover:bg-primary/10 transition-colors disabled:opacity-50"
+                                title="AI Suggest ArchiMate elements">
+                            <i data-lucide="sparkles" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                            <span x-text="suggestingElements && aiSuggestPhase === 'E' ? 'Suggesting...' : 'AI Suggest'"></span>
+                        </button>
+                        {% endif %}
+                        <button type="button" @click="toggleComments('phase_e')" class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors" title="Comments">
+                            <i data-lucide="message-square" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                            <span x-show="commentCount('phase_e') > 0" x-text="commentCount('phase_e')" class="text-[10px] bg-primary text-primary-foreground rounded-full px-1 min-w-[16px] text-center" x-cloak></span>
+                        </button>
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-amber-500/10 text-amber-600 border border-amber-500/30">Phase E</span>
+                        <div class="flex items-center gap-1.5">
+                            <div class="h-1.5 w-16 bg-muted rounded-full overflow-hidden"><div class="h-full bg-primary rounded-full transition-all" :style="{width: phaseCompleteness('E').percent + '%'}"></div></div>
+                            <span class="text-[10px] text-muted-foreground" x-text="phaseCompleteness('E').label"></span>
+                        </div>
+                        <button type="button" @click="runOptionsAnalysis()" :disabled="analyzingOptions"
+                            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors">
+                            <i data-lucide="sparkles" class="w-3.5 h-3.5" aria-hidden="true" x-show="!analyzingOptions" x-cloak></i>
+                            <i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin" aria-hidden="true" x-show="analyzingOptions" x-cloak></i>
+                            <span x-text="analyzingOptions ? 'Analyzing...' : 'Run Options Analysis'"></span>
+                        </button>
+                        <button type="button" @click="loadArchitectureVariants()" :disabled="generatingVariants"
+                            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-background border border-border hover:bg-accent disabled:opacity-50 transition-colors"
+                            title="Generate cost / timeline / risk variants">
+                            <i data-lucide="git-branch" class="w-3.5 h-3.5" aria-hidden="true" x-show="!generatingVariants" x-cloak></i>
+                            <i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin" aria-hidden="true" x-show="generatingVariants" x-cloak></i>
+                            <span x-text="generatingVariants ? 'Generating...' : 'Generate Variants'"></span>
+                        </button>
+                        <button type="button" @click="openEntityModal('option')"
+                            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+                            <i data-lucide="plus" class="w-3.5 h-3.5" aria-hidden="true"></i> Add Option
+                        </button>
+                    </div>
+                </div>
+
+                {{ comment_thread('phase_e') }}
+
+                {# Phase E Guidance (SDX-010) #}
+                <details class="mb-4 border border-border rounded-lg">
+                    <summary class="px-4 py-2 text-sm font-medium text-muted-foreground cursor-pointer hover:text-foreground select-none">Phase E Guidance — Opportunities & Solutions</summary>
+                    <div class="px-4 py-3 text-sm text-muted-foreground space-y-2 border-t border-border">
+                        <p><strong class="text-foreground">TOGAF Deliverables:</strong> Options Analysis (Buy vs Build vs Reuse), Implementation and Migration Strategy, Solution Architecture Document (SAD), transition architectures, implementation factor catalogue.</p>
+                        <p><strong class="text-foreground">ArchiMate Artifacts:</strong> CourseOfAction elements, Plateaus, WorkPackages, ImplementationEvents. Gap analysis between baseline and target architectures.</p>
+                        <p><strong class="text-foreground">Minimum to Advance:</strong> At least 1 solution option evaluated with cost/benefit analysis. Recommendation selected with rationale documented.</p>
+                    </div>
+                </details>
+
+                {# SAD-04: MCDA Solution Options Panel (Phase E) #}
+                <div class="mb-4 border border-border rounded-lg p-4 bg-muted/20"
+                     x-show="solutionOptionsLoaded || solutionOptionsLoading" x-cloak>
+                    <div class="flex items-center gap-2 mb-3">
+                        <i data-lucide="layers" class="w-4 h-4 text-muted-foreground flex-shrink-0"></i>
+                        <h3 class="text-sm font-semibold text-foreground">Solution Options Analysis (MCDA)</h3>
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-primary/10 text-primary border border-primary/30">Phase E</span>
+                        <template x-if="solutionOptionsLoading">
+                            <i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin text-muted-foreground"></i>
+                        </template>
+                    </div>
+                    <template x-if="solutionOptionsLoaded && solutionOptions.length === 0">
+                        <div class="flex items-center justify-between">
+                            <p class="text-xs text-muted-foreground italic">No evaluated options yet. Use "Add Option" below to score Build / Buy / Reuse alternatives.</p>
+                            <button type="button" @click="loadSolutionOptions()"
+                                    class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-muted hover:bg-accent text-foreground transition-colors">
+                                <i data-lucide="bar-chart-2" class="w-3.5 h-3.5"></i> Run MCDA
+                            </button>
+                        </div>
+                    </template>
+                    <template x-if="solutionOptions.length > 0">
+                        <div class="space-y-3">
+                            <template x-for="(opt, idx) in solutionOptions.slice(0,5)" :key="opt.id">
+                                <div class="border rounded-md p-3 bg-background"
+                                     :class="idx === 0 ? 'border-primary/40 ring-1 ring-primary/20' : 'border-border'">
+                                    <div class="flex items-center justify-between mb-1">
+                                        <div class="flex items-center gap-2">
+                                            <span class="text-sm font-medium text-foreground" x-text="opt.name || opt.option_type"></span>
+                                            <template x-if="idx === 0">
+                                                <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-primary/10 text-primary border border-primary/30">
+                                                    <i data-lucide="star" class="w-3 h-3"></i> Recommended
+                                                </span>
+                                            </template>
+                                        </div>
+                                        <span class="inline-flex px-2 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground"
+                                              x-text="opt.option_type || opt.type || '—'"></span>
+                                    </div>
+                                    <template x-if="opt.score !== undefined && opt.score !== null">
+                                        <div class="flex items-center gap-2 mt-1">
+                                            <span class="text-xs text-muted-foreground">Score:</span>
+                                            <div class="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
+                                                <div class="h-full rounded-full bg-primary transition-all"
+                                                     :style="'width:' + Math.min(100, Math.round((opt.score || 0)*100)) + '%'"></div>
+                                            </div>
+                                            <span class="text-xs text-muted-foreground w-8 text-right" x-text="Math.round((opt.score||0)*100) + '%'"></span>
+                                        </div>
+                                    </template>
+                                    <template x-if="opt.justification">
+                                        <p class="text-xs text-muted-foreground mt-1 line-clamp-2" x-text="opt.justification"></p>
+                                    </template>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+                </div>
+
+                {# ENT-005: Architecture variants comparison (cost / timeline / risk) #}
+                <template x-if="architectureVariants.length >= 3">
+                    <div class="mb-4 p-4 rounded-lg border border-primary/20 bg-card">
+                        <h4 class="text-sm font-semibold text-foreground mb-3">Architecture Variants</h4>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <template x-for="v in architectureVariants" :key="v.id">
+                                <div class="rounded-lg border border-border p-3 bg-background">
+                                    <div class="text-xs font-medium text-muted-foreground uppercase mb-1" x-text="(v.variant_type || '').replace(/_/g, ' ')"></div>
+                                    <h5 class="text-sm font-semibold text-foreground mb-2" x-text="v.name"></h5>
+                                    <p class="text-xs text-muted-foreground mb-2 line-clamp-2" x-text="v.description"></p>
+                                    <dl class="text-xs space-y-1 mb-3">
+                                        <div x-show="v.cost_estimate" x-cloak><dt class="text-muted-foreground">Cost</dt><dd class="font-medium" x-text="v.cost_estimate"></dd></div>
+                                        <div x-show="v.timeline_months" x-cloak><dt class="text-muted-foreground">Timeline</dt><dd class="font-medium" x-text="v.timeline_months + ' months'"></dd></div>
+                                        <div x-show="v.risk_profile" x-cloak><dt class="text-muted-foreground">Risk</dt><dd class="font-medium" x-text="v.risk_profile"></dd></div>
+                                    </dl>
+                                    <button type="button" @click="applyVariant(v.id)" :disabled="applyingVariantId === v.id"
+                                        class="w-full inline-flex items-center justify-center gap-1 px-2 py-1.5 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                                        <i data-lucide="check" class="w-3.5 h-3.5" x-show="applyingVariantId !== v.id" x-cloak aria-hidden="true"></i>
+                                        <i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin" x-show="applyingVariantId === v.id" x-cloak aria-hidden="true"></i>
+                                        <span x-text="applyingVariantId === v.id ? 'Applying...' : 'Adopt this variant'"></span>
+                                    </button>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </template>
+
+                {# AI Suggestion Cards for Phase E (SDX-005) #}
+                <template x-if="aiSuggestions.length > 0 && aiSuggestPhase === 'E'">
+                    <div class="mb-4 p-3 rounded-md border border-primary/20 bg-primary/5">
+                        <p class="text-xs font-medium text-primary mb-2">AI Suggested Elements</p>
+                        <div class="space-y-2">
+                            <template x-for="(s, idx) in aiSuggestions" :key="idx">
+                                <div class="flex items-center justify-between p-2 rounded-md bg-background border border-border ai-suggestion-card">
+                                    <div class="flex-1 min-w-0 mr-3">
+                                        <div class="flex items-center gap-2">
+                                            <span class="text-sm font-medium text-foreground" x-text="s.name"></span>
+                                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-violet-500/10 text-violet-600 border border-violet-500/20" x-text="s.layer"></span>
+                                        </div>
+                                        <p class="text-xs text-muted-foreground truncate" x-text="s.description"></p>
+                                    </div>
+                                    <div class="flex items-center gap-1 shrink-0">
+                                        <button @click="acceptSuggestion(idx)" class="p-1 rounded-md hover:bg-primary/10 text-primary" title="Accept">
+                                            <i data-lucide="check" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                                        </button>
+                                        <button @click="dismissSuggestion(idx)" class="p-1 rounded-md hover:bg-destructive/10 text-destructive" title="Dismiss">
+                                            <i data-lucide="x" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </template>
+
+                <template x-if="recommendations.length > 0">
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <template x-for="rec in recommendations" :key="rec.id">
+                            <div class="rounded-lg border p-4 group relative"
+                                 :class="rec.rank === 1 ? 'border-primary bg-primary/5' : 'border-border bg-card'">
+                                {# Edit/delete controls #}
+                                <div class="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <button type="button" @click="openEntityModal('option', rec)" class="text-muted-foreground hover:text-foreground p-1 rounded-md" title="Edit">
+                                        <i data-lucide="pencil" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                                    </button>
+                                    <button type="button" @click="confirmDeleteEntity('option', rec)" class="text-muted-foreground hover:text-destructive p-1 rounded-md" title="Delete">
+                                        <i data-lucide="trash-2" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                                    </button>
+                                </div>
+
+                                {# Recommended badge #}
+                                <div x-show="rec.rank === 1" x-cloak class="flex items-center gap-1 mb-2">
+                                    <i data-lucide="star" class="w-3.5 h-3.5 text-primary" aria-hidden="true"></i>
+                                    <span class="text-xs font-semibold text-primary uppercase">Recommended</span>
+                                </div>
+
+                                {# Option type and title #}
+                                <div class="flex items-center gap-2 mb-1">
+                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
+                                          :class="optionTypeClass(rec.option_type)"
+                                          x-text="rec.option_type"></span>
+                                    <h3 class="text-sm font-semibold text-foreground" x-text="'Option ' + rec.rank + ': ' + (rec.option_type || 'Option').charAt(0).toUpperCase() + (rec.option_type || 'option').slice(1)"></h3>
+                                </div>
+
+                                <p class="text-xs text-muted-foreground mb-3 line-clamp-2" x-text="rec.justification" x-show="rec.justification" x-cloak></p>
+
+                                {# Metrics row #}
+                                <div class="flex items-center gap-3 mb-3 text-xs">
+                                    <span class="font-medium text-foreground" x-show="rec.score" x-cloak x-text="'Score: ' + Math.round(rec.score || 0) + '%'"></span>
+                                    <span class="text-muted-foreground" x-show="rec.estimated_cost_min" x-cloak x-text="'Cost: ' + formatAmount(rec.estimated_cost_min) + (rec.estimated_cost_max ? '-' + formatAmount(rec.estimated_cost_max) : '')"></span>
+                                    <span class="text-muted-foreground" x-show="rec.timeline_months" x-cloak x-text="rec.timeline_months + 'mo'"></span>
+                                </div>
+
+                                {# Pros #}
+                                <template x-if="rec.pros && rec.pros.length > 0">
+                                    <div class="mb-2">
+                                        <span class="text-[10px] font-medium text-emerald-600 uppercase">Pros</span>
+                                        <ul class="mt-1 space-y-0.5">
+                                            <template x-for="pro in rec.pros.slice(0, 3)" :key="pro">
+                                                <li class="flex items-start gap-1 text-xs text-muted-foreground">
+                                                    <i data-lucide="plus" class="w-3 h-3 text-emerald-500 flex-shrink-0 mt-0.5" aria-hidden="true"></i>
+                                                    <span x-text="pro"></span>
+                                                </li>
+                                            </template>
+                                        </ul>
+                                    </div>
+                                </template>
+
+                                {# Cons #}
+                                <template x-if="rec.cons && rec.cons.length > 0">
+                                    <div>
+                                        <span class="text-[10px] font-medium text-destructive uppercase">Cons</span>
+                                        <ul class="mt-1 space-y-0.5">
+                                            <template x-for="con in rec.cons.slice(0, 3)" :key="con">
+                                                <li class="flex items-start gap-1 text-xs text-muted-foreground">
+                                                    <i data-lucide="minus" class="w-3 h-3 text-destructive flex-shrink-0 mt-0.5" aria-hidden="true"></i>
+                                                    <span x-text="con"></span>
+                                                </li>
+                                            </template>
+                                        </ul>
+                                    </div>
+                                </template>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+                <template x-if="recommendations.length === 0">
+                    <div class="text-center py-6 border-2 border-dashed border-border rounded-lg">
+                        <i data-lucide="git-compare" class="w-8 h-8 mx-auto mb-2 text-muted-foreground opacity-50" aria-hidden="true"></i>
+                        <p class="text-sm text-muted-foreground">No solution options evaluated yet.</p>
+                        <p class="text-xs text-muted-foreground mt-1">Click <strong>Run Options Analysis</strong> to generate Buy/Build/Reuse options, or add options manually.</p>
+                        <p class="text-xs text-muted-foreground mt-2 italic">
+                            <i data-lucide="sparkles" class="h-3 w-3 inline-block mr-1 text-primary/60"></i>
+                            A.R.C.H.I.E. suggests: Use the AI assistant to generate ArchiMate elements, then review and accept suggestions.
+                        </p>
+                    </div>
+                </template>
+
+                {# ENT-006: Vendor/option comparison table (shown when 2+ options exist) #}
+                <template x-if="vendorComparison.length > 1">
+                  <div class="mt-4 overflow-x-auto rounded-lg border border-border">
+                    <table class="w-full text-sm">
+                      <thead class="bg-muted/50">
+                        <tr>
+                          <th class="px-3 py-2 text-left font-medium text-muted-foreground">Vendor / Option</th>
+                          <th class="px-3 py-2 text-left font-medium text-muted-foreground">Cost Score</th>
+                          <th class="px-3 py-2 text-left font-medium text-muted-foreground">Risk Score</th>
+                          <th class="px-3 py-2 text-left font-medium text-muted-foreground">Maturity</th>
+                          <th class="px-3 py-2 text-left font-medium text-muted-foreground">Recommended</th>
+                        </tr>
+                      </thead>
+                      <tbody class="divide-y divide-border">
+                        <template x-for="v in vendorComparison" :key="v.id">
+                          <tr class="hover:bg-muted/30">
+                            <td class="px-3 py-2 font-medium" x-text="v.name"></td>
+                            <td class="px-3 py-2">
+                              <template x-if="v.costScore !== null">
+                                <div class="flex items-center gap-2">
+                                  <div class="flex-1 h-1.5 bg-muted rounded-full overflow-hidden max-w-20">
+                                    <div class="h-full bg-emerald-500 rounded-full" :style="`width:${v.costScore}%`"></div>
+                                  </div>
+                                  <span class="text-xs text-muted-foreground" x-text="v.costScore + '%'"></span>
+                                </div>
+                              </template>
+                              <template x-if="v.costScore === null"><span class="text-xs text-muted-foreground">—</span></template>
+                            </td>
+                            <td class="px-3 py-2">
+                              <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
+                                    :class="v.riskLevel==='low'?'bg-emerald-500/10 text-emerald-700':v.riskLevel==='medium'?'bg-amber-100 text-amber-700':v.riskLevel?'bg-destructive/10 text-destructive':'bg-muted text-muted-foreground'"
+                                    x-text="v.riskLevel || 'N/A'"></span>
+                            </td>
+                            <td class="px-3 py-2 text-muted-foreground text-xs" x-text="v.maturityNote || 'N/A'"></td>
+                            <td class="px-3 py-2 text-center">
+                              <template x-if="v.recommended">
+                                <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-600 inline"></i>
+                              </template>
+                            </td>
+                          </tr>
+                        </template>
+                      </tbody>
+                    </table>
+                  </div>
+                </template>
+            </div>

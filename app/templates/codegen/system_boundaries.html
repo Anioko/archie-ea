@@ -1,0 +1,578 @@
+{% extends 'layouts/admin_base.html' %}
+{% block title %}System Boundaries — Code Workbench{% endblock %}
+
+{% block content %}
+<div x-data="systemBoundaries()" x-init="init()">
+
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-6">
+        <div>
+            <h1 class="text-2xl font-bold tracking-tight text-foreground">System Boundaries</h1>
+            <p class="text-sm text-muted-foreground mt-1">
+                Group solutions into microservice systems — generate docker-compose, Terraform, contracts, and client SDKs.
+            </p>
+        </div>
+        <button @click="createOpen = true"
+                class="inline-flex items-center gap-2 rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm font-medium hover:bg-primary/90 transition-colors">
+            <i data-lucide="plus" class="h-4 w-4"></i>
+            New System Boundary
+        </button>
+    </div>
+
+    <!-- Success / Error banners -->
+    <div x-show="successMsg" x-cloak x-transition
+         class="mb-4 flex items-start gap-3 rounded-lg border border-green-500/30 bg-green-500/10 px-4 py-3 text-sm text-emerald-700">
+        <i data-lucide="check-circle-2" class="h-4 w-4 mt-0.5 shrink-0"></i>
+        <span x-text="successMsg"></span>
+    </div>
+    <template x-for="(err, i) in errors" :key="i">
+        <div x-transition class="mb-2 flex items-start gap-3 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-700">
+            <i data-lucide="x-circle" class="h-4 w-4 mt-0.5 shrink-0"></i>
+            <span x-text="err"></span>
+        </div>
+    </template>
+
+    <!-- Empty state -->
+    <div x-show="boundaries.length === 0 && !loading" x-cloak
+         class="rounded-xl border border-border bg-card p-12 text-center">
+        <i data-lucide="layers" class="h-10 w-10 text-muted-foreground mx-auto mb-4"></i>
+        <h3 class="text-base font-semibold text-foreground mb-1">No system boundaries yet</h3>  <!-- frontend-quality-ok -->
+        <p class="text-sm text-muted-foreground mb-4">
+            Create a boundary, add 2+ solutions, then generate docker-compose and inter-service contracts.
+        </p>
+        <button @click="createOpen = true"
+                class="inline-flex items-center gap-2 rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm font-medium hover:bg-primary/90 transition-colors">
+            <i data-lucide="plus" class="h-4 w-4"></i>
+            Create First Boundary
+        </button>
+    </div>
+
+    <!-- Boundaries list -->
+    <div class="space-y-4">
+        <template x-for="b in boundaries" :key="b.id">
+            <div class="rounded-xl border border-border bg-card overflow-hidden">
+                <!-- Boundary header -->
+                <div class="flex items-center justify-between px-5 py-4 border-b border-border">
+                    <div class="flex items-center gap-3">
+                        <i data-lucide="layers" class="h-5 w-5 text-primary"></i>
+                        <div>
+                            <h3 class="text-sm font-semibold text-foreground" x-text="b.name"></h3>
+                            <p class="text-xs text-muted-foreground" x-text="b.description || 'No description'"></p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs text-muted-foreground"
+                              x-text="(b.solution_count || 0) + ' services'"></span>
+                        <span x-show="b.has_artifacts" x-cloak
+                              class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium bg-green-500/10 text-emerald-600 border border-green-500/20">
+                            <i data-lucide="check" class="h-3 w-3"></i> Generated
+                        </span>
+                        <button @click="generateArtifacts(b.id)"
+                                class="inline-flex items-center gap-1.5 rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-xs font-medium hover:bg-primary/90 transition-colors"
+                                :disabled="(b.solution_count || 0) < 2"
+                                :class="(b.solution_count || 0) < 2 ? 'opacity-50 cursor-not-allowed' : ''">
+                            <i data-lucide="play" class="h-3 w-3"></i>
+                            Generate
+                        </button>
+                        <button aria-label="Delete" @click="deleteBoundary(b.id)"
+                                class="inline-flex items-center rounded-md border border-red-500/20 bg-red-500/5 p-1.5 text-red-600 hover:bg-red-500/10 transition-colors">
+                            <i data-lucide="trash-2" class="h-3.5 w-3.5"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Solutions in boundary -->
+                <div class="px-5 py-3">
+                    <div class="flex flex-wrap gap-2 mb-3">
+                        <template x-for="svc in (b.solutions || [])" :key="svc.id">
+                            <div class="flex items-center gap-2 rounded-lg border border-border bg-muted/20 px-3 py-1.5">
+                                <i data-lucide="box" class="h-3.5 w-3.5 text-muted-foreground"></i>
+                                <span class="text-xs text-foreground font-medium" x-text="svc.solution_name"></span>
+                                <span class="text-[10px] text-muted-foreground" x-text="':' + (svc.service_port || '?')"></span>
+                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
+                                      :class="{
+                                          'bg-blue-500/10 text-blue-600': svc.role === 'producer',
+                                          'bg-amber-500/10 text-amber-600': svc.role === 'consumer',
+                                          'bg-muted text-muted-foreground': svc.role === 'service',
+                                      }"
+                                      x-text="svc.role"></span>
+                                <span x-show="!svc.has_codegen" x-cloak
+                                      class="text-[10px] text-amber-600">⚠ no code</span>
+                                <button aria-label="Remove" @click="removeSolution(b.id, svc.solution_id)"
+                                        class="text-muted-foreground hover:text-red-600 transition-colors ml-0.5">
+                                    <i data-lucide="x" class="h-3 w-3"></i>
+                                </button>
+                            </div>
+                        </template>
+
+                        <!-- Add solution -->
+                        <button @click="addSolutionOpen = b.id"
+                                class="inline-flex items-center gap-1 rounded-lg border border-dashed border-border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:border-border/80 transition-colors">
+                            <i data-lucide="plus" class="h-3.5 w-3.5"></i>
+                            Add service
+                        </button>
+                    </div>
+
+                    <!-- Add solution inline form -->
+                    <div x-show="addSolutionOpen === b.id" x-cloak
+                         class="flex items-center gap-2 mt-2 pt-2 border-t border-border">
+                        <select x-model="addSolutionId"
+                                class="flex-1 rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring">
+                            <option value="">— Select a solution —</option>
+                            {% for sol in solutions %}
+                            <option value="{{ sol.id }}">{{ sol.name }}</option>
+                            {% endfor %}
+                        </select>
+                        <select x-model="addSolutionRole"
+                                class="rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring">
+                            <option value="service">service</option>
+                            <option value="producer">producer</option>
+                            <option value="consumer">consumer</option>
+                        </select>
+                        <button @click="addSolution(b.id)"
+                                :disabled="!addSolutionId"
+                                class="inline-flex items-center gap-1 rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-sm font-medium disabled:opacity-50 hover:bg-primary/90 transition-colors">
+                            Add
+                        </button>
+                        <button @click="addSolutionOpen = null; addSolutionId = ''"
+                                class="text-muted-foreground hover:text-foreground transition-colors">
+                            <i data-lucide="x" class="h-4 w-4"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Generated artifacts preview -->
+                <div x-show="b.has_artifacts" x-cloak class="border-t border-border px-5 py-3 bg-muted/5">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs text-muted-foreground">
+                            Generated <span x-text="b.generated_at ? new Date(b.generated_at).toLocaleString() : ''"></span>
+                        </span>
+                        <button @click="viewArtifacts(b.id)"
+                                class="inline-flex items-center gap-1 text-xs text-primary hover:underline">
+                            <i data-lucide="eye" class="h-3 w-3"></i>
+                            View Artifacts
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </template>
+    </div>
+
+    <!-- Create boundary modal -->
+    <div x-show="createOpen" x-cloak x-transition.opacity
+         class="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+        <div @click.away="createOpen = false"
+             class="w-full max-w-md rounded-xl border border-border bg-card shadow-xl p-6">
+            <h2 class="text-base font-semibold text-foreground mb-4">New System Boundary</h2>
+            <div class="space-y-3">
+                <div>
+                    <label class="text-xs font-medium text-muted-foreground">Name</label>
+                    <input type="text" x-model="newName" @keydown.enter="createBoundary()"
+                           placeholder="e.g. Claims Processing Platform"
+                           class="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring">
+                </div>
+                <div>
+                    <label class="text-xs font-medium text-muted-foreground">Description (optional)</label>
+                    <textarea x-model="newDesc" rows="2"
+                              placeholder="What system does this boundary represent?"
+                              class="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none"></textarea>
+                </div>
+            </div>
+            <div class="flex items-center justify-end gap-2 mt-4">
+                <button @click="createOpen = false"
+                        class="rounded-md border border-border px-4 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
+                    Cancel
+                </button>
+                <button @click="createBoundary()" :disabled="!newName.trim() || creating"
+                        class="inline-flex items-center gap-2 rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm font-medium disabled:opacity-50 hover:bg-primary/90 transition-colors">
+                    <svg x-show="creating" x-cloak class="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                    </svg>
+                    <span x-text="creating ? 'Creating…' : 'Create'"></span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Artifacts viewer modal -->
+    <div x-show="artifactsBoundary" x-cloak x-transition.opacity
+         class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div @click.away="artifactsBoundary = null"
+             class="w-full max-w-4xl max-h-[90vh] rounded-xl border border-border bg-card shadow-xl flex flex-col">
+            <!-- Modal header -->
+            <div class="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
+                <h2 class="text-base font-semibold text-foreground" x-text="artifactsBoundary ? artifactsBoundary.name + ' — Artifacts' : ''"></h2>
+                <button @click="artifactsBoundary = null" class="text-muted-foreground hover:text-foreground">
+                    <i data-lucide="x" class="h-4 w-4"></i>
+                </button>
+            </div>
+            <!-- Tab bar -->
+            <div class="flex border-b border-border shrink-0 px-5 gap-4">
+                <button @click="artifactsTab = 'compose'"
+                        class="py-2.5 text-sm font-medium border-b-2 transition-colors"
+                        :class="artifactsTab === 'compose' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'">
+                    docker-compose.yml
+                </button>
+                <button @click="artifactsTab = 'nginx'"
+                        class="py-2.5 text-sm font-medium border-b-2 transition-colors"
+                        :class="artifactsTab === 'nginx' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'">
+                    nginx.conf
+                </button>
+                <button @click="artifactsTab = 'contracts'"
+                        class="py-2.5 text-sm font-medium border-b-2 transition-colors"
+                        :class="artifactsTab === 'contracts' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'">
+                    Contracts
+                    <span class="ml-1 text-xs text-muted-foreground"
+                          x-text="artifactsBoundary && artifactsBoundary.generated_artifacts ? '(' + (artifactsBoundary.generated_artifacts.contracts || []).length + ')' : ''"></span>
+                </button>
+                <button @click="artifactsTab = 'sdks'"
+                        class="py-2.5 text-sm font-medium border-b-2 transition-colors"
+                        :class="artifactsTab === 'sdks' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'">
+                    Client SDKs
+                </button>
+                <button @click="artifactsTab = 'terraform'"
+                        class="py-2.5 text-sm font-medium border-b-2 transition-colors"
+                        :class="artifactsTab === 'terraform' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'">
+                    Terraform
+                </button>
+            </div>
+            <!-- Tab content -->
+            <div class="flex-1 overflow-auto p-5">
+                <!-- docker-compose -->
+                <div x-show="artifactsTab === 'compose'" x-cloak>
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-xs text-muted-foreground font-mono">docker-compose.yml</span>
+                        <button @click="copyToClipboard(artifactsBoundary.generated_artifacts.docker_compose)"
+                                class="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                            <i data-lucide="copy" class="h-3.5 w-3.5"></i> Copy
+                        </button>
+                    </div>
+                    <pre class="rounded-lg bg-muted/30 border border-border p-4 text-xs font-mono text-foreground overflow-auto max-h-96 whitespace-pre"
+                         x-text="artifactsBoundary && artifactsBoundary.generated_artifacts ? artifactsBoundary.generated_artifacts.docker_compose : ''"></pre>
+                </div>
+                <!-- nginx -->
+                <div x-show="artifactsTab === 'nginx'" x-cloak>
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-xs text-muted-foreground font-mono">nginx.conf</span>
+                        <button @click="copyToClipboard(artifactsBoundary.generated_artifacts.nginx_conf)"
+                                class="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                            <i data-lucide="copy" class="h-3.5 w-3.5"></i> Copy
+                        </button>
+                    </div>
+                    <pre class="rounded-lg bg-muted/30 border border-border p-4 text-xs font-mono text-foreground overflow-auto max-h-96 whitespace-pre"
+                         x-text="artifactsBoundary && artifactsBoundary.generated_artifacts ? artifactsBoundary.generated_artifacts.nginx_conf : ''"></pre>
+                </div>
+                <!-- contracts -->
+                <div x-show="artifactsTab === 'contracts'" x-cloak>
+                    <div x-show="!artifactsBoundary || !artifactsBoundary.generated_artifacts || (artifactsBoundary.generated_artifacts.contracts || []).length === 0"
+                         x-cloak class="text-sm text-muted-foreground italic py-4">
+                        No cross-service contracts detected — add ArchiMate relationships between solution elements to generate contracts.
+                    </div>
+                    <div class="space-y-2">
+                        <template x-for="(c, i) in (artifactsBoundary && artifactsBoundary.generated_artifacts ? artifactsBoundary.generated_artifacts.contracts : [])" :key="i">
+                            <div class="rounded-lg border border-border bg-muted/10 px-4 py-3">
+                                <div class="flex items-center gap-2 mb-1">
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-blue-600 border border-blue-500/20"
+                                          x-text="c.method"></span>
+                                    <span class="text-xs font-mono text-foreground" x-text="c.endpoint"></span>
+                                </div>
+                                <div class="text-xs text-muted-foreground">
+                                    <span class="text-amber-600 font-medium" x-text="c.consumer_name"></span>
+                                    <span class="mx-1">→</span>
+                                    <span class="text-emerald-600 font-medium" x-text="c.producer_name"></span>
+                                    <span class="mx-1">·</span>
+                                    <span x-text="c.description"></span>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+                <!-- Terraform -->
+                <div x-show="artifactsTab === 'terraform'" x-cloak>
+                    <!-- Generate controls -->
+                    <div class="flex items-center gap-3 mb-4 p-3 rounded-lg border border-border bg-muted/10">
+                        <div class="flex items-center gap-2">
+                            <label class="text-xs font-medium text-muted-foreground">Region</label>
+                            <input type="text" x-model="tfRegion" placeholder="eu-west-1"
+                                   class="rounded-md border border-input bg-background px-2 py-1 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring w-32">
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <label class="text-xs font-medium text-muted-foreground">Environment</label>
+                            <select x-model="tfEnvironment"
+                                    class="rounded-md border border-input bg-background px-2 py-1 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring">
+                                <option value="staging">staging</option>
+                                <option value="production">production</option>
+                                <option value="dev">dev</option>
+                            </select>
+                        </div>
+                        <button @click="generateTerraform(artifactsBoundary.id)"
+                                :disabled="tfLoading"
+                                class="inline-flex items-center gap-1.5 rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-xs font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors">
+                            <svg x-show="tfLoading" x-cloak class="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                            </svg>
+                            <i x-show="!tfLoading" data-lucide="zap" class="h-3 w-3"></i>
+                            <span x-text="tfLoading ? 'Generating…' : 'Generate Terraform'"></span>
+                        </button>
+                        <span x-show="tfFiles && Object.keys(tfFiles).length > 0" x-cloak
+                              class="text-xs text-muted-foreground"
+                              x-text="Object.keys(tfFiles).length + ' files'"></span>
+                    </div>
+
+                    <!-- Empty state -->
+                    <div x-show="!tfFiles || Object.keys(tfFiles).length === 0" x-cloak
+                         class="text-sm text-muted-foreground italic py-4">
+                        Click "Generate Terraform" to create AWS infrastructure code from Technology layer elements.
+                    </div>
+
+                    <!-- File tree + viewer -->
+                    <div x-show="tfFiles && Object.keys(tfFiles).length > 0" x-cloak
+                         class="flex gap-3" style="height: 480px;">
+                        <!-- File tree -->
+                        <div class="w-56 shrink-0 rounded-lg border border-border bg-muted/10 overflow-auto p-2">
+                            <p class="text-[10px] font-medium text-muted-foreground uppercase tracking-wide px-2 mb-1">Files</p>
+                            <template x-for="[path, _] in Object.entries(tfFiles || {})" :key="path">
+                                <button @click="tfSelectedFile = path"
+                                        class="w-full text-left px-2 py-1 rounded text-xs font-mono truncate transition-colors"
+                                        :class="tfSelectedFile === path ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-muted/20'"
+                                        x-text="path.replace('terraform/', '')"></button>
+                            </template>
+                        </div>
+                        <!-- Code viewer -->
+                        <div class="flex-1 flex flex-col min-w-0 rounded-lg border border-border overflow-hidden">
+                            <div class="flex items-center justify-between px-3 py-2 border-b border-border bg-muted/10 shrink-0">
+                                <span class="text-xs font-mono text-muted-foreground" x-text="tfSelectedFile || ''"></span>
+                                <button @click="copyToClipboard(tfFiles[tfSelectedFile])"
+                                        x-show="tfSelectedFile"
+                                        class="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                                    <i data-lucide="copy" class="h-3.5 w-3.5"></i> Copy
+                                </button>
+                            </div>
+                            <pre class="flex-1 overflow-auto p-3 text-xs font-mono text-foreground whitespace-pre bg-muted/5"
+                                 x-text="tfSelectedFile ? (tfFiles[tfSelectedFile] || '') : 'Select a file from the tree.'"></pre>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SDKs -->
+                <div x-show="artifactsTab === 'sdks'" x-cloak>
+                    <div x-show="!artifactsBoundary || !artifactsBoundary.generated_artifacts || Object.keys(artifactsBoundary.generated_artifacts.client_sdks || {}).length === 0"
+                         x-cloak class="text-sm text-muted-foreground italic py-4">
+                        No client SDKs generated — SDKs require at least one cross-service contract.
+                    </div>
+                    <div class="space-y-4">
+                        <template x-for="[filename, code] in Object.entries((artifactsBoundary && artifactsBoundary.generated_artifacts ? artifactsBoundary.generated_artifacts.client_sdks : {}) || {})" :key="filename">
+                            <div>
+                                <div class="flex items-center justify-between mb-2">
+                                    <span class="text-xs text-muted-foreground font-mono" x-text="filename"></span>
+                                    <button @click="copyToClipboard(code)"
+                                            class="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                                        <i data-lucide="copy" class="h-3.5 w-3.5"></i> Copy
+                                    </button>
+                                </div>
+                                <pre class="rounded-lg bg-muted/30 border border-border p-4 text-xs font-mono text-foreground overflow-auto max-h-64 whitespace-pre" x-text="code"></pre>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+function systemBoundaries() {
+    return {
+        boundaries: {{ boundaries | tojson }},
+        loading: false,
+        errors: [],
+        successMsg: '',
+
+        // Create form
+        createOpen: false,
+        creating: false,
+        newName: '',
+        newDesc: '',
+
+        // Add solution
+        addSolutionOpen: null,
+        addSolutionId: '',
+        addSolutionRole: 'service',
+
+        // Artifacts viewer
+        artifactsBoundary: null,
+        artifactsTab: 'compose',
+
+        // Terraform
+        tfRegion: 'eu-west-1',
+        tfEnvironment: 'staging',
+        tfLoading: false,
+        tfFiles: {},
+        tfSelectedFile: null,
+
+        init() {
+            // Initial boundaries already server-rendered
+        },
+
+        async _fetch(url, opts = {}) {
+            const defaults = { headers: { 'Content-Type': 'application/json' } };
+            const resp = await fetch(url, { ...defaults, ...opts });
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || resp.statusText);
+            return data;
+        },
+
+        _setSuccess(msg) {
+            this.successMsg = msg;
+            setTimeout(() => { this.successMsg = ''; }, 4000);
+        },
+
+        _addError(msg) {
+            this.errors.push(msg);
+            setTimeout(() => { this.errors.shift(); }, 6000);
+        },
+
+        async createBoundary() {
+            if (!this.newName.trim()) return;
+            this.creating = true;
+            try {
+                const data = await this._fetch('/api/codegen/system-boundaries', {
+                    method: 'POST',
+                    body: JSON.stringify({ name: this.newName.trim(), description: this.newDesc.trim() }),
+                });
+                this.boundaries.unshift(data.boundary);
+                this.createOpen = false;
+                this.newName = '';
+                this.newDesc = '';
+                this._setSuccess('System boundary created.');
+            } catch (e) {
+                this._addError('Create failed: ' + e.message);
+            } finally {
+                this.creating = false;
+            }
+        },
+
+        async deleteBoundary(id) {
+            if (!(await Platform.modal.confirm('Delete this system boundary and all its generated artifacts?'))) return;
+            try {
+                await this._fetch(`/api/codegen/system-boundaries/${id}`, { method: 'DELETE' });
+                this.boundaries = this.boundaries.filter(b => b.id !== id);
+                this._setSuccess('Boundary deleted.');
+            } catch (e) {
+                this._addError('Delete failed: ' + e.message);
+            }
+        },
+
+        async addSolution(boundaryId) {
+            if (!this.addSolutionId) return;
+            try {
+                const data = await this._fetch(`/api/codegen/system-boundaries/${boundaryId}/solutions`, {
+                    method: 'POST',
+                    body: JSON.stringify({ solution_id: parseInt(this.addSolutionId), role: this.addSolutionRole }),
+                });
+                const idx = this.boundaries.findIndex(b => b.id === boundaryId);
+                if (idx >= 0) this.boundaries[idx] = data.boundary;
+                this.addSolutionOpen = null;
+                this.addSolutionId = '';
+                this._setSuccess('Service added to boundary.');
+            } catch (e) {
+                this._addError('Add failed: ' + e.message);
+            }
+        },
+
+        async removeSolution(boundaryId, solutionId) {
+            try {
+                await this._fetch(`/api/codegen/system-boundaries/${boundaryId}/solutions/${solutionId}`, { method: 'DELETE' });
+                const idx = this.boundaries.findIndex(b => b.id === boundaryId);
+                if (idx >= 0) {
+                    this.boundaries[idx].solutions = (this.boundaries[idx].solutions || []).filter(s => s.solution_id !== solutionId);
+                    this.boundaries[idx].solution_count = (this.boundaries[idx].solutions || []).length;
+                }
+                this._setSuccess('Service removed.');
+            } catch (e) {
+                this._addError('Remove failed: ' + e.message);
+            }
+        },
+
+        async loadBoundary(id) {
+            try {
+                const data = await this._fetch(`/api/codegen/system-boundaries/${id}`);
+                const idx = this.boundaries.findIndex(b => b.id === id);
+                if (idx >= 0) this.boundaries[idx] = data;
+            } catch (_) {}
+        },
+
+        async generateArtifacts(id) {
+            try {
+                const data = await this._fetch(`/api/codegen/system-boundaries/${id}/generate`, { method: 'POST' });
+                if (data.success) {
+                    const idx = this.boundaries.findIndex(b => b.id === id);
+                    if (idx >= 0) {
+                        this.boundaries[idx].has_artifacts = true;
+                        this.boundaries[idx].generated_at = new Date().toISOString();
+                        this.boundaries[idx].generated_artifacts = data.artifacts;
+                    }
+                    this._setSuccess(`Generated: ${data.solution_count} services, ${data.contract_count} contracts, ${data.sdk_count} SDKs.`);
+                    // Open artifacts viewer
+                    this.artifactsBoundary = this.boundaries[idx >= 0 ? idx : 0];
+                    this.artifactsTab = 'compose';
+                }
+            } catch (e) {
+                this._addError('Generation failed: ' + e.message);
+            }
+        },
+
+        async viewArtifacts(id) {
+            try {
+                const data = await this._fetch(`/api/codegen/system-boundaries/${id}`);
+                this.artifactsBoundary = data;
+                // Also fetch artifacts from generate endpoint result stored in boundary
+                const genData = await this._fetch(`/api/codegen/system-boundaries/${id}/contracts`);
+                if (!this.artifactsBoundary.generated_artifacts) this.artifactsBoundary.generated_artifacts = {};
+                this.artifactsBoundary.generated_artifacts.contracts = genData.contracts || [];
+                this.artifactsTab = 'compose';
+            } catch (e) {
+                // Try showing from in-memory
+                const b = this.boundaries.find(b => b.id === id);
+                if (b) {
+                    this.artifactsBoundary = b;
+                    this.artifactsTab = 'compose';
+                }
+            }
+        },
+
+        async generateTerraform(id) {
+            if (!id) return;
+            this.tfLoading = true;
+            this.tfFiles = {};
+            this.tfSelectedFile = null;
+            try {
+                const data = await this._fetch(`/api/codegen/system-boundaries/${id}/generate-terraform`, {
+                    method: 'POST',
+                    body: JSON.stringify({ region: this.tfRegion, environment: this.tfEnvironment }),
+                });
+                if (data.success) {
+                    this.tfFiles = data.files || {};
+                    const firstFile = Object.keys(this.tfFiles)[0] || null;
+                    this.tfSelectedFile = firstFile;
+                    this._setSuccess(`Terraform generated: ${data.file_count} files, ${data.resource_summary.ecs_services} ECS services.`);
+                }
+            } catch (e) {
+                this._addError('Terraform generation failed: ' + e.message);
+            } finally {
+                this.tfLoading = false;
+            }
+        },
+
+        copyToClipboard(text) {
+            navigator.clipboard.writeText(text || '').then(() => {
+                this._setSuccess('Copied to clipboard.');
+            });
+        },
+    };
+}
+</script>
+{% endblock %}

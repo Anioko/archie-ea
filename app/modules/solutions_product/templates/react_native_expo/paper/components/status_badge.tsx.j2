@@ -1,0 +1,69 @@
+{# Paper StatusBadge and PriorityBadge — uses Chip compact mode (MD3) #}
+import { StyleSheet } from "react-native"
+import { Chip } from "react-native-paper"
+
+const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
+  draft:       { bg: "#f1f5f9", text: "#475569" },
+  pending:     { bg: "#fef9c3", text: "#854d0e" },
+  active:      { bg: "#dbeafe", text: "#1e40af" },
+  in_progress: { bg: "#dbeafe", text: "#1e40af" },
+  assigned:    { bg: "#e0e7ff", text: "#3730a3" },
+  open:        { bg: "#e0e7ff", text: "#3730a3" },
+  completed:   { bg: "#dcfce7", text: "#166534" },
+  done:        { bg: "#dcfce7", text: "#166534" },
+  approved:    { bg: "#dcfce7", text: "#166534" },
+  closed:      { bg: "#dcfce7", text: "#166534" },
+  cancelled:   { bg: "#fee2e2", text: "#991b1b" },
+  rejected:    { bg: "#fee2e2", text: "#991b1b" },
+  failed:      { bg: "#fee2e2", text: "#991b1b" },
+  archived:    { bg: "#f3f4f6", text: "#6b7280" },
+  inactive:    { bg: "#f3f4f6", text: "#6b7280" },
+}
+
+const PRIORITY_COLORS: Record<string, { bg: string; text: string }> = {
+  low:      { bg: "#f1f5f9", text: "#475569" },
+  medium:   { bg: "#fef9c3", text: "#854d0e" },
+  high:     { bg: "#fed7aa", text: "#9a3412" },
+  critical: { bg: "#fee2e2", text: "#991b1b" },
+  urgent:   { bg: "#fee2e2", text: "#991b1b" },
+}
+
+// Style factory — avoids Jinja2/JSX double-brace collision
+const _chipStyle = (bg: string) => ({ backgroundColor: bg, height: 24 })
+const _textStyle = (color: string) => ({ color, fontSize: 11, lineHeight: 14 })
+
+export function StatusBadge({ value }: { value: string | null | undefined }) {
+  if (value == null || value === "") return null
+  const key = String(value).toLowerCase().replace(/[\s-]+/g, "_")
+  const colors = STATUS_COLORS[key] ?? { bg: "#f1f5f9", text: "#475569" }
+  const label = String(value).replace(/_/g, " ")
+  return (
+    <Chip
+      compact
+      mode="flat"
+      style={_chipStyle(colors.bg)}
+      textStyle={_textStyle(colors.text)}
+      accessibilityLabel={`Status: ${label}`}
+    >
+      {label}
+    </Chip>
+  )
+}
+
+export function PriorityBadge({ value }: { value: string | null | undefined }) {
+  if (value == null || value === "") return null
+  const key = String(value).toLowerCase()
+  const colors = PRIORITY_COLORS[key] ?? { bg: "#f1f5f9", text: "#475569" }
+  const label = String(value).toUpperCase()
+  return (
+    <Chip
+      compact
+      mode="flat"
+      style={_chipStyle(colors.bg)}
+      textStyle={_textStyle(colors.text)}
+      accessibilityLabel={`Priority: ${label}`}
+    >
+      {label}
+    </Chip>
+  )
+}

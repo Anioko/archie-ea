@@ -1,0 +1,99 @@
+{#
+  CAP-027: Capability coverage panel for the value_stream_map section.
+
+  Self-contained: fetches /solutions/<id>/capability-coverage via JS and renders
+  a two-column table showing which BusinessCapability records this solution maps to
+  and which solution-linked applications already cover each.
+
+  "No app coverage" rows are the capability gap — requirements not met by current portfolio.
+  Justification for new partial (CLAUDE.md Rule 1): capability coverage is a distinct
+  UI component required by the gap analysis (docs/2026-03-28-capability-wiring-design.md).
+  It belongs alongside _blueprint_governance.html and other section partials.
+#}
+
+<div id="cap-coverage-panel" class="mt-4 hidden">
+  <div class="rounded-lg border border-border bg-card">
+    <div class="flex items-center justify-between px-4 py-2.5 border-b border-border">
+      <div class="flex items-center gap-2">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-muted-foreground shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18"/>
+        </svg>
+        <span class="text-xs font-semibold text-foreground">Capability Coverage</span>
+      </div>
+      <div class="flex items-center gap-2 text-xs text-muted-foreground">
+        <span id="cap-coverage-total"></span>
+        <span id="cap-coverage-gap" class="font-medium"></span>
+      </div>
+    </div>
+
+    <div id="cap-coverage-body" class="divide-y divide-border/50">
+      {# Populated by JS below #}
+    </div>
+
+    <div id="cap-coverage-empty" class="hidden px-4 py-3 text-xs text-muted-foreground italic">
+      No capability mappings yet. Link applications to auto-import their capabilities.
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const panel = document.getElementById('cap-coverage-panel');
+  const body  = document.getElementById('cap-coverage-body');
+  const empty = document.getElementById('cap-coverage-empty');
+  const total = document.getElementById('cap-coverage-total');
+  const gap   = document.getElementById('cap-coverage-gap');
+
+  fetch('/solutions/{{ solution.id }}/capability-coverage')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (!data.success || !data.capabilities || data.capabilities.length === 0) {
+        panel.classList.remove('hidden');
+        empty.classList.remove('hidden');
+        return;
+      }
+
+      total.textContent = data.total + ' mapped';
+      if (data.gap_count > 0) {
+        gap.textContent = data.gap_count + ' gap' + (data.gap_count > 1 ? 's' : '');
+        gap.classList.add('text-warning-600');
+      }
+
+      data.capabilities.forEach(function(cap) {
+        const row = document.createElement('div');
+        row.className = 'flex items-center justify-between px-4 py-2 text-xs';
+
+        const nameCell = document.createElement('div');
+        nameCell.className = 'flex items-center gap-1.5 min-w-0';
+        if (cap.capability_code) {
+          const code = document.createElement('span');
+          code.className = 'shrink-0 font-mono text-muted-foreground';
+          code.textContent = cap.capability_code;
+          nameCell.appendChild(code);
+        }
+        const name = document.createElement('span');
+        name.className = 'truncate text-foreground';
+        name.textContent = cap.capability_name;
+        nameCell.appendChild(name);
+
+        const appCell = document.createElement('div');
+        appCell.className = 'shrink-0 ml-2';
+        if (cap.has_gap) {
+          appCell.innerHTML = '<span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-warning-500/10 text-warning-600 border border-warning-500/30">No app coverage</span>';
+        } else {
+          appCell.className += ' text-success-600 text-right';
+          appCell.textContent = cap.covering_apps.slice(0, 2).join(', ') + (cap.covering_apps.length > 2 ? ' +' + (cap.covering_apps.length - 2) : '');
+        }
+
+        row.appendChild(nameCell);
+        row.appendChild(appCell);
+        body.appendChild(row);
+      });
+
+      panel.classList.remove('hidden');
+    })
+    .catch(function() {
+      /* silently omit panel on error */
+    });
+})();
+</script>

@@ -1,0 +1,51 @@
+{
+  "name": "Flask Testing Environment",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "app",
+  "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {},
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-playwright.playwright",
+        "ms-vscode.vscode-json",
+        "ms-vscode.vscode-yaml",
+        "ms-vscode.vscode-jinja",
+        "ms-toolsai.jupyter",
+        "ms-vscode.vscode-sql"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "python.linting.enabled": true,
+        "python.formatting.provider": "black"
+      }
+    }
+  },
+  "forwardPorts": [5000, 5432],
+  "portsAttributes": {
+    "5000": {
+      "label": "Flask App",
+      "onAutoForward": "notify"
+    },
+    "5432": {
+      "label": "PostgreSQL",
+      "onAutoForward": "silent"
+    }
+  },
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+  "postStartCommand": "python scripts/setup/setup_codespaces_db.py 2>/dev/null || true",
+  "remoteEnv": {
+    "FLASK_CONFIG": "codespaces",
+    "PLAYWRIGHT_BROWSER_HEADLESS": "true",
+    "PIP_EXTRA_INDEX_URL": "https://download.pytorch.org/whl/cpu",
+    "DATABASE_URL": "postgresql://postgres:postgres@db:5432/flask_app"
+  },
+  "containerEnv": {
+    "PYTORCH_ENABLE_MPS_FALLBACK": "1",
+    "TOKENIZERS_PARALLELISM": "false"
+  }
+}

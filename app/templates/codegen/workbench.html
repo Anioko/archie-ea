@@ -1,0 +1,390 @@
+{% extends 'layouts/admin_base.html' %}
+{% block title %}Code Workbench — {{ solution.name }}{% endblock %}
+
+{% block extra_head_js %}
+<script src="{{ url_for('static', filename='js/codegen/stores/codegen-state.js') }}"></script>
+<script src="{{ url_for('static', filename='js/codegen/stores/file-store.js') }}"></script>
+<script src="{{ url_for('static', filename='js/codegen/stores/generate-store.js') }}"></script>
+<script src="{{ url_for('static', filename='js/codegen/workbench.js') }}?v=2"></script>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+/* ── IDE full-height layout override ── */
+/* The scroll wrapper (.flex-1.overflow-y-auto) must become a fixed-height flex container
+   so the workbench root's h-full resolves to the viewport, not a scroll overflow. */
+body:has([data-workbench]) .flex-1.flex.flex-col.overflow-x-hidden.overflow-y-auto {
+  overflow: hidden !important;
+  flex: 1 1 0%;
+  min-height: 0;
+}
+body:has([data-workbench]) #main-content {
+  overflow: hidden !important;
+  flex: 1 1 0%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+body:has([data-workbench]) #main-content > div {
+  padding: 0 !important;
+  max-width: none !important;
+  width: 100% !important;
+  margin: 0 !important;
+  flex: 1 1 0%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+[x-cloak] { display: none !important; }
+
+/* ── Syntax highlight tokens ── */
+.wb-code { font-family: 'JetBrains Mono','Cascadia Code',ui-monospace,monospace; font-size:12px; line-height:1.7; }
+
+/* ── Thin scrollbars ── */
+.ide-scroll::-webkit-scrollbar { width:4px; height:4px; }
+.ide-scroll::-webkit-scrollbar-track { background:transparent; }
+.ide-scroll::-webkit-scrollbar-thumb { background:hsl(var(--border)); border-radius:2px; }
+
+/* ── File tree item ── */
+.fitem { padding:2px 0; cursor:pointer; user-select:none; border-radius:4px; }
+.fitem:hover { background:hsl(var(--muted)); }
+.fitem.active { background:hsl(var(--primary)/.10); }
+.fitem.active .fname { color:hsl(var(--primary)); }
+
+/* ── Method badges ── */
+.method-get    { background:hsl(142 71% 45%/.15); color:hsl(142 71% 45%); border:1px solid hsl(142 71% 45%/.3); }
+.method-post   { background:hsl(var(--primary)/.15); color:hsl(var(--primary)); border:1px solid hsl(var(--primary)/.3); }
+.method-put    { background:hsl(39 100% 60%/.15); color:hsl(39 100% 55%); border:1px solid hsl(39 100% 60%/.3); }
+.method-delete { background:hsl(var(--destructive)/.15); color:hsl(var(--destructive)); border:1px solid hsl(var(--destructive)/.3); }
+.method-patch  { background:hsl(280 55% 60%/.15); color:hsl(280 55% 65%); border:1px solid hsl(280 55% 60%/.3); }
+
+/* ── Radar chart ── */
+.radar-grid { stroke:hsl(var(--border)); }
+.radar-fill { fill:hsl(var(--primary)/.18); stroke:hsl(var(--primary)); stroke-width:1.5; }
+
+/* ── Diff colours ── */
+.diff-add { background:hsl(142 71% 45%/.08); color:hsl(142 71% 45%); }
+.diff-del { background:hsl(var(--destructive)/.08); color:hsl(var(--destructive)); }
+.diff-ctx { color:hsl(var(--muted-foreground)); }
+
+/* ── Tab fade ── */
+.tab-pane { animation:tbfade .12s ease; }
+@keyframes tbfade { from{opacity:0;transform:translateY(2px)} to{opacity:1} }
+
+/* ── Spin ── */
+@keyframes wb-spin { to { transform: rotate(360deg); } }
+.wb-spin { animation: wb-spin 1s linear infinite; }
+</style>
+{% endblock %}
+
+{% block content %}
+{% set has_uml = generation.uml_snapshot is not none %}
+{% set has_files = generation.generated_files is not none %}
+{% set initial_phase = 4 if has_files else (3 if has_uml else 1) %}
+{% set file_list = generation.generated_files.keys() | list | sort if has_files else [] %}
+{% set github_url = generation.github_url or '' %}
+
+<script>
+    window.__codegenInit = {
+        solutionId: {{ solution.id }},
+        solutionName: {{ solution.name | tojson }},
+        phase: {{ initial_phase }},
+        version: {{ generation.version }},
+        hasUml: {{ 'true' if has_uml else 'false' }},
+        hasFiles: {{ 'true' if has_files else 'false' }},
+        hasLlm: {{ 'true' if has_llm else 'false' }},
+        blueprintStale: {{ 'true' if blueprint_stale else 'false' }},
+        linkedElementsCount: {{ linked_elements_count }},
+        chainCompleteness: {{ chain_completeness if chain_completeness is not none else 'null' }},
+        suggestedAuth: {{ suggested_auth | tojson }},
+        journeyBrief: {{ journey_brief | tojson }},
+        githubUrl: {{ github_url | tojson }},
+        fileList: {{ file_list | tojson }}
+    };
+    // Genome JSON stored outside Alpine reactive state — avoids deep-proxy cost on large objects
+    window.__codegenGenome = {{ genome_json | tojson }};
+</script>
+
+<div x-data="codegenWorkbench(window.__codegenInit)" x-init="init()" data-workbench="1"
+     @wb-chat-toggle.window="rightTab = rightTab === 'ai' ? 'preview' : 'ai'; $nextTick(() => { if (rightTab === 'ai') { const el = $refs.chatTextarea || document.querySelector('[x-ref=\'chatTextarea\']'); if (el) el.focus(); } })"
+     class="flex flex-col h-full overflow-hidden">
+
+    <!-- Loading skeleton — shown until Alpine's init() completes its first tick.
+         Prevents the IDE template (471 directives) from mounting synchronously
+         during Alpine's init pass, which froze the browser for 30+ seconds on
+         solutions with 100+ generated files. ideReady is set true in init() via
+         $nextTick, after Alpine has flushed the initial render. -->
+    <template x-if="!ideReady">
+        <div class="flex-1 flex items-center justify-center">
+            <div class="flex flex-col items-center gap-3 text-muted-foreground">
+                <svg class="w-6 h-6 wb-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48 2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48 2.83-2.83"/></svg>
+                <span class="text-xs">Loading workbench…</span>
+            </div>
+        </div>
+    </template>
+
+    <!-- ══════════════════════════════════════════════════════
+         WIZARD VIEW — shown when no files generated yet
+         x-if (not x-show) so Alpine only mounts ONE section —
+         prevents ~1600-directive init cost that causes Page Unresponsive
+    ══════════════════════════════════════════════════════ -->
+    <template x-if="ideReady && (fileList.length === 0 || ideShowSetup)">
+        <div class="flex-1 overflow-y-auto">
+            {% include 'codegen/_wb_wizard.html' %}
+            <div x-show="phase === 3 && isSalesforceApex" x-cloak class="px-5 pb-6">
+                <div data-salesforce-package-settings class="mx-auto max-w-5xl rounded-xl border border-border bg-card/80 p-5 shadow-sm space-y-4">
+                    <div>
+                        <h3 class="text-sm font-semibold text-foreground">Salesforce packaging</h3>
+                        <p class="text-xs text-muted-foreground mt-1">Configure managed-package output for AppExchange-style bundles. These values are saved with Phase 3 config and sent with generation requests.</p>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-foreground mb-1.5">Package mode</label>
+                            <select x-model="config.package_mode" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring">
+                                <option value="unmanaged">Unmanaged / source bundle</option>
+                                <option value="managed">Managed package</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-foreground mb-1.5">Namespace prefix</label>
+                            <input type="text" x-model="config.namespace_prefix" maxlength="15" placeholder="Acme" :disabled="config.package_mode !== 'managed'" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 disabled:cursor-not-allowed">
+                            <p class="text-[11px] text-muted-foreground mt-1">Used for namespaced object and field API names when managed-package output is selected.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </template><!-- /wizard view -->
+
+    <!-- ══════════════════════════════════════════════════════
+         IDE VIEW — shown when files are generated
+         ideReady gate: defers mounting until after Alpine's first render tick,
+         so 471 directives don't block the initial paint on large codebases.
+    ══════════════════════════════════════════════════════ -->
+    <template x-if="ideReady && fileList.length > 0 && !ideShowSetup">
+        <div class="flex flex-col flex-1 overflow-hidden">
+            {% include 'codegen/_wb_ide.html' %}
+        </div>
+    </template><!-- /ide view -->
+
+    <!-- ── Save as Template Modal ── -->
+    <div x-show="saveTemplateModal" x-cloak
+         class="fixed inset-0 z-50 flex items-center justify-center p-4"
+         @keydown.escape.window="saveTemplateModal = false">
+        <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" @click="saveTemplateModal = false"></div>
+        <div class="relative z-10 w-full max-w-md rounded-2xl border border-border bg-card shadow-2xl p-6">
+            <div class="flex items-center gap-3 mb-5">
+                <div class="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                    <svg class="w-4 h-4 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0 1 11.186 0Z"/></svg>
+                </div>
+                <div>
+                    <p class="text-sm font-semibold text-foreground">Save as Template</p>
+                    <p class="text-[11px] text-muted-foreground">Capture <span x-text="fileList.length"></span> generated files as a reusable template set</p>
+                </div>
+                <button type="button" @click="saveTemplateModal = false" class="ml-auto w-7 h-7 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors">
+                    <svg class="w-3.5 h-3.5" viewBox="0 0 10 10" fill="currentColor"><path d="M1 1l8 8M9 1l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                </button>
+            </div>
+
+            <div class="space-y-4">
+                <div>
+                    <label class="text-[11px] font-medium text-foreground mb-1.5 block">Template Name <span class="text-destructive">*</span></label>
+                    <input x-model="newTemplateName" type="text" placeholder="e.g. GDPR-compliant FastAPI baseline"
+                           class="w-full h-9 px-3 rounded-lg border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/50 transition-colors">
+                </div>
+                <div>
+                    <label class="text-[11px] font-medium text-foreground mb-1.5 block">Description <span class="text-muted-foreground font-normal">(optional)</span></label>
+                    <textarea x-model="newTemplateDesc" rows="2" placeholder="What makes this template useful?"
+                              class="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/50 transition-colors resize-none"></textarea>
+                </div>
+                <div class="flex items-center gap-2 p-2.5 rounded-lg bg-muted/50 border border-border/50">
+                    <svg class="w-3.5 h-3.5 text-muted-foreground shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m21.75 6.75-2.25-2.25m0 0-2.25-2.25M19.5 4.5l2.25 2.25M19.5 4.5l-2.25 2.25M3 3l3.59 3.59m0 0A9.953 9.953 0 0 1 12 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 0 1-4.132 4.411m0 0L21 21M3 3l18 18"/></svg>
+                    <span class="text-[10px] text-muted-foreground">Language: <span class="font-medium text-foreground" x-text="config.language"></span></span>
+                </div>
+            </div>
+
+            <div class="flex gap-2 mt-5">
+                <button type="button" @click="saveTemplateModal = false"
+                        class="flex-1 h-9 text-sm font-medium rounded-lg border border-border text-muted-foreground hover:bg-accent transition-colors">
+                    Cancel
+                </button>
+                <button type="button" @click="saveAsTemplate()" :disabled="savingAsTemplate || !newTemplateName.trim()"
+                        class="flex-1 h-9 text-sm font-semibold rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors flex items-center justify-center gap-2">
+                    <svg x-show="savingAsTemplate" class="w-3.5 h-3.5 wb-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48 2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48 2.83-2.83"/></svg>
+                    <span x-text="savingAsTemplate ? 'Saving…' : 'Save Template'"></span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+                <!-- Search results panel -->
+                <div x-show="rightTab === 'search'" x-cloak class="tab-pane flex-1 overflow-y-auto ide-scroll p-3 space-y-2">
+                    <template x-if="!searchResults">
+                        <div class="text-center py-8 text-muted-foreground text-xs">
+                            <i data-lucide="search" class="h-8 w-8 mx-auto mb-2 opacity-30"></i>
+                            <p>Use the <strong>Find</strong> button or <span class="font-mono text-[10px] bg-muted px-1 py-0.5 rounded">Ctrl+Shift+F</span> to search across files</p>
+                        </div>
+                    </template>
+                    <template x-if="searchResults">
+                        <div>
+                            <div class="text-[11px] text-muted-foreground mb-2">
+                                <span x-text="searchResults.total_matches"></span> matches in <span x-text="searchResults.total_files"></span> files
+                                for "<span class="font-medium text-foreground" x-text="searchResults.query"></span>"
+                            </div>
+                            <template x-for="result in searchResults.results" :key="result.path">
+                                <div class="mb-2">
+                                    <button type="button" @click="selectFile(result.path)" class="text-[11px] font-medium text-primary hover:underline truncate block w-full text-left" x-text="result.path"></button>
+                                    <template x-for="m in result.matches" :key="m.line">
+                                        <div @click="selectFile(result.path)" class="pl-3 py-0.5 text-[10px] font-mono text-muted-foreground hover:text-foreground hover:bg-muted/30 cursor-pointer rounded truncate">
+                                            <span class="text-muted-foreground/50 mr-1" x-text="m.line + ':'"></span><span x-text="m.text"></span>
+                                        </div>
+                                    </template>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+                </div>
+
+    <!-- Command palette (⌘K / Ctrl+K): unified navigation for Quality, AI, verify, patch, journey tips -->
+    <div x-show="commandPaletteOpen" x-cloak
+         x-transition:enter="transition ease-out duration-100"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         class="fixed inset-0 z-[100] flex items-start justify-center pt-[12vh] px-4 bg-black/50"
+         @click.self="commandPaletteOpen = false"
+         @keydown.escape.window="commandPaletteOpen = false">
+        <div @click.stop
+             class="w-full max-w-lg rounded-lg border border-border bg-card shadow-2xl overflow-hidden"
+             role="dialog" aria-modal="true" aria-label="Workbench command palette">
+            <div class="flex items-center gap-2 border-b border-border px-3 py-2.5">
+                <i data-lucide="command" class="h-4 w-4 shrink-0 text-muted-foreground"></i>
+                <input type="text" x-ref="cmdPaletteInput"
+                       x-model="commandQuery"
+                       @keydown.arrow-down.prevent="commandPaletteIndex = Math.min(commandPaletteIndex + 1, Math.max(filteredCommandPaletteList().length - 1, 0))"
+                       @keydown.arrow-up.prevent="commandPaletteIndex = Math.max(commandPaletteIndex - 1, 0)"
+                       @keydown.enter.prevent="executeCommandPaletteAtIndex()"
+                       placeholder="Search commands…"
+                       class="flex-1 min-w-0 bg-transparent text-sm outline-none placeholder:text-muted-foreground/60" />
+            </div>
+            <ul class="max-h-64 overflow-y-auto py-1 ide-scroll">
+                <template x-for="(cmd, idx) in filteredCommandPaletteList()" :key="cmd.id">
+                    <li @click="executeCommandAction(cmd.id); $event.stopPropagation()"
+                        :class="idx === commandPaletteIndex ? 'bg-accent text-foreground' : 'hover:bg-muted/60'"
+                        class="px-3 py-2 text-sm cursor-pointer flex items-center justify-between gap-2">
+                        <span x-text="cmd.label"></span>
+                    </li>
+                </template>
+                <li x-show="filteredCommandPaletteList().length === 0" class="px-3 py-4 text-sm text-muted-foreground text-center">No matching commands</li>
+            </ul>
+            <p class="px-3 py-2 text-[10px] text-muted-foreground border-t border-border">↑↓ navigate · Enter to run · Esc to close · <span x-text="commandPaletteShortcutLabel()"></span> toggles</p>
+        </div>
+    </div>
+
+</div><!-- /x-data -->
+{% endblock %}
+
+{% block extra_js %}
+{# Lazy-load heavy CDN libraries — only when the UML/editor tab is opened.
+   This prevents "Page Unresponsive" on corporate networks where CDN
+   downloads are throttled or blocked. The deploy panel, file browser,
+   and generate button all work without these libraries. #}
+<script>
+    window.__heavyLibsLoaded = false;
+    window.__cmReady = false;
+
+    function loadHeavyLibs() {
+        if (window.__heavyLibsLoaded) return Promise.resolve();
+        window.__heavyLibsLoaded = true;
+
+        let libs = [
+            { tag: 'link', href: 'https://cdn.jsdelivr.net/npm/jointjs@3.7.7/dist/joint.min.css', rel: 'stylesheet' },
+            { tag: 'script', src: 'https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js' },
+            { tag: 'script', src: 'https://cdn.jsdelivr.net/npm/lodash@4.17.21/lodash.min.js' },
+            { tag: 'script', src: 'https://cdn.jsdelivr.net/npm/backbone@1.4.1/backbone-min.js' },
+            { tag: 'script', src: 'https://cdn.jsdelivr.net/npm/jointjs@3.7.7/dist/joint.min.js' },
+            { tag: 'script', src: '{{ url_for("static", filename="js/archimate/composer_renderer.js") }}' },
+            { tag: 'script', src: '{{ url_for("static", filename="js/codegen/uml_shapes.js") }}' },
+        ];
+
+        return libs.reduce(function(chain, lib) {
+            return chain.then(function() {
+                return new Promise(function(resolve) {
+                    let el = document.createElement(lib.tag);
+                    if (lib.tag === 'link') { el.rel = lib.rel; el.href = lib.href; }
+                    else { el.src = lib.src; }
+                    el.onload = resolve;
+                    el.onerror = resolve; /* Don't block on CDN failures */
+                    document.head.appendChild(el);
+                });
+            });
+        }, Promise.resolve());
+    }
+
+    function errorsBadgeDropdown() { return { open: false }; }
+    function classBreakdownPanel() { return { open: false }; }
+    function historyEntryPanel() { return { open: false }; }
+</script>
+
+{# CodeMirror 6 — loaded as ES module so it doesn't block the main thread.
+   Stores APIs on window.__cm6 / window.__cm6langs, fires 'codemirror:ready'.
+   Falls back gracefully: textarea is always visible until cmEditor is set. #}
+<script type="module">
+// Import each @codemirror package directly WITHOUT ?bundle so esm.sh rewrites
+// all their mutual deps to the same CDN URL — browser caches one @codemirror/state
+// instance, preventing the "multiple instances" instanceof breakage.
+(async function() {
+    try {
+        const E = 'https://esm.sh/';
+        const [
+            cmState, cmView, cmCommands, {basicSetup},
+            {javascript}, {python}, {json}, {yaml},
+            {html}, {css}, {sql}, {markdown}, {java}
+        ] = await Promise.all([
+            import(E + '@codemirror/state@6'),
+            import(E + '@codemirror/view@6'),
+            import(E + '@codemirror/commands@6'),
+            import(E + 'codemirror@6.0.1?exports=basicSetup'), // basicSetup only
+            import(E + '@codemirror/lang-javascript@6'),
+            import(E + '@codemirror/lang-python@6'),
+            import(E + '@codemirror/lang-json@6'),
+            import(E + '@codemirror/lang-yaml@6'),
+            import(E + '@codemirror/lang-html@6'),
+            import(E + '@codemirror/lang-css@6'),
+            import(E + '@codemirror/lang-sql@6'),
+            import(E + '@codemirror/lang-markdown@6'),
+            import(E + '@codemirror/lang-java@6'),
+        ]);
+        window.__cm6 = {
+            EditorView:    cmView.EditorView,
+            EditorState:   cmState.EditorState,
+            Compartment:   cmState.Compartment,
+            basicSetup:    basicSetup,
+            keymap:        cmView.keymap,
+            defaultKeymap: cmCommands.defaultKeymap,
+            historyKeymap: cmCommands.historyKeymap,
+            indentWithTab: cmCommands.indentWithTab,
+        };
+        window.__cm6langs = {
+            js:   () => javascript({jsx: true}),
+            jsx:  () => javascript({jsx: true}),
+            ts:   () => javascript({typescript: true}),
+            tsx:  () => javascript({typescript: true, jsx: true}),
+            py:   () => python(),
+            json: () => json(),
+            yaml: () => yaml(),
+            yml:  () => yaml(),
+            html: () => html(),
+            css:  () => css(),
+            sql:  () => sql(),
+            md:   () => markdown(),
+            java: () => java(),
+        };
+        window.__cmReady = true;
+    } catch(e) {
+        console.warn('[codegen] CodeMirror 6 load failed, using textarea fallback:', e.message);
+        window.__cmReady = false;
+    }
+    document.dispatchEvent(new CustomEvent('codemirror:ready'));
+})();
+</script>
+{% endblock %}

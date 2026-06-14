@@ -1,0 +1,119 @@
+{# Entity list view — one generated per entity into ui/index.html #}
+{# Context: ent (entity dict with name_snake, name_display, name_plural, fields, api_base_path, status_field) #}
+
+<div x-data="entityList_{{ ent.name_snake }}()" x-init="init()">
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-6">
+        <div>
+            <h2 class="text-xl font-bold">{{ ent.name_plural }}</h2>
+            <p class="text-sm text-zinc-500 mt-0.5" x-text="`${pagination.totalItems} total records`"></p>
+        </div>
+        <div class="flex items-center gap-3">
+            <div class="relative">
+                <input type="text" x-model="searchQuery" @input.debounce.300ms="search()"
+                       placeholder="Search {{ ent.name_plural | lower }}..."
+                       class="w-64 rounded-md border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-100 placeholder-zinc-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 pl-8">
+                <svg class="w-4 h-4 text-zinc-500 absolute left-2.5 top-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+            </div>
+            <button @click="openCreateForm()"
+                    class="px-3 py-1.5 text-sm font-medium rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-colors">
+                + New {{ ent.name_display }}
+            </button>
+        </div>
+    </div>
+
+    <!-- Bulk actions bar -->
+    <div x-show="selectedIds.length > 0" x-cloak class="mb-4 flex items-center gap-3 px-4 py-2 bg-zinc-900 border border-zinc-800 rounded-lg">
+        <span class="text-sm text-zinc-400" x-text="`${selectedIds.length} selected`"></span>
+        <button @click="bulkDelete()" class="text-xs text-red-400 hover:text-red-300">Delete selected</button>
+        <button @click="selectedIds = []" class="text-xs text-zinc-500 hover:text-zinc-300 ml-auto">Clear</button>
+    </div>
+
+    <!-- Data table -->
+    <div class="border border-zinc-800 rounded-lg overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead class="bg-zinc-900">
+                    <tr>
+                        <th class="px-4 py-2 w-8">
+                            <input type="checkbox" @change="toggleSelectAll($event)" class="rounded border-zinc-600 bg-zinc-800 text-blue-600 focus:ring-blue-500 focus:ring-offset-0">
+                        </th>
+{% for field in ent.fields %}
+{% if not field.is_auto or field.name == 'id' %}
+                        <th @click="toggleSort('{{ field.name }}')"
+                            class="px-4 py-2 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider cursor-pointer hover:text-zinc-200 select-none whitespace-nowrap">
+                            {{ field.display_name }}
+                            <span x-show="sortField === '{{ field.name }}'" x-text="sortDir === 'asc' ? ' \u25B2' : ' \u25BC'" class="text-blue-400"></span>
+                        </th>
+{% endif %}
+{% endfor %}
+                        <th class="px-4 py-2 text-right text-xs font-medium text-zinc-400 uppercase tracking-wider">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-zinc-800">
+                    <template x-for="item in items" :key="item.id">
+                        <tr class="hover:bg-zinc-900/50 transition-colors cursor-pointer" @click="navigate(`/{{ ent.name_snake }}s/${item.id}`)">
+                            <td class="px-4 py-2" @click.stop>
+                                <input type="checkbox" :value="item.id" x-model="selectedIds" class="rounded border-zinc-600 bg-zinc-800 text-blue-600 focus:ring-blue-500 focus:ring-offset-0">
+                            </td>
+{% for field in ent.fields %}
+{% if not field.is_auto or field.name == 'id' %}
+{% if field.name == ent.status_field %}
+                            <td class="px-4 py-2">
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border"
+                                      :class="statusBadgeClass(item.{{ field.name }})"
+                                      x-text="item.{{ field.name }} || 'N/A'"></span>
+                            </td>
+{% elif field.type == 'boolean' %}
+                            <td class="px-4 py-2">
+                                <span :class="item.{{ field.name }} ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' : 'bg-zinc-500/10 text-zinc-400 border-zinc-500/30'"
+                                      class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border"
+                                      x-text="item.{{ field.name }} ? 'Yes' : 'No'"></span>
+                            </td>
+{% elif field.type == 'date-time' %}
+                            <td class="px-4 py-2 text-zinc-400 text-xs whitespace-nowrap" x-text="item.{{ field.name }} ? new Date(item.{{ field.name }}).toLocaleString() : '-'"></td>
+{% else %}
+                            <td class="px-4 py-2 text-zinc-300 max-w-xs truncate" x-text="item.{{ field.name }}"></td>
+{% endif %}
+{% endif %}
+{% endfor %}
+                            <td class="px-4 py-2 text-right whitespace-nowrap" @click.stop>
+                                <button @click="openEditForm(item)" class="text-blue-400 hover:text-blue-300 text-xs mr-2">Edit</button>
+                                <button @click="confirmDeleteItem(item.id)" class="text-red-400 hover:text-red-300 text-xs">Delete</button>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Empty state -->
+        <div x-show="!loading && items.length === 0" class="px-4 py-12 text-center">
+            <svg class="w-12 h-12 mx-auto text-zinc-700 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"></path></svg>
+            <p class="text-zinc-500 text-sm">No {{ ent.name_plural | lower }} found</p>
+            <button @click="openCreateForm()" class="mt-3 text-sm text-blue-400 hover:text-blue-300">Create the first one</button>
+        </div>
+
+        <!-- Loading state -->
+        <div x-show="loading" class="px-4 py-12 text-center">
+            <div class="w-6 h-6 border-2 border-zinc-700 border-t-blue-500 rounded-full animate-spin mx-auto"></div>
+            <p class="text-zinc-500 text-sm mt-2">Loading...</p>
+        </div>
+    </div>
+
+    <!-- Pagination -->
+    <div x-show="pagination.totalPages > 1" class="mt-4 flex items-center justify-between">
+        <span class="text-xs text-zinc-500" x-text="`Showing ${pagination.startItem}-${pagination.endItem} of ${pagination.totalItems}`"></span>
+        <div class="flex items-center gap-1">
+            <button @click="goToPage(pagination.currentPage - 1)" :disabled="pagination.currentPage <= 1"
+                    class="px-2 py-1 text-xs rounded border border-zinc-700 text-zinc-400 hover:text-zinc-100 disabled:opacity-30 disabled:cursor-not-allowed">&laquo;</button>
+            <template x-for="p in pagination.pages" :key="p">
+                <button x-show="p !== '...'" @click="goToPage(p)"
+                        :class="p === pagination.currentPage ? 'bg-blue-600 text-white border-blue-600' : 'border-zinc-700 text-zinc-400 hover:text-zinc-100'"
+                        class="px-2.5 py-1 text-xs rounded border" x-text="p"></button>
+            </template>
+            <button @click="goToPage(pagination.currentPage + 1)" :disabled="pagination.currentPage >= pagination.totalPages"
+                    class="px-2 py-1 text-xs rounded border border-zinc-700 text-zinc-400 hover:text-zinc-100 disabled:opacity-30 disabled:cursor-not-allowed">&raquo;</button>
+        </div>
+    </div>
+</div>

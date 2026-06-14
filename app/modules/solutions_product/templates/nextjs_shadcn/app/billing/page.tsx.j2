@@ -1,0 +1,122 @@
+{# app/billing/page.tsx.j2 — Billing management page (Stripe) #}
+{# Context: solution_name, payment_config, payment_modes #}
+"use client"
+
+import { useState } from "react"
+import { Loader2, CreditCard, ExternalLink } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { toast } from "sonner"
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+
+export default function BillingPage() {
+  const [loading, setLoading] = useState<string | null>(null)
+
+{% if "subscription" in payment_modes or "one_time" in payment_modes %}
+  async function handleCheckout(priceId: string) {
+    setLoading("checkout")
+    try {
+      const res = await fetch(`${API_URL}/billing/checkout`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
+        },
+        body: JSON.stringify({ price_id: priceId }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.detail || "Checkout failed")
+      window.location.href = data.checkout_url
+    } catch (err: any) {
+      toast.error(err.message)
+    } finally {
+      setLoading(null)
+    }
+  }
+{% endif %}
+
+  async function handlePortal() {
+    setLoading("portal")
+    try {
+      const res = await fetch(`${API_URL}/billing/portal`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
+        },
+        body: JSON.stringify({}),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.detail || "Portal redirect failed")
+      window.location.href = data.portal_url
+    } catch (err: any) {
+      toast.error(err.message)
+    } finally {
+      setLoading(null)
+    }
+  }
+
+  return (
+    <div className="container mx-auto max-w-4xl py-10 space-y-8">
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight">Billing</h1>
+        <p className="text-muted-foreground mt-1">
+          Manage your subscription and payment details.
+        </p>
+      </div>
+
+{% if "subscription" in payment_modes %}
+      {/* Pricing Cards */}
+      <div className="grid gap-6 md:grid-cols-3">
+        {[
+          { name: "Starter", price: "$29/mo", priceId: "price_starter", features: ["Up to 5 users", "10GB storage", "Email support"] },
+          { name: "Pro", price: "$79/mo", priceId: "price_pro", features: ["Up to 25 users", "100GB storage", "Priority support", "Advanced analytics"] },
+          { name: "Enterprise", price: "Custom", priceId: "price_enterprise", features: ["Unlimited users", "Unlimited storage", "Dedicated support", "Custom integrations", "SLA guarantee"] },
+        ].map((plan) => (
+          <Card key={plan.name}>
+            <CardHeader>
+              <CardTitle>{plan.name}</CardTitle>
+              <CardDescription className="text-2xl font-semibold">{plan.price}</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <ul className="space-y-2 text-sm text-muted-foreground">
+                {plan.features.map((f) => (
+                  <li key={f} className="flex items-center gap-2">
+                    <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+                    {f}
+                  </li>
+                ))}
+              </ul>
+              <Button
+                className="w-full"
+                onClick={() => handleCheckout(plan.priceId)}
+                disabled={loading === "checkout"}
+              >
+                {loading === "checkout" ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CreditCard className="h-4 w-4 mr-2" />}
+                Subscribe
+              </Button>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+{% endif %}
+
+      {/* Manage Subscription */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Manage Subscription</CardTitle>
+          <CardDescription>
+            Update payment method, view invoices, or cancel your plan.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button onClick={handlePortal} disabled={loading === "portal"} variant="outline">
+            {loading === "portal" ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <ExternalLink className="h-4 w-4 mr-2" />}
+            Open Customer Portal
+          </Button>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}

@@ -1,0 +1,1465 @@
+    {# ── Search + Create modal ───────────────────────────── #}
+    <div id="search-overlay" x-show="searchOpen" x-cloak class="search-overlay" @click.self="closeSearch()"
+         role="dialog" aria-modal="true" aria-label="Search and add elements">
+        <div class="search-panel" @keydown.escape="closeSearch()"
+             x-effect="if (searchOpen) $nextTick(() => $refs.searchInput && $refs.searchInput.focus())">
+            <input type="text" x-model="searchQuery" x-ref="searchInput"
+                   class="search-header-input"
+                   @input.debounce.200ms="doSearch()"
+                   :placeholder="'Search existing ' + (searchType || 'elements') + '...'"
+                   autofocus>
+            <div class="flex items-center gap-2 px-3 py-1.5 border-b border-border bg-muted/30">
+                <span class="text-[10px] text-muted-foreground font-semibold uppercase tracking-wide">Layer:</span>
+                <select x-model="searchLayerFilter" @change="doSearch()"
+                        class="text-xs bg-background border border-border rounded px-2 py-0.5 text-foreground">
+                    <option value="">All layers</option>
+                    <option value="business">Business</option>
+                    <option value="application">Application</option>
+                    <option value="technology">Technology</option>
+                    <option value="motivation">Motivation</option>
+                    <option value="strategy">Strategy</option>
+                    <option value="implementation">Implementation</option>
+                </select>
+                <template x-if="solutionId">
+                    <label class="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer ml-auto">
+                        <input type="checkbox" x-model="solutionOnlyFilter" @change="doSearch()" class="rounded">
+                        Solution elements only
+                    </label>
+                </template>
+            </div>
+            <div class="search-results">
+                <template x-if="searchLoading">
+                    <div class="p-4 text-center text-sm text-muted-foreground">
+                        <span class="inline-block animate-pulse">Searching catalog...</span>
+                    </div>
+                </template>
+                <template x-if="!searchLoading && searchResults.length === 0 && searchQuery.length >= 1">
+                    <div class="px-4 py-3 text-center text-sm text-muted-foreground">
+                        No matching elements in catalog
+                    </div>
+                </template>
+                <template x-if="!searchLoading && searchResults.length === 0 && searchQuery.length === 0">
+                    <div class="px-4 py-3 text-center text-xs text-muted-foreground">
+                        Type to search, or create new below
+                    </div>
+                </template>
+                <template x-for="item in searchResults" :key="item.id">
+                    <div class="search-result-item" @click="pickElement(item)">
+                        <div>
+                            <div class="search-result-name" x-text="item.name"></div>
+                            <div class="search-result-meta" x-text="item.type + ' \u00b7 ' + (item.layer || '')"></div>
+                        </div>
+                        <i data-lucide="plus-circle" class="w-4 h-4 text-primary/60"></i>
+                    </div>
+                </template>
+            </div>
+            {# Always-visible create section #}
+            <div class="search-create-section">
+                <div class="text-[10px] text-muted-foreground font-semibold uppercase tracking-wide mb-2">
+                    Or create new <span x-text="searchType"></span>
+                </div>
+                <div class="search-create-row">
+                    <input type="text" x-model="newElementName" x-ref="createInput"
+                           class="search-create-input"
+                           :placeholder="'Name for new ' + (searchType || 'element') + '...'"
+                           @keydown.enter="createNewElement()"
+                           @input="checkReuseDebounced()">
+                    <button class="search-create-btn"
+                            @click="createNewElement()"
+                            :disabled="!newElementName || !newElementName.trim()">
+                        Create
+                    </button>
+                </div>
+                {# Reuse detection warning (CMP-009) #}
+                <template x-if="similarElements.length > 0">
+                    <div class="mt-2 p-2 rounded-md border border-warning/30 bg-warning/5">
+                        <div class="text-[10px] font-semibold text-warning mb-1 flex items-center gap-1">
+                            <i data-lucide="alert-triangle" class="w-3 h-3"></i>
+                            Did you mean to use an existing element?
+                        </div>
+                        <template x-for="sim in similarElements" :key="sim.id">
+                            <div class="flex items-center justify-between gap-2 px-2 py-1 rounded hover:bg-warning/10 cursor-pointer transition-colors"
+                                 @click="pickSimilarElement(sim)">
+                                <div class="flex-1 min-w-0">
+                                    <span class="text-xs font-medium text-foreground truncate block" x-text="sim.name"></span>
+                                    <span class="text-[10px] text-muted-foreground" x-text="(sim.type || '') + (sim.layer ? ' \u00b7 ' + sim.layer : '') + (sim.solution_count ? ' \u00b7 used by ' + sim.solution_count + ' solution' + (sim.solution_count > 1 ? 's' : '') : '')"></span>
+                                </div>
+                                <span class="text-[9px] text-warning whitespace-nowrap">click to use</span>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+                <template x-if="checkingReuse">
+                    <div class="mt-1 text-[10px] text-muted-foreground">Checking for similar elements...</div>
+                </template>
+            </div>
+        </div>
+    </div>
+
+    {# ── Relationship type picker ─────────────────────────── #}
+    <div x-show="relPickerOpen" x-cloak @keydown.escape.window="relPickerOpen = false" role="dialog" aria-modal="true" aria-label="Select relationship type" class="rel-picker"
+         :style="'left:' + relPickerX + 'px; top:' + relPickerY + 'px'"
+         @click.outside="cancelRelPicker()">
+        <div class="text-[10px] text-muted-foreground px-3 py-1 font-semibold uppercase tracking-wide">Valid relationship types</div>
+        <template x-for="rt in relPickerTypes" :key="rt.type || rt">
+            <div class="rel-picker-item flex items-center justify-between gap-2"
+                 @click="createRelationship(rt.type || rt)">
+                <span x-text="rt.type || rt" class="capitalize"></span>
+                <span x-show="rt.tier === 'derived'" x-cloak
+                      class="text-[9px] px-1.5 py-0.5 rounded bg-warning/10 text-warning font-semibold">derived</span>
+                <span x-show="rt.tier === 'fallback'" x-cloak
+                      class="text-[9px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-semibold">fallback</span>
+            </div>
+        </template>
+        <template x-if="relPickerTypes.length === 0 && relPickerInvalidTypes.length === 0">
+            <div class="p-3 text-xs text-muted-foreground">Loading valid types...</div>
+        </template>
+        {# Access mode selector — shown when 'access' is in valid types #}
+        <template x-if="relPickerTypes.some(function(rt) { return (rt.type || rt) === 'access'; })">
+            <div class="px-3 py-1.5 border-t border-border bg-muted/30">
+                <label class="text-[10px] text-muted-foreground font-semibold uppercase tracking-wide block mb-1">Access mode</label>
+                <div class="flex gap-1">
+                    <button @click="accessMode = 'read'"
+                            :class="accessMode === 'read' ? 'bg-primary/10 border-primary text-primary' : 'bg-background border-border text-foreground'"
+                            class="text-[10px] px-2 py-0.5 rounded border font-medium">Read</button>
+                    <button @click="accessMode = 'write'"
+                            :class="accessMode === 'write' ? 'bg-primary/10 border-primary text-primary' : 'bg-background border-border text-foreground'"
+                            class="text-[10px] px-2 py-0.5 rounded border font-medium">Write</button>
+                    <button @click="accessMode = 'readwrite'"
+                            :class="accessMode === 'readwrite' ? 'bg-primary/10 border-primary text-primary' : 'bg-background border-border text-foreground'"
+                            class="text-[10px] px-2 py-0.5 rounded border font-medium">Read/Write</button>
+                </div>
+            </div>
+        </template>
+        {# Flow label input — shown when 'flow' is in valid types #}
+        <template x-if="relPickerTypes.some(function(rt) { return (rt.type || rt) === 'flow'; })">
+            <div class="px-3 py-1.5 border-t border-border bg-muted/30">
+                <label class="text-[10px] text-muted-foreground font-semibold uppercase tracking-wide block mb-1">Flow label (what is transferred)</label>
+                <input type="text" x-model="flowLabel" placeholder="e.g. Order data, Payment request"
+                       class="w-full text-xs px-2 py-1 border border-border rounded bg-background text-foreground">
+            </div>
+        </template>
+        {# Association warning — inline prompt instead of confirm() #}
+        <template x-if="associationWarning">
+            <div class="px-3 py-2 border-t border-warning/30 bg-warning/5">
+                <p class="text-[11px] text-warning font-medium mb-1.5">Association is generic — would a more specific type be appropriate?</p>
+                <div class="flex gap-1.5">
+                    <button @click="confirmAssociation()"
+                            class="text-[10px] px-2.5 py-1 rounded border border-warning/30 bg-warning/10 text-warning font-medium hover:bg-warning/20">Use Association</button>
+                    <button @click="cancelAssociationWarning()"
+                            class="text-[10px] px-2.5 py-1 rounded border border-border bg-background text-foreground font-medium hover:bg-accent">Pick Specific</button>
+                </div>
+            </div>
+        </template>
+        {# Invalid types (greyed out) #}
+        <template x-if="relPickerInvalidTypes.length > 0">
+            <div>
+                <div class="h-px bg-border my-1 mx-2"></div>
+                <div class="text-[10px] text-muted-foreground/60 px-3 py-1 font-semibold uppercase tracking-wide">Not valid for this pair</div>
+                <template x-for="irt in relPickerInvalidTypes" :key="irt">
+                    <div class="rel-picker-item opacity-30 cursor-not-allowed capitalize"
+                         :title="'Not valid per ArchiMate 3.2 between these element types'"
+                         x-text="irt"></div>
+                </template>
+            </div>
+        </template>
+    </div>
+
+    {% include 'archimate/partials/_composer_context_menus.html' %}
+
+    {# ── ENT-104: Element colour override picker ──────────── #}
+    <!-- modal-a11y-ok -->
+    <div x-show="colourPickerOpen" x-cloak aria-modal="true"
+         class="fixed z-[80] shadow-2xl border border-border rounded-xl p-3"
+         style="background: hsl(var(--card)); min-width: 244px;" {# inline-style-ok #}
+         :style="'left:' + colourPickerX + 'px; top:' + colourPickerY + 'px'"
+         @click.outside="colourPickerOpen = false"
+         @keydown.escape.window="colourPickerOpen = false"
+         role="dialog" aria-label="Element colour">
+        <div class="text-xs font-semibold text-muted-foreground mb-2 px-1">Set element colour</div>
+        <div class="flex flex-wrap gap-1.5 mb-2">
+            <template x-for="swatch in [
+                {c:'#ffffff', label:'White'},
+                {c:'#f1f5f9', label:'Slate'},
+                {c:'#d1fae5', label:'Emerald (Target)'},
+                {c:'#fef9c3', label:'Amber (Caution)'},
+                {c:'#fee2e2', label:'Red (At-risk)'},
+                {c:'#ede9fe', label:'Violet'},
+                {c:'#e0f2fe', label:'Sky'},
+                {c:'#fce7f3', label:'Pink'}
+            ]">
+                <button type="button"
+                        @click="setElementColour(swatch.c)"
+                        :title="swatch.label"
+                        class="w-7 h-7 rounded-md border-2 border-border hover:border-primary transition-colors focus:outline-none focus:ring-2 focus:ring-primary"
+                        :style="'background:' + swatch.c"></button>
+            </template>
+        </div>
+        <button type="button"
+                @click="resetElementColour()"
+                class="w-full text-xs text-muted-foreground hover:text-foreground border border-border rounded-lg py-1 transition-colors">
+            ↺ Reset to layer colour
+        </button>
+    </div>
+
+    {# ── Canvas search bar (Ctrl+F) ──────────────────────── #}
+    <div x-show="canvasSearchOpen" x-cloak
+         class="fixed z-50 pointer-events-none"
+         style="top: 0; left: 0; right: 0; display: flex; justify-content: center; padding-top: 56px;" {# inline-style-ok #}
+         role="search" aria-label="Search elements on canvas">
+        <div class="pointer-events-auto flex items-center gap-2 px-3 py-2 rounded-xl shadow-xl border border-border"
+             style="background: hsl(var(--card)); min-width: 360px; max-width: 520px;" {# inline-style-ok #}
+             @keydown.escape.stop="closeCanvasSearch()">
+            <i data-lucide="search" class="w-4 h-4 flex-shrink-0 text-muted-foreground"></i>
+            <input id="canvas-search-input"
+                   type="text"
+                   x-model="canvasSearchQuery"
+                   @input="doCanvasSearch()"
+                   @keydown.enter.prevent="nextCanvasSearchMatch()"
+                   @keydown.escape.prevent.stop="closeCanvasSearch()"
+                   placeholder="Search elements on canvas…"
+                   autocomplete="off"
+                   class="flex-1 bg-transparent border-none outline-none text-sm text-foreground">
+            <span x-show="canvasSearchQuery.length > 0" x-cloak
+                  class="text-xs flex-shrink-0 font-medium"
+                  :class="canvasSearchMatches.length > 0 ? 'text-primary' : 'text-destructive'"
+                  x-text="canvasSearchMatches.length > 0 ? (canvasSearchIdx + 1) + ' / ' + canvasSearchMatches.length : '0 matches'"></span>
+            <button @click="prevCanvasSearchMatch()"
+                    x-show="canvasSearchMatches.length > 1" x-cloak
+                    class="p-1 rounded hover:bg-muted transition-colors text-muted-foreground"
+                    title="Previous match">
+                <i data-lucide="arrow-up" class="w-3.5 h-3.5"></i>
+            </button>
+            <button @click="nextCanvasSearchMatch()"
+                    x-show="canvasSearchMatches.length > 1" x-cloak
+                    class="p-1 rounded hover:bg-muted transition-colors text-muted-foreground"
+                    title="Next match (Enter)">
+                <i data-lucide="arrow-down" class="w-3.5 h-3.5"></i>
+            </button>
+            <button @click="closeCanvasSearch()"
+                    class="p-1 rounded hover:bg-muted transition-colors ml-1 text-muted-foreground"
+                    title="Close (Escape)">
+                <i data-lucide="x" class="w-3.5 h-3.5"></i>
+            </button>
+        </div>
+    </div>
+    <div id="lucidchart-import-modal" class="search-overlay hidden" @click.self="closeLucidchartImportModal()"
+         @keydown.escape.window="closeLucidchartImportModal()"
+         role="dialog" aria-modal="true" aria-label="Import Lucidchart diagram">
+        <div class="search-panel" style="max-width: 860px; max-height: 85vh; overflow-y: auto;" {# inline-style-ok #}>
+            <div class="p-5 space-y-4">
+                <div class="flex items-start justify-between gap-4">
+                    <div>
+                        <h3 class="text-base font-bold text-foreground">Import Lucidchart</h3>
+                        <p class="text-xs text-muted-foreground">
+                            Bring a Lucid ArchiMate diagram into the composer with canonical ARCHIE rendering and a reviewable import result.
+                        </p>
+                    </div>
+                    <button type="button" class="toolbar-btn toolbar-btn-sm" @click="closeLucidchartImportModal()" title="Close Lucidchart import">
+                        <i data-lucide="x" class="w-4 h-4"></i>
+                    </button>
+                </div>
+
+                <div class="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+                    <div class="space-y-4">
+                        <div class="rounded-xl border border-primary/20 bg-primary/5 p-4">
+                            <div class="flex items-center gap-2 text-sm font-semibold text-foreground">
+                                <i data-lucide="upload" class="w-4 h-4 text-primary"></i>
+                                Step 1 — Upload exported Lucid file
+                            </div>
+                            <p class="mt-1 text-xs text-muted-foreground">
+                                Recommended. Upload a Lucid JSON or <code>.lucid</code> export, review the import contract, then import it into the current scratch canvas.
+                            </p>
+
+                            <input id="lucidchart-upload-input"
+                                   type="file"
+                                   accept=".json,.lucid"
+                                   class="hidden"
+                                   @change="handleLucidchartFileSelection($event)">
+
+                            <div id="lucidchart-upload-dropzone"
+                                 class="mt-3 rounded-xl border border-dashed border-primary/30 bg-background/80 px-4 py-5 text-center transition-colors"
+                                 @click="chooseLucidchartUploadFile()"
+                                 @dragenter.prevent="highlightLucidchartDropzone(true)"
+                                 @dragover.prevent="highlightLucidchartDropzone(true)"
+                                 @dragleave.prevent="highlightLucidchartDropzone(false)"
+                                 @drop.prevent="handleLucidchartFileDrop($event)">
+                                <div class="mx-auto flex size-11 items-center justify-center rounded-full bg-primary/10 text-primary">
+                                    <i data-lucide="file-up" class="w-5 h-5"></i>
+                                </div>
+                                <div class="mt-3 text-sm font-medium text-foreground">Drop Lucid export here</div>
+                                <div class="mt-1 text-xs text-muted-foreground">JSON or .lucid, up to 10 MB</div>
+                                <button type="button"
+                                        id="lucidchart-upload-btn"
+                                        class="toolbar-btn toolbar-btn-sm mt-4 bg-primary text-primary-foreground hover:bg-primary/90 border-primary"
+                                        @click.stop="chooseLucidchartUploadFile()">
+                                    <i data-lucide="folder-open" class="w-3.5 h-3.5"></i>
+                                    Choose export file
+                                </button>
+                            </div>
+
+                            <div id="lucidchart-upload-selection"
+                                 class="hidden mt-3 rounded-xl border border-border bg-background px-4 py-3">
+                                <div class="flex items-start justify-between gap-3">
+                                    <div class="min-w-0">
+                                        <div class="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">Selected file</div>
+                                        <div id="lucidchart-upload-file-name" class="mt-1 truncate text-sm font-medium text-foreground"></div>
+                                        <div id="lucidchart-upload-file-meta" class="mt-1 text-xs text-muted-foreground"></div>
+                                    </div>
+                                    <div class="flex flex-wrap justify-end gap-2">
+                                        <button type="button" id="lucidchart-change-file-btn" class="toolbar-btn toolbar-btn-sm" @click="chooseLucidchartUploadFile()">
+                                            Change
+                                        </button>
+                                        <button type="button" id="lucidchart-clear-file-btn" class="toolbar-btn toolbar-btn-sm" @click="clearLucidchartSelectedFile()">
+                                            Remove
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="rounded-xl border border-border bg-background p-4">
+                            <div class="text-sm font-semibold text-foreground">What ARCHIE does on import</div>
+                            <ul class="mt-2 space-y-2 text-xs text-muted-foreground">
+                                <li>Replaces the current scratch canvas instead of stacking on top of stale content.</li>
+                                <li>Preserves provable ArchiMate types, white-box / black-box notation, and relationships.</li>
+                                <li>Flags ambiguous anchors or skipped relationships instead of inventing semantics.</li>
+                            </ul>
+                        </div>
+
+                        <div id="lucidchart-import-summary"
+                             class="hidden rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4">
+                            <div id="lucidchart-import-summary-title" class="text-sm font-semibold text-foreground">
+                                Import complete
+                            </div>
+                            <div id="lucidchart-import-summary-meta" class="mt-1 text-xs text-muted-foreground"></div>
+                            <ul id="lucidchart-import-warning-list" class="mt-3 space-y-2 text-xs text-muted-foreground"></ul>
+                        </div>
+                    </div>
+
+                    <div class="space-y-4">
+                        <div id="lucidchart-import-status"
+                             class="rounded-xl border border-border bg-muted/30 px-4 py-3">
+                            <div class="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">Status</div>
+                            <div id="lucidchart-import-status-title" class="mt-1 text-sm font-semibold text-foreground">
+                                Ready to import
+                            </div>
+                            <p id="lucidchart-import-status-detail" class="mt-1 text-xs text-muted-foreground">
+                                Select a Lucid export to replace the current scratch canvas, or use the workspace path if your organization is already connected.
+                            </p>
+                        </div>
+
+                        <div class="rounded-xl border border-border bg-background p-4">
+                            <div class="flex items-center gap-2 text-sm font-semibold text-foreground">
+                                <i data-lucide="link" class="w-4 h-4 text-primary"></i>
+                                Optional — connect Lucidchart workspace
+                            </div>
+                            <p class="mt-1 text-xs text-muted-foreground">
+                                Use this when organization-level Lucidchart sign-in is configured and you want to import documents directly.
+                            </p>
+
+                            <div class="mt-3 flex flex-wrap gap-2">
+                                <button type="button" class="toolbar-btn toolbar-btn-sm" @click="connectLucidchart()" id="lucidchart-connect-btn">
+                                    <i data-lucide="link" class="w-3.5 h-3.5"></i>
+                                    Connect workspace
+                                </button>
+                                <button type="button" class="toolbar-btn toolbar-btn-sm" @click="loadLucidchartDocuments()" id="lucidchart-refresh-btn">
+                                    <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+                                    Load documents
+                                </button>
+                            </div>
+
+                            <div id="lucidchart-auth-hint" class="hidden mt-3 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-700">
+                                This organization is not connected to Lucidchart yet. You can still import an exported Lucid file immediately, or connect the workspace and then refresh the document list.
+                            </div>
+
+                            <div class="mt-4">
+                                <div class="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold mb-2">
+                                    Workspace documents
+                                </div>
+                                <div id="lucidchart-document-list" class="space-y-2">
+                                    <div class="rounded-lg border border-dashed border-border px-3 py-4 text-sm text-muted-foreground">
+                                        Workspace import is optional. Connect Lucidchart or load documents when you need it.
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex items-center justify-end gap-2 border-t border-border pt-3">
+                    <button type="button" class="toolbar-btn toolbar-btn-sm" @click="closeLucidchartImportModal()">
+                        Close
+                    </button>
+                    <button type="button"
+                            id="lucidchart-import-selected-btn"
+                            class="toolbar-btn toolbar-btn-sm bg-primary text-primary-foreground hover:bg-primary/90 border-primary opacity-60 cursor-not-allowed"
+                            disabled
+                            @click="importLucidchartUpload()">
+                        <i data-lucide="upload" class="w-3.5 h-3.5"></i>
+                        Import selected file
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div x-show="generateModalOpen" x-cloak class="search-overlay" @click.self="generateModalOpen = false"
+         role="dialog" aria-modal="true" aria-label="AI generate diagram">
+        <div class="search-panel" style="max-width: 640px; max-height: 85vh; overflow-y: auto;" {# inline-style-ok #} @keydown.escape="generateModalOpen = false">
+            <div class="p-5">
+                <div class="flex items-center gap-3 mb-5">
+                    <div class="size-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+                        <i data-lucide="sparkles" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-base font-bold text-foreground">Generate Architecture</h3>
+                        <p class="text-xs text-muted-foreground">Describe what you need — the AI uses your real enterprise data</p>
+                    </div>
+                </div>
+                <div class="space-y-4">
+                    <textarea x-model="generateDescription" rows="4"
+                        @input="debouncedContextPreview()"
+                        placeholder="e.g., Cloud migration architecture for our CRM system, integrating with the existing ERP and data warehouse..."
+                        class="w-full text-sm rounded-xl p-4 bg-muted/30 border-none focus:ring-2 focus:ring-primary/50 resize-none text-foreground"></textarea>
+
+                    {# Phase + Domain row #}
+                    <div class="flex items-center gap-3">
+                        <select x-model="generatePhase"
+                            @change="debouncedContextPreview()"
+                            class="text-xs rounded-lg px-3 py-1.5 bg-muted/50 border-none font-medium text-muted-foreground">
+                            <option value="">Auto-detect phase</option>
+                            <option value="A">Phase A &mdash; Vision</option>
+                            <option value="B">Phase B &mdash; Business</option>
+                            <option value="C">Phase C &mdash; Info Systems</option>
+                            <option value="D">Phase D &mdash; Technology</option>
+                        </select>
+                        <input type="text" x-model="generateDomain"
+                            @input="debouncedContextPreview()"
+                            placeholder="Business domain (optional)"
+                            class="text-xs rounded-lg px-3 py-1.5 bg-muted/50 border-none font-medium flex-1 text-muted-foreground">
+                    </div>
+
+                    {# Context preview #}
+                    <template x-if="generateContextPreview && generateUseContext">
+                        <div class="rounded-lg bg-muted/20 p-3 text-xs">
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="font-semibold text-foreground flex items-center gap-1.5">
+                                    <i data-lucide="database" class="w-3 h-3"></i>
+                                    Enterprise Context
+                                </span>
+                                <button @click="generateContextExpanded = !generateContextExpanded"
+                                    class="text-muted-foreground hover:text-foreground transition-colors">
+                                    <span x-show="!generateContextExpanded" x-cloak>View details</span>
+                                    <span x-show="generateContextExpanded" x-cloak>Hide</span>
+                                </button>
+                            </div>
+                            <div class="flex gap-3 text-muted-foreground">
+                                <span x-show="generateContextPreview.counts.application > 0" x-cloak>
+                                    <span class="font-medium text-foreground" x-text="generateContextPreview.counts.application"></span> apps
+                                </span>
+                                <span x-show="generateContextPreview.counts.archimate_element > 0" x-cloak>
+                                    <span class="font-medium text-foreground" x-text="generateContextPreview.counts.archimate_element"></span> elements
+                                </span>
+                                <span x-show="generateContextPreview.counts.vendor > 0" x-cloak>
+                                    <span class="font-medium text-foreground" x-text="generateContextPreview.counts.vendor"></span> vendors
+                                </span>
+                                <span x-show="generateContextPreview.counts.capability > 0" x-cloak>
+                                    <span class="font-medium text-foreground" x-text="generateContextPreview.counts.capability"></span> capabilities
+                                </span>
+                            </div>
+                            <template x-if="generateContextPreview.query_terms && generateContextPreview.query_terms.length > 0 && generateContextExpanded">
+                                <div class="mt-2 pt-2 border-t border-border">
+                                    <span class="text-muted-foreground">Search terms: </span>
+                                    <template x-for="term in generateContextPreview.query_terms" :key="term">
+                                        <span class="inline-flex items-center px-1.5 py-0.5 rounded bg-primary/10 text-primary text-[10px] mr-1" x-text="term"></span>
+                                    </template>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+                    <template x-if="generateContextLoading">
+                        <div class="flex items-center gap-2 text-xs text-muted-foreground">
+                            <i data-lucide="loader-2" class="w-3 h-3 animate-spin"></i>
+                            Loading context...
+                        </div>
+                    </template>
+
+                    {# Options #}
+                    <div class="flex items-center gap-4 text-xs text-muted-foreground">
+                        <label class="flex items-center gap-1.5 cursor-pointer">
+                            <input type="checkbox" x-model="generateUseContext"
+                                class="rounded border-border text-primary focus:ring-primary/50">
+                            <span>Use enterprise context</span>
+                        </label>
+                        <label x-show="generateUseContext" x-cloak class="flex items-center gap-1.5 cursor-pointer">
+                            <input type="checkbox" x-model="generateIncludeGaps"
+                                class="rounded border-border text-primary focus:ring-primary/50">
+                            <span>Include gap analysis</span>
+                        </label>
+                    </div>
+
+                    {# Buttons #}
+                    <div class="flex items-center justify-end gap-2">
+                        <button @click="generateModalOpen = false"
+                            class="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">Cancel</button>
+                        <button @click="generateFromDescription()" :disabled="!generateDescription.trim() || generateLoading"
+                            class="px-6 py-2 bg-primary text-primary-foreground text-sm font-semibold rounded-lg shadow-md disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:opacity-90">
+                            <span x-show="!generateLoading" x-cloak>Generate Architecture</span>
+                            <span x-show="generateLoading" x-cloak class="flex items-center gap-2">
+                                <i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>
+                                Generating...
+                            </span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            {# Rationale panel #}
+            <template x-if="generateRationale">
+                <div class="border-t border-border px-4 py-3 bg-muted/10">
+                    <div class="text-xs font-semibold text-muted-foreground mb-1 flex items-center gap-1">
+                        <i data-lucide="lightbulb" class="w-3 h-3"></i> Design Rationale
+                    </div>
+                    <p class="text-xs text-foreground" x-text="generateRationale"></p>
+                </div>
+            </template>
+
+            {# Generated results panel — Place Full Diagram is the primary action #}
+            <template x-if="generatedElements.length > 0">
+                <div class="border-t border-border p-4 space-y-3">
+
+                    {# Summary + primary CTA — one click places everything #}
+                    <div class="rounded-xl bg-primary/5 border border-primary/20 p-4 space-y-3">
+                        <div class="flex items-start justify-between">
+                            <div>
+                                <div class="text-sm font-bold text-foreground flex items-center gap-2">
+                                    <i data-lucide="check-circle-2" class="w-4 h-4 text-primary"></i>
+                                    Diagram ready
+                                </div>
+                                <div class="text-xs text-muted-foreground mt-1">
+                                    <span x-text="generatedElements.length"></span> elements
+                                    <template x-if="generatedRelationships.length > 0">
+                                        <span> · <span x-text="generatedRelationships.length"></span> relationships</span>
+                                    </template>
+                                    <template x-if="generatedElements.filter(e=>e.category==='existing').length > 0">
+                                        <span class="text-success"> · <span x-text="generatedElements.filter(e=>e.category==='existing').length"></span> linked from portfolio</span>
+                                    </template>
+                                </div>
+                            </div>
+                        </div>
+                        <button @click="acceptAllGenerated()"
+                            class="w-full py-2.5 bg-primary text-primary-foreground font-semibold text-sm rounded-lg shadow-md hover:opacity-90 transition-all flex items-center justify-center gap-2">
+                            <i data-lucide="layout-panel-top" class="w-4 h-4"></i>
+                            Place Full Diagram on Canvas
+                        </button>
+                    </div>
+
+                    {# Collapsible element review for SAs who want to inspect before placing #}
+                    <details class="text-xs">
+                        <summary class="cursor-pointer text-muted-foreground hover:text-foreground py-1 flex items-center gap-1 select-none">
+                            <i data-lucide="list" class="w-3 h-3"></i>
+                            Review elements before placing
+                            <span class="ml-auto text-[10px]">(<span x-text="generatedElements.length"></span> elements)</span>
+                        </summary>
+                        <div class="mt-2 max-h-60 overflow-y-auto space-y-1.5 pt-1">
+                            <template x-for="(el, i) in generatedElements" :key="i">
+                                <div class="flex items-center justify-between p-2 rounded text-xs"
+                                     :class="{
+                                         'bg-success/5 border border-success/20': el.category === 'existing',
+                                         'bg-primary/5 border border-primary/20': el.category === 'new',
+                                         'bg-warning/5 border border-warning/20': el.category === 'possible_duplicate'
+                                     }">
+                                    <div class="flex-1 min-w-0 mr-2">
+                                        <span class="font-medium" x-text="el.name"></span>
+                                        <span class="text-muted-foreground ml-1" x-text="'(' + el.type + ')'"></span>
+                                        <template x-if="el.category === 'existing'">
+                                            <span class="ml-1 inline-flex items-center px-1.5 py-0.5 rounded bg-success/10 text-success text-[10px] font-medium">EXISTING</span>
+                                        </template>
+                                        <template x-if="el.category === 'new'">
+                                            <span class="ml-1 inline-flex items-center px-1.5 py-0.5 rounded bg-primary/10 text-primary text-[10px] font-medium">NEW</span>
+                                        </template>
+                                        <template x-if="el.category === 'possible_duplicate'">
+                                            <span class="ml-1 inline-flex items-center px-1.5 py-0.5 rounded bg-warning/10 text-warning text-[10px] font-medium">
+                                                SIMILAR TO: <span x-text="el.duplicate_match ? el.duplicate_match.name : ''"></span>
+                                            </span>
+                                        </template>
+                                    </div>
+                                    <div class="flex gap-1 flex-shrink-0">
+                                        <template x-if="el.category === 'possible_duplicate'">
+                                            <div class="flex gap-1">
+                                                <button @click="useExistingElement(i)" class="px-2 py-0.5 bg-success/10 text-success rounded hover:bg-success/20 transition-colors text-[10px]">Use existing</button>
+                                                <button @click="keepNewElement(i)" class="px-2 py-0.5 bg-primary/10 text-primary rounded hover:bg-primary/20 transition-colors text-[10px]">Keep new</button>
+                                            </div>
+                                        </template>
+                                        <template x-if="el.category !== 'possible_duplicate'">
+                                            <button @click="rejectGenerated(i)" class="px-2 py-0.5 bg-destructive/10 text-destructive rounded hover:bg-destructive/20 transition-colors">Remove</button>
+                                        </template>
+                                    </div>
+                                </div>
+                            </template>
+
+                            {# Relationships #}
+                            <template x-if="generatedRelationships.length > 0">
+                                <div class="mt-2 pt-2 border-t border-border">
+                                    <div class="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">Relationships</div>
+                                    <template x-for="(rel, ri) in generatedRelationships" :key="ri">
+                                        <div class="p-1.5 bg-muted/20 rounded text-[11px] text-muted-foreground">
+                                            <span x-text="rel.source_name"></span>
+                                            <span class="mx-1">→</span>
+                                            <span class="italic font-medium" x-text="rel.type"></span>
+                                            <span class="mx-1">→</span>
+                                            <span x-text="rel.target_name"></span>
+                                        </div>
+                                    </template>
+                                </div>
+                            </template>
+
+                            {# Gaps #}
+                            <template x-if="generateGaps.length > 0">
+                                <div class="mt-2 pt-2 border-t border-border">
+                                    <div class="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1 flex items-center gap-1">
+                                        <i data-lucide="alert-circle" class="w-3 h-3"></i> Gaps
+                                    </div>
+                                    <template x-for="(gap, gi) in generateGaps" :key="gi">
+                                        <div class="p-1.5 bg-muted/10 rounded text-[11px] text-muted-foreground border-l-2 border-warning" x-text="gap"></div>
+                                    </template>
+                                </div>
+                            </template>
+                        </div>
+                    </details>
+                </div>
+            </template>
+        </div>{# /search-panel #}
+    </div>{# /search-overlay #}
+
+    {# ── CMP-022: Extract from text modal ────────────────── #}
+    <div x-show="extractModalOpen" x-cloak class="search-overlay" @click.self="extractModalOpen = false"
+         role="dialog" aria-modal="true" aria-label="Extract elements from text">
+        <div class="search-panel" style="max-width: 580px;" {# inline-style-ok #} @keydown.escape="extractModalOpen = false">
+            <div class="p-4 border-b border-border">
+                <h3 class="text-sm font-semibold text-foreground">Extract Architecture from Text</h3>
+                <p class="text-xs text-muted-foreground mt-1">Paste an architecture description, vendor proposal, or system specification to extract ArchiMate elements.</p>
+            </div>
+            <div class="p-4 space-y-3">
+                <textarea x-model="extractText" rows="6" placeholder="Paste architecture description, vendor proposal, or system specification..."
+                    class="w-full text-sm border border-border rounded-lg p-3 bg-background text-foreground resize-none focus:ring-1 focus:ring-primary outline-none"></textarea>
+                <div class="flex gap-3">
+                    <select x-model="extractPhase" class="text-xs border border-border rounded px-2 py-1.5 bg-background text-foreground">
+                        <option value="">Auto-detect</option>
+                        <option value="A">Phase A &mdash; Vision / Motivation</option>
+                        <option value="B">Phase B &mdash; Business Architecture</option>
+                        <option value="C">Phase C &mdash; Information Systems</option>
+                        <option value="D">Phase D &mdash; Technology Architecture</option>
+                    </select>
+                </div>
+                <button @click="extractFromText()" :disabled="!extractText.trim() || extractLoading"
+                    class="w-full px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                    <span x-show="!extractLoading" x-cloak>Extract</span>
+                    <span x-show="extractLoading" x-cloak>Extracting...</span>
+                </button>
+            </div>
+            {# Review panel with confidence badges #}
+            <template x-if="extractedElements.length > 0">
+                <div class="border-t border-border p-4 max-h-72 overflow-y-auto space-y-2">
+                    <div class="text-xs font-semibold text-muted-foreground mb-2">
+                        Extracted elements (<span x-text="extractedElements.length"></span>):
+                    </div>
+                    <template x-for="(el, i) in extractedElements" :key="i">
+                        <div class="flex items-start justify-between p-2 bg-muted/30 rounded text-xs gap-2">
+                            <div class="flex-1 min-w-0">
+                                <div class="flex items-center gap-1.5">
+                                    <span class="font-medium" x-text="el.name"></span>
+                                    <span class="px-1.5 py-0.5 rounded text-[9px] font-bold"
+                                        :class="el.confidence === 'high' ? 'bg-success/10 text-success' : el.confidence === 'medium' ? 'bg-warning/10 text-warning' : 'bg-destructive/10 text-destructive'"
+                                        x-text="el.confidence"></span>
+                                </div>
+                                <div class="text-muted-foreground mt-0.5" x-text="el.suggested_type"></div>
+                                <div class="text-muted-foreground/60 mt-0.5 italic text-[11px] line-clamp-2" x-text="'&quot;' + el.source_quote + '&quot;'" x-show="el.source_quote" x-cloak></div>
+                            </div>
+                            <div class="flex gap-1 shrink-0">
+                                <button @click="acceptExtracted(i)" class="px-2 py-0.5 bg-success/10 text-success rounded hover:bg-success/20 transition-colors">Accept</button>
+                                <button @click="rejectExtracted(i)" class="px-2 py-0.5 bg-destructive/10 text-destructive rounded hover:bg-destructive/20 transition-colors">Reject</button>
+                            </div>
+                        </div>
+                    </template>
+                    <template x-if="extractedRelationships.length > 0">
+                        <div class="mt-3">
+                            <div class="text-xs font-semibold text-muted-foreground mb-2">
+                                Relationships (<span x-text="extractedRelationships.length"></span>):
+                            </div>
+                            <template x-for="(rel, ri) in extractedRelationships" :key="ri">
+                                <div class="p-2 bg-muted/20 rounded text-[11px] text-muted-foreground">
+                                    <span x-text="rel.source_name"></span>
+                                    <span class="mx-1">&rarr;</span>
+                                    <span class="italic" x-text="rel.type"></span>
+                                    <span class="mx-1">&rarr;</span>
+                                    <span x-text="rel.target_name"></span>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+                    <button @click="acceptAllExtracted()" class="w-full mt-2 px-3 py-1.5 bg-primary/10 text-primary rounded text-xs font-medium hover:bg-primary/20 transition-colors">
+                        Accept All (<span x-text="extractedElements.length"></span> elements)
+                    </button>
+                </div>
+            </template>
+        </div>
+    </div>
+
+    {# ── CMP-023: Pattern Apply modal ─────────────────── #}
+    <div x-show="patternListOpen" x-cloak class="search-overlay" @click.self="closePatternModal()"
+         role="dialog" aria-modal="true" aria-label="Architecture patterns library">
+        <div class="search-panel" style="max-width: 540px;" {# inline-style-ok #} @keydown.escape="closePatternModal()">
+            <div class="flex items-center gap-2 px-4 py-3 border-b border-border bg-muted/30">
+                <i data-lucide="layout-template" class="w-4 h-4 text-primary"></i>
+                <h3 class="text-sm font-semibold">Apply Architecture Pattern</h3>
+                <button @click="closePatternModal()" class="ml-auto text-muted-foreground hover:text-foreground">&times;</button>
+            </div>
+            <div class="p-4 space-y-3">
+                <div>
+                    <label class="text-xs font-medium text-foreground">Pattern</label>
+                    <select x-model="selectedPatternId"
+                        class="w-full mt-1 text-sm border border-border rounded-lg px-3 py-2 bg-background text-foreground focus:ring-1 focus:ring-primary outline-none">
+                        <option value="">Select a pattern...</option>
+                        <template x-for="pat in patterns" :key="pat.id">
+                            <option :value="pat.id">
+                                <span x-text="pat.name + (pat.is_builtin ? ' (built-in)' : '') + ' — ' + pat.element_count + ' elements'"></span>
+                            </option>
+                        </template>
+                    </select>
+                </div>
+                <template x-if="selectedPatternId">
+                    <div class="p-2 bg-muted/30 rounded text-xs text-muted-foreground"
+                         x-text="(patterns.find(function(p) { return String(p.id) === String(selectedPatternId); }) || {}).description || 'No description'">
+                    </div>
+                </template>
+                <div>
+                    <label class="text-xs font-medium text-foreground">Context (e.g., "Order Processing")</label>
+                    <input x-model="patternContext" type="text" placeholder="Enter context name..."
+                        class="w-full mt-1 text-sm border border-border rounded-lg px-3 py-2 bg-background text-foreground focus:ring-1 focus:ring-primary outline-none">
+                </div>
+                <button @click="applyPattern()" :disabled="!selectedPatternId || !patternContext.trim() || patternLoading"
+                    class="w-full px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                    <span x-show="!patternLoading" x-cloak>Preview Pattern</span>
+                    <span x-show="patternLoading" x-cloak>Loading...</span>
+                </button>
+            </div>
+            {# Preview of instantiated pattern #}
+            <template x-if="patternInstantiatedElements.length > 0">
+                <div class="border-t border-border p-4 max-h-64 overflow-y-auto space-y-2">
+                    <div class="text-xs font-semibold text-muted-foreground mb-2">
+                        Preview (<span x-text="patternInstantiatedElements.length"></span> elements,
+                        <span x-text="patternInstantiatedRelationships.length"></span> relationships):
+                    </div>
+                    <template x-for="(el, i) in patternInstantiatedElements" :key="i">
+                        <div class="flex items-center gap-2 p-2 bg-muted/30 rounded text-xs">
+                            <span class="font-medium" x-text="el.label"></span>
+                            <span class="text-muted-foreground" x-text="'(' + el.type + ')'"></span>
+                        </div>
+                    </template>
+                    <template x-if="patternInstantiatedRelationships.length > 0">
+                        <div class="mt-2">
+                            <template x-for="(rel, ri) in patternInstantiatedRelationships" :key="ri">
+                                <div class="p-1.5 text-[11px] text-muted-foreground">
+                                    <span x-text="rel.source_role"></span>
+                                    <span class="mx-1">&rarr;</span>
+                                    <span class="italic" x-text="rel.type"></span>
+                                    <span class="mx-1">&rarr;</span>
+                                    <span x-text="rel.target_role"></span>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+                    <button @click="placePatternOnCanvas()"
+                        class="w-full mt-2 px-3 py-1.5 bg-success/10 text-success rounded text-xs font-medium hover:bg-success/20 transition-colors">
+                        Place on Canvas
+                    </button>
+                </div>
+            </template>
+        </div>
+    </div>
+
+    {# ── Save Viewpoint Name modal ───────────────────────── #}
+    <div x-show="saveNameOpen" x-cloak class="search-overlay" @click.self="cancelSaveName()"
+         @keydown.escape.window="cancelSaveName()"
+         role="dialog" aria-modal="true" aria-label="Save viewpoint name">
+        <div class="search-panel" style="max-width: 400px;"> <!-- inline-style-ok -->
+            <div class="flex items-center gap-2 px-4 py-3 border-b border-border bg-muted/30">
+                <i data-lucide="save" class="w-4 h-4 text-primary"></i>
+                <h3 class="text-sm font-semibold">Save Viewpoint</h3>
+                <button @click="cancelSaveName()" class="ml-auto text-muted-foreground hover:text-foreground">&times;</button>
+            </div>
+            <div class="px-4 py-4 flex flex-col gap-3">
+                <label class="text-xs text-muted-foreground font-medium">Viewpoint name</label>
+                <input type="text" x-model="saveNameValue" x-ref="saveNameInput"
+                       class="w-full px-3 py-2 text-sm bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/40"
+                       placeholder="e.g., Application Layer – Salesforce Replacement"
+                       @keydown.enter.prevent="confirmSaveName()"
+                       @keydown.escape.prevent="cancelSaveName()"
+                       x-init="$nextTick(() => { if (saveNameOpen && $el) $el.focus(); })">
+                <div class="flex gap-2 justify-end mt-1">
+                    <button @click="cancelSaveName()"
+                            class="px-3 py-1.5 text-xs rounded-lg border border-border text-muted-foreground hover:bg-muted transition-colors">
+                        Cancel
+                    </button>
+                    <button @click="confirmSaveName()" :disabled="!saveNameValue.trim()"
+                            class="px-4 py-1.5 text-xs rounded-lg bg-primary text-primary-foreground font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                        Save
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# ── CMP-023: Save as Pattern modal ────────────────── #}
+    <div x-show="savePatternOpen" x-cloak class="search-overlay" @click.self="closeSavePatternModal()"
+         role="dialog" aria-modal="true" aria-label="Save as pattern" @keydown.escape.window="closeSavePatternModal()">
+        <div class="search-panel" style="max-width: 420px;"> <!-- inline-style-ok -->
+            <div class="flex items-center gap-2 px-4 py-3 border-b border-border bg-muted/30">
+                <i data-lucide="bookmark-plus" class="w-4 h-4 text-primary"></i>
+                <h3 class="text-sm font-semibold">Save as Pattern</h3>
+                <button @click="closeSavePatternModal()" class="ml-auto text-muted-foreground hover:text-foreground">&times;</button>
+            </div>
+            <div class="p-4 space-y-3">
+                <p class="text-xs text-muted-foreground">
+                    Save <span x-text="_selectedCells.length > 0 ? _selectedCells.length + ' selected' : 'all canvas'"></span>
+                    elements as a reusable pattern. Labels will use <code>{context}</code> placeholders.
+                </p>
+                <div>
+                    <label class="text-xs font-medium text-foreground">Pattern Name</label>
+                    <input x-model="savePatternName" type="text" placeholder="e.g., My Integration Pattern"
+                        class="w-full mt-1 text-sm border border-border rounded-lg px-3 py-2 bg-background text-foreground focus:ring-1 focus:ring-primary outline-none">
+                </div>
+                <div>
+                    <label class="text-xs font-medium text-foreground">Description (optional)</label>
+                    <textarea x-model="savePatternDescription" rows="2" placeholder="Brief description..."
+                        class="w-full mt-1 text-sm border border-border rounded-lg p-3 bg-background text-foreground resize-none focus:ring-1 focus:ring-primary outline-none"></textarea>
+                </div>
+                <button @click="saveSelectionAsPattern()" :disabled="!savePatternName.trim()"
+                    class="w-full px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                    Save Pattern
+                </button>
+            </div>
+        </div>
+    </div>
+
+    {# ── CMP-021: Delta baseline picker modal ──────────── #}
+    <div x-show="deltaPickerOpen" x-cloak class="search-overlay" @click.self="deltaPickerOpen = false"
+         role="dialog" aria-modal="true" aria-label="Select baseline diagram for delta comparison" @keydown.escape.window="deltaPickerOpen = false">
+        <div class="search-panel" style="max-width: 420px;"> <!-- inline-style-ok -->
+            <div class="flex items-center gap-2 px-4 py-3 border-b border-border bg-muted/30">
+                <i data-lucide="git-compare" class="w-4 h-4 text-warning"></i>
+                <h3 class="text-sm font-semibold">Compare: Select Baseline</h3>
+                <button @click="deltaPickerOpen = false" class="ml-auto text-muted-foreground hover:text-foreground">&times;</button>
+            </div>
+            <div class="p-4">
+                <p class="text-xs text-muted-foreground mb-3">
+                    The current diagram is the <strong>target</strong> state. Select a baseline diagram to compare against.
+                </p>
+                <label class="text-xs font-medium text-foreground">Baseline diagram</label>
+                <select x-model="deltaCompareVpId"
+                        class="mt-1 w-full text-sm bg-background border border-border rounded-md px-3 py-2 text-foreground">
+                    <option value="">-- Select baseline --</option>
+                    <template x-for="vp in deltaCompareVpList" :key="vp.id">
+                        <option :value="vp.id" x-text="vp.name + ' (' + (vp.element_count || 0) + ' elements)'"></option>
+                    </template>
+                </select>
+                <template x-if="deltaCompareVpList.length === 0">
+                    <p class="text-xs text-muted-foreground mt-2">No other saved diagrams found. Save at least two diagrams to compare.</p>
+                </template>
+                <button @click="runDelta()" :disabled="!deltaCompareVpId || deltaLoading"
+                        class="mt-4 w-full px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                    <span x-text="deltaLoading ? 'Computing...' : 'Run Delta Comparison'"></span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    {# ── Quick-add command palette (fixed overlay, inside x-data) ── #}
+    <div id="quick-add-overlay" x-show="quickAddOpen" x-cloak class="search-overlay" @click.self="closeQuickAdd()"
+         role="dialog" aria-modal="true" aria-label="Quick add element" @keydown.escape.window="closeQuickAdd()">
+        <div class="search-panel" style="max-width: 480px;"> <!-- inline-style-ok -->
+            <div class="flex items-center gap-2 px-4 py-2 border-b border-border bg-muted/30">
+                <i data-lucide="search" class="w-4 h-4 text-muted-foreground"></i>
+                <span class="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Quick Add Element</span>
+                <span class="ml-auto text-[10px] text-muted-foreground px-1.5 py-0.5 rounded bg-muted border border-border">Ctrl+K</span>
+            </div>
+            <input type="text" id="quick-add-input" x-model="quickAddQuery"
+                   class="search-header-input"
+                   @input.debounce.200ms="doQuickAddSearch()"
+                   placeholder="Type element name to search catalog..."
+                   autofocus>
+            <div class="search-results">
+                <template x-if="quickAddLoading">
+                    <div class="p-4 text-center text-sm text-muted-foreground">
+                        <span class="inline-block animate-pulse">Searching...</span>
+                    </div>
+                </template>
+                <template x-if="!quickAddLoading && quickAddResults.length === 0 && quickAddQuery.length >= 1">
+                    <div class="px-4 py-3 space-y-3">
+                        <p class="text-center text-sm text-muted-foreground">No matching element types found</p>
+                        <div class="border-t border-border pt-3">
+                            <p class="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">Or create new element</p>
+                            <div class="flex gap-2">
+                                <select x-model="_quickAddNewType"
+                                        class="flex-1 text-xs bg-background border border-border rounded px-2 py-1.5 text-foreground focus:border-primary outline-none">
+                                    <option value="ApplicationComponent">Application</option>
+                                    <option value="BusinessProcess">Business Process</option>
+                                    <option value="BusinessService">Business Service</option>
+                                    <option value="BusinessActor">Business Actor</option>
+                                    <option value="DataObject">Data Object</option>
+                                    <option value="Node">Node</option>
+                                    <option value="SystemSoftware">System Software</option>
+                                    <option value="Driver">Driver</option>
+                                    <option value="Goal">Goal</option>
+                                    <option value="Requirement">Requirement</option>
+                                    <option value="Capability">Capability</option>
+                                    <option value="WorkPackage">Work Package</option>
+                                </select>
+                                <button @click="quickAddPick({type: _quickAddNewType || 'ApplicationComponent', name: quickAddQuery, layer: ''})"
+                                        class="inline-flex items-center gap-1 px-3 py-1.5 rounded text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90">
+                                    Create
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+                <template x-if="!quickAddLoading && quickAddResults.length === 0 && quickAddQuery.length === 0">
+                    <div class="px-4 py-3 text-center text-xs text-muted-foreground">
+                        Search by name across all element types
+                    </div>
+                </template>
+                <template x-for="item in quickAddResults" :key="item.id">
+                    <div class="search-result-item" @click="quickAddPick(item)">
+                        <div>
+                            <div class="search-result-name" x-text="item.name"></div>
+                            <div class="search-result-meta" x-text="(item.type || '') + ' &middot; ' + (item.layer || '')"></div>
+                        </div>
+                        <i data-lucide="plus-circle" class="w-4 h-4 text-primary/60"></i>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </div>
+
+    {# ── Load Saved Viewpoints overlay ────────────────────── #}
+    <div x-show="savedVpOpen" x-cloak class="search-overlay" @click.self="savedVpOpen = false"
+         role="dialog" aria-modal="true" aria-label="Load saved viewpoint" @keydown.escape.window="savedVpOpen = false">
+        <div class="search-panel" style="max-width: 420px;"> <!-- inline-style-ok -->
+            <div class="flex items-center gap-2 px-4 py-3 border-b border-border" style="background: hsl(var(--muted) / 0.3);"> <!-- inline-style-ok -->
+                <i data-lucide="folder-open" class="w-4 h-4 text-primary"></i>
+                <h3 class="text-sm font-semibold text-foreground">Load Saved Viewpoint</h3>
+                <button @click="savedVpOpen = false" class="ml-auto text-muted-foreground hover:text-foreground" aria-label="Close">&times;</button>
+            </div>
+            <div class="p-2 max-h-80 overflow-y-auto">
+                <template x-if="savedViewpoints.length === 0">
+                    <div class="px-4 py-6 text-xs text-muted-foreground text-center">No saved viewpoints yet</div>
+                </template>
+                <template x-for="svp in savedViewpoints" :key="svp.id">
+                    <button class="w-full text-left px-3 py-2.5 rounded-lg hover:bg-accent transition-colors flex items-center justify-between gap-2"
+                            @click="loadSavedViewpoint(svp.id, svp.name); savedVpOpen = false">
+                        <div class="min-w-0">
+                            <div class="text-sm font-medium truncate text-foreground" x-text="svp.name"></div>
+                            <div class="text-[10px] text-muted-foreground" x-text="(svp.element_count || 0) + ' elements'"></div>
+                        </div>
+                        <i data-lucide="chevron-right" class="w-3.5 h-3.5 text-muted-foreground flex-shrink-0"></i>
+                    </button>
+                </template>
+            </div>
+        </div>
+    </div>
+
+    {# ── Version History (Snapshots) overlay ──────────────── #}
+    <div x-show="snapshotListOpen" x-cloak class="search-overlay" @click.self="snapshotListOpen = false"
+         role="dialog" aria-modal="true" aria-label="Version history snapshots" @keydown.escape.window="snapshotListOpen = false">
+        <div class="search-panel" style="max-width: 440px;"> <!-- inline-style-ok -->
+            <div class="flex items-center gap-2 px-4 py-3 border-b border-border" style="background: hsl(var(--muted) / 0.3);"> <!-- inline-style-ok -->
+                <i data-lucide="history" class="w-4 h-4 text-primary"></i>
+                <h3 class="text-sm font-semibold text-foreground">Version History</h3>
+                <button @click="openVersionCompare()" x-show="snapshots.length >= 2" x-cloak
+                        class="ml-auto text-[10px] font-medium px-2.5 py-1 rounded-md bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20 transition-colors"
+                        title="Compare two specific versions">
+                    <i data-lucide="git-compare" class="w-3 h-3 inline-block mr-1 align-middle"></i>
+                    Compare Versions
+                </button>
+                <button @click="snapshotListOpen = false" class="text-muted-foreground hover:text-foreground" :class="{'ml-auto': snapshots.length < 2}" aria-label="Close">&times;</button>
+            </div>
+            <div class="p-2 max-h-80 overflow-y-auto">
+                <template x-if="snapshots.length === 0">
+                    <div class="px-4 py-6 text-xs text-muted-foreground text-center">No snapshots saved yet</div>
+                </template>
+                <template x-for="snap in snapshots" :key="snap.id">
+                    <div class="px-3 py-2.5 rounded-lg hover:bg-accent transition-colors flex items-center justify-between gap-2">
+                        <button class="flex-1 text-left min-w-0" @click="viewSnapshot(snap.id); snapshotListOpen = false"
+                                title="View snapshot (read-only)">
+                            <div class="text-sm font-medium truncate text-foreground" x-text="snap.name"></div>
+                            <div class="text-[10px] text-muted-foreground" x-text="snap.created_at ? new Date(snap.created_at).toLocaleDateString() : 'No date'"></div>
+                        </button>
+                        <div class="flex items-center gap-1 flex-shrink-0">
+                            <button @click="compareSnapshots(snap.id, snapshots[0] ? snapshots[0].id : snap.id); snapshotListOpen = false"
+                                    class="text-[10px] text-warning hover:underline px-2 py-1 rounded-md hover:bg-warning/10 transition-colors"
+                                    x-show="snapshots.length > 1" x-cloak
+                                    title="Compare this snapshot against the latest">
+                                Compare
+                            </button>
+                            <button @click="restoreSnapshot(snap.id); snapshotListOpen = false"
+                                    class="text-[10px] text-primary hover:underline px-2 py-1 rounded-md hover:bg-primary/10 transition-colors"
+                                    title="Restore this snapshot">
+                                Restore
+                            </button>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </div>
+
+    {# ── CMP2-010: Version Comparison Selector overlay ─────── #}
+    <div x-show="versionCompareOpen" x-cloak class="search-overlay" @click.self="versionCompareOpen = false" {# modal-a11y-ok #}
+         role="dialog" aria-modal="true" aria-label="Compare versions" @keydown.escape.window="versionCompareOpen = false">
+        <div class="search-panel max-w-[480px]">
+            <div class="flex items-center gap-2 px-4 py-3 border-b border-border bg-muted/30">
+                <i data-lucide="git-compare" class="w-4 h-4 text-primary"></i>
+                <h3 class="text-sm font-semibold text-foreground">Compare Versions</h3>
+                <button @click="versionCompareOpen = false" class="ml-auto text-muted-foreground hover:text-foreground" aria-label="Close">&times;</button>
+            </div>
+            <div class="p-4 space-y-4">
+                <p class="text-xs text-muted-foreground">Select two snapshots to compare. Version A is the baseline (older), Version B is the newer version.</p>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Version A (Baseline)</label>
+                        <select x-model="versionCompareA"
+                                class="w-full text-xs bg-background border border-border rounded-lg px-3 py-2 text-foreground focus:border-primary outline-none transition-colors">
+                            <option :value="null" disabled>Select version…</option>
+                            <template x-for="snap in snapshots" :key="'a-' + snap.id">
+                                <option :value="snap.id" x-text="snap.name + (snap.created_at ? ' (' + new Date(snap.created_at).toLocaleDateString() + ')' : '')"></option>
+                            </template>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Version B (Newer)</label>
+                        <select x-model="versionCompareB"
+                                class="w-full text-xs bg-background border border-border rounded-lg px-3 py-2 text-foreground focus:border-primary outline-none transition-colors">
+                            <option :value="null" disabled>Select version…</option>
+                            <template x-for="snap in snapshots" :key="'b-' + snap.id">
+                                <option :value="snap.id" x-text="snap.name + (snap.created_at ? ' (' + new Date(snap.created_at).toLocaleDateString() + ')' : '')"></option>
+                            </template>
+                        </select>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2 pt-1">
+                    <button @click="executeVersionCompare()"
+                            :disabled="!versionCompareA || !versionCompareB || versionCompareA === versionCompareB"
+                            class="flex-1 text-xs px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed">
+                        <i data-lucide="git-compare" class="w-3.5 h-3.5 inline-block mr-1.5 align-middle"></i>
+                        Run Comparison
+                    </button>
+                    <button @click="versionCompareOpen = false"
+                            class="text-xs px-3 py-2 rounded-lg border border-border text-muted-foreground hover:bg-accent transition-colors">
+                        Cancel
+                    </button>
+                </div>
+                <template x-if="versionCompareA && versionCompareB && versionCompareA === versionCompareB">
+                    <p class="text-[10px] text-destructive">Select two different versions to compare.</p>
+                </template>
+            </div>
+        </div>
+    </div>
+
+    {# ── CMP2-010: Diff Summary Panel (floating, right side) ── #}
+    <div x-show="diffSummaryOpen && snapshotDiffActive" x-cloak x-transition
+         class="diff-summary-panel">
+        <div class="flex items-center gap-2 px-3 py-2.5 border-b border-border bg-muted/30">
+            <i data-lucide="file-diff" class="w-3.5 h-3.5 text-primary"></i>
+            <h4 class="text-xs font-semibold text-foreground">Change Summary</h4>
+            <button @click="diffSummaryOpen = false" class="ml-auto text-muted-foreground hover:text-foreground text-sm" aria-label="Close summary">&times;</button>
+        </div>
+        <div class="p-2 overflow-y-auto max-h-[calc(100vh-300px)]">
+            <template x-if="diffDetails">
+                <div class="space-y-2">
+                    {# Added Elements #}
+                    <template x-if="diffDetails.addedElements.length > 0">
+                        <div class="diff-summary-section">
+                            <div class="flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-emerald-500/10 border border-emerald-500/20">
+                                <span class="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0"></span>
+                                <span class="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wide">Added Elements</span>
+                                <span class="ml-auto text-[10px] font-bold text-emerald-600" x-text="diffDetails.addedElements.length"></span>
+                            </div>
+                            <template x-for="el in diffDetails.addedElements" :key="'add-' + el.id">
+                                <div class="px-2.5 py-1 text-[11px] text-foreground flex items-center gap-1.5">
+                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30">NEW</span>
+                                    <span class="truncate" x-text="el.name"></span>
+                                    <span class="text-muted-foreground text-[9px] ml-auto flex-shrink-0" x-text="el.type"></span>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+
+                    {# Removed Elements #}
+                    <template x-if="diffDetails.removedElements.length > 0">
+                        <div class="diff-summary-section">
+                            <div class="flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-destructive/10 border border-destructive/20">
+                                <span class="w-2 h-2 rounded-full bg-destructive flex-shrink-0"></span>
+                                <span class="text-[10px] font-semibold text-destructive uppercase tracking-wide">Removed Elements</span>
+                                <span class="ml-auto text-[10px] font-bold text-destructive" x-text="diffDetails.removedElements.length"></span>
+                            </div>
+                            <template x-for="el in diffDetails.removedElements" :key="'rem-' + el.id">
+                                <div class="px-2.5 py-1 text-[11px] text-foreground/70 flex items-center gap-1.5 line-through">
+                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium bg-destructive/10 text-destructive border border-destructive/30 no-underline">DEL</span>
+                                    <span class="truncate" x-text="el.name"></span>
+                                    <span class="text-muted-foreground text-[9px] ml-auto flex-shrink-0 no-underline" x-text="el.type"></span>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+
+                    {# Moved Elements #}
+                    <template x-if="diffDetails.movedElements.length > 0">
+                        <div class="diff-summary-section">
+                            <div class="flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-primary/10 border border-primary/20">
+                                <span class="w-2 h-2 rounded-full bg-primary flex-shrink-0"></span>
+                                <span class="text-[10px] font-semibold text-primary uppercase tracking-wide">Moved Elements</span>
+                                <span class="ml-auto text-[10px] font-bold text-primary" x-text="diffDetails.movedElements.length"></span>
+                            </div>
+                            <template x-for="el in diffDetails.movedElements" :key="'mov-' + el.id">
+                                <div class="px-2.5 py-1 text-[11px] text-foreground flex items-center gap-1.5">
+                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium bg-primary/10 text-primary border border-primary/30">MOV</span>
+                                    <span class="truncate" x-text="el.name"></span>
+                                    <span class="text-muted-foreground text-[9px] ml-auto flex-shrink-0" x-text="'dx:' + el.dx + ' dy:' + el.dy"></span>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+
+                    {# Added Relationships #}
+                    <template x-if="diffDetails.addedRelationships.length > 0">
+                        <div class="diff-summary-section">
+                            <div class="flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-emerald-500/10 border border-emerald-500/20">
+                                <span class="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0"></span>
+                                <span class="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wide">Added Relationships</span>
+                                <span class="ml-auto text-[10px] font-bold text-emerald-600" x-text="diffDetails.addedRelationships.length"></span>
+                            </div>
+                            <template x-for="rel in diffDetails.addedRelationships" :key="'radd-' + rel.id">
+                                <div class="px-2.5 py-1 text-[11px] text-foreground flex items-center gap-1.5">
+                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30">NEW</span>
+                                    <span class="truncate" x-text="rel.type"></span>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+
+                    {# Removed Relationships #}
+                    <template x-if="diffDetails.removedRelationships.length > 0">
+                        <div class="diff-summary-section">
+                            <div class="flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-destructive/10 border border-destructive/20">
+                                <span class="w-2 h-2 rounded-full bg-destructive flex-shrink-0"></span>
+                                <span class="text-[10px] font-semibold text-destructive uppercase tracking-wide">Removed Relationships</span>
+                                <span class="ml-auto text-[10px] font-bold text-destructive" x-text="diffDetails.removedRelationships.length"></span>
+                            </div>
+                            <template x-for="rel in diffDetails.removedRelationships" :key="'rrem-' + rel.id">
+                                <div class="px-2.5 py-1 text-[11px] text-foreground/70 flex items-center gap-1.5">
+                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium bg-destructive/10 text-destructive border border-destructive/30">DEL</span>
+                                    <span class="truncate" x-text="rel.type"></span>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+
+                    {# Unchanged #}
+                    <template x-if="diffDetails.unchangedElements.length > 0">
+                        <div class="diff-summary-section">
+                            <div class="flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-muted border border-border">
+                                <span class="w-2 h-2 rounded-full bg-muted-foreground/40 flex-shrink-0"></span>
+                                <span class="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Unchanged</span>
+                                <span class="ml-auto text-[10px] font-bold text-muted-foreground" x-text="diffDetails.unchangedElements.length"></span>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </template>
+        </div>
+    </div>
+
+    {# ── Templates overlay ────────────────────────────────── #}
+    <div x-show="templateListOpen" x-cloak class="search-overlay" @click.self="templateListOpen = false"
+         role="dialog" aria-modal="true" aria-label="Diagram templates" @keydown.escape.window="templateListOpen = false">
+        <div class="search-panel" style="max-width: 480px;"> <!-- inline-style-ok -->
+            <div class="flex items-center gap-2 px-4 py-3 border-b border-border" style="background: hsl(var(--muted) / 0.3);"> <!-- inline-style-ok -->
+                <i data-lucide="copy" class="w-4 h-4 text-primary"></i>
+                <h3 class="text-sm font-semibold text-foreground">Diagram Templates</h3>
+                <button @click="templateListOpen = false" class="ml-auto text-muted-foreground hover:text-foreground" aria-label="Close">&times;</button>
+            </div>
+
+            {# CMP2-006: Portfolio-generated templates section #}
+            <div class="border-b border-border">
+                <button @click="portfolioSectionOpen = !portfolioSectionOpen; if (portfolioSectionOpen && portfolioTemplates.length === 0) loadPortfolioTemplates(); $nextTick(() => { if (window.lucide) lucide.createIcons() })"
+                        class="w-full flex items-center gap-2 px-4 py-2.5 text-left hover:bg-accent/50 transition-colors">
+                    <i data-lucide="building-2" class="w-4 h-4 text-emerald-500 flex-shrink-0"></i>
+                    <span class="text-xs font-semibold uppercase tracking-wide text-foreground">From Your Portfolio</span>
+                    <span class="text-[10px] text-muted-foreground ml-1">Real applications</span>
+                    <i :data-lucide="portfolioSectionOpen ? 'chevron-up' : 'chevron-down'"
+                       class="w-3.5 h-3.5 text-muted-foreground ml-auto flex-shrink-0"></i>
+                </button>
+                <div x-show="portfolioSectionOpen" x-cloak class="px-2 pb-2 max-h-56 overflow-y-auto"> <!-- modal-a11y-ok -->
+                    <template x-if="portfolioTemplatesLoading">
+                        <div class="px-4 py-4 text-xs text-muted-foreground text-center">
+                            <i data-lucide="loader-2" class="w-4 h-4 animate-spin inline-block mr-1"></i>
+                            Loading portfolio data...
+                        </div>
+                    </template>
+                    <template x-if="!portfolioTemplatesLoading && portfolioTemplates.length === 0">
+                        <div class="px-4 py-4 text-xs text-muted-foreground text-center">
+                            No domains with 3+ applications found in your portfolio
+                        </div>
+                    </template>
+                    <template x-for="ptpl in portfolioTemplates" :key="ptpl.id">
+                        <button class="w-full text-left px-3 py-2.5 rounded-lg hover:bg-accent transition-colors flex items-center justify-between gap-2"
+                                @click="applyPortfolioTemplate(ptpl)">
+                            <div class="min-w-0">
+                                <div class="text-sm font-medium truncate text-foreground" x-text="ptpl.name"></div>
+                                <div class="text-[10px] text-muted-foreground">
+                                    <span x-text="ptpl.app_count"></span> apps in <span x-text="ptpl.domain"></span> domain
+                                </div>
+                            </div>
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30 flex-shrink-0">
+                                <span x-text="ptpl.element_count"></span>&nbsp;elements
+                            </span>
+                        </button>
+                    </template>
+                </div>
+            </div>
+
+            {# Built-in + custom templates #}
+            <div class="px-4 py-1.5 border-b border-border">
+                <span class="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Built-in &amp; Custom Templates</span>
+            </div>
+            <div class="p-2 max-h-64 overflow-y-auto">
+                <template x-if="templates.length === 0">
+                    <div class="px-4 py-6 text-xs text-muted-foreground text-center">No templates available yet</div>
+                </template>
+                <template x-for="tmpl in templates" :key="tmpl.id">
+                    <button class="w-full text-left px-3 py-2.5 rounded-lg hover:bg-accent transition-colors flex items-center justify-between gap-2"
+                            @click="tmpl.is_builtin ? loadBuiltinTemplate(tmpl) : instantiateTemplate(tmpl.id); templateListOpen = false">
+                        <div class="min-w-0">
+                            <div class="text-sm font-medium truncate text-foreground" x-text="tmpl.name"></div>
+                            <div class="text-[10px] text-muted-foreground" x-text="tmpl.description || tmpl.viewpoint_type || 'Custom template'"></div>
+                        </div>
+                        <i data-lucide="chevron-right" class="w-3.5 h-3.5 text-muted-foreground flex-shrink-0"></i>
+                    </button>
+                </template>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# CMP-052: Annotation text edit modal #}
+<div x-show="annotEditOpen" x-cloak
+     class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40"
+     role="dialog" aria-modal="true" aria-label="Edit Annotation"
+     @keydown.escape.window="cancelAnnotationEdit()"
+     @keydown.tab.prevent>
+    <div class="bg-background border border-border rounded-xl shadow-xl w-80 max-w-full mx-4" @click.stop>
+        <div class="flex items-center gap-2 px-4 py-3 border-b border-border bg-muted/30">
+            <i data-lucide="sticky-note" class="w-4 h-4 text-warning"></i>
+            <h3 class="text-sm font-semibold text-foreground">Edit Annotation</h3>
+            <button @click="cancelAnnotationEdit()" class="ml-auto text-muted-foreground hover:text-foreground text-lg leading-none">&times;</button>
+        </div>
+        <div class="p-4 space-y-3">
+            <textarea x-model="annotEditText"
+                      @keydown.ctrl.enter="saveAnnotationText()"
+                      placeholder="Enter annotation text…"
+                      class="w-full text-sm bg-muted/30 border border-border rounded-lg px-3 py-2 resize-none focus:border-primary outline-none transition-colors text-foreground"
+                      rows="4"
+                      x-ref="annotTextarea"
+                      x-effect="if (annotEditOpen) $nextTick(() => { $refs.annotTextarea && $refs.annotTextarea.focus(); })"></textarea>
+            <p class="text-[10px] text-muted-foreground">Press Ctrl+Enter or click Save</p>
+        </div>
+        <div class="flex gap-2 px-4 py-3 border-t border-border justify-end">
+            <button @click="cancelAnnotationEdit()"
+                    class="text-xs px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:bg-accent transition-colors">
+                Cancel
+            </button>
+            <button @click="saveAnnotationText()"
+                    class="text-xs px-4 py-1.5 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors font-medium">
+                Save
+            </button>
+        </div>
+    </div>
+
+    {# ── ENT-111: Relationship staleness review modal ──────── #}
+    <!-- modal-a11y-ok -->
+    <div x-show="showStalenessReview" x-cloak
+         class="fixed inset-0 z-[90] flex items-center justify-center bg-black/50"
+         @keydown.escape.window="dismissStalenessReview()"
+         role="dialog" aria-modal="true" aria-label="Relationship staleness review">
+        <div class="relative w-full max-w-2xl mx-4 rounded-2xl shadow-2xl border border-border overflow-hidden"
+             style="background: hsl(var(--card)); max-height: 80vh;" {# inline-style-ok #}
+             @click.outside="dismissStalenessReview()">
+            {# Header #}
+            <div class="flex items-start gap-3 p-5 border-b border-border">
+                <div class="size-10 rounded-xl flex-shrink-0 flex items-center justify-center bg-orange-100 text-orange-600">
+                    <i data-lucide="alert-triangle" class="w-5 h-5"></i>
+                </div>
+                <div class="flex-1 min-w-0">
+                    <h3 class="text-base font-bold text-foreground">Stale Relationships Detected</h3>
+                    <p class="text-xs text-muted-foreground mt-0.5">
+                        These drawn relationships link to applications not updated in the latest Abacus sync.
+                        Choose to keep each as architectural intent or remove it from the diagram.
+                    </p>
+                </div>
+                <button @click="dismissStalenessReview()"
+                        class="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground flex-shrink-0"
+                        title="Dismiss (Escape)">
+                    <i data-lucide="x" class="w-4 h-4"></i>
+                </button>
+            </div>
+            {# Relationship list #}
+            <div class="overflow-y-auto p-4 space-y-3" style="max-height: calc(80vh - 140px);" {# inline-style-ok #}>
+                <template x-for="rel in staleRelationships" :key="rel.rel_id">
+                    <div class="flex items-center gap-3 p-3 rounded-xl border border-orange-200 bg-orange-50/30">
+                        <div class="flex-1 min-w-0">
+                            <div class="text-sm font-medium text-foreground flex items-center gap-1.5 flex-wrap">
+                                <span x-text="rel.source_name"></span>
+                                <span class="text-muted-foreground">→</span>
+                                <span class="italic text-xs text-muted-foreground" x-text="rel.rel_type"></span>
+                                <span class="text-muted-foreground">→</span>
+                                <span x-text="rel.target_name"></span>
+                            </div>
+                            <div class="text-xs text-orange-700 mt-0.5">
+                                <span class="font-medium" x-text="rel.stale_app_name"></span>
+                                last seen in portfolio:
+                                <span x-text="rel.last_seen ? new Date(rel.last_seen).toLocaleDateString() : 'unknown'"></span>
+                            </div>
+                        </div>
+                        <div class="flex gap-2 flex-shrink-0">
+                            <button @click="keepAsIntent(rel.rel_id)"
+                                    class="px-3 py-1.5 text-xs font-medium rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors whitespace-nowrap">
+                                Keep as intent
+                            </button>
+                            <button @click="removeStalenessRel(rel.rel_id)"
+                                    class="px-3 py-1.5 text-xs font-medium rounded-lg bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors">
+                                Remove
+                            </button>
+                        </div>
+                    </div>
+                </template>
+            </div>
+            {# Footer #}
+            <div class="flex items-center justify-end gap-3 p-4 border-t border-border">
+                <button @click="dismissStalenessReview()"
+                        class="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+                    Dismiss (review later)
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# ── CMP2-002: Bulk Import from Portfolio modal ───────── #}
+<div x-show="bulkImportOpen" x-cloak
+     class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+     @click.self="bulkImportOpen = false"
+     @keydown.escape.window="bulkImportOpen = false"
+     role="dialog" aria-modal="true" aria-label="Import elements from portfolio">
+    <div class="bg-background border border-border rounded-xl shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col"
+         tabindex="-1">
+        {# Header #}
+        <div class="flex items-center justify-between px-4 py-3 border-b border-border">
+            <div class="flex items-center gap-2">
+                <i data-lucide="database" class="w-4 h-4 text-primary"></i>
+                <h3 class="text-sm font-semibold text-foreground">Import from Portfolio</h3>
+            </div>
+            <button @click="bulkImportOpen = false"
+                    class="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
+                <i data-lucide="x" class="w-4 h-4"></i>
+            </button>
+        </div>
+        {# Search + filter bar #}
+        <div class="px-4 py-3 border-b border-border space-y-2">
+            <input type="text" x-model="bulkImportQuery" x-ref="bulkImportSearch"
+                   class="w-full px-3 py-2 text-sm bg-background border border-border rounded-md text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                   placeholder="Search elements by name..."
+                   @input.debounce.300ms="searchBulkImport()"
+                   x-effect="if (bulkImportOpen) $nextTick(() => $refs.bulkImportSearch && $refs.bulkImportSearch.focus())">
+            <div class="flex items-center gap-2">
+                <span class="text-[10px] text-muted-foreground font-semibold uppercase tracking-wide">Layer:</span>
+                <select x-model="bulkImportLayerFilter" @change="searchBulkImport()"
+                        class="text-xs bg-background border border-border rounded px-2 py-1 text-foreground">
+                    <option value="">All layers</option>
+                    <option value="business">Business</option>
+                    <option value="application">Application</option>
+                    <option value="technology">Technology</option>
+                    <option value="motivation">Motivation</option>
+                    <option value="strategy">Strategy</option>
+                    <option value="implementation">Implementation</option>
+                </select>
+                <span class="ml-auto text-[10px] text-muted-foreground"
+                      x-show="bulkImportResults.length > 0" x-cloak
+                      x-text="bulkImportResults.length + ' result(s)'"></span>
+            </div>
+        </div>
+        {# Results list with checkboxes #}
+        <div class="flex-1 overflow-y-auto min-h-0">
+            {# Select-all header #}
+            <div class="flex items-center gap-2 px-4 py-2 bg-muted/30 border-b border-border sticky top-0 z-10"
+                 x-show="bulkImportResults.length > 0" x-cloak>
+                <input type="checkbox" class="rounded border-border"
+                       @click="toggleBulkSelectAll()"
+                       :checked="bulkImportResults.filter(el => !el._onCanvas).length > 0 && bulkImportResults.filter(el => !el._onCanvas).every(el => bulkImportSelected[el.id])">
+                <span class="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">Select all</span>
+                <span class="ml-auto text-[10px] font-medium text-primary" x-show="bulkImportCount > 0" x-cloak
+                      x-text="bulkImportCount + ' selected'"></span>
+            </div>
+            {# Loading state #}
+            <template x-if="bulkImportLoading">
+                <div class="p-6 text-center text-sm text-muted-foreground">
+                    <span class="inline-block animate-pulse">Searching portfolio...</span>
+                </div>
+            </template>
+            {# Empty state #}
+            <template x-if="!bulkImportLoading && bulkImportResults.length === 0 && (bulkImportQuery.length >= 1 || bulkImportLayerFilter)">
+                <div class="p-6 text-center text-sm text-muted-foreground">
+                    No matching elements found
+                </div>
+            </template>
+            <template x-if="!bulkImportLoading && bulkImportResults.length === 0 && bulkImportQuery.length === 0 && !bulkImportLayerFilter">
+                <div class="p-6 text-center text-xs text-muted-foreground">
+                    Search by name or select a layer filter to browse portfolio elements
+                </div>
+            </template>
+            {# Results #}
+            <template x-for="el in bulkImportResults" :key="el.id">
+                <label class="flex items-center gap-3 px-4 py-2 border-b border-border/50 cursor-pointer transition-colors"
+                       :class="el._onCanvas ? 'opacity-40 cursor-not-allowed' : (bulkImportSelected[el.id] ? 'bg-primary/5' : 'hover:bg-muted/30')">
+                    <input type="checkbox" class="rounded border-border"
+                           :checked="bulkImportSelected[el.id]"
+                           :disabled="el._onCanvas"
+                           @click.stop="!el._onCanvas && toggleBulkSelect(el.id)">
+                    <div class="flex-1 min-w-0">
+                        <div class="text-sm font-medium text-foreground truncate" x-text="el.name"></div>
+                        <div class="text-[10px] text-muted-foreground flex items-center gap-1.5">
+                            <span x-text="el.type"></span>
+                            <span>&middot;</span>
+                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium" :class="{ 'bg-amber-500/10 text-amber-600 border border-amber-500/30': (el.layer || '').toLowerCase() === 'business', 'bg-blue-500/10 text-blue-600 border border-blue-500/30': (el.layer || '').toLowerCase() === 'application', 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/30': (el.layer || '').toLowerCase() === 'technology', 'bg-purple-500/10 text-purple-600 border border-purple-500/30': (el.layer || '').toLowerCase() === 'motivation', 'bg-rose-500/10 text-rose-600 border border-rose-500/30': (el.layer || '').toLowerCase() === 'strategy', 'bg-orange-500/10 text-orange-600 border border-orange-500/30': (el.layer || '').toLowerCase() === 'implementation' }" x-text="el.layer || 'Unknown'"></span> <!-- token-migration-ok -->
+                        </div>
+                    </div>
+                    <span x-show="el._onCanvas" x-cloak
+                          class="text-[10px] text-muted-foreground italic whitespace-nowrap">Already on canvas</span>
+                </label>
+            </template>
+        </div>
+        {# Footer with action button #}
+        <div class="flex items-center justify-between px-4 py-3 border-t border-border bg-muted/20">
+            <button @click="bulkImportOpen = false"
+                    class="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+                Cancel
+            </button>
+            <button @click="bulkImportAddToCanvas()"
+                    class="px-4 py-2 text-sm font-medium rounded-md transition-colors bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+                    :disabled="bulkImportCount === 0">
+                <span x-text="bulkImportCount > 0 ? 'Add ' + bulkImportCount + ' to Canvas' : 'Select elements'"></span>
+            </button>
+        </div>
+    </div>
+</div>
+

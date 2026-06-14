@@ -1,0 +1,52 @@
+{# components/error_boundary.html — reusable error display components #}
+
+{% macro error_boundary(id='', title='Something went wrong', message='', retry_url='') %}
+<div
+  {% if id %}id="{{ id }}"{% endif %}
+  class="rounded-lg border border-destructive/20 bg-destructive/5 p-6 text-center"
+  role="alert"
+>
+  <div class="flex flex-col items-center gap-3">
+    <svg class="h-10 w-10 text-destructive" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+        d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+    </svg>
+    <div>
+      <h3 class="font-semibold text-destructive">{{ title }}</h3>
+      {% if message %}
+      <p class="mt-1 text-sm text-muted-foreground">{{ message }}</p>
+      {% endif %}
+    </div>
+    {% if retry_url %}
+    <a href="{{ retry_url }}"
+       class="inline-flex items-center gap-2 rounded-md bg-destructive/10 px-3 py-1.5 text-sm font-medium text-destructive hover:bg-destructive/20 transition-colors">
+      <svg class="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+      </svg>
+      Try again
+    </a>
+    {% endif %}
+  </div>
+</div>
+{% endmacro %}
+
+{% macro error_toast(message='', id='') %}
+<div
+  {% if id %}id="{{ id }}"{% endif %}
+  x-data="{ active: true }"
+  x-show="active"
+  x-transition
+  class="fixed bottom-4 right-4 z-50 flex items-center gap-3 rounded-lg border border-destructive/20 bg-background p-4 shadow-lg"
+  role="alert"
+>
+  <svg class="h-5 w-5 text-destructive shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+  </svg>
+  <p class="text-sm text-foreground">{{ message }}</p>
+  <button @click="active = false" class="ml-2 text-muted-foreground hover:text-foreground">
+    <svg class="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+    </svg>
+  </button>
+</div>
+{% endmacro %}

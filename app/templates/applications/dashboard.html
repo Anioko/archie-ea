@@ -1,0 +1,2084 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'components/page_header.html' import page_header %}
+{% from 'components/card.html' import card, card_header, card_title, card_content %}
+{% from 'components/badge.html' import badge %}
+{% from 'macros/nav_macros_shadcn.html' import pill_tabs, tab_panel %}
+
+{% block title %}{% if app is defined and app %}{{ app.name }} — Application Detail{% else %}Applications Dashboard{% endif %}{% endblock %}
+
+{# FAR-018: Breadcrumb navigation #}
+{% block breadcrumb %}
+{% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
+{% if app is defined and app %}
+{{ breadcrumb_nav(items=[
+    {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
+    {'text': 'Applications', 'href': url_for('unified_applications.application_list')},
+    {'text': app.name, 'current': true}
+]) }}
+{% else %}
+{{ breadcrumb_nav(items=[
+    {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
+    {'text': 'Applications Dashboard', 'current': true}
+]) }}
+{% endif %}
+{% endblock %}
+
+{# ─────────────────────────────────────────────────────────────────────────────
+   Mermaid.js — only loaded on this page, not in admin_base.html
+   Used exclusively for server-generated ArchiMate diagram syntax (|safe allowed)
+───────────────────────────────────────────────────────────────────────────── #}
+{% block extra_head_js %}
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    if (typeof mermaid !== 'undefined') {
+      mermaid.initialize({ startOnLoad: true, theme: 'neutral', securityLevel: 'loose' });
+    }
+  });
+</script>
+{% endblock %}
+
+{% block content %}
+
+{# ─────────────────────────────────────────────────────────────────────────────
+   Retired Banner
+───────────────────────────────────────────────────────────────────────────── #}
+{% if app and (app.deployment_status == 'retired' or app.lifecycle_status == 'retired') %}
+<div class="mb-4 flex items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3">
+  <i data-lucide="alert-triangle" class="h-5 w-5 text-destructive shrink-0" aria-hidden="true"></i>
+  <span class="text-sm font-semibold text-destructive">RETIRED — This application has been decommissioned and is no longer active.</span>
+</div>
+{% endif %}
+
+{# ─────────────────────────────────────────────────────────────────────────────
+   Page Header (app detail only)
+───────────────────────────────────────────────────────────────────────────── #}
+{% if app %}
+<div class="mb-4 flex flex-col gap-2">
+  <nav aria-label="Breadcrumb">
+    <ol class="flex items-center gap-1.5 text-sm text-muted-foreground">
+      <li><a href="{{ url_for('unified_applications.application_list') }}" class="hover:text-foreground transition-colors">Applications</a></li>
+      <li><i data-lucide="chevron-right" class="w-3.5 h-3.5" aria-hidden="true"></i></li>
+      <li class="text-foreground font-medium">{{ app.name }}</li>
+    </ol>
+  </nav>
+
+  <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+    <div class="flex flex-col gap-2">
+      <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">{{ app.name }}</h1>
+      <div class="flex flex-wrap items-center gap-2">
+        {# ARC-F01: Data freshness badge #}
+        {% if app.data_freshness_tier == 'fresh' %}
+        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30" title="Last updated: {{ app.updated_at.strftime('%Y-%m-%d') if app.updated_at else 'Never' }}">fresh</span>
+        {% elif app.data_freshness_tier == 'stale' %}
+        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-amber-500/10 text-amber-600 border border-amber-500/30" title="Last updated: {{ app.updated_at.strftime('%Y-%m-%d') if app.updated_at else 'Never' }}">stale</span>
+        {% elif app.data_freshness_tier == 'outdated' %}
+        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-red-500/10 text-destructive border border-red-500/30" title="Last updated: {{ app.updated_at.strftime('%Y-%m-%d') if app.updated_at else 'Never' }}">outdated</span>
+        {% else %}
+        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground border border-border" title="Never updated">unknown</span>
+        {% endif %}
+        {# ARC-F02: Data completeness badge #}
+        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium
+            {% if app.completeness_score >= 80 %}bg-emerald-500/10 text-emerald-600 border border-emerald-500/30
+            {% elif app.completeness_score >= 50 %}bg-amber-500/10 text-amber-600 border border-amber-500/30
+            {% else %}bg-red-500/10 text-destructive border border-red-500/30{% endif %}"
+            title="Data completeness: {{ app.completeness_gaps|join(', ') }} gaps">
+            {{ app.completeness_score }}% complete
+        </span>
+      </div>
+      <div class="flex flex-wrap items-center gap-2">
+        {% if app.application_code %}
+        {% call badge(variant='outline') %}{{ app.application_code }}{% endcall %}
+        {% endif %}
+        {% if app.deployment_status %}
+        {% set ds = app.deployment_status | lower %}
+        {% if ds == 'production' %}{% call badge(variant='success') %}{{ app.deployment_status | replace('_',' ') | title }}{% endcall %}
+        {% elif ds in ['retired', 'deprecated'] %}{% call badge(variant='destructive') %}{{ app.deployment_status | replace('_',' ') | title }}{% endcall %}
+        {% elif ds in ['development', 'testing', 'staging'] %}{% call badge(variant='warning') %}{{ app.deployment_status | replace('_',' ') | title }}{% endcall %}
+        {% else %}{% call badge(variant='neutral') %}{{ app.deployment_status | replace('_',' ') | title }}{% endcall %}
+        {% endif %}
+        {% endif %}
+        {% if app.business_criticality %}
+        {% set bc = app.business_criticality | lower %}
+        {% if bc == 'critical' %}{% call badge(variant='destructive') %}{{ app.business_criticality }}{% endcall %}
+        {% elif bc == 'high' %}{% call badge(variant='warning') %}{{ app.business_criticality }}{% endcall %}
+        {% elif bc == 'medium' %}{% call badge(variant='info') %}{{ app.business_criticality }}{% endcall %}
+        {% else %}{% call badge(variant='neutral') %}{{ app.business_criticality }}{% endcall %}
+        {% endif %}
+        {% endif %}
+      </div>
+    </div>
+    <div class="flex items-center gap-2 shrink-0">
+      {% if edit_mode %}
+      <a href="{{ url_for('unified_applications.application_detail', id=app.id) }}?tab={{ resolved_tab }}"
+         class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium h-9 px-4 py-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+        Cancel
+      </a>
+      <button type="submit" form="overview-edit-form"
+         class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium h-9 px-4 py-2 bg-primary text-primary-foreground hover:bg-primary/90 ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+        <i data-lucide="save" class="w-4 h-4 mr-2" aria-hidden="true"></i>Save
+      </button>
+      {% else %}
+      <a href="{{ url_for('unified_applications.application_detail', id=app.id) }}?edit=1&tab={{ resolved_tab }}"
+         class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium h-9 px-4 py-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+        <i data-lucide="pencil" class="w-4 h-4 mr-2" aria-hidden="true"></i>Edit
+      </a>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% else %}
+<div class="mb-6 flex flex-col gap-2">
+  <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">Applications Portfolio Dashboard</h1>
+  <p class="text-sm text-muted-foreground">Overview of your application portfolio metrics and status.</p>
+</div>
+{% endif %}
+
+{# ─────────────────────────────────────────────────────────────────────────────
+   Data Completeness Nudge Banner — shown only when completeness < 40%
+───────────────────────────────────────────────────────────────────────────── #}
+{% if app and app.completeness_score < 40 %}
+<div class="mb-4 bg-amber-50 border border-amber-200 rounded-lg dark:bg-amber-950/20 dark:border-amber-800"
+     x-data="{ dismissed: false }" x-show="!dismissed">
+  <div class="px-4 py-3 flex items-center justify-between gap-4">
+    <div class="flex items-center gap-3">
+      <i data-lucide="alert-triangle" class="w-5 h-5 text-amber-600 flex-shrink-0" aria-hidden="true"></i>
+      <div>
+        <p class="text-sm font-medium text-amber-800 dark:text-amber-200">
+          Data completeness: {{ app.completeness_score }}% — AI analysis quality is low
+        </p>
+        <p class="text-xs text-amber-700 dark:text-amber-300 mt-0.5">
+          Missing: {{ app.completeness_gaps | join(', ') }}. Fill these in to improve AI architect responses.
+        </p>
+      </div>
+    </div>
+    <div class="flex items-center gap-2 flex-shrink-0">
+      <button @click="dismissed = true"
+        class="text-xs text-amber-700 hover:text-amber-900 dark:text-amber-300 underline">Dismiss</button>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{# ─────────────────────────────────────────────────────────────────────────────
+   Metric Cards (app detail) or Portfolio Stats (portfolio dashboard)
+───────────────────────────────────────────────────────────────────────────── #}
+{% if metric_cards is defined and metric_cards %}
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+  {% for card_data in metric_cards %}
+  <div data-slot="card" class="rounded-xl border bg-card text-card-foreground shadow-sm p-4">
+    <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">{{ card_data.label }}</p>
+    <p class="mt-1 text-2xl font-bold text-foreground">{{ card_data.value }}</p>
+    {% if card_data.delta %}
+    <p class="mt-1 text-xs text-muted-foreground truncate" title="{{ card_data.delta }}">{{ card_data.delta }}</p>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% elif not app %}
+{# Portfolio dashboard — show available route-level counters #}
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+  <div data-slot="card" class="rounded-xl border bg-card text-card-foreground shadow-sm p-4">
+    <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Total Applications</p>
+    <p class="mt-1 text-2xl font-bold text-foreground">{{ total_apps or 0 }}</p>
+  </div>
+  <div data-slot="card" class="rounded-xl border bg-card text-card-foreground shadow-sm p-4">
+    <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Active Interfaces</p>
+    <p class="mt-1 text-2xl font-bold text-foreground">{{ active_interfaces or 0 }}</p>
+  </div>
+  <div data-slot="card" class="rounded-xl border bg-card text-card-foreground shadow-sm p-4">
+    <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Capability Coverage</p>
+    <p class="mt-1 text-2xl font-bold text-foreground">{{ capability_coverage or 0 }}%</p>
+  </div>
+  <div data-slot="card" class="rounded-xl border bg-card text-card-foreground shadow-sm p-4">
+    <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Avg Tech Debt Score</p>
+    <p class="mt-1 text-2xl font-bold text-foreground">{{ avg_tech_debt or 0 }}</p>
+  </div>
+</div>
+{% endif %}
+
+{# ─────────────────────────────────────────────────────────────────────────────
+   Tab Navigation — only rendered for application detail view (app is set)
+   pill_tabs is a call-macro; tab panels live inside the caller() block
+   Tab switching is client-side (Alpine x-show) — no server round-trips
+───────────────────────────────────────────────────────────────────────────── #}
+{% if app %}
+{% set valid_tab_ids = ['overview','architecture','capabilities','processes','vendors','technology','motivation','compliance','health','cost','dependencies'] %}
+{% set resolved_tab = active_tab_id if active_tab_id in valid_tab_ids else 'overview' %}
+
+{% set tabs = [
+  {'id': 'overview',        'label': 'Overview',         'count': none},
+  {'id': 'architecture',    'label': 'Architecture',     'count': (archimate_relationships.incoming | length + archimate_relationships.outgoing | length) if archimate_relationships else 0},
+  {'id': 'capabilities',    'label': 'Capabilities',     'count': (capabilities | default([], true)) | length},
+  {'id': 'processes',       'label': 'Processes',        'count': (business_processes | default([], true)) | length},
+  {'id': 'vendors',         'label': 'Vendors',          'count': (vendor_products | default([], true)) | length},
+  {'id': 'motivation',      'label': 'Motivation',       'count': (archimate_relationships.incoming + archimate_relationships.outgoing) | selectattr('layer', 'equalto', 'Motivation') | list | length if archimate_relationships else 0},
+  {'id': 'dependencies',    'label': 'Dependencies',     'count': (archimate_relationships.incoming | length + archimate_relationships.outgoing | length) if archimate_relationships else 0},
+] %}
+{# Conditionally add tabs only when the app has relevant data #}
+{% if app.technology_stack or app.programming_languages or app.primary_database %}
+  {% set _ = tabs.append({'id': 'technology', 'label': 'Technology', 'count': none}) %}
+{% endif %}
+{% if app.compliance_status or app.data_classification %}
+  {% set _ = tabs.append({'id': 'compliance', 'label': 'Compliance', 'count': none}) %}
+{% endif %}
+{% if app.monitoring_enabled or app.sla_availability_percentage %}
+  {% set _ = tabs.append({'id': 'health', 'label': 'Health & Quality', 'count': none}) %}
+{% endif %}
+{% if app.total_cost_of_ownership or app.license_cost_annual %}
+  {% set _ = tabs.append({'id': 'cost', 'label': 'Cost', 'count': none}) %}
+{% endif %}
+
+<div x-data="{ activeTab: '{{ resolved_tab }}' }">
+{% call pill_tabs(tabs, active_tab_id=resolved_tab, app_id=app.id) %}
+
+  {# ═══════════════════════════════════════════════════════════════════════════
+     TAB: OVERVIEW
+  ═══════════════════════════════════════════════════════════════════════════ #}
+  {% call tab_panel('overview', active=(resolved_tab == 'overview')) %}
+  <div class="space-y-6">
+    {% if edit_mode %}
+    <form id="overview-edit-form" method="POST" action="{{ url_for('application_mgmt.update_overview', id=app.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% endif %}
+
+    {# Contract expiry warning #}
+    {% if app.contract_expiry_date %}
+    {% set today = namespace(d=none) %}
+    {% set days_until = (app.contract_expiry_date - namespace(d=none).d) %}
+    <div class="rounded-lg border px-4 py-3
+      {% if app.contract_expiry_date|string < '2026-04-20' %}border-destructive/30 bg-destructive/10{% elif app.contract_expiry_date|string < '2026-05-20' %}border-warning/30 bg-warning/10{% else %}border-border bg-muted/30{% endif %}">
+      <div class="flex items-center gap-2 text-sm">
+        <i data-lucide="calendar" class="h-4 w-4 shrink-0" aria-hidden="true"></i>
+        <span><strong>Contract Expiry:</strong> {{ app.contract_expiry_date.strftime('%d %b %Y') }}</span>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+      {# Application Identity #}
+      <div data-slot="card" class="rounded-xl border bg-card shadow-sm">
+        <div class="flex flex-col space-y-1.5 p-6 pb-3">
+          <h2 class="text-lg font-semibold">Application Identity</h2>
+        </div>
+        <div class="p-6 pt-0 space-y-3 text-sm">
+          {% macro detail_row(label, value) %}
+          {% if value %}
+          <div class="flex justify-between gap-4">
+            <span class="text-muted-foreground shrink-0">{{ label }}</span>
+            <span class="text-foreground text-right">{{ value }}</span>
+          </div>
+          {% endif %}
+          {% endmacro %}
+
+          {% macro edit_row(label, name, value, maxlength=255) %}
+          <div class="flex justify-between items-center gap-4">
+            <label for="edit-{{ name }}" class="text-muted-foreground shrink-0">{{ label }}</label>
+            <input type="text" id="edit-{{ name }}" name="{{ name }}" value="{{ value or '' }}" maxlength="{{ maxlength }}"
+                   class="flex h-9 w-2/3 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+          </div>
+          {% endmacro %}
+
+          {% if edit_mode %}
+          {{ edit_row('Name', 'name', app.name) }}
+          {{ detail_row('Application Code', app.application_code) }}
+          {{ detail_row('Type', app.application_type | replace('_',' ') | title if app.application_type else none) }}
+          {{ edit_row('Category', 'application_category', app.application_category, 100) }}
+          {{ edit_row('Deployment Status', 'deployment_status', app.deployment_status, 50) }}
+          {{ detail_row('Lifecycle Status', app.lifecycle_status | replace('_',' ') | title if app.lifecycle_status else none) }}
+          {{ detail_row('Architecture Domain', app.architecture_domain) }}
+          {{ edit_row('Version', 'version', app.version, 50) }}
+          {% else %}
+          {{ detail_row('Application Code', app.application_code) }}
+          {{ detail_row('Type', app.application_type | replace('_',' ') | title if app.application_type else none) }}
+          {{ detail_row('Category', app.application_category | replace('_',' ') | title if app.application_category else none) }}
+          {{ detail_row('Deployment Model', app.deployment_model | replace('_',' ') | title if app.deployment_model else none) }}
+          {{ detail_row('Lifecycle Status', app.lifecycle_status | replace('_',' ') | title if app.lifecycle_status else none) }}
+          {{ detail_row('Architecture Domain', app.architecture_domain) }}
+          {{ detail_row('Version', app.version) }}
+          {% endif %}
+        </div>
+      </div>
+
+      {# ArchiMate Element — connects portfolio to architecture #}
+      {% if archimate_info is defined and archimate_info %}
+      <div data-slot="card" class="rounded-xl border border-primary/20 bg-card shadow-sm">
+        <div class="p-6">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <span class="flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10">
+                <i data-lucide="git-branch" class="h-5 w-5 text-primary" aria-hidden="true"></i>
+              </span>
+              <div>
+                <p class="text-sm font-semibold text-foreground">{{ archimate_info.name }}</p>
+                <p class="text-xs text-muted-foreground">{{ archimate_info.type }} · {{ archimate_info.layer }} layer · {{ archimate_info.rel_count }} relationships · {{ archimate_info.sol_count }} solutions</p>
+              </div>
+            </div>
+            <a href="{{ url_for('architect_ui.element_traceability', element_id=archimate_info.id) }}"
+               class="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline">
+              Traceability <i data-lucide="arrow-right" class="h-3 w-3" aria-hidden="true"></i>
+            </a>
+          </div>
+          {# Inline correction flywheel — thumbs up to confirm, pencil to fix #}
+          <div x-data="{ correcting: false, confirmed: false }" class="mt-3 flex items-center gap-2">
+            <template x-if="!confirmed && !correcting">
+              <div class="flex gap-2">
+                <button @click="confirmed=true; fetch('/dashboard/api/archimate-elements/{{ archimate_info.id }}/correct', {method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken':'{{ csrf_token() }}'}, body:JSON.stringify({action:'approve'})})"
+                  class="inline-flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-700 border border-emerald-200 rounded px-2 py-1 bg-emerald-50">
+                  <i data-lucide="thumbs-up" class="w-3 h-3"></i> Correct
+                </button>
+                <button @click="correcting=true"
+                  class="inline-flex items-center gap-1 text-xs text-amber-600 hover:text-amber-700 border border-amber-200 rounded px-2 py-1 bg-amber-50">
+                  <i data-lucide="pencil" class="w-3 h-3"></i> Fix
+                </button>
+              </div>
+            </template>
+            <template x-if="correcting">
+              <div x-data="{ name: '{{ archimate_info.name | replace("'", "\\'") }}', type: '{{ archimate_info.type | replace("'", "\\'") }}' }" class="flex gap-2 items-center flex-wrap">
+                <input x-model="name" class="text-xs border rounded px-2 py-1 w-32 bg-background text-foreground border-border" placeholder="Name">
+                <input x-model="type" class="text-xs border rounded px-2 py-1 w-32 bg-background text-foreground border-border" placeholder="Type">
+                <button @click="fetch('/dashboard/api/archimate-elements/{{ archimate_info.id }}/correct', {method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken':'{{ csrf_token() }}'}, body:JSON.stringify({action:'correct', name, type})}).then(()=>{correcting=false; confirmed=true})"
+                  class="text-xs bg-primary text-primary-foreground rounded px-2 py-1">Save</button>
+                <button @click="correcting=false"
+                  class="text-xs text-muted-foreground hover:text-foreground rounded px-2 py-1">Cancel</button>
+              </div>
+            </template>
+            <span x-show="confirmed" class="inline-flex items-center gap-1 text-xs text-emerald-600">
+              <i data-lucide="check-circle" class="w-3 h-3"></i> Confirmed
+            </span>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
+      {# Business Context #}
+      <div data-slot="card" class="rounded-xl border bg-card shadow-sm">
+        <div class="flex flex-col space-y-1.5 p-6 pb-3">
+          <h3 class="text-lg font-semibold">Business Context</h3>
+        </div>
+        <div class="p-6 pt-0 space-y-3 text-sm">
+          {% if edit_mode %}
+          {{ edit_row('Business Domain', 'businessDomain', app.business_domain, 100) }}
+          {{ detail_row('Strategic Importance', app.strategic_importance | replace('_',' ') | title if app.strategic_importance else none) }}
+          {{ detail_row('Business Value', app.business_value | replace('_',' ') | title if app.business_value else none) }}
+          {{ detail_row('Competitive Advantage', 'Yes' if app.competitive_advantage else 'No' if app.competitive_advantage is not none else none) }}
+          {{ detail_row('Differentiation Level', app.differentiation_level | replace('_',' ') | title if app.differentiation_level else none) }}
+          {{ detail_row('User Base Size', app.user_base_size | string if app.user_base_size else none) }}
+          <div class="flex justify-between items-center gap-4">
+            <label for="edit-userCount" class="text-muted-foreground shrink-0">User Count</label>
+            <input type="number" id="edit-userCount" name="userCount" value="{{ app.user_count or '' }}" min="0" max="10000000"
+                   class="flex h-9 w-2/3 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+          </div>
+          {{ detail_row('Avg Daily Users', app.average_daily_users | string if app.average_daily_users else none) }}
+          {{ detail_row('Max Concurrent Users', app.concurrent_users_max | string if app.concurrent_users_max else none) }}
+          {% else %}
+          {{ detail_row('Business Domain', app.business_domain) }}
+          {{ detail_row('Strategic Importance', app.strategic_importance | replace('_',' ') | title if app.strategic_importance else none) }}
+          {{ detail_row('Business Value', app.business_value | replace('_',' ') | title if app.business_value else none) }}
+          {{ detail_row('Competitive Advantage', 'Yes' if app.competitive_advantage else 'No' if app.competitive_advantage is not none else none) }}
+          {{ detail_row('Differentiation Level', app.differentiation_level | replace('_',' ') | title if app.differentiation_level else none) }}
+          {{ detail_row('User Base Size', app.user_base_size | string if app.user_base_size else none) }}
+          {{ detail_row('User Count', app.user_count | string if app.user_count else none) }}
+          {{ detail_row('Avg Daily Users', app.average_daily_users | string if app.average_daily_users else none) }}
+          {{ detail_row('Max Concurrent Users', app.concurrent_users_max | string if app.concurrent_users_max else none) }}
+          {% endif %}
+        </div>
+      </div>
+
+      {# Ownership #}
+      <div data-slot="card" class="rounded-xl border bg-card shadow-sm">
+        <div class="flex flex-col space-y-1.5 p-6 pb-3">
+          <h3 class="text-lg font-semibold">Ownership</h3>
+        </div>
+        <div class="p-6 pt-0 space-y-3 text-sm">
+          {% if edit_mode %}
+          {{ detail_row('Application Owner', app.application_owner) }}
+          {{ edit_row('Business Owner', 'businessOwner', app.business_owner) }}
+          {{ detail_row('Technical Owner', app.technical_owner) }}
+          {{ edit_row('Technical Lead', 'techOwner', app.technical_lead) }}
+          {{ detail_row('Product Manager', app.product_manager) }}
+          {{ edit_row('Development Team', 'devTeam', app.development_team) }}
+          {{ edit_row('Support Team', 'supportLevel', app.support_team) }}
+          {% else %}
+          {% set has_any_owner = app.application_owner or app.business_owner or app.technical_owner or app.technical_lead or app.product_manager or app.development_team or app.support_team %}
+          {% if has_any_owner %}
+          {{ detail_row('Application Owner', app.application_owner) }}
+          {{ detail_row('Business Owner', app.business_owner) }}
+          {{ detail_row('Technical Owner', app.technical_owner) }}
+          {{ detail_row('Technical Lead', app.technical_lead) }}
+          {{ detail_row('Product Manager', app.product_manager) }}
+          {{ detail_row('Development Team', app.development_team) }}
+          {{ detail_row('Support Team', app.support_team) }}
+          {% else %}
+          <div class="py-3 text-center">
+            <p class="text-sm text-muted-foreground">No ownership data</p>
+            <a href="{{ url_for('unified_applications.application_edit', id=app.id) }}"
+               class="text-xs text-primary hover:underline mt-1 inline-block">Add via Edit page</a>
+          </div>
+          {% endif %}
+          {% endif %}
+        </div>
+      </div>
+
+      {# Dates #}
+      <div data-slot="card" class="rounded-xl border bg-card shadow-sm">
+        <div class="flex flex-col space-y-1.5 p-6 pb-3">
+          <h3 class="text-lg font-semibold">Key Dates</h3>
+        </div>
+        <div class="p-6 pt-0 space-y-3 text-sm">
+          {{ detail_row('Implementation Date', app.implementation_date.strftime('%d %b %Y') if app.implementation_date else none) }}
+          {{ detail_row('Go-Live Date', app.go_live_date.strftime('%d %b %Y') if app.go_live_date else none) }}
+          {{ detail_row('Last Major Upgrade', app.last_major_upgrade.strftime('%d %b %Y') if app.last_major_upgrade else none) }}
+          {{ detail_row('Contract Expiry', app.contract_expiry_date.strftime('%d %b %Y') if app.contract_expiry_date else none) }}
+          {{ detail_row('Planned Retirement', app.planned_retirement_date.strftime('%d %b %Y') if app.planned_retirement_date else none) }}
+          {{ detail_row('Last Assessed', app.last_assessed.strftime('%d %b %Y') if app.last_assessed else none) }}
+        </div>
+      </div>
+
+    </div>
+
+    {# Description & Notes #}
+    {% if edit_mode or app.description or app.business_purpose or app.notes or app.assessment_notes %}
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      {% if edit_mode %}
+      <div data-slot="card" class="rounded-xl border bg-card shadow-sm">
+        <div class="flex flex-col space-y-1.5 p-6 pb-3"><label for="edit-description" class="text-lg font-semibold">Description</label></div>
+        <div class="p-6 pt-0">
+          <textarea id="edit-description" name="description" rows="4"
+                    class="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">{{ app.description or '' }}</textarea>
+        </div>
+      </div>
+      {% elif app.description %}
+      <div data-slot="card" class="rounded-xl border bg-card shadow-sm">
+        <div class="flex flex-col space-y-1.5 p-6 pb-3"><h3 class="text-lg font-semibold">Description</h3></div>
+        <div class="p-6 pt-0 text-sm text-foreground whitespace-pre-line">{{ app.description }}</div>
+      </div>
+      {% endif %}
+      {% if app.business_purpose %}
+      <div data-slot="card" class="rounded-xl border bg-card shadow-sm">
+        <div class="flex flex-col space-y-1.5 p-6 pb-3"><h3 class="text-lg font-semibold">Business Purpose</h3></div>
+        <div class="p-6 pt-0 text-sm text-foreground whitespace-pre-line">{{ app.business_purpose }}</div>
+      </div>
+      {% endif %}
+      {% if app.notes %}
+      <div data-slot="card" class="rounded-xl border bg-card shadow-sm">
+        <div class="flex flex-col space-y-1.5 p-6 pb-3"><h3 class="text-lg font-semibold">Notes</h3></div>
+        <div class="p-6 pt-0 text-sm text-foreground whitespace-pre-line">{{ app.notes }}</div>
+      </div>
+      {% endif %}
+      {% if app.assessment_notes %}
+      <div data-slot="card" class="rounded-xl border bg-card shadow-sm">
+        <div class="flex flex-col space-y-1.5 p-6 pb-3"><h3 class="text-lg font-semibold">Assessment Notes</h3></div>
+        <div class="p-6 pt-0 text-sm text-foreground whitespace-pre-line">{{ app.assessment_notes }}</div>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {# Linked Solutions — cross-link to architecture workflow #}
+    {% if linked_solutions is defined and linked_solutions %}
+    <div data-slot="card" class="rounded-xl border bg-card shadow-sm">
+      <div class="flex flex-col space-y-1.5 p-6 pb-3">
+        <h3 class="text-lg font-semibold">Used in Solutions</h3>
+        <p class="text-sm text-muted-foreground">Architecture solutions that reference this application</p>
+      </div>
+      <div class="p-6 pt-0">
+        <div class="space-y-2">
+          {% for sol in linked_solutions %}
+          <a href="{{ url_for('solution_design.view_solution', solution_id=sol.id) }}"
+             class="flex items-center justify-between p-3 rounded-lg border border-border hover:bg-muted/50 transition-colors group">
+            <div class="flex items-center gap-3 min-w-0">
+              <span class="flex items-center justify-center w-8 h-8 rounded-lg bg-primary/10 text-primary text-xs font-bold shrink-0">{{ sol.adm_phase or 'A' }}</span>
+              <div class="min-w-0">
+                <p class="text-sm font-medium text-foreground truncate group-hover:text-primary">{{ sol.name }}</p>
+                <p class="text-xs text-muted-foreground">{{ sol.governance_status or 'Draft' }} · {{ sol.solution_type or 'Platform' }}</p>
+              </div>
+            </div>
+            <i data-lucide="arrow-right" class="h-4 w-4 text-muted-foreground group-hover:text-primary shrink-0" aria-hidden="true"></i>
+          </a>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if edit_mode %}</form>{% endif %}
+  </div>
+  {% endcall %}{# /tab_panel overview #}
+
+  {# ═══════════════════════════════════════════════════════════════════════════
+     TAB: ARCHITECTURE
+  ═══════════════════════════════════════════════════════════════════════════ #}
+  {% call tab_panel('architecture', active=(resolved_tab == 'architecture')) %}
+  <div class="space-y-6">
+
+    {# ArchiMate element not linked — generate prompt #}
+    {% if not app.archimate_element_id %}
+    <div data-slot="card" class="rounded-xl border border-dashed border-border bg-card p-8 text-center">
+      <i data-lucide="box" class="mx-auto h-10 w-10 text-muted-foreground mb-3" aria-hidden="true"></i>
+      <p class="text-sm font-medium text-foreground mb-1">No ArchiMate element linked</p>
+      <p class="text-xs text-muted-foreground mb-4">Generate ArchiMate application-layer elements using AI to enable relationships, viewpoints, and impact analysis.</p>
+      <div class="flex items-center justify-center gap-3">
+        <form action="{{ url_for('unified_applications.generate_application_archimate', id=app.id) }}" method="POST">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit"
+                  class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium h-9 px-4 py-2 bg-primary text-primary-foreground hover:bg-primary/90 ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" aria-label="Submit">
+            <i data-lucide="cpu" class="w-4 h-4 mr-2" aria-hidden="true"></i>Generate ArchiMate
+          </button>
+        </form>
+        {# A95-005: deep link to AI chat with generate-archimate context #}
+        <a href="{{ url_for('unified_ai_chat.index') }}?action=generate_archimate&element_id={{ app.id }}&context_type=application&domain=architecture"
+           class="inline-flex items-center gap-1.5 rounded-md border border-input bg-background px-3 py-2 text-sm font-medium shadow-sm hover:bg-accent hover:text-accent-foreground transition-colors"
+           aria-label="Generate ArchiMate elements with AI for {{ app.name }}">
+          <i data-lucide="bot" class="w-4 h-4 text-primary" aria-hidden="true"></i>Generate ArchiMate with AI
+        </a>
+      </div>
+    </div>
+    {% endif %}
+
+    {# Impact Analysis #}
+    {% if impact_analysis %}
+    <div data-slot="card" class="rounded-xl border bg-card shadow-sm">
+      <div class="flex items-center justify-between p-6 pb-3">
+        <h3 class="text-lg font-semibold">Impact Analysis</h3>
+        {% if impact_analysis.score is defined %}
+        <span class="text-sm text-muted-foreground">Score: <strong class="text-foreground">{{ impact_analysis.score }}</strong></span>
+        {% endif %}
+      </div>
+      <div class="p-6 pt-0">
+        {% if impact_analysis.diagram %}
+        <div class="mermaid text-sm">{{ impact_analysis.diagram | safe }}</div>
+        {% else %}
+        <p class="text-sm text-muted-foreground">No impact diagram available.</p>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
+    {# Mermaid Viewpoint Diagrams #}
+    {% if mermaid_diagrams %}
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {% for key, diagram_src in mermaid_diagrams.items() %}
+      {% if diagram_src %}
+      <div data-slot="card" class="rounded-xl border bg-card shadow-sm">
+        <div class="flex flex-col space-y-1.5 p-6 pb-3">
+          <h3 class="text-base font-semibold capitalize">{{ key | replace('_',' ') | title }} Viewpoint</h3>
+          {% if archimate_viewpoints.get(key) %}
+          {% set vp_meta = archimate_viewpoints[key] %}
+          <p class="text-xs text-muted-foreground">
+            {{ vp_meta.get('element_count', 0) }} elements
+            {% if vp_meta.get('relationship_count') %} · {{ vp_meta.relationship_count }} relationships{% endif %}
+          </p>
+          {% endif %}
+        </div>
+        <div class="p-6 pt-0 overflow-x-auto">
+          <div class="mermaid text-xs">{{ diagram_src | safe }}</div>
+        </div>
+      </div>
+      {% endif %}
+      {% endfor %}
+    </div>
+    {% else %}
+    {# Show relationships grouped by layer when no mermaid diagrams #}
+    {% set all_rels = (archimate_relationships.incoming + archimate_relationships.outgoing) if archimate_relationships else [] %}
+    {% if all_rels %}
+    <div class="space-y-4">
+      <h3 class="text-lg font-semibold">ArchiMate Relationships</h3>
+      <p class="text-sm text-muted-foreground">{{ all_rels | length }} relationships from the ArchiMate model</p>
+      {% for layer_name in ['Motivation', 'Strategy', 'Business', 'Application', 'Technology', 'Implementation'] %}
+      {% set ns = namespace(filtered=[]) %}
+      {% for r in all_rels if r.layer and r.layer | lower == layer_name | lower %}
+        {% set ns.filtered = ns.filtered + [r] %}
+      {% endfor %}
+      {% if ns.filtered %}
+      <div class="rounded-lg border border-border p-4">
+        <h4 class="text-sm font-semibold mb-2">{{ layer_name }} Layer ({{ ns.filtered | length }})</h4>
+        <div class="space-y-1">
+          {% for r in ns.filtered %}
+          <a href="{{ url_for('architect_ui.element_traceability', element_id=r.id) }}"
+             class="flex items-center justify-between p-2 rounded hover:bg-muted/50 text-sm">
+            <span>{{ r.name }}</span>
+            <span class="text-xs text-muted-foreground">{{ r.type }} · {{ r.rel_type | replace('Relationship', '') }}</span>
+          </a>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+      {% endfor %}
+    </div>
+    {% else %}
+    <div data-slot="card" class="rounded-xl border border-dashed border-border bg-card p-6 text-center">
+      <p class="text-sm text-muted-foreground">No ArchiMate viewpoint diagrams available. Link an ArchiMate element to generate diagrams.</p>
+    </div>
+    {% endif %}
+    {% endif %}
+
+    {# ArchiMate Relationships Table — only show if it has rows (old data source) #}
+    {% set rel_rows = dashboard_config.tables['application-relationships'].rows %}
+    {% if rel_rows %}
+    <div data-slot="card" class="rounded-xl border bg-card shadow-sm">
+      <div class="flex flex-col space-y-1.5 p-6 pb-3">
+        <h3 class="text-lg font-semibold">ArchiMate Relationships</h3>
+        <p class="text-sm text-muted-foreground">All elements related to this application component</p>
+      </div>
+      <div class="p-6 pt-0">
+        <div data-platform-table="application-relationships"
+             data-config="{{ dashboard_config.tables['application-relationships'] | tojson | forceescape }}">
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="border-b">
+                  <th class="pb-2 text-left font-medium text-muted-foreground">Element</th>
+                  <th class="pb-2 text-left font-medium text-muted-foreground">Type</th>
+                  <th class="pb-2 text-left font-medium text-muted-foreground">Relationship</th>
+                  <th class="pb-2 text-left font-medium text-muted-foreground">Direction</th>
+                  <th class="pb-2 text-left font-medium text-muted-foreground">Layer</th>
+                  <th class="pb-2 text-left font-medium text-muted-foreground">Context</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y">
+                {% for row in rel_rows %}
+                <tr class="border-b last:border-0 hover:bg-muted/50">
+                  <td class="py-2 pr-3 font-medium">{{ row.name }}</td>
+                  <td class="py-2 pr-3 text-muted-foreground">{{ row.element_type }}</td>
+                  <td class="py-2 pr-3">{{ row.relationship }}</td>
+                  <td class="py-2 pr-3 text-muted-foreground">{{ row.direction }}</td>
+                  <td class="py-2 pr-3">
+                    {% call badge(variant='neutral') %}{{ row.layer }}{% endcall %}
+                  </td>
+                  <td class="py-2 text-muted-foreground">{{ row.context }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    {# ArchiMate Direct Links Table — only show when rows exist #}
+    {% set link_rows = dashboard_config.tables['application-archimate-links'].rows %}
+    {% if link_rows %}
+    <div data-slot="card" class="rounded-xl border bg-card shadow-sm">
+      <div class="flex flex-col space-y-1.5 p-6 pb-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h3 class="text-lg font-semibold">ArchiMate Direct Links</h3>
+          <p class="text-sm text-muted-foreground">Explicit relationships managed for this component</p>
+        </div>
+        <a href="{{ url_for('unified_ai_chat.index') }}?action=generate_archimate&element_id={{ app.id }}&context_type=application&domain=architecture"
+           class="inline-flex items-center gap-1.5 rounded-md border border-input bg-background px-3 py-1.5 text-sm font-medium shadow-sm hover:bg-accent hover:text-accent-foreground transition-colors"
+           aria-label="Generate ArchiMate elements with AI for {{ app.name }}">
+          <i data-lucide="bot" class="h-4 w-4 text-primary" aria-hidden="true"></i>Generate ArchiMate with AI
+        </a>
+        {% if archimate_form_config.enabled %}
+        <button data-modal-open="add-archimate-link-modal"
+                class="inline-flex items-center gap-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Add ArchiMate relationship">
+            <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i> Add Relationship
+        </button>
+        {% endif %}
+      </div>
+      <div class="p-6 pt-0">
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b">
+                <th class="pb-2 text-left font-medium text-muted-foreground">Element</th>
+                <th class="pb-2 text-left font-medium text-muted-foreground">Type</th>
+                <th class="pb-2 text-left font-medium text-muted-foreground">Relationship</th>
+                <th class="pb-2 text-left font-medium text-muted-foreground">Direction</th>
+                <th class="pb-2 text-left font-medium text-muted-foreground">Layer</th>
+                <th class="pb-2 text-right font-medium text-muted-foreground">Actions</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y">
+              {% for row in link_rows %}
+              <tr class="border-b last:border-0 hover:bg-muted/50">
+                <td class="py-2 pr-3 font-medium">{{ row.element }}</td>
+                <td class="py-2 pr-3 text-muted-foreground">{{ row.element_type }}</td>
+                <td class="py-2 pr-3">{{ row.relationship_type }}</td>
+                <td class="py-2 pr-3">
+                  {% if row.status == 'outbound' %}
+                  {% call badge(variant='info') %}→ Outbound{% endcall %}
+                  {% else %}
+                  {% call badge(variant='secondary') %}← Inbound{% endcall %}
+                  {% endif %}
+                </td>
+                <td class="py-2">{% call badge(variant='neutral') %}{{ row.layer }}{% endcall %}</td>
+                <td class="py-2 text-right">
+                  {% if row.delete_url %}
+                  <form method="POST" action="{{ row.delete_url }}" class="inline"
+                    onsubmit="return confirm('Remove this ArchiMate link?');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="inline-flex items-center justify-center h-7 w-7 rounded-md text-destructive hover:bg-destructive/10 transition-colors" aria-label="Remove link">
+                      <i data-lucide="x" class="h-3.5 w-3.5" aria-hidden="true"></i>
+                    </button>
+                  </form>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    {# Strategy Layer #}
+    {% set has_strategy = strategy_capabilities or strategy_resources or courses_of_action or value_streams %}
+    {% if has_strategy %}
+    <div data-slot="card" class="rounded-xl border bg-card shadow-sm">
+      <div class="flex flex-col space-y-1.5 p-6 pb-3">
+        <h3 class="text-lg font-semibold">Strategy Layer</h3>
+      </div>
+      <div class="p-6 pt-0 grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+        {% if strategy_capabilities %}
+        <div>
+          <p class="font-medium text-muted-foreground mb-2">Strategy Capabilities</p>
+          <ul class="space-y-1">{% for e in strategy_capabilities %}<li class="truncate">{{ e.name }}</li>{% endfor %}</ul>
+        </div>
+        {% endif %}
+        {% if strategy_resources %}
+        <div>
+          <p class="font-medium text-muted-foreground mb-2">Resources</p>
+          <ul class="space-y-1">{% for e in strategy_resources %}<li class="truncate">{{ e.name }}</li>{% endfor %}</ul>
+        </div>
+        {% endif %}
+        {% if courses_of_action %}
+        <div>
+          <p class="font-medium text-muted-foreground mb-2">Courses of Action</p>
+          <ul class="space-y-1">{% for e in courses_of_action %}<li class="truncate">{{ e.name }}</li>{% endfor %}</ul>
+        </div>
+        {% endif %}
+        {% if value_streams %}
+        <div>
+          <p class="font-medium text-muted-foreground mb-2">Value Streams</p>
+          <ul class="space-y-1">{% for e in value_streams %}<li class="truncate">{{ e.name }}</li>{% endfor %}</ul>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
+  </div>
+  {% endcall %}{# /tab_panel architecture #}
+
+  {# ═══════════════════════════════════════════════════════════════════════════
+     TAB: CAPABILITIES
+  ═══════════════════════════════════════════════════════════════════════════ #}
+  {% call tab_panel('capabilities', active=(resolved_tab == 'capabilities')) %}
+  <div class="space-y-6">
+
+    {# Scores row #}
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div data-slot="card" class="rounded-xl border bg-card shadow-sm p-4">
+        <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Functional Maturity</p>
+        <p class="mt-1 text-2xl font-bold text-foreground">
+          {% if functional_maturity > 0 %}{{ '%.1f' | format(functional_maturity) }} / 5{% else %}0 / 5{% endif %}
+        </p>
+      </div>
+      <div data-slot="card" class="rounded-xl border bg-card shadow-sm p-4">
+        <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Compliance Score</p>
+        <p class="mt-1 text-2xl font-bold
+          {% if compliance_score >= 80 %}text-success{% elif compliance_score >= 50 %}text-warning{% else %}text-destructive{% endif %}">
+          {{ '%.0f' | format(compliance_score) }}%
+        </p>
+      </div>
+    </div>
+
+    {# AI-Suggested Capability Mappings #}
+    <div x-data="{
+        suggestions: [],
+        loading: false,
+        loaded: false,
+        async loadSuggestions() {
+            if (this.loaded) return;
+            this.loading = true;
+            try {
+                let resp = await fetch('/applications/{{ app.id }}/suggest-capabilities');
+                let data = await resp.json();
+                if (data.success) this.suggestions = data.suggestions || [];
+            } catch (e) { /* silent */ }
+            finally { this.loading = false; this.loaded = true; }
+        },
+        async accept(capId, confidence, idx) {
+            try {
+                let resp = await fetch('/applications/{{ app.id }}/accept-capability-suggestion', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''},
+                    body: JSON.stringify({capability_id: capId, confidence: confidence})
+                });
+                let data = await resp.json();
+                if (data.success) { this.suggestions.splice(idx, 1); setTimeout(() => location.reload(), 500); }
+            } catch (e) { console.warn('Accept error:', e); }
+        }
+    }" x-init="loadSuggestions()" x-cloak x-show="loaded && suggestions.length > 0"
+       class="rounded-xl border border-primary/20 bg-card shadow-sm mb-4">
+        <div class="p-5">
+            <div class="flex items-center gap-2 mb-3">
+                <i data-lucide="sparkles" class="h-4 w-4 text-primary" aria-hidden="true"></i>
+                <h3 class="text-sm font-semibold">Suggested Capabilities</h3>
+                <span class="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-semibold">AI</span>
+                <span class="text-xs text-muted-foreground ml-auto" x-text="suggestions.length + ' suggestions from portfolio patterns'"></span>
+            </div>
+            <div class="space-y-2">
+                <template x-for="(s, idx) in suggestions" :key="s.capability_id">
+                    <div class="flex items-center gap-3 p-3 rounded-lg border border-border bg-background hover:bg-muted/30 transition-colors">
+                        <span class="text-xs font-bold px-2 py-0.5 rounded-full shrink-0"
+                              :class="s.confidence >= 60 ? 'bg-emerald-500/10 text-emerald-700' : (s.confidence >= 30 ? 'bg-amber-500/10 text-amber-700' : 'bg-muted text-muted-foreground')"
+                              x-text="s.confidence + '%'"></span>
+                        <div class="flex-1 min-w-0">
+                            <p class="text-sm font-medium" x-text="s.capability_name"></p>
+                            <div class="flex flex-wrap gap-1 mt-1">
+                                <template x-for="signal in s.signals" :key="signal">
+                                    <span class="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded" x-text="signal"></span>
+                                </template>
+                            </div>
+                        </div>
+                        <button @click="accept(s.capability_id, s.confidence, idx)"
+                                class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 shrink-0">
+                            <i data-lucide="check" class="h-3 w-3" aria-hidden="true"></i> Accept
+                        </button>
+                        <button @click="suggestions.splice(idx, 1)"
+                                class="inline-flex items-center px-1.5 py-1 text-xs rounded-md border border-border hover:bg-muted text-muted-foreground shrink-0">
+                            <i data-lucide="x" class="h-3 w-3" aria-hidden="true"></i>
+                        </button>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </div>
+
+    {# Capabilities Table #}
+    <div data-slot="card" class="rounded-xl border bg-card shadow-sm">
+      <div class="flex flex-col space-y-1.5 p-6 pb-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h3 class="text-lg font-semibold">Mapped Capabilities</h3>
+          <p class="text-sm text-muted-foreground">{{ capabilities | length }} {% if capabilities | length == 1 %}capability{% else %}capabilities{% endif %} linked to this application</p>
+        </div>
+        <button data-modal-open="add-capability-modal"
+                class="inline-flex items-center gap-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Map a capability to this application">
+            <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i> Map Capability
+        </button>
+      </div>
+      <div class="p-6 pt-0">
+        {% set cap_rows = dashboard_config.tables['application-capabilities'].rows %}
+        {% if cap_rows %}
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b">
+                <th class="pb-2 text-left font-medium text-muted-foreground">Capability</th>
+                <th class="pb-2 text-left font-medium text-muted-foreground">Category</th>
+                <th class="pb-2 text-left font-medium text-muted-foreground">Support</th>
+                <th class="pb-2 text-left font-medium text-muted-foreground">Coverage</th>
+                <th class="pb-2 text-left font-medium text-muted-foreground">Maturity</th>
+                <th class="pb-2 text-left font-medium text-muted-foreground">Strategic</th>
+                <th class="pb-2 text-left font-medium text-muted-foreground">Compliance</th>
+                <th class="pb-2 text-right font-medium text-muted-foreground">Actions</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y">
+              {% for row in cap_rows %}
+              {% set cap_comp = capabilities_with_compliance | selectattr('capability.name','eq',row.name) | list | first %}
+              <tr class="border-b last:border-0 hover:bg-muted/50 {% if cap_comp and cap_comp.is_penalized %}bg-destructive/5{% endif %}">
+                <td class="py-2 pr-3">
+                  {% if row.detail_url %}
+                  <a href="{{ row.detail_url }}" class="font-medium text-primary hover:underline">{{ row.name }}</a>
+                  {% else %}
+                  <span class="font-medium">{{ row.name }}</span>
+                  {% endif %}
+                  {% if cap_comp and cap_comp.is_penalized %}
+                  {% call badge(variant='destructive') %}Penalized{% endcall %}
+                  {% endif %}
+                </td>
+                <td class="py-2 pr-3 text-muted-foreground">{{ row.category }}</td>
+                <td class="py-2 pr-3">{% call badge(variant='outline') %}{{ row.support_level }}{% endcall %}</td>
+                <td class="py-2 pr-3">{{ row.coverage }}</td>
+                <td class="py-2 pr-3">{{ row.maturity }}</td>
+                <td class="py-2 pr-3">
+                  {% if row.strategic == 'Yes' %}{% call badge(variant='success') %}Yes{% endcall %}
+                  {% else %}{% call badge(variant='neutral') %}No{% endcall %}{% endif %}
+                </td>
+                <td class="py-2">
+                  {% if cap_comp %}
+                  <span class="{% if cap_comp.compliance_score >= 80 %}text-success{% elif cap_comp.compliance_score >= 50 %}text-warning{% else %}text-destructive{% endif %} font-medium">
+                    {{ '%.0f' | format(cap_comp.compliance_score) }}%
+                  </span>
+                  {% else %}—{% endif %}
+                </td>
+                <td class="py-2 text-right">
+                  {% if row.delete_url %}
+                  <form method="POST" action="{{ row.delete_url }}" class="inline"
+                    onsubmit="return confirm('Remove capability mapping for {{ row.name | e }}?');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="inline-flex items-center justify-center h-7 w-7 rounded-md text-destructive hover:bg-destructive/10 transition-colors" aria-label="Remove mapping">
+                      <i data-lucide="x" class="h-3.5 w-3.5" aria-hidden="true"></i>
+                    </button>
+                  </form>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="py-8 text-center">
+          <i data-lucide="layers" class="mx-auto h-10 w-10 text-muted-foreground mb-3 opacity-40" aria-hidden="true"></i>
+          <p class="text-sm font-medium text-foreground mb-1">No capabilities mapped</p>
+          <p class="text-xs text-muted-foreground">Map enterprise capabilities to this application to track coverage and maturity.</p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+  </div>
+  {% endcall %}{# /tab_panel capabilities #}
+
+  {# ═══════════════════════════════════════════════════════════════════════════
+     TAB: PROCESSES
+  ═══════════════════════════════════════════════════════════════════════════ #}
+  {% call tab_panel('processes', active=(resolved_tab == 'processes')) %}
+  <div data-slot="card" class="rounded-xl border bg-card shadow-sm">
+    <div class="flex flex-col space-y-1.5 p-6 pb-3 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <h3 class="text-lg font-semibold">Process Mappings</h3>
+        <p class="text-sm text-muted-foreground">Business processes supported by this application</p>
+      </div>
+      <!-- inline-event-ok --><button type="button" @click="openUnifiedMappingModalDiscovery({context:'apqc', ids:[{{ app.id }}]})"
+              class="inline-flex items-center gap-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Map a process to this application">
+          <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i> Map Process
+      </button>
+    </div>
+    <div class="p-6 pt-0">
+      {% set proc_rows = dashboard_config.tables['application-processes'].rows %}
+      {% if proc_rows %}
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b">
+              <th class="pb-2 text-left font-medium text-muted-foreground">Code</th>
+              <th class="pb-2 text-left font-medium text-muted-foreground">Process</th>
+              <th class="pb-2 text-left font-medium text-muted-foreground">Support</th>
+              <th class="pb-2 text-left font-medium text-muted-foreground">Automation</th>
+              <th class="pb-2 text-left font-medium text-muted-foreground">Criticality</th>
+              <th class="pb-2 text-left font-medium text-muted-foreground">Integration</th>
+              <th class="pb-2 text-left font-medium text-muted-foreground">Daily Txns</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y">
+            {% for row in proc_rows %}
+            <tr class="border-b last:border-0 hover:bg-muted/50">
+              <td class="py-2 pr-3">{% call badge(variant='outline') %}{{ row.code }}{% endcall %}</td>
+              <td class="py-2 pr-3 font-medium">{{ row.name }}</td>
+              <td class="py-2 pr-3">{% call badge(variant='neutral') %}{{ row.support_type }}{% endcall %}</td>
+              <td class="py-2 pr-3">{{ row.automation }}</td>
+              <td class="py-2 pr-3">{{ row.criticality }}</td>
+              <td class="py-2 pr-3 text-muted-foreground">{{ row.integration }}</td>
+              <td class="py-2 text-muted-foreground">{{ row.transactions }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="py-8 text-center">
+        <i data-lucide="git-merge" class="mx-auto h-10 w-10 text-muted-foreground mb-3 opacity-40" aria-hidden="true"></i>
+        <p class="text-sm font-medium text-foreground mb-1">No process mappings</p>
+        <p class="text-xs text-muted-foreground">Link business processes to track automation and support coverage.</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% endcall %}{# /tab_panel processes #}
+
+  {# ═══════════════════════════════════════════════════════════════════════════
+     TAB: VENDORS
+  ═══════════════════════════════════════════════════════════════════════════ #}
+  {% call tab_panel('vendors', active=(resolved_tab == 'vendors')) %}
+  <div class="space-y-6">
+
+    {# Vendor summary #}
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div data-slot="card" class="rounded-xl border bg-card shadow-sm p-4">
+        <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Vendor Organisations</p>
+        <p class="mt-1 text-2xl font-bold text-foreground">{{ vendor_summary.vendor_count }}</p>
+      </div>
+      <div data-slot="card" class="rounded-xl border bg-card shadow-sm p-4">
+        <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Products in Use</p>
+        <p class="mt-1 text-2xl font-bold text-foreground">{{ vendor_summary.product_count }}</p>
+      </div>
+      <div data-slot="card" class="rounded-xl border bg-card shadow-sm p-4">
+        <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Primary Vendor</p>
+        <p class="mt-1 text-sm font-medium text-foreground truncate" title="{{ primary_vendor_label }}">{{ primary_vendor_label }}</p>
+      </div>
+    </div>
+
+    {# Vendor Footprint Table #}
+    <div data-slot="card" class="rounded-xl border bg-card shadow-sm">
+      <div class="flex flex-col space-y-1.5 p-6 pb-3 sm:flex-row sm:items-center sm:justify-between">
+        <h3 class="text-lg font-semibold">Vendor Footprint</h3>
+        {% if vendor_summary.has_archimate %}
+        <button data-modal-open="add-vendor-modal"
+                class="inline-flex items-center gap-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Add vendor product">
+            <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i> Add Vendor Product
+        </button>
+        {% else %}
+        <form method="POST" action="{{ url_for('unified_applications.generate_application_archimate', id=app.id) }}" class="inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit"
+                  class="inline-flex items-center gap-2 rounded-md border border-input bg-background hover:bg-accent h-9 px-4 text-sm font-medium transition-colors"
+                  title="Generate an ArchiMate element to enable vendor mapping">
+            <i data-lucide="cpu" class="h-4 w-4" aria-hidden="true"></i> Generate ArchiMate Element
+          </button>
+        </form>
+        {% endif %}
+      </div>
+      <div class="p-6 pt-0">
+        {% if vendor_footprint %}
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b">
+                <th class="pb-2 text-left font-medium text-muted-foreground">Vendor</th>
+                <th class="pb-2 text-left font-medium text-muted-foreground">Product</th>
+                <th class="pb-2 text-left font-medium text-muted-foreground">Deployment</th>
+                <th class="pb-2 text-left font-medium text-muted-foreground">Criticality</th>
+                <th class="pb-2 text-left font-medium text-muted-foreground">Hosting</th>
+                <th class="pb-2 text-left font-medium text-muted-foreground">Support Tier</th>
+                <th class="pb-2 text-left font-medium text-muted-foreground">Lifecycle</th>
+                <th class="pb-2 text-left font-medium text-muted-foreground">Status</th>
+                <th class="pb-2 text-right font-medium text-muted-foreground">Actions</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y">
+              {% for v in vendor_footprint %}
+              <tr class="border-b last:border-0 hover:bg-muted/50">
+                <td class="py-2 pr-3 font-medium">{{ v.vendor_name }}</td>
+                <td class="py-2 pr-3">{{ v.product_name }}</td>
+                <td class="py-2 pr-3 text-muted-foreground">{{ v.deployment_type or '—' }}</td>
+                <td class="py-2 pr-3">
+                  {% if v.criticality %}{% call badge(variant='outline') %}{{ v.criticality }}{% endcall %}{% else %}—{% endif %}
+                </td>
+                <td class="py-2 pr-3 text-muted-foreground">{{ v.hosting_model or '—' }}</td>
+                <td class="py-2 pr-3 text-muted-foreground">{{ v.support_tier or '—' }}</td>
+                <td class="py-2 pr-3 text-muted-foreground text-xs">{{ v.lifecycle or '—' }}</td>
+                <td class="py-2">
+                  {% if v.status %}{% call badge(variant='neutral') %}{{ v.status }}{% endcall %}{% else %}—{% endif %}
+                </td>
+                <td class="py-2 text-right">
+                  <form method="POST" action="{{ url_for('application_mgmt.application_vendor_footprint', id=app.id) }}" class="inline"
+                    onsubmit="return confirm('Remove {{ v.product_name | e }} from vendor footprint?');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="action" value="delete">
+                    <input type="hidden" name="vendor_product_id" value="{{ v.product_id }}">
+                    <button type="submit" class="inline-flex items-center justify-center h-7 w-7 rounded-md text-destructive hover:bg-destructive/10 transition-colors" aria-label="Remove vendor product">
+                      <i data-lucide="x" class="h-3.5 w-3.5" aria-hidden="true"></i>
+                    </button>
+                  </form>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="py-8 text-center">
+          <i data-lucide="building-2" class="mx-auto h-10 w-10 text-muted-foreground mb-3 opacity-40" aria-hidden="true"></i>
+          <p class="text-sm font-medium text-foreground mb-1">No vendor products linked</p>
+          {% if not vendor_summary.has_archimate %}
+          <p class="text-xs text-muted-foreground mb-3">An ArchiMate element is required before vendor products can be mapped.</p>
+          <form method="POST" action="{{ url_for('unified_applications.generate_application_archimate', id=app.id) }}" class="inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit"
+                    class="inline-flex items-center gap-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 text-sm font-medium transition-colors">
+              <i data-lucide="cpu" class="h-4 w-4" aria-hidden="true"></i> Generate ArchiMate Element
+            </button>
+          </form>
+          {% else %}
+          <p class="text-xs text-muted-foreground">Add vendor products using the button above.</p>
+          {% endif %}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+  </div>
+  {% endcall %}{# /tab_panel vendors #}
+
+  {# ═══════════════════════════════════════════════════════════════════════════
+     TAB: TECHNOLOGY
+  ═══════════════════════════════════════════════════════════════════════════ #}
+  {% call tab_panel('technology', active=(resolved_tab == 'technology')) %}
+  <div class="space-y-6">
+    <div class="flex justify-end">
+      <a href="{{ url_for('unified_applications.application_edit', id=app.id) }}"
+         class="inline-flex items-center gap-2 rounded-md border border-input bg-background hover:bg-accent h-9 px-4 text-sm font-medium transition-colors">
+        <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i> Edit Technology Details
+      </a>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+      {# Technology Stack Fields #}
+      <div data-slot="card" class="rounded-xl border bg-card shadow-sm">
+        <div class="flex flex-col space-y-1.5 p-6 pb-3"><h3 class="text-lg font-semibold">Technology Stack</h3></div>
+        <div class="p-6 pt-0 space-y-3 text-sm">
+          {% macro tech_row(label, value) %}
+          {% if value %}
+          <div>
+            <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">{{ label }}</p>
+            <p class="text-foreground text-xs font-mono bg-muted/40 rounded px-2 py-1 break-all">{{ value }}</p>
+          </div>
+          {% endif %}
+          {% endmacro %}
+          {{ tech_row('Technology Stack', app.technology_stack) }}
+          {{ tech_row('Programming Languages', app.programming_languages) }}
+          {{ tech_row('Frameworks', app.frameworks) }}
+          {{ tech_row('Database Platforms', app.database_platforms) }}
+          {% if app.primary_database %}<div class="flex justify-between"><span class="text-muted-foreground">Primary Database</span><span>{{ app.primary_database }}</span></div>{% endif %}
+          {% if app.cache_technology %}<div class="flex justify-between"><span class="text-muted-foreground">Cache</span><span>{{ app.cache_technology }}</span></div>{% endif %}
+          {% if app.message_queue %}<div class="flex justify-between"><span class="text-muted-foreground">Message Queue</span><span>{{ app.message_queue }}</span></div>{% endif %}
+          {{ tech_row('Integration Methods', app.integration_methods) }}
+          {% if app.architecture_style %}<div class="flex justify-between"><span class="text-muted-foreground">Architecture Style</span><span>{{ app.architecture_style }}</span></div>{% endif %}
+          {% if app.data_architecture %}<div class="flex justify-between"><span class="text-muted-foreground">Data Architecture</span><span>{{ app.data_architecture }}</span></div>{% endif %}
+        </div>
+      </div>
+
+      {# Infrastructure #}
+      <div data-slot="card" class="rounded-xl border bg-card shadow-sm">
+        <div class="flex flex-col space-y-1.5 p-6 pb-3"><h3 class="text-lg font-semibold">Infrastructure</h3></div>
+        <div class="p-6 pt-0 space-y-3 text-sm">
+          {% if app.cloud_provider %}<div class="flex justify-between"><span class="text-muted-foreground">Cloud Provider</span><span>{{ app.cloud_provider }}</span></div>{% endif %}
+          {% if app.deployment_region %}<div class="flex justify-between"><span class="text-muted-foreground">Deployment Region</span><span>{{ app.deployment_region }}</span></div>{% endif %}
+          {% if app.container_image %}<div class="flex justify-between"><span class="text-muted-foreground">Container Image</span><span class="font-mono text-xs">{{ app.container_image }}</span></div>{% endif %}
+          {% if app.kubernetes_namespace %}<div class="flex justify-between"><span class="text-muted-foreground">K8s Namespace</span><span class="font-mono text-xs">{{ app.kubernetes_namespace }}</span></div>{% endif %}
+          {% if app.scalability_model %}<div class="flex justify-between"><span class="text-muted-foreground">Scalability</span><span>{{ app.scalability_model }}</span></div>{% endif %}
+          {% if app.version %}<div class="flex justify-between"><span class="text-muted-foreground">Version</span><span>{{ app.version }}</span></div>{% endif %}
+          {% if app.version_control_url %}<div class="flex justify-between"><span class="text-muted-foreground">Repository</span><a href="{{ app.version_control_url }}" target="_blank" rel="noopener noreferrer" class="text-primary hover:underline text-xs truncate max-w-40">{{ app.version_control_url }}</a></div>{% endif %}
+          {% if app.repository_type %}<div class="flex justify-between"><span class="text-muted-foreground">Repository Type</span><span>{{ app.repository_type }}</span></div>{% endif %}
+        </div>
+      </div>
+
+      {# Performance SLAs #}
+      <div data-slot="card" class="rounded-xl border bg-card shadow-sm">
+        <div class="flex flex-col space-y-1.5 p-6 pb-3"><h3 class="text-lg font-semibold">Performance & SLAs</h3></div>
+        <div class="p-6 pt-0 space-y-3 text-sm">
+          {% if app.response_time_target_ms %}<div class="flex justify-between"><span class="text-muted-foreground">Response Time Target</span><span>{{ app.response_time_target_ms }} ms</span></div>{% endif %}
+          {% if app.throughput_target_tps %}<div class="flex justify-between"><span class="text-muted-foreground">Throughput Target</span><span>{{ app.throughput_target_tps }} TPS</span></div>{% endif %}
+          {% if app.sla_availability_percentage %}<div class="flex justify-between"><span class="text-muted-foreground">SLA Availability</span><span>{{ app.sla_availability_percentage }}%</span></div>{% endif %}
+          {% if app.rpo_hours %}<div class="flex justify-between"><span class="text-muted-foreground">RPO</span><span>{{ app.rpo_hours }} hrs</span></div>{% endif %}
+          {% if app.rto_hours %}<div class="flex justify-between"><span class="text-muted-foreground">RTO</span><span>{{ app.rto_hours }} hrs</span></div>{% endif %}
+        </div>
+      </div>
+
+      {# ArchiMate Technology Nodes #}
+      {% if arch_elements_by_layer %}
+      <div data-slot="card" class="rounded-xl border bg-card shadow-sm">
+        <div class="flex flex-col space-y-1.5 p-6 pb-3"><h3 class="text-lg font-semibold">Architecture Elements by Layer</h3></div>
+        <div class="p-6 pt-0 text-sm space-y-4">
+          {% for layer, elements in arch_elements_by_layer.items() %}
+          <div>
+            <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">{{ layer | title }}</p>
+            <ul class="space-y-1">
+              {% for e in elements %}
+              <li class="flex items-center gap-2">
+                {% call badge(variant='neutral') %}{{ e.type or 'Element' }}{% endcall %}
+                <span>{{ e.name }}</span>
+              </li>
+              {% endfor %}
+            </ul>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
+    </div>
+
+    {# Technology Mappings #}
+    {% if technology_mappings %}
+    <div data-slot="card" class="rounded-xl border bg-card shadow-sm">
+      <div class="flex flex-col space-y-1.5 p-6 pb-3"><h3 class="text-lg font-semibold">Technology Mappings</h3></div>
+      <div class="p-6 pt-0">
+        <p class="text-sm text-muted-foreground">{{ technology_mappings | length }} technology mapping{% if technology_mappings | length != 1 %}s{% endif %} registered.</p>
+      </div>
+    </div>
+    {% endif %}
+
+  </div>
+  {% endcall %}{# /tab_panel technology #}
+
+  {# ═══════════════════════════════════════════════════════════════════════════
+     TAB: IMPLEMENTATION
+  ═══════════════════════════════════════════════════════════════════════════ #}
+  {% call tab_panel('implementation', active=(resolved_tab == 'implementation')) %}
+  <div class="space-y-6">
+    <div class="flex justify-end">
+      <a href="{{ url_for('main.application_roadmap', id=app.id) }}"
+         class="inline-flex items-center gap-2 rounded-md border border-input bg-background hover:bg-accent h-9 px-4 text-sm font-medium transition-colors">
+        <i data-lucide="calendar-check" class="h-4 w-4" aria-hidden="true"></i> Manage in Roadmap Workspace
+      </a>
+    </div>
+
+    {# Work Packages #}
+    <div data-slot="card" class="rounded-xl border bg-card shadow-sm">
+      <div class="flex flex-col space-y-1.5 p-6 pb-3"><h3 class="text-lg font-semibold">Work Packages</h3></div>
+      <div class="p-6 pt-0">
+        {% if work_packages %}
+        <ul class="space-y-2">
+          {% for wp in work_packages %}
+          <li class="flex items-center justify-between gap-4 py-2 border-b last:border-0 text-sm">
+            <span class="font-medium">{{ wp.name }}</span>
+            <div class="flex items-center gap-2 shrink-0">
+              {% if wp.status %}{% call badge(variant='outline') %}{{ wp.status }}{% endcall %}{% endif %}
+              {% if wp.target_date %}<span class="text-xs text-muted-foreground">{{ wp.target_date.strftime('%d %b %Y') }}</span>{% endif %}
+            </div>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="text-sm text-muted-foreground py-4 text-center">No work packages defined.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    {# Deliverables #}
+    {% if deliverables %}
+    <div data-slot="card" class="rounded-xl border bg-card shadow-sm">
+      <div class="flex flex-col space-y-1.5 p-6 pb-3"><h3 class="text-lg font-semibold">Deliverables</h3></div>
+      <div class="p-6 pt-0">
+        <ul class="space-y-2">
+          {% for d in deliverables %}
+          <li class="flex items-center justify-between gap-4 py-2 border-b last:border-0 text-sm">
+            <span class="font-medium">{{ d.name }}</span>
+            {% if d.target_date %}<span class="text-xs text-muted-foreground shrink-0">{{ d.target_date.strftime('%d %b %Y') }}</span>{% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+    {% endif %}
+
+    {# Plateaus #}
+    {% if plateaus %}
+    <div data-slot="card" class="rounded-xl border bg-card shadow-sm">
+      <div class="flex flex-col space-y-1.5 p-6 pb-3"><h3 class="text-lg font-semibold">Architecture Plateaus</h3></div>
+      <div class="p-6 pt-0">
+        <ul class="space-y-2">
+          {% for p in plateaus %}
+          <li class="flex items-center justify-between gap-4 py-2 border-b last:border-0 text-sm">
+            <span class="font-medium">{{ p.name }}</span>
+            {% if p.status %}{% call badge(variant='outline') %}{{ p.status }}{% endcall %}{% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+    {% endif %}
+
+    {# Gaps #}
+    {% if gaps %}
+    <div data-slot="card" class="rounded-xl border bg-card shadow-sm">
+      <div class="flex flex-col space-y-1.5 p-6 pb-3"><h3 class="text-lg font-semibold">Architecture Gaps</h3></div>
+      <div class="p-6 pt-0">
+        <ul class="space-y-2">
+          {% for g in gaps %}
+          <li class="flex items-center justify-between gap-4 py-2 border-b last:border-0 text-sm">
+            <span class="font-medium">{{ g.name }}</span>
+            <div class="flex items-center gap-2 shrink-0">
+              {% if g.priority %}{% call badge(variant='warning') %}{{ g.priority }}{% endcall %}{% endif %}
+            </div>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+    {% endif %}
+
+    {# Implementation Events #}
+    {% if implementation_events %}
+    <div data-slot="card" class="rounded-xl border bg-card shadow-sm">
+      <div class="flex flex-col space-y-1.5 p-6 pb-3"><h3 class="text-lg font-semibold">Implementation Events</h3></div>
+      <div class="p-6 pt-0">
+        <ul class="space-y-2">
+          {% for e in implementation_events %}
+          <li class="flex items-center justify-between gap-4 py-2 border-b last:border-0 text-sm">
+            <span class="font-medium">{{ e.name }}</span>
+            {% if e.event_date %}<span class="text-xs text-muted-foreground shrink-0">{{ e.event_date.strftime('%d %b %Y') }}</span>{% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if not work_packages and not deliverables and not plateaus and not gaps and not implementation_events %}
+    <div class="py-8 text-center">
+      <i data-lucide="calendar-check" class="mx-auto h-10 w-10 text-muted-foreground mb-3 opacity-40" aria-hidden="true"></i>
+      <p class="text-sm font-medium text-foreground mb-1">No implementation data</p>
+      <p class="text-xs text-muted-foreground">Add work packages, deliverables, plateaus, gaps, and events to track implementation progress.</p>
+    </div>
+    {% endif %}
+
+  </div>
+  {% endcall %}{# /tab_panel implementation #}
+
+  {# ═══════════════════════════════════════════════════════════════════════════
+     TAB: ROADMAP
+  ═══════════════════════════════════════════════════════════════════════════ #}
+  {% call tab_panel('roadmap', active=(resolved_tab == 'roadmap')) %}
+  <div class="space-y-6">
+
+    <div data-slot="card" class="rounded-xl border bg-card shadow-sm">
+      <div class="p-6 border-b grid gap-3 sm:grid-cols-[1fr_auto] sm:items-center">
+        <div>
+          <h3 class="text-lg font-semibold">Application Roadmap</h3>
+          <p class="text-sm text-muted-foreground mt-1">Manage tactical transformation initiatives and delivery milestones for this application.</p>
+        </div>
+        <a href="{{ url_for('main.application_roadmap', id=app.id) }}"
+          class="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90">
+          Open Full Roadmap Workspace
+        </a>
+      </div>
+      <div class="p-6 pt-5">
+        {% if work_packages %}
+        <div class="grid grid-cols-1 gap-4 md:grid-cols-3 mb-4">
+          <div class="rounded-lg border bg-muted/20 p-3">
+            <p class="text-xs uppercase tracking-wide text-muted-foreground">Total Work Packages</p>
+            <p class="mt-1 text-xl font-semibold">{{ work_packages|length }}</p>
+          </div>
+          <div class="rounded-lg border bg-muted/20 p-3">
+            <p class="text-xs uppercase tracking-wide text-muted-foreground">In Progress</p>
+            <p class="mt-1 text-xl font-semibold">{{ work_packages|selectattr('status', 'equalto', 'in_progress')|list|length }}</p>
+          </div>
+          <div class="rounded-lg border bg-muted/20 p-3">
+            <p class="text-xs uppercase tracking-wide text-muted-foreground">Completed</p>
+            <p class="mt-1 text-xl font-semibold">{{ work_packages|selectattr('status', 'equalto', 'completed')|list|length }}</p>
+          </div>
+        </div>
+
+        <ul class="space-y-2">
+          {% for wp in work_packages[:6] %}
+          <li class="flex items-center justify-between gap-4 py-2 border-b last:border-0 text-sm">
+            <span class="font-medium">{{ wp.name }}</span>
+            <div class="flex items-center gap-2 shrink-0">
+              {% if wp.status %}{% call badge(variant='outline') %}{{ wp.status|replace('_', ' ')|title }}{% endcall %}{% endif %}
+              {% if wp.target_date %}<span class="text-xs text-muted-foreground">{{ wp.target_date.strftime('%d %b %Y') }}</span>{% endif %}
+            </div>
+          </li>
+          {% endfor %}
+        </ul>
+        {% if work_packages|length > 6 %}
+        <p class="mt-3 text-xs text-muted-foreground">Showing first 6 items. Open the full roadmap workspace to manage all items.</p>
+        {% endif %}
+        {% else %}
+        <div class="py-8 text-center">
+          <i data-lucide="map" class="mx-auto h-10 w-10 text-muted-foreground mb-3 opacity-40" aria-hidden="true"></i>
+          <p class="text-sm font-medium text-foreground mb-1">No roadmap work packages yet</p>
+          <p class="text-xs text-muted-foreground mb-4">Create your first work package to start tracking transformation delivery.</p>
+          <a href="{{ url_for('main.application_roadmap', id=app.id) }}"
+            class="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90">
+            <i data-lucide="map" class="h-4 w-4 mr-2" aria-hidden="true"></i> Open Roadmap Workspace
+          </a>
+          <p class="text-xs text-muted-foreground mt-2">Navigate to the full roadmap workspace to create and manage work packages.</p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endcall %}{# /tab_panel roadmap #}
+
+  {# ═══════════════════════════════════════════════════════════════════════════
+     TAB: MOTIVATION
+  ═══════════════════════════════════════════════════════════════════════════ #}
+  {% call tab_panel('motivation', active=(resolved_tab == 'motivation')) %}
+  <div class="space-y-6">
+    <div class="flex items-center justify-between">
+      <p class="text-sm text-muted-foreground">Motivation elements are populated from linked ArchiMate architecture models.</p>
+      {% if app.archimate_element_id %}
+      <!-- inline-event-ok --><button type="button" @click="openUnifiedMappingModalDiscovery({context:'archimate', ids:[{{ app.id }}]})"
+              class="inline-flex items-center gap-2 rounded-md border border-input bg-background hover:bg-accent h-9 px-4 text-sm font-medium transition-colors">
+        <i data-lucide="link" class="h-4 w-4" aria-hidden="true"></i> Link ArchiMate Elements
+      </button>
+      {% endif %}
+    </div>
+
+    {% set motivation_sections = [
+      ('Stakeholders',          stakeholders),
+      ('Drivers',               drivers),
+      ('Goals',                 goals),
+      ('Outcomes',              outcomes),
+      ('Principles',            principles),
+      ('Requirements',          requirements_archimate),
+      ('Constraints',           constraints),
+      ('Assessments',           assessments),
+      ('Values',                values),
+      ('Meanings',              meanings)
+    ] %}
+
+    {% set has_motivation = false %}
+    {% for label, items in motivation_sections %}{% if items %}{% set has_motivation = true %}{% endif %}{% endfor %}
+
+    {% if has_motivation %}
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+      {% for sect_label, items in motivation_sections %}
+      {% if items %}
+      <div data-slot="card" class="rounded-xl border bg-card shadow-sm">
+        <div class="flex flex-col space-y-1.5 p-6 pb-3"><h3 class="text-base font-semibold">{{ sect_label }}</h3></div>
+        <div class="p-6 pt-0">
+          <ul class="space-y-2">
+            {% for item in items %}
+            <li class="text-sm py-1 border-b last:border-0">
+              <span class="font-medium">{{ item.name }}</span>
+              {% if item.description %}
+              <p class="text-xs text-muted-foreground mt-0.5 line-clamp-2">{{ item.description }}</p>
+              {% endif %}
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+      {% endif %}
+      {% endfor %}
+    </div>
+    {% else %}
+    {# Fall back to ArchiMate motivation-layer relationships #}
+    {% set ns_mot = namespace(filtered=[]) %}
+    {% if archimate_relationships %}
+      {% for r in (archimate_relationships.incoming + archimate_relationships.outgoing) if r.layer and r.layer | lower == 'motivation' %}
+        {% set ns_mot.filtered = ns_mot.filtered + [r] %}
+      {% endfor %}
+    {% endif %}
+    {% set motivation_rels = ns_mot.filtered %}
+    {% if motivation_rels %}
+    <div class="rounded-lg border border-border p-4">
+      <h4 class="text-sm font-semibold mb-2">Motivation Layer Elements ({{ motivation_rels | length }})</h4>
+      <div class="space-y-1">
+        {% for r in motivation_rels %}
+        <a href="{{ url_for('architect_ui.element_traceability', element_id=r.id) }}"
+           class="flex items-center justify-between p-2 rounded hover:bg-muted/50 text-sm">
+          <span>{{ r.name }}</span>
+          <span class="text-xs text-muted-foreground">{{ r.type }} · {{ r.rel_type | replace('Relationship', '') }}</span>
+        </a>
+        {% endfor %}
+      </div>
+    </div>
+    {% else %}
+    <div class="py-8 text-center">
+      <i data-lucide="target" class="mx-auto h-10 w-10 text-muted-foreground mb-3 opacity-40" aria-hidden="true"></i>
+      <p class="text-sm font-medium text-foreground mb-1">No motivation data</p>
+      <p class="text-xs text-muted-foreground">Link an ArchiMate architecture model to populate stakeholders, goals, principles, and other motivation elements.</p>
+    </div>
+    {% endif %}
+    {% endif %}
+
+  </div>
+  {% endcall %}{# /tab_panel motivation #}
+
+  {# ═══════════════════════════════════════════════════════════════════════════
+     TAB: COMPLIANCE
+  ═══════════════════════════════════════════════════════════════════════════ #}
+  {% call tab_panel('compliance', active=(resolved_tab == 'compliance')) %}
+  <div class="space-y-6">
+    <div class="flex justify-end">
+      <a href="{{ url_for('unified_applications.application_edit', id=app.id) }}"
+         class="inline-flex items-center gap-2 rounded-md border border-input bg-background hover:bg-accent h-9 px-4 text-sm font-medium transition-colors">
+        <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i> Edit Compliance Settings
+      </a>
+    </div>
+
+    {# Compliance Score Gauge #}
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div data-slot="card" class="rounded-xl border bg-card shadow-sm p-4 text-center lg:col-span-1">
+        <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Compliance Score</p>
+        <div class="text-5xl font-bold
+          {% if compliance_score >= 80 %}text-success
+          {% elif compliance_score >= 50 %}text-warning
+          {% else %}text-destructive{% endif %}">
+          {{ '%.0f' | format(compliance_score) }}<span class="text-2xl">%</span>
+        </div>
+        {% if compliance_results %}
+        <p class="text-xs text-muted-foreground mt-2">
+          {{ compliance_results.get('satisfied_count', 0) }} / {{ compliance_results.get('total_requirements', 0) }} requirements satisfied
+        </p>
+        {% endif %}
+      </div>
+
+      <div data-slot="card" class="rounded-xl border bg-card shadow-sm p-4">
+        <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Data Classification</p>
+        <p class="mt-2 font-semibold">
+          {% if app.data_classification %}{% call badge(variant='warning') %}{{ app.data_classification | replace('_',' ') | title }}{% endcall %}
+          {% else %}<span class="text-muted-foreground text-sm">Not set</span>{% endif %}
+        </p>
+      </div>
+
+      <div data-slot="card" class="rounded-xl border bg-card shadow-sm p-4">
+        <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Security Level</p>
+        <p class="mt-2 font-semibold">
+          {% if app.security_level %}
+          {% if app.security_level | lower == 'critical' %}{% call badge(variant='destructive') %}{{ app.security_level | title }}{% endcall %}
+          {% elif app.security_level | lower == 'high' %}{% call badge(variant='warning') %}{{ app.security_level | title }}{% endcall %}
+          {% else %}{% call badge(variant='neutral') %}{{ app.security_level | title }}{% endcall %}{% endif %}
+          {% else %}<span class="text-muted-foreground text-sm">Not set</span>{% endif %}
+        </p>
+      </div>
+
+      <div data-slot="card" class="rounded-xl border bg-card shadow-sm p-4 space-y-2 text-sm">
+        <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Data Privacy</p>
+        <div class="flex justify-between">
+          <span class="text-muted-foreground">PII Processed</span>
+          {% if app.pii_data_processed %}{% call badge(variant='warning') %}Yes{% endcall %}
+          {% else %}{% call badge(variant='neutral') %}No{% endcall %}{% endif %}
+        </div>
+        <div class="flex justify-between">
+          <span class="text-muted-foreground">GDPR Compliant</span>
+          {% if app.gdpr_compliant %}{% call badge(variant='success') %}Yes{% endcall %}
+          {% else %}{% call badge(variant='neutral') %}No{% endcall %}{% endif %}
+        </div>
+      </div>
+    </div>
+
+    {# Security Details #}
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div data-slot="card" class="rounded-xl border bg-card shadow-sm">
+        <div class="flex flex-col space-y-1.5 p-6 pb-3"><h3 class="text-base font-semibold">Security Configuration</h3></div>
+        <div class="p-6 pt-0 space-y-3 text-sm">
+          {% if app.authentication_method %}<div class="flex justify-between"><span class="text-muted-foreground">Authentication</span><span>{{ app.authentication_method }}</span></div>{% endif %}
+          {% if app.authorization_model %}<div class="flex justify-between"><span class="text-muted-foreground">Authorization</span><span>{{ app.authorization_model }}</span></div>{% endif %}
+          <div class="flex justify-between">
+            <span class="text-muted-foreground">Encryption at Rest</span>
+            {% if app.encryption_at_rest %}{% call badge(variant='success') %}Yes{% endcall %}
+            {% else %}{% call badge(variant='neutral') %}No{% endcall %}{% endif %}
+          </div>
+          <div class="flex justify-between">
+            <span class="text-muted-foreground">Encryption in Transit</span>
+            {% if app.encryption_in_transit %}{% call badge(variant='success') %}Yes{% endcall %}
+            {% else %}{% call badge(variant='neutral') %}No{% endcall %}{% endif %}
+          </div>
+          {% if app.last_security_audit_date %}<div class="flex justify-between"><span class="text-muted-foreground">Last Security Audit</span><span>{{ app.last_security_audit_date.strftime('%d %b %Y') }}</span></div>{% endif %}
+          {% if app.last_penetration_test_date %}<div class="flex justify-between"><span class="text-muted-foreground">Last Pen Test</span><span>{{ app.last_penetration_test_date.strftime('%d %b %Y') }}</span></div>{% endif %}
+        </div>
+      </div>
+
+      {# Compliance Tags and Frameworks #}
+      <div data-slot="card" class="rounded-xl border bg-card shadow-sm">
+        <div class="flex flex-col space-y-1.5 p-6 pb-3"><h3 class="text-base font-semibold">Compliance Tags & Frameworks</h3></div>
+        <div class="p-6 pt-0 space-y-3">
+          {% if app.compliance_tags %}
+          <div>
+            <p class="text-xs text-muted-foreground mb-2">Compliance Tags</p>
+            <div class="flex flex-wrap gap-1.5">
+              {% if app.compliance_tags is string %}
+                {% for tag in app.compliance_tags.replace('[','').replace(']','').replace('"','').split(',') %}
+                  {% if tag.strip() %}
+                  <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold text-foreground">{{ tag.strip() }}</span>
+                  {% endif %}
+                {% endfor %}
+              {% else %}
+                {% for tag in app.compliance_tags %}
+                <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold text-foreground">{{ tag }}</span>
+                {% endfor %}
+              {% endif %}
+            </div>
+          </div>
+          {% endif %}
+          {% if compliance_frameworks %}
+          <div>
+            <p class="text-xs text-muted-foreground mb-2">Regulatory Frameworks</p>
+            <div class="flex flex-wrap gap-2">
+              {% for fw in compliance_frameworks %}
+              {% call badge(variant='info') %}{{ fw.name or fw.framework_name or 'Framework ' ~ fw.id }}{% endcall %}
+              {% endfor %}
+            </div>
+          </div>
+          {% endif %}
+          {% if not app.compliance_tags and not compliance_frameworks %}
+          <p class="text-sm text-muted-foreground">No compliance tags or frameworks defined.</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    {# Compliance Requirements #}
+    {% if compliance_requirements %}
+    <div data-slot="card" class="rounded-xl border bg-card shadow-sm">
+      <div class="flex flex-col space-y-1.5 p-6 pb-3"><h3 class="text-base font-semibold">Compliance Requirements ({{ compliance_requirements | length }})</h3></div>
+      <div class="p-6 pt-0">
+        <ul class="space-y-2">
+          {% for req in compliance_requirements %}
+          <li class="text-sm py-2 border-b last:border-0 flex items-start justify-between gap-4">
+            <span class="font-medium">{{ req.name or req.title or ('Requirement ' ~ req.id) }}</span>
+            {% if req.status %}{% call badge(variant='outline') %}{{ req.status }}{% endcall %}{% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+    {% endif %}
+
+  </div>
+  {% endcall %}{# /tab_panel compliance #}
+
+  {# ═══════════════════════════════════════════════════════════════════════════
+     TAB: HEALTH & QUALITY
+  ═══════════════════════════════════════════════════════════════════════════ #}
+  {% call tab_panel('health', active=(resolved_tab == 'health')) %}
+  <div class="space-y-6">
+    <div class="flex justify-end">
+      <a href="{{ url_for('unified_applications.application_edit', id=app.id) }}"
+         class="inline-flex items-center gap-2 rounded-md border border-input bg-background hover:bg-accent h-9 px-4 text-sm font-medium transition-colors">
+        <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i> Edit Health & Quality Metrics
+      </a>
+    </div>
+
+    {# Health Metrics #}
+    <div data-slot="card" class="rounded-xl border bg-card shadow-sm">
+      <div class="flex flex-col space-y-1.5 p-6 pb-3"><h3 class="text-lg font-semibold">Health Metrics</h3></div>
+      <div class="p-6 pt-0">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
+
+          <div class="space-y-1">
+            <p class="text-xs text-muted-foreground uppercase tracking-wide">Monitoring</p>
+            {% if health_metrics.monitoring_enabled %}
+            {% call badge(variant='success') %}Enabled{% endcall %}
+            {% else %}
+            {% call badge(variant='neutral') %}Disabled{% endcall %}
+            {% endif %}
+            {% if health_metrics.monitoring_tool and health_metrics.monitoring_tool != 'unknown' %}
+            <p class="text-xs text-muted-foreground">{{ health_metrics.monitoring_tool }}</p>
+            {% endif %}
+          </div>
+
+          {% if health_metrics.health_check_url %}
+          <div class="space-y-1">
+            <p class="text-xs text-muted-foreground uppercase tracking-wide">Health Check URL</p>
+            <a href="{{ health_metrics.health_check_url }}" target="_blank" rel="noopener noreferrer"
+               class="text-primary hover:underline text-xs truncate block max-w-48">{{ health_metrics.health_check_url }}</a>
+          </div>
+          {% endif %}
+
+          <div class="space-y-1">
+            <p class="text-xs text-muted-foreground uppercase tracking-wide">SLA Availability</p>
+            <p class="text-2xl font-bold text-foreground">{{ '%.2f' | format(health_metrics.sla_availability) }}%</p>
+          </div>
+
+          <div class="space-y-1">
+            <p class="text-xs text-muted-foreground uppercase tracking-wide">Current Uptime</p>
+            <p class="text-2xl font-bold
+              {% if health_metrics.current_uptime >= 99 %}text-success
+              {% elif health_metrics.current_uptime >= 95 %}text-warning
+              {% else %}text-destructive{% endif %}">
+              {{ '%.2f' | format(health_metrics.current_uptime) }}%
+            </p>
+          </div>
+
+          <div class="space-y-1">
+            <p class="text-xs text-muted-foreground uppercase tracking-wide">Deployment Frequency</p>
+            <p class="font-medium">{{ health_metrics.deployment_frequency or '—' }}</p>
+          </div>
+
+          <div class="space-y-1">
+            <p class="text-xs text-muted-foreground uppercase tracking-wide">MTTR</p>
+            <p class="font-medium">{% if health_metrics.mttr_hours is not none %}{{ health_metrics.mttr_hours }} hrs{% else %}—{% endif %}</p>
+          </div>
+
+          <div class="space-y-1">
+            <p class="text-xs text-muted-foreground uppercase tracking-wide">Change Failure Rate</p>
+            <p class="font-medium
+              {% if health_metrics.change_failure_rate < 5 %}text-success
+              {% elif health_metrics.change_failure_rate < 15 %}text-warning
+              {% else %}text-destructive{% endif %}">
+              {{ '%.1f' | format(health_metrics.change_failure_rate) }}%
+            </p>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    {# Quality Metrics #}
+    <div data-slot="card" class="rounded-xl border bg-card shadow-sm">
+      <div class="flex flex-col space-y-1.5 p-6 pb-3"><h3 class="text-lg font-semibold">Quality Metrics</h3></div>
+      <div class="p-6 pt-0">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
+
+          <div class="space-y-1">
+            <p class="text-xs text-muted-foreground uppercase tracking-wide">Code Quality Score</p>
+            <p class="text-2xl font-bold
+              {% if quality_metrics.code_quality_score >= 80 %}text-success
+              {% elif quality_metrics.code_quality_score >= 50 %}text-warning
+              {% else %}text-destructive{% endif %}">
+              {{ '%.0f' | format(quality_metrics.code_quality_score) }}
+            </p>
+          </div>
+
+          <div class="space-y-1">
+            <p class="text-xs text-muted-foreground uppercase tracking-wide">Technical Debt</p>
+            <p class="font-medium text-warning">{{ quality_metrics.technical_debt_hours }} hrs</p>
+          </div>
+
+          <div class="space-y-1">
+            <p class="text-xs text-muted-foreground uppercase tracking-wide">Open Bugs</p>
+            <p class="font-medium
+              {% if quality_metrics.bugs_count == 0 %}text-success
+              {% elif quality_metrics.bugs_count < 10 %}text-warning
+              {% else %}text-destructive{% endif %}">
+              {{ quality_metrics.bugs_count }}
+            </p>
+          </div>
+
+          <div class="space-y-1">
+            <p class="text-xs text-muted-foreground uppercase tracking-wide">Vulnerabilities</p>
+            <p class="font-medium
+              {% if quality_metrics.vulnerabilities_count == 0 %}text-success
+              {% else %}text-destructive{% endif %}">
+              {{ quality_metrics.vulnerabilities_count }}
+            </p>
+          </div>
+
+          <div class="space-y-1">
+            <p class="text-xs text-muted-foreground uppercase tracking-wide">Code Coverage</p>
+            <p class="font-medium
+              {% if quality_metrics.code_coverage >= 80 %}text-success
+              {% elif quality_metrics.code_coverage >= 50 %}text-warning
+              {% else %}text-destructive{% endif %}">
+              {{ '%.1f' | format(quality_metrics.code_coverage) }}%
+            </p>
+          </div>
+
+          <div class="space-y-1">
+            <p class="text-xs text-muted-foreground uppercase tracking-wide">Automated Testing</p>
+            <p class="font-medium
+              {% if quality_metrics.automated_testing_coverage >= 80 %}text-success
+              {% elif quality_metrics.automated_testing_coverage >= 50 %}text-warning
+              {% else %}text-destructive{% endif %}">
+              {{ '%.1f' | format(quality_metrics.automated_testing_coverage) }}%
+            </p>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+  </div>
+  {% endcall %}{# /tab_panel health #}
+
+  {# ═══════════════════════════════════════════════════════════════════════════
+     TAB: COST
+  ═══════════════════════════════════════════════════════════════════════════ #}
+  {% call tab_panel('cost', active=(resolved_tab == 'cost')) %}
+  <div class="space-y-6">
+    <div class="flex justify-end">
+      <a href="{{ url_for('unified_applications.application_edit', id=app.id) }}"
+         class="inline-flex items-center gap-2 rounded-md border border-input bg-background hover:bg-accent h-9 px-4 text-sm font-medium transition-colors">
+        <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i> Edit Cost Details
+      </a>
+    </div>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+
+      {% macro cost_card(label, value, symbol='£') %}
+      <div data-slot="card" class="rounded-xl border bg-card shadow-sm p-4">
+        <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">{{ label }}</p>
+        <p class="mt-1 text-2xl font-bold text-foreground">
+          {{ symbol }}{{ '{:,.0f}'.format(value) }}
+        </p>
+      </div>
+      {% endmacro %}
+
+      {{ cost_card('Annual Licence Cost', cost_breakdown.license_annual, currency_symbol) }}
+      {{ cost_card('Monthly Infrastructure', cost_breakdown.infrastructure_monthly, currency_symbol) }}
+      {{ cost_card('Annual Infrastructure', cost_breakdown.infrastructure_annual, currency_symbol) }}
+      {{ cost_card('Annual Development', cost_breakdown.development_annual, currency_symbol) }}
+      {{ cost_card('Annual Maintenance', cost_breakdown.maintenance_annual, currency_symbol) }}
+      {{ cost_card('Total Cost of Ownership', cost_breakdown.total_tco, currency_symbol) }}
+
+    </div>
+
+    <div data-slot="card" class="rounded-xl border bg-card shadow-sm p-4">
+      <div class="flex items-center justify-between">
+        <p class="text-sm font-medium text-muted-foreground">Calculated Total (Licence + Infrastructure + Development + Maintenance)</p>
+        <p class="text-xl font-bold text-foreground">{{ currency_symbol }}{{ '{:,.0f}'.format(cost_breakdown.calculated_total) }}</p>
+      </div>
+    </div>
+
+  </div>
+  {% endcall %}{# /tab_panel cost #}
+
+  {# ═══════════════════════════════════════════════════════════════════════════
+     TAB: DEPENDENCIES
+  ═══════════════════════════════════════════════════════════════════════════ #}
+  {% call tab_panel('dependencies', active=(resolved_tab == 'dependencies')) %}
+  <div class="space-y-6">
+    <div class="flex items-center justify-between">
+      <p class="text-sm text-muted-foreground">Dependencies are derived from ArchiMate relationships and integration mappings.</p>
+      {% if app.archimate_element_id %}
+      <!-- inline-event-ok --><button type="button" @click="openUnifiedMappingModalDiscovery({context:'archimate', ids:[{{ app.id }}]})"
+              class="inline-flex items-center gap-2 rounded-md border border-input bg-background hover:bg-accent h-9 px-4 text-sm font-medium transition-colors">
+        <i data-lucide="link" class="h-4 w-4" aria-hidden="true"></i> Link Dependencies
+      </button>
+      {% endif %}
+    </div>
+
+    {# Dependency Graph Summary #}
+    {% set graph_nodes = dependency_graph_data.nodes | length %}
+    {% set graph_edges = dependency_graph_data.edges | length %}
+
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div data-slot="card" class="rounded-xl border bg-card shadow-sm p-4">
+        <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Total Relationships</p>
+        <p class="mt-1 text-2xl font-bold text-foreground">{{ (archimate_relationships.incoming | length + archimate_relationships.outgoing | length) if archimate_relationships else graph_nodes }}</p>
+      </div>
+      <div data-slot="card" class="rounded-xl border bg-card shadow-sm p-4">
+        <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Upstream (depend on this)</p>
+        <p class="mt-1 text-2xl font-bold text-foreground">{{ archimate_relationships.incoming | length if archimate_relationships else (dependencies_upstream | length) }}</p>
+      </div>
+      <div data-slot="card" class="rounded-xl border bg-card shadow-sm p-4">
+        <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Downstream (this depends on)</p>
+        <p class="mt-1 text-2xl font-bold text-foreground">{{ archimate_relationships.outgoing | length if archimate_relationships else (dependencies_downstream | length) }}</p>
+      </div>
+    </div>
+
+    {# Dependency Edges #}
+    {% if dependency_graph_data.edges %}
+    <div data-slot="card" class="rounded-xl border bg-card shadow-sm">
+      <div class="flex flex-col space-y-1.5 p-6 pb-3"><h3 class="text-lg font-semibold">Dependency Graph Edges</h3></div>
+      <div class="p-6 pt-0">
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b">
+                <th class="pb-2 text-left font-medium text-muted-foreground">From</th>
+                <th class="pb-2 text-left font-medium text-muted-foreground">To</th>
+                <th class="pb-2 text-left font-medium text-muted-foreground">Type</th>
+                <th class="pb-2 text-left font-medium text-muted-foreground">Criticality</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y">
+              {% for edge in dependency_graph_data.edges %}
+              <tr class="border-b last:border-0 hover:bg-muted/50">
+                <td class="py-2 pr-3 font-mono text-xs">{{ edge.from }}</td>
+                <td class="py-2 pr-3 font-mono text-xs">{{ edge.to }}</td>
+                <td class="py-2 pr-3">{{ edge.label or edge.type or '—' }}</td>
+                <td class="py-2">
+                  {% if edge.criticality %}{% call badge(variant='outline') %}{{ edge.criticality }}{% endcall %}
+                  {% else %}—{% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    {# Business Actor Mappings #}
+    {% if business_actor_mappings %}
+    <div data-slot="card" class="rounded-xl border bg-card shadow-sm">
+      <div class="flex flex-col space-y-1.5 p-6 pb-3"><h3 class="text-lg font-semibold">Business Actor Mappings</h3></div>
+      <div class="p-6 pt-0">
+        <ul class="space-y-2">
+          {% for mapping, actor in business_actor_mappings %}
+          <li class="text-sm py-2 border-b last:border-0 flex items-center justify-between gap-4">
+            <span class="font-medium">{{ actor.name }}</span>
+            {% if actor.actor_type %}{% call badge(variant='info') %}{{ actor.actor_type }}{% endcall %}{% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+    {% endif %}
+
+    {# Integration Mappings #}
+    {% if integration_mappings %}
+    <div data-slot="card" class="rounded-xl border bg-card shadow-sm">
+      <div class="flex flex-col space-y-1.5 p-6 pb-3"><h3 class="text-lg font-semibold">Integration Mappings</h3></div>
+      <div class="p-6 pt-0">
+        <ul class="space-y-2">
+          {% for mapping, interface in integration_mappings %}
+          <li class="text-sm py-2 border-b last:border-0">
+            <span class="font-medium">{{ interface.name }}</span>
+            {% if interface.interface_type %}
+            <span class="ml-2">{% call badge(variant='neutral') %}{{ interface.interface_type }}{% endcall %}</span>
+            {% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+    {% endif %}
+
+    {# Application Documents #}
+    {% if application_documents %}
+    <div data-slot="card" class="rounded-xl border bg-card shadow-sm">
+      <div class="flex flex-col space-y-1.5 p-6 pb-3"><h3 class="text-lg font-semibold">Documents</h3></div>
+      <div class="p-6 pt-0">
+        <ul class="space-y-2">
+          {% for doc in application_documents %}
+          <li class="text-sm py-2 border-b last:border-0 flex items-center justify-between gap-4">
+            <div>
+              <span class="font-medium">{{ doc.filename or doc.name or ('Document ' ~ doc.id) }}</span>
+              {% if doc.uploaded_at %}
+              <span class="ml-2 text-xs text-muted-foreground">{{ doc.uploaded_at.strftime('%d %b %Y') }}</span>
+              {% endif %}
+            </div>
+            {% if doc.file_url or doc.download_url %}
+            <a href="{{ doc.file_url or doc.download_url }}"
+               target="_blank" rel="noopener noreferrer"
+               class="inline-flex items-center text-xs text-primary hover:underline shrink-0">
+              <i data-lucide="download" class="h-3 w-3 mr-1" aria-hidden="true"></i>Download
+            </a>
+            {% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if not dependency_graph_data.edges and not business_actor_mappings and not integration_mappings and not application_documents %}
+    {# Fall back to ArchiMate relationships as dependency view #}
+    {% if archimate_relationships and (archimate_relationships.incoming or archimate_relationships.outgoing) %}
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div data-slot="card" class="rounded-xl border bg-card shadow-sm">
+        <div class="flex flex-col space-y-1.5 p-6 pb-3">
+          <h4 class="text-sm font-semibold">Upstream ({{ archimate_relationships.incoming | length }} depend on this)</h4>
+        </div>
+        <div class="p-6 pt-0">
+          {% if archimate_relationships.incoming %}
+          <div class="space-y-1">
+            {% for r in archimate_relationships.incoming %}
+            <a href="{{ url_for('architect_ui.element_traceability', element_id=r.id) }}"
+               class="flex items-center justify-between p-2 rounded hover:bg-muted/50 text-sm">
+              <span>{{ r.name }}</span>
+              <span class="text-xs text-muted-foreground">{{ r.type }} · {{ r.rel_type | replace('Relationship', '') }}</span>
+            </a>
+            {% endfor %}
+          </div>
+          {% else %}
+          <p class="text-sm text-muted-foreground text-center py-4">No upstream dependencies</p>
+          {% endif %}
+        </div>
+      </div>
+      <div data-slot="card" class="rounded-xl border bg-card shadow-sm">
+        <div class="flex flex-col space-y-1.5 p-6 pb-3">
+          <h4 class="text-sm font-semibold">Downstream (this depends on {{ archimate_relationships.outgoing | length }})</h4>
+        </div>
+        <div class="p-6 pt-0">
+          {% if archimate_relationships.outgoing %}
+          <div class="space-y-1">
+            {% for r in archimate_relationships.outgoing %}
+            <a href="{{ url_for('architect_ui.element_traceability', element_id=r.id) }}"
+               class="flex items-center justify-between p-2 rounded hover:bg-muted/50 text-sm">
+              <span>{{ r.name }}</span>
+              <span class="text-xs text-muted-foreground">{{ r.type }} · {{ r.rel_type | replace('Relationship', '') }}</span>
+            </a>
+            {% endfor %}
+          </div>
+          {% else %}
+          <p class="text-sm text-muted-foreground text-center py-4">No downstream dependencies</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% else %}
+    <div class="py-8 text-center">
+      <i data-lucide="share-2" class="mx-auto h-10 w-10 text-muted-foreground mb-3 opacity-40" aria-hidden="true"></i>
+      <p class="text-sm font-medium text-foreground mb-1">No dependency data</p>
+      <p class="text-xs text-muted-foreground">Link an ArchiMate element to enable dependency graph generation and integration mappings.</p>
+    </div>
+    {% endif %}
+    {% endif %}
+
+  </div>
+  {% endcall %}{# /tab_panel dependencies #}
+
+  {# ═══════════════════════════════════════════════════════════════════════════
+     TAB: EA WORKFLOWS
+  ═══════════════════════════════════════════════════════════════════════════ #}
+  {% call tab_panel('ea-workflows', active=(resolved_tab == 'ea-workflows')) %}
+  <div class="space-y-6" id="ea-workflows-tab-content"
+       x-data="eaWorkflowsTab({{ app.id }})"
+       x-init="init()">
+    <div class="flex items-center justify-between">
+      <div>
+        <h3 class="text-lg font-semibold text-foreground">EA Workflows</h3>
+        <p class="text-sm text-muted-foreground">Architecture review and governance workflows for this application.</p>
+      </div>
+      <a href="/ea-workflows" class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
+        <i data-lucide="play-circle" class="h-4 w-4" aria-hidden="true"></i>
+        Run Workflow
+      </a>
+    </div>
+
+    <div x-show="loading" x-cloak class="py-8 text-center">
+      <i data-lucide="loader-2" class="mx-auto h-8 w-8 animate-spin text-muted-foreground" aria-hidden="true"></i>
+      <p class="mt-2 text-sm text-muted-foreground">Loading workflows…</p>
+    </div>
+
+    <div x-show="!loading && instances.length === 0" x-cloak class="py-8 text-center">
+      <i data-lucide="play-circle" class="mx-auto h-10 w-10 text-muted-foreground mb-3 opacity-40" aria-hidden="true"></i>
+      <p class="text-sm font-medium text-foreground mb-1">No workflow runs yet</p>
+      <p class="text-xs text-muted-foreground mb-3">Start an EA workflow to review and govern this application.</p>
+      <a href="/ea-workflows" class="text-sm text-primary hover:underline">Go to EA Workflows →</a>
+    </div>
+
+    <div x-show="!loading && instances.length > 0" x-cloak class="space-y-3">
+      <template x-for="inst in instances" :key="inst.id">
+        <a :href="'/ea-workflows/instance/' + inst.id"
+           class="flex items-center justify-between rounded-lg border border-border p-3 hover:bg-muted/50 transition-colors">
+          <div class="flex items-center gap-3">
+            <span class="inline-flex h-8 w-8 items-center justify-center rounded-full"
+                  :class="{'bg-emerald-500/10 text-emerald-700': inst.status==='completed', 'bg-amber-500/10 text-amber-700': inst.status==='running'||inst.status==='waiting_approval', 'bg-destructive/10 text-destructive': inst.status==='failed', 'bg-muted text-muted-foreground': true}">
+              <i data-lucide="activity" class="h-4 w-4" aria-hidden="true"></i>
+            </span>
+            <div>
+              <p class="text-sm font-medium text-foreground" x-text="inst.workflow_name || 'Workflow'"></p>
+              <p class="text-xs text-muted-foreground" x-text="inst.started_at ? new Date(inst.started_at).toLocaleDateString() : ''"></p>
+            </div>
+          </div>
+          <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize"
+                :class="{'bg-emerald-500/10 text-emerald-700': inst.status==='completed', 'bg-primary/10 text-primary': inst.status==='running', 'bg-amber-500/10 text-amber-700': inst.status==='waiting_approval', 'bg-destructive/10 text-destructive': inst.status==='failed', 'bg-muted text-muted-foreground': !['completed','running','waiting_approval','failed'].includes(inst.status)}"
+                x-text="inst.status"></span>
+        </a>
+      </template>
+    </div>
+  </div>
+  <script>
+  function eaWorkflowsTab(appId) {
+    return {
+      appId: appId, loading: true, instances: [],
+      async init() {
+        try {
+          const r = await fetch('/api/ea-workflows/instances?application_id=' + appId + '&per_page=10');
+          if (r.ok) { const d = await r.json(); this.instances = d.instances || []; }
+        } catch(e) { /* silent */ } finally { this.loading = false; lucide.createIcons(); }
+      }
+    };
+  }
+  </script>
+  {% endcall %}{# /tab_panel ea-workflows #}
+
+{% endcall %}{# /pill_tabs #}
+</div>{# closes x-data activeTab scope #}
+{% endif %}{# /if app — tab section #}
+
+{% endblock %}{# /content #}
+
+{% block modals %}
+{% if app %}
+{% include "applications/add_capability_modal.html" %}
+{% if vendor_summary.has_archimate %}
+{% include "applications/add_vendor_modal.html" %}
+{% endif %}
+{% if archimate_form_config.enabled %}
+{% include "applications/add_archimate_link_modal.html" %}
+{% endif %}
+{% include "components/unified_mapping_modal.html" %}
+{% endif %}{# /if app — modals #}
+{% endblock %}

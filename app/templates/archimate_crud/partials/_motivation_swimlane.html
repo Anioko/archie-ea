@@ -1,0 +1,56 @@
+<!-- Motivation swim-lane — groups elements by ArchiMate Motivation types -->
+<div class="space-y-4">
+    <!-- Stat row -->
+    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        <template x-for="col in [
+            {type: 'Stakeholder', label: 'Stakeholders', icon: 'users',     color: 'bg-primary/10 text-primary'},
+            {type: 'Driver',      label: 'Drivers',      icon: 'zap',       color: 'bg-amber-500/10 text-amber-600'},
+            {type: 'Goal',        label: 'Goals',        icon: 'target',    color: 'bg-emerald-500/10 text-emerald-600'},
+            {type: 'Principle',   label: 'Principles',   icon: 'book-open', color: 'bg-primary/10 text-primary'},
+            {type: 'Requirement', label: 'Requirements', icon: 'list',      color: 'bg-amber-500/10 text-amber-600'},
+            {type: 'Constraint',  label: 'Constraints',  icon: 'lock',      color: 'bg-destructive/10 text-destructive'}
+        ]" :key="col.type">
+            <div class="bg-card border border-border rounded-lg p-3 flex flex-col items-center gap-1 text-center">
+                <span class="inline-flex items-center justify-center rounded-full p-1.5" :class="col.color">
+                    <i :data-lucide="col.icon" class="h-4 w-4" aria-hidden="true"></i>
+                </span>
+                <span class="text-xl font-bold" x-text="elements.filter(e => e.element_type === col.type).length"></span>
+                <span class="text-xs text-muted-foreground" x-text="col.label"></span>
+            </div>
+        </template>
+    </div>
+
+    <!-- Swim-lane columns -->
+    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6 gap-4">
+        <template x-for="col in [
+            {type: 'Stakeholder', label: 'Stakeholders', bg: 'bg-primary/5',     border: 'border-primary/20'},
+            {type: 'Driver',      label: 'Drivers',      bg: 'bg-amber-500/5',   border: 'border-amber-500/20'},
+            {type: 'Goal',        label: 'Goals',        bg: 'bg-emerald-500/5', border: 'border-emerald-500/20'},
+            {type: 'Principle',   label: 'Principles',   bg: 'bg-primary/5',     border: 'border-primary/20'},
+            {type: 'Requirement', label: 'Requirements', bg: 'bg-amber-500/5',   border: 'border-amber-500/20'},
+            {type: 'Constraint',  label: 'Constraints',  bg: 'bg-destructive/5', border: 'border-destructive/20'}
+        ]" :key="col.type">
+            <div class="flex flex-col gap-2">
+                <div class="flex items-center justify-between px-1 mb-1">
+                    <span class="text-sm font-semibold" x-text="col.label"></span>
+                    <span class="text-xs rounded-full bg-muted px-2 py-0.5"
+                          x-text="elements.filter(e => e.element_type === col.type && (!searchQuery || e.name.toLowerCase().indexOf(searchQuery.toLowerCase()) >= 0)).length"></span>
+                </div>
+                <template x-for="el in elements.filter(e => e.element_type === col.type && (!searchQuery || e.name.toLowerCase().indexOf(searchQuery.toLowerCase()) >= 0))" :key="el.id + ':' + el.element_type">
+                    <a :href="detailUrl(el)"
+                       class="rounded-md border p-3 space-y-1 hover:shadow-sm transition-shadow block"
+                       :class="col.bg + ' ' + col.border">
+                        <p class="font-medium text-sm leading-tight" x-text="el.name"></p>
+                        <p class="text-xs text-muted-foreground line-clamp-2" x-text="el.description || 'No description'"></p>
+                        <div class="flex items-center gap-2 pt-1">
+                            <span x-show="el.rel_count > 0" class="text-[10px] text-primary font-medium" x-text="el.rel_count + ' rels'"></span>
+                            <span x-show="el.rel_count === 0" class="text-[10px] text-warning font-medium">orphaned</span>
+                        </div>
+                    </a>
+                </template>
+                <p x-show="elements.filter(e => e.element_type === col.type).length === 0"
+                   class="text-sm text-muted-foreground italic px-1">None</p>
+            </div>
+        </template>
+    </div>
+</div>

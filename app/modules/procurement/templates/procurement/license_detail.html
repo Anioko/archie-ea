@@ -1,0 +1,124 @@
+{% extends 'layouts/admin_base.html' %}
+{% block title %}License: {{ license.product_name }}{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-6">
+    <nav class="flex items-center gap-2 text-sm text-muted-foreground mb-6">
+        <a href="{{ url_for('procurement.licenses_list') }}" class="hover:text-foreground">Licenses</a>
+        <i data-lucide="chevron-right" class="w-4 h-4"></i>
+        <span class="text-foreground">{{ license.product_name }}</span>
+    </nav>
+
+    <div class="flex items-start justify-between mb-6">
+        <div>
+            <div class="flex items-center gap-3 mb-2">
+                <h1 class="text-2xl font-bold">{{ license.product_name }}</h1>
+                <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium
+                    {% if license.compliance_status == 'compliant' %}bg-green-100 text-green-800
+                    {% elif license.compliance_status == 'warning' %}bg-amber-100 text-amber-800
+                    {% else %}bg-red-100 text-red-800{% endif %}">
+                    {{ license.compliance_status or 'unknown' }}
+                </span>
+            </div>
+            <p class="text-muted-foreground">{{ license.license_type or 'License' }}</p>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div class="lg:col-span-2 space-y-6">
+            <!-- Utilization -->
+            <div class="bg-card border border-border rounded-lg p-6">
+                <h2 class="text-lg font-semibold mb-4">License Utilization</h2>
+                {% set util = (license.consumed_quantity or 0) / (license.entitled_quantity or 1) * 100 %}
+                <div class="mb-4">
+                    <div class="flex justify-between text-sm mb-2">
+                        <span>{{ license.consumed_quantity or 0 }} consumed of {{ license.entitled_quantity or 0 }} entitled</span>
+                        <span class="font-medium">{{ "{:.1f}".format(util) }}%</span>
+                    </div>
+                    <div class="h-4 bg-muted rounded-full overflow-hidden">
+                        <div class="h-full rounded-full
+                            {% if util > 100 %}bg-red-500
+                            {% elif util > 90 %}bg-amber-500
+                            {% else %}bg-green-500{% endif %}"
+                             style="width: {{ min(util, 100) }}%"></div>
+                    </div>
+                </div>
+                <div class="grid grid-cols-3 gap-4 text-center">
+                    <div class="p-3 bg-muted/50 rounded-lg">
+                        <div class="text-2xl font-bold">{{ license.entitled_quantity or 0 }}</div>
+                        <div class="text-sm text-muted-foreground">Entitled</div>
+                    </div>
+                    <div class="p-3 bg-muted/50 rounded-lg">
+                        <div class="text-2xl font-bold">{{ license.consumed_quantity or 0 }}</div>
+                        <div class="text-sm text-muted-foreground">Consumed</div>
+                    </div>
+                    <div class="p-3 bg-muted/50 rounded-lg">
+                        <div class="text-2xl font-bold text-green-600">{{ (license.entitled_quantity or 0) - (license.consumed_quantity or 0) }}</div>
+                        <div class="text-sm text-muted-foreground">Available</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- License Details -->
+            <div class="bg-card border border-border rounded-lg p-6">
+                <h2 class="text-lg font-semibold mb-4">License Details</h2>
+                <dl class="grid grid-cols-2 gap-4">
+                    <div>
+                        <dt class="text-sm text-muted-foreground">License Type</dt>
+                        <dd class="font-medium">{{ license.license_type or 'N/A' }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm text-muted-foreground">Metric</dt>
+                        <dd class="font-medium">{{ license.license_metric or 'N/A' }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm text-muted-foreground">Unit Cost</dt>
+                        <dd class="font-medium">{{ "${:,.2f}".format(license.unit_cost) if license.unit_cost else 'N/A' }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm text-muted-foreground">Total Cost</dt>
+                        <dd class="font-medium">{{ "${:,.2f}".format(license.total_cost) if license.total_cost else 'N/A' }}</dd>
+                    </div>
+                </dl>
+            </div>
+        </div>
+
+        <div class="space-y-6">
+            <!-- Vendor -->
+            <div class="bg-card border border-border rounded-lg p-6">
+                <h2 class="text-lg font-semibold mb-4">Vendor</h2>
+                {% if license.vendor %}
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 bg-muted rounded-lg flex items-center justify-center">
+                        <i data-lucide="building-2" class="w-5 h-5 text-muted-foreground"></i>
+                    </div>
+                    <div class="font-medium">{{ license.vendor.name }}</div>
+                </div>
+                {% else %}
+                <p class="text-muted-foreground">No vendor assigned</p>
+                {% endif %}
+            </div>
+
+            <!-- Key Dates -->
+            <div class="bg-card border border-border rounded-lg p-6">
+                <h2 class="text-lg font-semibold mb-4">Key Dates</h2>
+                <dl class="space-y-3">
+                    <div class="flex justify-between">
+                        <dt class="text-sm text-muted-foreground">Start Date</dt>
+                        <dd class="font-medium">{{ license.start_date.strftime('%d %b %Y') if license.start_date else 'N/A' }}</dd>
+                    </div>
+                    <div class="flex justify-between">
+                        <dt class="text-sm text-muted-foreground">End Date</dt>
+                        <dd class="font-medium">{{ license.end_date.strftime('%d %b %Y') if license.end_date else 'N/A' }}</dd>
+                    </div>
+                    <div class="flex justify-between">
+                        <dt class="text-sm text-muted-foreground">Last Audit</dt>
+                        <dd class="font-medium">{{ license.last_audit_date.strftime('%d %b %Y') if license.last_audit_date else 'N/A' }}</dd>
+                    </div>
+                </dl>
+            </div>
+        </div>
+    </div>
+</div>
+<script>if (typeof lucide !== 'undefined') lucide.createIcons();</script>
+{% endblock %}

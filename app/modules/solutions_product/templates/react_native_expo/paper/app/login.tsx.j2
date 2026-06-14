@@ -1,0 +1,150 @@
+{# paper/app/login.tsx.j2 — Paper login screen, no NativeWind, no lucide icons #}
+import { useState } from "react"
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from "react-native"
+import { useRouter } from "expo-router"
+import {
+  ActivityIndicator,
+  Button,
+  HelperText,
+  Surface,
+  Text,
+  TextInput,
+} from "react-native-paper"
+import Toast from "react-native-toast-message"
+import { useAuth } from "@/providers/AuthProvider"
+import { authApi } from "@/lib/api"
+
+// Style constants — no inline object literals to avoid Jinja2/JSX double-brace collision
+const S = StyleSheet.create({
+  flex: { flex: 1, backgroundColor: "#f8fafc" },
+  scroll: { flexGrow: 1, justifyContent: "center", alignItems: "center", paddingHorizontal: 24, paddingVertical: 40 },
+  logoSurface: { width: 64, height: 64, borderRadius: 16, backgroundColor: "#4f46e5", alignItems: "center", justifyContent: "center", marginBottom: 20 },
+  logoText: { color: "#ffffff", fontSize: 28, fontWeight: "700" },
+  appName: { color: "#0f172a", marginBottom: 4 },
+  tagline: { color: "#64748b", marginBottom: 32 },
+  card: { width: "100%", borderRadius: 20, padding: 24, marginBottom: 24 },
+  inputField: { marginBottom: 4, backgroundColor: "#ffffff" },
+  inputSpacing: { marginBottom: 12 },
+  submitBtn: { marginTop: 8, borderRadius: 12, paddingVertical: 4 },
+  footerRow: { marginTop: 20 },
+  footerText: { color: "#64748b", textAlign: "center", fontSize: 14 },
+  footerLink: { color: "#4f46e5", fontWeight: "600" },
+  submitContent: { paddingVertical: 6 },
+})
+
+export default function LoginScreen() {
+  const { signIn } = useAuth()
+  const router = useRouter()
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
+  const [showPassword, setShowPassword] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [emailError, setEmailError] = useState("")
+  const [passwordError, setPasswordError] = useState("")
+
+  async function handleLogin() {
+    setEmailError("")
+    setPasswordError("")
+    if (!email) { setEmailError("Email is required"); return }
+    if (!password) { setPasswordError("Password is required"); return }
+
+    setLoading(true)
+    try {
+      const { access_token } = await authApi.login(email, password)
+      await signIn(access_token)
+      router.replace("/")
+    } catch (err) {
+      Toast.show({
+        type: "error",
+        text1: "Login failed",
+        text2: err instanceof Error ? err.message : "Could not reach the server",
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      style={S.flex}
+    >
+      <ScrollView contentContainerStyle={S.scroll} keyboardShouldPersistTaps="handled">
+
+        {/* Logo */}
+        <Surface style={S.logoSurface} elevation={3}>
+          <Text style={S.logoText}>
+            {String("{{ solution_name }}").charAt(0).toUpperCase()}
+          </Text>
+        </Surface>
+
+        <Text variant="headlineMedium" style={S.appName}>{{ solution_name }}</Text>
+        <Text variant="bodyMedium" style={S.tagline}>Sign in to continue</Text>
+
+        {/* Form card */}
+        <Surface style={S.card} elevation={1}>
+          <TextInput
+            label="Email"
+            mode="outlined"
+            value={email}
+            onChangeText={setEmail}
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoComplete="email"
+            style={S.inputField}
+            error={!!emailError}
+            accessibilityLabel="Email"
+            left={<TextInput.Icon icon="email-outline" />}
+          />
+          <HelperText type="error" visible={!!emailError}>{emailError}</HelperText>
+
+          <View style={S.inputSpacing} />
+
+          <TextInput
+            label="Password"
+            mode="outlined"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry={!showPassword}
+            autoComplete="current-password"
+            style={S.inputField}
+            error={!!passwordError}
+            accessibilityLabel="Password"
+            left={<TextInput.Icon icon="lock-outline" />}
+            right={
+              <TextInput.Icon
+                icon={showPassword ? "eye-off-outline" : "eye-outline"}
+                onPress={() => setShowPassword((v) => !v)}
+                accessibilityLabel={showPassword ? "Hide password" : "Show password"}
+              />
+            }
+          />
+          <HelperText type="error" visible={!!passwordError}>{passwordError}</HelperText>
+
+          <Button
+            mode="contained"
+            onPress={handleLogin}
+            disabled={loading}
+            loading={loading}
+            style={S.submitBtn}
+            contentStyle={S.submitContent}
+            buttonColor="#4f46e5"
+            accessibilityLabel="Sign in"
+          >
+            {loading ? "Signing in…" : "Sign in"}
+          </Button>
+        </Surface>
+
+        <View style={S.footerRow}>
+          <Text style={S.footerText}>
+            Don&apos;t have an account?{" "}
+            <Text style={S.footerLink} onPress={() => router.push("/register")}>
+              Register
+            </Text>
+          </Text>
+        </View>
+
+      </ScrollView>
+    </KeyboardAvoidingView>
+  )
+}

@@ -1,0 +1,130 @@
+{# Workflow/Process view — one generated per BusinessProcess #}
+{# Context: wf (workflow dict with name_snake, name_display, steps, entities_involved) #}
+
+<div x-data="workflow_{{ wf.name_snake }}()" x-init="init()">
+    <div class="mb-6">
+        <h2 class="text-xl font-bold">{{ wf.name_display }}</h2>
+        <p class="text-sm text-zinc-500 mt-0.5">{{ wf.steps | length }}-step workflow</p>
+    </div>
+
+    <!-- Step indicator -->
+    <div class="mb-8">
+        <div class="flex items-center gap-0">
+{% for step in wf.steps %}
+            <div class="flex-1 flex flex-col items-center relative">
+                <!-- Step circle -->
+                <div class="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-colors z-10"
+                     :class="currentStepIndex >= {{ loop.index0 }}
+                         ? (currentStepIndex === {{ loop.index0 }} ? 'bg-blue-600 border-blue-600 text-white' : 'bg-emerald-600 border-emerald-600 text-white')
+                         : 'bg-zinc-800 border-zinc-700 text-zinc-500'">
+{% if not loop.last %}
+                    <span x-show="currentStepIndex > {{ loop.index0 }}">&#10003;</span>
+                    <span x-show="currentStepIndex <= {{ loop.index0 }}">{{ loop.index }}</span>
+{% else %}
+                    <span x-show="currentStepIndex > {{ loop.index0 }}">&#10003;</span>
+                    <span x-show="currentStepIndex <= {{ loop.index0 }}">{{ loop.index }}</span>
+{% endif %}
+                </div>
+                <!-- Step label -->
+                <span class="text-xs mt-2 text-center px-1"
+                      :class="currentStepIndex >= {{ loop.index0 }} ? 'text-zinc-200' : 'text-zinc-500'">
+                    {{ step.name }}
+                </span>
+{% if not loop.last %}
+                <!-- Connector line -->
+                <div class="absolute top-4 left-1/2 w-full h-0.5"
+                     :class="currentStepIndex > {{ loop.index0 }} ? 'bg-emerald-600' : 'bg-zinc-700'"></div>
+{% endif %}
+            </div>
+{% endfor %}
+        </div>
+    </div>
+
+    <!-- Current step content -->
+{% for step in wf.steps %}
+    <div x-show="currentStepIndex === {{ loop.index0 }}" x-cloak>
+        <div class="rounded-lg border border-zinc-800 bg-zinc-900 p-6">
+            <h3 class="text-lg font-semibold mb-1">{{ step.name }}</h3>
+            <p class="text-sm text-zinc-500 mb-4">{{ step.description or 'Complete this step to proceed.' }}</p>
+
+{% if step.entity %}
+            <!-- Step-specific form fields -->
+            <div class="space-y-4 mb-6">
+{% for field in step.fields %}
+{% if field.type == 'boolean' %}
+                <div>
+                    <label class="block text-xs font-medium text-zinc-400 mb-1">{{ field.display_name }}</label>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" x-model="stepData.{{ field.name }}" class="sr-only peer">
+                        <div class="w-9 h-5 bg-zinc-700 peer-focus:ring-2 peer-focus:ring-blue-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                    </label>
+                </div>
+{% elif field.enum_values %}
+                <div>
+                    <label class="block text-xs font-medium text-zinc-400 mb-1">{{ field.display_name }}{% if field.required %} <span class="text-red-400">*</span>{% endif %}</label>
+                    <select x-model="stepData.{{ field.name }}"{% if field.required %} required{% endif %}
+                            class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500">
+                        <option value="">Select...</option>
+{% for val in field.enum_values %}
+                        <option value="{{ val }}">{{ val }}</option>
+{% endfor %}
+                    </select>
+                </div>
+{% elif field.type == 'text' %}
+                <div>
+                    <label class="block text-xs font-medium text-zinc-400 mb-1">{{ field.display_name }}{% if field.required %} <span class="text-red-400">*</span>{% endif %}</label>
+                    <textarea x-model="stepData.{{ field.name }}" rows="3"{% if field.required %} required{% endif %}
+                              class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"></textarea>
+                </div>
+{% else %}
+                <div>
+                    <label class="block text-xs font-medium text-zinc-400 mb-1">{{ field.display_name }}{% if field.required %} <span class="text-red-400">*</span>{% endif %}</label>
+                    <input type="{{ 'number' if field.type in ('integer', 'number') else 'text' }}" x-model="stepData.{{ field.name }}"{% if field.required %} required{% endif %}
+                           class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500">
+                </div>
+{% endif %}
+{% endfor %}
+            </div>
+{% endif %}
+
+            <!-- Step actions -->
+            <div class="flex items-center justify-between pt-4 border-t border-zinc-800">
+                <button x-show="currentStepIndex > 0"
+                        @click="prevStep()"
+                        class="px-4 py-2 text-sm rounded-md border border-zinc-700 text-zinc-400 hover:text-zinc-100 transition-colors">
+                    Previous
+                </button>
+                <div x-show="currentStepIndex === 0"></div>
+{% if step.action %}
+                <button @click="executeStepAction('{{ step.action }}', {{ loop.index0 }})"
+                        :disabled="stepSaving"
+                        class="px-4 py-2 text-sm font-medium rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 transition-colors">
+                    <span x-show="!stepSaving">{{ step.action_label or step.action }}</span>
+                    <span x-show="stepSaving">Processing...</span>
+                </button>
+{% elif not loop.last %}
+                <button @click="nextStep()"
+                        class="px-4 py-2 text-sm font-medium rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-colors">
+                    Next Step
+                </button>
+{% else %}
+                <button @click="completeWorkflow()"
+                        :disabled="stepSaving"
+                        class="px-4 py-2 text-sm font-medium rounded-md bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 transition-colors">
+                    <span x-show="!stepSaving">Complete</span>
+                    <span x-show="stepSaving">Completing...</span>
+                </button>
+{% endif %}
+            </div>
+        </div>
+    </div>
+{% endfor %}
+
+    <!-- Completion state -->
+    <div x-show="completed" x-cloak class="text-center py-12">
+        <svg class="w-16 h-16 mx-auto text-emerald-500 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+        <h3 class="text-lg font-semibold mb-1">Workflow Complete</h3>
+        <p class="text-sm text-zinc-500">{{ wf.name_display }} has been completed successfully.</p>
+        <button @click="resetWorkflow()" class="mt-4 text-sm text-blue-400 hover:text-blue-300">Start Again</button>
+    </div>
+</div>

@@ -1,0 +1,88 @@
+{
+  "expo": {
+    "name": "{{ solution_name }}",
+    "slug": "{{ solution_slug }}-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "scheme": "{{ solution_slug }}",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "updates": {
+      "checkAutomatically": "ON_LOAD"{% if expo_project_id %},
+      "url": "https://u.expo.dev/{{ expo_project_id }}"{% endif %}
+
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "{{ bundle_id | replace('-', '') }}",
+      "buildNumber": "1",
+      "config": {
+        "usesNonExemptEncryption": false
+      },
+      "infoPlist": {
+        {% if has_biometric %}
+        "NSFaceIDUsageDescription": "{{ solution_name }} uses Face ID to protect your account.",
+        {% endif %}
+        {% if push_enabled %}
+        "NSUserNotificationUsageDescription": "{{ solution_name }} sends notifications to keep you up to date.",
+        {% endif %}
+        "NSPhotoLibraryUsageDescription": "Required to attach photos to records.",
+        "NSCameraUsageDescription": "Required to scan documents or capture photos."
+      },
+      "privacyManifests": {
+        "NSPrivacyAccessedAPITypes": [
+          {
+            "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryUserDefaults",
+            "NSPrivacyAccessedAPITypeReasons": ["CA92.1"]
+          }
+        ]
+      }
+    },
+    "android": {
+      "package": "{{ bundle_id | replace('-', '_') }}",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#6366f1"
+      },
+      "permissions": [
+        {% if has_biometric %}
+        "USE_BIOMETRIC",
+        "USE_FINGERPRINT",
+        {% endif %}
+        {% if push_enabled %}
+        "RECEIVE_BOOT_COMPLETED",
+        "VIBRATE",
+        {% endif %}
+        "INTERNET",
+        "ACCESS_NETWORK_STATE"
+      ]
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-updates"{% if has_biometric %},
+      "expo-local-authentication"{% endif %}{% if push_enabled %},
+      "expo-notifications"{% endif %}
+
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "{{ expo_project_id | default('REPLACE_WITH_YOUR_EAS_PROJECT_ID') }}"
+      },
+      "privacyPolicyUrl": "{{ privacy_policy_url }}",
+      "termsUrl": "{{ terms_url }}"
+    }
+  }
+}

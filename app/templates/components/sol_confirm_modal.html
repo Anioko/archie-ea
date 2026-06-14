@@ -1,0 +1,92 @@
+{% macro sol_confirm_modal(modal_id, title, message_expr, confirm_label='Delete', confirm_handler='', confirm_variant='destructive', cancel_label='Cancel') %}
+{#
+  sol_confirm_modal — Accessible delete/action confirmation modal.
+  Replaces all per-entity confirmation dialogs with a single reusable component.
+
+  Parameters:
+    modal_id         (str) — unique id, e.g. 'confirm-delete-driver' or 'confirmModal'
+    title            (str) — modal heading, e.g. "Delete Driver"
+    message_expr     (str) — Alpine expression for body text, e.g. "confirmMessage" (or literal string in quotes)
+    confirm_label    (str) — confirm button text (default: 'Delete')
+    confirm_handler  (str) — Alpine handler on confirm click, e.g. "executeDelete()"
+    confirm_variant  (str) — 'destructive' | 'default'
+    cancel_label     (str) — cancel button label (default: 'Cancel')
+
+  Accessibility (NFR-4, NFR-5):
+    - role="dialog" + aria-modal="true"
+    - aria-labelledby pointing to heading
+    - @keydown.escape closes modal
+    - Focus moves to first focusable element on open (via x-init trap)
+    - Focus returned to trigger element on close (managed by caller's triggerRef)
+#}
+{% set _heading_id = modal_id ~ '-heading' %}
+{% if confirm_variant == 'destructive' %}
+  {% set _btn_cls = 'bg-destructive text-destructive-foreground hover:bg-destructive/90' %}
+{% else %}
+  {% set _btn_cls = 'bg-primary text-primary-foreground hover:bg-primary/90' %}
+{% endif %}
+
+<div x-show="activeModal === '{{ modal_id }}'"
+     x-cloak
+     x-trap.noscroll="activeModal === '{{ modal_id }}'"
+     @keydown.escape.window="activeModal !== '{{ modal_id }}' || (activeModal = null)"
+     class="fixed inset-0 z-50 flex items-center justify-center"
+     role="dialog"
+     aria-modal="true"
+     aria-labelledby="{{ _heading_id }}">
+
+  {# Backdrop #}
+  <div class="absolute inset-0 bg-black/50 backdrop-blur-sm"
+       @click="activeModal = null"
+       aria-hidden="true"></div>
+
+  {# Dialog panel #}
+  <div class="relative bg-background rounded-lg border border-border shadow-xl max-w-md w-full mx-4 p-6 flex flex-col gap-4"
+       x-transition:enter="transition ease-out duration-150"
+       x-transition:enter-start="opacity-0 scale-95"
+       x-transition:enter-end="opacity-100 scale-100"
+       x-transition:leave="transition ease-in duration-100"
+       x-transition:leave-start="opacity-100 scale-100"
+       x-transition:leave-end="opacity-0 scale-95">
+
+    {# Header #}
+    <div class="flex items-start justify-between gap-3">
+      <div class="flex items-center gap-3">
+        {% if confirm_variant == 'destructive' %}
+        <div class="flex-shrink-0 flex items-center justify-center w-10 h-10 rounded-full bg-destructive/10">
+          <i data-lucide="trash-2" class="w-5 h-5 text-destructive" aria-hidden="true"></i>
+        </div>
+        {% else %}
+        <div class="flex-shrink-0 flex items-center justify-center w-10 h-10 rounded-full bg-primary/10">
+          <i data-lucide="alert-circle" class="w-5 h-5 text-primary" aria-hidden="true"></i>
+        </div>
+        {% endif %}
+        <h2 id="{{ _heading_id }}" class="text-base font-semibold text-foreground">{{ title }}</h2>
+      </div>
+      <button type="button"
+              @click="activeModal = null"
+              class="text-muted-foreground hover:text-foreground p-1 rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              aria-label="Close dialog">
+        <i data-lucide="x" class="w-4 h-4" aria-hidden="true"></i>
+      </button>
+    </div>
+
+    {# Body #}
+    <p class="text-sm text-muted-foreground" x-text="{{ message_expr }}"></p>
+
+    {# Actions #}
+    <div class="flex justify-end gap-2 pt-1">
+      <button type="button"
+              @click="activeModal = null"
+              class="inline-flex items-center px-3 py-1.5 rounded-md text-sm font-medium border border-input bg-background text-foreground hover:bg-accent transition-colors min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        {{ cancel_label }}
+      </button>
+      <button type="button"
+              @click="{{ confirm_handler }}; activeModal = null"
+              class="inline-flex items-center px-3 py-1.5 rounded-md text-sm font-medium {{ _btn_cls }} transition-colors min-h-[36px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        {{ confirm_label }}
+      </button>
+    </div>
+  </div>
+</div>
+{% endmacro %}

@@ -1,0 +1,39 @@
+{#
+  Metrics Grid Partial
+
+  Displays a responsive grid of metric cards with icons, values, and labels.
+
+  Parameters:
+    - metrics: List of metric dictionaries with keys:
+        - icon: Lucide icon name (e.g., "building", "check-circle")
+        - icon_gradient: Tailwind solid color class (e.g., "bg-primary")
+        - label: Metric label (e.g., "Total Vendors")
+        - value: Metric value (number or string)
+        - sublabel: Optional small text below value
+
+  Usage:
+    {% set metrics = [
+      {'icon': 'building', 'icon_gradient': 'bg-primary', 'label': 'Total', 'value': 42, 'sublabel': 'items tracked'},
+      {'icon': 'check-circle', 'icon_gradient': 'bg-emerald-500', 'label': 'Active', 'value': 38, 'sublabel': 'currently in use'}
+    ] %}
+    {% include 'partials/_metrics_grid.html' %}
+#}
+
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-6">
+  {% for metric in metrics %}
+  <div class="rounded-xl border-2 border-input bg-background hover:border-primary/50 hover:shadow-sm transition-all duration-200 p-5">
+    <div class="flex items-start gap-4">
+      <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg {{ metric.icon_gradient }}">
+        <i data-lucide="{{ metric.icon }}" class="h-5 w-5 text-primary-foreground"></i>
+      </div>
+      <div class="flex-1 min-w-0">
+        <p class="text-sm font-medium text-muted-foreground">{{ metric.label }}</p>
+        <p class="text-2xl font-bold tracking-tight mt-1">{{ metric.value }}</p>
+        {% if metric.sublabel %}
+        <p class="text-xs text-muted-foreground mt-1">{{ metric.sublabel }}</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>

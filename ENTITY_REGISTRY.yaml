@@ -1,0 +1,209 @@
+# ENTITY_REGISTRY.yaml — Canonical Entity Map
+# ============================================
+# Every agent MUST search this before creating any new model.
+# Pre-commit hook blocks new db.Model classes not listed here.
+#
+# Rules:
+# 1. If your entity matches an alias → USE the canonical model
+# 2. If you need a new entity → ADD it here with justification
+# 3. New models without a registry entry will be BLOCKED by pre-commit
+# 4. Junction tables linking two canonical entities don't need entries
+#
+# Last updated: 2026-03-24
+
+# ── People & Organization ─────────────────────────────────────────
+
+people:
+  canonical_model: User
+  table: users
+  file: app/models/user.py
+  purpose: Platform accounts — anyone who logs in
+  key_fields: [email, first_name, last_name, enterprise_role, organization_id]
+  aliases: [user, account, member, login, platform_user]
+  DO_NOT_CREATE: [UserProfile, AccountModel, PlatformMember]
+
+organization:
+  canonical_model: Organization
+  table: organizations
+  file: app/models/organization.py
+  purpose: Tenant boundary — every piece of business data belongs to one org
+  key_fields: [name, slug, plan, is_active, max_users]
+  aliases: [tenant, company, org, workspace]
+  DO_NOT_CREATE: [Tenant, Company, Workspace]
+
+business_actor:
+  canonical_model: BusinessActor
+  table: business_actors
+  file: app/models/business_layer.py
+  purpose: "Org hierarchy: departments, teams, roles, individuals, external partners"
+  key_fields: [name, actor_type, department, division, parent_actor_id, operational_status]
+  aliases: [stakeholder, person, team, department, org_unit, actor, contact, partner]
+  DO_NOT_CREATE: [OrganizationUnit (use BusinessActor), Stakeholder (link via SolutionStakeholder.business_actor_id)]
+  notes: >
+    SolutionStakeholder adds solution-specific context (influence, interest, attitude)
+    but MUST link to a BusinessActor or User via FK. Never create standalone name-only
+    stakeholder records.
+
+role:
+  canonical_model: Role
+  table: roles
+  file: app/models/user.py
+  purpose: Authorization roles (User, Administrator)
+  key_fields: [name, permissions, default]
+  aliases: [permission_role, auth_role]
+  DO_NOT_CREATE: [AuthRole, PermissionGroup]
+
+# ── Applications ──────────────────────────────────────────────────
+
+application:
+  canonical_model: ApplicationComponent
+  table: application_components
+  file: app/models/application_portfolio.py
+  purpose: Every application in the portfolio — the core entity
+  key_fields: [name, lifecycle_status, application_type, criticality_level, vendor_name]
+  aliases: [app, system, service, platform, tool, software]
+  DO_NOT_CREATE: [Application (use alias), AppModel, SystemModel, ServiceModel]
+  notes: "Legacy alias: Application = ApplicationComponent. Don't create a second app model."
+
+# ── Solutions ─────────────────────────────────────────────────────
+
+solution:
+  canonical_model: Solution
+  table: solutions
+  file: app/models/solution_models.py
+  purpose: Solution architecture — the design being built in the journey wizard
+  key_fields: [name, description, business_domain, governance_status, adm_phase]
+  aliases: [solution_design, architecture_design, project_design]
+  DO_NOT_CREATE: [SolutionDesign, ArchitectureProject]
+
+solution_requirement:
+  canonical_model: SolutionRequirement
+  table: solution_requirements
+  file: app/models/solution_architect_models.py
+  purpose: "Requirements (functional, NFR, constraints) linked to a solution"
+  key_fields: [name, description, requirement_type, priority, moscow_priority, layer, req_type]
+  aliases: [requirement, user_story, nfr, acceptance_criteria, epic]
+  DO_NOT_CREATE: [Requirement, UserStory, NFR, AcceptanceCriteria]
+  notes: "Supports epic hierarchy (epic_parent_id), RICE/WSJF scoring, JIRA sync."
+
+solution_problem:
+  canonical_model: SolutionProblemDefinition
+  table: solution_problem_definitions
+  file: app/models/solution_architect_models.py
+  purpose: Structured problem context — budget, timeline, compliance, industry
+  key_fields: [budget_min, budget_max, timeline_months, industry_vertical, compliance_requirements]
+  aliases: [problem_definition, business_case, project_brief]
+  DO_NOT_CREATE: [BusinessCase, ProjectBrief]
+
+# ── Architecture ──────────────────────────────────────────────────
+
+archimate_element:
+  canonical_model: ArchiMateElement
+  table: archimate_elements
+  file: app/models/archimate_core.py
+  purpose: "Every ArchiMate element — the global catalog across all layers"
+  key_fields: [name, archimate_type, layer, description, source]
+  aliases: [element, component, node, artifact, archimate_node]
+  DO_NOT_CREATE: [Element, Component, ArchitectureElement]
+  notes: "52 ArchiMate element types. Use archimate_type field, not separate models."
+
+archimate_relationship:
+  canonical_model: ArchiMateRelationship
+  table: archimate_relationships
+  file: app/models/archimate_core.py
+  purpose: Relationships between ArchiMate elements
+  key_fields: [source_element_id, target_element_id, relationship_type]
+  aliases: [relationship, connection, dependency, link]
+  DO_NOT_CREATE: [Relationship, Connection, Dependency]
+
+# ── Capabilities ──────────────────────────────────────────────────
+
+business_capability:
+  canonical_model: BusinessCapability
+  table: business_capability
+  file: app/models/business_capabilities.py
+  purpose: Business capabilities — what the organization can do
+  key_fields: [name, description, level, parent_id, domain]
+  aliases: [capability, business_function, process]
+  DO_NOT_CREATE: [Capability (use BusinessCapability), ProcessModel]
+
+technical_capability:
+  canonical_model: TechnicalCapability
+  table: technical_capabilities
+  file: app/models/technical_capability.py
+  purpose: ACM technical capabilities — 7-domain technical catalog
+  key_fields: [name, acm_domain, level, level_number]
+  aliases: [acm_capability, tech_cap]
+  DO_NOT_CREATE: [ACMCapability, TechCapability]
+
+# ── Vendors ───────────────────────────────────────────────────────
+
+vendor:
+  canonical_model: VendorOrganization
+  table: vendor_organizations
+  file: app/models/vendor/vendor_organization.py
+  purpose: Vendor companies in the portfolio
+  key_fields: [name, vendor_type, status, tier]
+  aliases: [vendor, supplier, provider]
+  DO_NOT_CREATE: [Vendor, Supplier, ProviderModel]
+
+vendor_product:
+  canonical_model: VendorProduct
+  table: vendor_products
+  file: app/models/vendor/vendor_organization.py
+  purpose: Products offered by vendors
+  key_fields: [name, vendor_id, product_type, lifecycle_status]
+  aliases: [product, software_product, tool]
+  DO_NOT_CREATE: [Product, SoftwareProduct]
+
+# ── Governance ────────────────────────────────────────────────────
+
+risk:
+  canonical_model: Risk
+  table: risks
+  file: app/models/risk.py
+  purpose: Risk register entries
+  key_fields: [title, description, impact, probability, status]
+  aliases: [risk_item, threat, issue]
+  DO_NOT_CREATE: [RiskItem, Threat, Issue]
+  notes: "Solution-specific risks use SolutionRisk (linked to solution_id)."
+
+decision_record:
+  canonical_model: ArchitectureDecisionRecord
+  table: architecture_decision_records
+  file: app/models/adr.py
+  purpose: Architecture Decision Records (ADRs)
+  key_fields: [title, status, context, decision, consequences]
+  aliases: [adr, decision, architecture_decision]
+  DO_NOT_CREATE: [Decision, ADR]
+
+# ── Projects & Roadmaps ──────────────────────────────────────────
+
+project:
+  canonical_model: Project
+  table: projects
+  file: app/models/project_models.py
+  purpose: Project management — initiatives with milestones and resources
+  key_fields: [name, status, start_date, end_date, project_manager]
+  aliases: [initiative, programme, program]
+  DO_NOT_CREATE: [Initiative, Programme]
+
+# ── Infrastructure ────────────────────────────────────────────────
+
+feature_flag:
+  canonical_model: FeatureFlag
+  table: feature_flags
+  file: app/models/feature_flags.py
+  purpose: Feature toggles for gradual rollout
+  key_fields: [key, name, enabled, feature_type, state]
+  aliases: [feature_toggle, flag]
+  DO_NOT_CREATE: [FeatureToggle, Flag]
+
+api_settings:
+  canonical_model: APISettings
+  table: api_settings
+  file: app/models/models.py
+  purpose: LLM API keys and configuration per tenant
+  key_fields: [provider, api_key, enabled, default_model, organization_id]
+  aliases: [llm_config, api_key]
+  DO_NOT_CREATE: [LLMConfig, APIKey]

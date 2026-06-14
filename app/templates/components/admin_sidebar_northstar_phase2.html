@@ -1,0 +1,452 @@
+{# 
+===============================================================================
+NORTH STAR SIDEBAR - ArchiMate 3.2 Complete Layer Navigation
+===============================================================================
+
+Phase 2 of North Star navigation redesign.
+Complete ArchiMate 3.2 compliance with all 55 element types organized by layer.
+Portfolio/Architecture separation honoring operational vs conceptual domains.
+
+Feature flag: ENABLE_NORTH_STAR_PHASE2
+Depends on: ENABLE_NORTH_STAR_NAV (Phase 1)
+
+===============================================================================
+#}
+<aside
+    :class="$store.sidebar.open ? 'translate-x-0' : '-translate-x-full'"
+    @click.away="isDesktop ? null : $store.sidebar.open = false"
+    class="fixed inset-y-0 left-0 z-50 w-64 bg-card border-r border-border -translate-x-full lg:translate-x-0 lg:static flex flex-col h-screen shadow-lg lg:shadow-none transition-transform duration-200 ease-in-out"
+>
+    <!-- Sidebar Header -->
+    <div class="flex items-center justify-between h-16 px-4 border-b border-border flex-shrink-0">
+        <a href="{{ url_for('admin.index') }}" class="flex items-center space-x-2">
+            <div class="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+                <i data-lucide="layout-dashboard" class="w-5 h-5 text-primary-foreground"></i>
+            </div>
+            <span class="text-lg font-semibold">{{ config.APP_NAME }}</span>
+        </a>
+        <button type="button" @click="$store.sidebar.open = false" class="lg:hidden text-muted-foreground hover:text-foreground" aria-label="Close navigation">
+            <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+    </div>
+
+    <!-- Navigation -->
+    <nav id="sidebar-nav" class="flex-1 px-2 py-4 space-y-2 overflow-y-auto min-h-0 [&::-webkit-scrollbar]:w-0 [scrollbar-width:none]"
+         x-data="{
+             searchQuery: '',
+             openSections: JSON.parse(localStorage.getItem('nsNavSections') || '{}'),
+             toggleSection(key) {
+                 this.openSections[key] = !this.openSections[key];
+                 localStorage.setItem('nsNavSections', JSON.stringify(this.openSections));
+             },
+             matchesSearch(text) {
+                 if (!this.searchQuery) return true;
+                 return text.toLowerCase().includes(this.searchQuery.toLowerCase());
+             }
+         }">
+        
+        <!-- Search Box -->
+        <div class="px-3 pb-3 mb-2 border-b border-border">
+            <div class="relative">
+                <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"></i>
+                <input 
+                    type="text"
+                    x-model="searchQuery"
+                    placeholder="Search navigation..."
+                    class="w-full h-9 pl-9 pr-3 rounded-md border border-input bg-background text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+            </div>
+            <div x-cloak x-show="!searchQuery" class="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+                <kbd class="px-1.5 py-0.5 rounded bg-muted border border-border font-mono text-[10px] text-foreground">Ctrl+K</kbd>
+                <span>for global search</span>
+            </div>
+        </div>
+
+        {# ================================================================
+           SECTION 1: HOME
+           ================================================================ #}
+        <div class="px-3 py-2" x-show="matchesSearch('Home Dashboard Overview Health')" x-cloak>
+            <div class="mb-2 px-2 text-xs font-semibold tracking-tight text-muted-foreground uppercase">
+                Home
+            </div>
+            <div class="space-y-1">
+                <a href="{{ url_for('dashboard.overview') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'dashboard.overview' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}">
+                    <i data-lucide="layout-dashboard" class="h-4 w-4"></i>
+                    <span>Dashboard</span>
+                </a>
+                <a href="{{ url_for('dashboard.health_scorecard') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'dashboard.health_scorecard' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}">
+                    <i data-lucide="heart-pulse" class="h-4 w-4"></i>
+                    <span>Health Scorecard</span>
+                </a>
+            </div>
+        </div>
+
+        {# ================================================================
+           SECTION 2: SOLUTIONS (TOGAF ADM Cycle)
+           ================================================================ #}
+        <div class="px-3 py-2" x-show="matchesSearch('Solutions Create AI Chat Architecture Assistant Design ADM')" x-cloak>
+            <div class="mb-2 px-2 text-xs font-semibold tracking-tight text-muted-foreground uppercase">
+                Solutions
+            </div>
+            <div class="space-y-1">
+                <!-- Create Solution CTA -->
+                <a href="/architecture-journey/"
+                   class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+                    <i data-lucide="plus-circle" class="h-4 w-4"></i>
+                    <span>Create Solution</span>
+                </a>
+                
+                <a href="{{ url_for('solution_design.list_solutions') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'solution_design.list_solutions' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}">
+                    <i data-lucide="layers" class="h-4 w-4"></i>
+                    <span>All Solutions</span>
+                </a>
+                
+                <a href="{{ url_for('unified_ai_chat.index') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint and request.endpoint.startswith('unified_ai_chat') %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}">
+                    <i data-lucide="bot" class="h-4 w-4"></i>
+                    <span>AI Chat</span>
+                </a>
+                
+                <a href="{{ url_for('adm_kanban_view.index') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint and request.endpoint.startswith('adm_kanban_view') %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}">
+                    <i data-lucide="kanban" class="h-4 w-4"></i>
+                    <span>Initiative Pipeline</span>
+                </a>
+
+                <a href="{{ url_for('solution_design.programmes_list') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint in ('solution_design.programmes_list', 'solution_design.programme_cockpit') %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}">
+                    <i data-lucide="git-merge" class="h-4 w-4"></i>
+                    <span>Programmes</span>
+                </a>
+                <a href="{{ url_for('solution_design.ea_briefings') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint in ('solution_design.ea_briefings', 'solution_design.ea_briefing_detail') %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}">
+                    <i data-lucide="newspaper" class="h-4 w-4"></i>
+                    <span>EA Briefing</span>
+                </a>
+                <a href="{{ url_for('solution_design.data_stewardship') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'solution_design.data_stewardship' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}">
+                    <i data-lucide="database" class="h-4 w-4"></i>
+                    <span>Data Stewardship</span>
+                </a>
+                <a href="{{ url_for('solution_design.architect_synthesis') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint in ('solution_design.architect_synthesis', 'solution_design.solution_review_packet') %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}">
+                    <i data-lucide="layout-dashboard" class="h-4 w-4"></i>
+                    <span>Chief Architect</span>
+                </a>
+            </div>
+        </div>
+
+        {# ================================================================
+           SECTION 3: PORTFOLIO (Operational Assets)
+           ================================================================ #}
+        <div class="px-3 py-2" x-show="matchesSearch('Portfolio Applications Vendors Rationalization Cost')" x-cloak>
+            <div class="mb-2 px-2 text-xs font-semibold tracking-tight text-muted-foreground uppercase">
+                Portfolio
+            </div>
+            <div class="space-y-1">
+                <!-- Applications -->
+                <button type="button" @click="toggleSection('portfolio_apps')"
+                        class="w-full flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground text-muted-foreground">
+                    <i data-lucide="chevron-right" class="h-4 w-4 transition-transform" :class="openSections['portfolio_apps'] ? 'rotate-90' : ''"></i>
+                    <i data-lucide="package" class="h-4 w-4"></i>
+                    <span>Applications ({{ '{:,}'.format(nav_counts.applications) if nav_counts is defined else '' }})</span>
+                </button>
+                <div x-show="openSections['portfolio_apps']" x-cloak class="ml-7 space-y-0.5 border-l-2 border-border/50 pl-3">
+                    <a href="{{ url_for('unified_applications.application_list') }}" class="flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors hover:bg-accent hover:text-accent-foreground text-muted-foreground">
+                        <i data-lucide="list" class="h-3.5 w-3.5"></i>
+                        <span>All Applications</span>
+                    </a>
+                    <a href="{{ url_for('unified_applications.rationalization_dashboard') }}" class="flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors hover:bg-accent hover:text-accent-foreground text-muted-foreground">
+                        <i data-lucide="git-merge" class="h-3.5 w-3.5"></i>
+                        <span>Rationalization</span>
+                    </a>
+                    <a href="{{ url_for('consolidation_list.dashboard') }}" class="flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors hover:bg-accent hover:text-accent-foreground text-muted-foreground">
+                        <i data-lucide="combine" class="h-3.5 w-3.5"></i>
+                        <span>Portfolio Consolidation</span>
+                    </a>
+                    <a href="{{ url_for('unified_duplicate.simple_dashboard') }}" class="flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors hover:bg-accent hover:text-accent-foreground text-muted-foreground">
+                        <i data-lucide="copy" class="h-3.5 w-3.5"></i>
+                        <span>Overlap Analysis</span>
+                    </a>
+                </div>
+                
+                <!-- Vendors -->
+                <button type="button" @click="toggleSection('portfolio_vendors')"
+                        class="w-full flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground text-muted-foreground">
+                    <i data-lucide="chevron-right" class="h-4 w-4 transition-transform" :class="openSections['portfolio_vendors'] ? 'rotate-90' : ''"></i>
+                    <i data-lucide="building-2" class="h-4 w-4"></i>
+                    <span>Vendors ({{ '{:,}'.format(nav_counts.vendors) if nav_counts is defined else '' }})</span>
+                </button>
+                <div x-show="openSections['portfolio_vendors']" x-cloak class="ml-7 space-y-0.5 border-l-2 border-border/50 pl-3">
+                    <a href="{{ url_for('unified_applications.vendors') }}" class="flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors hover:bg-accent hover:text-accent-foreground text-muted-foreground">
+                        <i data-lucide="building" class="h-3.5 w-3.5"></i>
+                        <span>Vendor Dashboard</span>
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        {# ================================================================
+           SECTION 4: ARCHITECTURE (ArchiMate 3.2 - All 6 Layers)
+           ================================================================ #}
+        <div class="px-3 py-2" x-show="matchesSearch('Architecture ArchiMate Elements Layers Models Viewpoint Motivation Strategy Business Application Technology Physical Implementation')" x-cloak>
+            <div class="mb-2 px-2 text-xs font-semibold tracking-tight text-muted-foreground uppercase">
+                Architecture
+            </div>
+            <div class="space-y-1">
+                <!-- Cross-layer tools -->
+                <a href="{{ url_for('archimate_crud.dashboard') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground text-muted-foreground">
+                    <i data-lucide="box" class="h-4 w-4"></i>
+                    <span>All Elements ({{ '{:,}'.format(nav_counts.elements) if nav_counts is defined else '' }})</span>
+                </a>
+                <a href="{{ url_for('archimate.composer_page') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground text-muted-foreground">
+                    <i data-lucide="pen-tool" class="h-4 w-4"></i>
+                    <span>Viewpoint Editor</span>
+                </a>
+                <a href="{{ url_for('architect_ui.traceability_matrix') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground text-muted-foreground">
+                    <i data-lucide="network" class="h-4 w-4"></i>
+                    <span>Traceability Matrix</span>
+                </a>
+                <a href="{{ url_for('archimate.traceability_chain') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'archimate.traceability_chain' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}">
+                    <i data-lucide="share-2" class="h-4 w-4"></i>
+                    <span>Traceability Chain</span>
+                </a>
+                
+                <div class="my-2 border-t border-border/50"></div>
+                <div class="px-2 text-xs font-medium text-muted-foreground uppercase tracking-tight mb-1">By Layer</div>
+                
+                <!-- Motivation Layer (9 element types) -->
+                <button type="button" @click="toggleSection('layer_motivation')"
+                        class="w-full flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground text-muted-foreground">
+                    <i data-lucide="chevron-right" class="h-4 w-4 transition-transform" :class="openSections['layer_motivation'] ? 'rotate-90' : ''"></i>
+                    <i data-lucide="target" class="h-4 w-4"></i>
+                    <span>Motivation Layer</span>
+                </button>
+                <div x-show="openSections['layer_motivation']" x-cloak class="ml-7 space-y-0.5 border-l-2 border-primary/20 pl-3 text-xs">
+                    <a href="/architecture/motivation/stakeholders" class="block py-1 text-muted-foreground hover:text-foreground">Stakeholders</a>
+                    <a href="/architecture/motivation/drivers" class="block py-1 text-muted-foreground hover:text-foreground">Drivers</a>
+                    <a href="/architecture/motivation/assessments" class="block py-1 text-muted-foreground hover:text-foreground">Assessments</a>
+                    <a href="/architecture/motivation/goals" class="block py-1 text-muted-foreground hover:text-foreground">Goals</a>
+                    <a href="/architecture/motivation/outcomes" class="block py-1 text-muted-foreground hover:text-foreground">Outcomes</a>
+                    <a href="/architecture/motivation/principles" class="block py-1 text-muted-foreground hover:text-foreground">Principles</a>
+                    <a href="/architecture/motivation/requirements" class="block py-1 text-muted-foreground hover:text-foreground">Requirements</a>
+                    <a href="/architecture/motivation/constraints" class="block py-1 text-muted-foreground hover:text-foreground">Constraints</a>
+                    <a href="/architecture/motivation/meanings" class="block py-1 text-muted-foreground hover:text-foreground">Meanings</a>
+                    <a href="{{ url_for('stakeholder_map.stakeholder_map_page') }}" class="block py-1 text-muted-foreground hover:text-foreground font-medium">→ Stakeholder Map</a>
+                </div>
+                
+                <!-- Strategy Layer (4 element types + special views) -->
+                <button type="button" @click="toggleSection('layer_strategy')"
+                        class="w-full flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground text-muted-foreground">
+                    <i data-lucide="chevron-right" class="h-4 w-4 transition-transform" :class="openSections['layer_strategy'] ? 'rotate-90' : ''"></i>
+                    <i data-lucide="trending-up" class="h-4 w-4"></i>
+                    <span>Strategy Layer</span>
+                </button>
+                <div x-show="openSections['layer_strategy']" x-cloak class="ml-7 space-y-0.5 border-l-2 border-primary/20 pl-3 text-xs">
+                    <a href="{{ url_for('capability_map.index') }}" class="block py-1 text-muted-foreground hover:text-foreground font-medium">
+                        Capabilities ({{ '{:,}'.format(nav_counts.capabilities) if nav_counts is defined else '' }}) · Map View
+                    </a>
+                    <a href="/architecture/strategy/capabilities/tree" class="block py-1 text-muted-foreground hover:text-foreground pl-4 border-l border-border/60">
+                        Tree View
+                    </a>
+                    <a href="{{ url_for('strategic.capability_health') }}" class="block py-1 text-muted-foreground hover:text-foreground pl-4 border-l border-border/60">
+                        Health Dashboard
+                    </a>
+                    <a href="{{ url_for('main.capability_roadmap') }}" class="block py-1 text-muted-foreground hover:text-foreground pl-4 border-l border-border/60">
+                        Capability Roadmap
+                    </a>
+                    <a href="{{ url_for('maturity_management.frameworks_overview') }}" class="block py-1 text-muted-foreground hover:text-foreground pl-4 border-l border-border/60">
+                        Maturity Frameworks
+                    </a>
+                    <div class="my-1 border-t border-border/50"></div>
+                    <a href="/architecture/strategy/resources" class="block py-1 text-muted-foreground hover:text-foreground">Resources</a>
+                    <a href="/architecture/strategy/value-streams" class="block py-1 text-muted-foreground hover:text-foreground">Value Streams</a>
+                    <a href="/architecture/strategy/courses-of-action" class="block py-1 text-muted-foreground hover:text-foreground">Courses of Action</a>
+                </div>
+                
+                <!-- Business Layer (13 element types) -->
+                <button type="button" @click="toggleSection('layer_business')"
+                        class="w-full flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground text-muted-foreground">
+                    <i data-lucide="chevron-right" class="h-4 w-4 transition-transform" :class="openSections['layer_business'] ? 'rotate-90' : ''"></i>
+                    <i data-lucide="briefcase" class="h-4 w-4"></i>
+                    <span>Business Layer</span>
+                </button>
+                <div x-show="openSections['layer_business']" x-cloak class="ml-7 space-y-0.5 border-l-2 border-primary/20 pl-3 text-xs">
+                    <a href="/architecture/business/actors" class="block py-1 text-muted-foreground hover:text-foreground">Business Actors</a>
+                    <a href="/architecture/business/roles" class="block py-1 text-muted-foreground hover:text-foreground">Business Roles</a>
+                    <a href="/architecture/business/collaborations" class="block py-1 text-muted-foreground hover:text-foreground">Business Collaborations</a>
+                    <a href="/architecture/business/interfaces" class="block py-1 text-muted-foreground hover:text-foreground">Business Interfaces</a>
+                    <a href="/architecture/business/processes" class="block py-1 text-muted-foreground hover:text-foreground font-medium">
+                        Business Processes (APQC)
+                    </a>
+                    <a href="/architecture/business/functions" class="block py-1 text-muted-foreground hover:text-foreground">Business Functions</a>
+                    <a href="/architecture/business/interactions" class="block py-1 text-muted-foreground hover:text-foreground">Business Interactions</a>
+                    <a href="/architecture/business/events" class="block py-1 text-muted-foreground hover:text-foreground">Business Events</a>
+                    <a href="/architecture/business/services" class="block py-1 text-muted-foreground hover:text-foreground">Business Services</a>
+                    <a href="/architecture/business/objects" class="block py-1 text-muted-foreground hover:text-foreground">Business Objects</a>
+                    <a href="/architecture/business/contracts" class="block py-1 text-muted-foreground hover:text-foreground">Contracts</a>
+                    <a href="/architecture/business/representations" class="block py-1 text-muted-foreground hover:text-foreground">Representations</a>
+                    <a href="/architecture/business/products" class="block py-1 text-muted-foreground hover:text-foreground">Products</a>
+                </div>
+                
+                <!-- Application Layer (8 element types) -->
+                <button type="button" @click="toggleSection('layer_application')"
+                        class="w-full flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground text-muted-foreground">
+                    <i data-lucide="chevron-right" class="h-4 w-4 transition-transform" :class="openSections['layer_application'] ? 'rotate-90' : ''"></i>
+                    <i data-lucide="cpu" class="h-4 w-4"></i>
+                    <span>Application Layer</span>
+                </button>
+                <div x-show="openSections['layer_application']" x-cloak class="ml-7 space-y-0.5 border-l-2 border-primary/20 pl-3 text-xs">
+                    <a href="/architecture/application/components" class="block py-1 text-muted-foreground hover:text-foreground">Application Components</a>
+                    <a href="/architecture/application/collaborations" class="block py-1 text-muted-foreground hover:text-foreground">Application Collaborations</a>
+                    <a href="/architecture/application/interfaces" class="block py-1 text-muted-foreground hover:text-foreground">Application Interfaces</a>
+                    <a href="/architecture/application/functions" class="block py-1 text-muted-foreground hover:text-foreground">Application Functions</a>
+                    <a href="/architecture/application/interactions" class="block py-1 text-muted-foreground hover:text-foreground">Application Interactions</a>
+                    <a href="/architecture/application/processes" class="block py-1 text-muted-foreground hover:text-foreground">Application Processes</a>
+                    <a href="/architecture/application/services" class="block py-1 text-muted-foreground hover:text-foreground">Application Services</a>
+                    <a href="/architecture/application/data-objects" class="block py-1 text-muted-foreground hover:text-foreground">Data Objects</a>
+                    <div class="my-1 border-t border-border/50"></div>
+                    <a href="{{ url_for('unified_applications.application_list') }}" class="block py-1 text-primary hover:text-primary/80 font-medium">
+                        → View Portfolio Applications
+                    </a>
+                </div>
+                
+                <!-- Technology Layer (11 element types) -->
+                <button type="button" @click="toggleSection('layer_technology')"
+                        class="w-full flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground text-muted-foreground">
+                    <i data-lucide="chevron-right" class="h-4 w-4 transition-transform" :class="openSections['layer_technology'] ? 'rotate-90' : ''"></i>
+                    <i data-lucide="server" class="h-4 w-4"></i>
+                    <span>Technology Layer</span>
+                </button>
+                <div x-show="openSections['layer_technology']" x-cloak class="ml-7 space-y-0.5 border-l-2 border-primary/20 pl-3 text-xs">
+                    <a href="/architecture/technology/nodes" class="block py-1 text-muted-foreground hover:text-foreground">Nodes</a>
+                    <a href="/architecture/technology/devices" class="block py-1 text-muted-foreground hover:text-foreground">Devices</a>
+                    <a href="/architecture/technology/system-software" class="block py-1 text-muted-foreground hover:text-foreground">System Software</a>
+                    <a href="/architecture/technology/collaborations" class="block py-1 text-muted-foreground hover:text-foreground">Technology Collaborations</a>
+                    <a href="/architecture/technology/interfaces" class="block py-1 text-muted-foreground hover:text-foreground">Technology Interfaces</a>
+                    <a href="/architecture/technology/paths" class="block py-1 text-muted-foreground hover:text-foreground">Paths</a>
+                    <a href="/architecture/technology/networks" class="block py-1 text-muted-foreground hover:text-foreground">Communication Networks</a>
+                    <a href="/architecture/technology/functions" class="block py-1 text-muted-foreground hover:text-foreground">Technology Functions</a>
+                    <a href="/architecture/technology/processes" class="block py-1 text-muted-foreground hover:text-foreground">Technology Processes</a>
+                    <a href="/architecture/technology/interactions" class="block py-1 text-muted-foreground hover:text-foreground">Technology Interactions</a>
+                    <a href="/architecture/technology/services" class="block py-1 text-muted-foreground hover:text-foreground">Technology Services</a>
+                    <a href="/architecture/technology/artifacts" class="block py-1 text-muted-foreground hover:text-foreground">Artifacts</a>
+                </div>
+                
+                <!-- Physical Layer (4 element types) -->
+                <button type="button" @click="toggleSection('layer_physical')"
+                        class="w-full flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground text-muted-foreground">
+                    <i data-lucide="chevron-right" class="h-4 w-4 transition-transform" :class="openSections['layer_physical'] ? 'rotate-90' : ''"></i>
+                    <i data-lucide="warehouse" class="h-4 w-4"></i>
+                    <span>Physical Layer</span>
+                </button>
+                <div x-show="openSections['layer_physical']" x-cloak class="ml-7 space-y-0.5 border-l-2 border-primary/20 pl-3 text-xs">
+                    <a href="/architecture/physical/equipment" class="block py-1 text-muted-foreground hover:text-foreground">Equipment</a>
+                    <a href="/architecture/physical/facilities" class="block py-1 text-muted-foreground hover:text-foreground">Facilities</a>
+                    <a href="/architecture/physical/distribution-networks" class="block py-1 text-muted-foreground hover:text-foreground">Distribution Networks</a>
+                    <a href="/architecture/physical/materials" class="block py-1 text-muted-foreground hover:text-foreground">Materials</a>
+                </div>
+                
+                <!-- Implementation & Migration Layer (4 element types) -->
+                <button type="button" @click="toggleSection('layer_implementation')"
+                        class="w-full flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground text-muted-foreground">
+                    <i data-lucide="chevron-right" class="h-4 w-4 transition-transform" :class="openSections['layer_implementation'] ? 'rotate-90' : ''"></i>
+                    <i data-lucide="rocket" class="h-4 w-4"></i>
+                    <span>Implementation Layer</span>
+                </button>
+                <div x-show="openSections['layer_implementation']" x-cloak class="ml-7 space-y-0.5 border-l-2 border-primary/20 pl-3 text-xs">
+                    <a href="/architecture/implementation/work-packages" class="block py-1 text-muted-foreground hover:text-foreground">Work Packages</a>
+                    <a href="/architecture/implementation/deliverables" class="block py-1 text-muted-foreground hover:text-foreground">Deliverables</a>
+                    <a href="/architecture/implementation/events" class="block py-1 text-muted-foreground hover:text-foreground">Implementation Events</a>
+                    <a href="/architecture/implementation/plateaus" class="block py-1 text-muted-foreground hover:text-foreground">Plateaus</a>
+                </div>
+            </div>
+        </div>
+
+        {# ================================================================
+           SECTION 5: GOVERNANCE
+           ================================================================ #}
+        <div class="px-3 py-2" x-show="matchesSearch('Governance ARB Review Board Compliance Risk Impact')" x-cloak>
+            <div class="mb-2 px-2 text-xs font-semibold tracking-tight text-muted-foreground uppercase">
+                Governance
+            </div>
+            <div class="space-y-1">
+                <a href="{{ url_for('arb.dashboard') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground text-muted-foreground">
+                    <i data-lucide="shield-check" class="h-4 w-4"></i>
+                    <span>Architecture Review Board</span>
+                </a>
+                <a href="{{ url_for('strategic.impact_analysis') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground text-muted-foreground">
+                    <i data-lucide="zap" class="h-4 w-4"></i>
+                    <span>Impact Analysis</span>
+                </a>
+            </div>
+        </div>
+
+        {# ================================================================
+           SECTION 6: DATA & INTEGRATION
+           ================================================================ #}
+        <div class="px-3 py-2" x-show="matchesSearch('Data Integration Import Export Batch')" x-cloak>
+            <div class="mb-2 px-2 text-xs font-semibold tracking-tight text-muted-foreground uppercase">
+                Data & Integration
+            </div>
+            <div class="space-y-1">
+                <a href="{{ url_for('batch_import_view.dashboard') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground text-muted-foreground">
+                    <i data-lucide="upload" class="h-4 w-4"></i>
+                    <span>Data Integration</span>
+                </a>
+                <a href="{{ url_for('dashboard_pages.import_history') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground text-muted-foreground">
+                    <i data-lucide="history" class="h-4 w-4"></i>
+                    <span>Import History</span>
+                </a>
+            </div>
+        </div>
+
+        {# ================================================================
+           SECTION 7: ADMINISTRATION (Platform Admin Only)
+           ================================================================ #}
+        {% if current_user.is_admin %}
+        <div class="px-3 py-2" x-show="matchesSearch('Administration Users Organizations Settings API')" x-cloak>
+            <div class="mb-2 px-2 text-xs font-semibold tracking-tight text-muted-foreground uppercase">
+                Administration
+            </div>
+            <div class="space-y-1">
+                <a href="{{ url_for('admin.registered_users') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground text-muted-foreground">
+                    <i data-lucide="users" class="h-4 w-4"></i>
+                    <span>Users & Organizations</span>
+                </a>
+                <a href="{{ url_for('admin.api_settings') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground text-muted-foreground">
+                    <i data-lucide="key" class="h-4 w-4"></i>
+                    <span>API & Integrations</span>
+                </a>
+                <a href="{{ url_for('admin.salesforce_integration') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'admin.salesforce_integration' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %} pl-9">
+                    <i data-lucide="cloud" class="h-4 w-4"></i>
+                    <span>Salesforce Discovery</span>
+                </a>
+                <a href="{{ url_for('admin.power_platform_integration') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'admin.power_platform_integration' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %} pl-9">
+                    <i data-lucide="grid-3x3" class="h-4 w-4"></i>
+                    <span>Power Platform CoE</span>
+                </a>
+                <a href="{{ url_for('admin.seed_management') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground text-muted-foreground">
+                    <i data-lucide="database" class="h-4 w-4"></i>
+                    <span>System Configuration</span>
+                </a>
+                <a href="{{ url_for('main.settings') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'main.settings' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}">
+                    <i data-lucide="settings" class="h-4 w-4"></i>
+                    <span>Platform Settings</span>
+                </a>
+            </div>
+        </div>
+        {% endif %}
+
+    </nav>
+
+    <!-- User Footer -->
+    <div class="flex-shrink-0 border-t border-border px-4 py-3">
+        <div class="flex items-center gap-3">
+            <div class="flex-1 min-w-0">
+                <div class="text-sm font-medium text-foreground truncate">{{ current_user.full_name() }}</div>
+                <div class="text-xs text-muted-foreground truncate">{{ current_user.email }}</div>
+            </div>
+            <a href="{{ url_for('account.logout') }}" class="text-muted-foreground hover:text-foreground transition-colors" title="Logout">
+                <i data-lucide="log-out" class="h-4 w-4"></i>
+            </a>
+        </div>
+    </div>
+</aside>
+
+<!-- Lucide Icons Initialization -->
+<script src="{{ url_for('static', filename='js/sidebar.js') }}"></script>

@@ -1,0 +1,261 @@
+{# app/[entity]/new/page.tsx — Create form with field-type rendering + Zod validation.
+   Context: entity_name, entity_slug, fields (list of field dicts with name, type, required,
+            enum_values, foreign_key, foreign_entity), state_machine_field #}
+"use client"
+
+import { useState } from "react"
+import { useRouter } from "next/navigation"
+import Link from "next/link"
+import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { useForm } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { z } from "zod"
+import { toast } from "sonner"
+import { ArrowLeft, Loader2 } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
+import { Switch } from "@/components/ui/switch"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Form, FormControl, FormField, FormItem, FormLabel, FormMessage,
+} from "@/components/ui/form"
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select"
+{% set fk_fields = [] %}
+{% for field in fields %}{% if field.get('foreign_key') %}{% if fk_fields.append(field) %}{% endif %}{% endif %}{% endfor %}
+{% if fk_fields %}
+import { EntityPicker } from "@/components/entity-picker"
+{% endif %}
+import { api, ApiError } from "@/lib/api"
+
+{# ── Build Zod schema from genome fields ──────────────────────────────── #}
+{# Include state_machine_field on CREATE so the user sets the initial status #}
+{% set _SYSTEM_FIELDS = ['tenant_id', 'owner_id', 'reviewer_id', 'job_status', 'file_path', 'mime_type', 'file_size_bytes', 'ip_address', 'user_agent', 'created_by', 'updated_by', 'deleted_by'] %}
+{% set form_fields = [] %}
+{% for field in fields %}
+{% if not field.get('primary_key') and field.name not in ('id', 'created_at', 'updated_at', 'deleted_at', 'createdAt', 'updatedAt', 'deletedAt') and not field.get('system_managed') and field.name not in _SYSTEM_FIELDS %}
+{% if form_fields.append(field) %}{% endif %}
+{% endif %}
+{% endfor %}
+
+const formSchema = z.object({
+{% for field in form_fields %}
+{% if field.type in ('string', 'text', 'enum') %}
+{% if field.get('enum_values') %}
+  {{ field.name }}: z.enum([{% for v in field.enum_values %}"{{ v }}"{% if not loop.last %}, {% endif %}{% endfor %}]).default("{{ field.enum_values[0] }}"),
+{% elif field.get('required') %}
+  {{ field.name }}: z.string().min(1, "{{ field.name | replace('_', ' ') | title }} is required"),
+{% else %}
+  {{ field.name }}: z.string().optional().default(""),
+{% endif %}
+{% elif field.type in ('integer', 'int') %}
+  {{ field.name }}: z.coerce.number().int(){{ '.min(0)' if field.get('min') is not defined else '' }},
+{% elif field.type in ('decimal', 'float', 'number') %}
+  {{ field.name }}: z.coerce.number(),
+{% elif field.type == 'boolean' %}
+  {{ field.name }}: z.boolean().default(false),
+{% elif field.type in ('datetime', 'date') %}
+  {{ field.name }}: z.string().optional().default(""),
+{% else %}
+  {{ field.name }}: z.string().optional().default(""),
+{% endif %}
+{% endfor %}
+})
+
+type FormValues = z.infer<typeof formSchema>
+
+export default function {{ entity_name }}CreatePage() {
+  const router = useRouter()
+  const queryClient = useQueryClient()
+
+  const form = useForm<FormValues>({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+{% for field in form_fields %}
+{% if field.type == 'boolean' %}
+      {{ field.name }}: false,
+{% elif field.type in ('integer', 'int', 'decimal', 'float', 'number') %}
+      {{ field.name }}: 0,
+{% elif field.get('enum_values') %}
+      {{ field.name }}: "{{ field.enum_values[0] }}",
+{% else %}
+      {{ field.name }}: "",
+{% endif %}
+{% endfor %}
+    },
+  })
+
+  const createMutation = useMutation({
+    mutationFn: (values: FormValues) => api.post("/api/{{ api_resource }}", values),
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["{{ entity_slug }}"] })
+      toast.success("{{ display_name }} created")
+      router.push(`/{{ entity_slug }}/${data.id}`)
+    },
+    onError: (err: unknown) => {
+      const apiErr = err as ApiError
+      if (apiErr?.fieldErrors?.length) {
+        apiErr.fieldErrors.forEach((fe) => {
+          const field = fe.loc?.[fe.loc.length - 1] as string
+          if (field) form.setError(field as any, { message: fe.msg })
+        })
+        toast.error("Validation failed", { description: apiErr.detail })
+      } else {
+        toast.error("Create failed", { description: apiErr?.detail || apiErr?.message })
+      }
+    },
+  })
+
+  return (
+    <div className="max-w-2xl space-y-6">
+      <div className="flex items-center gap-4">
+        <Link href="/{{ entity_slug }}">
+          <Button variant="ghost" size="icon">
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+        </Link>
+        <h1 className="text-2xl font-semibold tracking-tight">
+          New {{ display_name }}
+        </h1>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Details</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit((v) => createMutation.mutate(v))} className="space-y-4">
+{% for field in form_fields %}
+{% if field.get('enum_values') %}
+              <FormField
+                control={form.control}
+                name="{{ field.name }}"
+                render={({ field: f }) => (
+                  <FormItem>
+                    <FormLabel>{{ field.name | replace('_', ' ') | title }}{{ ' *' if field.get('required') else '' }}</FormLabel>
+                    <Select onValueChange={f.onChange} defaultValue={f.value as string}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select {{ field.name | replace('_', ' ') }}" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+{% for val in field.enum_values %}
+                        <SelectItem value="{{ val }}">{{ val | replace('_', ' ') | title }}</SelectItem>
+{% endfor %}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+{% elif field.type == 'text' %}
+              <FormField
+                control={form.control}
+                name="{{ field.name }}"
+                render={({ field: f }) => (
+                  <FormItem>
+                    <FormLabel>{{ field.name | replace('_', ' ') | title }}{{ ' *' if field.get('required') else '' }}</FormLabel>
+                    <FormControl>
+                      <Textarea {...f} placeholder="Enter {{ field.name | replace('_', ' ') }}" rows={4} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+{% elif field.type == 'boolean' %}
+              <FormField
+                control={form.control}
+                name="{{ field.name }}"
+                render={({ field: f }) => (
+                  <FormItem className="flex items-center justify-between rounded-lg border p-4">
+                    <FormLabel>{{ field.name | replace('_', ' ') | title }}</FormLabel>
+                    <FormControl>
+                      <Switch checked={f.value as boolean} onCheckedChange={f.onChange} />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+{% elif field.get('foreign_key') and field.get('foreign_entity') %}
+              <FormField
+                control={form.control}
+                name="{{ field.name }}"
+                render={({ field: f }) => (
+                  <FormItem>
+                    <FormLabel>{{ field.name | replace('_id', '') | replace('_', ' ') | title }}{{ ' *' if field.get('required') else '' }}</FormLabel>
+                    <FormControl>
+                      <EntityPicker
+                        entityType="{{ field.get('foreign_entity_slug') or (field.get('foreign_entity') or '') | lower }}"
+                        apiResource="{{ field.get('foreign_api_resource') or ((field.get('foreign_entity') or '') | lower + 's') }}"
+                        value={f.value as string}
+                        onChange={f.onChange}
+                        placeholder="Search {{ (field.get('foreign_entity') or '') | lower | replace('_', ' ') }}s..."
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+{% elif field.type in ('integer', 'int', 'decimal', 'float', 'number') %}
+              <FormField
+                control={form.control}
+                name="{{ field.name }}"
+                render={({ field: f }) => (
+                  <FormItem>
+                    <FormLabel>{{ field.name | replace('_', ' ') | title }}{{ ' *' if field.get('required') else '' }}</FormLabel>
+                    <FormControl>
+                      <Input type="number" step="{{ '0.01' if field.type in ('decimal', 'float') else '1' }}" {...f} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+{% elif field.type in ('datetime', 'date') %}
+              <FormField
+                control={form.control}
+                name="{{ field.name }}"
+                render={({ field: f }) => (
+                  <FormItem>
+                    <FormLabel>{{ field.name | replace('_', ' ') | title }}{{ ' *' if field.get('required') else '' }}</FormLabel>
+                    <FormControl>
+                      <Input type="{{ 'datetime-local' if field.type == 'datetime' else 'date' }}" {...f} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+{% else %}
+              <FormField
+                control={form.control}
+                name="{{ field.name }}"
+                render={({ field: f }) => (
+                  <FormItem>
+                    <FormLabel>{{ field.name | replace('_', ' ') | title }}{{ ' *' if field.get('required') else '' }}</FormLabel>
+                    <FormControl>
+                      <Input {...f} placeholder="Enter {{ field.name | replace('_', ' ') }}" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+{% endif %}
+{% endfor %}
+              <div className="flex justify-end gap-2 pt-4">
+                <Link href="/{{ entity_slug }}">
+                  <Button type="button" variant="outline">Cancel</Button>
+                </Link>
+                <Button type="submit" disabled={createMutation.isPending}>
+                  {createMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Create {{ display_name }}
+                </Button>
+              </div>
+            </form>
+          </Form>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}

@@ -1,0 +1,127 @@
+{% extends 'layouts/admin_base.html' %}
+
+{% block title %}Import ArchiMate Model (OEF){% endblock %}
+
+{% block breadcrumb %}
+{% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
+{{ breadcrumb_nav(items=[
+    {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
+    {'text': 'Architecture Elements', 'href': url_for('archimate_crud.dashboard')},
+    {'text': 'Import OEF', 'current': true}
+]) }}
+{% endblock %}
+
+{% block content %}
+<div class="container mx-auto p-6 space-y-6 max-w-2xl">
+    <!-- Header -->
+    <div class="flex items-center justify-between">
+        <div>
+            <h1 class="text-3xl font-bold">Import ArchiMate Model (OEF)</h1>
+            <p class="text-muted-foreground mt-2">Upload an ArchiMate Open Exchange Format XML file</p>
+        </div>
+        <a href="{{ url_for('archimate_crud.dashboard') }}"
+           class="inline-flex items-center gap-2 px-3 py-2 text-sm border border-border rounded-md hover:bg-accent">
+            <i data-lucide="arrow-left" class="h-4 w-4" aria-hidden="true"></i> Back to Dashboard
+        </a>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for category, message in messages %}
+        <div class="rounded-md border px-4 py-3 text-sm
+            {{ 'bg-destructive/10 border-destructive text-destructive' if category == 'error' else 'bg-success/10 border-success text-success' }}">
+            {{ message }}
+        </div>
+        {% endfor %}
+    {% endwith %}
+
+    {% if result %}
+    <!-- Import Result -->
+    <div class="rounded-lg border bg-card p-6 space-y-4">
+        <h2 class="text-lg font-semibold">Import Result</h2>
+        <div class="grid grid-cols-2 gap-4 sm:grid-cols-4">
+            <div class="rounded-md bg-muted p-3 text-center">
+                <div class="text-2xl font-bold text-primary">{{ result.elements_created }}</div>
+                <div class="text-xs text-muted-foreground mt-1">Elements Created</div>
+            </div>
+            <div class="rounded-md bg-muted p-3 text-center">
+                <div class="text-2xl font-bold text-muted-foreground">{{ result.elements_skipped }}</div>
+                <div class="text-xs text-muted-foreground mt-1">Elements Skipped (dedup)</div>
+            </div>
+            <div class="rounded-md bg-muted p-3 text-center">
+                <div class="text-2xl font-bold text-primary">{{ result.relationships_created }}</div>
+                <div class="text-xs text-muted-foreground mt-1">Relationships Created</div>
+            </div>
+            <div class="rounded-md bg-muted p-3 text-center">
+                <div class="text-2xl font-bold {{ 'text-destructive' if result.errors else 'text-success' }}">
+                    {{ result.errors | length }}
+                </div>
+                <div class="text-xs text-muted-foreground mt-1">Errors</div>
+            </div>
+        </div>
+
+        {% if result.warnings %}
+        <div class="rounded-md border border-warning bg-warning/5 p-4 space-y-1">
+            <p class="text-sm font-medium text-warning">Warnings:</p>
+            <ul class="list-disc list-inside text-sm text-warning/80 space-y-0.5">
+                {% for w in result.warnings %}
+                <li>{{ w }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+
+        {% if result.errors %}
+        <div class="rounded-md border border-destructive bg-destructive/5 p-4 space-y-1">
+            <p class="text-sm font-medium text-destructive">Errors encountered during import:</p>
+            <ul class="list-disc list-inside text-sm text-destructive/80 space-y-0.5">
+                {% for err in result.errors %}
+                <li>{{ err }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+
+        <p class="text-sm text-muted-foreground">
+            Created {{ result.elements_created }} elements ({{ result.elements_skipped }} skipped as duplicates),
+            {{ result.relationships_created }} relationships.
+            {% if result.errors | length > 0 %}
+                {{ result.errors | length }} error(s).
+            {% else %}
+                No errors.
+            {% endif %}
+        </p>
+
+        <a href="{{ url_for('archimate_crud.dashboard') }}"
+           class="inline-flex items-center gap-2 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90">
+            <i data-lucide="layout-grid" class="h-4 w-4" aria-hidden="true"></i>
+            View Architecture Dashboard
+        </a>
+    </div>
+    {% endif %}
+
+    <!-- Upload Form -->
+    <div class="rounded-lg border bg-card p-6 space-y-4">
+        <h2 class="text-lg font-semibold">Upload OEF XML File</h2>
+        <form method="POST" enctype="multipart/form-data" class="space-y-4">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div
+                class="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-border p-8 text-center hover:border-primary/50 transition-colors cursor-pointer"
+                x-data="{ fileName: '' }"
+                @click="$refs.oefFile.click()">
+                <i data-lucide="upload-cloud" class="h-10 w-10 text-muted-foreground mb-3" aria-hidden="true"></i>
+                <p class="text-sm font-medium">Click to select or drag &amp; drop</p>
+                <p class="text-xs text-muted-foreground mt-1">ArchiMate OEF XML files (.xml)</p>
+                <p class="text-xs text-primary mt-2" x-text="fileName"></p>
+                <input x-ref="oefFile" id="oef_file" name="oef_file" type="file" accept=".xml" class="sr-only"
+                    @change="fileName = $event.target.files[0]?.name || ''">
+            </div>
+
+            <button type="submit"
+                class="inline-flex items-center gap-2 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 w-full justify-center">
+                <i data-lucide="upload" class="h-4 w-4" aria-hidden="true"></i>
+                Import Model
+            </button>
+        </form>
+    </div>
+</div>
+{% endblock %}

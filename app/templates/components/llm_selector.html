@@ -1,0 +1,298 @@
+{#
+LLM Selector Dropdown Component
+
+Usage:
+{% include 'components/llm_selector.html' %}
+
+Or with custom ID:
+{% include 'components/llm_selector.html' with selector_id='my-llm-selector' %}
+#}
+
+{% set selector_id = selector_id | default('llm-selector') %}
+{% set selector_inline = selector_inline | default(false) %}
+
+{% if not selector_inline %}
+{# ── Standalone dropdown button mode (used in primary navbar, etc.) ── #}
+<div class="relative inline-block text-left" id="{{ selector_id }}-container" data-inline="false">
+  <div>
+    <button type="button"
+            id="{{ selector_id }}-button"
+            class="inline-flex items-center justify-center gap-2 rounded-lg border border-input bg-background px-3 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground transition-colors"
+            aria-expanded="false"
+            aria-haspopup="true"
+            title="Select AI provider. Current mode shown by status indicator.">
+      <span id="{{ selector_id }}-status-dot"
+            class="inline-block h-2 w-2 rounded-full bg-muted-foreground shrink-0"
+            aria-hidden="true"></span>
+      <span id="{{ selector_id }}-label">Loading LLMs...</span>
+      <svg class="h-4 w-4 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+        <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
+      </svg>
+    </button>
+  </div>
+  <div id="{{ selector_id }}-dropdown"
+       class="hidden absolute right-0 mt-2 w-72 rounded-md bg-popover shadow-lg ring-1 ring-border focus:outline-none z-50"
+       role="menu">
+    <div class="py-1" role="none" id="{{ selector_id }}-options"></div>
+  </div>
+</div>
+{% else %}
+{# ── Inline flat-list mode (used inside user menu) ── #}
+<div id="{{ selector_id }}-container" data-inline="true" class="px-1">
+  <div id="{{ selector_id }}-options" class="space-y-0.5"></div>
+  <p id="{{ selector_id }}-label" class="hidden"></p>
+  <span id="{{ selector_id }}-status-dot" class="hidden" aria-hidden="true"></span>
+</div>
+{% endif %}
+
+<script>
+(function() {
+  const selectorId = '{{ selector_id }}';
+  const isInline = document.getElementById(selectorId + '-container')?.dataset.inline === 'true';
+
+  const container = document.getElementById(selectorId + '-container');
+  function escapeHtml(str) {
+      if (str == null) return '';
+      return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  }
+  const button = document.getElementById(selectorId + '-button');
+  const dropdown = document.getElementById(selectorId + '-dropdown');
+  const label = document.getElementById(selectorId + '-label');
+  const statusDot = document.getElementById(selectorId + '-status-dot');
+  const optionsContainer = document.getElementById(selectorId + '-options');
+
+  let availableLLMs = [];
+  let currentPreference = null;
+
+  // ── Dropdown toggle (standalone mode only) ──────────────────────────
+  if (!isInline && button) {
+    button.addEventListener('click', function(e) {
+      e.stopPropagation();
+      const isExpanded = button.getAttribute('aria-expanded') === 'true';
+      button.setAttribute('aria-expanded', !isExpanded);
+      dropdown.classList.toggle('hidden');
+    });
+    document.addEventListener('click', function(e) {
+      if (!container.contains(e.target)) {
+        button.setAttribute('aria-expanded', 'false');
+        dropdown.classList.add('hidden');
+      }
+    });
+  }
+
+  // ── Shared promise cache ────────────────────────────────────────────
+  window.__llmApiCache = window.__llmApiCache || { available: null, preference: null };
+
+  function fetchAvailable() {
+    if (!window.__llmApiCache.available) {
+      window.__llmApiCache.available = fetch('/api/v1/llm/available', {
+        credentials: 'same-origin',
+        headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
+      }).then(function(r) { return r.ok ? r.json() : Promise.reject(r.status); });
+    }
+    return window.__llmApiCache.available;
+  }
+
+  async function loadAvailableLLMs() {
+    try {
+      const data = await fetchAvailable();
+      if (data.success) {
+        availableLLMs = data.llms || [];
+        renderOptions();
+      } else {
+        showError(data.error || 'Failed to load LLMs');
+      }
+    } catch (error) {
+      console.debug('Error loading LLMs:', error);
+      showError('Unable to load LLM options');
+    }
+  }
+
+  async function loadUserPreference() {
+    if (!window.__llmApiCache.preference) {
+      window.__llmApiCache.preference = fetch('/api/v1/llm/preference', {
+        credentials: 'same-origin',
+        headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
+      }).then(function(r) { return r.ok ? r.json() : Promise.resolve(null); });
+    }
+    try {
+      const data = await window.__llmApiCache.preference;
+      if (data && data.success && data.preference) {
+        currentPreference = data.preference;
+        updateLabel();
+      }
+    } catch (error) {
+      console.debug('Error loading preference:', error);
+    }
+  }
+
+  // ── Render options ──────────────────────────────────────────────────
+  function renderOptions() {
+    optionsContainer.innerHTML = '';
+    availableLLMs.forEach(function(llm) {
+      const option = document.createElement('div');
+      const isSelected = currentPreference && currentPreference.provider === llm.id;
+
+      if (isInline) {
+        // Flat list item for user-menu embedding
+        option.className = 'flex items-center justify-between rounded-sm px-2 py-1.5 text-sm cursor-pointer hover:bg-accent transition-colors' +
+          (isSelected ? ' bg-accent font-medium' : '') +
+          ((!llm.available && llm.id !== 'none') ? ' opacity-50 cursor-not-allowed' : '');
+        option.setAttribute('role', 'menuitem');
+        option.setAttribute('tabindex', '-1');
+
+        const dot = llm.id === 'none' ? 'bg-muted-foreground/40'
+                  : llm.available      ? 'bg-emerald-500'
+                  :                      'bg-destructive/50';
+        option.innerHTML =
+          '<div class="flex items-center gap-2">' +
+          '<span class="h-2 w-2 rounded-full shrink-0 ' + dot + '" aria-hidden="true"></span>' +
+          '<span>' + escapeHtml(llm.name) + '</span>' +
+          '</div>' +
+          (isSelected ? '<svg class="h-3.5 w-3.5 text-primary shrink-0" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>' : '');
+      } else {
+        // Full card for standalone dropdown
+        option.className = 'px-4 py-2 text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer flex items-center justify-between' +
+          (isSelected ? ' bg-accent text-accent-foreground' : '') +
+          ((!llm.available && llm.id !== 'none') ? ' opacity-50 cursor-not-allowed' : '');
+        option.setAttribute('role', 'menuitem');
+
+        let statusIndicator = '';
+        if (llm.id === 'none') {
+          statusIndicator = '<span class="text-muted-foreground text-xs">Manual mode</span>';
+        } else if (llm.available) {
+          statusIndicator = '<span class="text-emerald-600 text-xs">' + escapeHtml(String(llm.key_count || 0)) + ' key(s)</span>';
+        } else {
+          statusIndicator = '<span class="text-destructive text-xs">Not configured</span>';
+        }
+
+        option.innerHTML =
+          '<div class="flex flex-col">' +
+          '<span class="font-medium">' + escapeHtml(llm.name) + '</span>' +
+          (llm.models && llm.models.length > 0
+            ? '<span class="text-xs text-muted-foreground">' + escapeHtml(llm.models.slice(0, 2).join(', ')) + (llm.models.length > 2 ? '…' : '') + '</span>'
+            : '') +
+          '</div>' + statusIndicator;
+      }
+
+      if (llm.available || llm.id === 'none') {
+        option.addEventListener('click', function() {
+          selectLLM(llm.id, llm.models && llm.models[0]);
+        });
+      } else {
+        option.title = 'No API keys configured for this provider';
+      }
+      optionsContainer.appendChild(option);
+    });
+    updateLabel();
+  }
+
+  // ── Label / status dot (standalone mode) ───────────────────────────
+  function updateLabel() {
+    if (isInline) return; // Inline mode has no label button
+    const selected = availableLLMs.find(function(llm) {
+      return currentPreference && currentPreference.provider === llm.id;
+    });
+    let activeLLM = selected
+        || availableLLMs.find(function(l) { return l.available && l.id !== 'none'; })
+        || availableLLMs.find(function(l) { return l.id === 'none'; })
+        || availableLLMs[0];
+
+    if (activeLLM) {
+      if (label) label.textContent = activeLLM.name;
+      if (statusDot) {
+        statusDot.className = statusDot.className.replace(/\bbg-\S+/g, '');
+        if (activeLLM.id === 'none') {
+          statusDot.classList.add('bg-amber-400');
+          if (button) button.title = 'Manual mode — no AI assistance.';
+        } else if (activeLLM.available) {
+          statusDot.classList.add('bg-emerald-500');
+          if (button) button.title = activeLLM.name + ' is active.';
+        } else {
+          statusDot.classList.add('bg-destructive/50');
+          if (button) button.title = activeLLM.name + ' is not configured.';
+        }
+      }
+      if (!selected && !currentPreference) selectLLM(activeLLM.id, activeLLM.models && activeLLM.models[0], false);
+    } else {
+      if (label) label.textContent = 'No LLMs available';
+    }
+  }
+
+  // ── Select LLM ─────────────────────────────────────────────────────
+  async function selectLLM(provider, model, save) {
+    if (save === undefined) save = true;
+    currentPreference = { provider: provider, model: model };
+    updateLabel();
+    renderOptions();
+    if (!isInline && button && dropdown) {
+      button.setAttribute('aria-expanded', 'false');
+      dropdown.classList.add('hidden');
+    }
+    if (save) {
+      try {
+        const response = await fetch('/api/v1/llm/preference', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || '',
+            'X-Requested-With': 'XMLHttpRequest'
+          },
+          body: JSON.stringify({ provider: provider, model: model })
+        });
+        const data = await response.json();
+        if (data.success) {
+          window.__llmApiCache.preference = null;
+          showNotification('AI provider saved', 'success');
+        } else {
+          showNotification('Failed to save: ' + (data.error || 'Unknown error'), 'error');
+        }
+      } catch (error) {
+        showNotification('Failed to save preference', 'error');
+      }
+    }
+    window.dispatchEvent(new CustomEvent('llmSelected', { detail: { provider: provider, model: model } }));
+  }
+
+  // ── Error state with retry button (fix #11) ────────────────────────
+  function showError(message) {
+    if (label) { label.textContent = message; label.classList.add('text-destructive'); }
+    optionsContainer.innerHTML =
+      '<div class="px-4 py-3 text-sm text-destructive flex flex-col gap-2">' +
+      '<span>' + escapeHtml(message) + '</span>' +
+      '<button type="button" id="' + escapeHtml(selectorId) + '-retry"' +
+      ' class="inline-flex items-center gap-1.5 text-xs font-medium text-foreground hover:text-primary transition-colors">' +
+      '<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">' +
+      '<path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>' +
+      '</svg>Retry</button></div>';
+    const retryBtn = document.getElementById(selectorId + '-retry');
+    if (retryBtn) {
+      retryBtn.addEventListener('click', function() {
+        window.__llmApiCache.available = null;
+        optionsContainer.innerHTML = '<div class="px-4 py-2 text-sm text-muted-foreground">Loading…</div>';
+        loadAvailableLLMs();
+      });
+    }
+  }
+
+  // ── Toast notification ─────────────────────────────────────────────
+  function showNotification(message, type) {
+    const el = document.createElement('div');
+    el.className = 'fixed bottom-4 right-4 px-4 py-2 rounded-lg text-sm font-medium z-50 transition-opacity duration-300 ' +
+      (type === 'success' ? 'bg-emerald-500/10 text-emerald-700 border border-emerald-500/20' :
+       type === 'error'   ? 'bg-destructive/10 text-destructive border border-destructive/20' :
+                            'bg-primary/10 text-primary border border-primary/20');
+    el.textContent = message;
+    document.body.appendChild(el);
+    setTimeout(function() { el.classList.add('opacity-0'); setTimeout(function() { el.remove(); }, 300); }, 3000);
+  }
+
+  // ── Init ────────────────────────────────────────────────────────────
+  if (window.__userAuthenticated !== false) {
+    loadUserPreference().then(function() { loadAvailableLLMs(); });
+  } else {
+    if (label) label.textContent = 'Not signed in';
+  }
+})();
+</script>

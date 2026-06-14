@@ -1,0 +1,42 @@
+name: Project Tasks Dashboard
+route: /dashboard/project-tasks
+blueprint: main
+description: Track project tasks with completion metrics and detailed task list
+metrics:
+  - title: Total Tasks
+    value: 42
+    change: +5
+    icon: activity
+  - title: Completed Tasks
+    value: 28
+    change: +8
+    icon: credit-card
+  - title: In Progress
+    value: 10
+    change: -2
+    icon: users
+  - title: Completion Rate
+    value: 67%
+    change: +12%
+    icon: activity
+features:
+  - charts
+  - table
+charts:
+  - title: Task Completion Overview
+    type: bar
+    data:
+      labels: ['Completed', 'In Progress', 'Pending', 'Blocked']
+      datasets:
+        - label: Tasks
+          data: [28, 10, 3, 1]
+table:
+  model: Task
+  columns:
+    - id
+    - name
+    - status
+    - priority
+    - assigned_to
+    - due_date
+    - completion_percentage

@@ -1,0 +1,258 @@
+{# list_page.html.j2 — Entity list page, one generated per module.
+   ARCHIE renders this per-entity; output is a Jinja2 template the generated app serves.
+   Context (from ARCHIE): entity (dict with name_snake, name_display, fields, api_path,
+     status_field, states, transitions, view_columns, view_filters, view_default_sort, view_actions) #}
+{% raw %}{% extends "layout.html" %}
+{% from "_components.html" import status_badge, empty_state, pagination %}
+
+{% block title %}{% endraw %}{{ entity.name_display }}{% raw %}{% endblock %}
+
+{% block breadcrumb %}
+<nav class="flex items-center gap-1.5 text-sm text-zinc-500">
+    <a href="/" class="hover:text-zinc-700">Home</a>
+    <span>/</span>
+    <span class="text-zinc-900 font-medium">{% endraw %}{{ entity.name_display }}{% raw %}</span>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div x-data="listPage()" x-init="init()">
+    {# Header #}
+    <div class="flex items-center justify-between mb-6">
+        <div>
+            <h1 class="text-xl font-semibold text-zinc-900">{% endraw %}{{ entity.name_display }}{% raw %}</h1>
+            <p class="text-sm text-zinc-500 mt-0.5" x-text="`${total} total records`"></p>
+        </div>
+        <div class="flex items-center gap-2">
+            <div x-data="{ exportOpen: false }" class="relative">
+                <button @click="exportOpen = !exportOpen" @click.away="exportOpen = false"
+                        class="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium border border-zinc-200 rounded-lg text-zinc-700 hover:bg-zinc-50 transition">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                    Export
+                </button>
+                <div x-show="exportOpen" x-cloak class="absolute right-0 mt-1 w-36 bg-white border border-zinc-200 rounded-lg shadow-lg z-10">
+                    <a href="/api/export/{% endraw %}{{ entity.name_snake }}{% raw %}s?format=csv" class="block px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-50">CSV</a>
+                    <a href="/api/export/{% endraw %}{{ entity.name_snake }}{% raw %}s?format=json" class="block px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-50">JSON</a>
+                </div>
+            </div>
+            <a href="/{% endraw %}{{ entity.name_snake }}{% raw %}s/new"
+               class="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
+                <span class="text-lg leading-none">+</span> New {% endraw %}{{ entity.name_display }}{% raw %}
+            </a>
+        </div>
+    </div>
+
+    {# Search + Filters #}
+    <div class="flex flex-wrap items-center gap-3 mb-4">
+        <div class="relative flex-1 max-w-sm">
+            <svg class="w-4 h-4 text-zinc-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+            <input type="text" x-model="searchQuery" @input.debounce.300ms="doSearch()"
+                   placeholder="Search..."
+                   class="w-full pl-9 pr-3 py-2 text-sm border border-zinc-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+        </div>
+{% endraw %}
+{% if entity.view_filters %}
+        <div class="flex gap-1.5">
+{% for filter_field in entity.view_filters %}
+{% if filter_field == entity.status_field and entity.states %}
+            <select x-model="filters.{{ filter_field }}" @change="doSearch()"
+                    class="px-3 py-2 text-sm border border-zinc-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 outline-none">
+                <option value="">All {{ filter_field | replace('_', ' ') | title }}</option>
+{% for state in entity.states %}
+                <option value="{{ state }}">{{ state | replace('_', ' ') | title }}</option>
+{% endfor %}
+            </select>
+{% else %}
+            <select x-model="filters.{{ filter_field }}" @change="doSearch()"
+                    class="px-3 py-2 text-sm border border-zinc-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 outline-none">
+                <option value="">All {{ filter_field | replace('_', ' ') | title }}</option>
+            </select>
+{% endif %}
+{% endfor %}
+        </div>
+{% endif %}
+{% raw %}
+    </div>
+
+    {# Data table #}
+    <div class="bg-white border border-zinc-200 rounded-lg overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b border-zinc-200 bg-zinc-50">
+{% endraw %}
+{% for col in entity.view_columns %}
+                        <th class="px-4 py-3 text-left text-xs font-medium text-zinc-500 uppercase tracking-wide cursor-pointer hover:text-zinc-900 select-none"
+                            {% raw %}@click="toggleSort('{% endraw %}{{ col }}{% raw %}')"{% endraw %}>
+                            {{ col | replace('_', ' ') | title }}
+                            {% raw %}<span x-show="sortField === '{% endraw %}{{ col }}{% raw %}'" x-text="sortDir === 'asc' ? '↑' : '↓'" class="text-blue-600 ml-0.5"></span>{% endraw %}
+                        </th>
+{% endfor %}
+                        <th class="px-4 py-3 text-right text-xs font-medium text-zinc-500">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+{% raw %}
+                    <template x-for="item in items" :key="item.id">
+                    <tr class="border-b border-zinc-100 hover:bg-zinc-50 transition-colors cursor-pointer"
+                        @click="window.location = '/{% endraw %}{{ entity.name_snake }}{% raw %}s/' + item.id">
+{% endraw %}
+{% for col in entity.view_columns %}
+{% if col == entity.status_field %}
+                        <td class="px-4 py-3">
+                            {% raw %}<span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium border"
+                                  :class="statusColor(item.{% endraw %}{{ col }}{% raw %})"
+                                  x-text="(item.{% endraw %}{{ col }}{% raw %} || '').replace(/_/g, ' ')"></span>{% endraw %}
+                        </td>
+{% elif col.endswith('_at') or col.endswith('_date') or col == 'created_at' or col == 'updated_at' %}
+                        <td class="px-4 py-3 text-zinc-600" {% raw %}x-text="item.{% endraw %}{{ col }}{% raw %} ? new Date(item.{% endraw %}{{ col }}{% raw %}).toLocaleDateString() : '—'"{% endraw %}></td>
+{% else %}
+                        <td class="px-4 py-3 text-zinc-900 max-w-xs truncate" {% raw %}x-text="item.{% endraw %}{{ col }}{% raw %} ?? '—'"{% endraw %}></td>
+{% endif %}
+{% endfor %}
+                        <td class="px-4 py-3 text-right whitespace-nowrap" @click.stop>
+{% if entity.view_actions %}
+{% for action in entity.view_actions %}
+{% if action in ('view', 'edit') %}
+                            <a {% raw %}:href="'/{% endraw %}{{ entity.name_snake }}{% raw %}s/' + item.id{% endraw %}{% if action == 'edit' %}{% raw %} + '/edit'{% endraw %}{% endif %}{% raw %}"{% endraw %}
+                               class="px-2 py-1 text-xs font-medium rounded-md text-zinc-600 hover:bg-zinc-100 transition">{{ action | title }}</a>
+{% elif action == 'delete' %}
+                            <button {% raw %}@click="confirmDelete(item.id)"{% endraw %}
+                                    class="px-2 py-1 text-xs font-medium rounded-md text-red-600 hover:bg-red-50 transition">Delete</button>
+{% else %}
+                            <button {% raw %}@click="executeAction('{% endraw %}{{ action }}{% raw %}', item.id)"{% endraw %}
+                                    class="px-2 py-1 text-xs font-medium rounded-md bg-blue-600/10 text-blue-600 hover:bg-blue-600/20 transition">{{ action | replace('_', ' ') | title }}</button>
+{% endif %}
+{% endfor %}
+{% else %}
+                            <a {% raw %}:href="'/{% endraw %}{{ entity.name_snake }}{% raw %}s/' + item.id"{% endraw %}
+                               class="px-2 py-1 text-xs font-medium rounded-md text-zinc-600 hover:bg-zinc-100 transition">View</a>
+                            <button {% raw %}@click="confirmDelete(item.id)"{% endraw %}
+                                    class="px-2 py-1 text-xs font-medium rounded-md text-red-600 hover:bg-red-50 transition">Delete</button>
+{% endif %}
+                        </td>
+{% raw %}
+                    </tr>
+                    </template>
+{% endraw %}
+                </tbody>
+            </table>
+        </div>
+
+{% raw %}
+        {# Empty state #}
+        <div x-show="!loading && items.length === 0" class="text-center py-16">
+            <div class="w-16 h-16 bg-zinc-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg class="w-8 h-8 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"></path>
+                </svg>
+            </div>
+            <p class="text-sm font-medium text-zinc-900">No {% endraw %}{{ entity.name_display | lower }}{% raw %} found</p>
+            <p class="text-xs text-zinc-500 mt-1">Create your first record to get started.</p>
+            <a href="/{% endraw %}{{ entity.name_snake }}{% raw %}s/new" class="mt-4 inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
+                + Create {% endraw %}{{ entity.name_display }}{% raw %}
+            </a>
+        </div>
+
+        {# Loading #}
+        <div x-show="loading" class="text-center py-16 text-sm text-zinc-500">Loading...</div>
+
+        {# Pagination #}
+        <div x-show="totalPages > 1" class="px-4 py-3 border-t border-zinc-200 flex items-center justify-between">
+            <p class="text-sm text-zinc-500" x-text="`Showing ${(page - 1) * limit + 1}–${Math.min(page * limit, total)} of ${total}`"></p>
+            <div class="flex gap-1">
+                <button @click="goPage(page - 1)" :disabled="page <= 1"
+                        class="px-3 py-1.5 text-sm border border-zinc-200 rounded-md hover:bg-zinc-50 disabled:opacity-40 transition">Prev</button>
+                <button @click="goPage(page + 1)" :disabled="page >= totalPages"
+                        class="px-3 py-1.5 text-sm border border-zinc-200 rounded-md hover:bg-zinc-50 disabled:opacity-40 transition">Next</button>
+            </div>
+        </div>
+    </div>
+
+    {# Delete confirmation #}
+    <div x-show="deleteId" x-cloak class="fixed inset-0 z-50 flex items-center justify-center" @keydown.escape.window="deleteId = null">
+        <div class="absolute inset-0 bg-black/20" @click="deleteId = null"></div>
+        <div class="relative bg-white rounded-xl shadow-xl p-6 max-w-sm w-full mx-4 border border-zinc-200" @click.stop>
+            <h3 class="text-base font-semibold text-zinc-900">Delete record?</h3>
+            <p class="text-sm text-zinc-500 mt-1">This action cannot be undone.</p>
+            <div class="flex gap-2 justify-end mt-5">
+                <button @click="deleteId = null" class="px-4 py-2 text-sm font-medium border border-zinc-200 rounded-lg hover:bg-zinc-50 transition">Cancel</button>
+                <button @click="executeDelete()" class="px-4 py-2 text-sm font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 transition">Delete</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function listPage() {
+    return {
+        items: [], loading: true, total: 0, page: 1, limit: 25, totalPages: 0,
+        searchQuery: '', sortField: '{% endraw %}{{ entity.view_default_sort.field if entity.view_default_sort else 'id' }}{% raw %}', sortDir: '{% endraw %}{{ entity.view_default_sort.dir if entity.view_default_sort else 'desc' }}{% raw %}',
+        filters: {},
+        deleteId: null,
+
+        async init() {
+            const params = new URLSearchParams(window.location.search);
+            this.page = parseInt(params.get('page') || '1');
+            this.searchQuery = params.get('q') || '';
+            await this.load();
+        },
+
+        async load() {
+            this.loading = true;
+            const params = new URLSearchParams({
+                skip: ((this.page - 1) * this.limit).toString(),
+                limit: this.limit.toString(),
+            });
+            if (this.searchQuery) params.set('q', this.searchQuery);
+            try {
+                const h = localStorage.getItem('archie_token') ? {'Authorization': 'Bearer ' + localStorage.getItem('archie_token')} : {};
+                const r = await fetch('{% endraw %}{{ entity.api_path }}{% raw %}?' + params, { headers: h });
+                if (r.ok) {
+                    const data = await r.json();
+                    this.items = Array.isArray(data) ? data : (data.items || data.data || []);
+                    this.total = data.total || this.items.length;
+                    this.totalPages = Math.ceil(this.total / this.limit);
+                }
+            } catch (e) { console.error('Load failed:', e); }
+            this.loading = false;
+        },
+
+        doSearch() { this.page = 1; this.load(); },
+        goPage(p) { this.page = p; this.load(); },
+
+        toggleSort(field) {
+            if (this.sortField === field) { this.sortDir = this.sortDir === 'asc' ? 'desc' : 'asc'; }
+            else { this.sortField = field; this.sortDir = 'asc'; }
+            this.items.sort((a, b) => {
+                const va = a[this.sortField] ?? '', vb = b[this.sortField] ?? '';
+                const cmp = String(va).localeCompare(String(vb), undefined, {numeric: true});
+                return this.sortDir === 'asc' ? cmp : -cmp;
+            });
+        },
+
+        statusColor(status) {
+            const s = (status || '').toLowerCase();
+            if (['active','approved','completed','verified','resolved'].includes(s)) return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+            if (['pending','submitted','in_progress','processing','under_review','open'].includes(s)) return 'bg-amber-50 text-amber-700 border-amber-200';
+            if (['rejected','failed','cancelled','expired','blocked'].includes(s)) return 'bg-red-50 text-red-700 border-red-200';
+            return 'bg-zinc-50 text-zinc-600 border-zinc-200';
+        },
+
+        confirmDelete(id) { this.deleteId = id; },
+        async executeDelete() {
+            const h = localStorage.getItem('archie_token') ? {'Authorization': 'Bearer ' + localStorage.getItem('archie_token')} : {};
+            const r = await fetch('{% endraw %}{{ entity.api_path }}{% raw %}/' + this.deleteId, { method: 'DELETE', headers: h });
+            if (r.ok) { this.deleteId = null; await this.load(); }
+        },
+
+        async executeAction(action, id) {
+            const h = localStorage.getItem('archie_token') ? {'Authorization': 'Bearer ' + localStorage.getItem('archie_token'), 'Content-Type': 'application/json'} : {'Content-Type': 'application/json'};
+            await fetch('{% endraw %}{{ entity.api_path }}{% raw %}/' + id + '/' + action, { method: 'POST', headers: h });
+            await this.load();
+        },
+    };
+}
+</script>
+{% endblock %}
+{% endraw %}

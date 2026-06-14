@@ -1,0 +1,364 @@
+{% extends 'layouts/admin_base.html' %}
+
+{% block title %}Governance Dashboard{% endblock %}
+
+{% block breadcrumb %}
+{% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
+{{ breadcrumb_nav(items=[
+    {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
+    {'text': 'Governance', 'current': true}
+]) }}
+{% endblock %}
+
+{% block content %}
+<div class="container mx-auto p-6 space-y-6" x-data="governanceDashboard()" x-cloak>
+    
+    <!-- Header -->
+    <div class="flex items-center justify-between">
+        <div>
+            <h1 class="text-3xl font-bold">Architecture Governance</h1>
+            <p class="text-muted-foreground mt-2">
+                Central governance oversight &mdash; ARB reviews, compliance, and decision records
+            </p>
+        </div>
+        <div class="flex gap-2">
+            <a href="{{ url_for('governance.arb_reviews') }}"
+               class="inline-flex items-center gap-2 px-3 py-2 text-sm border border-border rounded-md hover:bg-accent">
+                <i data-lucide="shield-check" class="h-4 w-4" aria-hidden="true"></i> ARB Reviews
+            </a>
+            <a href="{{ url_for('governance.adr_list') }}"
+               class="inline-flex items-center gap-2 px-3 py-2 text-sm border border-border rounded-md hover:bg-accent">
+                <i data-lucide="file-text" class="h-4 w-4" aria-hidden="true"></i> ADRs
+            </a>
+            <a href="{{ url_for('governance.risk_register') }}"
+               class="inline-flex items-center gap-2 px-3 py-2 text-sm border border-border rounded-md hover:bg-accent">
+                <i data-lucide="alert-triangle" class="h-4 w-4" aria-hidden="true"></i> Risk Register
+            </a>
+        </div>
+    </div>
+
+    <!-- Key Metrics -->
+    <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <!-- Pending Reviews -->
+        <div class="rounded-lg border bg-card p-6">
+            <div class="flex items-center justify-between">
+                <p class="text-sm font-medium text-muted-foreground">Pending ARB Reviews</p>
+                <i data-lucide="clock" class="h-4 w-4 text-amber-500" aria-hidden="true"></i>
+            </div>
+            <div class="mt-3">
+                <p class="text-2xl font-bold" x-text="metrics.pending_reviews ?? '...'">...</p>
+                <p class="text-xs text-muted-foreground mt-1">Solutions awaiting approval</p>
+            </div>
+        </div>
+
+        <!-- Active Risks -->
+        <div class="rounded-lg border bg-card p-6">
+            <div class="flex items-center justify-between">
+                <p class="text-sm font-medium text-muted-foreground">Active Risks</p>
+                <i data-lucide="alert-triangle" class="h-4 w-4 text-destructive" aria-hidden="true"></i>
+            </div>
+            <div class="mt-3">
+                <p class="text-2xl font-bold" x-text="metrics.active_risks ?? '...'">...</p>
+                <p class="text-xs text-muted-foreground mt-1">High &amp; Critical severity</p>
+            </div>
+        </div>
+
+        <!-- Architecture Decisions -->
+        <div class="rounded-lg border bg-card p-6">
+            <div class="flex items-center justify-between">
+                <p class="text-sm font-medium text-muted-foreground">ADRs (Last 90 days)</p>
+                <i data-lucide="file-check" class="h-4 w-4 text-primary" aria-hidden="true"></i>
+            </div>
+            <div class="mt-3">
+                <p class="text-2xl font-bold" x-text="metrics.recent_adrs ?? '...'">...</p>
+                <p class="text-xs text-muted-foreground mt-1">Architecture decisions</p>
+            </div>
+        </div>
+
+        <!-- Compliance Rate -->
+        <div class="rounded-lg border bg-card p-6">
+            <div class="flex items-center justify-between">
+                <p class="text-sm font-medium text-muted-foreground">Compliance Rate</p>
+                <i data-lucide="check-circle" class="h-4 w-4 text-emerald-500" aria-hidden="true"></i>
+            </div>
+            <div class="mt-3">
+                <p class="text-2xl font-bold"><span x-text="metrics.compliance_rate ?? '...'">...</span>%</p>
+                <p class="text-xs text-muted-foreground mt-1">Solutions with approvals</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="border-b">
+        <nav class="flex space-x-8" aria-label="Governance tabs">
+            <button
+                @click="activeTab = 'principles'"
+                :class="activeTab === 'principles' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'"
+                class="border-b-2 px-1 py-4 text-sm font-medium transition-colors">
+                Architecture Principles
+            </button>
+            <button
+                @click="activeTab = 'standards'"
+                :class="activeTab === 'standards' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'"
+                class="border-b-2 px-1 py-4 text-sm font-medium transition-colors">
+                Technology Standards
+            </button>
+            <button
+                @click="activeTab = 'reviews'"
+                :class="activeTab === 'reviews' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'"
+                class="border-b-2 px-1 py-4 text-sm font-medium transition-colors">
+                ARB Reviews
+            </button>
+            <button
+                @click="activeTab = 'roadmap'"
+                :class="activeTab === 'roadmap' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'"
+                class="border-b-2 px-1 py-4 text-sm font-medium transition-colors">
+                Enterprise Roadmap
+            </button>
+        </nav>
+    </div>
+
+    <!-- Tab Content -->
+    <div x-show="activeTab === 'principles'" class="space-y-4">
+        <div class="flex items-center justify-between">
+            <h2 class="text-xl font-semibold">Architecture Principles</h2>
+            <button @click="openCreatePrincipleModal()"
+                class="inline-flex items-center gap-2 px-3 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90">
+                <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i> Add Principle
+            </button>
+        </div>
+        <div class="grid gap-4 md:grid-cols-2">
+            <template x-for="principle in principles" :key="principle.id">
+                <div class="rounded-lg border bg-card p-4">
+                    <h3 class="font-semibold" x-text="principle.name"></h3>
+                    <p class="text-sm text-muted-foreground mt-1" x-text="principle.statement"></p>
+                    <div class="mt-3 flex items-center gap-2">
+                        <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold"
+                              :class="principle.priority === 'Critical' ? 'bg-destructive/5 text-destructive border-destructive/20' : 'bg-primary/5 text-primary border-primary/20'"
+                              x-text="principle.priority"></span>
+                        <span class="text-xs text-muted-foreground" x-text="principle.domain"></span>
+                    </div>
+                </div>
+            </template>
+        </div>
+    </div>
+
+    <div x-show="activeTab === 'standards'" class="space-y-4">
+        <div class="flex items-center justify-between">
+            <h2 class="text-xl font-semibold">Technology Standards</h2>
+            <button @click="openCreateStandardModal()"
+                class="inline-flex items-center gap-2 px-3 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90">
+                <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i> Add Standard
+            </button>
+        </div>
+        <div class="rounded-lg border">
+            <table class="w-full">
+                <thead class="bg-muted/50">
+                    <tr class="text-left text-sm">
+                        <th class="p-3 font-medium">Technology</th>
+                        <th class="p-3 font-medium">Category</th>
+                        <th class="p-3 font-medium">Status</th>
+                        <th class="p-3 font-medium">Approved Version</th>
+                        <th class="p-3 font-medium">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="std in standards" :key="std.id">
+                        <tr class="border-t hover:bg-muted/30">
+                            <td class="p-3 font-medium" x-text="std.technology"></td>
+                            <td class="p-3 text-sm text-muted-foreground" x-text="std.category"></td>
+                            <td class="p-3">
+                                <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold"
+                                      :class="std.status === 'Approved' ? 'bg-emerald-500/5 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'"
+                                      x-text="std.status"></span>
+                            </td>
+                            <td class="p-3 text-sm" x-text="std.version"></td>
+                            <td class="p-3">
+                                <button class="text-sm text-primary hover:underline">Edit</button>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div x-show="activeTab === 'reviews'" class="space-y-4">
+        <div class="flex items-center justify-between">
+            <h2 class="text-xl font-semibold">ARB Reviews</h2>
+            <a href="{{ url_for('governance.arb_reviews') }}"
+               class="inline-flex items-center gap-2 px-3 py-2 text-sm border border-border rounded-md hover:bg-accent">
+                View All <i data-lucide="arrow-right" class="h-4 w-4" aria-hidden="true"></i>
+            </a>
+        </div>
+        <div class="rounded-lg border">
+            <table class="w-full">
+                <thead class="bg-muted/50">
+                    <tr class="text-left text-sm">
+                        <th class="p-3 font-medium">Solution</th>
+                        <th class="p-3 font-medium">Review Date</th>
+                        <th class="p-3 font-medium">Status</th>
+                        <th class="p-3 font-medium">Reviewer</th>
+                        <th class="p-3 font-medium">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="review in recent_reviews" :key="review.id">
+                        <tr class="border-t hover:bg-muted/30">
+                            <td class="p-3 font-medium" x-text="review.solution_name"></td>
+                            <td class="p-3 text-sm text-muted-foreground" x-text="review.review_date"></td>
+                            <td class="p-3">
+                                <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold"
+                                      :class="review.status === 'Approved' ? 'bg-emerald-500/5 text-emerald-700 border-emerald-200' : review.status === 'Pending' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-destructive/5 text-destructive border-destructive/20'"
+                                      x-text="review.status"></span>
+                            </td>
+                            <td class="p-3 text-sm" x-text="review.reviewer"></td>
+                            <td class="p-3">
+                                <button class="text-sm text-primary hover:underline">View</button>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div x-show="activeTab === 'roadmap'" class="space-y-4">
+        <div class="flex items-center justify-between">
+            <h2 class="text-xl font-semibold">Enterprise Roadmap</h2>
+            <div class="flex gap-2">
+                <select x-model="roadmapTimeframe" @change="loadRoadmap()"
+                        class="h-9 rounded-md border border-input bg-background px-3 text-sm">
+                    <option value="q1">Q1 2026</option>
+                    <option value="q2">Q2 2026</option>
+                    <option value="q3">Q3 2026</option>
+                    <option value="q4">Q4 2026</option>
+                    <option value="year">Full Year</option>
+                </select>
+            </div>
+        </div>
+        <div class="rounded-lg border bg-card p-6">
+            <p class="text-sm text-muted-foreground text-center py-8">
+                Roadmap visualization will display here &mdash; integration with migration planning
+            </p>
+        </div>
+    </div>
+
+</div>
+
+<script>
+function governanceDashboard() {
+    return {
+        activeTab: 'principles',
+        roadmapTimeframe: 'year',
+        metrics: {
+            pending_reviews: 0,
+            active_risks: 0,
+            recent_adrs: 0,
+            compliance_rate: 0
+        },
+        principles: [],
+        standards: [],
+        recent_reviews: [],
+        
+        async init() {
+            await this.loadMetrics();
+            await this.loadPrinciples();
+            await this.loadStandards();
+            await this.loadRecentReviews();
+        },
+        
+        async loadMetrics() {
+            try {
+                const response = await fetch('/api/governance/metrics');
+                if (response.ok) {
+                    this.metrics = await response.json();
+                }
+            } catch (error) {
+                console.error('Failed to load metrics:', error);
+            }
+        },
+        
+        async loadPrinciples() {
+            try {
+                const response = await fetch('/api/governance/principles');
+                if (response.ok) {
+                    this.principles = await response.json();
+                }
+            } catch (error) {
+                console.error('Failed to load principles:', error);
+                // Mock data for demonstration
+                this.principles = [
+                    {
+                        id: 1,
+                        name: 'Business Continuity',
+                        statement: 'Enterprise operations are maintained despite system failures',
+                        priority: 'Critical',
+                        domain: 'Business'
+                    },
+                    {
+                        id: 2,
+                        name: 'Data is an Asset',
+                        statement: 'Data is managed as a strategic enterprise asset',
+                        priority: 'High',
+                        domain: 'Information'
+                    }
+                ];
+            }
+        },
+        
+        async loadStandards() {
+            try {
+                const response = await fetch('/api/governance/standards');
+                if (response.ok) {
+                    this.standards = await response.json();
+                }
+            } catch (error) {
+                console.error('Failed to load standards:', error);
+                // Mock data
+                this.standards = [
+                    {
+                        id: 1,
+                        technology: 'Python',
+                        category: 'Programming Language',
+                        status: 'Approved',
+                        version: '3.11+'
+                    },
+                    {
+                        id: 2,
+                        technology: 'PostgreSQL',
+                        category: 'Database',
+                        status: 'Approved',
+                        version: '15.x'
+                    }
+                ];
+            }
+        },
+        
+        async loadRecentReviews() {
+            try {
+                const response = await fetch('/api/governance/reviews/recent');
+                if (response.ok) {
+                    this.recent_reviews = await response.json();
+                }
+            } catch (error) {
+                console.error('Failed to load reviews:', error);
+                this.recent_reviews = [];
+            }
+        },
+        
+        async loadRoadmap() {
+            // Load roadmap data based on timeframe
+        },
+        
+        openCreatePrincipleModal() {
+            Platform.toast.info('Create Principle modal - to be implemented');
+        },
+        
+        openCreateStandardModal() {
+            Platform.toast.info('Create Standard modal - to be implemented');
+        }
+    };
+}
+</script>
+{% endblock %}

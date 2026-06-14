@@ -1,0 +1,92 @@
+{# Dashboard page — rendered into ui/index.html as inline section #}
+{# This template generates the dashboard_section.html.j2 included by index.html.j2 #}
+{# Context: solution_id, project_name, entities, workflows, quick_actions #}
+
+<!-- Summary cards -->
+<div class="mb-8">
+    <h2 class="text-xl font-bold mb-4">Dashboard</h2>
+    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+        <!-- Health card -->
+        <div class="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+            <p class="text-xs text-zinc-500 uppercase tracking-wider mb-1">Service Health</p>
+            <div class="flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full" :class="healthOk ? 'bg-emerald-500' : 'bg-red-500'"></span>
+                <span class="text-sm font-medium" x-text="healthOk ? 'Operational' : 'Degraded'"></span>
+            </div>
+        </div>
+{% for entity in entities %}
+        <!-- {{ entity.name_display }} count -->
+        <div class="rounded-lg border border-zinc-800 bg-zinc-900 p-4 cursor-pointer hover:border-zinc-700 transition-colors"
+             @click="navigate('/{{ entity.name_snake }}s')">
+            <p class="text-xs text-zinc-500 uppercase tracking-wider mb-1">{{ entity.name_display }}</p>
+            <p class="text-2xl font-semibold" x-text="dashboardCounts['{{ entity.name_snake }}'] || 0"></p>
+{% if entity.status_field %}
+            <div class="flex gap-1 mt-2 flex-wrap">
+                <template x-for="(count, status) in (dashboardStatusDist['{{ entity.name_snake }}'] || {})" :key="status">
+                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border"
+                          :class="statusBadgeClass(status)"
+                          x-text="`${status}: ${count}`"></span>
+                </template>
+            </div>
+{% endif %}
+        </div>
+{% endfor %}
+    </div>
+</div>
+
+<!-- Quick actions -->
+{% if quick_actions %}
+<div class="mb-8">
+    <h3 class="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-3">Quick Actions</h3>
+    <div class="flex flex-wrap gap-2">
+{% for action in quick_actions %}
+        <button @click="{{ action.handler }}"
+                class="px-4 py-2 text-sm font-medium rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-colors">
+            {{ action.label }}
+        </button>
+{% endfor %}
+    </div>
+</div>
+{% endif %}
+
+{% if workflows %}
+<!-- Active workflows -->
+<div class="mb-8">
+    <h3 class="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-3">Workflows</h3>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+{% for workflow in workflows %}
+        <div class="rounded-lg border border-zinc-800 bg-zinc-900 p-4 cursor-pointer hover:border-zinc-700 transition-colors"
+             @click="navigate('/workflow/{{ workflow.name_snake }}')">
+            <h4 class="text-sm font-medium mb-1">{{ workflow.name_display }}</h4>
+            <p class="text-xs text-zinc-500">{{ workflow.steps | length }} steps</p>
+            <div class="flex gap-1 mt-2">
+{% for step in workflow.steps %}
+                <div class="h-1.5 flex-1 rounded-full bg-zinc-700"></div>
+{% endfor %}
+            </div>
+        </div>
+{% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<!-- Recent activity -->
+<div>
+    <h3 class="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-3">Recent Activity</h3>
+    <div class="border border-zinc-800 rounded-lg divide-y divide-zinc-800">
+        <template x-for="item in recentActivity" :key="item.id + item.entity">
+            <div class="px-4 py-3 flex items-center justify-between hover:bg-zinc-900/50 transition-colors cursor-pointer"
+                 @click="navigate(`/${item.entity}s/${item.id}`)">
+                <div class="flex items-center gap-3 min-w-0">
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-zinc-500/10 text-zinc-400 border border-zinc-500/30"
+                          x-text="item.entity"></span>
+                    <span class="text-sm truncate" x-text="item.label"></span>
+                </div>
+                <span class="text-xs text-zinc-600 whitespace-nowrap ml-2" x-text="item.time"></span>
+            </div>
+        </template>
+        <div x-show="!recentActivity.length" class="px-4 py-6 text-center text-zinc-500 text-sm">
+            No recent activity
+        </div>
+    </div>
+</div>

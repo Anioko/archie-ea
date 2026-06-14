@@ -1,0 +1,191 @@
+{# Linked Applications Picker — search enterprise catalog and link/unlink apps to this solution.
+   Included within application_cooperation section of blueprint.html.
+   Requires: solution.id, linked_apps (list of serialized app dicts) #}
+
+<div class="mt-6"
+     x-data="appPicker({{ solution.id }}, {{ linked_apps | default([]) | tojson }})"
+     x-init="init()">
+
+    <div class="flex items-center justify-between mb-3">
+        <h3 class="text-sm font-semibold text-foreground flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-primary inline-block"></span>
+            Linked Applications
+            <span class="text-xs font-normal text-muted-foreground ml-1"
+                  x-text="'(' + linkedApps.length + ' linked)'"></span>
+        </h3>
+        <button type="button"
+                @click="showPicker = !showPicker"
+                class="inline-flex items-center gap-1 h-7 px-2.5 rounded-md text-xs font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors">
+            <span x-text="showPicker ? '✕ Close' : '+ Link Application'"></span>
+        </button>
+    </div>
+
+    {# Search picker #}
+    <div x-show="showPicker" x-cloak class="mb-4 rounded-lg border border-border bg-muted/30 p-3 space-y-2">
+        <div class="relative">
+            <input type="text"
+                   x-model="searchQuery"
+                   @input.debounce.300ms="search()"
+                   placeholder="Search applications by name…"
+                   class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring" />
+            <div x-show="searching" class="absolute right-2 top-2 text-muted-foreground text-xs">searching…</div>
+        </div>
+
+        <template x-if="results.length > 0">
+            <ul class="rounded-md border border-border divide-y divide-border/50 bg-background max-h-52 overflow-y-auto">
+                <template x-for="app in results" :key="app.id">
+                    <li class="flex items-center justify-between px-3 py-2 hover:bg-muted/40 text-sm">
+                        <div>
+                            <span class="font-medium text-foreground" x-text="app.name"></span>
+                            <span class="ml-2 text-xs text-muted-foreground" x-text="app.lifecycle_status || app.status || ''"></span>
+                        </div>
+                        <button type="button"
+                                @click="linkApp(app)"
+                                :disabled="isLinked(app.id) || linking"
+                                :class="isLinked(app.id) ? 'text-muted-foreground cursor-default' : 'text-primary hover:underline'"
+                                class="text-xs font-medium shrink-0 ml-4">
+                            <span x-text="isLinked(app.id) ? 'Already linked' : 'Link'"></span>
+                        </button>
+                    </li>
+                </template>
+            </ul>
+        </template>
+
+        <template x-if="searchQuery.length >= 2 && results.length === 0 && !searching">
+            <p class="text-xs text-muted-foreground/70 italic">No matching applications found.</p>
+        </template>
+    </div>
+
+    {# Linked apps list #}
+    <template x-if="linkedApps.length > 0">
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b border-border">
+                        <th class="text-left py-2 px-3 text-muted-foreground font-medium">Application</th>
+                        <th class="text-left py-2 px-3 text-muted-foreground font-medium">Status</th>
+                        <th class="text-right py-2 px-3 text-muted-foreground font-medium sad-actions">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="app in linkedApps" :key="app.id">
+                        <tr class="border-b border-border/50 hover:bg-muted/30">
+                            <td class="py-2 px-3">
+                                <a :href="'/applications/' + app.id"
+                                   class="font-medium text-primary hover:underline"
+                                   x-text="app.name"></a>
+                                <span x-show="app.app_abbreviation"
+                                      class="ml-1 text-xs text-muted-foreground"
+                                      x-text="'(' + app.app_abbreviation + ')'"></span>
+                            </td>
+                            <td class="py-2 px-3">
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground border border-border"
+                                      x-text="app.lifecycle_status || app.status || '—'"></span>
+                            </td>
+                            <td class="py-2 px-3 text-right sad-actions">
+                                <button type="button"
+                                        @click="unlinkApp(app.id)"
+                                        class="text-muted-foreground hover:text-destructive text-xs p-1 rounded-md transition-colors">
+                                    Unlink
+                                </button>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+    </template>
+
+    <template x-if="linkedApps.length === 0">
+        <p class="text-sm text-muted-foreground/60 italic">
+            No applications linked. Use the picker above to connect enterprise applications to this solution.
+        </p>
+    </template>
+
+    <div x-show="errorMsg" class="mt-2 text-xs text-destructive" x-text="errorMsg"></div>
+</div>
+
+<script>
+function appPicker(solutionId, initialApps) {
+    return {
+        solutionId,
+        linkedApps: initialApps || [],
+        showPicker: false,
+        searchQuery: '',
+        results: [],
+        searching: false,
+        linking: false,
+        errorMsg: '',
+
+        init() {},
+
+        isLinked(appId) {
+            return this.linkedApps.some(a => a.id === appId);
+        },
+
+        async search() {
+            const q = this.searchQuery.trim();
+            if (q.length < 2) { this.results = []; return; }
+            this.searching = true;
+            try {
+                const res = await fetch('/api/enterprise/applications?search=' + encodeURIComponent(q) + '&limit=20');
+                const data = await res.json();
+                this.results = data.applications || data.results || data || [];
+            } catch (e) {
+                this.results = [];
+            } finally {
+                this.searching = false;
+            }
+        },
+
+        async linkApp(app) {
+            if (this.isLinked(app.id) || this.linking) return;
+            this.linking = true;
+            this.errorMsg = '';
+            try {
+                const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+                const res = await fetch('/solutions/' + this.solutionId + '/link-application', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
+                    body: JSON.stringify({application_id: app.id}),
+                });
+                const data = await res.json();
+                if (data.success) {
+                    this.linkedApps.push({
+                        id: app.id,
+                        name: app.name,
+                        app_abbreviation: app.app_abbreviation || '',
+                        lifecycle_status: app.lifecycle_status || app.status || '',
+                        status: app.status || '',
+                    });
+                } else {
+                    this.errorMsg = data.error || 'Failed to link application.';
+                }
+            } catch (e) {
+                this.errorMsg = 'Network error linking application.';
+            } finally {
+                this.linking = false;
+            }
+        },
+
+        async unlinkApp(appId) {
+            this.errorMsg = '';
+            try {
+                const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+                const res = await fetch('/solutions/' + this.solutionId + '/unlink-application/' + appId, {
+                    method: 'DELETE',
+                    headers: {'X-CSRFToken': csrfToken},
+                });
+                const data = await res.json();
+                if (data.success) {
+                    this.linkedApps = this.linkedApps.filter(a => a.id !== appId);
+                } else {
+                    this.errorMsg = data.error || 'Failed to unlink application.';
+                }
+            } catch (e) {
+                this.errorMsg = 'Network error unlinking application.';
+            }
+        },
+    };
+}
+</script>

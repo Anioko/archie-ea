@@ -1,0 +1,201 @@
+{
+  "version": "2026.03.30",
+  "domains": {
+    "enterprise_procurement": {
+      "description": "Procurement and sourcing baseline entities and invariants.",
+      "entities": {
+        "PurchaseOrder": {
+          "aliases": ["purchaseorder", "purchase_order", "po", "purchase-order"],
+          "required_fields": [
+            "po_number",
+            "vendor_id",
+            "company_code",
+            "plant",
+            "currency",
+            "payment_terms",
+            "delivery_date",
+            "status"
+          ],
+          "optional_fields": [
+            "storage_location",
+            "net_price",
+            "tax_code",
+            "gr_based_iv"
+          ],
+          "rule_patterns": [
+            {
+              "name": "BudgetLimitCheck",
+              "subject": "PurchaseOrder",
+              "operator": "<=",
+              "threshold": "budget_limit",
+              "effect": "reject_create",
+              "severity": "must"
+            }
+          ]
+        },
+        "Invoice": {
+          "aliases": ["invoice", "supplier_invoice", "ap_invoice"],
+          "required_fields": [
+            "invoice_number",
+            "vendor_id",
+            "company_code",
+            "posting_date",
+            "fiscal_year",
+            "currency",
+            "amount",
+            "status"
+          ],
+          "optional_fields": [
+            "gl_account",
+            "payment_terms",
+            "withholding_tax_base"
+          ],
+          "rule_patterns": [
+            {
+              "name": "ThreeWayMatch",
+              "subject": "Invoice",
+              "operator": "==",
+              "threshold": "po_gr_invoice_match",
+              "effect": "block_posting",
+              "severity": "must"
+            }
+          ]
+        }
+      }
+    },
+    "enterprise_crm": {
+      "description": "CRM baseline entities and invariants.",
+      "entities": {
+        "Account": {
+          "aliases": ["account", "customer_account", "organization"],
+          "required_fields": [
+            "account_number",
+            "name",
+            "industry",
+            "status",
+            "owner_id",
+            "region"
+          ],
+          "optional_fields": [
+            "segment",
+            "parent_account_id"
+          ],
+          "rule_patterns": [
+            {
+              "name": "AccountOwnerRequired",
+              "subject": "Account",
+              "operator": "!=",
+              "threshold": "null",
+              "effect": "reject_create",
+              "severity": "must"
+            }
+          ]
+        },
+        "Opportunity": {
+          "aliases": ["opportunity", "deal", "sales_opportunity"],
+          "required_fields": [
+            "opportunity_number",
+            "account_id",
+            "stage",
+            "close_date",
+            "currency",
+            "amount",
+            "owner_id"
+          ],
+          "optional_fields": [
+            "probability",
+            "forecast_category"
+          ],
+          "rule_patterns": [
+            {
+              "name": "ClosedWonRequiresAmount",
+              "subject": "Opportunity",
+              "operator": ">",
+              "threshold": "0",
+              "effect": "reject_stage_transition",
+              "severity": "must"
+            }
+          ]
+        }
+      }
+    },
+    "enterprise_erp_finance": {
+      "description": "ERP finance baseline entities and invariants.",
+      "entities": {
+        "LedgerEntry": {
+          "aliases": ["ledgerentry", "ledger_entry", "gl_entry", "journal_entry"],
+          "required_fields": [
+            "entry_number",
+            "company_code",
+            "fiscal_period",
+            "debit_account",
+            "credit_account",
+            "currency",
+            "amount",
+            "value_date"
+          ],
+          "optional_fields": [
+            "cost_center",
+            "profit_center",
+            "document_reference"
+          ],
+          "rule_patterns": [
+            {
+              "name": "BalancedEntry",
+              "subject": "LedgerEntry",
+              "operator": "==",
+              "threshold": "debit_equals_credit",
+              "effect": "reject_posting",
+              "severity": "must"
+            }
+          ]
+        }
+      }
+    }
+  },
+  "vendor_adapters": {
+    "SAP": {
+      "domain": "enterprise_procurement",
+      "platform_tags": ["sap", "s4hana", "abap", "odata"],
+      "entity_mappings": {
+        "PurchaseOrder": {
+          "canonical": "PurchaseOrder",
+          "platform_object": "EKKO",
+          "required_fields": ["po_number", "vendor_id", "company_code", "plant", "currency"]
+        },
+        "Invoice": {
+          "canonical": "Invoice",
+          "platform_object": "BKPF",
+          "required_fields": ["invoice_number", "company_code", "posting_date", "fiscal_year", "amount"]
+        }
+      }
+    },
+    "SALESFORCE": {
+      "domain": "enterprise_crm",
+      "platform_tags": ["salesforce", "apex", "lwc", "sobject"],
+      "entity_mappings": {
+        "Account": {
+          "canonical": "Account",
+          "platform_object": "Account",
+          "required_fields": ["name", "owner_id", "industry", "status"]
+        },
+        "Opportunity": {
+          "canonical": "Opportunity",
+          "platform_object": "Opportunity",
+          "required_fields": ["account_id", "stage", "close_date", "currency", "amount"]
+        }
+      }
+    },
+    "MICROSOFT_DYNAMICS": {
+      "domain": "enterprise_erp_finance",
+      "platform_tags": ["dynamics", "dataverse", "power-platform", "d365"],
+      "entity_mappings": {
+        "LedgerEntry": {
+          "canonical": "LedgerEntry",
+          "platform_object": "LedgerJournalTrans",
+          "required_fields": ["entry_number", "company_code", "debit_account", "credit_account", "amount", "currency"]
+        }
+      }
+    }
+  }
+}

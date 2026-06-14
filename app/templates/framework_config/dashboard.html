@@ -1,0 +1,329 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'components/modal.html' import modal %}
+{% from 'components/page_header.html' import page_header %}
+{% from 'components/metrics_card.html' import metrics_card %}
+
+{% block title %}Framework Configuration{% endblock %}
+
+{% block content %}
+{% set templates_by_type = templates_by_type|default({}) %}
+{% set templates = templates|default([]) %}
+{% set extensions_by_category = extensions_by_category|default({}) %}
+{% set validation_results = validation_results|default({}) %}
+{% set extensions = extensions|default([]) %}
+{% set configs = configs|default([]) %}
+{% set recent_configs = recent_configs|default([]) %}
+{% set active_config = active_config|default(none) %}
+<div class="container mx-auto px-4 sm:px-6 lg:px-8 py-6 max-w-7xl" x-data="frameworkConfigModal()">
+    {{ page_header(
+        title='Framework Configuration',
+        description='Configure and manage your capability framework with industry-specific extensions',
+        breadcrumbs=[
+            {'label': 'Dashboard', 'href': url_for('main.index')},
+            {'label': 'Configuration'},
+            {'label': 'Framework'}
+        ],
+        actions=[
+            {'text': 'New Configuration', 'icon': 'plus', 'onclick': 'Platform.modal.open("create-framework-config")', 'variant': 'default'}
+        ]
+    ) }}
+
+    <!-- Active Configuration Card -->
+    {% if active_config %}
+    <div class="bg-card rounded-lg border p-6 mb-8">
+        <div class="flex items-center justify-between mb-4">
+            <div>
+                <h2 class="text-xl font-semibold text-foreground">Active Configuration</h2>
+                <p class="text-sm text-muted-foreground mt-1">{{ active_config.configuration_name }}</p>
+            </div>
+            <div class="flex items-center space-x-2">
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-success/10 text-success">
+                    Active
+                </span>
+                <a href="{{ url_for('framework_config_ui.view_configuration', config_id=active_config.id) }}" 
+                   class="inline-flex items-center px-3 py-1.5 border border-border bg-background hover:bg-muted rounded-md text-sm font-medium">
+                    View Details
+                </a>
+            </div>
+        </div>
+        
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+            {{ metrics_card(title='Enabled Domains', value=active_config.get_enabled_domains()|length, icon='layers') }}
+            {{ metrics_card(title='Extensions', value=active_config.get_enabled_extensions()|length, icon='puzzle') }}
+            {{ metrics_card(title='Capability Levels', value=active_config.capability_levels, icon='bar-chart-2') }}
+            {{ metrics_card(title='Industry Focus', value=active_config.industry_focus, icon='factory') }}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Quick Actions -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <button @click="Platform.modal.open('create-framework-config')" 
+                class="bg-card rounded-lg border p-6 hover:bg-muted transition-colors text-left w-full" aria-label="Open">
+            <div class="flex items-center space-x-4">
+                <div class="flex-shrink-0">
+                    <svg class="w-8 h-8 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                    </svg>
+                </div>
+                <div>
+                    <h3 class="text-lg font-semibold text-foreground">New Configuration</h3>
+                    <p class="text-sm text-muted-foreground mt-1">Create a new framework configuration</p>
+                </div>
+            </div>
+        </button>
+
+        <a href="{{ url_for('framework_config_ui.templates') }}" 
+           class="bg-card rounded-lg border p-6 hover:bg-muted transition-colors">
+            <div class="flex items-center space-x-4">
+                <div class="flex-shrink-0">
+                    <svg class="w-8 h-8 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.707.293H19a2 2 0 012 2v1"></path>
+                    </svg>
+                </div>
+                <div>
+                    <h3 class="text-lg font-semibold text-foreground">Templates</h3>
+                    <p class="text-sm text-muted-foreground mt-1">Browse configuration templates</p>
+                </div>
+            </div>
+        </a>
+
+        <a href="{{ url_for('framework_config_ui.extensions') }}" 
+           class="bg-card rounded-lg border p-6 hover:bg-muted transition-colors">
+            <div class="flex items-center space-x-4">
+                <div class="flex-shrink-0">
+                    <svg class="w-8 h-8 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                    </svg>
+                </div>
+                <div>
+                    <h3 class="text-lg font-semibold text-foreground">Extensions</h3>
+                    <p class="text-sm text-muted-foreground mt-1">Manage framework extensions</p>
+                </div>
+            </div>
+        </a>
+    </div>
+
+    <!-- Framework Templates -->
+    <div class="mb-8">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-xl font-semibold text-foreground">Framework Templates</h2>
+            <a href="{{ url_for('framework_config_ui.templates') }}" 
+               class="text-sm text-primary hover:underline">View All</a>
+        </div>
+        
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {% for template in templates[:3] %}
+            <div class="bg-card rounded-lg border p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary">
+                        {{ template.template_type.title() }}
+                    </span>
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-muted text-foreground">
+                        {{ template.organization_size.title() }}
+                    </span>
+                </div>
+                
+                <h3 class="text-lg font-semibold text-foreground mb-2">{{ template.template_name }}</h3>
+                <p class="text-sm text-muted-foreground mb-4">{{ template.template_description }}</p>
+                
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center space-x-2">
+                        <svg class="w-4 h-4 text-success" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                        </svg>
+                        <span class="text-xs text-muted-foreground">{{ template.certification_status.title() }}</span>
+                    </div>
+                    <a href="{{ url_for('framework_config_ui.template_details', template_id=template.id) }}" 
+                       class="text-sm text-primary hover:underline">Details</a>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Available Extensions -->
+    <div class="mb-8">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-xl font-semibold text-foreground">Available Extensions</h2>
+            <a href="{{ url_for('framework_config_ui.extensions') }}" 
+               class="text-sm text-primary hover:underline">View All</a>
+        </div>
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {% for extension in extensions[:3] %}
+            <div class="bg-card rounded-lg border p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-accent text-primary">
+                        {{ extension.extension_type.title() }}
+                    </span>
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-muted text-foreground">
+                        {{ extension.license_type.title() }}
+                    </span>
+                </div>
+                
+                <h3 class="text-lg font-semibold text-foreground mb-2">{{ extension.extension_name }}</h3>
+                <p class="text-sm text-muted-foreground mb-4">{{ extension.extension_description }}</p>
+                
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center space-x-2">
+                        <div class="flex items-center">
+                            {% for i in range(extension.quality_score) %}
+                            <svg class="w-4 h-4 text-warning/80" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838 1.19-1.118 1.81l1.07-3.292a1 1 0 00.364-1.118L2.98 8.72c-.783-.57-1.838-1.19-1.119-1.81H2.5a1 1 0 01-.95-.69L1.6 5.03c-.3-.92-1.603-.92-1.902 0z"></path>
+                            </svg>
+                            {% endfor %}
+                        </div>
+                        <span class="text-xs text-muted-foreground">{{ extension.quality_score }}/5</span>
+                    </div>
+                    <a href="{{ url_for('framework_config_ui.extension_details', extension_code=extension.extension_code) }}" 
+                       class="text-sm text-primary hover:underline">Details</a>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Recent Configurations -->
+    {% if recent_configs %}
+    <div>
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-xl font-semibold text-foreground">Recent Configurations</h2>
+            <a href="{{ url_for('framework_config_ui.instances') }}" 
+               class="text-sm text-primary hover:underline">View All</a>
+        </div>
+        
+        <div class="bg-card rounded-lg border">
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead>
+                        <tr class="border-b border-border">
+                            <th class="text-left px-4 py-3 text-sm font-medium text-muted-foreground">Name</th>
+                            <th class="text-left px-4 py-3 text-sm font-medium text-muted-foreground">Organization</th>
+                            <th class="text-left px-4 py-3 text-sm font-medium text-muted-foreground">Industry</th>
+                            <th class="text-left px-4 py-3 text-sm font-medium text-muted-foreground">Status</th>
+                            <th class="text-left px-4 py-3 text-sm font-medium text-muted-foreground">Created</th>
+                            <th class="text-left px-4 py-3 text-sm font-medium text-muted-foreground">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y">
+                        {% for config in recent_configs %}
+                        <tr class="border-b border-border hover:bg-muted/50">
+                            <td class="px-4 py-3">
+                                <div class="font-medium text-foreground">{{ config.configuration_name }}</div>
+                                <div class="text-sm text-muted-foreground">{{ config.configuration_code }}</div>
+                            </td>
+                            <td class="px-4 py-3 text-sm text-foreground">{{ config.organization_name or 'N/A' }}</td>
+                            <td class="px-4 py-3 text-sm text-foreground">{{ config.industry_focus }}</td>
+                            <td class="px-4 py-3">
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium 
+                                       {% if config.status == 'active' %}bg-success/10 text-success
+                                       {% elif config.status == 'draft' %}bg-warning/10 text-warning
+                                       {% else %}bg-muted text-foreground{% endif %}">
+                                    {{ config.status.title() }}
+                                </span>
+                            </td>
+                            <td class="px-4 py-3 text-sm text-muted-foreground">
+                                {{ config.created_at.strftime('%Y-%m-%d') }}
+                            </td>
+                            <td class="px-4 py-3">
+                                <div class="flex items-center space-x-2">
+                                    <a href="{{ url_for('framework_config_ui.view_configuration', config_id=config.id) }}" 
+                                       class="text-sm text-primary hover:underline">View</a>
+                                    <a href="{{ url_for('framework_config_ui.edit_configuration', config_id=config.id) }}" 
+                                       class="text-sm text-primary hover:underline">Edit</a>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Quick Links -->
+    <div class="mt-8 flex items-center justify-between">
+        <div class="flex items-center space-x-6">
+            <a href="{{ url_for('framework_config_ui.validation') }}" 
+               class="text-sm text-muted-foreground hover:text-foreground">Validation Dashboard</a>
+            <a href="{{ url_for('framework_config_ui.migration') }}" 
+               class="text-sm text-muted-foreground hover:text-foreground">Migration Tools</a>
+            <a href="{{ url_for('framework_config_ui.help') }}" 
+               class="text-sm text-muted-foreground hover:text-foreground">Help &amp; Documentation</a>
+        </div>
+        
+        <div class="text-sm text-muted-foreground">
+            Framework Configuration v{{ active_config.framework_version if active_config else '1.0' }}
+        </div>
+    </div>
+</div>
+
+{% call modal(id='create-framework-config', title='New Framework Configuration', description='Create a new capability framework configuration', size='default') %}
+<form @submit.prevent="submitCreateConfig()" class="space-y-4">
+    <div>
+        <label for="cfc-name" class="block text-sm font-medium mb-1">Configuration Name <span class="text-destructive">*</span></label>
+        <input type="text" id="cfc-name" x-model="formData.configuration_name" required
+               class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+               placeholder="e.g. Enterprise Framework 2026">
+    </div>
+    <div>
+        <label for="cfc-code" class="block text-sm font-medium mb-1">Configuration Code <span class="text-destructive">*</span></label>
+        <input type="text" id="cfc-code" x-model="formData.configuration_code" required
+               class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+               placeholder="e.g. ENT-FW-2026">
+        <p class="text-xs text-muted-foreground mt-1">Unique identifier code for this configuration</p>
+    </div>
+    <div>
+        <label for="cfc-description" class="block text-sm font-medium mb-1">Description</label>
+        <textarea id="cfc-description" x-model="formData.description" rows="2"
+                  class="flex min-h-[64px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  placeholder="Describe this configuration"></textarea>
+    </div>
+    <div x-show="errorMsg" x-cloak class="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-sm text-destructive" x-text="errorMsg"></div>
+    <div class="flex justify-end gap-3 pt-2 border-t border-border">
+        <button type="button" @click="Platform.modal.close('create-framework-config')"
+                class="px-4 py-2 text-sm font-medium rounded-md border border-input bg-background hover:bg-accent" aria-label="Close">Cancel</button>
+        <button type="submit" :disabled="submitting"
+                class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50" aria-label="Submit">
+            <i data-lucide="loader-2" class="h-4 w-4 animate-spin" x-show="submitting" x-cloak></i>
+            <span x-text="submitting ? 'Creating...' : 'Create Configuration'"></span>
+        </button>
+    </div>
+</form>
+{% endcall %}
+
+<script>
+function frameworkConfigModal() {
+    return {
+        formData: { configuration_name: '', configuration_code: '', description: '' },
+        submitting: false,
+        errorMsg: '',
+        submitCreateConfig() {
+            if (!this.formData.configuration_name.trim()) { this.errorMsg = 'Configuration name is required.'; return; }
+            if (!this.formData.configuration_code.trim()) { this.errorMsg = 'Configuration code is required.'; return; }
+            this.submitting = true;
+            this.errorMsg = '';
+            fetch('/api/framework-config/configurations', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || ''
+                },
+                body: JSON.stringify(this.formData)
+            })
+            .then(r => r.json())
+            .then(data => {
+                this.submitting = false;
+                if (!data.success) { this.errorMsg = data.error || 'An error occurred.'; return; }
+                Platform.modal.close('create-framework-config');
+                showToast({ title: 'Configuration created successfully', variant: 'default' });
+                setTimeout(() => window.location.reload(), 800);
+            })
+            .catch(() => { this.submitting = false; this.errorMsg = 'Network error. Please try again.'; });
+        }
+    };
+}
+</script>
+{% endblock %}

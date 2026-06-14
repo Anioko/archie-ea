@@ -1,0 +1,16 @@
+{# Detail metadata helpers (task-detail style label/value rows). #}
+
+{% macro detail_meta_item(icon='', label='', value='', value_alpine='', show_alpine='') %}
+<span class="flex items-center gap-1" {% if show_alpine %}x-show="{{ show_alpine }}" x-cloak{% endif %}>
+    {% if icon %}
+    <i data-lucide="{{ icon }}" class="h-4 w-4" aria-hidden="true"></i>
+    {% endif %}
+    {% if label %}{{ label }}{% endif %}
+    {% if label and (value or value_alpine) %}: {% endif %}
+    {% if value_alpine %}
+    <span x-text="{{ value_alpine }}">{{ value }}</span>
+    {% else %}
+    <span>{{ value }}</span>
+    {% endif %}
+</span>
+{% endmacro %}

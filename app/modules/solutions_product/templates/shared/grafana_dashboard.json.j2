@@ -1,0 +1,234 @@
+{# app/modules/solutions_product/templates/shared/grafana_dashboard.json.j2 #}
+{# Grafana dashboard JSON — importable into any Grafana instance. #}
+{# Context: service_name, solution_id, bundle_id, endpoints, slas, integrations, entities #}
+{
+  "__inputs": [],
+  "__requires": [
+    { "type": "grafana", "id": "grafana", "name": "Grafana", "version": "9.0.0" },
+    { "type": "datasource", "id": "prometheus", "name": "Prometheus", "version": "1.0.0" }
+  ],
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "id": 1,
+      "title": "Request Rate by Endpoint",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum(rate(http_server_request_duration_seconds_count{service=\"{{ service_name }}\"}[5m])) by (http_route, http_request_method)",
+          "legendFormat": "{% raw %}{{http_request_method}} {{http_route}}{% endraw %}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": { "drawStyle": "line", "fillOpacity": 10 }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Error Rate by Endpoint",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum(rate(http_server_request_duration_seconds_count{service=\"{{ service_name }}\", http_response_status_code=~\"4..\"}[5m])) by (http_route)",
+          "legendFormat": "{% raw %}4xx {{http_route}}{% endraw %}"
+        },
+        {
+          "expr": "sum(rate(http_server_request_duration_seconds_count{service=\"{{ service_name }}\", http_response_status_code=~\"5..\"}[5m])) by (http_route)",
+          "legendFormat": "{% raw %}5xx {{http_route}}{% endraw %}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": { "drawStyle": "line", "fillOpacity": 10 }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Latency Distribution (p50 / p90 / p99)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(http_server_request_duration_seconds_bucket{service=\"{{ service_name }}\"}[5m])) by (le, http_route))",
+          "legendFormat": "{% raw %}p50 {{http_route}}{% endraw %}"
+        },
+        {
+          "expr": "histogram_quantile(0.90, sum(rate(http_server_request_duration_seconds_bucket{service=\"{{ service_name }}\"}[5m])) by (le, http_route))",
+          "legendFormat": "{% raw %}p90 {{http_route}}{% endraw %}"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(http_server_request_duration_seconds_bucket{service=\"{{ service_name }}\"}[5m])) by (le, http_route))",
+          "legendFormat": "{% raw %}p99 {{http_route}}{% endraw %}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": { "drawStyle": "line", "fillOpacity": 10 }
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "SLA Compliance",
+      "type": "stat",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        {% for sla in slas %}
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(http_server_request_duration_seconds_bucket{service=\"{{ service_name }}\"}[5m])) by (le))",
+          "legendFormat": "{{ sla.name | default('SLA') }} (target: {{ sla.response_time_ms | default(500) }}ms)"
+        }{{ "," if not loop.last else "" }}
+        {% endfor %}
+        {% if not slas %}
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(http_server_request_duration_seconds_bucket{service=\"{{ service_name }}\"}[5m])) by (le))",
+          "legendFormat": "p99 latency"
+        }
+        {% endif %}
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              {% if slas %}
+              { "color": "red", "value": {{ (slas[0].response_time_ms | default(500)) / 1000 }} }
+              {% else %}
+              { "color": "red", "value": 1.0 }
+              {% endif %}
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 5,
+      "title": "Integration Health",
+      "type": "stat",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "targets": [
+        {% for integration in integrations %}
+        {
+          "expr": "up{service=\"{{ service_name }}\", dependency=\"{{ integration.name }}\"}",
+          "legendFormat": "{{ integration.name }}"
+        }{{ "," if not loop.last else "" }}
+        {% endfor %}
+        {% if not integrations %}
+        {
+          "expr": "up{service=\"{{ service_name }}\"}",
+          "legendFormat": "self"
+        }
+        {% endif %}
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "UP", "color": "green" } } }
+          ]
+        }
+      }
+    },
+    {
+      "id": 6,
+      "title": "Database Connections",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "targets": [
+        {
+          "expr": "db_pool_size{service=\"{{ service_name }}\"}",
+          "legendFormat": "pool_size"
+        },
+        {
+          "expr": "db_pool_active{service=\"{{ service_name }}\"}",
+          "legendFormat": "active"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(db_query_duration_seconds_bucket{service=\"{{ service_name }}\"}[5m])) by (le))",
+          "legendFormat": "query p99"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "fillOpacity": 10 }
+        }
+      }
+    },
+    {
+      "id": 7,
+      "title": "Resource Usage (CPU & Memory)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "targets": [
+        {
+          "expr": "rate(container_cpu_usage_seconds_total{pod=~\"{{ service_name }}.*\"}[5m])",
+          "legendFormat": "CPU cores"
+        },
+        {
+          "expr": "container_memory_working_set_bytes{pod=~\"{{ service_name }}.*\"} / 1024 / 1024",
+          "legendFormat": "Memory (MB)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "fillOpacity": 10 }
+        }
+      }
+    },
+    {
+      "id": 8,
+      "title": "Business Metrics",
+      "type": "stat",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+      "targets": [
+        {% for entity in entities %}
+        {
+          "expr": "{{ service_name | replace('-', '_') }}_{{ entity.name_snake }}_total",
+          "legendFormat": "{{ entity.name }} count"
+        }{{ "," if not loop.last else "" }}
+        {% endfor %}
+        {% if not entities %}
+        {
+          "expr": "{{ service_name | replace('-', '_') }}_entities_total",
+          "legendFormat": "total entities"
+        }
+        {% endif %}
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "blue", "value": null }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "schemaVersion": 37,
+  "style": "dark",
+  "tags": ["generated", "archie", "{{ service_name }}"],
+  "templating": { "list": [] },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "utc",
+  "title": "{{ service_name }} — Service Dashboard",
+  "uid": "archie-{{ service_name }}",
+  "version": 1
+}

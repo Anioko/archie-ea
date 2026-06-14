@@ -1,0 +1,304 @@
+{# ─── Per-layer intra-layer Sankey ──────────────────────────────────────────
+   Shows elements within a single ArchiMate layer and their intra-layer
+   relationships. Columns: Active Structure / Behavior / Passive Structure.
+
+   Colour modes: type | health | status | risk
+
+   Requires D3 + d3-sankey to already be loaded by the parent page.
+
+   Usage:
+     {% set sankey_solution_id = solution.id %}
+     {% set sankey_layer = 'business' %}
+     {% include 'solutions/partials/_layer_sankey.html' %}
+#}
+
+<div x-data="layerMiniSankey({{ sankey_solution_id | default(0) }}, '{{ sankey_layer | default('') }}')"
+     x-init="init()"
+     class="w-full">
+
+  {# ── Loading ── #}
+  <div x-show="loading" x-cloak class="flex items-center justify-center py-8">
+    <svg class="animate-spin h-4 w-4 text-muted-foreground mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 22 6.477 22 12h-4z"></path>
+    </svg>
+    <span class="text-xs text-muted-foreground">Loading layer flow&#x2026;</span>
+  </div>
+
+  {# ── Error ── #}
+  <div x-show="error" x-cloak class="text-xs text-destructive py-2" x-text="error"></div>
+
+  {# ── Empty ── #}
+  <div x-show="!loading && !error && nodes.length === 0" x-cloak
+       class="text-xs text-muted-foreground/60 py-4 text-center italic">
+    No intra-layer relationships yet — generate or run the Inference Engine to wire them.
+  </div>
+
+  {# ── Diagram ── #}
+  <div x-show="!loading && !error && nodes.length > 0" x-cloak>
+
+    {# Mode selector #}
+    <div class="flex items-center gap-1.5 mb-2 flex-wrap">
+      <span class="text-[11px] text-muted-foreground font-medium mr-0.5">Colour by</span>
+      <template x-for="m in modes" :key="m.id">
+        <button @click="setMode(m.id)"
+                :class="mode === m.id
+                  ? 'bg-foreground text-background border-foreground'
+                  : 'bg-background text-muted-foreground border-border hover:border-foreground/40'"
+                class="px-1.5 py-0.5 rounded border text-[11px] font-medium transition-colors"
+                x-text="m.label"></button>
+      </template>
+    </div>
+
+    {# Legend #}
+    <div class="flex flex-wrap gap-x-2.5 gap-y-1 mb-2 min-h-[14px]">
+      <template x-for="item in activeLegend" :key="item.label">
+        <div class="flex items-center gap-1">
+          <span class="w-2 h-2 rounded-sm shrink-0" :style="`background:${item.color}`"></span>
+          <span class="text-[11px] text-muted-foreground" x-text="item.label"></span>
+        </div>
+      </template>
+    </div>
+
+    {# Column headers #}
+    <div class="flex text-[11px] font-medium text-muted-foreground mb-1 px-1">
+      <template x-for="col in columnLabels" :key="col.name">
+        <div class="flex-1 text-center truncate" x-text="col.name"></div>
+      </template>
+    </div>
+
+    {# SVG container #}
+    <div x-ref="svg" class="w-full rounded-lg border border-border bg-card overflow-x-auto"></div>
+
+    {# Stats #}
+    <div class="flex items-center gap-3 mt-1.5 text-[11px] text-muted-foreground">
+      <span x-text="`${nodes.length} elements`"></span>
+      <span x-text="`${links.length} relationships`"></span>
+    </div>
+  </div>
+
+</div>
+
+<script>
+(function() {
+  // Guard: only define once per page even if partial is included multiple times
+  if (window._layerMiniSankeyDefined) return;
+  window._layerMiniSankeyDefined = true;
+
+function layerMiniSankey(solutionId, layer) {
+  return {
+    solutionId,
+    layer,
+    loading: false,
+    loaded: false,
+    error: null,
+    nodes: [],
+    links: [],
+    columnLabels: [],
+    mode: 'type',
+
+    modes: [
+      { id: 'type',   label: 'Type'   },
+      { id: 'health', label: 'Health' },
+      { id: 'status', label: 'Status' },
+      { id: 'risk',   label: 'Risk'   },
+    ],
+
+    // Per-mode type→colour maps (Active=blue, Behavioral=amber, Passive=violet)
+    typeCols: {
+      // col 0 = Active Structure, col 1 = Behavioral, col 2 = Passive Structure
+      0: '#3b82f6',
+      1: '#f59e0b',
+      2: '#8b5cf6',
+    },
+
+    legends: {
+      type: [
+        { label: 'Active Structure', color: '#3b82f6' },
+        { label: 'Behavioral',       color: '#f59e0b' },
+        { label: 'Passive Structure',color: '#8b5cf6' },
+      ],
+      health: [
+        { label: 'Complete (4/4)',   color: '#10b981' },
+        { label: 'Partial (2–3/4)', color: '#f59e0b' },
+        { label: 'Minimal (1/4)',    color: '#f97316' },
+        { label: 'Empty (0/4)',      color: '#ef4444' },
+      ],
+      status: [
+        { label: 'Implemented', color: '#10b981' },
+        { label: 'Approved',    color: '#0ea5e9' },
+        { label: 'Proposed',    color: '#8b5cf6' },
+        { label: 'Deprecated',  color: '#ef4444' },
+        { label: 'Unknown',     color: '#94a3b8' },
+      ],
+      risk: [
+        { label: 'Critical path',  color: '#ef4444' },
+        { label: 'Critical dep.',  color: '#f97316' },
+        { label: 'High dep.',      color: '#f59e0b' },
+        { label: 'Medium / Low',   color: '#94a3b8' },
+      ],
+    },
+
+    get activeLegend() { return this.legends[this.mode] || []; },
+
+    setMode(m) { this.mode = m; this.render(); },
+
+    nodeColor(node) {
+      switch (this.mode) {
+        case 'type': return this.typeCols[node.column] || '#94a3b8';
+        case 'health': {
+          const h = node.health ?? 0;
+          if (h >= 4) return '#10b981';
+          if (h >= 2) return '#f59e0b';
+          if (h >= 1) return '#f97316';
+          return '#ef4444';
+        }
+        case 'status': {
+          const map = { implemented:'#10b981', approved:'#0ea5e9', proposed:'#8b5cf6', deprecated:'#ef4444' };
+          return map[(node.status||'').toLowerCase()] || '#94a3b8';
+        }
+        case 'risk': {
+          if (node.critical_path) return '#ef4444';
+          const map = { critical:'#f97316', high:'#f59e0b', medium:'#94a3b8', low:'#94a3b8' };
+          return map[(node.dependency_level||'').toLowerCase()] || '#94a3b8';
+        }
+        default: return '#94a3b8';
+      }
+    },
+
+    // Layer accent colour for link strokes
+    layerAccent: {
+      motivation:'#8b5cf6', strategy:'#0ea5e9', business:'#f59e0b',
+      application:'#10b981', technology:'#6b7280', implementation:'#f97316',
+    },
+
+    init() {
+      this.load();
+    },
+
+    async load() {
+      if (this.loaded || this.loading) return;
+      this.loading = true;
+      this.error = null;
+      try {
+        const r = await fetch(`/architecture-journey/${this.solutionId}/layer-flow/${this.layer}`);
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const data = await r.json();
+        this.nodes = data.nodes || [];
+        this.links = data.links || [];
+        this.columnLabels = data.column_labels || [];
+        this.loaded = true;
+        await this.$nextTick();
+        this.render();
+      } catch (e) {
+        this.error = `Failed to load: ${e.message}`;
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    render() {
+      const container = this.$refs.svg;
+      if (!container || !this.nodes.length) return;
+      if (typeof d3 === 'undefined' || typeof d3.sankey === 'undefined') {
+        setTimeout(() => this.render(), 300);
+        return;
+      }
+
+      // Only nodes that participate in at least one link
+      const linkedIdxs = new Set();
+      this.links.forEach(l => { linkedIdxs.add(l.source); linkedIdxs.add(l.target); });
+      const connected = this.nodes.filter((_, i) => linkedIdxs.has(i));
+
+      if (connected.length === 0) {
+        d3.select(container).selectAll('*').remove();
+        d3.select(container).append('p')
+          .attr('class', 'text-xs text-muted-foreground p-3')
+          .text(`${this.nodes.length} elements present but no intra-layer relationships yet.`);
+        return;
+      }
+
+      const oldToNew = new Map();
+      connected.forEach((n, i) => oldToNew.set(this.nodes.indexOf(n), i));
+      const connLinks = this.links
+        .filter(l => oldToNew.has(l.source) && oldToNew.has(l.target))
+        .map(l => ({...l, source: oldToNew.get(l.source), target: oldToNew.get(l.target)}));
+
+      const W = container.clientWidth || 600;
+      const H = Math.max(180, connected.length * 20);
+      const m = {top: 6, right: 8, bottom: 6, left: 8};
+
+      d3.select(container).selectAll('*').remove();
+      const svg = d3.select(container)
+        .append('svg')
+        .attr('width', W).attr('height', H)
+        .attr('viewBox', `0 0 ${W} ${H}`);
+
+      const sankey = d3.sankey()
+        .nodeId(d => d.index)
+        .nodeAlign(d3.sankeyLeft)
+        .nodeWidth(12)
+        .nodePadding(7)
+        .extent([[m.left, m.top], [W - m.right, H - m.bottom]]);
+
+      const graph = sankey({
+        nodes: connected.map((n, i) => ({...n, index: i})),
+        links: connLinks.map(l => ({...l, value: l.value || 1})),
+      });
+
+      const accent = this.layerAccent[this.layer] || '#94a3b8';
+      const self = this;
+
+      svg.append('g').attr('fill', 'none')
+        .selectAll('path')
+        .data(graph.links)
+        .join('path')
+        .attr('d', d3.sankeyLinkHorizontal())
+        .attr('stroke', accent)
+        .attr('stroke-width', d => Math.max(1, d.width))
+        .attr('stroke-opacity', 0.2)
+        .on('mouseover', function() { d3.select(this).attr('stroke-opacity', 0.5); })
+        .on('mouseout',  function() { d3.select(this).attr('stroke-opacity', 0.2); });
+
+      const node = svg.append('g')
+        .selectAll('g').data(graph.nodes).join('g');
+
+      node.append('rect')
+        .attr('x', d => d.x0).attr('y', d => d.y0)
+        .attr('height', d => Math.max(2, d.y1 - d.y0))
+        .attr('width',  d => d.x1 - d.x0)
+        .attr('fill', d => self.nodeColor(d))
+        .attr('rx', 2).attr('opacity', 0.85);
+
+      // AI-origin marker
+      node.filter(d => d.origin === 'ai_derived')
+        .append('circle')
+        .attr('cx', d => d.x0 + 2).attr('cy', d => d.y0 + 2)
+        .attr('r', 2).attr('fill', '#a855f7').attr('opacity', 0.85);
+
+      // Critical path ring
+      node.filter(d => d.critical_path)
+        .append('rect')
+        .attr('x', d => d.x0 - 1).attr('y', d => d.y0 - 1)
+        .attr('height', d => Math.max(2, d.y1 - d.y0) + 2)
+        .attr('width',  d => (d.x1 - d.x0) + 2)
+        .attr('fill', 'none').attr('stroke', '#ef4444')
+        .attr('stroke-width', 1.5).attr('rx', 2).attr('opacity', 0.6);
+
+      node.filter(d => (d.y1 - d.y0) >= 12)
+        .append('text')
+        .attr('x', d => d.x0 < W / 2 ? d.x1 + 6 : d.x0 - 6)
+        .attr('y', d => (d.y0 + d.y1) / 2)
+        .attr('dy', '0.35em')
+        .attr('text-anchor', d => d.x0 < W / 2 ? 'start' : 'end')
+        .attr('font-size', '9px')
+        .attr('fill', 'currentColor')
+        .attr('class', 'fill-foreground')
+        .text(d => d.name.length > 30 ? d.name.slice(0, 27) + '\u2026' : d.name);
+    },
+  };
+}
+
+window.layerMiniSankey = layerMiniSankey;
+})();
+</script>

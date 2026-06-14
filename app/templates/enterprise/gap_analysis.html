@@ -1,0 +1,96 @@
+{% extends 'layouts/admin_base.html' %}
+{% from 'components/page_header.html' import page_header %}
+{% from 'components/metrics_card.html' import metrics_card %}
+{% from 'components/status_badge.html' import status_badge %}
+
+{% block title %}Gap Analysis{% endblock %}
+
+{% block breadcrumb %}
+{% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
+{{ breadcrumb_nav(items=[
+    {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
+    {'text': 'Enterprise Architecture'},
+    {'text': 'Enterprise', 'current': true}
+]) }}
+{% endblock %}
+
+{% block content %}
+<div class="flex flex-col space-y-8 animate-in fade-in duration-500">
+    <!-- Header -->
+    {{ page_header(
+        title='Gap Analysis',
+        description='Analyze gaps between baseline and target architectures.',
+        actions=[
+            {'text': 'Identify Gap', 'icon': 'plus', 'variant': 'default'}
+        ]
+    ) }}
+
+    <!-- Gap Summary -->
+    <div class="grid gap-4 md:grid-cols-4">
+        {{ metrics_card(title='Total Gaps', value=gaps|length|default(0), icon='target') }}
+        {{ metrics_card(title='Critical', value=gaps|selectattr('priority', 'equalto', 'Critical')|list|length|default(0), icon='alert-triangle', icon_class='!text-destructive', value_class='text-destructive') }}
+        {{ metrics_card(title='In Progress', value=gaps|selectattr('status', 'equalto', 'In Progress')|list|length|default(0), icon='loader', icon_class='!text-primary', value_class='text-primary') }}
+        {{ metrics_card(title='Resolved', value=gaps|selectattr('status', 'equalto', 'Resolved')|list|length|default(0), icon='check-circle', icon_class='!text-success', value_class='text-success') }}
+    </div>
+
+    <!-- Gaps Table -->
+    <div data-slot="card" class="rounded-xl border bg-card">
+        <div class="p-6">
+            <h3 class="font-semibold mb-4">Identified Gaps</h3>
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead>
+                        <tr class="border-b">
+                            <th class="text-left p-3 font-medium">Gap</th>
+                            <th class="text-left p-3 font-medium">Type</th>
+                            <th class="text-left p-3 font-medium">Priority</th>
+                            <th class="text-left p-3 font-medium">Status</th>
+                            <th class="text-left p-3 font-medium">Impact</th>
+                            <th class="text-left p-3 font-medium">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y">
+                        {% for gap in gaps|default([]) %}
+                        <tr class="border-b hover:bg-muted/50">
+                            <td class="p-3">
+                                <div class="font-medium">{{ gap.name|default('N/A') }}</div>
+                                <div class="text-sm text-muted-foreground">{{ gap.description|default('')|truncate(50) }}</div>
+                            </td>
+                            <td class="p-3">{{ gap.gap_type|default('Unknown') }}</td>
+                            <td class="p-3">
+                                {% if gap.priority == 'Critical' %}
+                                    {{ status_badge(gap.priority|default('Normal'), 'error') }}
+                                {% elif gap.priority == 'High' %}
+                                    {{ status_badge(gap.priority|default('Normal'), 'warning') }}
+                                {% else %}
+                                    {{ status_badge(gap.priority|default('Normal'), 'neutral') }}
+                                {% endif %}
+                            </td>
+                            <td class="p-3">
+                                {% if gap.resolution_status == 'resolved' %}
+                                    {{ status_badge(gap.resolution_status|default('identified'), 'success') }}
+                                {% elif gap.resolution_status == 'in_progress' %}
+                                    {{ status_badge(gap.resolution_status|default('identified'), 'info') }}
+                                {% else %}
+                                    {{ status_badge(gap.resolution_status|default('identified'), 'neutral') }}
+                                {% endif %}
+                            </td>
+                            <td class="p-3 text-sm text-muted-foreground">{{ gap.impact|default('Unknown') }}</td>
+                            <td class="p-3">
+                                <button class="p-2 hover:bg-muted rounded-md" aria-label="Action">
+                                    <i data-lucide="more-horizontal" class="h-4 w-4" aria-hidden="true"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="6" class="p-6 text-center text-muted-foreground">No gaps identified</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,738 @@
+            {# Architecture Requirements (TOGAF Phases B-D) — Alpine-driven CRUD #}
+            <div id="phase-bcd" class="bg-card rounded-xl border border-border shadow-sm p-6 transition-all relative "
+                 x-show="isSectionActive('B')" x-cloak
+                 :class="isSectionActive('B') ? 'ring-1 ring-primary/10' : ''">
+                <div x-show="isSectionFuture('B')" x-cloak class="absolute inset-0 bg-background/60 z-10 flex items-center justify-center rounded-xl">
+                    <p class="text-sm text-muted-foreground font-medium">Complete Phase <span x-text="currentPhase"></span> to unlock</p>
+                </div>
+                <div class="flex items-center justify-between mb-4">
+                    <div class="flex items-center gap-3">
+                        <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-500 flex-shrink-0" x-show="isSectionCompleted('B')" x-cloak aria-hidden="true"></i>
+                        <i data-lucide="circle-dot" class="w-4 h-4 text-primary flex-shrink-0" x-show="isSectionActive('B')" x-cloak aria-hidden="true"></i>
+                        <i data-lucide="circle" class="w-4 h-4 text-muted-foreground flex-shrink-0" x-show="isSectionFuture('B')" x-cloak aria-hidden="true"></i>
+                        <h3 class="text-lg font-semibold text-foreground">Architecture Requirements</h3>
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-violet-500/10 text-violet-600 border border-violet-500/30">ArchiMate Requirement</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs text-muted-foreground" x-text="requirements.length + ' total, ' + mandatoryReqCount + ' mandatory'"></span>
+                        {% if llm_available %}
+                        <button type="button" @click="aiGenerateRequirements()" :disabled="generatingReqs"
+                                class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium text-primary hover:bg-primary/10 transition-colors disabled:opacity-50"
+                                title="AI Generate Requirements from drivers and goals">
+                            <i data-lucide="wand-2" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                            <span x-text="generatingReqs ? 'Generating...' : 'Generate Reqs'"></span>
+                        </button>
+                        <button type="button" @click="aiSuggestElements('BCD')" :disabled="suggestingElements"
+                                class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium text-primary hover:bg-primary/10 transition-colors disabled:opacity-50"
+                                title="AI Suggest ArchiMate elements">
+                            <i data-lucide="sparkles" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                            <span x-text="suggestingElements && aiSuggestPhase === 'BCD' ? 'Suggesting...' : 'AI Suggest'"></span>
+                        </button>
+                        <button @click="generatePhase('B')"
+                                :disabled="generateLoading === 'B'"
+                                class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-amber-500/30 text-amber-600 rounded-md hover:bg-amber-500/10 disabled:opacity-50"
+                                aria-label="Generate missing Phase B elements">
+                            <i data-lucide="sparkles" class="h-3.5 w-3.5" :class="generateLoading === 'B' && 'animate-spin'" aria-hidden="true"></i>
+                            <span x-text="generateLoading === 'B' ? 'Generating...' : 'Generate Missing'"></span>
+                        </button>
+                        {% endif %}
+                        <button type="button" @click="toggleComments('phase_bcd')" class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors" title="Comments">
+                            <i data-lucide="message-square" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                            <span x-show="commentCount('phase_bcd') > 0" x-text="commentCount('phase_bcd')" class="text-[10px] bg-primary text-primary-foreground rounded-full px-1 min-w-[16px] text-center" x-cloak></span>
+                        </button>
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30">Phases B-D</span>
+                        <div class="flex items-center gap-1.5">
+                            <div class="h-1.5 w-16 bg-muted rounded-full overflow-hidden"><div class="h-full bg-primary rounded-full transition-all" :style="{width: phaseCompleteness('BCD').percent + '%'}"></div></div>
+                            <span class="text-[10px] text-muted-foreground" x-text="phaseCompleteness('BCD').label"></span>
+                        </div>
+                        <button type="button" @click="openEntityModal('requirement')"
+                            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+                            <i data-lucide="plus" class="w-3.5 h-3.5" aria-hidden="true"></i> Add Requirement
+                        </button>
+                    </div>
+                </div>
+
+                {# Generate Missing Preview Panel (BPP-014) #}
+                <template x-if="generatePreview && generatePreview.phase === 'B'">
+                    <div class="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 space-y-3">
+                        <div class="flex items-center justify-between">
+                            <h4 class="text-sm font-medium text-amber-700">
+                                Would create <span x-text="generatePreview.count"></span> elements
+                            </h4>
+                            <span class="text-xs text-muted-foreground"
+                                  x-text="'Completeness: ' + Math.round((generatePreview.completeness_before || 0) * 100) + '% → ' + Math.round((generatePreview.completeness_after || 0) * 100) + '%'"></span>
+                        </div>
+                        <div class="space-y-1.5 max-h-48 overflow-y-auto">
+                            <template x-for="item in (generatePreview.would_create || [])" :key="item.type + item.name">
+                                <div class="flex items-center gap-2 text-xs">
+                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium"
+                                          :class="item.direction === 'upstream' ? 'bg-blue-500/10 text-blue-600' : 'bg-emerald-500/10 text-emerald-600'"
+                                          x-text="item.direction === 'upstream' ? 'up' : 'down'"></span>
+                                    <span class="font-medium" x-text="item.type"></span>
+                                    <span class="text-muted-foreground truncate" x-text="item.name"></span>
+                                </div>
+                            </template>
+                        </div>
+                        <template x-if="generatePreview.count === 0">
+                            <p class="text-xs text-muted-foreground">All required elements already exist. Phase is complete.</p>
+                        </template>
+                        <div class="flex gap-2 pt-2 border-t border-amber-500/20" x-show="generatePreview.count > 0">
+                            <button @click="confirmGenerate()" :disabled="generateLoading"
+                                    class="px-3 py-1.5 text-xs font-medium bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50">
+                                <span x-text="generateLoading ? 'Creating...' : 'Confirm'"></span>
+                            </button>
+                            <button @click="cancelGenerate()"
+                                    class="px-3 py-1.5 text-xs font-medium border border-border rounded-md hover:bg-accent">Cancel</button>
+                        </div>
+                    </div>
+                </template>
+                <template x-if="generateError && !generateLoading">
+                    <div class="mt-2 text-xs text-destructive flex items-center gap-1">
+                        <i data-lucide="alert-circle" class="h-3 w-3" aria-hidden="true"></i>
+                        <span x-text="generateError"></span>
+                        <button @click="generateError = null" class="ml-1 underline">dismiss</button>
+                    </div>
+                </template>
+
+                {{ comment_thread('phase_bcd') }}
+
+                {# Phase B-D Guidance (SDX-010) #}
+                <details class="mb-4 border border-border rounded-lg">
+                    <summary class="px-4 py-2 text-sm font-medium text-muted-foreground cursor-pointer hover:text-foreground select-none">Phases B-D Guidance — Business, Information Systems & Technology Architecture</summary>
+                    <div class="px-4 py-3 text-sm text-muted-foreground space-y-2 border-t border-border">
+                        <p><strong class="text-foreground">TOGAF Deliverables:</strong> Business Architecture Document (Phase B), Data Architecture / Application Architecture (Phase C), Technology Architecture (Phase D). Architecture Definition Document (ADD), Architecture Requirements Specification.</p>
+                        <p><strong class="text-foreground">ArchiMate Artifacts:</strong> Requirement elements with priority and type. Business services, processes, application components, technology services, data objects.</p>
+                        <p><strong class="text-foreground">Minimum to Advance:</strong> At least 3 architecture requirements defined with priority classification (mandatory/desirable/optional).</p>
+                    </div>
+                </details>
+
+                {# AI Suggestion Cards for B-D (SDX-005) #}
+                <template x-if="aiSuggestions.length > 0 && aiSuggestPhase === 'BCD'">
+                    <div class="mb-4 p-3 rounded-md border border-primary/20 bg-primary/5">
+                        <p class="text-xs font-medium text-primary mb-2">AI Suggested Elements</p>
+                        <div class="space-y-2">
+                            <template x-for="(s, idx) in aiSuggestions" :key="idx">
+                                <div class="flex items-center justify-between p-2 rounded-md bg-background border border-border ai-suggestion-card">
+                                    <div class="flex-1 min-w-0 mr-3">
+                                        <div class="flex items-center gap-2">
+                                            <span class="text-sm font-medium text-foreground" x-text="s.name"></span>
+                                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-violet-500/10 text-violet-600 border border-violet-500/20" x-text="s.layer"></span>
+                                        </div>
+                                        <p class="text-xs text-muted-foreground truncate" x-text="s.description"></p>
+                                    </div>
+                                    <div class="flex items-center gap-1 shrink-0">
+                                        <button @click="acceptSuggestion(idx)" class="p-1 rounded-md hover:bg-primary/10 text-primary" title="Accept">
+                                            <i data-lucide="check" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                                        </button>
+                                        <button @click="dismissSuggestion(idx)" class="p-1 rounded-md hover:bg-destructive/10 text-destructive" title="Dismiss">
+                                            <i data-lucide="x" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </template>
+
+                {# AI Requirement Suggestion Cards (SDX-006) #}
+                <template x-if="aiRequirementSuggestions.length > 0">
+                    <div class="mb-4 p-3 rounded-md border border-violet-500/20 bg-violet-500/5">
+                        <p class="text-xs font-medium text-violet-600 mb-2">AI Suggested Requirements</p>
+                        <div class="space-y-2">
+                            <template x-for="(s, idx) in aiRequirementSuggestions" :key="idx">
+                                <div class="flex items-center justify-between p-2 rounded-md bg-background border border-border ai-requirement-card">
+                                    <div class="flex-1 min-w-0 mr-3">
+                                        <div class="flex items-center gap-2">
+                                            <span class="text-sm font-medium text-foreground" x-text="s.name || s.title"></span>
+                                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
+                                                  :class="(s.type || s.requirement_type) === 'functional' ? 'bg-primary/10 text-primary border border-primary/20' : (s.type || s.requirement_type) === 'non_functional' ? 'bg-amber-500/10 text-amber-600 border border-amber-500/20' : 'bg-zinc-500/10 text-zinc-600 border border-zinc-500/20'"
+                                                  x-text="(s.type || s.requirement_type || 'functional').replace('_', ' ')"></span>
+                                        </div>
+                                        <p class="text-xs text-muted-foreground truncate" x-text="s.description"></p>
+                                    </div>
+                                    <div class="flex items-center gap-1 shrink-0">
+                                        <button @click="acceptRequirement(idx)" class="p-1 rounded-md hover:bg-primary/10 text-primary" title="Accept">
+                                            <i data-lucide="check" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                                        </button>
+                                        <button @click="dismissRequirement(idx)" class="p-1 rounded-md hover:bg-destructive/10 text-destructive" title="Dismiss">
+                                            <i data-lucide="x" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </template>
+
+                <template x-if="requirements.length > 0">
+                    <div class="overflow-x-auto border border-border rounded-lg">
+                        <table class="w-full text-sm">
+                            <thead class="bg-muted/50 border-b border-border">
+                                <tr>
+                                    <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground">ID</th>
+                                    <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground">Requirement</th>
+                                    <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground">Type</th>
+                                    <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground">Priority</th>
+                                    <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground">Mandatory</th>
+                                    <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground w-16"></th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-border/50">
+                                <template x-for="(req, idx) in requirements" :key="req.id">
+                                    <tr class="group hover:bg-muted/30 transition-colors">
+                                        <td class="px-3 py-2 text-muted-foreground" x-text="(req.requirement_type === 'functional' ? 'FR-' : 'NFR-') + String(idx + 1).padStart(3, '0')"></td>
+                                        <td class="px-3 py-2">
+                                            <div>
+                                                <span class="font-medium text-foreground" x-text="req.name"></span>
+                                                <span x-show="req.ai_generated" x-cloak class="ml-1 inline-flex items-center gap-0.5 px-1 py-0 rounded text-[10px] font-medium bg-violet-500/10 text-violet-600 border border-violet-500/20" title="AI generated"><i data-lucide="sparkles" class="w-2.5 h-2.5"></i>AI</span>
+                                                <p class="text-xs text-muted-foreground mt-0.5 line-clamp-1" x-text="req.description" x-show="req.description" x-cloak></p>
+                                            </div>
+                                        </td>
+                                        <td class="px-3 py-2">
+                                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
+                                                  :class="requirementTypeClass(req.requirement_type)"
+                                                  x-text="req.requirement_type"></span>
+                                        </td>
+                                        <td class="px-3 py-2">
+                                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
+                                                  :class="req.priority <= 2 ? 'bg-destructive/10 text-destructive' : req.priority === 3 ? 'bg-amber-500/10 text-amber-600' : 'bg-primary/10 text-primary'"
+                                                  x-text="req.priority <= 2 ? 'Critical' : req.priority === 3 ? 'High' : 'Medium'"></span>
+                                        </td>
+                                        <td class="px-3 py-2">
+                                            <i x-show="req.is_mandatory" x-cloak data-lucide="check-circle" class="w-4 h-4 text-emerald-500" aria-hidden="true"></i>
+                                            <i x-show="!req.is_mandatory" x-cloak data-lucide="circle" class="w-4 h-4 text-muted-foreground" aria-hidden="true"></i>
+                                        </td>
+                                        <td class="px-3 py-2">
+                                            <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <button type="button" @click="openEntityModal('requirement', req)" class="text-muted-foreground hover:text-foreground p-1 rounded-md" title="Edit">
+                                                    <i data-lucide="pencil" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                                                </button>
+                                                <button type="button" @click="confirmDeleteEntity('requirement', req)" class="text-muted-foreground hover:text-destructive p-1 rounded-md" title="Delete">
+                                                    <i data-lucide="trash-2" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                </template>
+                <template x-if="requirements.length === 0">
+                    <div class="text-center py-6 border-2 border-dashed border-border rounded-lg">
+                        <i data-lucide="file-check" class="w-8 h-8 mx-auto mb-2 text-muted-foreground opacity-50" aria-hidden="true"></i>
+                        <p class="text-sm text-muted-foreground">No requirements documented yet.</p>
+                        <p class="text-xs text-muted-foreground mt-1">Add functional and non-functional requirements to define architecture scope.</p>
+                        <p class="text-xs text-muted-foreground mt-2 italic">
+                            <i data-lucide="sparkles" class="h-3 w-3 inline-block mr-1 text-primary/60"></i>
+                            A.R.C.H.I.E. suggests: Link business capabilities from your portfolio to show which business functions this solution supports.
+                        </p>
+                    </div>
+                </template>
+
+                {# Phase B — Business Elements (ArchiMate 3.2) #}
+                <div class="mt-4">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-xs font-semibold text-muted-foreground uppercase tracking-wide">ArchiMate 3.2 Elements</span>
+                        {# SAD-07: ArchiMate Auto-Generation button #}
+                        <button type="button"
+                                x-data="{ archiLoading: false, archiDone: false }"
+                                @click="
+                                    archiLoading = true;
+                                    fetch('/api/solutions/' + (window.__SOLUTION_CONFIG__||{}).solutionId + '/archimate/generate', {
+                                        method: 'POST',
+                                        credentials: 'same-origin',
+                                        headers: {'Content-Type':'application/json','X-CSRFToken':(document.querySelector('[name=csrf_token]')||{value:''}).value},
+                                        body: JSON.stringify({phase: activePhase})
+                                    }).then(r=>r.json()).then(()=>{ archiLoading=false; archiDone=true; setTimeout(()=>archiDone=false,3000); }).catch(()=>{ archiLoading=false; })
+                                "
+                                :disabled="archiLoading"
+                                class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-muted hover:bg-accent text-foreground transition-colors disabled:opacity-50">
+                            <template x-if="!archiLoading && !archiDone">
+                                <i data-lucide="sparkles" class="w-3.5 h-3.5 text-primary"></i>
+                            </template>
+                            <template x-if="archiLoading">
+                                <i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i>
+                            </template>
+                            <template x-if="archiDone">
+                                <i data-lucide="check" class="w-3.5 h-3.5 text-emerald-500"></i>
+                            </template>
+                            <span x-text="archiDone ? 'Generated!' : archiLoading ? 'Generating…' : 'Auto-Generate'"></span>
+                        </button>
+                    </div>
+                    {% include 'solutions/partials/_business_elements.html' %}
+                </div>
+
+                {# ── SAD-15: AI Architecture Suggestions ───────────────────────────── #}
+                <div class="rounded-lg border border-border bg-card overflow-hidden"
+                     x-cloak x-show="isSectionActive('B')">
+                  <div class="px-5 py-3 border-b border-border bg-muted/30 flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                      <i data-lucide="sparkles" class="w-4 h-4 text-primary"></i>
+                      <h3 class="font-semibold text-sm">AI Architecture Suggestions</h3>
+                      <span class="text-xs text-muted-foreground">Vendor fit · ArchiMate elements · Cost estimate · Risks · Next actions</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <template x-if="aiSugExplainability.generatedAt">
+                        <span class="text-[10px] text-muted-foreground" x-text="'Last run: ' + new Date(aiSugExplainability.generatedAt).toLocaleDateString()"></span>
+                      </template>
+                      <button type="button" @click="regenerateAiSuggestions()"
+                        :disabled="aiSugRegenLoading"
+                        class="inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors">
+                        <i data-lucide="refresh-cw" class="w-3 h-3" :class="aiSugRegenLoading ? 'animate-spin' : ''"></i>
+                        <span x-text="aiSugRegenLoading ? 'Analysing…' : 'Run AI Analysis'"></span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {# Loading #}
+                  <div x-cloak x-show="aiSugLoading" class="py-10 text-center text-sm text-muted-foreground">
+                    <i data-lucide="loader-2" class="w-5 h-5 animate-spin inline-block mr-2"></i>Loading AI analysis…
+                  </div>
+
+                  {# Empty state #}
+                  <div x-cloak x-show="!aiSugLoading && !aiSugLoaded" class="py-10 text-center">
+                    <i data-lucide="sparkles" class="w-8 h-8 text-muted-foreground/30 mx-auto mb-3"></i>
+                    <p class="text-sm text-muted-foreground mb-3">No AI analysis yet for this solution.</p>
+                    <button type="button" @click="regenerateAiSuggestions()" class="px-4 py-2 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90">
+                      Run AI Analysis
+                    </button>
+                  </div>
+
+                  {# Content #}
+                  <div x-cloak x-show="!aiSugLoading && aiSugLoaded" class="p-5">
+
+                    {# Explainability meta strip #}
+                    <div x-cloak x-show="aiSugExplainability.confidence || aiSugExplainability.dataSources?.length > 0"
+                         class="flex flex-wrap gap-3 mb-4 p-3 rounded-md bg-muted/40 text-xs text-muted-foreground border border-border/50">
+                      <template x-if="aiSugExplainability.confidence !== null && aiSugExplainability.confidence !== undefined">
+                        <span class="flex items-center gap-1">
+                          <i data-lucide="shield-check" class="w-3.5 h-3.5"></i>
+                          Overall confidence:
+                          <span class="font-medium" :class="aiSugConfidenceClass(aiSugExplainability.confidence)"
+                                x-text="aiSugConfidencePct(aiSugExplainability.confidence) + '%'"></span>
+                        </span>
+                      </template>
+                      <template x-if="aiSugExplainability.dataSources?.length > 0">
+                        <span class="flex items-center gap-1">
+                          <i data-lucide="database" class="w-3.5 h-3.5"></i>
+                          Data sources: <span class="font-medium" x-text="aiSugExplainability.dataSources.length"></span>
+                        </span>
+                      </template>
+                      <template x-if="aiSugExplainability.uncertaintyFactors?.length > 0">
+                        <span class="flex items-center gap-1 text-amber-600">
+                          <i data-lucide="alert-triangle" class="w-3.5 h-3.5"></i>
+                          <span x-text="aiSugExplainability.uncertaintyFactors.length + ' uncertainty factors'"></span>
+                        </span>
+                      </template>
+                    </div>
+
+                    {# Tab bar #}
+                    <div class="flex gap-1 flex-wrap mb-4 border-b border-border pb-2">
+                      <template x-for="tab in [
+                        {k:'vendors',   l:'Vendors',        icon:'building-2',  count: aiSuggestions.vendors.length},
+                        {k:'archimate', l:'ArchiMate',       icon:'layers',      count: aiSuggestions.archimate.length},
+                        {k:'costs',     l:'Cost Estimate',   icon:'coins',       count: aiSuggestions.costs ? 1 : 0},
+                        {k:'risks',     l:'Risks',           icon:'shield-alert', count: aiSuggestions.risks.length},
+                        {k:'next',      l:'Next Actions',    icon:'list-checks', count: aiSuggestions.nextActions.length}
+                      ]" :key="tab.k">
+                        <button type="button" @click="aiSugTab=tab.k"
+                          :class="aiSugTab===tab.k ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-accent'"
+                          class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors">
+                          <i :data-lucide="tab.icon" class="w-3.5 h-3.5"></i>
+                          <span x-text="tab.l"></span>
+                          <template x-if="tab.count > 0">
+                            <span class="rounded-full px-1.5 py-0.5 text-[10px] font-medium"
+                                  :class="aiSugTab===tab.k ? 'bg-primary-foreground/20 text-primary-foreground' : 'bg-background text-foreground'"
+                                  x-text="tab.count"></span>
+                          </template>
+                        </button>
+                      </template>
+                    </div>
+
+                    {# VENDORS TAB #}
+                    <div x-cloak x-show="aiSugTab==='vendors'">
+                      <div x-cloak x-show="aiSuggestions.vendors.length===0" class="py-6 text-center text-sm text-muted-foreground italic">No vendor suggestions available.</div>
+                      <div class="space-y-3">
+                        <template x-for="(v, idx) in aiSuggestions.vendors" :key="idx">
+                          <div class="rounded-md border border-border bg-background p-4">
+                            <div class="flex items-start justify-between gap-3">
+                              <div class="flex-1 min-w-0">
+                                <div class="flex items-center gap-2 mb-1">
+                                  <span class="font-semibold text-sm" x-text="v.vendor_name || v.name || v.vendor || 'Vendor'"></span>
+                                  <template x-if="v.confidence !== undefined">
+                                    <span class="inline-block px-1.5 py-0.5 rounded text-[10px] font-medium"
+                                          :class="aiSugConfidenceClass(v.confidence)"
+                                          x-text="aiSugConfidencePct(v.confidence) + '% fit'"></span>
+                                  </template>
+                                  <template x-if="v.fit_category">
+                                    <span class="text-xs text-muted-foreground" x-text="v.fit_category"></span>
+                                  </template>
+                                </div>
+                                <p x-cloak x-show="v.rationale || v.reason" class="text-xs text-muted-foreground mb-2" x-text="v.rationale || v.reason"></p>
+                                <div x-cloak x-show="v.strengths?.length > 0" class="flex flex-wrap gap-1 mb-1">
+                                  <template x-for="s in (v.strengths||[]).slice(0,3)" :key="s">
+                                    <span class="inline-block px-1.5 py-0.5 rounded-full text-[10px] bg-emerald-500/5 text-emerald-700 border border-green-100" x-text="s"></span>
+                                  </template>
+                                </div>
+                              </div>
+                              <div class="flex gap-1.5 flex-shrink-0">
+                                <button type="button" @click="submitAiSugFeedback('vendors',idx,'accepted')"
+                                  :class="aiSugFeedback['vendors_'+idx]==='accepted' ? 'bg-emerald-500 text-primary-foreground' : 'bg-background border border-border text-muted-foreground hover:text-emerald-600 hover:border-green-300'"
+                                  class="p-1.5 rounded-md transition-colors" title="Accept">
+                                  <i data-lucide="check" class="w-3.5 h-3.5"></i>
+                                </button>
+                                <button type="button" @click="submitAiSugFeedback('vendors',idx,'rejected')"
+                                  :class="aiSugFeedback['vendors_'+idx]==='rejected' ? 'bg-destructive text-primary-foreground' : 'bg-background border border-border text-muted-foreground hover:text-destructive hover:border-destructive/30'"
+                                  class="p-1.5 rounded-md transition-colors" title="Reject">
+                                  <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        </template>
+                      </div>
+                    </div>
+
+                    {# ARCHIMATE TAB #}
+                    <div x-cloak x-show="aiSugTab==='archimate'">
+                      <div x-cloak x-show="aiSuggestions.archimate.length===0" class="py-6 text-center text-sm text-muted-foreground italic">No ArchiMate element suggestions available.</div>
+                      <div class="space-y-2">
+                        <template x-for="(el, idx) in aiSuggestions.archimate" :key="idx">
+                          <div class="flex items-center justify-between px-4 py-2.5 rounded-md border border-border bg-background hover:bg-muted/30 transition-colors">
+                            <div class="flex items-center gap-2 min-w-0 flex-1">
+                              <span class="inline-block px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/10 text-yellow-800"
+                                    x-text="el.layer || el.element_layer || ''"></span>
+                              <span class="inline-block px-1.5 py-0.5 rounded text-[10px] bg-muted text-muted-foreground"
+                                    x-text="el.type || el.element_type || ''"></span>
+                              <span class="text-sm font-medium truncate" x-text="el.name || el.element_name"></span>
+                              <template x-if="el.confidence !== undefined">
+                                <span class="text-xs text-muted-foreground flex-shrink-0" x-text="aiSugConfidencePct(el.confidence) + '%'"></span>
+                              </template>
+                            </div>
+                            <div class="flex gap-1 flex-shrink-0">
+                              <button type="button" @click="submitAiSugFeedback('archimate',idx,'accepted', el)"
+                                :class="aiSugFeedback['archimate_'+idx]==='accepted' ? 'bg-emerald-500 text-primary-foreground' : 'border border-border text-muted-foreground hover:text-emerald-600'"
+                                class="p-1.5 rounded transition-colors" title="Accept — adds to ArchiMate elements"><i data-lucide="check" class="w-3 h-3"></i></button>
+                              <button type="button" @click="submitAiSugFeedback('archimate',idx,'rejected', el)"
+                                :class="aiSugFeedback['archimate_'+idx]==='rejected' ? 'bg-destructive text-primary-foreground' : 'border border-border text-muted-foreground hover:text-destructive'"
+                                class="p-1.5 rounded transition-colors" title="Reject"><i data-lucide="x" class="w-3 h-3"></i></button>
+                            </div>
+                          </div>
+                        </template>
+                      </div>
+                    </div>
+
+                    {# COSTS TAB #}
+                    <div x-cloak x-show="aiSugTab==='costs'">
+                      <div x-cloak x-show="!aiSuggestions.costs" class="py-6 text-center text-sm text-muted-foreground italic">No cost estimate available.</div>
+                      <template x-if="aiSuggestions.costs">
+                        <div class="space-y-3">
+                          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                            <div class="rounded-md border border-border bg-background p-3 text-center">
+                              <div class="text-xl font-bold text-foreground" x-text="aiSuggestions.costs.total ? '$' + Number(aiSuggestions.costs.total).toLocaleString() : '—'"></div>
+                              <div class="text-xs text-muted-foreground mt-0.5">Total Estimate</div>
+                            </div>
+                            <template x-if="aiSugExplainability.confidenceIntervals?.cost_estimate">
+                              <div class="rounded-md border border-border bg-background p-3 text-center">
+                                <div class="text-sm font-semibold text-foreground" x-text="'±' + Math.round((aiSugExplainability.confidenceIntervals.cost_estimate.margin_of_error||0)*100) + '%'"></div>
+                                <div class="text-xs text-muted-foreground mt-0.5">Margin of Error</div>
+                              </div>
+                            </template>
+                          </div>
+                          <template x-if="aiSuggestions.costs.components">
+                            <div class="space-y-1">
+                              <template x-for="[k, v] in Object.entries(aiSuggestions.costs.components||{})" :key="k">
+                                <div class="flex items-center justify-between px-3 py-1.5 rounded bg-muted/30 text-sm">
+                                  <span class="text-muted-foreground capitalize" x-text="k.replace(/_/g,' ')"></span>
+                                  <span class="font-medium" x-text="'$' + Number(v).toLocaleString()"></span>
+                                </div>
+                              </template>
+                            </div>
+                          </template>
+                          <template x-if="aiSugExplainability.costs?.reasoning">
+                            <p class="text-xs text-muted-foreground italic p-3 bg-muted/30 rounded" x-text="aiSugExplainability.costs.reasoning"></p>
+                          </template>
+                        </div>
+                      </template>
+                    </div>
+
+                    {# RISKS TAB #}
+                    <div x-cloak x-show="aiSugTab==='risks'">
+                      <div x-cloak x-show="aiSuggestions.risks.length===0" class="py-6 text-center text-sm text-muted-foreground italic">No risk suggestions available.</div>
+                      <div class="space-y-2">
+                        <template x-for="(r, idx) in aiSuggestions.risks" :key="idx">
+                          <div class="rounded-md border border-border bg-background p-3">
+                            <div class="flex items-start justify-between gap-2">
+                              <div class="flex-1 min-w-0">
+                                <div class="flex items-center gap-2 mb-1">
+                                  <span class="inline-block px-1.5 py-0.5 rounded text-[10px] font-medium"
+                                    :class="(r.impact||r.severity)==='critical'||'high' ? 'bg-destructive/10 text-destructive' : 'bg-amber-500/10 text-amber-700'"
+                                    x-text="r.impact || r.severity || r.risk_level || 'medium'"></span>
+                                  <span class="text-sm font-medium truncate" x-text="r.risk || r.description || r.risk_description"></span>
+                                </div>
+                                <p x-cloak x-show="r.mitigation" class="text-xs text-muted-foreground" x-text="'Mitigation: ' + r.mitigation"></p>
+                              </div>
+                              <div class="flex gap-1 flex-shrink-0">
+                                <button type="button" @click="submitAiSugFeedback('risks',idx,'accepted')"
+                                  :class="aiSugFeedback['risks_'+idx]==='accepted' ? 'bg-emerald-500 text-primary-foreground' : 'border border-border text-muted-foreground hover:text-emerald-600'"
+                                  class="p-1.5 rounded transition-colors"><i data-lucide="check" class="w-3 h-3"></i></button>
+                                <button type="button" @click="submitAiSugFeedback('risks',idx,'rejected')"
+                                  :class="aiSugFeedback['risks_'+idx]==='rejected' ? 'bg-destructive text-primary-foreground' : 'border border-border text-muted-foreground hover:text-destructive'"
+                                  class="p-1.5 rounded transition-colors"><i data-lucide="x" class="w-3 h-3"></i></button>
+                              </div>
+                            </div>
+                          </div>
+                        </template>
+                      </div>
+                    </div>
+
+                    {# NEXT ACTIONS TAB #}
+                    <div x-cloak x-show="aiSugTab==='next'">
+                      <div x-cloak x-show="aiSuggestions.nextActions.length===0" class="py-6 text-center text-sm text-muted-foreground italic">No next action recommendations available.</div>
+                      <div class="space-y-2">
+                        <template x-for="(a, idx) in aiSuggestions.nextActions" :key="idx">
+                          <div class="flex items-start gap-3 px-4 py-3 rounded-md border border-border bg-background">
+                            <span class="flex-shrink-0 w-6 h-6 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center" x-text="idx+1"></span>
+                            <div class="flex-1 min-w-0">
+                              <p class="text-sm font-medium" x-text="a.action || a.title || a.description || a"></p>
+                              <p x-cloak x-show="a.rationale || a.reason" class="text-xs text-muted-foreground mt-0.5" x-text="a.rationale || a.reason"></p>
+                              <template x-if="a.adm_phase">
+                                <span class="inline-block px-1.5 py-0.5 rounded text-[10px] bg-purple-50 text-purple-700 mt-1" x-text="'Phase ' + a.adm_phase"></span>
+                              </template>
+                            </div>
+                            <template x-if="a.priority">
+                              <span class="flex-shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded"
+                                :class="a.priority==='high'||a.priority==='critical' ? 'bg-destructive/5 text-destructive' : 'bg-muted text-muted-foreground'"
+                                x-text="a.priority"></span>
+                            </template>
+                          </div>
+                        </template>
+                      </div>
+                    </div>
+
+                  </div>{# end content #}
+                </div>
+
+                {# ENT-060: Business Capability Mappings (Phase B) #}
+                <div class="mt-6 bg-card rounded-xl border border-border shadow-sm p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-3">
+                            <i data-lucide="boxes" class="w-4 h-4 text-primary flex-shrink-0" aria-hidden="true"></i>
+                            <h3 class="text-lg font-semibold text-foreground">Business Capabilities</h3>
+                            <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-primary/10 text-primary border border-primary/30">Phase B</span>
+                            <template x-if="capabilityMappingsLoading">
+                                <i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin text-muted-foreground" aria-hidden="true"></i>
+                            </template>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs text-muted-foreground" x-text="capabilityMappings.length + ' linked'" x-cloak></span>
+                            <button type="button" @click="$dispatch('open-capability-picker', { solutionId: solutionId })"
+                                class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+                                <i data-lucide="plus" class="w-3.5 h-3.5" aria-hidden="true"></i> Link Capability
+                            </button>
+                        </div>
+                    </div>
+
+                    {# Empty state #}
+                    <div x-show="capabilityMappingsLoaded && capabilityMappings.length === 0" x-cloak
+                         class="py-8 text-center border border-dashed border-border rounded-lg">
+                        <i data-lucide="boxes" class="w-8 h-8 text-muted-foreground/40 mx-auto mb-2" aria-hidden="true"></i>
+                        <p class="text-sm text-muted-foreground">No business capabilities linked yet.</p>
+                        <p class="text-xs text-muted-foreground mt-1">Use the <strong>Link Capability</strong> button to map capabilities to this solution.</p>
+                        <p class="text-xs text-muted-foreground mt-2 italic">
+                            <i data-lucide="sparkles" class="h-3 w-3 inline-block mr-1 text-primary/60"></i>
+                            A.R.C.H.I.E. suggests: Link business capabilities from your portfolio to show which business functions this solution supports.
+                        </p>
+                    </div>
+
+                    {# Capability list #}
+                    <div x-show="capabilityMappings.length > 0" x-cloak class="space-y-2">
+                        <template x-for="cap in capabilityMappings" :key="cap.id">
+                            <div class="flex items-center justify-between px-4 py-3 rounded-lg border border-border bg-background hover:bg-muted/20 group transition-colors">
+                                <div class="flex items-center gap-3 min-w-0 flex-1">
+                                    <div class="flex flex-col min-w-0 flex-1">
+                                        <div class="flex items-center gap-2">
+                                            <span class="text-sm font-medium text-foreground truncate" x-text="cap.capability_name || ('Capability #' + cap.capability_id)"></span>
+                                            <span x-show="cap.capability_code" x-cloak
+                                                  class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono bg-muted text-muted-foreground"
+                                                  x-text="cap.capability_code"></span>
+                                        </div>
+                                        <div class="flex items-center gap-3 mt-1">
+                                            {# Support level badge #}
+                                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium"
+                                                  :class="{
+                                                      'bg-emerald-500/10 text-emerald-600 border border-emerald-500/30': cap.support_level === 'full',
+                                                      'bg-amber-500/10 text-amber-600 border border-amber-500/30': cap.support_level === 'partial',
+                                                      'bg-destructive/10 text-destructive border border-destructive/30': cap.support_level === 'minimal' || cap.support_level === 'none',
+                                                      'bg-muted text-muted-foreground border border-border': !cap.support_level || (cap.support_level !== 'full' && cap.support_level !== 'partial' && cap.support_level !== 'minimal' && cap.support_level !== 'none')
+                                                  }"
+                                                  x-text="cap.support_level || 'unrated'"></span>
+                                            {# Coverage progress bar #}
+                                            <template x-if="cap.coverage_percentage !== null && cap.coverage_percentage !== undefined">
+                                                <div class="flex items-center gap-1.5">
+                                                    <div class="h-1.5 w-16 bg-muted rounded-full overflow-hidden">
+                                                        <div class="h-full rounded-full transition-all"
+                                                             :class="{
+                                                                 'bg-emerald-500': cap.coverage_percentage >= 75,
+                                                                 'bg-amber-500': cap.coverage_percentage >= 40 && cap.coverage_percentage < 75,
+                                                                 'bg-destructive': cap.coverage_percentage < 40
+                                                             }"
+                                                             :style="'width:' + Math.min(100, cap.coverage_percentage) + '%'"></div>
+                                                    </div>
+                                                    <span class="text-[10px] text-muted-foreground" x-text="Math.round(cap.coverage_percentage) + '%'"></span>
+                                                </div>
+                                            </template>
+                                            {# Maturity indicator #}
+                                            <template x-if="cap.maturity_current !== null && cap.maturity_current !== undefined">
+                                                <span class="text-[10px] text-muted-foreground">
+                                                    Maturity: <span x-text="cap.maturity_current"></span><template x-if="cap.maturity_target !== null && cap.maturity_target !== undefined"><span x-text="' → ' + cap.maturity_target"></span></template>
+                                                </span>
+                                            </template>
+                                            {# Category #}
+                                            <span x-show="cap.capability_category" x-cloak
+                                                  class="text-[10px] text-muted-foreground" x-text="cap.capability_category"></span>
+                                        </div>
+                                        <p x-show="cap.notes" x-cloak class="text-xs text-muted-foreground mt-1 truncate" x-text="cap.notes"></p>
+                                    </div>
+                                </div>
+                                <button type="button" @click="deleteCapabilityMapping(cap.id)"
+                                        class="ml-2 shrink-0 text-xs text-destructive/70 hover:text-destructive flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <i data-lucide="x" class="w-3 h-3" aria-hidden="true"></i>
+                                    Remove
+                                </button>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                {# SAD-03: Capability Health panel (Phase B) #}
+                <div class="mt-4 border border-border rounded-lg p-4 bg-muted/20"
+                     x-cloak x-show="capabilityHealthLoaded && capabilityHealth">
+                    <div class="flex items-center gap-2 mb-3">
+                        <i data-lucide="activity" class="w-4 h-4 text-muted-foreground flex-shrink-0"></i>
+                        <h3 class="text-sm font-semibold text-foreground">Capability Health Scores</h3>
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-primary/10 text-primary border border-primary/30">Phase B</span>
+                        <template x-if="capabilityHealthLoading">
+                            <i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin text-muted-foreground"></i>
+                        </template>
+                    </div>
+                    <template x-if="capabilityHealth && (capabilityHealth.capability_health || capabilityHealth.capabilities)">
+                        <div class="space-y-1.5">
+                            <template x-for="cap in (capabilityHealth.capability_health || capabilityHealth.capabilities || []).slice(0,8)" :key="cap.id || cap.name">
+                                <div class="flex items-center gap-3">
+                                    <span class="text-xs text-muted-foreground w-40 truncate flex-shrink-0" x-text="cap.name || cap.capability_name"></span>
+                                    <div class="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
+                                        <div class="h-full rounded-full transition-all"
+                                             :style="'width:' + Math.min(100, Math.round((cap.health_score || cap.score || 0)*100)) + '%'"
+                                             :class="{
+                                                 'bg-emerald-500': (cap.health_score || cap.score || 0) >= 0.75,
+                                                 'bg-amber-500': (cap.health_score || cap.score || 0) >= 0.4 && (cap.health_score || cap.score || 0) < 0.75,
+                                                 'bg-destructive': (cap.health_score || cap.score || 0) < 0.4
+                                             }"></div>
+                                    </div>
+                                    <span class="text-xs text-muted-foreground w-8 text-right flex-shrink-0"
+                                          x-text="Math.round((cap.health_score || cap.score || 0)*100) + '%'"></span>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+                    <template x-if="capabilityHealthLoaded && (!capabilityHealth || !(capabilityHealth.capability_health || capabilityHealth.capabilities || []).length)">
+                        <p class="text-xs text-muted-foreground italic">No capability health data available. Add capability mappings via the <strong>Capability Picker</strong> in Phase B to enable health scoring.</p>
+                    </template>
+                </div>
+
+                {# SAD-14: Workflow Critical Path / Bottleneck Detection (Phase B) #}
+                <div class="mt-4 border border-border rounded-lg p-4 bg-muted/20"
+                     x-cloak x-show="criticalPathLoaded && criticalPath">
+                    <div class="flex items-center gap-2 mb-3">
+                        <i data-lucide="git-branch" class="w-4 h-4 text-muted-foreground flex-shrink-0"></i>
+                        <h3 class="text-sm font-semibold text-foreground">Workflow Optimization — Critical Path</h3>
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-primary/10 text-primary border border-primary/30">Phase B</span>
+                        <template x-if="criticalPathLoading">
+                            <i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin text-muted-foreground"></i>
+                        </template>
+                    </div>
+                    <template x-if="criticalPath">
+                        <div class="space-y-3">
+                            <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
+                                <div class="bg-background rounded-md border border-border p-2 text-center">
+                                    <div class="text-lg font-bold text-foreground" x-text="criticalPath.project_duration_days || '—'"></div>
+                                    <div class="text-xs text-muted-foreground">Project Days</div>
+                                </div>
+                                <div class="bg-background rounded-md border border-border p-2 text-center">
+                                    <div class="text-lg font-bold text-foreground" x-text="(criticalPath.critical_path || []).length || '—'"></div>
+                                    <div class="text-xs text-muted-foreground">Critical Tasks</div>
+                                </div>
+                                <div class="bg-background rounded-md border border-border p-2 text-center">
+                                    <div class="text-lg font-bold text-amber-600" x-text="(criticalPath.bottlenecks || []).length || '0'"></div>
+                                    <div class="text-xs text-muted-foreground">Bottlenecks</div>
+                                </div>
+                            </div>
+                            <template x-if="(criticalPath.bottlenecks || []).length > 0">
+                                <div>
+                                    <h4 class="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Bottlenecks</h4>
+                                    <template x-for="(b, i) in (criticalPath.bottlenecks || []).slice(0,3)" :key="i">
+                                        <div class="flex items-start gap-2 text-xs text-muted-foreground mb-1">
+                                            <i data-lucide="alert-triangle" class="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-amber-500"></i>
+                                            <span><strong class="text-foreground" x-text="b.task_name"></strong>
+                                                <span x-text="' — ' + (b.impact || b.reason || '')"></span></span>
+                                        </div>
+                                    </template>
+                                </div>
+                            </template>
+                            <template x-if="criticalPath.recommendation">
+                                <p class="text-xs text-muted-foreground italic border-t border-border pt-2" x-text="criticalPath.recommendation"></p>
+                            </template>
+                        </div>
+                    </template>
+                </div>
+
+                {# Phase C & D — Application + Technology Elements (ArchiMate 3.2) #}
+                <div class="mt-4">
+                    {% include 'solutions/partials/_technology_elements.html' %}
+                </div>
+
+                {# ARCH-008: Layer-grouped ArchiMate element review panel #}
+                <div class="mt-6" x-show="linkedArchimateElements && linkedArchimateElements.length > 0" x-cloak>
+                    <div class="flex items-center justify-between mb-3">
+                        <h4 class="text-sm font-semibold text-foreground flex items-center gap-2">
+                            <i data-lucide="layers" class="w-4 h-4 text-muted-foreground"></i>
+                            ArchiMate Element Review
+                            <span class="text-xs font-normal text-muted-foreground bg-muted px-2 py-0.5 rounded-full"
+                                  x-text="linkedArchimateElements.length + ' elements'"></span>
+                        </h4>
+                        <button @click="loadLinkedArchimateElements()"
+                                class="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+                                :disabled="linkedArchimateLoading">
+                            <i data-lucide="refresh-cw" class="w-3 h-3" :class="{'animate-spin': linkedArchimateLoading}"></i>
+                            Refresh
+                        </button>
+                    </div>
+                    <template x-for="[layer, els] in archimateReviewByLayer" :key="layer">
+                        <div class="mb-4 border border-border rounded-lg overflow-hidden">
+                            <div class="px-3 py-2 bg-muted/40 border-b border-border flex items-center gap-2">
+                                <span class="text-xs font-semibold uppercase tracking-wide text-muted-foreground" x-text="layer + ' layer'"></span>
+                                <span class="text-xs text-muted-foreground bg-background border border-border rounded-full px-2 py-0.5" x-text="els.length"></span>
+                            </div>
+                            <div class="divide-y divide-border">
+                                <template x-for="el in els" :key="el.mapping_id">
+                                    <div class="flex items-center justify-between px-3 py-2 hover:bg-muted/20 group">
+                                        <div class="flex items-center gap-3 min-w-0">
+                                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs bg-indigo-50 text-indigo-700 border border-indigo-200 shrink-0"
+                                                  x-text="el.relationship_type || el.type || '—'"></span>
+                                            <span class="text-sm text-foreground font-medium truncate" x-text="el.name || el.element_name || ('Element #' + el.element_id)"></span>
+                                            <span class="text-xs text-muted-foreground truncate hidden sm:block" x-cloak x-show="el.notes" x-text="el.notes"></span>
+                                        </div>
+                                        <button @click="removeLinkedArchimateElement(el.mapping_id)"
+                                                class="ml-2 shrink-0 text-xs text-destructive/70 hover:text-destructive flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <i data-lucide="x" class="w-3 h-3"></i>
+                                            Remove
+                                        </button>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>

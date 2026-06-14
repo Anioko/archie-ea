@@ -1,0 +1,310 @@
+{# app/[entity]/[id]/page.tsx — Entity detail page with status actions #}
+{# Context: entity_name, entity_slug, fields, has_state_machine, transitions (list of {trigger, from_state, to_state}), display_name #}
+{# Resolve the best field to use as the record title in the page header. #}
+{% set _TITLE_CANDIDATES = ['name', 'title', 'label', 'full_name', 'subject', 'heading', 'description'] %}
+{% set _title_ns = namespace(field=None) %}
+{% for pname in _TITLE_CANDIDATES %}
+{% if not _title_ns.field %}
+{% for f in fields %}
+{% if f.name == pname and f.type in ('string', 'text') %}
+{% set _title_ns.field = f.name %}
+{% endif %}
+{% endfor %}
+{% endif %}
+{% endfor %}
+{% if not _title_ns.field %}
+{% for f in fields %}
+{% if not _title_ns.field and f.type in ('string', 'text') and not f.get('primary_key') and f.name not in ('id','created_at','updated_at','deleted_at','status','organization_id','tenant_id','owner_id','created_by','updated_by','deleted_by','ip_address','user_agent','file_path') and not f.name.endswith('_id') %}
+{% set _title_ns.field = f.name %}
+{% endif %}
+{% endfor %}
+{% endif %}
+"use client"
+
+import Link from "next/link"
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { toast } from "sonner"
+import { ArrowLeft, Pencil, Loader2, Trash2 } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Separator } from "@/components/ui/separator"
+import { Skeleton } from "@/components/ui/skeleton"
+import {
+  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogClose,
+} from "@/components/ui/dialog"
+import { api } from "@/lib/api"
+import { statusColor, statusLabel, formatDate, formatDateTime, formatCurrency } from "@/lib/utils"
+{% if show_audit_trail or related_lists %}
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+{% endif %}
+
+type {{ entity_name }} = {
+  id: string
+{% for field in fields %}{% if not field.primary_key and field.name not in ('created_at', 'updated_at', 'deleted_at', 'createdAt', 'updatedAt', 'deletedAt') and (not has_state_machine or field.name != (state_machine_field | default('status'))) %}
+  {{ field.name }}: any
+{% endif %}{% endfor %}
+{% if has_state_machine %}
+  {{ state_machine_field | default('status') }}: string | null
+{% endif %}
+  created_at: string | null
+  updated_at: string | null
+}
+
+export default function {{ entity_name }}DetailPage({ params }: { params: { id: string } }) {
+  const { id } = params
+  const queryClient = useQueryClient()
+
+  const { data: item, isLoading, error } = useQuery({
+    queryKey: ["{{ entity_slug }}", id],
+    queryFn: () => api.get<{{ entity_name }}>(`/api/{{ api_resource }}/${id}`),
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: () => api.delete(`/api/{{ api_resource }}/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["{{ entity_slug }}"] })
+      toast.success("{{ entity_name | replace('_', ' ') }} deleted")
+      window.history.back()
+    },
+    onError: (err: Error) => toast.error("Delete failed", { description: err.message }),
+  })
+
+{% if has_state_machine %}
+  const transitionMutation = useMutation({
+    mutationFn: (trigger: string) => api.post(`/api/{{ api_resource }}/${id}/${trigger}`, {}),
+    onSuccess: (_, trigger) => {
+      queryClient.invalidateQueries({ queryKey: ["{{ entity_slug }}", id] })
+      toast.success(`Transition "${trigger}" applied`)
+    },
+    onError: (err: Error) => toast.error("Transition failed", { description: err.message }),
+  })
+{% endif %}
+
+  if (isLoading) {
+    return (
+      <div className="max-w-3xl space-y-6">
+        <Skeleton className="h-8 w-64" />
+        <Card>
+          <CardContent className="p-6 space-y-4">
+            {[...Array(6)].map((_, i) => (
+              <div key={i} className="flex gap-4">
+                <Skeleton className="h-5 w-32" />
+                <Skeleton className="h-5 flex-1" />
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  if (error || !item) {
+    return (
+      <div className="py-12 text-center">
+        <p className="text-sm text-destructive">{{ entity_name | replace('_', ' ') }} not found</p>
+        <Link href="/{{ entity_slug }}">
+          <Button variant="outline" size="sm" className="mt-4">
+            <ArrowLeft className="mr-2 h-3 w-3" />
+            Back to list
+          </Button>
+        </Link>
+      </div>
+    )
+  }
+
+  return (
+    <div className="max-w-3xl space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Link href="/{{ entity_slug }}">
+            <Button variant="ghost" size="icon">
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+          </Link>
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">{item?.{{ _title_ns.field | default('name') }} ?? "{{ display_name }}"}</h1>
+            <p className="text-sm text-muted-foreground">{{ display_name }}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <Link href={`/{{ entity_slug }}/${id}/edit`}>
+            <Button variant="outline" size="sm">
+              <Pencil className="mr-2 h-3 w-3" />
+              Edit
+            </Button>
+          </Link>
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button variant="outline" size="sm" className="text-destructive hover:text-destructive">
+                <Trash2 className="mr-2 h-3 w-3" />
+                Delete
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Delete {{ display_name }}?</DialogTitle>
+                <DialogDescription>This action cannot be undone.</DialogDescription>
+              </DialogHeader>
+              <div className="flex justify-end gap-2">
+                <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+                <Button variant="destructive" onClick={() => deleteMutation.mutate()} disabled={deleteMutation.isPending}>
+                  {deleteMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                  Delete
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+        </div>
+      </div>
+
+{% if has_state_machine %}
+      {/* Status + Actions */}
+      <Card>
+        <CardContent className="flex items-center justify-between p-4">
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-medium text-muted-foreground">Status</span>
+            <Badge className={statusColor(item.{{ state_machine_field | default('status') }})}>
+              {statusLabel(item.{{ state_machine_field | default('status') }})}
+            </Badge>
+          </div>
+          <div className="flex items-center gap-2">
+{% for t in transitions %}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => transitionMutation.mutate("{{ t.trigger }}")}
+              disabled={transitionMutation.isPending}
+            >
+              {{ t.trigger | replace('_', ' ') | title }}
+            </Button>
+{% endfor %}
+          </div>
+        </CardContent>
+      </Card>
+{% endif %}
+
+{% if show_audit_trail or related_lists %}
+      {/* Tabbed view: Details + Related Lists + Audit Trail */}
+      <Tabs defaultValue="details">
+        <TabsList>
+          <TabsTrigger value="details">Details</TabsTrigger>
+{% for rl in related_lists %}
+          <TabsTrigger value="related_{{ rl.entity | lower }}">{{ rl.entity }}s</TabsTrigger>
+{% endfor %}
+{% if show_audit_trail %}
+          <TabsTrigger value="audit">Audit Trail</TabsTrigger>
+{% endif %}
+        </TabsList>
+
+        <TabsContent value="details">
+          <Card>
+            <CardHeader>
+              <CardTitle>Details</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <dl className="divide-y">
+{% for field in fields %}{% if not field.primary_key and field.name not in ('created_at', 'updated_at', 'deleted_at', 'createdAt', 'updatedAt', 'deletedAt') %}
+                <div className="flex py-3">
+                  <dt className="w-1/3 text-sm font-medium text-muted-foreground">{{ field.name | replace('_', ' ') | title }}</dt>
+                  <dd className="flex-1 text-sm">
+{% if field.name == state_machine_field %}
+                    <Badge className={statusColor(item.{{ field.name }})}>{statusLabel(item.{{ field.name }})}</Badge>
+{% elif field.type in ['datetime', 'date'] %}
+                    {formatDateTime(item.{{ field.name }})}
+{% elif field.type in ['decimal', 'float'] and 'amount' in field.name %}
+                    {formatCurrency(item.{{ field.name }})}
+{% elif field.type == 'boolean' %}
+                    {item.{{ field.name }} ? "Yes" : "No"}
+{% else %}
+                    {item.{{ field.name }} ?? <span className="text-muted-foreground">—</span>}
+{% endif %}
+                  </dd>
+                </div>
+{% endif %}{% endfor %}
+                <div className="flex py-3">
+                  <dt className="w-1/3 text-sm font-medium text-muted-foreground">Created</dt>
+                  <dd className="flex-1 text-sm text-muted-foreground">{formatDateTime(item.created_at)}</dd>
+                </div>
+                <div className="flex py-3">
+                  <dt className="w-1/3 text-sm font-medium text-muted-foreground">Updated</dt>
+                  <dd className="flex-1 text-sm text-muted-foreground">{formatDateTime(item.updated_at)}</dd>
+                </div>
+              </dl>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+{% for rl in related_lists %}
+        <TabsContent value="related_{{ rl.entity | lower }}">
+          <Card>
+            <CardHeader>
+              <CardTitle>{{ rl.entity }}s</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground p-6">
+                Related {{ rl.entity | lower }} records linked via <code>{{ rl.via_field }}</code>.
+              </p>
+            </CardContent>
+          </Card>
+        </TabsContent>
+{% endfor %}
+
+{% if show_audit_trail %}
+        <TabsContent value="audit">
+          <Card>
+            <CardHeader>
+              <CardTitle>Audit Trail</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground p-6">
+                Changes to this {{ entity_name | lower | replace('_', ' ') }} are recorded automatically.
+              </p>
+            </CardContent>
+          </Card>
+        </TabsContent>
+{% endif %}
+
+      </Tabs>
+{% else %}
+      {/* Details */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Details</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <dl className="divide-y">
+{% for field in fields %}{% if not field.primary_key and field.name not in ('created_at', 'updated_at', 'deleted_at', 'createdAt', 'updatedAt', 'deletedAt') %}
+            <div className="flex py-3">
+              <dt className="w-1/3 text-sm font-medium text-muted-foreground">{{ field.name | replace('_', ' ') | title }}</dt>
+              <dd className="flex-1 text-sm">
+{% if field.name == state_machine_field %}
+                <Badge className={statusColor(item.{{ field.name }})}>{statusLabel(item.{{ field.name }})}</Badge>
+{% elif field.type in ['datetime', 'date'] %}
+                {formatDateTime(item.{{ field.name }})}
+{% elif field.type in ['decimal', 'float'] and 'amount' in field.name %}
+                {formatCurrency(item.{{ field.name }})}
+{% elif field.type == 'boolean' %}
+                {item.{{ field.name }} ? "Yes" : "No"}
+{% else %}
+                {item.{{ field.name }} ?? <span className="text-muted-foreground">—</span>}
+{% endif %}
+              </dd>
+            </div>
+{% endif %}{% endfor %}
+            <div className="flex py-3">
+              <dt className="w-1/3 text-sm font-medium text-muted-foreground">Created</dt>
+              <dd className="flex-1 text-sm text-muted-foreground">{formatDateTime(item.created_at)}</dd>
+            </div>
+            <div className="flex py-3">
+              <dt className="w-1/3 text-sm font-medium text-muted-foreground">Updated</dt>
+              <dd className="flex-1 text-sm text-muted-foreground">{formatDateTime(item.updated_at)}</dd>
+            </div>
+          </dl>
+        </CardContent>
+      </Card>
+{% endif %}
+    </div>
+  )
+}

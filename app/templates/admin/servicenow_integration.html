@@ -1,0 +1,334 @@
+{% extends 'layouts/admin_base.html' %}
+{% from 'components/page_header.html' import page_header %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+    <!-- Breadcrumbs -->
+    <nav class="flex items-center gap-2 text-sm text-muted-foreground mb-6">
+        <a href="{{ url_for('main.index') }}" class="hover:text-foreground transition-colors">Dashboard</a>
+        <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
+        <a href="{{ url_for('admin.index') }}" class="hover:text-foreground transition-colors">Admin</a>
+        <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
+        <span class="text-foreground font-medium">ServiceNow Integration</span>
+    </nav>
+
+    {{ page_header(
+        title='ServiceNow CMDB Integration',
+        description='Sync Configuration Items from ServiceNow CMDB to automatically discover and maintain your application portfolio.'
+    ) }}
+
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div class="mb-6 space-y-2">
+                {% for category, message in messages %}
+                    <div class="rounded-md border p-4 {% if category == 'success' %}bg-primary/10 border-primary/20 text-foreground{% elif category == 'error' %}bg-destructive/10 border-destructive/20 text-destructive{% else %}bg-accent border-border text-foreground{% endif %}">
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Status Panel -->
+        <div class="lg:col-span-1">
+            <div data-slot="card" class="rounded-xl border-2 border-input bg-card">
+                <div class="p-4 sm:p-6 border-b">
+                    <h3 class="text-lg font-semibold flex items-center gap-2">
+                        <i data-lucide="server" class="h-5 w-5 text-primary"></i>
+                        Sync Status
+                    </h3>
+                </div>
+                <div class="p-4 sm:p-6 space-y-4">
+                    {% if snow_config %}
+                        <div>
+                            <p class="text-sm text-muted-foreground mb-2">Integration Status</p>
+                            <div class="flex items-center gap-2">
+                                {% if snow_config.enabled %}
+                                    <div class="h-3 w-3 rounded-full bg-primary"></div>
+                                    <span class="font-medium text-foreground">Enabled</span>
+                                {% else %}
+                                    <div class="h-3 w-3 rounded-full bg-muted-foreground"></div>
+                                    <span class="font-medium text-muted-foreground">Disabled</span>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <div>
+                            <p class="text-sm text-muted-foreground mb-2">Instance URL</p>
+                            <p class="font-medium text-sm break-all">{{ snow_config.base_url }}</p>
+                        </div>
+
+                        {% if last_sync %}
+                            <div>
+                                <p class="text-sm text-muted-foreground mb-2">Last Sync</p>
+                                <p class="font-medium">
+                                    {% if last_sync.last_sync_at %}
+                                        {{ last_sync.last_sync_at.strftime('%Y-%m-%d %H:%M:%S') }}
+                                    {% else %}
+                                        Never
+                                    {% endif %}
+                                </p>
+                            </div>
+                        {% endif %}
+
+                        <!-- Statistics -->
+                        <div class="pt-4 border-t">
+                            <p class="text-sm text-muted-foreground mb-3">Synced Data</p>
+                            <div class="space-y-2">
+                                <div class="flex items-center justify-between">
+                                    <span class="text-sm">Applications</span>
+                                    <span class="font-medium" id="synced-apps-count">-</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Manual Actions -->
+                        <div class="pt-4 border-t space-y-3">
+                            <button type="button" id="test-connection-btn"
+                                    class="w-full inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2"
+                                    aria-label="Test ServiceNow connection">
+                                <i data-lucide="plug" class="h-4 w-4"></i>
+                                Test Connection
+                            </button>
+
+                            <button type="button" id="trigger-sync-btn"
+                                    class="w-full inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2"
+                                    aria-label="Trigger immediate sync"
+                                    {% if not snow_config.enabled %}disabled{% endif %}>
+                                <i data-lucide="refresh-cw" class="h-4 w-4"></i>
+                                Sync Now
+                            </button>
+                        </div>
+                    {% else %}
+                        <div class="text-center py-6">
+                            <i data-lucide="alert-circle" class="h-12 w-12 text-muted-foreground mx-auto mb-3"></i>
+                            <p class="text-sm text-muted-foreground">Not configured</p>
+                            <p class="text-xs text-muted-foreground mt-1">Configure ServiceNow to begin syncing</p>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Info Card -->
+            <div data-slot="card" class="rounded-xl border-2 border-input bg-card mt-6">
+                <div class="p-4 sm:p-6">
+                    <h4 class="text-sm font-semibold mb-3 flex items-center gap-2">
+                        <i data-lucide="info" class="h-4 w-4 text-primary"></i>
+                        What gets synced?
+                    </h4>
+                    <ul class="space-y-2 text-sm text-muted-foreground">
+                        <li class="flex items-start gap-2">
+                            <i data-lucide="check" class="h-4 w-4 text-primary mt-0.5 flex-shrink-0"></i>
+                            <span>Applications from <code class="text-xs bg-muted px-1 py-0.5 rounded">cmdb_ci_appl</code></span>
+                        </li>
+                        <li class="flex items-start gap-2">
+                            <i data-lucide="check" class="h-4 w-4 text-primary mt-0.5 flex-shrink-0"></i>
+                            <span>Vendor mappings</span>
+                        </li>
+                        <li class="flex items-start gap-2">
+                            <i data-lucide="check" class="h-4 w-4 text-primary mt-0.5 flex-shrink-0"></i>
+                            <span>Lifecycle status & criticality</span>
+                        </li>
+                        <li class="flex items-start gap-2">
+                            <i data-lucide="check" class="h-4 w-4 text-primary mt-0.5 flex-shrink-0"></i>
+                            <span>Cost information</span>
+                        </li>
+                        <li class="flex items-start gap-2">
+                            <i data-lucide="check" class="h-4 w-4 text-primary mt-0.5 flex-shrink-0"></i>
+                            <span>Ownership details</span>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Settings Form -->
+        <div class="lg:col-span-2">
+            <div data-slot="card" class="rounded-xl border-2 border-input bg-card">
+                <div class="p-4 sm:p-6 border-b">
+                    <h3 class="text-lg font-semibold">Configuration</h3>
+                </div>
+                <div class="p-4 sm:p-6">
+                    <form method="POST" class="space-y-6">
+                        {{ form.hidden_tag() }}
+
+                        <!-- Instance URL -->
+                        <div>
+                            <label for="{{ form.instance_url.id }}" class="block text-sm font-medium mb-2">
+                                {{ form.instance_url.label.text }}
+                                <span class="text-destructive">*</span>
+                            </label>
+                            {{ form.instance_url(class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50", placeholder="https://yourorg.service-now.com") }}
+                            {% if form.instance_url.description %}
+                                <p class="mt-1 text-xs text-muted-foreground">{{ form.instance_url.description }}</p>
+                            {% endif %}
+                            {% if form.instance_url.errors %}
+                                <p class="mt-1 text-xs text-destructive">{{ form.instance_url.errors[0] }}</p>
+                            {% endif %}
+                        </div>
+
+                        <!-- Username -->
+                        <div>
+                            <label for="{{ form.username.id }}" class="block text-sm font-medium mb-2">
+                                {{ form.username.label.text }}
+                                <span class="text-destructive">*</span>
+                            </label>
+                            {{ form.username(class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50", placeholder="api.user") }}
+                            {% if form.username.description %}
+                                <p class="mt-1 text-xs text-muted-foreground">{{ form.username.description }}</p>
+                            {% endif %}
+                            {% if form.username.errors %}
+                                <p class="mt-1 text-xs text-destructive">{{ form.username.errors[0] }}</p>
+                            {% endif %}
+                        </div>
+
+                        <!-- Password / API Token -->
+                        <div>
+                            <label for="{{ form.password.id }}" class="block text-sm font-medium mb-2">
+                                {{ form.password.label.text }}
+                                {% if snow_config %}<span class="text-muted-foreground text-xs">(optional - leave blank to keep existing)</span>{% else %}<span class="text-destructive">*</span>{% endif %}
+                            </label>
+                            {{ form.password(class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50", placeholder="••••••••") }}
+                            {% if form.password.description %}
+                                <p class="mt-1 text-xs text-muted-foreground">{{ form.password.description }}</p>
+                            {% endif %}
+                            {% if form.password.errors %}
+                                <p class="mt-1 text-xs text-destructive">{{ form.password.errors[0] }}</p>
+                            {% endif %}
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <!-- Batch Size -->
+                            <div>
+                                <label for="{{ form.batch_size.id }}" class="block text-sm font-medium mb-2">
+                                    {{ form.batch_size.label.text }}
+                                </label>
+                                {{ form.batch_size(class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50") }}
+                                {% if form.batch_size.description %}
+                                    <p class="mt-1 text-xs text-muted-foreground">{{ form.batch_size.description }}</p>
+                                {% endif %}
+                            </div>
+
+                            <!-- Enable Integration -->
+                            <div class="flex items-center justify-end">
+                                <div class="flex items-center space-x-2">
+                                    {{ form.enabled(class="h-4 w-4 rounded border-input text-primary focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background") }}
+                                    <label for="{{ form.enabled.id }}" class="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                                        {{ form.enabled.label.text }}
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Query Filter -->
+                        <div>
+                            <label for="{{ form.query_filter.id }}" class="block text-sm font-medium mb-2">
+                                {{ form.query_filter.label.text }}
+                            </label>
+                            {{ form.query_filter(class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50", placeholder="operational_status=1^install_status=1") }}
+                            {% if form.query_filter.description %}
+                                <p class="mt-1 text-xs text-muted-foreground">{{ form.query_filter.description }}</p>
+                            {% endif %}
+                            <p class="mt-1 text-xs text-muted-foreground">
+                                Use ServiceNow query syntax. Default: <code class="text-xs bg-muted px-1 py-0.5 rounded">operational_status=1^install_status=1</code>
+                            </p>
+                        </div>
+
+                        <!-- Submit Button -->
+                        <div class="flex items-center justify-end gap-3 pt-4 border-t">
+                            <a href="{{ url_for('admin.index') }}" 
+                               class="inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2">
+                                Cancel
+                            </a>
+                            <button type="submit"
+                                    class="inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2">
+                                <i data-lucide="save" class="h-4 w-4"></i>
+                                Save Configuration
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- JavaScript for buttons -->
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const testBtn = document.getElementById('test-connection-btn');
+    const syncBtn = document.getElementById('trigger-sync-btn');
+    const appsCountEl = document.getElementById('synced-apps-count');
+
+    // Load sync status
+    function loadSyncStatus() {
+        fetch('{{ url_for("admin.servicenow_sync_status") }}')
+            .then(res => res.json())
+            .then(data => {
+                if (data.synced_applications !== undefined) {
+                    appsCountEl.textContent = data.synced_applications;
+                }
+            })
+            .catch(err => console.error('Failed to load sync status:', err));
+    }
+
+    // Test connection
+    if (testBtn) {
+        testBtn.addEventListener('click', function() {
+            testBtn.disabled = true;
+            testBtn.innerHTML = '<i data-lucide="loader-2" class="h-4 w-4 animate-spin"></i> Testing...';
+            lucide.createIcons();
+
+            fetch('{{ url_for("admin.servicenow_test_connection") }}', { method: 'POST' })
+                .then(res => res.json())
+                .then(data => {
+                    Platform.toast.info(data.message);
+                    testBtn.disabled = false;
+                    testBtn.innerHTML = '<i data-lucide="plug" class="h-4 w-4"></i> Test Connection';
+                    lucide.createIcons();
+                })
+                .catch(err => {
+                    Platform.toast.error('Connection test failed: ' + err.message);
+                    testBtn.disabled = false;
+                    testBtn.innerHTML = '<i data-lucide="plug" class="h-4 w-4"></i> Test Connection';
+                    lucide.createIcons();
+                });
+        });
+    }
+
+    // Trigger sync
+    if (syncBtn) {
+        syncBtn.addEventListener('click', async function() {
+            if (!(await Platform.modal.confirm('Start ServiceNow CMDB sync? This will fetch and update applications.'))) {
+                return;
+            }
+
+            syncBtn.disabled = true;
+            syncBtn.innerHTML = '<i data-lucide="loader-2" class="h-4 w-4 animate-spin"></i> Syncing...';
+            lucide.createIcons();
+
+            fetch('{{ url_for("admin.servicenow_trigger_sync") }}', { method: 'POST' })
+                .then(res => res.json())
+                .then(data => {
+                    Platform.toast.info(data.message);
+                    syncBtn.disabled = false;
+                    syncBtn.innerHTML = '<i data-lucide="refresh-cw" class="h-4 w-4"></i> Sync Now';
+                    lucide.createIcons();
+                    loadSyncStatus();  // Reload stats
+                })
+                .catch(err => {
+                    Platform.toast.error('Sync failed: ' + err.message);
+                    syncBtn.disabled = false;
+                    syncBtn.innerHTML = '<i data-lucide="refresh-cw" class="h-4 w-4"></i> Sync Now';
+                    lucide.createIcons();
+                });
+        });
+    }
+
+    // Initial load
+    loadSyncStatus();
+});
+</script>
+{% endblock %}

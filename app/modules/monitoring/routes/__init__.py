@@ -1,0 +1,1 @@
+"""Monitoring route blueprints."""

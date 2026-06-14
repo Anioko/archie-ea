@@ -1,0 +1,1003 @@
+﻿{#
+===============================================================================
+STANDARD SIDEBAR COMPONENT - OFFICIAL PATTERN
+===============================================================================
+
+ðŸš¨ MANDATORY USE FOR ALL LLM AGENTS ðŸš¨
+
+This is the OFFICIAL standard sidebar pattern for the Flask-Base application.
+ALL LLM agents MUST use this sidebar pattern and MUST NOT create duplicates,
+replacements, or alternative sidebar implementations.
+
+USAGE:
+    {% include 'components/admin_sidebar.html' %}
+
+REQUIREMENTS:
+    - MUST be included in admin_base.html layout
+    - MUST NOT be modified without explicit requirement
+    - MUST NOT be duplicated or replaced
+    - MUST be reused across all admin pages
+
+FEATURES:
+    - Responsive design (mobile collapsible, desktop fixed)
+    - Alpine.js for interactivity
+    - shadcn/ui styling with Tailwind CSS
+    - Lucide icons for consistent iconography
+    - Active state highlighting
+    - User account display
+    - Proper accessibility (ARIA labels, semantic HTML)
+
+STRUCTURE:
+    - Header: App logo and name
+    - Navigation: Grouped menu sections
+    - Footer: User info and logout
+
+DEPENDENCIES:
+    - Alpine.js (x-data, x-show, x-transition)
+    - Tailwind CSS (shadcn/ui classes)
+    - Lucide icons (data-lucide)
+    - Flask context (url_for, current_user, config)
+
+VIOLATION NOTES:
+    Creating alternative sidebars violates LLM_SCRIPT_POLICY.md section 0.5
+    and will result in immediate session termination.
+
+===============================================================================
+#}
+<aside
+    :class="[$store.sidebar.open ? 'translate-x-0' : '-translate-x-full', $store.sidebar.collapsed ? 'sidebar-collapsed' : '']"
+    :style="{ width: $store.sidebar.collapsed ? '4rem' : '16rem' }"
+    @click.away="isDesktop ? null : $store.sidebar.open = false"
+    class="fixed inset-y-0 left-0 z-50 bg-card border-r border-border -translate-x-full lg:translate-x-0 lg:static flex flex-col h-screen shadow-lg lg:shadow-none transition-all duration-200 ease-in-out"
+>
+    <!-- Sidebar Header -->
+    <div class="flex items-center justify-between h-16 px-4 border-b border-border flex-shrink-0">
+        <a href="{{ url_for('admin.index') }}" class="flex items-center space-x-2">
+            <div class="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+                <i data-lucide="layout-dashboard" class="w-5 h-5 text-primary-foreground"></i>
+            </div>
+            <span class="text-lg font-semibold sidebar-app-name">{{ config.APP_NAME }}</span>
+        </a>
+        <button @click="$store.sidebar.open = false" class="lg:hidden text-muted-foreground hover:text-foreground" aria-label="Close navigation">
+            <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+    </div>
+
+    <!-- Navigation -->
+    <nav id="sidebar-nav" class="flex-1 px-2 py-4 space-y-2 overflow-y-auto min-h-0 [&::-webkit-scrollbar]:w-0 [scrollbar-width:none]"
+         x-data="{
+             searchQuery: '',
+             searchFocused: false,
+             userRole: '{{ current_user.enterprise_role | default('platform_admin') }}',
+             showAll: localStorage.getItem('archie_sidebar_show_all') === '1',
+             roleMap: {
+                 'home':         ['all'],
+                 'ai':           ['all'],
+                 'application':  ['enterprise_architect', 'portfolio_manager', 'platform_admin', 'application_manager', 'cto'],
+                 'vendor':       ['enterprise_architect', 'solution_architect', 'portfolio_manager', 'platform_admin', 'procurement', 'application_manager', 'cto'],
+                 'archimate':    ['enterprise_architect', 'solution_architect', 'platform_admin', 'cto'],
+                 'solutions':    ['solution_architect', 'enterprise_architect', 'arb_member', 'platform_admin', 'cto'],
+                 'arb':          ['arb_member', 'solution_architect', 'platform_admin', 'cto'],
+                 'capabilities': ['enterprise_architect', 'portfolio_manager', 'platform_admin', 'cto'],
+                 'roadmaps':     ['portfolio_manager', 'enterprise_architect', 'platform_admin', 'cto'],
+                 'data':         ['platform_admin', 'enterprise_architect', 'application_manager'],
+                 'admin':        ['platform_admin'],
+             },
+             roleVisible(group) {
+                 if (this.showAll) return true;
+                 const knownRoles = ['solution_architect', 'enterprise_architect', 'arb_member', 'portfolio_manager', 'platform_admin', 'cto', 'application_manager', 'procurement'];
+                 if (!knownRoles.includes(this.userRole)) return true;
+                 const roles = this.roleMap[group] || ['all'];
+                 return roles.includes('all') || roles.includes(this.userRole);
+             },
+             toggleShowAll() {
+                 this.showAll = !this.showAll;
+                 localStorage.setItem('archie_sidebar_show_all', this.showAll ? '1' : '0');
+             },
+             startHereDots: {
+                 solution_architect:   ['/architecture-journey/', '/solutions/', '/archimate/composer'],
+                 enterprise_architect: ['/applications/', '/capability-map/', '/architecture/dashboard'],
+                 arb_member:           ['/arb/dashboard', '/solutions/', '/arb/sessions'],
+                 portfolio_manager:    ['/dashboard/rationalization', '/vendors/', '/applications/'],
+                 cto:                  ['/dashboard/overview', '/dashboard/rationalization', '/solutions/'],
+                 application_manager:  ['/applications/', '/dashboard/rationalization', '/vendors/'],
+                 procurement:          ['/vendors/', '/applications/'],
+                 platform_admin:       [],
+             },
+             showStartHere(href) {
+                 const ts = parseInt(localStorage.getItem('archie_onboarding_ts') || '0');
+                 if (!ts) return false;
+                 const fourteenDays = 14 * 24 * 60 * 60 * 1000;
+                 if (Date.now() - ts > fourteenDays) return false;
+                 const dots = this.startHereDots[this.userRole] || [];
+                 return dots.includes(href);
+             },
+             clearSearch() {
+                 this.searchQuery = '';
+                 this.$refs.searchInput.focus();
+             },
+             matchesSearch(text) {
+                 if (!this.searchQuery) return true;
+                 return text.toLowerCase().includes(this.searchQuery.toLowerCase());
+             }
+         }">
+        
+        <!-- Search Box -->
+        <div class="px-3 pb-3 mb-2 border-b border-border sidebar-search-wrap">
+            <div class="relative">
+                <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"></i>
+                <input 
+                    type="text"
+                    x-ref="searchInput"
+                    x-model="searchQuery"
+                    @focus="searchFocused = true"
+                    @blur="searchFocused = false"
+                    placeholder="Search navigation..."
+                    class="w-full h-9 pl-9 pr-9 rounded-md border border-input bg-background text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-all"
+                />
+                <button 
+                    x-cloak x-show="searchQuery"
+                    @click="clearSearch()"
+                    class="absolute right-2 top-1/2 -translate-y-1/2 h-5 w-5 rounded-sm hover:bg-accent flex items-center justify-center transition-colors"
+                    title="Clear search"
+                >
+                    <i data-lucide="x" class="h-3 w-3 text-muted-foreground"></i>
+                </button>
+            </div>
+            <div x-cloak x-show="searchQuery && searchQuery.length > 0" class="mt-2 text-xs text-muted-foreground">
+                <span x-text="`Searching for: ${searchQuery}`"></span>
+            </div>
+        </div>
+
+        <!-- Role filter toggle -->
+        <div class="px-3 pb-2 flex items-center justify-between" x-show="userRole !== 'platform_admin'" x-cloak>
+            <span class="text-xs text-muted-foreground">Showing your role's pages</span>
+            <button @click="toggleShowAll()"
+                    class="text-xs text-primary hover:underline"
+                    x-text="showAll ? 'Filter by role' : 'Show all'">
+            </button>
+        </div>
+
+        <!-- A95-010 -->
+        <div class="px-3 pb-2" x-show="matchesSearch('Start with AI Chat Assistant')" x-cloak :class="roleVisible('ai') ? '' : 'opacity-40'">
+            <a href="{{ url_for('unified_ai_chat.index') }}"
+               data-testid="start-with-ai"
+               class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 hover:border-primary/30 {% if request.endpoint and (request.endpoint.startswith('unified_ai_chat') or request.endpoint.startswith('ai_chat')) %}ring-2 ring-primary/30{% endif %}">
+                <i data-lucide="sparkles" class="h-4 w-4 flex-shrink-0"></i>
+                <span class="flex-1 truncate">Start with AI</span>
+                <i data-lucide="arrow-right" class="h-3.5 w-3.5 flex-shrink-0 opacity-60"></i>
+            </a>
+        </div>
+
+        <!-- Home Section -->
+        <div class="px-3 py-2" x-cloak x-show="matchesSearch('Home Dashboard Overview')" :class="roleVisible('home') ? '' : 'opacity-40'">
+            <div class="mb-2 px-2 text-xs font-semibold tracking-tight text-muted-foreground uppercase" role="heading" aria-level="3">
+                Home
+            </div>
+            <div class="space-y-1">
+                <a href="{{ url_for('dashboard.overview') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'dashboard.overview' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint == 'dashboard.overview' -%}aria-current="page"{%- endif -%}>
+                    <i data-lucide="layout-dashboard" class="h-4 w-4"></i>
+                    <span>Dashboard Overview</span>
+                </a>
+                <a href="{{ url_for('dashboard.health_scorecard') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'dashboard.health_scorecard' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint == 'dashboard.health_scorecard' -%}aria-current="page"{%- endif -%}>
+                    <i data-lucide="heart-pulse" class="h-4 w-4"></i>
+                    <span>Health Scorecard</span>
+                </a>
+            </div>
+        </div>
+        <!-- Application Section -->
+        {% if 'application' in user_visible_sections and is_feature_enabled('section_application') %}
+        <div class="px-3 py-2" x-cloak
+             x-cloak x-show="matchesSearch('Application Applications Management Vendor Rationalization')"
+             :class="roleVisible('application') ? '' : 'opacity-40'"
+             x-data="{
+                 openAppSections: JSON.parse(localStorage.getItem('appOpenSections') || '{}'),
+                 toggleAppSection(section) {
+                     this.openAppSections[section] = !this.openAppSections[section];
+                     localStorage.setItem('appOpenSections', JSON.stringify(this.openAppSections));
+                 }
+             }">
+            <div class="mb-2 px-2 text-xs font-semibold tracking-tight text-muted-foreground uppercase" role="heading" aria-level="3">
+                Application
+            </div>
+            <div class="space-y-1">
+                <!-- Applications Sub-menu -->
+                {% if is_feature_enabled('application_applications_management') %}
+                <div class="space-y-1" x-cloak x-show="matchesSearch('Applications Management All Rationalization Consolidation List Review Queue Duplicate Detection')">
+                    <button
+                        @click="toggleAppSection('applications')"
+                        class="w-full flex items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground group text-muted-foreground">
+                        <div class="flex items-center gap-3 flex-1 min-w-0">
+                            <i data-lucide="chevron-right"
+                               class="h-4 w-4 transition-transform flex-shrink-0"
+                               :class="openAppSections['applications'] ? 'rotate-90' : ''"></i>
+                            <i data-lucide="package" class="h-4 w-4 flex-shrink-0"></i>
+                            <span class="truncate">Applications Management</span>
+                        </div>
+                    </button>
+                    <div x-cloak x-show="openAppSections['applications']"
+                         x-transition:enter="transition ease-out duration-200"
+                         x-transition:enter-start="opacity-0 -translate-y-2"
+                         x-transition:enter-end="opacity-100 translate-y-0"
+                         x-transition:leave="transition ease-in duration-150"
+                         x-transition:leave-start="opacity-100 translate-y-0"
+                         x-transition:leave-end="opacity-0 -translate-y-2"
+                         class="ml-4 space-y-0.5 border-l-2 border-border/50 pl-3 mt-1">
+                        {% if is_feature_enabled('application_applications_all') %}
+                        <a href="{{ url_for('unified_applications.application_list') }}"
+                           class="flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'unified_applications.application_list' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint == 'unified_applications.application_list' -%}aria-current="page"{%- endif -%}>
+                            <i data-lucide="list" class="h-3.5 w-3.5"></i>
+                            <span class="flex-1 truncate">All Applications</span>
+                        </a>
+                        {% endif %}
+                        <a href="{{ url_for('unified_applications.rationalization_dashboard') }}"
+                           class="flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'unified_applications.rationalization_dashboard' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint == 'unified_applications.rationalization_dashboard' -%}aria-current="page"{%- endif -%}>
+                            <i data-lucide="git-merge" class="h-3.5 w-3.5"></i>
+                            <span class="flex-1 truncate">Rationalization</span>
+                        </a>
+                        <a href="{{ url_for('consolidation_list.dashboard') }}"
+                           class="flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'consolidation_list.dashboard' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint == 'consolidation_list.dashboard' -%}aria-current="page"{%- endif -%}>
+                            <i data-lucide="combine" class="h-3.5 w-3.5"></i>
+                            <span class="flex-1 truncate">Consolidation List</span>
+                        </a>
+                        <a href="{{ url_for('unified_duplicate.simple_dashboard') }}"
+                           class="flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'unified_duplicate.simple_dashboard' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint == 'unified_duplicate.simple_dashboard' -%}aria-current="page"{%- endif -%}>
+                            <i data-lucide="copy" class="h-3.5 w-3.5"></i>
+                            <span class="flex-1 truncate">Duplicate Detection</span>
+                        </a>
+
+                        <!-- Dynamic Application List (Async) -->
+                        <div class="border-t border-border/50 pt-1 mt-1">
+                            <div class="px-2.5 py-1 text-xs font-medium text-muted-foreground uppercase tracking-tight">
+                                Quick Access
+                            </div>
+                            <!-- Async-loaded items populate here via sidebar.js -->
+                            <div id="sidebar-applications-quick-access">
+                                <div class="px-2.5 py-3 text-xs text-muted-foreground">
+                                    Loading...
+                                </div>
+                            </div>
+                            <a href="{{ url_for('unified_applications.application_list') }}"
+                               class="flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors hover:bg-accent hover:text-accent-foreground text-muted-foreground mt-1">
+                                <i data-lucide="arrow-right" class="h-3.5 w-3.5 flex-shrink-0"></i>
+                                <span class="flex-1 truncate">View All Applications</span>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Vendor Management Sub-menu -->
+                {% if is_feature_enabled('application_vendor_management') %}
+                <div class="space-y-1" x-cloak x-show="matchesSearch('Vendor Management Dashboard Product Catalog Risk Market Intelligence')">
+                    <button
+                        @click="toggleAppSection('vendors')"
+                        class="w-full flex items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground group {% if request.endpoint == 'unified_applications.vendors' or (request.endpoint and request.endpoint.startswith('vendors.')) %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint == 'unified_applications.vendors' or (request.endpoint and request.endpoint.startswith('vendors.')) -%}aria-current="page"{%- endif -%}>
+                        <div class="flex items-center gap-3 flex-1 min-w-0">
+                            <i data-lucide="chevron-right"
+                               class="h-4 w-4 transition-transform flex-shrink-0"
+                               :class="openAppSections['vendors'] ? 'rotate-90' : ''"></i>
+                            <i data-lucide="building-2" class="h-4 w-4 flex-shrink-0"></i>
+                            <span class="truncate">Vendor Management</span>
+                        </div>
+                    </button>
+                    <div x-cloak x-show="openAppSections['vendors']"
+                         x-transition:enter="transition ease-out duration-200"
+                         x-transition:enter-start="opacity-0 -translate-y-2"
+                         x-transition:enter-end="opacity-100 translate-y-0"
+                         x-transition:leave="transition ease-in duration-150"
+                         x-transition:leave-start="opacity-100 translate-y-0"
+                         x-transition:leave-end="opacity-0 -translate-y-2"
+                         class="ml-4 space-y-0.5 border-l-2 border-border/50 pl-3 mt-1">
+                        {% if is_feature_enabled('application_vendor_dashboard') %}
+                        <a href="{{ url_for('unified_applications.vendors') }}"
+                           class="flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'unified_applications.vendors' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint == 'unified_applications.vendors' -%}aria-current="page"{%- endif -%}>
+                            <i data-lucide="building" class="h-3.5 w-3.5"></i>
+                            <span class="flex-1 truncate">Vendor Dashboard</span>
+                        </a>
+                        {% endif %}
+                        <!-- PRD-005: deferred until backend ready -->
+                        <!--
+                        <a href="{{ url_for('architect_ui.market_intelligence') }}"
+                           class="flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'architect_ui.market_intelligence' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint == 'architect_ui.market_intelligence' -%}aria-current="page"{%- endif -%}>
+                            <i data-lucide="trending-up" class="h-3.5 w-3.5"></i>
+                            <span class="flex-1 truncate">Market Intelligence</span>
+                        </a>
+                        -->
+
+                        <!-- Dynamic Vendor List (Async) -->
+                        <div class="border-t border-border/50 pt-1 mt-1">
+                            <div class="px-2.5 py-1 text-xs font-medium text-muted-foreground uppercase tracking-tight">
+                                Quick Access
+                            </div>
+                            <!-- Async-loaded items populate here via sidebar.js -->
+                            <div id="sidebar-vendors-quick-access">
+                                <div class="px-2.5 py-3 text-xs text-muted-foreground">
+                                    Loading...
+                                </div>
+                            </div>
+                            <a href="{{ url_for('unified_applications.vendors') }}"
+                               class="flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors hover:bg-accent hover:text-accent-foreground text-muted-foreground mt-1">
+                                <i data-lucide="arrow-right" class="h-3.5 w-3.5 flex-shrink-0"></i>
+                                <span class="flex-1 truncate">View All Vendors</span>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+        <!-- Architecture Section -->
+        {% if 'architecture' in user_visible_sections %}
+        <div class="px-3 py-2" x-cloak
+             x-cloak x-show="matchesSearch('Architecture Capability Strategic Planning Models Governance Gap Discovery Health Impact Analysis Workflows Import Documents CSV XML ArchiMate')"
+             :class="roleVisible('archimate') ? '' : 'opacity-40'"
+             x-data="{
+                 openArchSections: JSON.parse(localStorage.getItem('archOpenSections') || '{}'),
+                 toggleArchSection(section) {
+                     this.openArchSections[section] = !this.openArchSections[section];
+                     localStorage.setItem('archOpenSections', JSON.stringify(this.openArchSections));
+                 }
+             }">
+            <div class="mb-2 px-2 text-xs font-semibold tracking-tight text-muted-foreground uppercase" role="heading" aria-level="3">
+                Architecture
+            </div>
+            <div class="space-y-1">
+                <!-- Architecture Models -->
+                <div class="space-y-1">
+                    <button
+                        @click="toggleArchSection('models')"
+                        class="w-full flex items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground group {% if request.endpoint and request.endpoint.startswith('architecture') %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint and request.endpoint.startswith('architecture') -%}aria-current="page"{%- endif -%}>
+                        <div class="flex items-center gap-3 flex-1 min-w-0">
+                            <i data-lucide="chevron-right"
+                               class="h-4 w-4 transition-transform flex-shrink-0"
+                               :class="openArchSections['models'] ? 'rotate-90' : ''"></i>
+                            <i data-lucide="box" class="h-4 w-4 flex-shrink-0"></i>
+                            <span class="truncate">Architecture Models</span>
+                        </div>
+                    </button>
+                    <div x-cloak x-show="openArchSections['models']"
+                         x-transition:enter="transition ease-out duration-200"
+                         x-transition:enter-start="opacity-0 -translate-y-2"
+                         x-transition:enter-end="opacity-100 translate-y-0"
+                         x-transition:leave="transition ease-in duration-150"
+                         x-transition:leave-start="opacity-100 translate-y-0"
+                         x-transition:leave-end="opacity-0 -translate-y-2"
+                         class="ml-4 space-y-0.5 border-l-2 border-border/50 pl-3 mt-1">
+                        <a href="{{ url_for('archimate_crud.dashboard') }}"
+                           class="flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'archimate_crud.dashboard' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint == 'archimate_crud.dashboard' -%}aria-current="page"{%- endif -%}>
+                            <i data-lucide="table" class="h-3.5 w-3.5"></i>
+                            <span class="flex-1 truncate">ArchiMate Elements</span>
+                        </a>
+                        <a href="{{ url_for('architect_ui.traceability_matrix') }}"
+                           class="flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'architect_ui.traceability_matrix' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint == 'architect_ui.traceability_matrix' -%}aria-current="page"{%- endif -%}>
+                            <i data-lucide="git-branch" class="h-3.5 w-3.5"></i>
+                            <span class="flex-1 truncate">Traceability</span>
+                        </a>
+                        <a href="{{ url_for('archimate.composer_page') }}"
+                           class="flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'archimate.composer_page' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint == 'archimate.composer_page' -%}aria-current="page"{%- endif -%}>
+                            <i data-lucide="pen-tool" class="h-3.5 w-3.5"></i>
+                            <span class="flex-1 truncate">Architecture Composer</span>
+                        </a>
+                        {% set archimate_import_endpoint = 'archimate.import_page' if 'archimate.import_page' in flask.current_app.view_functions else 'archimate.composer_page' %}
+                        <a href="{{ url_for(archimate_import_endpoint) }}"
+                           class="flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == archimate_import_endpoint %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint == archimate_import_endpoint -%}aria-current="page"{%- endif -%}>
+                            <i data-lucide="upload" class="h-3.5 w-3.5"></i>
+                            <span class="flex-1 truncate">Import Documents</span>
+                        </a>
+                    </div>
+                </div>
+
+                {# EA Workflows moved to Architect Workspace section #}
+                <!-- PRD-005: deferred until backend ready -->
+                <!--
+                <a href="{{ url_for('connectors.dashboard') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint and request.endpoint.startswith('connectors.') %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint and request.endpoint.startswith('connectors.') -%}aria-current="page"{%- endif -%}>
+                    <i data-lucide="plug" class="h-4 w-4"></i>
+                    <span>Connectors</span>
+                </a>
+                -->
+                <div class="border-t border-border/30 my-1"></div>
+                <!-- Strategic Analysis -->
+                <a href="{{ url_for('strategic.capability_health') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'strategic.capability_health' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint == 'strategic.capability_health' -%}aria-current="page"{%- endif -%}>
+                    <i data-lucide="heart-pulse" class="h-4 w-4"></i>
+                    <span>Capability Health</span>
+                </a>
+                <a href="{{ url_for('strategic.impact_analysis') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'strategic.impact_analysis' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint == 'strategic.impact_analysis' -%}aria-current="page"{%- endif -%}>
+                    <i data-lucide="target" class="h-4 w-4"></i>
+                    <span>Impact Analysis</span>
+                </a>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Architect Workspace Section -->
+        {% if 'architecture' in user_visible_sections %}
+        <div class="px-3 py-2" x-cloak x-show="matchesSearch('Architect Workspace Guided Journey Kanban Composer ArchiMate')" :class="roleVisible('archimate') ? '' : 'opacity-40'">
+            <div class="mb-2 px-2 text-xs font-semibold tracking-tight text-muted-foreground uppercase" role="heading" aria-level="3">
+                Architect Workspace
+            </div>
+            <div class="space-y-1">
+                <a href="/architecture-journey/"
+                   class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.path.startswith('/architecture-journey') %}bg-primary/10 text-primary font-medium{% else %}text-muted-foreground{% endif %}">
+                    <i data-lucide="compass" class="h-4 w-4"></i>
+                    <span>Architecture Journey</span>
+                </a>
+                <a href="{{ url_for('adm_kanban_view.index') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint and request.endpoint.startswith('adm_kanban_view') %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint and request.endpoint.startswith('adm_kanban_view') -%}aria-current="page"{%- endif -%}>
+                    <i data-lucide="kanban" class="h-4 w-4"></i>
+                    <span>ADM Kanban</span>
+                </a>
+                <a href="{{ url_for('archimate.composer_page') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'archimate.composer_page' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint == 'archimate.composer_page' -%}aria-current="page"{%- endif -%}>
+                    <i data-lucide="pen-tool" class="h-4 w-4"></i>
+                    <span>ArchiMate Composer</span>
+                </a>
+                {# EA Workflows removed from sidebar — delivers no value to architects.
+                   Code kept for FK dependencies (composer, orchestration, kanban).
+                   Journey Wizard (Architecture Journey) is the canonical guided flow. #}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Solutions Management Section -->
+        {% if 'solutions' in user_visible_sections %}
+        <div class="px-3 py-2" x-cloak x-show="matchesSearch('Solutions Management Design Patterns New Programme Programme Journey Greenfield Brownfield')"
+             :class="roleVisible('solutions') ? '' : 'opacity-40'"
+             x-data="{
+                 openSolutionsSections: JSON.parse(localStorage.getItem('solutionsOpenSections') || '{}'),
+                 toggleSolutionsSection(section) {
+                     this.openSolutionsSections[section] = !this.openSolutionsSections[section];
+                     localStorage.setItem('solutionsOpenSections', JSON.stringify(this.openSolutionsSections));
+                 }
+             }">
+            <div class="mb-2 px-2 text-xs font-semibold tracking-tight text-muted-foreground uppercase" role="heading" aria-level="3">
+                Solutions Management
+            
+            </div>
+            <div class="space-y-1">
+                <!-- Solutions Sub-menu -->
+                <div class="space-y-1">
+                    <button
+                        @click="toggleSolutionsSection('solutions')"
+                        class="w-full flex items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground group {% if request.endpoint and request.endpoint.startswith('solution_design') %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint and request.endpoint.startswith('solution_design') -%}aria-current="page"{%- endif -%}>
+                        <div class="flex items-center gap-3 flex-1 min-w-0">
+                            <i data-lucide="chevron-right"
+                               class="h-4 w-4 transition-transform flex-shrink-0"
+                               :class="openSolutionsSections['solutions'] ? 'rotate-90' : ''"></i>
+                            <i data-lucide="wrench" class="h-4 w-4 flex-shrink-0"></i>
+                            <span class="truncate">Solutions</span>
+                        </div>
+                    </button>
+                    <div x-cloak x-show="openSolutionsSections['solutions']"
+                         x-transition:enter="transition ease-out duration-200"
+                         x-transition:enter-start="opacity-0 -translate-y-2"
+                         x-transition:enter-end="opacity-100 translate-y-0"
+                         x-transition:leave="transition ease-in duration-150"
+                         x-transition:leave-start="opacity-100 translate-y-0"
+                         x-transition:leave-end="opacity-0 -translate-y-2"
+                         class="ml-4 space-y-0.5 border-l-2 border-border/50 pl-3 mt-1">
+                        <a href="{{ url_for('solution_design.list_solutions') }}"
+                           class="flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'solution_design.list_solutions' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint == 'solution_design.list_solutions' -%}aria-current="page"{%- endif -%}>
+                            <i data-lucide="list" class="h-3.5 w-3.5"></i>
+                            <span class="flex-1 truncate">All Solutions</span>
+                        </a>
+                        <a href="{{ url_for('solution_design.list_solutions') }}"
+                           class="flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors hover:bg-accent hover:text-accent-foreground text-muted-foreground">
+                            <i data-lucide="layout-template" class="h-3.5 w-3.5"></i>
+                            <span class="flex-1 truncate">Solution Templates</span>
+                        </a>
+                        <a href="/architecture-journey/"
+                           class="flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'architecture_journey.index' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint == 'architecture_journey.index' -%}aria-current="page"{%- endif -%}>
+                            <i data-lucide="plus-circle" class="h-3.5 w-3.5"></i>
+                            <span class="flex-1 truncate">Create New Solution</span>
+                        </a>
+                        <a href="{{ url_for('codegen.system_boundaries_page') }}"
+                           class="flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'codegen.system_boundaries_page' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint == 'codegen.system_boundaries_page' -%}aria-current="page"{%- endif -%}>
+                            <i data-lucide="layers" class="h-3.5 w-3.5"></i>
+                            <span class="flex-1 truncate">System Boundaries</span>
+                        </a>
+                        <a href="{{ url_for('solution_design.new_programme') }}"
+                           class="flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'solution_design.new_programme' %}bg-primary/10 text-primary font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint == 'solution_design.new_programme' -%}aria-current="page"{%- endif -%}>
+                            <i data-lucide="layers" class="h-3.5 w-3.5"></i>
+                            <span class="flex-1 truncate">New Programme</span>
+                        </a>
+                        {# Guided Journey moved to Architect Workspace section #}
+                    </div>
+                </div>
+
+                <!-- Solution Architect Workspace Sub-menu -->
+                <div class="space-y-1">
+                    <button
+                        @click="toggleSolutionsSection('architect')"
+                        class="w-full flex items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground group {% if request.endpoint and (request.endpoint.startswith('solution_architect') or request.endpoint in ['archimate.traceability_chain','archimate.viewpoints_page']) %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint and (request.endpoint.startswith('solution_architect') or request.endpoint in ['archimate.traceability_chain','archimate.viewpoints_page']) -%}aria-current="page"{%- endif -%}>
+                        <div class="flex items-center gap-3 flex-1 min-w-0">
+                            <i data-lucide="chevron-right"
+                               class="h-4 w-4 transition-transform flex-shrink-0"
+                               :class="openSolutionsSections['architect'] ? 'rotate-90' : ''"></i>
+                            <i data-lucide="drafting-compass" class="h-4 w-4 flex-shrink-0"></i>
+                            <span class="truncate">Architect Workspace</span>
+                        </div>
+                    </button>
+                    <div x-cloak x-show="openSolutionsSections['architect']"
+                         x-transition:enter="transition ease-out duration-200"
+                         x-transition:enter-start="opacity-0 -translate-y-2"
+                         x-transition:enter-end="opacity-100 translate-y-0"
+                         x-transition:leave="transition ease-in duration-150"
+                         x-transition:leave-start="opacity-100 translate-y-0"
+                         x-transition:leave-end="opacity-0 -translate-y-2"
+                         class="ml-4 space-y-0.5 border-l-2 border-border/50 pl-3 mt-1">
+                        {# PRD-005: Viewpoints page deferred until backend ready (archimate.viewpoints_page endpoint not yet registered) #}
+                        <a href="{{ url_for('archimate.traceability_chain') }}"
+                           class="flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'archimate.traceability_chain' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint == 'archimate.traceability_chain' -%}aria-current="page"{%- endif -%}>
+                            <i data-lucide="git-branch" class="h-3.5 w-3.5"></i>
+                            <span class="flex-1 truncate">Traceability Chain</span>
+                        </a>
+                        <a href="{{ url_for('stakeholder_map.stakeholder_map_page') }}"
+                           class="flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'stakeholder_map.stakeholder_map_page' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint == 'stakeholder_map.stakeholder_map_page' -%}aria-current="page"{%- endif -%}>
+                            <i data-lucide="users" class="h-3.5 w-3.5"></i>
+                            <span class="flex-1 truncate">Stakeholder Map</span>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        {# PRD-006: Hidden until requirements and sprint data exists. Set SHOW_PRODUCT_MGMT=True to unhide. #}
+        {% if config.get('SHOW_PRODUCT_MGMT', False) %}
+        <!-- Product Management Section -->
+        {% if 'solutions' in user_visible_sections %}
+        <div class="px-3 py-2" x-cloak x-show="matchesSearch('Product Management Sprints Epics Backlog Roadmap Analytics DoD Risk Communication')"
+             :class="roleVisible('solutions') ? '' : 'opacity-40'"
+             x-data="{
+                 openPMSections: JSON.parse(localStorage.getItem('pmOpenSections') || '{}'),
+                 togglePMSection(section) {
+                     this.openPMSections[section] = !this.openPMSections[section];
+                     localStorage.setItem('pmOpenSections', JSON.stringify(this.openPMSections));
+                 }
+             }">
+            <div class="mb-2 px-2 text-xs font-semibold tracking-tight text-muted-foreground uppercase" role="heading" aria-level="3">
+                Product Management
+            </div>
+            <div class="space-y-1">
+                <!-- Planning sub-menu -->
+                <div class="space-y-1">
+                    <button @click="togglePMSection('planning')"
+                        class="w-full flex items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground group text-muted-foreground">
+                        <div class="flex items-center gap-3 flex-1 min-w-0">
+                            <i data-lucide="chevron-right" class="h-4 w-4 transition-transform flex-shrink-0" :class="openPMSections['planning'] ? 'rotate-90' : ''"></i>
+                            <i data-lucide="calendar-range" class="h-4 w-4 flex-shrink-0"></i>
+                            <span class="truncate">Planning</span>
+                        </div>
+                    </button>
+                    <div x-cloak x-show="openPMSections['planning']"
+                         x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0 -translate-y-2" x-transition:enter-end="opacity-100 translate-y-0"
+                         x-transition:leave="transition ease-in duration-150" x-transition:leave-start="opacity-100 translate-y-0" x-transition:leave-end="opacity-0 -translate-y-2"
+                         class="ml-4 space-y-0.5 border-l-2 border-border/50 pl-3 mt-1">
+                        {# PRD-006: epic_ui_bp, prioritisation, dod_ui blueprints deferred — SHOW_PRODUCT_MGMT gates this section #}
+                        <a href="/epics/" aria-disabled="true"
+                           class="flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors hover:bg-accent hover:text-accent-foreground text-muted-foreground opacity-60 cursor-not-allowed">
+                            <i data-lucide="list-tree" class="h-3.5 w-3.5"></i>
+                            <span class="flex-1 truncate">Epics &amp; Stories</span>
+                        </a>
+                        <a href="/prioritisation/" aria-disabled="true"
+                           class="flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors hover:bg-accent hover:text-accent-foreground text-muted-foreground opacity-60 cursor-not-allowed">
+                            <i data-lucide="arrow-up-down" class="h-3.5 w-3.5"></i>
+                            <span class="flex-1 truncate">Prioritisation</span>
+                        </a>
+                        <a href="/dod/" aria-disabled="true"
+                           class="flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors hover:bg-accent hover:text-accent-foreground text-muted-foreground opacity-60 cursor-not-allowed">
+                            <i data-lucide="check-circle-2" class="h-3.5 w-3.5"></i>
+                            <span class="flex-1 truncate">Definition of Done</span>
+                        </a>
+                    </div>
+                </div>
+                <!-- Metrics sub-menu -->
+                <div class="space-y-1">
+                    <button @click="togglePMSection('metrics')"
+                        class="w-full flex items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground group text-muted-foreground">
+                        <div class="flex items-center gap-3 flex-1 min-w-0">
+                            <i data-lucide="chevron-right" class="h-4 w-4 transition-transform flex-shrink-0" :class="openPMSections['metrics'] ? 'rotate-90' : ''"></i>
+                            <i data-lucide="bar-chart-2" class="h-4 w-4 flex-shrink-0"></i>
+                            <span class="truncate">Metrics</span>
+                        </div>
+                    </button>
+                    <div x-cloak x-show="openPMSections['metrics']"
+                         x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0 -translate-y-2" x-transition:enter-end="opacity-100 translate-y-0"
+                         x-transition:leave="transition ease-in duration-150" x-transition:leave-start="opacity-100 translate-y-0" x-transition:leave-end="opacity-0 -translate-y-2"
+                         class="ml-4 space-y-0.5 border-l-2 border-border/50 pl-3 mt-1">
+                        {# PRD-006: sprint_view, flow_analytics, roadmap_outcome blueprints deferred — SHOW_PRODUCT_MGMT gates this section #}
+                        <a href="/sprints/charts/" aria-disabled="true"
+                           class="flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors hover:bg-accent hover:text-accent-foreground text-muted-foreground opacity-60 cursor-not-allowed">
+                            <i data-lucide="trending-down" class="h-3.5 w-3.5"></i>
+                            <span class="flex-1 truncate">Velocity &amp; Burndown</span>
+                        </a>
+                        <a href="/flow-analytics/" aria-disabled="true"
+                           class="flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors hover:bg-accent hover:text-accent-foreground text-muted-foreground opacity-60 cursor-not-allowed">
+                            <i data-lucide="activity" class="h-3.5 w-3.5"></i>
+                            <span class="flex-1 truncate">Flow Analytics</span>
+                        </a>
+                        <a href="/roadmap/product/" aria-disabled="true"
+                           class="flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors hover:bg-accent hover:text-accent-foreground text-muted-foreground opacity-60 cursor-not-allowed">
+                            <i data-lucide="map-pinned" class="h-3.5 w-3.5"></i>
+                            <span class="flex-1 truncate">Product Roadmap</span>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        {% endif %}{# /SHOW_PRODUCT_MGMT #}
+
+        <!-- Roadmaps Section (Consolidated Feb 2026) -->
+        {% if 'roadmaps' in user_visible_sections %}
+        <div class="px-3 py-2" x-cloak x-show="matchesSearch('Roadmaps Enterprise Project Planning Capability Technology ArchiMate')" :class="roleVisible('roadmaps') ? '' : 'opacity-40'">
+            <div class="mb-2 px-2 text-xs font-semibold tracking-tight text-muted-foreground uppercase" role="heading" aria-level="3">
+                Roadmaps
+            
+            </div>
+            <div class="space-y-1">
+                <!-- Enterprise Roadmap — capability-linked work packages, plateaus, gaps -->
+                <a href="{{ url_for('main.capability_roadmap') }}"
+                   class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'main.capability_roadmap' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint == 'main.capability_roadmap' -%}aria-current="page"{%- endif -%}>
+                    <i data-lucide="map" class="h-4 w-4"></i>
+                    <span>Enterprise Roadmap</span>
+                </a>
+
+                <!-- REMOVED: Transformation Roadmap — was linking to capability-map?tab=roadmap instead of the real roadmap page -->
+                <!-- REMOVED: Options Comparison — links to 405 POST-only API, not a page -->
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Governance Section -->
+        {% if 'governance' in user_visible_sections %}
+        <div class="px-3 py-2" x-cloak x-show="matchesSearch('Governance ARB Compliance Audit Decision')"
+             :class="roleVisible('arb') ? '' : 'opacity-40'"
+             x-data="{
+                 openGovSections: JSON.parse(localStorage.getItem('govOpenSections') || '{}'),
+                 toggleGovSection(section) {
+                     this.openGovSections[section] = !this.openGovSections[section];
+                     localStorage.setItem('govOpenSections', JSON.stringify(this.openGovSections));
+                 }
+             }">
+            <div class="mb-2 px-2 text-xs font-semibold tracking-tight text-muted-foreground uppercase" role="heading" aria-level="3">
+                Governance
+            
+            </div>
+            <div class="space-y-1">
+                <!-- ARB Sub-menu -->
+                <div class="space-y-1">
+                    <button
+                        @click="toggleGovSection('arb')"
+                        class="w-full flex items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground group {% if request.endpoint and request.endpoint.startswith('arb.') %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint and request.endpoint.startswith('arb.') -%}aria-current="page"{%- endif -%}>
+                        <div class="flex items-center gap-3 flex-1 min-w-0">
+                            <i data-lucide="chevron-right"
+                               class="h-4 w-4 transition-transform flex-shrink-0"
+                               :class="openGovSections['arb'] ? 'rotate-90' : ''"></i>
+                            <i data-lucide="shield-check" class="h-4 w-4 flex-shrink-0"></i>
+                            <span class="truncate">Architecture Review Board</span>
+                        </div>
+                    </button>
+                    <div x-cloak x-show="openGovSections['arb']"
+                         x-transition:enter="transition ease-out duration-200"
+                         x-transition:enter-start="opacity-0 -translate-y-2"
+                         x-transition:enter-end="opacity-100 translate-y-0"
+                         x-transition:leave="transition ease-in duration-150"
+                         x-transition:leave-start="opacity-100 translate-y-0"
+                         x-transition:leave-end="opacity-0 -translate-y-2"
+                         class="ml-4 space-y-0.5 border-l-2 border-border/50 pl-3 mt-1">
+                        <a href="{{ url_for('arb.dashboard') }}"
+                           class="flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'arb.dashboard' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint == 'arb.dashboard' -%}aria-current="page"{%- endif -%}>
+                            <i data-lucide="layout-dashboard" class="h-3.5 w-3.5"></i>
+                            <span class="flex-1 truncate">ARB Dashboard</span>
+                        </a>
+                        <!-- PRD-005: deferred until backend ready -->
+                        <!--
+                        <a href="{{ url_for('arb.sessions') }}"
+                           class="flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'arb.sessions' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint == 'arb.sessions' -%}aria-current="page"{%- endif -%}>
+                            <i data-lucide="calendar" class="h-3.5 w-3.5"></i>
+                            <span class="flex-1 truncate">ARB Sessions</span>
+                        </a>
+                        -->
+                    </div>
+                </div>
+
+                {# ADM Kanban moved to Architect Workspace section #}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Capability Framework Section -->
+        {% if 'capabilities' in user_visible_sections %}
+        <div class="px-3 py-2" x-cloak x-show="matchesSearch('Capability Framework Business Roadmap Heat Map Hierarchy Coverage Value Stream Assessment APQC Governance Naming')" :class="roleVisible('capabilities') ? '' : 'opacity-40'">
+            <div class="mb-2 px-2 text-xs font-semibold tracking-tight text-muted-foreground uppercase" role="heading" aria-level="3">
+                Capability Framework
+            
+            </div>
+            <div class="space-y-1">
+                <a href="{{ url_for('capability_map.index') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint and request.endpoint.startswith('capability_map.') and request.endpoint not in ('capability_map.generic_tree_view', 'capability_map.tree_browser') %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint and request.endpoint.startswith('capability_map.') and request.endpoint not in ('capability_map.generic_tree_view', 'capability_map.tree_browser') -%}aria-current="page"{%- endif -%}>
+                    <i data-lucide="map" class="h-4 w-4"></i>
+                    <span>Capability Map</span>
+                </a>
+                <a href="{{ url_for('capability_map.generic_tree_view', key='capability') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'capability_map.generic_tree_view' and request.view_args.get('key') == 'capability' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint == 'capability_map.generic_tree_view' and request.view_args.get('key') == 'capability' -%}aria-current="page"{%- endif -%}>
+                    <i data-lucide="network" class="h-4 w-4"></i>
+                    <span>Capability Tree</span>
+                </a>
+                <a href="{{ url_for('capability_map.tree_browser') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'capability_map.tree_browser' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint == 'capability_map.tree_browser' -%}aria-current="page"{%- endif -%}>
+                    <i data-lucide="trees" class="h-4 w-4"></i>
+                    <span>Tree Browser</span>
+                </a>
+                <a href="{{ url_for('maturity_management.frameworks_overview') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'maturity_management.frameworks_overview' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint == 'maturity_management.frameworks_overview' -%}aria-current="page"{%- endif -%}>
+                    <i data-lucide="settings" class="h-4 w-4"></i>
+                    <span>Framework Config</span>
+                </a>
+                <a href="{{ url_for('capability_governance.governance_dashboard') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'capability_governance.governance_dashboard' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint == 'capability_governance.governance_dashboard' -%}aria-current="page"{%- endif -%}>
+                    <i data-lucide="shield" class="h-4 w-4"></i>
+                    <span>Capability Governance</span>
+                </a>
+                <a href="{{ url_for('enterprise_crud.requirements_backlog') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'enterprise_crud.requirements_backlog' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint == 'enterprise_crud.requirements_backlog' -%}aria-current="page"{%- endif -%}>
+                    <i data-lucide="list-checks" class="h-4 w-4"></i>
+                    <span>Requirements Backlog</span>
+                </a>
+                <a href="{{ url_for('architect_ui.traceability_matrix') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'architect_ui.traceability_matrix' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint == 'architect_ui.traceability_matrix' -%}aria-current="page"{%- endif -%}>
+                    <i data-lucide="git-branch" class="h-4 w-4"></i>
+                    <span>Requirements Traceability</span>
+                </a>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Architecture Tools Section -->
+        {% if 'tools' in user_visible_sections %}
+        <div class="px-3 py-2" x-cloak x-show="matchesSearch('Architecture Tools Monitoring Assistant Value Streams')"
+             :class="roleVisible('archimate') ? '' : 'opacity-40'"
+             x-data="{
+                 openArchToolsSections: JSON.parse(localStorage.getItem('archToolsOpenSections') || '{}'),
+                 toggleArchToolsSection(section) {
+                     this.openArchToolsSections[section] = !this.openArchToolsSections[section];
+                     localStorage.setItem('archToolsOpenSections', JSON.stringify(this.openArchToolsSections));
+                 }
+             }">
+            <div class="mb-2 px-2 text-xs font-semibold tracking-tight text-muted-foreground uppercase" role="heading" aria-level="3">
+                Architecture Tools
+            
+            </div>
+            <div class="space-y-1">
+                <!-- REMOVED: Roadmap Builder — duplicate of Enterprise Roadmap (capability-roadmap) -->
+                {# Architecture Assistant hidden — superseded by Guided Journey in Architect Workspace #}
+                <!-- Portfolio Overview Dashboard -->
+                <a href="{{ url_for('main.dashboards_overview') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'main.dashboards_overview' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint == 'main.dashboards_overview' -%}aria-current="page"{%- endif -%}>
+                    <i data-lucide="layout-dashboard" class="h-4 w-4"></i>
+                    <span>Portfolio Overview</span>
+                </a>
+                <!-- REMOVED: Market Intelligence — moved to Vendor Management section -->
+                <!-- REMOVED: Value Streams — duplicate of /value-stream-map in Capability Framework -->
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Data Management Section -->
+        {% if 'data' in user_visible_sections %}
+        <div class="px-3 py-2" x-cloak x-show="matchesSearch('Data Management Objects Import Export')"
+             :class="roleVisible('data') ? '' : 'opacity-40'"
+             x-data="{
+                 openDataSections: JSON.parse(localStorage.getItem('dataOpenSections') || '{}'),
+                 toggleDataSection(section) {
+                     this.openDataSections[section] = !this.openDataSections[section];
+                     localStorage.setItem('dataOpenSections', JSON.stringify(this.openDataSections));
+                 }
+             }">
+            <div class="mb-2 px-2 text-xs font-semibold tracking-tight text-muted-foreground uppercase" role="heading" aria-level="3">
+                Data Management
+            
+            </div>
+            <div class="space-y-1">
+                <!-- Batch Import Sub-menu -->
+                <div class="space-y-1">
+                    <button
+                        @click="toggleDataSection('batch_import')"
+                        class="w-full flex items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground group {% if request.endpoint and request.endpoint.startswith('batch_import_view') %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint and request.endpoint.startswith('batch_import_view') -%}aria-current="page"{%- endif -%}>
+                        <div class="flex items-center gap-3 flex-1 min-w-0">
+                            <i data-lucide="chevron-right"
+                               class="h-4 w-4 transition-transform flex-shrink-0"
+                               :class="openDataSections['batch_import'] ? 'rotate-90' : ''"></i>
+                            <i data-lucide="upload" class="h-4 w-4 flex-shrink-0"></i>
+                            <span class="truncate">Batch Import</span>
+                        </div>
+                    </button>
+                    <div x-cloak x-show="openDataSections['batch_import']"
+                         x-transition:enter="transition ease-out duration-200"
+                         x-transition:enter-start="opacity-0 -translate-y-2"
+                         x-transition:enter-end="opacity-100 translate-y-0"
+                         x-transition:leave="transition ease-in duration-150"
+                         x-transition:leave-start="opacity-100 translate-y-0"
+                         x-transition:leave-end="opacity-0 -translate-y-2"
+                         class="ml-4 space-y-0.5 border-l-2 border-border/50 pl-3 mt-1">
+                        <a href="{{ url_for('batch_import_view.dashboard') }}"
+                           class="flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'batch_import_view.dashboard' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint == 'batch_import_view.dashboard' -%}aria-current="page"{%- endif -%}>
+                            <i data-lucide="layout-dashboard" class="h-3.5 w-3.5"></i>
+                            <span class="flex-1 truncate">Import Dashboard</span>
+                        </a>
+                        <a href="{{ url_for('batch_import_view.new_import') }}"
+                           class="flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'batch_import_view.new_import' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint == 'batch_import_view.new_import' -%}aria-current="page"{%- endif -%}>
+                            <i data-lucide="file-plus" class="h-3.5 w-3.5"></i>
+                            <span class="flex-1 truncate">New Import</span>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Tools & Utilities Section -->
+        {% if 'utilities' in user_visible_sections %}
+        <div class="px-3 py-2" x-cloak x-show="matchesSearch('Tools Utilities AI Assistant Documents Integrations Connectors')"
+             :class="roleVisible('ai') ? '' : 'opacity-40'"
+             x-data="{
+                 openToolsSections: JSON.parse(localStorage.getItem('toolsOpenSections') || '{}'),
+                 toggleToolsSection(section) {
+                     this.openToolsSections[section] = !this.openToolsSections[section];
+                     localStorage.setItem('toolsOpenSections', JSON.stringify(this.openToolsSections));
+                 }
+             }">
+            <div class="mb-2 px-2 text-xs font-semibold tracking-tight text-muted-foreground uppercase" role="heading" aria-level="3">
+                Tools & Utilities
+            
+            </div>
+            <div class="space-y-1">
+                <!-- AI Chat & Assistants -->
+                <a href="{{ url_for('unified_ai_chat.index') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint and (request.endpoint.startswith('unified_ai_chat') or request.endpoint.startswith('ai_chat')) %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint and (request.endpoint.startswith('unified_ai_chat') or request.endpoint.startswith('ai_chat')) -%}aria-current="page"{%- endif -%}>
+                    <i data-lucide="message-square" class="h-4 w-4"></i>
+                    <span>AI Assistant</span>
+                </a>
+                <!-- Integrations -->
+                <a href="{{ url_for('main.integrations') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'main.integrations' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint == 'main.integrations' -%}aria-current="page"{%- endif -%}>
+                    <i data-lucide="plug" class="h-4 w-4"></i>
+                    <span>Integrations</span>
+                </a>
+                <a href="{{ url_for('connectors.dashboard') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'connectors.dashboard' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint == 'connectors.dashboard' -%}aria-current="page"{%- endif -%}>
+                    <i data-lucide="cable" class="h-4 w-4"></i>
+                    <span>Connectors</span>
+                </a>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Administration Section -->
+        {% if 'admin' in user_visible_sections %}
+        <div class="px-3 py-2" x-cloak x-show="matchesSearch('Administration Settings Users Organizations Import History Seed Management Vendor Pricing Import')" :class="roleVisible('admin') ? '' : 'opacity-40'">
+            <div class="mb-2 px-2 text-xs font-semibold tracking-tight text-muted-foreground uppercase" role="heading" aria-level="3">
+                Administration
+            
+            </div>
+            <div class="space-y-1">
+                <!-- User Management -->
+                <a href="{{ url_for('admin.registered_users') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'admin.registered_users' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint == 'admin.registered_users' -%}aria-current="page"{%- endif -%}>
+                    <i data-lucide="users" class="h-4 w-4"></i>
+                    <span>Users</span>
+                </a>
+
+                <!-- Organizations (platform admins only) -->
+                {% if current_user.is_platform_admin %}
+                <a href="{{ url_for('admin.organizations_list') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint and request.endpoint.startswith('admin.organization') %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint and request.endpoint.startswith('admin.organization') -%}aria-current="page"{%- endif -%}>
+                    <i data-lucide="building-2" class="h-4 w-4"></i>
+                    <span>Organizations</span>
+                </a>
+                {% endif %}
+
+                <!-- API Settings -->
+                <a href="{{ url_for('admin.api_settings') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'admin.api_settings' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint == 'admin.api_settings' -%}aria-current="page"{%- endif -%}>
+                    <i data-lucide="key" class="h-4 w-4"></i>
+                    <span>API Settings</span>
+                </a>
+                <!-- AI Prompts -->
+                <a href="{{ url_for('solution_prompt_admin.solution_prompts_page') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'solution_prompt_admin.solution_prompts_page' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint == 'solution_prompt_admin.solution_prompts_page' -%}aria-current="page"{%- endif -%}>
+                    <i data-lucide="sparkles" class="h-4 w-4"></i>
+                    <span>AI Prompts</span>
+                </a>
+                <!-- Governance Gates -->
+                <a href="{{ url_for('admin.governance_gates') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'admin.governance_gates' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint == 'admin.governance_gates' -%}aria-current="page"{%- endif -%}>
+                    <i data-lucide="shield-check" class="h-4 w-4"></i>
+                    <span>Governance Gates</span>
+                </a>
+                <a href="{{ url_for('dashboard_pages.import_history') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'dashboard_pages.import_history' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint == 'dashboard_pages.import_history' -%}aria-current="page"{%- endif -%}>
+                    <i data-lucide="history" class="h-4 w-4"></i>
+                    <span>Import History</span>
+                </a>
+                <a href="{{ url_for('admin.seed_management') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'admin.seed_management' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint == 'admin.seed_management' -%}aria-current="page"{%- endif -%}>
+                    <i data-lucide="database" class="h-4 w-4"></i>
+                    <span>Seed Management</span>
+                </a>
+                <a href="/admin/vendor-pricing/import"
+                   class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors
+                          hover:bg-accent hover:text-accent-foreground
+                          {% if request.endpoint == 'admin.vendor_pricing_import' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}"
+                   {%- if request.endpoint == 'admin.vendor_pricing_import' -%}aria-current="page"{%- endif -%}>
+                    <i data-lucide="file-up" class="h-4 w-4"></i>
+                    <span>Vendor Pricing Import</span>
+                </a>
+                <a href="/admin/pricing-analytics"
+                   class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors
+                          hover:bg-accent hover:text-accent-foreground
+                          {% if request.endpoint == 'admin.pricing_analytics' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}"
+                   {%- if request.endpoint == 'admin.pricing_analytics' -%}aria-current="page"{%- endif -%}>
+                    <i data-lucide="bar-chart-3" class="h-4 w-4"></i>
+                    <span>Pricing Analytics</span>
+                </a>
+                <a href="{{ url_for('main.settings') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'main.settings' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint == 'main.settings' -%}aria-current="page"{%- endif -%}>
+                    <i data-lucide="settings" class="h-4 w-4"></i>
+                    <span>Settings</span>
+                </a>
+                <!-- AI Confidence Calibration (ARC-I02) — route not yet implemented, link removed -->
+            </div>
+        </div>
+        {% endif %}
+    <!-- Show All Sections Toggle (S1-01) -->
+    {% if not show_all_sections %}
+    </nav>
+    <div class="px-4 py-2 border-t border-border">
+        <button
+            @click="document.cookie = 'show_all_sections=true; path=/; max-age=31536000'; location.reload()"
+            class="w-full flex items-center gap-2 rounded-md px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+            title="Show all navigation sections regardless of role"
+        >
+            <i data-lucide="maximize-2" class="h-3.5 w-3.5"></i>
+            <span>Show All Sections</span>
+        </button>
+    </div>
+    {% elif not current_user.is_admin() %}
+    </nav>
+    <div class="px-4 py-2 border-t border-border">
+        <button
+            @click="document.cookie = 'show_all_sections=; path=/; max-age=0'; location.reload()"
+            class="w-full flex items-center gap-2 rounded-md px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+            title="Show only sections relevant to your role"
+        >
+            <i data-lucide="minimize-2" class="h-3.5 w-3.5"></i>
+            <span>Show My Sections</span>
+        </button>
+    </div>
+    {% else %}
+    </nav>
+    {% endif %}
+    <!-- Sidebar Footer -->
+    <!-- Desktop collapse toggle -->
+    <div class="hidden lg:block px-4 py-2 border-t border-border sidebar-show-all-btn">
+        <button type="button"
+                @click="$store.sidebar.toggle()"
+                class="w-full flex items-center gap-2 rounded-md px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                title="Collapse sidebar (Ctrl+B)">
+            <i data-lucide="panel-left" class="h-3.5 w-3.5 flex-shrink-0"></i>
+            <span>Collapse sidebar</span>
+            <kbd class="ml-auto font-mono text-[10px] opacity-60">Ctrl+B</kbd>
+        </button>
+    </div>
+    <div class="border-t border-border p-4">
+        <div class="flex items-center gap-3">
+            <div class="w-8 h-8 rounded-full bg-muted flex items-center justify-center flex-shrink-0">
+                <span class="text-sm font-medium sidebar-footer-text">{{ current_user.first_name[0] if current_user.is_authenticated }}</span>
+            </div>
+            <div class="flex-1 min-w-0 sidebar-footer-text">
+                <p class="text-sm font-medium truncate">{{ current_user.full_name() if current_user.is_authenticated }}</p>
+                <p class="text-xs text-muted-foreground truncate">{{ current_user.email if current_user.is_authenticated }}</p>
+            </div>
+            <a href="{{ url_for('account.logout') }}" class="text-muted-foreground hover:text-foreground transition-colors sidebar-footer-text">
+                <i data-lucide="log-out" class="h-4 w-4"></i>
+            </a>
+        </div>
+    </div>
+</aside>
+
+<!-- Sidebar Quick Access - Async Loading -->
+<script src="{{ url_for('static', filename='js/sidebar.js') }}"></script>
+
+<script>
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+
+        // Re-initialize icons when categories expand/collapse
+        document.addEventListener('alpine:updated', () => {
+            lucide.createIcons();
+        });
+    }
+</script>

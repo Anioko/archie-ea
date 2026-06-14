@@ -1,0 +1,770 @@
+{# Admin Header with breadcrumbs, search, notifications, user menu #}
+
+{% set resolved_page_guide_context = page_guide_context | default({'enabled': false, 'supported': false}, true) %}
+<header id="admin-header"
+        class="flex items-center justify-between h-16 px-6 bg-background border-b border-border">
+    <div class="flex items-center gap-4">
+        <!-- Mobile menu toggle -->
+        <button @click="$store.sidebar.open = !$store.sidebar.open"
+                :aria-expanded="$store.sidebar.open.toString()"
+                aria-controls="admin-sidebar"
+                aria-label="Toggle sidebar"
+                class="lg:hidden text-muted-foreground hover:text-foreground">
+            <i data-lucide="menu" class="h-5 w-5"></i>
+        </button>
+
+        <!-- Desktop sidebar collapse trigger (shadcn SidebarTrigger pattern) -->
+        <button x-data
+                @click="$store.sidebar.toggle()"
+                class="hidden lg:flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors sidebar-collapse-btn"
+                :title="$store.sidebar.collapsed ? 'Expand sidebar (Ctrl+B)' : 'Collapse sidebar (Ctrl+B)'"
+                :aria-label="$store.sidebar.collapsed ? 'Expand sidebar' : 'Collapse sidebar'">
+            <i data-lucide="panel-left" class="h-5 w-5"></i>
+        </button>
+
+        {% block breadcrumb %}{% endblock %}
+    </div>
+
+    <div class="flex items-center gap-2">
+
+        <!-- Search (desktop) -->
+        <div class="relative hidden md:block">
+            <button id="search-modal-trigger"
+                    class="flex items-center gap-2 rounded-lg border border-input bg-background px-3 py-2 text-sm text-muted-foreground hover:bg-accent transition-colors"
+                    aria-label="Open search">
+                <i data-lucide="search" class="h-4 w-4"></i>
+                <span>Search...</span>
+                <!-- Platform-aware shortcut hint, filled by JS -->
+                <kbd id="search-kbd-hint" class="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-foreground"></kbd>
+            </button>
+        </div>
+
+        <!-- Search (mobile icon only) -->
+        <button id="header-search-btn-mobile"
+                class="md:hidden text-muted-foreground hover:text-foreground transition-colors p-1.5 rounded-md hover:bg-accent"
+                aria-label="Open search">
+            <i data-lucide="search" class="h-5 w-5"></i>
+        </button>
+
+        <!-- LLM Selector -->
+        {% with selector_id='llm-selector-navbar' %}{% include 'components/llm_selector.html' %}{% endwith %}
+
+        {% if resolved_page_guide_context.enabled %}
+        <button id="page-guide-trigger"
+                @click.prevent.stop="if (window.openDrawer) { window.openDrawer('page-guide'); } else { window.dispatchEvent(new CustomEvent('open-drawer-page-guide')); }"
+                type="button"
+                class="inline-flex items-center gap-2 rounded-lg border border-input bg-background px-3 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                aria-label="Open AI guide">
+            <i data-lucide="sparkles" class="h-4 w-4"></i>
+            <span class="hidden sm:inline">AI Guide</span>
+        </button>
+        {% endif %}
+
+        <!-- ── PLT-018: Business Unit Scope ─────────────────────────── -->
+        <div class="relative" id="bu-scope-wrapper" data-dropdown-wrapper>
+            <button id="bu-scope-btn"
+                    class="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors p-1.5 rounded-md hover:bg-accent"
+                    aria-label="Business unit scope"
+                    aria-expanded="false"
+                    aria-haspopup="true">
+                <i data-lucide="building-2" class="h-4 w-4"></i>
+                <span id="bu-scope-label" class="hidden sm:inline text-xs">All</span>
+                <i data-lucide="chevron-down" class="h-3 w-3"></i>
+            </button>
+            <div id="bu-scope-dropdown"
+                 class="absolute right-0 mt-2 w-56 rounded-md border border-border bg-popover shadow-lg z-50 hidden"
+                 role="menu">
+                <div class="p-2 border-b border-border">
+                    <span class="text-xs font-semibold text-muted-foreground px-1">Viewing scope</span>
+                </div>
+                <div id="bu-scope-list" class="max-h-60 overflow-y-auto py-1" role="none">
+                    <button type="button" data-bu-id="" role="menuitem"
+                            class="bu-scope-item w-full text-left px-3 py-1.5 text-sm hover:bg-accent transition-colors">
+                        All Business Units
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── Notifications ─────────────────────────────────────────── -->
+        <div class="relative" id="notif-wrapper" data-dropdown-wrapper>
+            <button id="notif-btn"
+                    class="relative text-muted-foreground hover:text-foreground transition-colors p-1.5 rounded-md hover:bg-accent"
+                    aria-label="Notifications"
+                    aria-expanded="false"
+                    aria-haspopup="true">
+                <i data-lucide="bell" class="h-5 w-5"></i>
+                <span id="notif-badge"
+                      class="absolute -top-1 -right-1 min-w-[1rem] h-4 rounded-full bg-destructive text-[10px] font-medium text-destructive-foreground flex items-center justify-center px-0.5 hidden">0</span>
+            </button>
+
+            <div id="notif-dropdown"
+                 class="absolute right-0 mt-2 w-80 rounded-md border border-border bg-popover shadow-lg z-50 hidden"
+                 role="menu">
+                <div class="p-3 border-b border-border flex items-center justify-between">
+                    <span class="text-sm font-semibold">Notifications</span>
+                    <button id="notif-mark-read-btn"
+                            class="text-xs text-muted-foreground hover:text-foreground transition-colors hidden"
+                            aria-label="Mark all notifications as read">
+                        Mark all read
+                    </button>
+                </div>
+                <div id="notif-list" class="max-h-72 overflow-y-auto" role="none">
+                    <div class="px-4 py-6 text-center text-sm text-muted-foreground">
+                        <i data-lucide="bell-off" class="h-6 w-6 mx-auto mb-2 opacity-40"></i>
+                        No notifications
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── User Menu ─────────────────────────────────────────────── -->
+        <div class="relative" id="user-menu-wrapper" data-dropdown-wrapper>
+            <button id="user-menu-btn"
+                    class="flex items-center gap-2 rounded-lg hover:bg-accent px-2 py-1.5 transition-colors"
+                    aria-expanded="false"
+                    aria-haspopup="true"
+                    aria-label="User menu">
+                <!-- Avatar: coloured circle derived from display name -->
+                <div id="user-avatar"
+                     class="w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-primary-foreground font-semibold text-sm select-none"
+                     aria-hidden="true">
+                    {% if current_user.is_authenticated %}
+                        {% set _display = (current_user.first_name or current_user.full_name() or current_user.email or 'A') %}
+                        {{ _display[0] | upper }}
+                    {% else %}?{% endif %}
+                </div>
+                <!-- Role badge for ALL roles, not just admin -->
+                {% if current_user.is_authenticated %}
+                    <span id="user-role-badge"
+                          class="hidden sm:inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border">
+                        {% if current_user.is_admin() %}Admin
+                        {% else %}{{ (current_user.role.name | title) if current_user.role else 'User' }}{% endif %}
+                    </span>
+                {% endif %}
+                <i id="user-chevron"
+                   data-lucide="chevron-down"
+                   class="h-4 w-4 text-muted-foreground hidden sm:block transition-transform duration-150 ease-out"></i>
+            </button>
+
+            <div id="user-dropdown"
+                 class="absolute right-0 mt-2 w-64 rounded-md border border-border bg-popover shadow-lg z-50 hidden"
+                 role="menu">
+                <div class="p-2">
+                    {% if current_user.is_authenticated %}
+                    <div class="px-2 py-1.5">
+                        <p class="text-sm font-semibold truncate">{{ current_user.full_name() or current_user.email }}</p>
+                        <p class="text-xs text-muted-foreground truncate">{{ current_user.email }}</p>
+                    </div>
+                    {% else %}
+                    <div class="px-2 py-1.5 text-sm font-semibold">My Account</div>
+                    {% endif %}
+                    {% if current_user.is_authenticated %}
+                        {% set header_login_time = current_user.last_login_at|default(none, true) %}
+                        <div class="px-2 py-1 text-xs text-muted-foreground">
+                            <i data-lucide="clock" class="inline h-3 w-3 align-text-bottom mr-0.5"></i>
+                            Last login: {{ header_login_time.strftime('%d %b %Y %H:%M') if header_login_time else 'Not tracked' }}
+                        </div>
+                    {% endif %}
+                    <div class="h-px bg-border my-1" role="separator"></div>
+                    <a href="{{ url_for('account.manage') }}"
+                       role="menuitem"
+                       class="flex items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent transition-colors">
+                        <i data-lucide="user" class="h-4 w-4"></i>
+                        Profile
+                    </a>
+                    <a href="{{ url_for('account.change_password') }}"
+                       role="menuitem"
+                       class="flex items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent transition-colors">
+                        <i data-lucide="settings" class="h-4 w-4"></i>
+                        Settings
+                    </a>
+
+                    <div class="h-px bg-border my-1" role="separator"></div>
+                    <a href="{{ url_for('account.logout') }}"
+                       role="menuitem"
+                       class="flex items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-destructive hover:bg-destructive/10 transition-colors">
+                        <i data-lucide="log-out" class="h-4 w-4"></i>
+                        Log out
+                    </a>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</header>
+
+<!-- Search modal -->
+<div id="search-modal"
+     class="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh] hidden"
+     role="dialog"
+     aria-modal="true"
+     aria-label="Search">
+    <div id="search-modal-backdrop"
+         class="absolute inset-0 bg-black/50 backdrop-blur-sm"></div>
+    <div class="cmd-palette relative w-full max-w-2xl mx-4 overflow-hidden">
+        <div class="cmd-palette-input-wrap flex items-center gap-3 px-4 py-3.5">
+            <i data-lucide="search" class="h-4 w-4 text-muted-foreground shrink-0"></i>
+            <input id="search-modal-input"
+                   type="text"
+                   placeholder="Search pages, applications, solutions, capabilities..."
+                   class="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                   autocomplete="off"
+                   spellcheck="false">
+            <kbd class="pointer-events-none hidden sm:inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">ESC</kbd>
+        </div>
+        <div id="search-results" class="cmd-palette-results max-h-[28rem] overflow-y-auto p-1.5" role="listbox">
+            <p class="px-2 py-8 text-center text-sm text-muted-foreground">Type to search pages and entities...</p>
+        </div>
+        <div class="cmd-palette-footer flex items-center justify-between px-4 py-2 text-xs text-muted-foreground">
+            <div class="flex items-center gap-3">
+                <span class="flex items-center gap-1">
+                    <kbd class="px-1.5 py-0.5 bg-background border border-border rounded font-mono text-[10px]">↑</kbd>
+                    <kbd class="px-1.5 py-0.5 bg-background border border-border rounded font-mono text-[10px]">↓</kbd>
+                    Navigate
+                </span>
+                <span class="flex items-center gap-1">
+                    <kbd class="px-1.5 py-0.5 bg-background border border-border rounded font-mono text-[10px]">↵</kbd>
+                    Open
+                </span>
+            </div>
+            <span class="text-muted-foreground/60">Pages · Apps · Solutions · Capabilities</span>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    'use strict';
+
+    /* ── Helpers ─────────────────────────────────────────────────────────── */
+    function esc(str) {
+        if (str == null) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    /* ── Lucide ── */
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+
+    /* ── Avatar colour from display name ────────────────────────────────── */
+    (function () {
+        const avatar = document.getElementById('user-avatar');
+        if (!avatar) return;
+        const text = avatar.textContent.trim();
+        const COLOURS = [
+            '#2563eb','#7c3aed','#db2777','#dc2626',
+            '#d97706','#059669','#0891b2','#9333ea',
+        ];
+        let hash = 0;
+        const name = avatar.dataset.name || text;
+        for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+        avatar.style.backgroundColor = COLOURS[Math.abs(hash) % COLOURS.length];
+    })();
+
+    /* ── Role badge colour ───────────────────────────────────────────────── */
+    (function () {
+        const badge = document.getElementById('user-role-badge');
+        if (!badge) return;
+        const text = badge.textContent.trim().toLowerCase();
+        const map = {
+            admin:    'bg-amber-500/10 text-amber-600 border-amber-500/30',
+            user:     'bg-blue-500/10 text-primary border-blue-500/30',
+            analyst:  'bg-purple-500/10 text-primary border-purple-500/30',
+            architect:'bg-emerald-500/10 text-emerald-600 border-emerald-500/30',
+            viewer:   'bg-slate-500/10 text-slate-500 border-slate-400/30',
+        };
+        const cls = Object.entries(map).find(([k]) => text.includes(k));
+        if (cls) cls[1].split(' ').forEach(function(c) { badge.classList.add(c); });
+        else 'bg-blue-500/10 text-primary border-blue-500/30'.split(' ').forEach(function(c) { badge.classList.add(c); });
+    })();
+
+    /* ── Platform-aware keyboard shortcut hint ───────────────────────────── */
+    (function () {
+        const hint = document.getElementById('search-kbd-hint');
+        if (!hint) return;
+        const isMac = /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent);
+        hint.innerHTML = isMac
+            ? '<span class="text-xs">⌘</span>K'
+            : '<span class="text-xs">Ctrl</span>K';
+    })();
+
+    /* ── Generic dropdown helper ─────────────────────────────────────────── */
+    let _openDropdown = null;
+
+    function openDropdown(btn, panel) {
+        if (_openDropdown && _openDropdown.panel !== panel) {
+            closeDropdown(_openDropdown.btn, _openDropdown.panel);
+        }
+        const isOpen = window.getComputedStyle(panel).display !== 'none';
+        if (isOpen) {
+            closeDropdown(btn, panel);
+        } else {
+            panel.style.display = 'block';
+            btn.setAttribute('aria-expanded', 'true');
+            _openDropdown = { btn: btn, panel: panel };
+            // Focus first menuitem for keyboard nav
+            const first = panel.querySelector('[role="menuitem"]');
+            if (first) setTimeout(function() { first.focus(); }, 0);
+        }
+    }
+
+    function closeDropdown(btn, panel) {
+        panel.style.display = 'none';
+        btn.setAttribute('aria-expanded', 'false');
+        if (_openDropdown && _openDropdown.panel === panel) {
+            _openDropdown = null;
+            btn.focus();
+        }
+    }
+
+    /* ── Keyboard navigation for dropdowns ──────────────────────────────── */
+    document.addEventListener('keydown', function(e) {
+        if (!_openDropdown) return;
+        const panel = _openDropdown.panel;
+        const items = Array.from(panel.querySelectorAll('[role="menuitem"]:not([disabled]):not(.cursor-not-allowed)'));
+        if (!items.length) return;
+        const focused = document.activeElement;
+        const idx = items.indexOf(focused);
+
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            items[(idx + 1) % items.length].focus();
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            items[(idx - 1 + items.length) % items.length].focus();
+        } else if (e.key === 'Home') {
+            e.preventDefault();
+            items[0].focus();
+        } else if (e.key === 'End') {
+            e.preventDefault();
+            items[items.length - 1].focus();
+        } else if (e.key === 'Escape') {
+            closeDropdown(_openDropdown.btn, panel);
+        } else if (e.key === 'Tab') {
+            closeDropdown(_openDropdown.btn, panel);
+        }
+    });
+
+    // Close open dropdown when clicking outside
+    document.addEventListener('click', function (e) {
+        if (!_openDropdown) return;
+        const wrapper = _openDropdown.panel.closest('[data-dropdown-wrapper]');
+        if (wrapper && !wrapper.contains(e.target)) {
+            closeDropdown(_openDropdown.btn, _openDropdown.panel);
+        }
+    });
+
+    /* ── Notifications ─────────────────────────────────────────────────── */
+    const notifBtn      = document.getElementById('notif-btn');
+    const notifDropdown = document.getElementById('notif-dropdown');
+    const notifBadge    = document.getElementById('notif-badge');
+    const notifList     = document.getElementById('notif-list');
+    const markReadBtn   = document.getElementById('notif-mark-read-btn');
+
+    let notifItems = [];
+
+    function renderNotifications() {
+        if (notifItems.length === 0) {
+            notifList.innerHTML =
+                '<div class="px-4 py-6 text-center text-sm text-muted-foreground">' +
+                '<i data-lucide="bell-off" class="h-6 w-6 mx-auto mb-2 opacity-40"></i>' +
+                'No notifications</div>';
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+            if (markReadBtn) markReadBtn.style.display = 'none';
+            return;
+        }
+        const unread = notifItems.filter(function(n) { return !n.read; }).length;
+        if (markReadBtn) markReadBtn.style.display = unread > 0 ? 'inline' : 'none';
+        notifList.innerHTML = notifItems.map(function(item) {
+            // ── XSS fix: all user content escaped via esc() ──
+            const msgHtml = esc(item.message || '');
+            const timeHtml = esc(item.created_at ? new Date(item.created_at).toLocaleString() : '');
+            let href = esc(item.url || '#');
+            let source = esc(item.source || 'notification');
+            return '<a href="' + href + '" role="menuitem"' +
+                ' data-notif-id="' + item.id + '" data-notif-source="' + source + '"' +
+                ' class="notif-item flex items-start gap-3 px-4 py-3 hover:bg-accent transition-colors border-b border-border last:border-0' +
+                (item.read ? ' opacity-60' : '') + '">' +
+                '<span class="mt-1 h-2 w-2 rounded-full shrink-0 ' +
+                (item.read ? 'bg-muted-foreground/30' : 'bg-primary') + '" aria-hidden="true"></span>' +
+                '<div class="flex-1 min-w-0">' +
+                '<p class="text-sm leading-snug">' + msgHtml + '</p>' +
+                '<p class="text-xs text-muted-foreground mt-0.5">' + timeHtml + '</p>' +
+                '</div></a>';
+        }).join('');
+        /* PLT-013: Mark individual notification as read on click */
+        notifList.querySelectorAll('.notif-item').forEach(function(el) {
+            el.addEventListener('click', function() {
+                const nid = el.getAttribute('data-notif-id');
+                const src = el.getAttribute('data-notif-source') || 'notification';
+                if (!nid) return;
+                fetch('/api/notifications/' + nid + '/mark-read?source=' + src, {
+                    method: 'POST', credentials: 'same-origin',
+                    headers: {
+                        'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || '',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                }).catch(function() { /* silent */ });
+            });
+        });
+    }
+
+    function updateBadge(count) {
+        if (!notifBadge) return;
+        if (count > 0) {
+            notifBadge.style.display = 'flex';
+            notifBadge.textContent = count > 99 ? '99+' : String(count);
+        } else {
+            notifBadge.style.display = 'none';
+        }
+    }
+
+    function pollNotifications() {
+        const fetchFn = (window.Platform && window.Platform.fetch) || window.apiFetch;
+        if (!fetchFn) return;
+        fetchFn('/api/notifications', { silent: true })
+            .then(function(data) {
+                notifItems = data.items || [];
+                const count = data.unread_count || 0;
+                updateBadge(count);
+                if (typeof Alpine !== 'undefined') {
+                    try {
+                        Alpine.store('notifications').count = count;
+                        Alpine.store('notifications').items = notifItems;
+                    } catch(e) {}
+                }
+                renderNotifications();
+            })
+            .catch(function() { /* silent */ });
+    }
+
+    if (notifBtn && notifDropdown) {
+        notifBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            openDropdown(notifBtn, notifDropdown);
+            if (notifDropdown.style.display !== 'none') pollNotifications();
+        });
+    }
+
+    if (markReadBtn) {
+        markReadBtn.addEventListener('click', function () {
+            // Optimistic update
+            notifItems = notifItems.map(function(n) { return Object.assign({}, n, { read: true }); });
+            updateBadge(0);
+            if (typeof Alpine !== 'undefined') {
+                try {
+                    Alpine.store('notifications').count = 0;
+                    Alpine.store('notifications').items = notifItems;
+                } catch(e) {}
+            }
+            renderNotifications();
+
+            // Persist to backend
+            fetch('/api/notifications/mark-all-read', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || '',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+            }).catch(function() { /* silent — optimistic UI already updated */ });
+        });
+    }
+
+    {% if current_user.is_authenticated %}
+    pollNotifications();
+    setInterval(pollNotifications, 60000);
+    {% endif %}
+
+    /* ── PLT-018: Business Unit Scope ──────────────────────────────── */
+    const buBtn      = document.getElementById('bu-scope-btn');
+    const buDropdown = document.getElementById('bu-scope-dropdown');
+    const buLabel    = document.getElementById('bu-scope-label');
+    const buList     = document.getElementById('bu-scope-list');
+
+    function loadBuScope() {
+        let fetchFn = (window.Platform && window.Platform.fetch) || window.apiFetch;
+        if (!fetchFn) return;
+        fetchFn('/api/bu-scope', { silent: true })
+            .then(function(data) {
+                let items = data.business_units || [];
+                const currentId = data.current_bu_id;
+                let html = '<button type="button" data-bu-id="" role="menuitem" ' +
+                    'class="bu-scope-item w-full text-left px-3 py-1.5 text-sm hover:bg-accent transition-colors' +
+                    (!currentId ? ' font-semibold text-foreground' : '') + '">All Business Units</button>';
+                items.forEach(function(bu) {
+                    const active = (currentId && currentId === bu.id);
+                    html += '<button type="button" data-bu-id="' + bu.id + '" role="menuitem" ' +
+                        'class="bu-scope-item w-full text-left px-3 py-1.5 text-sm hover:bg-accent transition-colors' +
+                        (active ? ' font-semibold text-foreground' : '') + '">' + esc(bu.name) + '</button>';
+                });
+                if (buList) buList.innerHTML = html;
+                /* Update label */
+                if (buLabel) {
+                    const match = items.find(function(b) { return b.id === currentId; });
+                    buLabel.textContent = match ? match.name : 'All';
+                }
+                /* Bind clicks */
+                if (buList) {
+                    buList.querySelectorAll('.bu-scope-item').forEach(function(el) {
+                        el.addEventListener('click', function() {
+                            let id = el.getAttribute('data-bu-id');
+                            fetch('/api/bu-scope', {
+                                method: 'POST', credentials: 'same-origin',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || '',
+                                    'X-Requested-With': 'XMLHttpRequest',
+                                },
+                                body: JSON.stringify({ bu_id: id || null }),
+                            }).then(function() {
+                                window.location.reload();
+                            }).catch(function() {});
+                        });
+                    });
+                }
+            })
+            .catch(function() { /* silent */ });
+    }
+
+    if (buBtn && buDropdown) {
+        buBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            openDropdown(buBtn, buDropdown);
+            if (buDropdown.style.display !== 'none') loadBuScope();
+        });
+    }
+
+    {% if current_user.is_authenticated %}
+    loadBuScope();
+    {% endif %}
+
+    /* ── User menu ─────────────────────────────────────────────────────── */
+    const userBtn      = document.getElementById('user-menu-btn');
+    const userDropdown = document.getElementById('user-dropdown');
+    const userChevron  = document.getElementById('user-chevron');
+
+    if (userBtn && userDropdown) {
+        userBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            openDropdown(userBtn, userDropdown);
+            if (userChevron) {
+                userChevron.style.transform =
+                    userDropdown.style.display !== 'none' ? 'rotate(180deg)' : 'rotate(0deg)';
+            }
+        });
+    }
+
+    /* ── Search modal ──────────────────────────────────────────────────── */
+    const searchModal    = document.getElementById('search-modal');
+    const searchInput    = document.getElementById('search-modal-input');
+    const searchResults  = document.getElementById('search-results');
+    const searchBackdrop = document.getElementById('search-modal-backdrop');
+
+    function openSearchModal() {
+        searchModal.style.display = 'flex';
+        setTimeout(function () { if (searchInput) searchInput.focus(); }, 50);
+    }
+
+    function closeSearchModal() {
+        searchModal.style.display = 'none';
+        if (searchInput) searchInput.value = '';
+        if (searchResults) searchResults.innerHTML =
+            '<p class="px-2 py-8 text-center text-sm text-muted-foreground">Type to search pages and entities...</p>';
+    }
+
+    window.closeSearchModal = closeSearchModal;
+
+    const btnDesktop = document.getElementById('search-modal-trigger');
+    const btnMobile  = document.getElementById('header-search-btn-mobile');
+    if (btnDesktop) btnDesktop.addEventListener('click', openSearchModal);
+    if (btnMobile)  btnMobile.addEventListener('click', openSearchModal);
+    if (searchBackdrop) searchBackdrop.addEventListener('click', closeSearchModal);
+
+    if (searchInput) {
+        searchInput.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') { closeSearchModal(); return; }
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                const first = searchResults && searchResults.querySelector('[role="option"]');
+                if (first) first.focus();
+                return;
+            }
+            if (e.key === 'Enter') {
+                const first = searchResults && searchResults.querySelector('a[href]');
+                if (first) first.click();
+            }
+        });
+        searchInput.addEventListener('input', function () {
+            handleSearchInput(this.value);
+        });
+    }
+
+    // Keyboard nav within search results
+    if (searchResults) {
+        searchResults.addEventListener('keydown', function(e) {
+            const items = Array.from(searchResults.querySelectorAll('[role="option"]'));
+            if (!items.length) return;
+            const idx = items.indexOf(document.activeElement);
+            if (e.key === 'ArrowDown') { e.preventDefault(); items[(idx + 1) % items.length].focus(); }
+            else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                if (idx <= 0) { searchInput.focus(); return; }
+                items[idx - 1].focus();
+            }
+            else if (e.key === 'Escape') { closeSearchModal(); }
+            else if (e.key === 'Enter' && document.activeElement.tagName === 'A') { document.activeElement.click(); }
+        });
+    }
+
+    document.addEventListener('keydown', function (e) {
+        if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+            e.preventDefault();
+            if (searchModal.style.display === 'flex') closeSearchModal();
+            else openSearchModal();
+        }
+        if (e.key === 'Escape' && searchModal.style.display === 'flex') closeSearchModal();
+    });
+
+    /* ── Search index — covers all major platform sections ──────────────── */
+    const SEARCH_INDEX = [
+        // Core nav
+        { label: 'Dashboard',                    href: '{{ url_for("admin.index") }}',                          icon: 'layout-dashboard',  section: 'Navigation' },
+        { label: 'Profile',                      href: '{{ url_for("account.manage") }}',                       icon: 'user',              section: 'Account' },
+        { label: 'Settings / Change Password',   href: '{{ url_for("account.change_password") }}',             icon: 'settings',          section: 'Account' },
+        { label: 'Manage Users',                 href: '{{ url_for("admin.registered_users") }}',               icon: 'users',             section: 'Admin' },
+        { label: 'Feature Flags',                href: '{{ url_for("admin.feature_flags") }}',                  icon: 'flag',              section: 'Admin' },
+        { label: 'API Settings',                 href: '{{ url_for("admin.api_settings") }}',                   icon: 'key',               section: 'Admin' },
+        // Applications
+        { label: 'Application Portfolio',        href: '/applications',                                          icon: 'layers',            section: 'Applications' },
+        { label: 'All Applications',             href: '/applications',                                          icon: 'app-window',        section: 'Applications' },
+        { label: 'Duplicate Detection',          href: '/applications/duplicates',                               icon: 'copy',              section: 'Applications' },
+        { label: 'Application Dashboard',        href: '/applications/dashboard',                                icon: 'bar-chart-2',       section: 'Applications' },
+        // Vendors
+        { label: 'Vendor Management',            href: '/applications/vendors',                                  icon: 'briefcase',         section: 'Vendors' },
+        { label: 'Vendor Dashboard',             href: '/applications/vendors',                                  icon: 'building-2',        section: 'Vendors' },
+        { label: 'Vendor Capability Matrix',     href: '/dashboards/vendor-capability-matrix',                  icon: 'table-2',           section: 'Vendors' },
+        // Architecture
+        { label: 'Architecture Models',          href: '/architecture',                                          icon: 'git-branch',        section: 'Architecture' },
+        { label: 'ArchiMate Elements',           href: '/architecture/elements',                                 icon: 'boxes',             section: 'Architecture' },
+        { label: 'Solution Composer',            href: '/solutions',                                             icon: 'pencil-ruler',      section: 'Architecture' },
+        { label: 'Enterprise Architecture',      href: '/architecture/enterprise',                               icon: 'network',           section: 'Architecture' },
+        // Capabilities
+        { label: 'Business Capabilities',        href: '/capability-map/',                                       icon: 'target',            section: 'Capabilities' },
+        { label: 'Capability Map',               href: '/capability-map/',                                       icon: 'map',               section: 'Capabilities' },
+        { label: 'Capability Maturity',          href: '/capabilities/maturity',                                 icon: 'trending-up',       section: 'Capabilities' },
+        // AI
+        { label: 'AI Assistant',                 href: '/ai-chat',                                               icon: 'bot',               section: 'AI & Analysis' },
+        { label: 'Architecture Assistant',       href: '/architecture-assistant',                                icon: 'sparkles',          section: 'AI & Analysis' },
+        { label: 'Gap Discovery',                href: '/gap-analysis',                                          icon: 'search',            section: 'AI & Analysis' },
+        { label: 'Market Intelligence',          href: '/market-intelligence',                                   icon: 'trending-up',       section: 'AI & Analysis' },
+        // Governance
+        { label: 'Governance',                   href: '/governance',                                            icon: 'shield',            section: 'Governance' },
+        { label: 'ARB Submissions',              href: '/governance/arb',                                        icon: 'check-square',      section: 'Governance' },
+        { label: 'Roadmap',                      href: '/roadmap',                                               icon: 'calendar',          section: 'Governance' },
+    ];
+
+    let _searchSelected = -1;
+    let _searchDebounce = null;
+
+    const ENTITY_ICONS = {
+        application: 'app-window', capability: 'target', solution: 'pencil-ruler',
+        archimate_element: 'boxes', workflow: 'git-branch', vendor: 'building-2'
+    };
+
+    function _renderSection(sec, items) {
+        let h = '<div class="px-2 pt-2 pb-0.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">' + esc(sec) + '</div>';
+        items.forEach(function(item) {
+            const icon = item.icon || ENTITY_ICONS[item.type] || 'circle';
+            const badge = item.type ? ' <span class="ml-auto text-[10px] text-muted-foreground">' + esc(item.type) + '</span>' : '';
+            h += '<a href="' + esc(item.href || item.url || '#') + '" role="option" tabindex="-1"' +
+                ' class="flex items-center gap-3 rounded-sm px-3 py-2 text-sm hover:bg-accent focus:bg-accent focus:outline-none transition-colors">' +
+                '<i data-lucide="' + esc(icon) + '" class="h-4 w-4 text-muted-foreground shrink-0"></i>' +
+                '<span class="truncate">' + esc(item.label || item.name) + '</span>' + badge + '</a>';
+        });
+        return h;
+    }
+
+    function handleSearchInput(query) {
+        _searchSelected = -1;
+        if (!query || !query.trim()) {
+            searchResults.innerHTML =
+                '<p class="px-2 py-4 text-center text-sm text-muted-foreground">Type to search pages and entities...</p>';
+            return;
+        }
+        const q = query.toLowerCase();
+
+        // 1. Instant: filter static page index
+        const pageMatches = SEARCH_INDEX.filter(function(item) {
+            return item.label.toLowerCase().indexOf(q) !== -1 ||
+                   (item.section && item.section.toLowerCase().indexOf(q) !== -1);
+        });
+        const sections = {};
+        pageMatches.forEach(function(item) {
+            const sec = item.section || 'Pages';
+            if (!sections[sec]) sections[sec] = [];
+            sections[sec].push(item);
+        });
+        let html = '';
+        Object.entries(sections).forEach(function([sec, items]) {
+            html += _renderSection(sec, items);
+        });
+
+        // Show pages immediately + loading indicator for entities
+        if (q.length >= 2) {
+            html += '<div id="entity-search-loading" class="px-3 py-2 text-xs text-muted-foreground flex items-center gap-2">' +
+                '<svg class="animate-spin h-3 w-3" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none" opacity="0.25"/>' +
+                '<path fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z"/></svg> Searching entities...</div>';
+        }
+        if (!html) {
+            html = '<p class="px-2 py-4 text-center text-sm text-muted-foreground">No results for <strong>' + esc(query) + '</strong></p>';
+        }
+        searchResults.innerHTML = html;
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+
+        // 2. Async: fetch entities from API (debounced)
+        if (q.length < 2) return;
+        clearTimeout(_searchDebounce);
+        _searchDebounce = setTimeout(function() {
+            const fetchFn = (window.Platform && window.Platform.fetch) ? window.Platform.fetch : window.fetch;
+            fetchFn('/api/sidebar/search?q=' + encodeURIComponent(q))
+                .then(function(r) { return r.json ? r.json() : r; })
+                .then(function(data) {
+                    if (searchInput.value.toLowerCase() !== q) return; // stale
+                    const results = data.results || data || [];
+                    if (!results.length) {
+                        let el = document.getElementById('entity-search-loading');
+                        if (el) el.remove();
+                        return;
+                    }
+                    // Group by type
+                    const entitySections = {};
+                    results.forEach(function(r) {
+                        const sec = (r.type || 'entity').replace(/_/g, ' ');
+                        const label = sec.charAt(0).toUpperCase() + sec.slice(1) + 's';
+                        if (!entitySections[label]) entitySections[label] = [];
+                        entitySections[label].push(r);
+                    });
+                    let entityHtml = '';
+                    Object.entries(entitySections).forEach(function([sec, items]) {
+                        entityHtml += _renderSection(sec, items.slice(0, 5));
+                    });
+                    let el = document.getElementById('entity-search-loading');
+                    if (el) el.outerHTML = entityHtml;
+                    else searchResults.insertAdjacentHTML('beforeend', entityHtml);
+                    if (typeof lucide !== 'undefined') lucide.createIcons();
+                })
+                .catch(function() {
+                    let el = document.getElementById('entity-search-loading');
+                    if (el) el.remove();
+                });
+        }, 300);
+    }
+
+})();
+</script>

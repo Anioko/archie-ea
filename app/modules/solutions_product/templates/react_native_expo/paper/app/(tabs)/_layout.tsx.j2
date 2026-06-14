@@ -1,0 +1,97 @@
+import { Tabs } from "expo-router"
+import { MaterialCommunityIcons } from "@expo/vector-icons"
+import { useTheme } from "react-native-paper"
+
+{#
+  Icon name mapping: lucide → MaterialCommunityIcons
+  Used by _get_icon_for_entity() in mobile_generator.py.
+  Keys are the lucide names stored in cls.icon.
+#}
+
+const LUCIDE_TO_MCI: Record<string, string> = {
+  Users: "account-multiple",
+  ShoppingCart: "cart",
+  Receipt: "receipt",
+  CreditCard: "credit-card",
+  Package: "package-variant",
+  ArchiveBox: "archive",
+  FolderKanban: "folder-table",
+  CheckSquare: "checkbox-marked-outline",
+  FileText: "file-document-outline",
+  Building2: "office-building",
+  CalendarDays: "calendar",
+  Wrench: "wrench",
+  Server: "server",
+  MapPin: "map-marker",
+  Bell: "bell",
+  Truck: "truck",
+  Layers: "layers",
+  Home: "home",
+  User: "account",
+}
+
+function mci(name: string) {
+  return (LUCIDE_TO_MCI[name] ?? "layers") as React.ComponentProps<typeof MaterialCommunityIcons>["name"]
+}
+
+const TAB_BAR_STYLE = {
+  borderTopWidth: 0,
+  backgroundColor: "#ffffff",
+  paddingBottom: 4,
+  height: 64,
+  shadowColor: "#000",
+  shadowOffset: { width: 0, height: -2 },
+  shadowOpacity: 0.06,
+  shadowRadius: 8,
+  elevation: 8,
+}
+const TAB_HEADER_STYLE = { backgroundColor: "#ffffff", shadowColor: "transparent", elevation: 0 }
+const TAB_HEADER_TITLE_STYLE = { fontWeight: "700" as const, fontSize: 17 }
+const SCREEN_OPTIONS = {
+  tabBarActiveTintColor: "{{ primary_color }}",
+  tabBarInactiveTintColor: "#94a3b8",
+  tabBarStyle: TAB_BAR_STYLE,
+  tabBarLabelStyle: { fontSize: 11, fontWeight: "600" as const, marginTop: -2 },
+  headerStyle: TAB_HEADER_STYLE,
+  headerTintColor: "#0f172a",
+  headerTitleStyle: TAB_HEADER_TITLE_STYLE,
+}
+
+export default function TabsLayout() {
+  return (
+    <Tabs screenOptions={SCREEN_OPTIONS}>
+      <Tabs.Screen
+        name="index"
+        options={{ '{{' }}
+          title: "{{ solution_name }}",
+          tabBarLabel: "Home",
+          tabBarIcon: ({ color, size }: { color: string; size: number }) => (
+            <MaterialCommunityIcons name={mci("Home")} size={size - 2} color={color} />
+          ),
+        {{ '}}' }}
+      />
+      {% for cls in tab_classes %}
+      <Tabs.Screen
+        name="{{ cls.table_name }}"
+        options={{ '{{' }}
+          title: "{{ cls.name | replace('_', ' ') | title }}",
+          tabBarLabel: "{{ cls.name | replace('_', ' ') | title | truncate(9, true, '…') }}",
+          tabBarIcon: ({ color, size }: { color: string; size: number }) => (
+            <MaterialCommunityIcons name={mci("{{ cls.icon }}")} size={size - 2} color={color} />
+          ),
+        {{ '}}' }}
+      />
+      {% endfor %}
+      <Tabs.Screen
+        name="profile"
+        options={{ '{{' }}
+          title: "Profile",
+          tabBarLabel: "Profile",
+          tabBarIcon: ({ color, size }: { color: string; size: number }) => (
+            <MaterialCommunityIcons name={mci("User")} size={size - 2} color={color} />
+          ),
+        {{ '}}' }}
+      />
+    </Tabs>
+  )
+}

@@ -1,0 +1,249 @@
+{% extends "layouts/admin_base.html" %}
+
+{% block title %}Capability Heatmap & Investment — {{ config.APP_NAME }}{% endblock %}
+
+{% block content %}
+<div x-data="capabilityHeatmap()" x-init="fetchData()" class="space-y-6">
+
+  {# Page header #}
+  <div class="flex items-center justify-between">
+    <div>
+      <h1 class="text-2xl font-bold text-foreground">Capability Heatmap</h1>
+      <p class="text-sm text-muted-foreground mt-1">Maturity levels by domain with investment overlay</p>
+    </div>
+    <div class="flex items-center gap-2">
+      <label class="text-sm text-muted-foreground">View:</label>
+      <select x-model="viewMode" @change="fetchData()"
+              class="rounded-md border border-border bg-background text-foreground text-sm px-3 py-1.5 focus:ring-2 focus:ring-ring">
+        <option value="maturity">Maturity Only</option>
+        <option value="investment">With Investment</option>
+      </select>
+    </div>
+  </div>
+
+  {# Loading state #}
+  <div x-show="loading" x-cloak class="flex items-center justify-center py-16">
+    <div class="flex items-center gap-2 text-muted-foreground text-sm">
+      <i data-lucide="loader-2" class="h-5 w-5 animate-spin"></i>
+      Loading heatmap data...
+    </div>
+  </div>
+
+  {# Error state #}
+  <div x-show="error && !loading" x-cloak class="rounded-md border border-destructive/30 bg-destructive/5 p-4">
+    <p class="text-sm text-destructive" x-text="error"></p>
+  </div>
+
+  {# Summary cards #}
+  <div x-show="!loading && !error" x-cloak class="grid grid-cols-2 md:grid-cols-4 gap-4">
+    <div class="rounded-lg border border-border bg-card p-4">
+      <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Domains</p>
+      <p class="text-2xl font-bold text-foreground mt-1" x-text="data.total_domains || 0"></p>
+    </div>
+    <div class="rounded-lg border border-border bg-card p-4">
+      <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Capabilities</p>
+      <p class="text-2xl font-bold text-foreground mt-1" x-text="data.total_capabilities || 0"></p>
+    </div>
+    <div x-show="viewMode === 'investment'" x-cloak class="rounded-lg border border-border bg-card p-4">
+      <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Total Investment</p>
+      <p class="text-2xl font-bold text-foreground mt-1"
+         x-text="'{{ currency_symbol }}' + formatNumber(data.investment_summary?.grand_total || 0)"></p>
+    </div>
+    <div x-show="viewMode === 'investment'" x-cloak class="rounded-lg border border-border bg-card p-4">
+      <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Domains w/ Investment</p>
+      <p class="text-2xl font-bold text-foreground mt-1"
+         x-text="data.investment_summary?.domains_with_investment || 0"></p>
+    </div>
+  </div>
+
+  {# Legend #}
+  <div x-show="!loading && !error && data.legend" x-cloak class="flex flex-wrap items-center gap-4 text-xs">
+    <span class="font-medium text-muted-foreground">Maturity:</span>
+    <template x-for="item in (data.legend || [])" :key="item.level">
+      <span class="inline-flex items-center gap-1.5">
+        <span class="w-3 h-3 rounded-sm" :style="'background-color:' + item.color"></span>
+        <span class="text-foreground" x-text="item.level + ' — ' + item.label"></span>
+      </span>
+    </template>
+  </div>
+
+  {# Heatmap table #}
+  <div x-show="!loading && !error && (data.domains || []).length > 0" x-cloak class="overflow-x-auto">
+    <table class="w-full text-sm border-collapse">
+      <thead>
+        <tr class="border-b border-border">
+          <th class="text-left py-2 px-3 font-semibold text-foreground">Domain</th>
+          <th class="text-center py-2 px-2 font-semibold text-foreground w-16">1</th>
+          <th class="text-center py-2 px-2 font-semibold text-foreground w-16">2</th>
+          <th class="text-center py-2 px-2 font-semibold text-foreground w-16">3</th>
+          <th class="text-center py-2 px-2 font-semibold text-foreground w-16">4</th>
+          <th class="text-center py-2 px-2 font-semibold text-foreground w-16">5</th>
+          <th class="text-center py-2 px-3 font-semibold text-foreground">Health</th>
+          <th class="text-center py-2 px-3 font-semibold text-foreground">Caps</th>
+          <th x-show="viewMode === 'investment'" x-cloak class="text-right py-2 px-3 font-semibold text-foreground">Investment</th>
+        </tr>
+      </thead>
+      <tbody>
+        <template x-for="domain in (data.domains || [])" :key="domain.code">
+          <tr class="border-b border-border/50 hover:bg-muted/30 cursor-pointer"
+              @click="selectedDomain = selectedDomain?.code === domain.code ? null : domain">
+            <td class="py-2 px-3">
+              <span class="font-medium text-foreground" x-text="domain.name"></span>
+              <span class="text-muted-foreground ml-1" x-text="'(' + domain.code + ')'"></span>
+            </td>
+            <template x-for="level in [1,2,3,4,5]" :key="level">
+              <td class="text-center py-2 px-2">
+                <span x-show="domain.counts[level] > 0" x-cloak
+                      class="inline-flex items-center justify-center w-8 h-8 rounded text-xs font-bold text-primary-foreground"
+                      :style="'background-color:' + getLevelColor(level)"
+                      x-text="domain.counts[level]"></span>
+                <span x-show="!domain.counts[level] || domain.counts[level] === 0" x-cloak
+                      class="text-muted-foreground/40">-</span>
+              </td>
+            </template>
+            <td class="text-center py-2 px-3">
+              <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium"
+                    :class="getHealthClass(domain.health_score)"
+                    x-text="domain.health_score + '%'"></span>
+            </td>
+            <td class="text-center py-2 px-3 text-muted-foreground" x-text="domain.total_capabilities"></td>
+            <td x-show="viewMode === 'investment'" x-cloak class="text-right py-2 px-3 font-medium text-foreground"
+                x-text="'{{ currency_symbol }}' + formatNumber(domain.total_investment || 0)"></td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+  </div>
+
+  {# Empty state #}
+  <div x-show="!loading && !error && (data.domains || []).length === 0" x-cloak
+       class="flex items-center justify-center py-16 text-muted-foreground text-sm">
+    No capability data available. Add capabilities to see the heatmap.
+  </div>
+
+  {# Domain detail panel #}
+  <div x-show="selectedDomain" x-cloak
+       class="rounded-lg border border-border bg-card p-5 shadow-sm">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-lg font-semibold text-foreground" x-text="selectedDomain?.name"></h2>
+      <button @click="selectedDomain = null"
+              class="rounded-sm p-1 text-muted-foreground hover:text-foreground transition-colors"
+              aria-label="Close detail panel">
+        <i data-lucide="x" class="h-4 w-4"></i>
+      </button>
+    </div>
+
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+      <div>
+        <p class="text-xs text-muted-foreground">Avg Maturity</p>
+        <p class="text-lg font-bold text-foreground" x-text="selectedDomain?.avg_maturity"></p>
+      </div>
+      <div>
+        <p class="text-xs text-muted-foreground">Avg Target</p>
+        <p class="text-lg font-bold text-foreground" x-text="selectedDomain?.avg_target"></p>
+      </div>
+      <div>
+        <p class="text-xs text-muted-foreground">Health Score</p>
+        <p class="text-lg font-bold" :class="getHealthTextClass(selectedDomain?.health_score)"
+           x-text="selectedDomain?.health_score + '%'"></p>
+      </div>
+      <div x-show="viewMode === 'investment'" x-cloak>
+        <p class="text-xs text-muted-foreground">Investment</p>
+        <p class="text-lg font-bold text-foreground"
+           x-text="'{{ currency_symbol }}' + formatNumber(selectedDomain?.total_investment || 0)"></p>
+      </div>
+    </div>
+
+    {# Cost breakdown table (investment mode) #}
+    <div x-show="viewMode === 'investment' && selectedDomain?.cost_breakdown && Object.keys(selectedDomain.cost_breakdown).length > 0" x-cloak
+         class="mt-4">
+      <h3 class="text-sm font-medium text-foreground mb-2">Cost Breakdown</h3>
+      <div class="space-y-1">
+        <template x-for="cat in Object.keys(selectedDomain?.cost_breakdown || {})" :key="cat">
+          <div class="flex items-center justify-between py-1 px-2 rounded bg-muted/30 text-sm">
+            <span class="text-muted-foreground capitalize" x-text="cat"></span>
+            <span class="font-medium text-foreground"
+                  x-text="'{{ currency_symbol }}' + formatNumber(selectedDomain.cost_breakdown[cat])"></span>
+          </div>
+        </template>
+      </div>
+    </div>
+
+    {# Capabilities by maturity level #}
+    <div class="mt-4">
+      <h4 class="text-sm font-medium text-foreground mb-2">Capabilities by Maturity Level</h4>
+      <div class="grid grid-cols-5 gap-2">
+        <template x-for="level in [1,2,3,4,5]" :key="level">
+          <div class="text-center">
+            <p class="text-xs font-medium text-muted-foreground mb-1" x-text="'Level ' + level"></p>
+            <template x-for="name in (selectedDomain?.capability_names?.[level] || [])" :key="name">
+              <p class="text-xs text-foreground truncate py-0.5" x-text="name"></p>
+            </template>
+            <p x-show="!(selectedDomain?.capability_names?.[level] || []).length" x-cloak
+               class="text-xs text-muted-foreground/40">None</p>
+          </div>
+        </template>
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function capabilityHeatmap() {
+  return {
+    loading: false,
+    error: null,
+    data: {},
+    viewMode: 'maturity',
+    selectedDomain: null,
+
+    async fetchData() {
+      this.loading = true;
+      this.error = null;
+      this.selectedDomain = null;
+      try {
+        const params = this.viewMode === 'investment' ? '?group_by=domain' : '';
+        const resp = await fetch('/dashboard/api/capability-heatmap' + params);
+        const json = await resp.json();
+        if (json.success) {
+          this.data = json.data;
+        } else {
+          this.error = json.error || 'Failed to load heatmap data';
+        }
+      } catch (e) {
+        this.error = 'Network error: ' + e.message;
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    formatNumber(val) {
+      if (!val && val !== 0) return '0';
+      return Number(val).toLocaleString('en-GB', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    },
+
+    getLevelColor(level) {
+      const colors = { 1: '#ef4444', 2: '#f97316', 3: '#eab308', 4: '#84cc16', 5: '#22c55e' };
+      return colors[level] || '#6b7280';
+    },
+
+    getHealthClass(score) {
+      if (score >= 80) return 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/30';
+      if (score >= 60) return 'bg-primary/10 text-primary border border-primary/30';
+      if (score >= 40) return 'bg-amber-500/10 text-amber-600 border border-amber-500/30';
+      return 'bg-destructive/10 text-destructive border border-destructive/30';
+    },
+
+    getHealthTextClass(score) {
+      if (score >= 80) return 'text-emerald-600';
+      if (score >= 60) return 'text-primary';
+      if (score >= 40) return 'text-amber-600';
+      return 'text-destructive';
+    }
+  };
+}
+</script>
+{% endblock %}

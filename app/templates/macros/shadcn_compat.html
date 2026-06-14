@@ -1,0 +1,129 @@
+{% macro metric_card(label, value, delta, trend="up", footer_label="", footer_text="") %}
+<div class="flex flex-col gap-6 rounded-xl border bg-card text-card-foreground py-6 shadow-sm">
+  <div class="grid auto-rows-min grid-rows-[auto_auto] items-start gap-1.5 px-6 grid-cols-[1fr_auto]">
+    <div class="text-sm text-muted-foreground">{{ label }}</div>
+    <div class="text-2xl font-semibold tabular-nums">{{ value }}</div>
+    <div class="col-start-2 row-span-2 row-start-1 self-start justify-self-end">
+      <span class="inline-flex items-center justify-center rounded-md border px-2 py-0.5 text-xs font-medium gap-1">
+        {% if trend == "up" %}
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-3 w-3 text-success">
+            <path d="M3 17l6 -6l4 4l8 -8"></path>
+            <path d="M14 7l7 0l0 7"></path>
+          </svg>
+        {% else %}
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-3 w-3 text-destructive">
+            <path d="M3 7l6 6l4 -4l8 8"></path>
+            <path d="M21 10l0 7l-7 0"></path>
+          </svg>
+        {% endif %}
+        {{ delta }}
+      </span>
+    </div>
+  </div>
+  {% if footer_label or footer_text %}
+  <div class="flex px-6 flex-col items-start gap-1.5 text-sm">
+    {% if footer_label %}
+    <div class="line-clamp-1 flex gap-2 font-medium">
+      {{ footer_label }}
+      {% if trend == "up" %}
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4">
+          <path d="M3 17l6 -6l4 4l8 -8"></path>
+          <path d="M14 7l7 0l0 7"></path>
+        </svg>
+      {% else %}
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4">
+          <path d="M3 7l6 6l4 -4l8 8"></path>
+          <path d="M21 10l0 7l-7 0"></path>
+        </svg>
+      {% endif %}
+    </div>
+    {% endif %}
+    {% if footer_text %}
+    <div class="text-muted-foreground">{{ footer_text }}</div>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endmacro %}
+
+{% macro shadcn_button(text, variant="primary", size="md", href=None) %}
+{# ⚠️ DEPRECATED: Use components/button.html::button instead #}
+{# MIGRATION: {% from 'components/button.html' import button %} #}
+{# USAGE: {{ button(text='Click Me', variant='primary', size='md') }} #}
+{# GUIDE: See docs/design-system/components.md#button #}
+{# Removal: v2.0 #}
+{% set base_classes = "inline-flex items-center justify-center rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none ring-offset-background" %}
+{% set variant_classes = {
+    "primary": "bg-primary text-primary-foreground hover:bg-primary/90",
+    "secondary": "bg-secondary text-secondary-foreground hover:bg-secondary/80",
+    "outline": "border border-input bg-background text-foreground hover:bg-accent hover:text-accent-foreground",
+    "ghost": "hover:bg-accent text-foreground hover:text-accent-foreground",
+    "destructive": "bg-destructive text-destructive-foreground hover:bg-destructive/90"
+} %}
+{% set size_classes = {
+    "sm": "h-9 px-3 text-sm",
+    "md": "h-10 px-4 py-2",
+    "lg": "h-11 px-8 text-lg"
+} %}
+{% set classes = base_classes + " " + variant_classes.get(variant, variant_classes.primary) + " " + size_classes.get(size, size_classes.md) %}
+
+{% if href %}
+    <a href="{{ href }}" class="{{ classes }}">{{ text }}</a>
+{% else %}
+{# ⚠️ DEPRECATED: Use components/input.html::input instead #}
+{# MIGRATION: {% from 'components/input.html' import input, label %} #}
+{# USAGE: {{ label(for=name, text=placeholder) }}{{ input(id=name, name=name, type=type, required=required) }} #}
+{# GUIDE: See docs/design-system/components.md#input #}
+{# Removal: v2.0 #}
+    <button class="{{ classes }}" aria-label="Action">{{ text }}</button>
+{% endif %}
+{% endmacro %}
+
+{% macro shadcn_input(name, value="", type="text", placeholder="", required=false) %}
+<div class="flex flex-col space-y-2">
+    <label for="{{ name }}" class="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+        {{ placeholder or name|title }}
+    </label>
+    <input 
+        type="{{ type }}" 
+        id="{{ name }}" 
+        name="{{ name }}" 
+        value="{{ value }}" 
+        placeholder="{{ placeholder }}"
+        {% if required %}required{% endif %}
+        class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+{# ⚠️ DEPRECATED: Use components/table.html::table instead #}
+{# MIGRATION: {% from 'components/table.html' import table, table_header, table_body, table_row, table_head, table_cell %} #}
+{# USAGE: See docs/design-system/components.md#table for full example #}
+{# GUIDE: See docs/design-system/components.md#table #}
+{# Removal: v2.0 #}
+    >
+</div>
+{% endmacro %}
+
+{% macro shadcn_table(headers, rows, striped=true) %}
+<div class="relative w-full overflow-auto">
+    <table class="w-full caption-bottom text-sm">
+        <thead class="[&amp;_tr]:border-b">
+            <tr class="border-b transition-colors hover:bg-muted/50">
+                {% for header in headers %}
+                <th class="h-12 px-4 text-left align-middle font-medium text-foreground [&amp;:has([role=checkbox])]:pr-0">
+                    {{ header }}
+                </th>
+                {% endfor %}
+            </tr>
+        </thead>
+        <tbody class="[&amp;_tr:last-child]:border-0">
+            {% for row in rows %}
+            <tr class="border-b transition-colors hover:bg-muted/50 {% if striped and loop.index0 % 2 == 0 %}bg-muted/50{% endif %}">
+                {% for cell in row %}
+                <td class="p-4 align-middle [&amp;:has([role=checkbox])]:pr-0">
+                    {{ cell }}
+                </td>
+                {% endfor %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endmacro %}

@@ -1,0 +1,93 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'components/page_header.html' import page_header %}
+{% from 'components/metrics_card.html' import metrics_card %}
+
+{% block title %}Capability Applications{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    {{ page_header(title='Capability Applications', description='Applications mapped to business capabilities') }}
+
+    {% set total = applications|length %}
+    {% set active_count = applications|selectattr('status', 'equalto', 'active')|list|length %}
+    {% set mapped_count = applications|selectattr('capability_mappings')|list|length %}
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+        {{ metrics_card(title='Total', value=total, icon='monitor') }}
+        {{ metrics_card(title='Active', value=active_count, icon='check-circle', value_class='text-success') }}
+        {{ metrics_card(title='Mapped to Capabilities', value=mapped_count, icon='link', value_class='text-primary') }}
+    </div>
+
+    <!-- Client-side text filter -->
+    <div class="mb-4">
+        <input
+            id="app-filter"
+            type="text"
+            placeholder="Filter applications..."
+            class="w-full sm:w-72 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+            @input="filterApps(this.value)"
+        />
+    </div>
+
+    <div data-slot="card" class="rounded-xl border bg-card shadow-sm">
+        <table class="w-full text-sm" id="apps-table">
+            <thead>
+                <tr class="border-b border-border">
+                    <th class="px-6 py-3 text-left font-medium text-muted-foreground">Application</th>
+                    <th class="px-6 py-3 text-left font-medium text-muted-foreground">Status</th>
+                    <th class="px-6 py-3 text-left font-medium text-muted-foreground">Capabilities Mapped</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-border" id="apps-tbody">
+                {% for app in applications %}
+                <tr class="hover:bg-muted/30 app-row" data-name="{{ app.name|lower }}">
+                    <td class="px-6 py-3 font-medium text-foreground">
+                        <a href="{{ url_for('unified_applications.application_detail', id=app.id) }}"
+                           class="hover:underline text-primary dark:text-primary/80">{{ app.name }}</a>
+                    </td>
+                    <td class="px-6 py-3">
+                        {% set s = (app.status or 'active')|lower %}
+                        {% if s == 'active' %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-success/10 text-success border border-success/30">Active</span>
+                        {% elif s == 'retired' or s == 'decommissioned' %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive border border-destructive/30">{{ s|title }}</span>
+                        {% elif s == 'planned' %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30">Planned</span>
+                        {% else %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground border border-border">{{ s|title }}</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-6 py-3 text-muted-foreground">
+                        {% set cap_count = app.capability_mappings|length if app.capability_mappings else 0 %}
+                        {% if cap_count == 0 %}
+                        <span class="text-xs text-warning">Unmapped</span>
+                        {% else %}
+                        {{ cap_count }}
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr id="empty-row">
+                    <td colspan="3" class="px-6 py-12 text-center text-muted-foreground">
+                        <div class="flex flex-col items-center gap-2">
+                            <svg class="w-8 h-8 text-muted-foreground/50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                            </svg>
+                            <span>No applications found.</span>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+function filterApps(val) {
+    const q = val.toLowerCase();
+    document.querySelectorAll('.app-row').forEach(function(row) {
+        row.style.display = row.dataset.name.includes(q) ? '' : 'none';
+    });
+}
+</script>
+{% endblock %}

@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+{# admin_preview.html.j2 — Self-contained admin CRUD UI for ARCHIE preview tab.
+   No build step. Alpine.js + Tailwind CDN. Works without Next.js running.
+   API calls go to BASE_PATH + /api/<resource> on the same origin.
+   Context: solution_name, modules, base_path, auth #}
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{{ solution_name }} — Admin</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>tailwind.config={darkMode:'class',theme:{extend:{}}}</script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <style>
+    [x-cloak]{display:none!important}
+    ::-webkit-scrollbar{width:6px;height:6px}
+    ::-webkit-scrollbar-track{background:transparent}
+    ::-webkit-scrollbar-thumb{background:#3f3f46;border-radius:3px}
+    .fade-in{animation:fadeIn .15s ease-in}
+    @keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+  </style>
+</head>
+<body class="bg-zinc-950 text-zinc-100 min-h-screen">
+
+<div x-data="adminShell()" x-init="init()" class="flex h-screen overflow-hidden">
+
+  <!-- ── Sidebar ── -->
+  <aside class="w-56 shrink-0 border-r border-zinc-800 bg-zinc-900 flex flex-col">
+    <div class="px-4 py-3 border-b border-zinc-800">
+      <p class="text-xs font-bold tracking-tight text-zinc-100 truncate">{{ solution_name }}</p>
+      <p class="text-[10px] text-zinc-500 mt-0.5">Admin Preview</p>
+    </div>
+    <nav class="flex-1 overflow-y-auto py-2 px-2 space-y-0.5">
+      <button @click="activeEntity='__dashboard__'"
+              :class="activeEntity==='__dashboard__' ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'"
+              class="w-full flex items-center gap-2 px-3 py-2 text-xs rounded-md text-left transition-colors">
+        <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0h4"/></svg>
+        Dashboard
+      </button>
+{% for mod in modules if mod.user_facing %}
+      <button @click="loadEntity('{{ mod.slug }}', '{{ mod.display_name_plural }}', '{{ mod.api_resource }}')"
+              :class="activeEntity==='{{ mod.slug }}' ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'"
+              class="w-full flex items-center gap-2 px-3 py-2 text-xs rounded-md text-left transition-colors">
+        <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
+        {{ mod.display_name_plural }}
+        <span x-show="counts['{{ mod.slug }}'] !== undefined"
+              x-text="counts['{{ mod.slug }}']"
+              class="ml-auto text-[9px] px-1.5 py-0.5 rounded bg-zinc-700 text-zinc-400"></span>
+      </button>
+{% endfor %}
+    </nav>
+    <div class="px-4 py-3 border-t border-zinc-800 space-y-1.5">
+      <div class="flex items-center gap-1.5">
+        <span class="w-1.5 h-1.5 rounded-full shrink-0"
+              :class="apiOk ? 'bg-emerald-500' : 'bg-red-500'"></span>
+        <span class="text-[10px] text-zinc-500" x-text="apiOk ? 'API reachable' : 'API offline'"></span>
+      </div>
+      <p class="text-[9px] text-zinc-600">Auth: {{ auth | default('jwt-local') }}</p>
+    </div>
+  </aside>
+
+  <!-- ── Main ── -->
+  <main class="flex-1 flex flex-col overflow-hidden">
+
+    <!-- Topbar -->
+    <header class="shrink-0 border-b border-zinc-800 bg-zinc-950/80 px-5 py-2.5 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <h1 class="text-sm font-semibold text-zinc-100" x-text="activeLabel || 'Dashboard'"></h1>
+        <span x-show="loading" class="w-3.5 h-3.5 border-2 border-zinc-600 border-t-zinc-300 rounded-full animate-spin"></span>
+      </div>
+      <div class="flex items-center gap-2">
+        <button x-show="activeEntity && activeEntity !== '__dashboard__'"
+                @click="openCreate()"
+                class="h-7 px-3 text-xs font-medium rounded-md bg-blue-600 hover:bg-blue-700 text-white transition-colors">
+          + New
+        </button>
+        <button x-show="activeEntity && activeEntity !== '__dashboard__'"
+                @click="loadEntity(activeEntity, activeLabel, activeResource)"
+                class="h-7 px-3 text-xs font-medium rounded-md border border-zinc-700 hover:bg-zinc-800 text-zinc-400 transition-colors">
+          ↻ Refresh
+        </button>
+      </div>
+    </header>
+
+    <!-- Content -->
+    <div class="flex-1 overflow-y-auto p-5">
+
+      <!-- Dashboard -->
+      <div x-show="activeEntity === '__dashboard__'" class="fade-in space-y-5">
+        <div class="grid gap-3 grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+{% for mod in modules if mod.user_facing %}
+          <div class="rounded-xl border border-zinc-800 bg-zinc-900 p-4 cursor-pointer hover:border-zinc-600 transition-colors"
+               @click="loadEntity('{{ mod.slug }}', '{{ mod.display_name_plural }}', '{{ mod.api_resource }}')">
+            <p class="text-[10px] text-zinc-500 uppercase tracking-wider">{{ mod.display_name_plural }}</p>
+            <p class="text-2xl font-bold text-zinc-100 mt-1" x-text="counts['{{ mod.slug }}'] ?? '—'"></p>
+            <p class="text-[10px] text-zinc-600 mt-0.5">total records</p>
+          </div>
+{% endfor %}
+        </div>
+        <div class="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
+          <p class="text-xs font-semibold text-zinc-300 mb-1">API Status</p>
+          <div class="flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full" :class="apiOk ? 'bg-emerald-500' : 'bg-red-500'"></span>
+            <span class="text-xs text-zinc-400" x-text="apiOk ? 'Backend API reachable' : 'Backend API offline — start the docker compose stack to enable live data'"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Entity table -->
+      <div x-show="activeEntity && activeEntity !== '__dashboard__'" class="fade-in">
+        <div x-show="error" class="mb-4 rounded-lg border border-red-800 bg-red-950/40 px-4 py-3 text-xs text-red-400" x-text="error"></div>
+        <div x-show="!error && rows.length === 0 && !loading" class="rounded-xl border border-zinc-800 bg-zinc-900 p-8 text-center">
+          <p class="text-sm text-zinc-400">No records found</p>
+          <p class="text-xs text-zinc-600 mt-1">The API may be offline, or this entity has no records yet.</p>
+        </div>
+        <div x-show="rows.length > 0" class="rounded-xl border border-zinc-800 overflow-hidden">
+          <table class="w-full text-xs">
+            <thead class="bg-zinc-900 border-b border-zinc-800">
+              <tr>
+                <template x-for="col in cols" :key="col">
+                  <th class="px-4 py-2.5 text-left font-medium text-zinc-400 capitalize" x-text="col.replace(/_/g,' ')"></th>
+                </template>
+                <th class="px-4 py-2.5 text-right font-medium text-zinc-400">Actions</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-zinc-800/60">
+              <template x-for="(row, ri) in rows" :key="ri">
+                <tr class="hover:bg-zinc-900/50 transition-colors">
+                  <template x-for="col in cols" :key="col">
+                    <td class="px-4 py-2.5 text-zinc-300 max-w-[200px] truncate" x-text="_fmt(row[col])"></td>
+                  </template>
+                  <td class="px-4 py-2.5 text-right space-x-1 whitespace-nowrap">
+                    <button @click="openEdit(row)"
+                            class="px-2 py-1 rounded text-[10px] border border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:border-zinc-500 transition-colors">Edit</button>
+                    <button @click="deleteRow(row)"
+                            class="px-2 py-1 rounded text-[10px] border border-red-900 text-red-500 hover:bg-red-950/40 transition-colors">Del</button>
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+          <!-- Pagination -->
+          <div class="border-t border-zinc-800 bg-zinc-900/50 px-4 py-2 flex items-center justify-between">
+            <p class="text-[10px] text-zinc-500">
+              Showing <span x-text="rows.length"></span> of <span x-text="total"></span> records
+            </p>
+            <div class="flex gap-1">
+              <button @click="page > 1 && (page--, fetchRows())"
+                      :disabled="page <= 1"
+                      class="h-6 px-2 text-[10px] rounded border border-zinc-700 text-zinc-400 disabled:opacity-40 hover:bg-zinc-800 transition-colors">← Prev</button>
+              <button @click="page * perPage < total && (page++, fetchRows())"
+                      :disabled="page * perPage >= total"
+                      class="h-6 px-2 text-[10px] rounded border border-zinc-700 text-zinc-400 disabled:opacity-40 hover:bg-zinc-800 transition-colors">Next →</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Create / Edit Modal -->
+<div x-show="modal.open" x-cloak @keydown.escape.window="modal.open=false"
+     class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+  <div class="w-full max-w-lg rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl" @click.stop>
+    <div class="flex items-center justify-between px-5 py-3.5 border-b border-zinc-800">
+      <h2 class="text-sm font-semibold text-zinc-100" x-text="modal.isEdit ? 'Edit Record' : 'New ' + activeLabel?.slice(0,-1)"></h2>
+      <button @click="modal.open=false" class="text-zinc-500 hover:text-zinc-200 transition-colors">
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="p-5 space-y-3 max-h-[60vh] overflow-y-auto">
+      <template x-for="(val, key) in modal.data" :key="key">
+        <div x-show="key !== 'id' && key !== 'created_at' && key !== 'updated_at'">
+          <label class="block text-[10px] font-medium text-zinc-400 mb-1 capitalize" x-text="key.replace(/_/g,' ')"></label>
+          <input :value="val"
+                 @input="modal.data[key] = $event.target.value"
+                 class="w-full h-8 px-3 text-xs rounded-md border border-zinc-700 bg-zinc-800 text-zinc-100 focus:outline-none focus:border-blue-500 transition-colors">
+        </div>
+      </template>
+    </div>
+    <div class="flex justify-end gap-2 px-5 py-3.5 border-t border-zinc-800">
+      <button @click="modal.open=false"
+              class="h-8 px-4 text-xs rounded-md border border-zinc-700 text-zinc-400 hover:text-zinc-200 transition-colors">Cancel</button>
+      <button @click="saveModal()"
+              :disabled="modal.saving"
+              class="h-8 px-4 text-xs rounded-md bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-60 transition-colors"
+              x-text="modal.saving ? 'Saving…' : 'Save'"></button>
+    </div>
+  </div>
+</div>
+
+<script>
+const BASE_PATH = "{{ base_path | default('') }}"
+
+function adminShell() {
+  return {
+    activeEntity: '__dashboard__',
+    activeLabel: 'Dashboard',
+    activeResource: '',
+    rows: [], cols: [], total: 0, page: 1, perPage: 20,
+    loading: false, error: '', apiOk: false,
+    counts: {},
+    modal: { open: false, isEdit: false, data: {}, id: null, saving: false },
+
+    async init() {
+      await this.checkApi()
+      await this.loadCounts()
+    },
+
+    async checkApi() {
+      try {
+        const r = await fetch(BASE_PATH + '/health')
+        this.apiOk = r.ok
+      } catch { this.apiOk = false }
+    },
+
+    async loadCounts() {
+      const resources = {
+{% for mod in modules if mod.user_facing %}
+        '{{ mod.slug }}': '{{ mod.api_resource }}',
+{% endfor %}
+      }
+      await Promise.allSettled(
+        Object.entries(resources).map(async ([slug, res]) => {
+          try {
+            const r = await fetch(`${BASE_PATH}/api/${res}?per_page=1`)
+            if (!r.ok) return
+            const d = await r.json()
+            this.counts[slug] = Array.isArray(d) ? d.length : (d.total ?? d.items?.length ?? '?')
+          } catch {}
+        })
+      )
+    },
+
+    async loadEntity(slug, label, resource) {
+      this.activeEntity = slug
+      this.activeLabel = label
+      this.activeResource = resource
+      this.page = 1
+      await this.fetchRows()
+    },
+
+    async fetchRows() {
+      this.loading = true
+      this.error = ''
+      try {
+        const url = `${BASE_PATH}/api/${this.activeResource}?page=${this.page}&per_page=${this.perPage}`
+        const r = await fetch(url, { headers: this._authHeader() })
+        if (!r.ok) throw new Error(`HTTP ${r.status}`)
+        const d = await r.json()
+        const items = Array.isArray(d) ? d : (d.items ?? [])
+        this.total = Array.isArray(d) ? d.length : (d.total ?? items.length)
+        this.rows = items
+        this.cols = items.length ? Object.keys(items[0]).filter(k => k !== '__class__') : []
+      } catch (e) {
+        this.error = `Could not load data: ${e.message}. Is the backend running?`
+        this.rows = []
+      } finally { this.loading = false }
+    },
+
+    openCreate() {
+      const blank = {}
+      this.cols.filter(c => c !== 'id' && c !== 'created_at' && c !== 'updated_at').forEach(c => blank[c] = '')
+      this.modal = { open: true, isEdit: false, data: blank, id: null, saving: false }
+    },
+
+    openEdit(row) {
+      this.modal = { open: true, isEdit: true, data: { ...row }, id: row.id, saving: false }
+    },
+
+    async saveModal() {
+      this.modal.saving = true
+      try {
+        const body = { ...this.modal.data }
+        delete body.id; delete body.created_at; delete body.updated_at
+        const url = this.modal.isEdit
+          ? `${BASE_PATH}/api/${this.activeResource}/${this.modal.id}`
+          : `${BASE_PATH}/api/${this.activeResource}`
+        const r = await fetch(url, {
+          method: this.modal.isEdit ? 'PUT' : 'POST',
+          headers: { 'Content-Type': 'application/json', ...this._authHeader() },
+          body: JSON.stringify(body),
+        })
+        if (!r.ok) throw new Error(`HTTP ${r.status}`)
+        this.modal.open = false
+        await this.fetchRows()
+        await this.loadCounts()
+      } catch (e) {
+        alert('Save failed: ' + e.message)
+      } finally { this.modal.saving = false }
+    },
+
+    async deleteRow(row) {
+      if (!confirm(`Delete record #${row.id}?`)) return
+      try {
+        await fetch(`${BASE_PATH}/api/${this.activeResource}/${row.id}`, {
+          method: 'DELETE', headers: this._authHeader(),
+        })
+        await this.fetchRows()
+        await this.loadCounts()
+      } catch (e) { alert('Delete failed: ' + e.message) }
+    },
+
+    _authHeader() {
+      const t = localStorage.getItem('token')
+      return t ? { Authorization: `Bearer ${t}` } : {}
+    },
+
+    _fmt(v) {
+      if (v === null || v === undefined) return '—'
+      if (typeof v === 'boolean') return v ? 'Yes' : 'No'
+      if (typeof v === 'object') return JSON.stringify(v).slice(0, 60)
+      const s = String(v)
+      return s.length > 80 ? s.slice(0, 80) + '…' : s
+    },
+  }
+}
+</script>
+</body>
+</html>

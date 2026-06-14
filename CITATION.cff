@@ -1,0 +1,22 @@
+cff-version: 1.2.0
+message: "If you use Archie, please cite it as below."
+title: "Archie — Open-Source Enterprise Architecture Platform (TOGAF 9.2 · ArchiMate 3.2)"
+abstract: >-
+  Archie is an open-source, AI-native enterprise architecture platform for TOGAF 9.2 and
+  ArchiMate 3.2 — model your application portfolio, run an AI-assisted solution-design
+  journey, and govern designs through an Architecture Review Board (ARB).
+type: software
+authors:
+  - alias: Anioko
+    website: "https://github.com/Anioko"
+repository-code: "https://github.com/Anioko/archie-ea"
+url: "https://reqarchitect.com"
+license: AGPL-3.0-or-later
+keywords:
+  - enterprise architecture
+  - TOGAF
+  - ArchiMate
+  - architecture governance
+  - application portfolio management
+  - open-source LeanIX alternative
+  - AI architect

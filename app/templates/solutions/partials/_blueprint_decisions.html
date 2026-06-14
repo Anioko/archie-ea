@@ -1,0 +1,294 @@
+{# ══════════════════════════════════════════════════════════════════════════ #}
+{# GOV-02 — Architecture Decision Records — Section content                  #}
+{# Reads: /solutions/<id>/decisions (list/create/update/approve/reject)      #}
+{# Modals + script: _blueprint_decisions_modals.html (included in block modals) #}
+{# ══════════════════════════════════════════════════════════════════════════ #}
+
+<section id="architecture_decisions" data-bp-section class="bp-section mb-8"
+         x-data="decisionsSection()"
+         x-init="init()">
+    <div class="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+
+        {# ── Section header ── #}
+        <div class="flex items-center justify-between px-5 py-3 border-b border-border bg-muted/30">
+            <div class="flex items-center gap-2.5">
+                <span class="w-2.5 h-2.5 rounded-full shrink-0"
+                      :class="{
+                          'bg-emerald-500': decisions.filter(d => d.status === 'approved').length > 0 && decisions.filter(d => d.status === 'proposed').length === 0,
+                          'bg-amber-500':  decisions.filter(d => d.status === 'proposed').length > 0,
+                          'bg-muted-foreground/30': decisions.length === 0
+                      }"></span>
+                <h2 class="text-sm font-semibold text-foreground">15. Architecture Decisions</h2>
+                <span x-show="decisions.length > 0" x-cloak
+                      class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground border border-border"
+                      x-text="decisions.length"></span>
+            </div>
+            <button type="button"
+                    @click="openCreateModal()"
+                    class="bp-action-btn inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-medium bg-primary/10 text-primary border border-primary/30 hover:bg-primary/20 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+                New Decision
+            </button>
+        </div>
+
+        <div class="p-5">
+
+            {# ── Section narrative — owned by decisionsSection() directly ── #}
+            <div class="mb-5">
+                <div class="flex items-center justify-between mb-1">
+                    <label class="flex items-center gap-1 text-xs font-medium text-foreground">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
+                        Section narrative
+                    </label>
+                    <button type="button"
+                            @click="generateNarrative()"
+                            :disabled="generatingNarrative"
+                            class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium bg-violet-500/10 text-violet-700 border border-violet-500/30 hover:bg-violet-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                        <template x-if="!generatingNarrative">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                        </template>
+                        <template x-if="generatingNarrative">
+                            <svg class="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 22 6.477 22 12h-4z"></path></svg>
+                        </template>
+                        <span x-text="generatingNarrative ? 'Generating…' : 'Generate with AI'"></span>
+                    </button>
+                </div>
+                <textarea x-model="narrative"
+                          @input.debounce.2000ms="autoSave($event.target.value)"
+                          @blur="autoSave($event.target.value)"
+                          @focus="narrativeSaving = narrativeSaving || 'idle'"
+                          rows="4"
+                          placeholder="Summarise the key architectural decisions, rationale, and trade-offs that shaped this solution…"
+                          class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring hover:ring-1 hover:ring-ring/30 hover:border-ring/50 transition-colors resize-y"></textarea>
+                <div class="flex items-center justify-end mt-1 h-4">
+                    <span x-show="narrativeSaving === 'saving'" x-cloak
+                          class="text-[10px] text-muted-foreground flex items-center gap-1">
+                        <svg class="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 22 6.477 22 12h-4z"></path></svg>
+                        Saving…
+                    </span>
+                    <span x-show="narrativeSaving === 'saved'" x-cloak
+                          class="text-[10px] text-emerald-600 font-medium">Saved</span>
+                </div>
+            </div>
+
+            {# ── Loading state ── #}
+            <div x-show="loading" x-cloak class="flex items-center justify-center py-10">
+                <svg class="animate-spin h-5 w-5 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 22 6.477 22 12h-4z"></path>
+                </svg>
+                <span class="ml-2 text-sm text-muted-foreground">Loading decisions...</span>
+            </div>
+
+            {# ── Error state ── #}
+            <div x-show="error && !loading" x-cloak
+                 class="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"
+                 x-text="error"></div>
+
+            {# ── Content ── #}
+            <div x-show="!loading" x-cloak>
+
+                {# Filter tabs #}
+                <div x-show="decisions.length > 0" x-cloak
+                     class="flex items-center gap-1 mb-4 border-b border-border pb-3">
+                    <template x-for="tab in filterTabs" :key="tab.key">
+                        <button type="button"
+                                @click="activeFilter = tab.key"
+                                class="inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium transition-colors"
+                                :class="activeFilter === tab.key
+                                    ? 'bg-foreground text-background'
+                                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'">
+                            <span x-text="tab.label"></span>
+                            <span class="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
+                                  :class="activeFilter === tab.key ? 'bg-background/20' : 'bg-muted text-muted-foreground'"
+                                  x-text="tab.count()"></span>
+                        </button>
+                    </template>
+                </div>
+
+                {# Decision cards #}
+                <div class="space-y-3" x-show="filteredDecisions.length > 0" x-cloak>
+                    <template x-for="d in filteredDecisions" :key="d.id">
+                        <div class="rounded-lg border border-border bg-card overflow-hidden">
+
+                            {# Card header #}
+                            <div class="flex items-start justify-between px-4 py-3 border-b border-border bg-muted/20">
+                                <div class="flex-1 min-w-0">
+                                    <div class="flex items-center gap-2 flex-wrap mb-1">
+                                        {# Decision ID badge #}
+                                        <span x-show="d.decision_id" x-cloak
+                                              class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground border border-border font-mono"
+                                              x-text="d.decision_id"></span>
+
+                                        {# Status badge #}
+                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium border"
+                                              :class="{
+                                                  'bg-amber-500/10 text-amber-600 border-amber-500/30':  d.status === 'proposed',
+                                                  'bg-emerald-500/10 text-emerald-600 border-emerald-500/30': d.status === 'approved',
+                                                  'bg-destructive/10 text-destructive border-destructive/30': d.status === 'rejected',
+                                                  'bg-muted text-muted-foreground border-border': !['proposed','approved','rejected'].includes(d.status)
+                                              }"
+                                              x-text="(d.status || 'proposed').replace(/_/g, ' ')"></span>
+
+                                        {# Decision type badge #}
+                                        <span x-show="d.decision_type" x-cloak
+                                              class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30"
+                                              x-text="(d.decision_type || '').replace(/_/g, ' ')"></span>
+                                    </div>
+                                    <h3 class="text-sm font-semibold text-foreground" x-text="d.title"></h3>
+                                </div>
+
+                                {# Card actions #}
+                                <div class="flex items-center gap-1.5 ml-3 shrink-0">
+                                    {# Edit (proposed only) #}
+                                    <button x-show="d.status === 'proposed'" x-cloak
+                                            type="button"
+                                            @click="openEditModal(d)"
+                                            class="inline-flex items-center px-2 py-1 rounded text-[11px] font-medium border border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+                                            title="Edit decision">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
+                                    </button>
+
+                                    {# Approve (proposed only) #}
+                                    <button x-show="d.status === 'proposed'" x-cloak
+                                            type="button"
+                                            @click="approveDecision(d.id)"
+                                            :disabled="actionLoading[d.id]"
+                                            class="inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30 hover:bg-emerald-500/20 transition-colors disabled:opacity-50"
+                                            title="Approve decision">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                                        Approve
+                                    </button>
+
+                                    {# Reject (proposed only) #}
+                                    <button x-show="d.status === 'proposed'" x-cloak
+                                            type="button"
+                                            @click="openRejectModal(d)"
+                                            :disabled="actionLoading[d.id]"
+                                            class="inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-medium bg-destructive/10 text-destructive border border-destructive/30 hover:bg-destructive/20 transition-colors disabled:opacity-50"
+                                            title="Reject decision">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                                        Reject
+                                    </button>
+                                </div>
+                            </div>
+
+                            {# Card body #}
+                            <div class="px-4 py-3 space-y-3">
+
+                                {# Context #}
+                                <div x-show="d.context" x-cloak>
+                                    <p class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">Context</p>
+                                    <p class="text-sm text-muted-foreground line-clamp-2" x-text="d.context"></p>
+                                </div>
+
+                                {# Decision #}
+                                <div x-show="d.decision" x-cloak>
+                                    <p class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">Decision</p>
+                                    <p class="text-sm text-foreground line-clamp-2" x-text="d.decision"></p>
+                                </div>
+
+                                {# Rationale #}
+                                <div x-show="d.rationale" x-cloak>
+                                    <p class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">Rationale</p>
+                                    <p class="text-sm text-muted-foreground line-clamp-2" x-text="d.rationale"></p>
+                                </div>
+
+                                {# Rejection reason #}
+                                <div x-show="d.status === 'rejected' && d.rejection_reason" x-cloak
+                                     class="rounded-md border border-destructive/20 bg-destructive/5 px-3 py-2">
+                                    <p class="text-[10px] font-semibold uppercase tracking-wider text-destructive mb-1">Rejection Reason</p>
+                                    <p class="text-sm text-destructive/80" x-text="d.rejection_reason"></p>
+                                </div>
+
+                                {# Consequences #}
+                                <div x-show="d.consequences" x-cloak>
+                                    <p class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">Consequences</p>
+                                    <p class="text-sm text-muted-foreground line-clamp-2" x-text="d.consequences"></p>
+                                </div>
+
+                                {# Alternatives (expandable) #}
+                                <div x-show="d.alternatives" x-cloak>
+                                    <button type="button"
+                                            @click="toggleAlternatives(d.id)"
+                                            class="flex items-center gap-1.5 text-[11px] font-medium text-primary hover:text-primary/80 transition-colors">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 transition-transform duration-200"
+                                             :class="expandedAlternatives[d.id] ? 'rotate-90' : ''"
+                                             fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/>
+                                        </svg>
+                                        <span x-text="expandedAlternatives[d.id] ? 'Hide alternatives' : 'Show alternatives'"></span>
+                                    </button>
+
+                                    <div x-show="expandedAlternatives[d.id]" x-cloak
+                                         x-transition:enter="transition ease-out duration-200"
+                                         x-transition:enter-start="opacity-0 -translate-y-1"
+                                         x-transition:enter-end="opacity-100 translate-y-0"
+                                         class="mt-2 space-y-2">
+                                        <template x-if="Array.isArray(parsedAlternatives(d))">
+                                            <div class="space-y-2">
+                                                <template x-for="(alt, idx) in parsedAlternatives(d)" :key="idx">
+                                                    <div class="rounded-md border border-border bg-muted/30 px-3 py-2">
+                                                        <p class="text-xs font-semibold text-foreground mb-1" x-text="alt.name || ('Option ' + (idx + 1))"></p>
+                                                        <div class="grid grid-cols-2 gap-2">
+                                                            <div x-show="alt.pros" x-cloak>
+                                                                <p class="text-[10px] font-medium text-emerald-600 mb-0.5">Pros</p>
+                                                                <p class="text-xs text-muted-foreground" x-text="alt.pros"></p>
+                                                            </div>
+                                                            <div x-show="alt.cons" x-cloak>
+                                                                <p class="text-[10px] font-medium text-destructive mb-0.5">Cons</p>
+                                                                <p class="text-xs text-muted-foreground" x-text="alt.cons"></p>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </template>
+                                            </div>
+                                        </template>
+                                        <template x-if="!Array.isArray(parsedAlternatives(d))">
+                                            <p class="text-sm text-muted-foreground rounded-md border border-border bg-muted/30 px-3 py-2"
+                                               x-text="d.alternatives"></p>
+                                        </template>
+                                    </div>
+                                </div>
+
+                                {# Footer meta #}
+                                <div class="flex items-center gap-3 pt-1 border-t border-border/50 text-[10px] text-muted-foreground">
+                                    <span x-show="d.adm_phase" x-cloak x-text="'Phase ' + d.adm_phase"></span>
+                                    <span x-show="d.horizon" x-cloak x-text="(d.horizon || '').replace(/_/g, ' ')"></span>
+                                    <span x-show="d.created_at" x-cloak x-text="formatDate(d.created_at)"></span>
+                                    <span x-show="d.approved_at" x-cloak class="text-emerald-600"
+                                          x-text="'Approved ' + formatDate(d.approved_at)"></span>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+
+                {# Empty state — no decisions at all #}
+                <div x-show="!loading && decisions.length === 0" x-cloak
+                     class="rounded-lg border border-dashed border-border bg-muted/30 py-10 text-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 mx-auto text-muted-foreground/40 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                    </svg>
+                    <p class="text-sm text-muted-foreground mb-3">No architecture decisions recorded yet.</p>
+                    <button type="button"
+                            @click="openCreateModal()"
+                            class="inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+                        Record First Decision
+                    </button>
+                </div>
+
+                {# Empty state — filter active, no matches #}
+                <div x-show="!loading && decisions.length > 0 && filteredDecisions.length === 0" x-cloak
+                     class="rounded-lg border border-dashed border-border bg-muted/30 py-8 text-center">
+                    <p class="text-sm text-muted-foreground"
+                       x-text="'No ' + activeFilter + ' decisions.'"></p>
+                    <button type="button" @click="activeFilter = 'all'"
+                            class="mt-2 text-xs text-primary hover:underline">Show all</button>
+                </div>
+
+            </div>{# end !loading #}
+        </div>
+    </div>
+</section>

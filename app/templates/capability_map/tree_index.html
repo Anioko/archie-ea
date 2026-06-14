@@ -1,0 +1,85 @@
+{% extends "layouts/admin_base.html" %}
+{% import 'components/breadcrumb.html' as breadcrumb %}
+
+{% block title %}Tree Browser{% endblock %}
+
+{% block guided_mode_steps %}
+<script id="guided-mode-steps-data" type="application/json">
+[
+  {"title": "Step 1 — Pick a Tree", "text": "Each card is a capability hierarchy (APQC, IT capabilities, business domains). Click one to explore."},
+  {"title": "Step 2 — Find Coverage Gaps", "text": "Inside the tree, red rows have zero application coverage — these are your architecture gaps."},
+  {"title": "Step 3 — Link Applications", "text": "Use the link icon on any capability row to associate applications and close the coverage gap."}
+]
+</script>
+{% endblock %}
+
+{% from 'components/inline_hint.html' import inline_hint %}
+{% block page_hint %}
+{{ inline_hint(
+    hint_id='capability_map',
+    text='Business capabilities mapped to your applications — red rows have no coverage and are your gaps.',
+    action_text='Filter to unmapped capabilities',
+    action_href='#unmapped-filter'
+) }}
+{% endblock %}
+
+{% block breadcrumb %}
+{% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
+{{ breadcrumb_nav(items=[
+    {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
+    {'text': 'Business Layer', 'href': url_for('archimate_crud.dashboard') + '#business'},
+    {'text': 'Capabilities', 'href': url_for('capability_map.index')},
+    {'text': 'Capability Tree', 'current': true}
+]) }}
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- Breadcrumb -->
+    {% call breadcrumb.breadcrumb() %}
+        {% call breadcrumb.breadcrumb_item(href=url_for('admin.dashboard')) %}
+            <i data-lucide="home" class="h-4 w-4"></i>
+        {% endcall %}
+        {{ breadcrumb.breadcrumb_separator() }}
+        {% call breadcrumb.breadcrumb_item(href=url_for('capability_map.index')) %}
+            Capability Map
+        {% endcall %}
+        {{ breadcrumb.breadcrumb_separator() }}
+        {% call breadcrumb.breadcrumb_item(active=true) %}
+            Tree Browser
+        {% endcall %}
+    {% endcall %}
+
+    <!-- Header -->
+    <div class="flex items-center space-x-3">
+        <i data-lucide="trees" class="w-6 h-6 text-primary"></i>
+        <h1 class="text-3xl font-bold tracking-tight">Tree Browser</h1>
+        <span class="text-sm text-muted-foreground">{{ trees | length }} hierarchies available</span>
+    </div>
+
+    <!-- Tree cards grid -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {% for tree in trees %}
+        <a href="{{ url_for('capability_map.generic_tree_view', key=tree.key) }}"
+           class="group block rounded-lg border border-border bg-card p-5 hover:border-primary/50 hover:shadow-sm transition-all">
+            <div class="flex items-start justify-between">
+                <div>
+                    <h2 class="text-base font-semibold group-hover:text-primary transition-colors">{{ tree.label }}</h2>
+                    <p class="text-sm text-muted-foreground mt-1">{{ tree.node_count }} items{% if tree.root_count != tree.node_count %}, {{ tree.root_count }} roots{% endif %}</p>
+                </div>
+                <i data-lucide="network" class="w-5 h-5 text-muted-foreground/50 group-hover:text-primary/50 transition-colors"></i>
+            </div>
+            <div class="mt-3 flex flex-wrap gap-1.5">
+                {% for field in tree.fields[:4] %}
+                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground">{{ field.replace('_', ' ') }}</span>
+                {% endfor %}
+                {% if tree.fields | length > 4 %}
+                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground">+{{ tree.fields | length - 4 }} more</span>
+                {% endif %}
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

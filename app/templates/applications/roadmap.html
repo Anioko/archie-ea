@@ -1,0 +1,469 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'components/page_header.html' import page_header %}
+
+{% from 'components/button.html' import button %}
+{% from 'components/card.html' import card, card_header, card_title, card_content %}
+{% from 'components/badge.html' import badge %}
+
+{% block title %}{{ application.name }} Roadmap{% endblock %}
+
+{% block content %}
+<div class="space-y-6" x-data="applicationRoadmapCrud()" x-init="init()">
+  <input type="hidden" id="roadmap-csrf-token" value="{{ csrf_token() }}">
+
+  <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+    {{ page_header(
+      title=application.name ~ ' Roadmap',
+      description='Tactical application transformation planning with full work-package CRUD',
+      breadcrumbs=[
+        {'label': 'Applications', 'url': url_for('unified_applications.application_list')},
+        {'label': application.name, 'url': url_for('unified_applications.application_detail', id=application.id)},
+        {'label': 'Roadmap'}
+      ]
+    ) }}
+    <div class="flex items-center gap-2">
+      {{ button('Back to Application', variant='outline', size='default', href=url_for('unified_applications.application_detail', id=application.id), icon='arrow-left') }}
+      <button type="button" class="inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
+        @click="openCreateModal()">
+        Add Work Package
+      </button>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 gap-4 md:grid-cols-4">
+    <div data-slot="card" class="rounded-xl border bg-card shadow-sm p-4">
+      <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Total</p>
+      <p class="mt-2 text-2xl font-semibold" x-text="metrics.total"></p>
+    </div>
+    <div data-slot="card" class="rounded-xl border bg-card shadow-sm p-4">
+      <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Planned</p>
+      <p class="mt-2 text-2xl font-semibold" x-text="metrics.planned"></p>
+    </div>
+    <div data-slot="card" class="rounded-xl border bg-card shadow-sm p-4">
+      <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">In Progress</p>
+      <p class="mt-2 text-2xl font-semibold" x-text="metrics.in_progress"></p>
+    </div>
+    <div data-slot="card" class="rounded-xl border bg-card shadow-sm p-4">
+      <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Completed</p>
+      <p class="mt-2 text-2xl font-semibold" x-text="metrics.completed"></p>
+    </div>
+  </div>
+
+  {% call card() %}
+    {% call card_header() %}
+      {% call card_title() %}Work Packages{% endcall %}
+    {% endcall %}
+    {% call card_content() %}
+      <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <p class="text-sm text-muted-foreground">
+          Create, update, and delete roadmap work packages for this application.
+        </p>
+        <div class="flex items-center gap-2">
+          <label for="roadmap-filter" class="text-sm text-muted-foreground">Status</label>
+          <select id="roadmap-filter" x-model="statusFilter" class="rounded-md border border-input bg-background px-3 py-2 text-sm">
+            <option value="">All</option>
+            <option value="planned">Planned</option>
+            <option value="in_progress">In Progress</option>
+            <option value="blocked">Blocked</option>
+            <option value="completed">Completed</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="overflow-x-auto rounded-lg border">
+        <table class="min-w-full text-sm">
+          <thead class="bg-muted/50">
+            <tr>
+              <th class="px-4 py-3 text-left font-medium text-muted-foreground">Name</th>
+              <th class="px-4 py-3 text-left font-medium text-muted-foreground">Type</th>
+              <th class="px-4 py-3 text-left font-medium text-muted-foreground">Status</th>
+              <th class="px-4 py-3 text-left font-medium text-muted-foreground">Priority</th>
+              <th class="px-4 py-3 text-left font-medium text-muted-foreground">Timeline</th>
+              <th class="px-4 py-3 text-right font-medium text-muted-foreground">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <template x-if="filteredItems.length === 0">
+              <tr>
+                <td colspan="6" class="px-4 py-10 text-center text-muted-foreground">
+                  No work packages for this filter.
+                </td>
+              </tr>
+            </template>
+            <template x-for="item in filteredItems" :key="item.id">
+              <tr class="border-t">
+                <td class="px-4 py-3 align-top">
+                  <p class="font-medium text-foreground" x-text="item.name"></p>
+                  <p class="mt-1 text-xs text-muted-foreground" x-text="item.description || 'No description'"></p>
+                  <div class="mt-1 flex flex-wrap gap-1.5">
+                    <template x-if="item.plateau_name">
+                      <span class="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium bg-blue-500/10 text-primary border border-blue-500/30"
+                        x-text="'Plateau: ' + item.plateau_name"></span>
+                    </template>
+                    <template x-if="item.archimate_element_name">
+                      <span class="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium bg-violet-500/10 text-violet-600 border border-violet-500/30"
+                        x-text="item.archimate_element_name"></span>
+                    </template>
+                    <template x-if="item.capability_name">
+                      <span class="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium bg-amber-500/10 text-amber-600 border border-amber-500/30"
+                        x-text="'Cap: ' + item.capability_name"></span>
+                    </template>
+                  </div>
+                </td>
+                <td class="px-4 py-3 align-top" x-text="formatLabel(item.transformation_type || 'Modernization')"></td>
+                <td class="px-4 py-3 align-top">
+                  <span class="inline-flex rounded-full border px-2 py-0.5 text-xs capitalize"
+                    :class="statusClass(item.status)"
+                    x-text="formatLabel(item.status || 'planned')"></span>
+                </td>
+                <td class="px-4 py-3 align-top" x-text="formatLabel(item.priority || 'medium')"></td>
+                <td class="px-4 py-3 align-top text-xs text-muted-foreground">
+                  <span x-text="formatDate(item.start_date)"></span>
+                  <span> → </span>
+                  <span x-text="formatDate(item.target_date)"></span>
+                </td>
+                <td class="px-4 py-3 align-top text-right">
+                  <div class="inline-flex items-center gap-2">
+                    <button type="button" class="rounded-md border px-2.5 py-1.5 text-xs hover:bg-muted"
+                      @click="openEditModal(item)">
+                      Edit
+                    </button>
+                    <button type="button" class="rounded-md border border-destructive/30 px-2.5 py-1.5 text-xs text-destructive hover:bg-destructive/10"
+                      @click="deleteItem(item)">
+                      Delete
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+    {% endcall %}
+  {% endcall %}
+
+  <div id="roadmap-work-package-modal"
+       hidden
+       class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+       role="dialog" aria-modal="true" aria-labelledby="roadmap-modal-title">
+    <div class="w-full max-w-2xl rounded-xl border bg-card shadow-xl">
+      <div class="flex items-center justify-between border-b px-6 py-4">
+        <h3 id="roadmap-modal-title" class="text-lg font-semibold" x-text="isEditing ? 'Edit Work Package' : 'Create Work Package'"></h3>
+        <button type="button" class="rounded-md border px-2 py-1 text-sm hover:bg-muted" data-modal-close="roadmap-work-package-modal">Close</button>
+      </div>
+      <form class="space-y-4 p-6" @submit.prevent="submitForm()">
+        <div class="grid gap-4 sm:grid-cols-2">
+          <div class="sm:col-span-2">
+            <label class="mb-1 block text-sm font-medium">Name</label>
+            <input type="text" x-model="form.name" required class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+          </div>
+          <div>
+            <label class="mb-1 block text-sm font-medium">Transformation Type</label>
+            <select x-model="form.transformation_type" required class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+              <option value="Modernization">Modernization</option>
+              <option value="Integration">Integration</option>
+              <option value="Migration">Migration</option>
+              <option value="Optimization">Optimization</option>
+            </select>
+          </div>
+          <div>
+            <label class="mb-1 block text-sm font-medium">Status</label>
+            <select x-model="form.status" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+              <option value="planned">Planned</option>
+              <option value="in_progress">In Progress</option>
+              <option value="blocked">Blocked</option>
+              <option value="completed">Completed</option>
+            </select>
+          </div>
+          <div>
+            <label class="mb-1 block text-sm font-medium">Priority</label>
+            <select x-model="form.priority" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+              <option value="critical">Critical</option>
+            </select>
+          </div>
+          <div>
+            <label class="mb-1 block text-sm font-medium">Application Phase</label>
+            <input type="text" x-model="form.application_phase" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+          </div>
+          <div>
+            <label class="mb-1 block text-sm font-medium">Target Plateau</label>
+            <select x-model.number="form.plateau_id" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+              <option :value="null">— None —</option>
+              <template x-for="p in plateaus" :key="p.id">
+                <option :value="p.id" x-text="p.name"></option>
+              </template>
+            </select>
+          </div>
+          <div>
+            <label class="mb-1 block text-sm font-medium">Linked Capability</label>
+            <select x-model.number="form.capability_id" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+              <option :value="null">— None —</option>
+              <template x-for="c in capabilities" :key="c.id">
+                <option :value="c.id" x-text="c.name"></option>
+              </template>
+            </select>
+          </div>
+          <div class="sm:col-span-2">
+            <label class="mb-1 block text-sm font-medium">Target Architecture Element</label>
+            <select x-model.number="form.archimate_element_id" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+              <option :value="null">-- Auto (ApplicationComponent) --</option>
+              <template x-for="el in archiElements" :key="el.id">
+                <option :value="el.id" x-text="el.name + ' (' + el.type + ')'"></option>
+              </template>
+            </select>
+          </div>
+          <div>
+            <label class="mb-1 block text-sm font-medium">Start Date</label>
+            <input type="date" x-model="form.start_date" required class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+          </div>
+          <div>
+            <label class="mb-1 block text-sm font-medium">Target Date</label>
+            <input type="date" x-model="form.target_date" required class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+          </div>
+          <div>
+            <label class="mb-1 block text-sm font-medium">Estimated Effort Hours</label>
+            <input type="number" min="0" step="1" x-model.number="form.estimated_effort_hours" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+          </div>
+          <div class="sm:col-span-2">
+            <label class="mb-1 block text-sm font-medium">Description</label>
+            <textarea x-model="form.description" rows="3" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"></textarea>
+          </div>
+        </div>
+        <div class="flex items-center justify-end gap-2 border-t pt-4">
+          <button type="button" class="rounded-md border px-4 py-2 text-sm hover:bg-muted" data-modal-close="roadmap-work-package-modal">Cancel</button>
+          <button type="submit" class="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
+            :disabled="isSubmitting">
+            <span x-show="!isSubmitting" x-cloak x-text="isEditing ? 'Save Changes' : 'Create Work Package'"></span>
+            <span x-show="isSubmitting" x-cloak>Saving...</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  function applicationRoadmapCrud() {
+    const initialItems = {{ work_packages|tojson|safe }};
+    const applicationId = {{ application.id }};
+    const csrfToken = document.getElementById('roadmap-csrf-token')?.value || '';
+    const endpointBase = `/api/applications/${applicationId}/work-packages`;
+
+    const blankForm = () => ({
+      id: null,
+      name: '',
+      description: '',
+      transformation_type: 'Modernization',
+      status: 'planned',
+      priority: 'medium',
+      start_date: '',
+      target_date: '',
+      estimated_effort_hours: 0,
+      application_phase: 'Implementation',
+      plateau_id: null,
+      capability_id: null,
+      archimate_element_id: null,
+    });
+
+    const serverArchiElements = {{ target_arch_elements|map(attribute='id')|list|tojson|safe }};
+    const serverArchiNames = {{ target_arch_elements|map(attribute='name')|list|tojson|safe }};
+    const serverArchiTypes = {{ target_arch_elements|map(attribute='type')|list|tojson|safe }};
+    const archiElementsInit = serverArchiElements.map((id, i) => ({
+      id, name: serverArchiNames[i] || '', type: serverArchiTypes[i] || ''
+    }));
+
+    return {
+      items: initialItems,
+      plateaus: [],
+      capabilities: [],
+      archiElements: archiElementsInit,
+      statusFilter: '',
+      isModalOpen: false,
+      isEditing: false,
+      isSubmitting: false,
+      form: blankForm(),
+
+      async init() {
+        try {
+          const [pr, cr] = await Promise.all([
+            fetch('/capability-map/api/roadmap/plateaus'),
+            fetch('/api/capabilities/grouped'),
+          ]);
+          if (pr.ok) {
+            const pd = await pr.json();
+            this.plateaus = pd.plateaus || [];
+          }
+          if (cr.ok) {
+            const cd = await cr.json();
+            const grouped = cd.capabilities || cd;
+            this.capabilities = Object.values(grouped).flat();
+          }
+        } catch {
+          // Plateau/capability loading is non-critical; form still works without them
+        }
+      },
+
+      get filteredItems() {
+        if (!this.statusFilter) {
+          return this.items;
+        }
+        return this.items.filter(item => (item.status || '').toLowerCase() === this.statusFilter.toLowerCase());
+      },
+
+      get metrics() {
+        const counts = { total: this.items.length, planned: 0, in_progress: 0, completed: 0 };
+        this.items.forEach(item => {
+          const status = (item.status || '').toLowerCase();
+          if (Object.prototype.hasOwnProperty.call(counts, status)) {
+            counts[status] += 1;
+          }
+        });
+        return counts;
+      },
+
+      formatDate(value) {
+        if (!value) {
+          return 'N/A';
+        }
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) {
+          return value;
+        }
+        return date.toLocaleDateString();
+      },
+
+      formatLabel(value) {
+        return String(value || '')
+          .replaceAll('_', ' ')
+          .replace(/\b\w/g, c => c.toUpperCase());
+      },
+
+      statusClass(status) {
+        switch ((status || '').toLowerCase()) {
+          case 'completed':
+            return 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600';
+          case 'in_progress':
+            return 'border-primary/30 bg-primary/5 text-primary';
+          case 'blocked':
+            return 'border-destructive/30 bg-destructive/10 text-destructive';
+          default:
+            return 'border-border bg-muted text-muted-foreground';
+        }
+      },
+
+      openCreateModal() {
+        this.isEditing = false;
+        this.form = blankForm();
+        Platform.modal.open('roadmap-work-package-modal');
+      },
+
+      openEditModal(item) {
+        this.isEditing = true;
+        this.form = {
+          id: item.id,
+          name: item.name || '',
+          description: item.description || '',
+          transformation_type: item.transformation_type || 'Modernization',
+          status: item.status || 'planned',
+          priority: item.priority || 'medium',
+          start_date: (item.start_date || '').slice(0, 10),
+          target_date: (item.target_date || '').slice(0, 10),
+          estimated_effort_hours: item.estimated_effort_hours || 0,
+          application_phase: item.application_phase || 'Implementation',
+          plateau_id: item.plateau_id || null,
+          capability_id: item.capability_id || null,
+          archimate_element_id: item.archimate_element_id || null,
+        };
+        Platform.modal.open('roadmap-work-package-modal');
+      },
+
+      closeModal() {
+        Platform.modal.close('roadmap-work-package-modal');
+        this.form = blankForm();
+        this.isSubmitting = false;
+      },
+
+      async submitForm() {
+        if (!this.form.name || !this.form.start_date || !this.form.target_date) {
+          window.alert('Name, start date, and target date are required.');
+          return;
+        }
+
+        this.isSubmitting = true;
+        const payload = {
+          name: this.form.name,
+          description: this.form.description,
+          transformation_type: this.form.transformation_type,
+          status: this.form.status,
+          priority: this.form.priority,
+          start_date: this.form.start_date,
+          target_date: this.form.target_date,
+          estimated_effort_hours: Number(this.form.estimated_effort_hours || 0),
+          application_phase: this.form.application_phase || 'Implementation',
+          plateau_id: this.form.plateau_id || null,
+          capability_id: this.form.capability_id || null,
+          archimate_element_id: this.form.archimate_element_id || null,
+        };
+
+        const method = this.isEditing ? 'PUT' : 'POST';
+        const url = this.isEditing ? `${endpointBase}/${this.form.id}` : endpointBase;
+
+        try {
+          const response = await fetch(url, {
+            method,
+            headers: {
+              'Content-Type': 'application/json',
+              'X-CSRFToken': csrfToken
+            },
+            body: JSON.stringify(payload)
+          });
+
+          const data = await response.json();
+          if (!response.ok || data.error) {
+            throw new Error(data.error || 'Unable to save work package');
+          }
+
+          const saved = data.work_package;
+          if (this.isEditing) {
+            this.items = this.items.map(item => item.id === saved.id ? saved : item);
+          } else {
+            this.items = [saved, ...this.items];
+          }
+          this.closeModal();
+        } catch (error) {
+          window.alert(error.message || 'Unable to save work package');
+          this.isSubmitting = false;
+        }
+      },
+
+      async deleteItem(item) {
+        const confirmed = window.confirm(`Delete work package "${item.name}"?`);
+        if (!confirmed) {
+          return;
+        }
+
+        try {
+          const response = await fetch(`${endpointBase}/${item.id}`, {
+            method: 'DELETE',
+            headers: {
+              'X-CSRFToken': csrfToken
+            }
+          });
+          const data = await response.json();
+          if (!response.ok || data.error) {
+            throw new Error(data.error || 'Unable to delete work package');
+          }
+          this.items = this.items.filter(current => current.id !== item.id);
+        } catch (error) {
+          window.alert(error.message || 'Unable to delete work package');
+        }
+      }
+    };
+  }
+</script>
+{% endblock %}

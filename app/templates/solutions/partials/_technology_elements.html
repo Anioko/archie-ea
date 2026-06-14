@@ -1,0 +1,198 @@
+{# Phase C & D — Application + Technology Layer Elements (ArchiMate 3.2)
+   Included in solutions/detail.html within solutionDetail() x-data scope #}
+
+{# Application Elements (Phase C) #}
+<div class="mb-4">
+    <div class="flex items-center justify-between mb-2">
+        <div class="flex items-center gap-2">
+            <h3 class="text-sm font-semibold text-foreground">Application Elements</h3>
+            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive border border-destructive/30">Phase C</span>
+        </div>
+        <div class="flex items-center gap-1 sad-actions">
+            <button type="button" @click="$dispatch('open-archimate-picker', {phase: 'C', elementType: 'ApplicationComponent', linkEndpoint: '/api/solutions/{{ solution.id }}/elements'})"
+                class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium text-primary hover:bg-blue-500/10 border border-blue-500/30 transition-colors"
+                title="Link an existing ArchiMate Application element">
+                <i data-lucide="link" class="w-3 h-3" aria-hidden="true"></i> Link ArchiMate
+            </button>
+            <button type="button" @click="openEntityModal('app_element')"
+                class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+                <i data-lucide="plus" class="w-3 h-3" aria-hidden="true"></i> Add
+            </button>
+        </div>
+    </div>
+    <template x-if="sadAppElements.length > 0">
+        <div class="overflow-x-auto border border-border rounded-lg">
+            <table class="w-full text-sm">
+                <thead class="bg-muted/50 border-b border-border">
+                    <tr>
+                        <th class="text-left px-3 py-2 text-xs font-semibold text-foreground">Name</th>
+                        <th class="text-left px-3 py-2 text-xs font-semibold text-foreground">Type</th>
+                        <th class="text-left px-3 py-2 text-xs font-semibold text-foreground">Technology</th>
+                        <th class="text-left px-3 py-2 text-xs font-semibold text-foreground">Status</th>
+                        <th class="text-left px-3 py-2 text-xs font-semibold text-foreground w-16 sad-actions"></th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-border/50">
+                    <template x-for="item in sadAppElements" :key="item.id">
+                        <tr class="group hover:bg-muted/30 transition-colors">
+                            <td class="px-3 py-2">
+                                <span class="font-semibold text-foreground" x-text="item.name"></span>
+                                <p class="text-xs text-muted-foreground mt-0.5 line-clamp-1" x-text="item.description" x-show="item.description" x-cloak></p>
+                            </td>
+                            <td class="px-3 py-2">
+                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-500/10 text-primary border border-indigo-500/30" x-text="item.element_type?.replace('_', ' ')"></span>
+                            </td>
+                            <td class="px-3 py-2 text-muted-foreground" x-text="item.technology || '\u2014'"></td>
+                            <td class="px-3 py-2">
+                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
+                                      :class="item.status === 'current' ? 'bg-emerald-500/10 text-emerald-600' : item.status === 'target' ? 'bg-primary/10 text-primary' : 'bg-amber-500/10 text-amber-600'"
+                                      x-text="item.status"></span>
+                            </td>
+                            <td class="px-3 py-2 sad-actions">
+                                <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <button type="button" @click="openEntityModal('app_element', item)" class="text-muted-foreground hover:text-foreground p-1 rounded-md" title="Edit">
+                                        <i data-lucide="pencil" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                                    </button>
+                                    <button type="button" @click="confirmDeleteEntity('app_element', item)" class="text-muted-foreground hover:text-destructive p-1 rounded-md" title="Delete">
+                                        <i data-lucide="trash-2" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+    </template>
+    <template x-if="sadAppElements.length === 0">
+        <p class="text-sm text-muted-foreground italic">No application elements documented yet. Add services, interfaces, functions, or data objects.</p>
+    </template>
+</div>
+
+{# Technology Elements (Phase D) #}
+<div>
+    <div class="flex items-center justify-between mb-2">
+        <div class="flex items-center gap-2">
+            <h3 class="text-sm font-semibold text-foreground">Technology Elements</h3>
+            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-violet-500/10 text-violet-600 border border-violet-500/30">Phase D</span>
+        </div>
+        <div class="flex items-center gap-1 sad-actions">
+            <button type="button" @click="$dispatch('open-archimate-picker', {phase: 'D', elementType: 'Node', linkEndpoint: '/api/solutions/{{ solution.id }}/elements'})"
+                class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium text-emerald-600 hover:bg-emerald-500/10 border border-emerald-500/30 transition-colors"
+                title="Link an existing ArchiMate Technology element">
+                <i data-lucide="link" class="w-3 h-3" aria-hidden="true"></i> Link ArchiMate
+            </button>
+            <button type="button" @click="openEntityModal('tech_element')"
+                class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+                <i data-lucide="plus" class="w-3 h-3" aria-hidden="true"></i> Add
+            </button>
+        </div>
+    </div>
+    <template x-if="sadTechElements.length > 0">
+        <div class="overflow-x-auto border border-border rounded-lg">
+            <table class="w-full text-sm">
+                <thead class="bg-muted/50 border-b border-border">
+                    <tr>
+                        <th class="text-left px-3 py-2 text-xs font-semibold text-foreground">Name</th>
+                        <th class="text-left px-3 py-2 text-xs font-semibold text-foreground">Type</th>
+                        <th class="text-left px-3 py-2 text-xs font-semibold text-foreground">Specification</th>
+                        <th class="text-left px-3 py-2 text-xs font-semibold text-foreground">Status</th>
+                        <th class="text-left px-3 py-2 text-xs font-semibold text-foreground w-16 sad-actions"></th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-border/50">
+                    <template x-for="item in sadTechElements" :key="item.id">
+                        <tr class="group hover:bg-muted/30 transition-colors">
+                            <td class="px-3 py-2">
+                                <template x-if="item.archimate_layer && item.archimate_element_type && item.archimate_element_id">
+                                  <a :href="'/' + item.archimate_layer + '/' + item.archimate_element_type + '/' + item.archimate_element_id"
+                                     target="_blank" class="font-medium text-primary hover:underline" x-text="item.name"></a>
+                                </template>
+                                <template x-if="!(item.archimate_layer && item.archimate_element_type && item.archimate_element_id)">
+                                  <span class="font-semibold text-foreground" x-text="item.name"></span>
+                                </template>
+                                <p class="text-xs text-muted-foreground mt-0.5 line-clamp-1" x-text="item.description" x-show="item.description" x-cloak></p>
+                            </td>
+                            <td class="px-3 py-2">
+                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-violet-500/10 text-violet-600 border border-violet-500/30" x-text="item.element_type?.replace('_', ' ')"></span>
+                            </td>
+                            <td class="px-3 py-2 text-muted-foreground text-xs max-w-[200px] truncate" x-text="item.specification || '\u2014'"></td>
+                            <td class="px-3 py-2">
+                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
+                                      :class="item.status === 'current' ? 'bg-emerald-500/10 text-emerald-600' : item.status === 'target' ? 'bg-primary/10 text-primary' : 'bg-amber-500/10 text-amber-600'"
+                                      x-text="item.status"></span>
+                            </td>
+                            <td class="px-3 py-2 sad-actions">
+                                <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <button type="button" @click="openEntityModal('tech_element', item)" class="text-muted-foreground hover:text-foreground p-1 rounded-md" title="Edit">
+                                        <i data-lucide="pencil" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                                    </button>
+                                    <button type="button" @click="confirmDeleteEntity('tech_element', item)" class="text-muted-foreground hover:text-destructive p-1 rounded-md" title="Delete">
+                                        <i data-lucide="trash-2" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+    </template>
+    <template x-if="sadTechElements.length === 0">
+        <p class="text-sm text-muted-foreground italic">No technology elements documented yet. Add nodes, devices, system software, or tech services.</p>
+    </template>
+</div>
+
+{# W1-D-tech: Technology Architecture Model — ArchiMate technology/infrastructure/physical layer elements #}
+<div class="mt-6 border-t border-border pt-4">
+    <div class="flex items-center justify-between mb-4">
+        <div class="flex items-center gap-2">
+            <h3 class="text-sm font-semibold text-foreground">Technology Architecture Model</h3>
+            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-teal-500/10 text-teal-600 border border-teal-500/30">Phase D · ArchiMate</span>
+        </div>
+    </div>
+
+    <template x-if="archimateElements && archimateElements.filter(e => ['technology','infrastructure','physical'].includes((e.layer||'').toLowerCase()) || ['Node','Device','System Software','Communication Network','Path','Artifact','Technology Service','Technology Function'].includes(e.element_type)).length > 0">
+        <div class="overflow-x-auto border border-border rounded-lg">
+            <table class="w-full text-sm">
+                <thead class="bg-muted/50 border-b border-border">
+                    <tr>
+                        <th class="text-left px-3 py-2 text-xs font-semibold text-foreground">Element</th>
+                        <th class="text-left px-3 py-2 text-xs font-semibold text-foreground">Deployment</th>
+                        <th class="text-left px-3 py-2 text-xs font-semibold text-foreground">Baseline State</th>
+                        <th class="text-left px-3 py-2 text-xs font-semibold text-foreground">Target State</th>
+                        <th class="text-left px-3 py-2 text-xs font-semibold text-foreground">&Delta; Gap</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-border/50">
+                    <template x-for="el in archimateElements.filter(e => ['technology','infrastructure','physical'].includes((e.layer||'').toLowerCase()) || ['Node','Device','System Software','Communication Network','Path','Artifact','Technology Service','Technology Function'].includes(e.element_type))" :key="el.id">
+                        <tr class="hover:bg-muted/30 transition-colors">
+                            <td class="px-3 py-2">
+                                <span class="font-semibold text-foreground" x-text="el.name"></span>
+                                <span class="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-teal-500/10 text-teal-600 border border-teal-500/20" x-text="el.element_type"></span>
+                            </td>
+                            <td class="px-3 py-2">
+                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
+                                    :class="(/(cloud|saas|paas|iaas)/i.test((el.name||'') + ' ' + (el.description||''))) ? 'bg-sky-500/10 text-sky-600 border border-sky-500/20' : (/(on.?prem|server|physical)/i.test((el.name||'') + ' ' + (el.description||''))) ? 'bg-orange-500/10 text-orange-600 border border-orange-500/20' : 'bg-muted text-muted-foreground border border-border'"
+                                    x-text="(/(cloud|saas|paas|iaas)/i.test((el.name||'') + ' ' + (el.description||''))) ? 'Cloud' : (/(on.?prem|server|physical)/i.test((el.name||'') + ' ' + (el.description||''))) ? 'On-Prem' : 'TBD'">
+                                </span>
+                            </td>
+                            <td class="px-3 py-2 text-muted-foreground text-xs max-w-[140px] truncate" x-text="el.baseline_state || '\u2014'"></td>
+                            <td class="px-3 py-2 text-muted-foreground text-xs max-w-[140px] truncate" x-text="el.target_state || '\u2014'"></td>
+                            <td class="px-3 py-2">
+                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
+                                    :class="(!el.baseline_state || !el.target_state) ? 'bg-muted text-muted-foreground border border-border' : (el.baseline_state.trim().toLowerCase() === el.target_state.trim().toLowerCase()) ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20' : 'bg-amber-500/10 text-amber-600 border border-amber-500/20'"
+                                    x-text="(!el.baseline_state || !el.target_state) ? 'TBD' : (el.baseline_state.trim().toLowerCase() === el.target_state.trim().toLowerCase()) ? 'Aligned' : 'Gap'">
+                                </span>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+    </template>
+    <template x-if="!archimateElements || archimateElements.filter(e => ['technology','infrastructure','physical'].includes((e.layer||'').toLowerCase()) || ['Node','Device','System Software','Communication Network','Path','Artifact','Technology Service','Technology Function'].includes(e.element_type)).length === 0">
+        <p class="text-sm text-muted-foreground italic">No technology layer elements linked.</p>
+    </template>
+</div>
+

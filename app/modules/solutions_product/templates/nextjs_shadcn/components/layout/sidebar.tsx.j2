@@ -1,0 +1,246 @@
+{# components/layout/sidebar.tsx.j2 — App sidebar with navigation from genome modules #}
+{# Context: solution_name, modules (list of {name, slug, icon, has_state_machine}), roles #}
+"use client"
+
+import Link from "next/link"
+import { usePathname } from "next/navigation"
+import { useAuth } from "@/lib/auth-context"
+{% set all_icons = [] %}
+{% for mod in modules %}
+{% if mod.icon | default("Box") not in all_icons %}
+{% set _ = all_icons.append(mod.icon | default("Box")) %}
+{% endif %}
+{% endfor %}
+import {
+  LayoutDashboard,
+{% for icon in all_icons %}
+  {{ icon }},
+{% endfor %}
+  Settings,
+  User,
+  Moon,
+  Sun,
+  ChevronLeft,
+  Menu,
+  X,
+  Zap,
+} from "lucide-react"
+import { cn } from "@/lib/utils"
+import { Button } from "@/components/ui/button"
+import { Separator } from "@/components/ui/separator"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { useState, useEffect } from "react"
+
+const NAV_ITEMS = [
+  { label: "Dashboard", href: "/", icon: LayoutDashboard },
+{% for mod in modules if mod.user_facing or mod.module_type == "pipeline" %}
+  { label: "{{ mod.display_name_plural }}", href: "/{{ mod.slug }}", icon: {{ "Zap" if mod.module_type == "pipeline" else (mod.icon | default("Box")) }} },
+{% endfor %}
+]
+
+function SidebarNav({ collapsed, onClose }: { collapsed?: boolean; onClose?: () => void }) {
+  const pathname = usePathname()
+  const { user } = useAuth()
+  const [dark, setDark] = useState(false)
+  const [isCollapsed, setIsCollapsed] = useState(collapsed ?? false)
+
+  function toggleTheme() {
+    setDark(!dark)
+    document.documentElement.classList.toggle("dark")
+  }
+
+  return (
+    <aside
+      className={cn(
+        "flex h-screen flex-col border-r bg-sidebar text-sidebar-foreground transition-all duration-200",
+        isCollapsed ? "w-16" : "w-64"
+      )}
+    >
+      {/* Logo / App Name */}
+      <div className={cn("flex h-14 items-center border-b px-4", isCollapsed && "justify-center px-2")}>
+        {onClose && (
+          <button onClick={onClose} className="mr-2 rounded p-1 hover:bg-sidebar-accent">
+            <X className="h-4 w-4" />
+          </button>
+        )}
+        {!isCollapsed && (
+          <Link href="/" className="flex items-center gap-2 flex-1">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
+              <LayoutDashboard className="h-4 w-4" />
+            </div>
+            <span className="font-semibold text-sm">{{ solution_name }}</span>
+          </Link>
+        )}
+        {isCollapsed && !onClose && (
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
+            <LayoutDashboard className="h-4 w-4" />
+          </div>
+        )}
+      </div>
+
+      {/* Navigation */}
+      <nav className="flex-1 space-y-1 overflow-y-auto p-2">
+        <TooltipProvider delayDuration={0}>
+          {NAV_ITEMS.map((item) => {
+            const isActive = pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href))
+            const link = (
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={onClose}
+                className={cn(
+                  "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                  isActive
+                    ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                    : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                  isCollapsed && "justify-center px-2"
+                )}
+              >
+                <item.icon className="h-4 w-4 shrink-0" />
+                {!isCollapsed && <span>{item.label}</span>}
+              </Link>
+            )
+
+            if (isCollapsed) {
+              return (
+                <Tooltip key={item.href}>
+                  <TooltipTrigger asChild>{link}</TooltipTrigger>
+                  <TooltipContent side="right">{item.label}</TooltipContent>
+                </Tooltip>
+              )
+            }
+            return link
+          })}
+
+          {/* Account Settings — always visible to authenticated users */}
+          {(() => {
+            const isActive = pathname.startsWith("/account")
+            const link = (
+              <Link
+                href="/account"
+                onClick={onClose}
+                className={cn(
+                  "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                  isActive
+                    ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                    : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                  isCollapsed && "justify-center px-2"
+                )}
+              >
+                <User className="h-4 w-4 shrink-0" />
+                {!isCollapsed && <span>Account Settings</span>}
+              </Link>
+            )
+            if (isCollapsed) {
+              return (
+                <Tooltip key="account">
+                  <TooltipTrigger asChild>{link}</TooltipTrigger>
+                  <TooltipContent side="right">Account Settings</TooltipContent>
+                </Tooltip>
+              )
+            }
+            return link
+          })()}
+
+          {/* Admin — only visible to users with admin role */}
+          {user?.roles?.includes("admin") && (() => {
+            const isActive = pathname.startsWith("/admin")
+            const link = (
+              <Link
+                href="/admin"
+                onClick={onClose}
+                className={cn(
+                  "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                  isActive
+                    ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                    : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                  isCollapsed && "justify-center px-2"
+                )}
+              >
+                <Settings className="h-4 w-4 shrink-0" />
+                {!isCollapsed && <span>Admin</span>}
+              </Link>
+            )
+            if (isCollapsed) {
+              return (
+                <Tooltip key="admin">
+                  <TooltipTrigger asChild>{link}</TooltipTrigger>
+                  <TooltipContent side="right">Admin</TooltipContent>
+                </Tooltip>
+              )
+            }
+            return link
+          })()}
+        </TooltipProvider>
+      </nav>
+
+      <Separator />
+
+      {/* Footer actions */}
+      <div className="p-2 space-y-1">
+        <button
+          onClick={toggleTheme}
+          className={cn(
+            "flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors",
+            isCollapsed && "justify-center px-2"
+          )}
+        >
+          {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+          {!isCollapsed && <span>{dark ? "Light mode" : "Dark mode"}</span>}
+        </button>
+        {!onClose && (
+          <button
+            onClick={() => setIsCollapsed(!isCollapsed)}
+            className={cn(
+              "flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors",
+              isCollapsed && "justify-center px-2"
+            )}
+          >
+            <ChevronLeft className={cn("h-4 w-4 transition-transform", isCollapsed && "rotate-180")} />
+            {!isCollapsed && <span>Collapse</span>}
+          </button>
+        )}
+      </div>
+    </aside>
+  )
+}
+
+export function Sidebar() {
+  const [mobileOpen, setMobileOpen] = useState(false)
+  const pathname = usePathname()
+
+  // Close mobile drawer on route change
+  useEffect(() => { setMobileOpen(false) }, [pathname])
+
+  return (
+    <>
+      {/* Desktop sidebar */}
+      <div className="hidden md:flex">
+        <SidebarNav />
+      </div>
+
+      {/* Mobile hamburger button */}
+      <Button
+        variant="ghost"
+        size="icon"
+        className="fixed top-3 left-3 z-50 md:hidden"
+        onClick={() => setMobileOpen(true)}
+      >
+        <Menu className="h-5 w-5" />
+      </Button>
+
+      {/* Mobile overlay + drawer */}
+      {mobileOpen && (
+        <>
+          <div
+            className="fixed inset-0 z-40 bg-black/50 md:hidden"
+            onClick={() => setMobileOpen(false)}
+          />
+          <div className="fixed inset-y-0 left-0 z-50 md:hidden">
+            <SidebarNav onClose={() => setMobileOpen(false)} />
+          </div>
+        </>
+      )}
+    </>
+  )
+}

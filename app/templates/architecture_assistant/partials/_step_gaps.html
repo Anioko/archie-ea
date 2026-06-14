@@ -1,0 +1,126 @@
+{# Step 3: Analyze Gaps (TOGAF Phases B-D) #}
+<div class="space-y-6 px-4">
+  <div class="flex items-center justify-between">
+    <div>
+      <h2 class="text-lg font-semibold text-foreground">Analyze Gaps</h2>
+      <p class="text-sm text-muted-foreground mt-1">TOGAF Phases B-D — Identify capability gaps between current and target states.</p>
+    </div>
+    <button @click="runGapAnalysis()" type="button"
+      :disabled="capabilities.length === 0 || gapAnalysisLoading"
+      class="inline-flex items-center gap-2 h-9 px-4 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:pointer-events-none">
+      <i data-lucide="sparkles" class="h-4 w-4" x-show="!gapAnalysisLoading" x-cloak></i>
+      <i data-lucide="loader-2" class="h-4 w-4 animate-spin" x-show="gapAnalysisLoading" x-cloak></i>
+      <span x-text="gapAnalysisLoading ? 'Analyzing...' : 'Run Gap Analysis'"></span>
+    </button>
+  </div>
+
+  {# Loading state #}
+  <div x-show="gapAnalysisLoading" x-cloak class="text-center py-8">
+    <i data-lucide="loader-2" class="h-8 w-8 animate-spin text-muted-foreground mx-auto"></i>
+    <p class="text-sm text-muted-foreground mt-2">Analyzing capability gaps...</p>
+  </div>
+
+  {# Gap table #}
+  <div x-show="gaps.length > 0 && !gapAnalysisLoading" x-cloak>
+    <div class="flex items-center gap-2 mb-3">
+      <span class="text-sm font-medium text-foreground">Gap Analysis Results</span>
+      {# ENH-006: AI Generated badge with sparkles icon #}
+      <span x-show="gapAnalysisAiGenerated" x-cloak
+        class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-500/10 text-primary border border-purple-500/30">
+        <i data-lucide="sparkles" class="h-3 w-3 mr-0.5"></i> AI Generated
+      </span>
+      <span x-show="!gapAnalysisAiGenerated && gaps.length > 0" x-cloak
+        class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-500/10 text-slate-600 border border-slate-500/30">
+        Manual
+      </span>
+    </div>
+    <div class="rounded-md border border-border overflow-hidden">
+      <table class="w-full text-sm">
+        <thead class="bg-muted/50">
+          <tr>
+            <th class="text-left px-4 py-2 font-medium text-muted-foreground">Capability</th>
+            <th class="text-center px-4 py-2 font-medium text-muted-foreground">Current</th>
+            <th class="text-center px-4 py-2 font-medium text-muted-foreground">Target</th>
+            <th class="text-center px-4 py-2 font-medium text-muted-foreground">Gap</th>
+            <th class="text-center px-4 py-2 font-medium text-muted-foreground">Severity</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-border">
+          <template x-for="gap in gaps" :key="gap.capability_id">
+            <tr class="hover:bg-muted/30 cursor-pointer" tabindex="0" role="button"
+              @click="gap.expanded = !gap.expanded"
+              @keydown.enter.prevent="gap.expanded = !gap.expanded"
+              @keydown.space.prevent="gap.expanded = !gap.expanded"
+              :aria-expanded="gap.expanded ? 'true' : 'false'">
+              <td class="px-4 py-3">
+                <span x-text="gap.capability_name" class="font-medium"></span>
+              </td>
+              <td class="px-4 py-3 text-center">
+                <span x-text="gap.maturity_current" class="text-muted-foreground"></span>
+              </td>
+              <td class="px-4 py-3 text-center">
+                <span x-text="gap.maturity_target" class="font-medium"></span>
+              </td>
+              <td class="px-4 py-3 text-center">
+                <span x-text="gap.maturity_target - gap.maturity_current" class="font-bold"
+                  :class="(gap.maturity_target - gap.maturity_current) >= 3 ? 'text-destructive' : (gap.maturity_target - gap.maturity_current) >= 2 ? 'text-amber-600' : 'text-emerald-600'">
+                </span>
+              </td>
+              <td class="px-4 py-3 text-center">
+                <span :class="{
+                  'bg-destructive/10 text-destructive border-destructive/30': gap.severity === 'critical',
+                  'bg-amber-500/10 text-amber-600 border-amber-500/30': gap.severity === 'high',
+                  'bg-blue-500/10 text-primary border-blue-500/30': gap.severity === 'medium',
+                  'bg-muted text-muted-foreground border-border': gap.severity === 'low'
+                }" class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium border"
+                  x-text="gap.severity"></span>
+              </td>
+            </tr>
+            <tr x-show="gap.expanded" x-cloak>
+              <td colspan="5" class="px-4 py-3 bg-muted/20">
+                <div class="space-y-2">
+                  <div>
+                    <span class="text-xs font-medium text-muted-foreground">Description:</span>
+                    <p class="text-sm" x-text="gap.description || 'No description available.'"></p>
+                  </div>
+                  <div x-show="gap.impact" x-cloak>
+                    <span class="text-xs font-medium text-muted-foreground">Impact:</span>
+                    <p class="text-sm" x-text="gap.impact"></p>
+                  </div>
+                  <div x-show="gap.recommendation" x-cloak>
+                    <span class="text-xs font-medium text-muted-foreground">Recommendation:</span>
+                    <p class="text-sm" x-text="gap.recommendation"></p>
+                  </div>
+                </div>
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {# Architecture layers affected #}
+  <div x-show="affectedLayers.length > 0" x-cloak>
+    <span class="text-sm font-medium text-foreground mb-2 block">Architecture Layers Affected</span>
+    <div class="flex flex-wrap gap-2">
+      <template x-for="layer in affectedLayers" :key="layer">
+        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium border"
+          :class="{
+            'bg-blue-500/10 text-primary border-blue-500/30': layer === 'Business',
+            'bg-emerald-500/10 text-emerald-600 border-emerald-500/30': layer === 'Application',
+            'bg-amber-500/10 text-amber-600 border-amber-500/30': layer === 'Technology',
+            'bg-purple-500/10 text-primary border-purple-500/30': layer === 'Motivation'
+          }" x-text="layer"></span>
+      </template>
+    </div>
+  </div>
+
+  {# Empty state #}
+  <div x-show="gaps.length === 0 && !gapAnalysisLoading" x-cloak
+    class="rounded-md border border-dashed border-border p-8 text-center">
+    <i data-lucide="search" class="h-8 w-8 text-muted-foreground mx-auto mb-2"></i>
+    <p class="text-sm text-muted-foreground">No gap analysis yet.</p>
+    <p class="text-xs text-muted-foreground mt-1">Select capabilities in Step 2, then click "Run Gap Analysis".</p>
+  </div>
+</div>

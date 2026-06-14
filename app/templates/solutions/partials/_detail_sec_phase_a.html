@@ -1,0 +1,237 @@
+{# WARNING: THIS FILE IS NOT REGISTERED #}
+{# Partial: Phase A — Strategic Context content (sec-2)
+   Included via {% call section_shell(...) %} — content only, no shell.
+   Prototype: Vision tab → stat cards (drivers/goals/constraints) + combined color-coded list + Mendelow grid + requirements table.
+   All Alpine.js + Jinja variables in scope from parent solutionDetail() x-data. #}
+
+<div class="space-y-6">
+
+    {# BIZBOK: Motivation Viewpoint diagram (Driver→Goal→Requirement chain) #}
+    <div class="rounded-xl border border-border bg-card overflow-hidden mb-2">
+        <div class="bg-muted/20 px-5 py-2 border-b border-border flex items-center justify-between">
+            <span class="text-xs font-medium text-muted-foreground">Motivation Viewpoint</span>
+            <span class="text-[10px] text-muted-foreground">Driver → Goal → Requirement</span>
+        </div>
+        <div id="viewpoint-diagram-vision" class="w-full" style="min-height:280px;"></div>
+    </div>
+
+    {# Stat cards — Drivers / Goals / Constraints counts with icons (shell header provides title) #}
+    <div>
+        <div class="flex items-center justify-end mb-4">
+            <button @click="openEntityModal('driver')" class="text-[11px] text-primary/70 hover:text-primary font-medium">+ Add</button>
+        </div>
+        <div class="grid grid-cols-3 gap-3 mb-4">
+            <div class="rounded-xl border border-border bg-card p-4">
+                <div class="flex items-center gap-3">
+                    <span class="flex items-center justify-center w-10 h-10 rounded-lg bg-violet-500/10 border border-violet-500/20 shrink-0">
+                        <i data-lucide="zap" class="w-5 h-5 text-violet-400" aria-hidden="true"></i>
+                    </span>
+                    <div>
+                        <p class="text-2xl font-bold text-foreground" x-text="drivers.length">0</p>
+                        <p class="text-xs text-muted-foreground">Drivers</p>
+                    </div>
+                </div>
+            </div>
+            <div class="rounded-xl border border-border bg-card p-4">
+                <div class="flex items-center gap-3">
+                    <span class="flex items-center justify-center w-10 h-10 rounded-lg bg-emerald-500/10 border border-emerald-500/20 shrink-0">
+                        <i data-lucide="check-circle-2" class="w-5 h-5 text-emerald-400" aria-hidden="true"></i>
+                    </span>
+                    <div>
+                        <p class="text-2xl font-bold text-foreground" x-text="goals.length">0</p>
+                        <p class="text-xs text-muted-foreground">Goals</p>
+                    </div>
+                </div>
+            </div>
+            <div class="rounded-xl border border-border bg-card p-4">
+                <div class="flex items-center gap-3">
+                    <span class="flex items-center justify-center w-10 h-10 rounded-lg bg-red-500/10 border border-red-500/20 shrink-0">
+                        <i data-lucide="alert-triangle" class="w-5 h-5 text-red-400" aria-hidden="true"></i>
+                    </span>
+                    <div>
+                        <p class="text-2xl font-bold text-foreground" x-text="constraints.length">0</p>
+                        <p class="text-xs text-muted-foreground">Constraints</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {# Combined drivers + goals + constraints list (prototype pattern — color-coded dots + type badge) #}
+        <div class="rounded-xl border border-border bg-card divide-y divide-border overflow-hidden text-sm"
+             x-show="drivers.length > 0 || goals.length > 0 || constraints.length > 0">
+            <template x-for="d in drivers" :key="'drv-' + d.id">
+                <div class="flex items-center gap-2.5 px-5 py-2.5 hover:bg-muted/20 group">
+                    <span class="w-2 h-2 rounded-full bg-violet-400 shrink-0"></span>
+                    <span class="flex-1" x-text="d.name"></span>
+                    <span class="text-[10px] text-muted-foreground px-1.5 py-0.5 rounded bg-muted">Driver</span>
+                    <div class="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                        <button type="button" @click="openEntityModal('driver', d)" class="text-muted-foreground hover:text-foreground p-1 rounded-md" title="Edit">
+                            <i data-lucide="pencil" class="w-3 h-3" aria-hidden="true"></i>
+                        </button>
+                        <button type="button" @click="confirmDeleteEntity('driver', d)" class="text-muted-foreground hover:text-destructive p-1 rounded-md" title="Delete">
+                            <i data-lucide="trash-2" class="w-3 h-3" aria-hidden="true"></i>
+                        </button>
+                    </div>
+                </div>
+            </template>
+            <template x-for="g in goals" :key="'goal-' + g.id">
+                <div class="flex items-center gap-2.5 px-5 py-2.5 hover:bg-muted/20 group">
+                    <span class="w-2 h-2 rounded-full bg-emerald-400 shrink-0"></span>
+                    <span class="flex-1" x-text="g.name"></span>
+                    <span class="text-[10px] text-muted-foreground px-1.5 py-0.5 rounded bg-muted">Goal</span>
+                    <div class="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                        <button type="button" @click="openEntityModal('goal', g)" class="text-muted-foreground hover:text-foreground p-1 rounded-md" title="Edit">
+                            <i data-lucide="pencil" class="w-3 h-3" aria-hidden="true"></i>
+                        </button>
+                        <button type="button" @click="confirmDeleteEntity('goal', g)" class="text-muted-foreground hover:text-destructive p-1 rounded-md" title="Delete">
+                            <i data-lucide="trash-2" class="w-3 h-3" aria-hidden="true"></i>
+                        </button>
+                    </div>
+                </div>
+            </template>
+            <template x-for="c in constraints" :key="'cst-' + c.id">
+                <div class="flex items-center gap-2.5 px-5 py-2.5 hover:bg-muted/20 group">
+                    <span class="w-2 h-2 rounded-full bg-red-400 shrink-0"></span>
+                    <span class="flex-1" x-text="c.name"></span>
+                    <span class="text-[10px] text-muted-foreground px-1.5 py-0.5 rounded bg-muted">Constraint</span>
+                    <div class="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                        <button type="button" @click="openEntityModal('constraint', c)" class="text-muted-foreground hover:text-foreground p-1 rounded-md" title="Edit">
+                            <i data-lucide="pencil" class="w-3 h-3" aria-hidden="true"></i>
+                        </button>
+                        <button type="button" @click="confirmDeleteEntity('constraint', c)" class="text-muted-foreground hover:text-destructive p-1 rounded-md" title="Delete">
+                            <i data-lucide="trash-2" class="w-3 h-3" aria-hidden="true"></i>
+                        </button>
+                    </div>
+                </div>
+            </template>
+        </div>
+        <p x-show="drivers.length === 0 && goals.length === 0 && constraints.length === 0"
+           class="text-sm text-muted-foreground py-4">No strategic context defined yet. Add drivers, goals, and constraints.</p>
+    </div>
+
+    {# Stakeholders — Mendelow Power/Interest Grid (prototype pattern) #}
+    {% if stakeholder_mappings %}
+    <div>
+        <div class="flex items-center gap-3 mb-4">
+            <div class="w-1 h-5 rounded-full bg-violet-500"></div>
+            <p class="text-sm font-semibold text-foreground">Stakeholders</p>
+            <span class="text-xs text-muted-foreground">({{ stakeholder_mappings|length }})</span>
+            <a href="{{ url_for('stakeholder_map.stakeholder_map_page') }}?solution_id={{ solution.id }}"
+               class="ml-auto text-[11px] text-primary/70 hover:text-primary font-medium">Open full map &rarr;</a>
+        </div>
+        <div class="rounded-xl border border-border bg-card overflow-hidden">
+            <div class="px-5 py-4">
+                <div id="stk-grid-embed" class="w-full min-h-[220px]" style="max-width: 480px; margin: 0 auto;"></div>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    {# Fallback: static role-based stakeholders when no mappings #}
+    {% set _stk_roles = [] %}
+    {% if solution.solution_owner %}{% set _ = _stk_roles.append(('Solution Owner', solution.solution_owner)) %}{% endif %}
+    {% if solution.business_sponsor %}{% set _ = _stk_roles.append(('Business Sponsor', solution.business_sponsor)) %}{% endif %}
+    {% if solution.technical_lead %}{% set _ = _stk_roles.append(('Technical Lead', solution.technical_lead)) %}{% endif %}
+    {% if solution.architecture_lead %}{% set _ = _stk_roles.append(('Architecture Lead', solution.architecture_lead)) %}{% endif %}
+    {% if solution.security_lead %}{% set _ = _stk_roles.append(('Security Lead', solution.security_lead)) %}{% endif %}
+    {% if _stk_roles %}
+    <div>
+        <div class="flex items-center gap-3 mb-4">
+            <div class="w-1 h-5 rounded-full bg-violet-500"></div>
+            <p class="text-sm font-semibold text-foreground">Stakeholders</p>
+            <span class="text-xs text-muted-foreground">({{ _stk_roles|length }})</span>
+        </div>
+        <div class="rounded-xl border border-border bg-card divide-y divide-border overflow-hidden">
+            {% for role, name in _stk_roles %}
+            <div class="flex items-center gap-3 px-5 py-3">
+                <div class="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary text-xs font-bold shrink-0">
+                    {{ name[0] | upper }}
+                </div>
+                <div class="min-w-0 flex-1">
+                    <p class="text-sm font-medium text-foreground">{{ name }}</p>
+                    <p class="text-[10px] text-muted-foreground">{{ role }}</p>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+    {% endif %}
+
+    {# Dynamic SAD stakeholders from API #}
+    <template x-if="sadStakeholdersSad && sadStakeholdersSad.length > 0 && {{ 'false' if stakeholder_mappings else 'true' }}">
+        <div>
+            <div class="flex items-center gap-3 mb-4">
+                <div class="w-1 h-5 rounded-full bg-violet-500"></div>
+                <p class="text-sm font-semibold text-foreground">Stakeholders</p>
+                <span class="text-xs text-muted-foreground" x-text="'(' + sadStakeholdersSad.length + ')'"></span>
+            </div>
+            <div class="rounded-xl border border-border bg-card divide-y divide-border overflow-hidden">
+                <template x-for="stk in sadStakeholdersSad" :key="stk.id">
+                    <div class="flex items-center gap-3 px-5 py-3">
+                        <div class="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary text-xs font-bold shrink-0" x-text="(stk.name || 'U')[0].toUpperCase()"></div>
+                        <div class="min-w-0 flex-1">
+                            <p class="text-sm font-medium text-foreground" x-text="stk.name"></p>
+                            <p class="text-[10px] text-muted-foreground" x-text="stk.role || 'No role specified'"></p>
+                        </div>
+                        <span class="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground capitalize" x-show="stk.influence_level" x-text="stk.influence_level"></span>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </template>
+
+    {# Requirements — compact data table (prototype pattern) #}
+    <div x-show="requirements && requirements.length > 0">
+        <div class="flex items-center gap-3 mb-4">
+            <div class="w-1 h-5 rounded-full bg-violet-500"></div>
+            <p class="text-sm font-semibold text-foreground">Requirements</p>
+            <span class="text-xs text-muted-foreground" x-text="'(' + requirements.length + ')'"></span>
+            <button @click="openEntityModal('requirement')" class="ml-auto text-[11px] text-primary/70 hover:text-primary font-medium">+ Add</button>
+        </div>
+        <div class="rounded-xl border border-border bg-card overflow-hidden">
+            <table class="w-full text-sm">
+                <thead><tr class="border-b border-border bg-muted/30">
+                    <th class="text-left px-5 py-2 text-xs font-medium text-muted-foreground">Requirement</th>
+                    <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground w-[90px]">Type</th>
+                    <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground w-[90px]">Priority</th>
+                    <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground w-[90px]">Status</th>
+                </tr></thead>
+                <tbody class="divide-y divide-border">
+                    <template x-for="req in requirements" :key="req.id">
+                        <tr class="hover:bg-muted/20 group">
+                            <td class="px-5 py-2.5" x-text="req.name"></td>
+                            <td class="px-3 py-2.5">
+                                <span class="text-[10px] text-muted-foreground px-1.5 py-0.5 rounded bg-muted"
+                                      x-text="(req.requirement_type || '').replace(/_/g, ' ')"></span>
+                            </td>
+                            <td class="px-3 py-2.5">
+                                <span class="text-[10px] font-medium"
+                                      :class="req.moscow_priority === 'MUST' ? 'text-red-400' : req.moscow_priority === 'SHOULD' ? 'text-amber-400' : 'text-muted-foreground'"
+                                      x-text="req.moscow_priority || req.priority || '\u2014'"></span>
+                            </td>
+                            <td class="px-3 py-2.5">
+                                <span class="flex items-center gap-1">
+                                    <span class="w-1.5 h-1.5 rounded-full"
+                                          :class="req.status === 'approved' || req.status === 'met' ? 'bg-emerald-400' : req.status === 'in_review' || req.status === 'in_progress' ? 'bg-amber-400' : 'bg-muted-foreground'"></span>
+                                    <span class="text-xs capitalize" x-text="(req.status || 'open').replace(/_/g, ' ')"></span>
+                                </span>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    {# Scope — simple text block #}
+    {% if solution.scope_description %}
+    <div>
+        <div class="flex items-center gap-3 mb-3">
+            <div class="w-1 h-5 rounded-full bg-violet-500"></div>
+            <p class="text-sm font-semibold text-foreground">Scope</p>
+        </div>
+        <p class="text-sm leading-relaxed text-foreground">{{ solution.scope_description }}</p>
+    </div>
+    {% endif %}
+
+</div>

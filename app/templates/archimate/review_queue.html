@@ -1,0 +1,106 @@
+{% extends "layouts/admin_base.html" %}
+{% block title %}ArchiMate Relationship Review Queue{% endblock %}
+
+{% block breadcrumb %}
+{% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
+{{ breadcrumb_nav(items=[
+    {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
+    {'text': 'Architecture Elements', 'href': url_for('archimate_crud.dashboard')},
+    {'text': 'Review Queue', 'current': true}
+]) }}
+{% endblock %}
+{% block content %}
+<div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8" x-data="reviewQueue()">
+    <div class="flex justify-between items-center mb-6">
+        <div>
+            <h1 class="text-2xl font-bold text-foreground">Relationship Review Queue</h1>
+            <p class="text-sm text-muted-foreground mt-1">Review AI-suggested ArchiMate relationships. Accept to add to the enterprise graph, reject to discard.</p>
+        </div>
+        <a href="/capability-map/" class="inline-flex items-center px-3 py-2 text-sm rounded-md border border-input bg-background hover:bg-accent">Back to Capabilities</a>
+    </div>
+    <div class="flex items-center gap-3 mb-4 p-3 rounded-lg border border-input bg-card">
+        <button @click="bulkAccept(0.8)" :disabled="processing" class="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">Accept all &gt; 80%</button>
+        <button @click="bulkAccept(0.6)" :disabled="processing" class="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-md bg-secondary text-secondary-foreground hover:bg-secondary/80 disabled:opacity-50">Accept all &gt; 60%</button>
+        <span class="text-xs text-muted-foreground ml-auto" x-text="suggestions.length + ' pending suggestions'"></span>
+        <select x-model="sortBy" @change="loadSuggestions()" class="h-8 px-2 text-xs rounded-md border border-input bg-background">
+            <option value="confidence">Sort: Confidence</option>
+            <option value="layer">Sort: Layer</option>
+            <option value="type">Sort: Type</option>
+        </select>
+    </div>
+    <template x-if="loading"><div class="text-center py-12 text-muted-foreground">Loading suggestions...</div></template>
+    <template x-if="!loading && suggestions.length === 0">
+        <div class="text-center py-12 border-2 border-dashed border-input rounded-xl">
+            <div class="text-lg font-medium text-foreground mb-2">No Pending Suggestions</div>
+            <p class="text-sm text-muted-foreground">Run the enrichment engine to generate relationship suggestions.</p>
+        </div>
+    </template>
+    <div class="space-y-2">
+        <template x-for="s in suggestions" :key="s.id">
+            <div class="flex items-center gap-3 p-3 rounded-lg border border-input bg-card hover:border-primary/30 transition-colors">
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-1.5">
+                        <span class="font-medium text-sm truncate" x-text="s.source_element.name"></span>
+                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border" :class="layerClass(s.source_element.layer)" x-text="s.source_element.type"></span>
+                    </div>
+                </div>
+                <div class="flex items-center gap-1 px-2 shrink-0">
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-muted text-foreground border border-input" x-text="s.relationship_type"></span>
+                    <span class="text-xs text-muted-foreground">&#8594;</span>
+                </div>
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-1.5">
+                        <span class="font-medium text-sm truncate" x-text="s.target_element.name"></span>
+                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border" :class="layerClass(s.target_element.layer)" x-text="s.target_element.type"></span>
+                    </div>
+                </div>
+                <div class="shrink-0 w-12 text-center">
+                    <span class="text-xs font-medium" :class="s.confidence >= 0.8 ? 'text-primary' : s.confidence >= 0.5 ? 'text-amber-600' : 'text-muted-foreground'" x-text="Math.round(s.confidence * 100) + '%'"></span>
+                </div>
+                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-muted text-muted-foreground shrink-0" x-text="s.source_method"></span>
+                <div class="flex items-center gap-1 shrink-0">
+                    <button @click="acceptSuggestion(s.id)" :disabled="processing" class="inline-flex items-center justify-center h-7 w-7 rounded-md bg-primary/10 text-primary hover:bg-primary/20 disabled:opacity-50" title="Accept">
+                        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                    </button>
+                    <button @click="rejectSuggestion(s.id)" :disabled="processing" class="inline-flex items-center justify-center h-7 w-7 rounded-md bg-destructive/10 text-destructive hover:bg-destructive/20 disabled:opacity-50" title="Reject">
+                        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                    </button>
+                </div>
+            </div>
+        </template>
+    </div>
+    <div x-show="statusMessage" x-cloak class="fixed bottom-4 right-4 px-4 py-2 rounded-lg text-sm font-medium shadow-lg" :class="statusError ? 'bg-destructive text-destructive-foreground' : 'bg-primary text-primary-foreground'" x-text="statusMessage" x-transition></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+function reviewQueue() {
+    return {
+        suggestions: [], loading: true, processing: false, sortBy: 'confidence', statusMessage: '', statusError: false,
+        init() { this.loadSuggestions(); },
+        async loadSuggestions() {
+            this.loading = true;
+            try { const r = await fetch('/capability-map/api/archimate/relationship-suggestions?status=pending&min_confidence=0.3&limit=100&sort=' + this.sortBy); this.suggestions = (await r.json()).suggestions || []; } catch(e) { console.error(e); }
+            finally { this.loading = false; }
+        },
+        async acceptSuggestion(id) {
+            this.processing = true;
+            try { const r = await fetch(`/capability-map/api/archimate/relationship-suggestions/${id}/accept`, {method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':document.querySelector('meta[name=csrf-token]')?.content||''}}); const d = await r.json(); if(d.success){this.suggestions=this.suggestions.filter(s=>s.id!==id);this.showStatus('Accepted');}else{this.showStatus(d.error||'Failed',true);}} catch(e){this.showStatus('Error',true);}
+            finally { this.processing = false; }
+        },
+        async rejectSuggestion(id) {
+            this.processing = true;
+            try { const r = await fetch(`/capability-map/api/archimate/relationship-suggestions/${id}/reject`, {method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':document.querySelector('meta[name=csrf-token]')?.content||''}}); const d = await r.json(); if(d.success){this.suggestions=this.suggestions.filter(s=>s.id!==id);this.showStatus('Rejected');}else{this.showStatus(d.error||'Failed',true);}} catch(e){this.showStatus('Error',true);}
+            finally { this.processing = false; }
+        },
+        async bulkAccept(mc) {
+            this.processing = true;
+            try { const r = await fetch('/capability-map/api/archimate/relationship-suggestions/bulk-accept', {method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':document.querySelector('meta[name=csrf-token]')?.content||''},body:JSON.stringify({min_confidence:mc})}); const d = await r.json(); if(d.success){this.showStatus(`Accepted ${d.accepted_count}`);await this.loadSuggestions();}else{this.showStatus(d.error||'Failed',true);}} catch(e){this.showStatus('Error',true);}
+            finally { this.processing = false; }
+        },
+        layerClass(l) { const c={'motivation':'bg-violet-500/10 text-violet-600 border-violet-500/30','strategy':'bg-indigo-500/10 text-primary border-indigo-500/30','business':'bg-amber-500/10 text-amber-600 border-amber-500/30','application':'bg-blue-500/10 text-primary border-blue-500/30','technology':'bg-green-500/10 text-emerald-600 border-green-500/30','implementation':'bg-slate-500/10 text-slate-600 border-slate-500/30'}; return c[(l||'').toLowerCase()]||'bg-muted text-muted-foreground border-input'; },
+        showStatus(m,e=false) { this.statusMessage=m; this.statusError=e; setTimeout(()=>this.statusMessage='',3000); }
+    };
+}
+</script>
+{% endblock %}

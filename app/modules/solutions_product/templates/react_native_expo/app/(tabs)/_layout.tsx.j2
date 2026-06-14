@@ -1,0 +1,63 @@
+import { Tabs } from "expo-router"
+import { Home, User, {% for cls in classes %}{{ cls.icon }}{% if not loop.last %}, {% endif %}{% endfor %} } from "lucide-react-native"
+
+{# De-duplicate icon imports — Jinja2 doesn't deduplicate, so we collect unique icons #}
+{# The import above may have duplicates but TypeScript/bundler deduplicates at build time #}
+
+const TAB_BAR_STYLE = {
+  borderTopWidth: 0,
+  backgroundColor: "#ffffff",
+  paddingBottom: 4,
+  height: 64,
+  shadowColor: "#000",
+  shadowOffset: { width: 0, height: -2 },
+  shadowOpacity: 0.06,
+  shadowRadius: 8,
+  elevation: 8,
+}
+const TAB_HEADER_STYLE = { backgroundColor: "#ffffff", shadowColor: "transparent", elevation: 0 }
+const TAB_HEADER_TITLE_STYLE = { fontWeight: "700" as const, fontSize: 17 }
+const SCREEN_OPTIONS = {
+  tabBarActiveTintColor: "{{ primary_color }}",
+  tabBarInactiveTintColor: "#94a3b8",
+  tabBarStyle: TAB_BAR_STYLE,
+  tabBarLabelStyle: { fontSize: 11, fontWeight: "600" as const, marginTop: -2 },
+  headerStyle: TAB_HEADER_STYLE,
+  headerTintColor: "#0f172a",
+  headerTitleStyle: TAB_HEADER_TITLE_STYLE,
+}
+
+{# tab_classes is passed from Python (mobile_generator.py) — respects ux_preferences.navigation.tab_order #}
+
+export default function TabsLayout() {
+  return (
+    <Tabs screenOptions={SCREEN_OPTIONS}>
+      <Tabs.Screen
+        name="index"
+        options={{ '{{' }}
+          title: "{{ solution_name }}",
+          tabBarLabel: "Home",
+          tabBarIcon: ({ color, size }: { color: string; size: number }) => <Home size={size - 2} color={color} />,
+        {{ '}}' }}
+      />
+      {% for cls in tab_classes %}
+      <Tabs.Screen
+        name="{{ cls.table_name }}"
+        options={{ '{{' }}
+          title: "{{ cls.name | replace('_', ' ') | title }}",
+          tabBarLabel: "{{ cls.name | replace('_', ' ') | title | truncate(9, true, '…') }}",
+          tabBarIcon: ({ color, size }: { color: string; size: number }) => <{{ cls.icon }} size={size - 2} color={color} />,
+        {{ '}}' }}
+      />
+      {% endfor %}
+      <Tabs.Screen
+        name="profile"
+        options={{ '{{' }}
+          title: "Profile",
+          tabBarLabel: "Profile",
+          tabBarIcon: ({ color, size }: { color: string; size: number }) => <User size={size - 2} color={color} />,
+        {{ '}}' }}
+      />
+    </Tabs>
+  )
+}

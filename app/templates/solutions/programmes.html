@@ -1,0 +1,147 @@
+{% extends "layouts/admin_base.html" %}
+{% from "components/page_header.html" import page_header %}
+{% from 'components/modal.html' import modal %}
+
+{% block title %}Transformation Programmes{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 sm:px-6 lg:px-8 py-6 max-w-7xl" x-data="programmesPage()">
+    {{ page_header(
+        title='Transformation Programmes',
+        description='Programme-level governance for in-flight transformation work — group solutions, track clean-core compliance, and watch the ARB pipeline across the whole programme.',
+        breadcrumbs=[
+            {'label': 'Dashboard', 'href': url_for('main.index')},
+            {'label': 'Solutions Management'},
+            {'label': 'Programmes'}
+        ],
+        actions=[
+            {'text': 'New Programme (Wizard)', 'icon': 'layers', 'href': url_for('solution_design.new_programme'), 'variant': 'outline'},
+            {'text': 'New Programme', 'icon': 'plus', 'onclick': "Platform.modal.open('create-programme')", 'variant': 'default'}
+        ]
+    ) }}
+
+    {% if programmes %}
+    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 mt-6">
+        {% for p in programmes %}
+        <a href="{{ url_for('solution_design.programme_cockpit', initiative_id=p.id) }}"
+           class="group border border-border rounded-xl bg-card p-5 hover:border-primary/40 transition-colors block">
+            <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                    <p class="text-sm font-semibold text-foreground group-hover:text-primary transition-colors truncate">{{ p.name }}</p>
+                    <p class="text-xs text-muted-foreground mt-1 line-clamp-2">{{ p.description or 'No description' }}</p>
+                </div>
+                <span class="shrink-0 inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium
+                    {% if p.initiative_type == 'brownfield' %}bg-amber-500/10 text-amber-600 border border-amber-500/30
+                    {% else %}bg-emerald-500/10 text-emerald-600 border border-emerald-500/30{% endif %}">
+                    {{ p.initiative_type | title }}
+                </span>
+            </div>
+            <div class="flex items-center gap-4 mt-4 text-xs text-muted-foreground">
+                <span class="inline-flex items-center gap-1.5">
+                    <i data-lucide="wrench" class="h-3.5 w-3.5"></i>
+                    {{ p.member_count }} solution{{ '' if p.member_count == 1 else 's' }}
+                </span>
+                {% if p.target_platform %}
+                <span class="inline-flex items-center gap-1.5">
+                    <i data-lucide="server" class="h-3.5 w-3.5"></i>
+                    {{ p.target_platform }}
+                </span>
+                {% endif %}
+                <span class="inline-flex items-center px-2 py-0.5 rounded-md bg-muted text-muted-foreground ml-auto">{{ p.status | replace('_', ' ') | title }}</span>
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="flex flex-col items-center justify-center gap-3 py-20 border border-dashed border-border rounded-xl mt-6">
+        <i data-lucide="layers" class="h-8 w-8 text-muted-foreground"></i>
+        <p class="text-sm text-muted-foreground">No transformation programmes yet.</p>
+        <button type="button" data-modal-open="create-programme"
+                class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90">
+            <i data-lucide="plus" class="h-4 w-4"></i> Create your first programme
+        </button>
+    </div>
+    {% endif %}
+</div>
+
+{% call modal(id='create-programme', title='New Transformation Programme', description='Group in-flight solutions under one governance umbrella with programme-level rollups.', size='lg') %}
+{# The modal portals outside the page's x-data scope — the form carries its own #}
+<form @submit.prevent="createProgramme()" class="space-y-4" x-data="programmesPage()">
+    <div>
+        <label for="prog-name" class="block text-sm font-medium mb-1">Programme name <span class="text-destructive">*</span></label>
+        <input type="text" id="prog-name" x-model="form.name" required maxlength="255"
+               class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+               placeholder="e.g. S/4HANA Migration 2027">
+    </div>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+            <label for="prog-type" class="block text-sm font-medium mb-1">Type</label>
+            <select id="prog-type" x-model="form.initiative_type"
+                    class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                <option value="brownfield">Brownfield — transform existing landscape</option>
+                <option value="greenfield">Greenfield — net-new build</option>
+            </select>
+        </div>
+        <div>
+            <label for="prog-platform" class="block text-sm font-medium mb-1">Target platform</label>
+            <select id="prog-platform" x-model="form.target_platform"
+                    class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                <option value="">— Select —</option>
+                <option>SAP S/4HANA</option>
+                <option>SAP BTP</option>
+                <option>Salesforce</option>
+                <option>Microsoft Power Platform</option>
+                <option>Microsoft Azure</option>
+                <option>Custom / Multi-platform</option>
+            </select>
+        </div>
+    </div>
+    <div>
+        <label for="prog-desc" class="block text-sm font-medium mb-1">Description</label>
+        <textarea id="prog-desc" x-model="form.description" rows="3"
+                  class="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  placeholder="Scope, drivers, and expected outcomes of the transformation"></textarea>
+    </div>
+    <div x-cloak x-show="errorMsg" class="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-sm text-destructive" x-text="errorMsg"></div>
+    <div class="flex justify-end gap-3 pt-2 border-t border-border">
+        <button type="button" data-modal-close="create-programme"
+                class="px-4 py-2 text-sm font-medium rounded-md border border-input bg-background hover:bg-accent">Cancel</button>
+        <button type="submit" :disabled="submitting"
+                class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+            <span x-text="submitting ? 'Creating…' : 'Create Programme'"></span>
+        </button>
+    </div>
+</form>
+{% endcall %}
+{% endblock %}
+
+{% block extra_head_js %}
+<script>
+    function programmesPage() {
+        return {
+            form: { name: '', initiative_type: 'brownfield', target_platform: '', description: '' },
+            submitting: false,
+            errorMsg: '',
+            _csrf() { return document.querySelector('meta[name=csrf-token]')?.content || ''; },
+            async createProgramme() {
+                this.submitting = true;
+                this.errorMsg = '';
+                try {
+                    const r = await fetch('/solutions/programmes', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this._csrf() },
+                        body: JSON.stringify(this.form),
+                    });
+                    const d = await r.json();
+                    if (!r.ok || !d.success) throw new Error(d.error || 'Creation failed');
+                    window.location.href = '/solutions/programmes/' + d.id;
+                } catch (e) {
+                    this.errorMsg = e.message;
+                } finally {
+                    this.submitting = false;
+                }
+            },
+        };
+    }
+</script>
+{% endblock %}

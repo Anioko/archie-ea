@@ -1,0 +1,531 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'components/page_header.html' import page_header %}
+{% from 'components/metrics_card.html' import metrics_card %}
+
+{% from 'components/card.html' import card, card_header, card_title, card_content %}
+{% from 'components/badge.html' import badge %}
+
+{% block title %}Investment Prioritization Matrix{% endblock %}
+
+{% block breadcrumb %}
+{% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
+{{ breadcrumb_nav(items=[
+    {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
+    {'text': 'Strategy Layer', 'href': url_for('archimate_crud.dashboard') + '#strategy'},
+    {'text': 'Strategic Planning', 'current': true}
+]) }}
+{% endblock %}
+
+{% block content %}
+{# Serialize server-side data for Alpine client-side use #}
+<script>
+const INVESTMENT_CAPABILITIES = {{ capability_scores | tojson }};
+</script>
+
+<div class="space-y-6" x-data="investmentMatrix()" x-cloak>
+    {{ page_header(
+        title='Investment Prioritization Matrix',
+        description='Data-driven investment recommendations based on strategic importance, coverage gaps, and risk assessment',
+        breadcrumbs=[
+            {'label': 'Home', 'href': url_for('main.index')},
+            {'label': 'Investment Matrix'}
+        ],
+        actions=[
+            {'text': 'Compare Scenarios', 'icon': 'git-compare', 'onclick': "$dispatch('open-scenario-comparison')", 'variant': 'outline'},
+            {'text': 'Create Proposal', 'icon': 'briefcase', 'onclick': "$dispatch('open-initiative-investment-proposal-modal')", 'variant': 'default'}
+        ]
+    ) }}
+
+    {# ── Portfolio Metrics (v4 SectionCards) ──────────────────────────────── #}
+    <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        {{ metrics_card(
+            title='Total Capabilities',
+            value=portfolio_metrics.total_capabilities|string,
+            icon='layers',
+            value_class='text-primary'
+        ) }}
+        {{ metrics_card(
+            title='Critical Priorities',
+            value=portfolio_metrics.critical_priorities|string,
+            icon='alert-triangle',
+            value_class='text-destructive'
+        ) }}
+        {{ metrics_card(
+            title='Total Investment',
+            value='$' + "%.1f"|format(((portfolio_metrics.total_estimated_investment or 0) | float) / 1000000) + 'M',
+            icon='dollar-sign',
+            value_class='text-primary'
+        ) }}
+        {{ metrics_card(
+            title='Avg Strategic Score',
+            value=portfolio_metrics.average_strategic_score|string + '/25',
+            icon='target',
+            value_class='text-success'
+        ) }}
+    </div>
+
+    <!-- Investment Priority Matrix -->
+    <div class="rounded-lg border bg-card text-card-foreground shadow-sm">
+        <div class="flex flex-col space-y-1.5 p-6 pb-3">
+            <h3 class="text-2xl font-semibold leading-none tracking-tight">Investment Priority Matrix</h3>
+        </div>
+        <div class="p-6 pt-0">
+            <!-- Toolbar: per-page + search + bulk toggle -->
+            <div class="flex flex-wrap items-center gap-3 mb-4">
+                <div class="flex-1 min-w-[200px] relative">
+                    <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden="true"></i>
+                    <input type="text" x-model="search" @input="currentPage = 1; syncSelectAll()"
+                        placeholder="Search capabilities..."
+                        class="w-full pl-10 pr-4 py-2 border rounded-md text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        aria-label="Search capabilities">
+                </div>
+                <select x-model="priorityFilter" @change="currentPage = 1; syncSelectAll()"
+                    class="px-3 py-2 border rounded-md text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                    <option value="">All Priorities</option>
+                    <option value="CRITICAL">Critical</option>
+                    <option value="HIGH">High</option>
+                    <option value="MEDIUM">Medium</option>
+                    <option value="LOW">Low</option>
+                </select>
+                <select id="per-page-selector" data-testid="per-page-selector" x-model.number="perPage" @change="currentPage = 1; syncSelectAll()"
+                    class="px-3 py-2 border rounded-md text-sm">
+                    <option value="25">25 / page</option>
+                    <option value="50">50 / page</option>
+                    <option value="100">100 / page</option>
+                </select>
+            </div>
+
+            <!-- Bulk Actions Bar -->
+            <div id="bulk-action-bar" data-testid="bulk-action-bar" x-show="selectedIds.length > 0" x-cloak x-transition
+                 class="flex items-center gap-4 p-3 mb-4 bg-muted/30 border rounded-lg">
+                <span class="text-sm font-medium" x-text="selectedIds.length + ' selected'"></span>
+                <button @click="bulkSubmitToARB()"
+                    class="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+                    aria-label="Submit selected to ARB">
+                    <i data-lucide="shield-check" class="h-4 w-4" aria-hidden="true"></i>
+                    <span x-text="'Submit ' + selectedIds.length + ' to ARB'"></span>
+                </button>
+                <button @click="exportSelected()"
+                    class="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+                    aria-label="Export selected as CSV">
+                    <i data-lucide="download" class="h-4 w-4" aria-hidden="true"></i>
+                    Export CSV
+                </button>
+                <button @click="selectedIds = []; selectAll = false"
+                    class="text-sm text-muted-foreground hover:underline ml-auto"
+                    aria-label="Clear selection">Clear</button>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="w-full caption-bottom text-sm">
+                    <thead class="[&_tr]:border-b">
+                        <tr class="border-b transition-colors hover:bg-muted/50">
+                            <th class="h-12 px-4 w-10 text-left align-middle font-medium text-muted-foreground">
+                                <input id="select-all-checkbox" data-testid="select-all-checkbox" type="checkbox" :checked="selectAll" @change="toggleAll($event.target.checked)"
+                                    class="rounded border-input h-4 w-4 cursor-pointer"
+                                    aria-label="Select all capabilities">
+                            </th>
+                            <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Capability</th>
+                            <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Domain</th>
+                            <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Strategic Score</th>
+                            <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Coverage</th>
+                            <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Risk</th>
+                            <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Total Score</th>
+                            <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Priority</th>
+                            <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Investment</th>
+                            <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Initiative</th>
+                            <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Timeframe</th>
+                            <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Recommendation</th>
+                            <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody class="[&_tr:last-child]:border-0">
+                        <template x-for="cap in pagedItems" :key="cap.capability_id">
+                            <tr class="border-b transition-colors hover:bg-muted/50">
+                                <td class="p-4">
+                                    <input type="checkbox" :checked="isSelected(cap)" @change="toggleItem(cap, $event.target.checked)"
+                                        class="rounded border-input h-4 w-4 cursor-pointer"
+                                        :aria-label="'Select ' + cap.capability_name">
+                                </td>
+                                <td class="p-4 font-medium" x-text="cap.capability_name"></td>
+                                <td class="p-4 text-muted-foreground text-sm" x-text="cap.capability_domain"></td>
+                                <td class="p-4 text-sm" x-text="cap.strategic_score + '/25'"></td>
+                                <td class="p-4 text-sm" x-text="cap.coverage_count + ' apps'"></td>
+                                <td class="p-4 text-sm" x-text="cap.risk_score + '/25'"></td>
+                                <td class="p-4 text-sm font-bold" x-text="cap.investment_priority_score + '/100'"></td>
+                                <td class="p-4">
+                                    <span :class="{
+                                        'bg-destructive/10 text-destructive border-destructive/20': cap.priority_level === 'CRITICAL',
+                                        'bg-warning/10 text-warning border-warning/20': cap.priority_level === 'HIGH',
+                                        'bg-muted text-muted-foreground border-border': cap.priority_level === 'MEDIUM' || cap.priority_level === 'LOW'
+                                    }"
+                                    class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold"
+                                    x-text="cap.priority_level"></span>
+                                </td>
+                                <td class="p-4">
+                                    <div class="flex items-center gap-1">
+                                        <span x-text="'$' + (cap.investment_need.estimated_cost / 1000).toFixed(1) + 'k'"></span>
+                                        <span x-show="cap.has_real_budget" x-cloak
+                                            class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-emerald-700/10 text-emerald-700 border border-emerald-700/20"
+                                            :title="'From linked initiative: ' + cap.linked_initiative_name">Live</span>
+                                        <span x-show="!cap.has_real_budget" x-cloak
+                                            class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-amber-700/10 text-amber-700 border border-amber-700/20"
+                                            title="Scoring-based estimate — no linked initiative">Est.</span>
+                                    </div>
+                                </td>
+                                <td class="p-4">
+                                    <template x-if="cap.has_real_budget && cap.linked_initiative_name">
+                                        <div class="text-xs">
+                                            <div class="font-medium text-foreground truncate max-w-[140px]"
+                                                :title="cap.linked_initiative_name"
+                                                x-text="cap.linked_initiative_name"></div>
+                                            <div class="text-muted-foreground"
+                                                x-text="'$' + (cap.linked_initiative_budget / 1000).toFixed(0) + 'k allocated'"></div>
+                                        </div>
+                                    </template>
+                                    <template x-if="!cap.has_real_budget || !cap.linked_initiative_name">
+                                        <span class="text-xs text-muted-foreground">&mdash;</span>
+                                    </template>
+                                </td>
+                                <td class="p-4 text-sm" x-text="cap.investment_need.timeframe"></td>
+                                <td class="p-4 text-sm text-muted-foreground" x-text="cap.recommendation"></td>
+                                <td class="p-4">
+                                    <div class="flex items-center gap-2">
+                                        <button
+                                            @click="$dispatch('open-roi-calculator', normalizeCapability(cap))"
+                                            class="inline-flex items-center gap-1 px-3 py-1 text-xs font-medium text-success hover:text-success bg-success/5 hover:bg-success/10 dark:bg-success/20 dark:hover:bg-success/30 dark:text-success/80 rounded-md transition-colors"
+                                            title="Calculate ROI"
+                                            aria-label="Calculate ROI">
+                                            <i data-lucide="calculator" class="h-3 w-3" aria-hidden="true"></i>
+                                            Calculate ROI
+                                        </button>
+                                        <button
+                                            @click="$dispatch('open-arb-submission-modal', normalizeCapability(cap))"
+                                            class="inline-flex items-center gap-1 px-3 py-1 text-xs font-medium text-primary hover:text-primary bg-primary/5 hover:bg-primary/10 dark:bg-primary/20 dark:hover:bg-primary/30 dark:text-primary/80 rounded-md transition-colors"
+                                            title="Submit to Architecture Review Board"
+                                            aria-label="Submit to ARB">
+                                            <i data-lucide="shield-check" class="h-3 w-3" aria-hidden="true"></i>
+                                            Submit to ARB
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        </template>
+                        <tr x-show="filteredItems.length === 0" x-cloak>
+                            <td colspan="13" class="p-12 text-center text-muted-foreground">
+                                No capabilities match the current filter.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Pagination Controls -->
+            <div x-show="totalPages > 1" x-cloak class="flex items-center justify-between mt-4 pt-4 border-t">
+                <div class="text-sm text-muted-foreground">
+                    Showing
+                    <span x-text="rangeStart"></span>–<span x-text="rangeEnd"></span>
+                    of <span x-text="filteredItems.length"></span> capabilities
+                </div>
+                <div class="flex items-center gap-2">
+                    <button @click="currentPage--; syncSelectAll()" :disabled="currentPage === 1"
+                        class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-3 disabled:opacity-50 disabled:pointer-events-none"
+                        aria-label="Previous page">
+                        <i data-lucide="chevron-left" class="h-4 w-4" aria-hidden="true"></i>
+                        Previous
+                    </button>
+                    <span class="inline-flex items-center px-3 text-sm text-muted-foreground"
+                          x-text="currentPage + ' / ' + totalPages"></span>
+                    <button @click="currentPage++; syncSelectAll()" :disabled="currentPage === totalPages"
+                        class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-3 disabled:opacity-50 disabled:pointer-events-none"
+                        aria-label="Next page">
+                        Next
+                        <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
+                    </button>
+                </div>
+            </div>
+            <!-- Showing count when single page -->
+            <div x-show="totalPages <= 1 && filteredItems.length > 0" x-cloak class="mt-4 pt-4 border-t text-sm text-muted-foreground">
+                Showing all <span x-text="filteredItems.length"></span> capabilities
+            </div>
+        </div>
+    </div>
+
+    <!-- Investment Recommendations -->
+    <div class="rounded-lg border bg-card text-card-foreground shadow-sm">
+        <div class="flex flex-col space-y-1.5 p-6 pb-3">
+            <h3 class="text-2xl font-semibold leading-none tracking-tight">Strategic Investment Recommendations</h3>
+        </div>
+        <div class="p-6 pt-0">
+            <div class="space-y-4">
+                {% for rec in recommendations %}
+                <div class="p-4 rounded-md border {% if rec.priority == 'CRITICAL' %}border-destructive bg-destructive/10{% elif rec.priority == 'HIGH' %}border-warning bg-warning/10{% else %}border-primary bg-primary/10{% endif %}">
+                    <h4 class="font-semibold mb-2">{{ rec.type }}: {{ rec.capability }}</h4>
+                    <p class="text-sm mb-1"><strong>Justification:</strong> {{ rec.justification }}</p>
+                    <p class="text-sm mb-1"><strong>Timeframe:</strong> {{ rec.timeframe }} | <strong>Expected ROI:</strong> {{ rec.expected_roi }}</p>
+                    {% if rec.estimated_cost is number %}
+                    <p class="text-sm"><strong>Estimated Cost:</strong> ${{ "%.0f"|format(rec.estimated_cost/1000) }}k</p>
+                    {% else %}
+                    <p class="text-sm"><strong>Estimated Cost:</strong> {{ rec.estimated_cost }}</p>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Priority Distribution Chart -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div class="rounded-lg border bg-card text-card-foreground shadow-sm">
+            <div class="flex flex-col space-y-1.5 p-6 pb-3">
+                <h3 class="text-2xl font-semibold leading-none tracking-tight">Priority Distribution</h3>
+            </div>
+            <div class="p-6 pt-0">
+                <canvas id="priorityChart"></canvas>
+            </div>
+        </div>
+
+        <div class="rounded-lg border bg-card text-card-foreground shadow-sm">
+            <div class="flex flex-col space-y-1.5 p-6 pb-3">
+                <h3 class="text-2xl font-semibold leading-none tracking-tight">Investment Allocation</h3>
+            </div>
+            <div class="p-6 pt-0">
+                <canvas id="investmentChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function investmentMatrix() {
+    return {
+        capabilities: INVESTMENT_CAPABILITIES,
+        search: '',
+        priorityFilter: '',
+        perPage: 25,
+        currentPage: 1,
+        selectAll: false,
+        selectedIds: [],
+
+        get filteredItems() {
+            const q = this.search.toLowerCase().trim();
+            return this.capabilities.filter(cap => {
+                const matchSearch = !q ||
+                    (cap.capability_name || '').toLowerCase().includes(q) ||
+                    (cap.capability_domain || '').toLowerCase().includes(q);
+                const matchPriority = !this.priorityFilter || cap.priority_level === this.priorityFilter;
+                return matchSearch && matchPriority;
+            });
+        },
+
+        get totalPages() {
+            return Math.max(1, Math.ceil(this.filteredItems.length / this.perPage));
+        },
+
+        get pagedItems() {
+            const start = (this.currentPage - 1) * this.perPage;
+            return this.filteredItems.slice(start, start + this.perPage);
+        },
+
+        get rangeStart() {
+            if (this.filteredItems.length === 0) return 0;
+            return (this.currentPage - 1) * this.perPage + 1;
+        },
+
+        get rangeEnd() {
+            return Math.min(this.currentPage * this.perPage, this.filteredItems.length);
+        },
+
+        capabilityKey(capability) {
+            return String(capability?.capability_id ?? capability?.id ?? '');
+        },
+
+        normalizeCapability(capability) {
+            const estimatedCost = Number(capability?.investment_need?.estimated_cost ?? capability?.estimated_cost ?? 0);
+            const timeframe = capability?.investment_need?.timeframe ?? capability?.timeframe ?? '';
+            return {
+                ...capability,
+                id: capability?.id ?? capability?.capability_id,
+                name: capability?.name ?? capability?.capability_name,
+                estimated_investment: capability?.estimated_investment ?? (estimatedCost / 1000000).toFixed(1),
+                investment_need: {
+                    ...(capability?.investment_need || {}),
+                    estimated_cost: estimatedCost,
+                    timeframe
+                }
+            };
+        },
+
+        isSelected(capability) {
+            return this.selectedIds.includes(this.capabilityKey(capability));
+        },
+
+        syncSelectAll() {
+            const pageIds = this.pagedItems.map(c => this.capabilityKey(c));
+            this.selectAll = pageIds.length > 0 && pageIds.every(id => this.selectedIds.includes(id));
+        },
+
+        toggleItem(capability, checked) {
+            const id = this.capabilityKey(capability);
+            if (checked) {
+                if (!this.selectedIds.includes(id)) {
+                    this.selectedIds.push(id);
+                }
+            } else {
+                this.selectedIds = this.selectedIds.filter(selectedId => selectedId !== id);
+            }
+            this.syncSelectAll();
+        },
+
+        toggleAll(checked) {
+            const pageIds = this.pagedItems.map(c => this.capabilityKey(c));
+            if (checked) {
+                this.selectedIds = Array.from(new Set([...this.selectedIds, ...pageIds]));
+            } else {
+                this.selectedIds = this.selectedIds.filter(id => !pageIds.includes(id));
+            }
+            this.syncSelectAll();
+        },
+
+        bulkSubmitToARB() {
+            const selected = this.capabilities.filter(c => this.selectedIds.includes(this.capabilityKey(c)));
+            selected.forEach(cap => {
+                this.$dispatch('open-arb-submission-modal', this.normalizeCapability(cap));
+            });
+        },
+
+        exportSelected() {
+            const selected = this.capabilities.filter(c => this.selectedIds.includes(this.capabilityKey(c)));
+            const headers = ['Capability', 'Domain', 'Strategic Score', 'Coverage', 'Risk', 'Total Score', 'Priority', 'Investment ($k)', 'Initiative', 'Timeframe', 'Recommendation'];
+            const rows = selected.map(c => [
+                c.capability_name,
+                c.capability_domain,
+                c.strategic_score + '/25',
+                c.coverage_count + ' apps',
+                c.risk_score + '/25',
+                c.investment_priority_score + '/100',
+                c.priority_level,
+                (c.investment_need.estimated_cost / 1000).toFixed(1),
+                c.linked_initiative_name || '',
+                c.investment_need.timeframe,
+                c.recommendation
+            ]);
+            const csv = [headers, ...rows].map(r => r.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',')).join('\n');
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'investment_priorities_export.csv';
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+    };
+}
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+// Priority Distribution Chart
+const priorityCtx = document.getElementById('priorityChart').getContext('2d');
+new Chart(priorityCtx, {
+    type: 'doughnut',
+    data: {
+        labels: ['Critical', 'High', 'Medium', 'Low'],
+        datasets: [{
+            data: [
+                {{ critical_investments|length }},
+                {{ high_investments|length }},
+                {{ medium_investments|length }},
+                {{ low_investments|length }}
+            ],
+            backgroundColor: ['#ef4444', '#f59e0b', '#06b6d4', '#6b7280']
+        }]
+    },
+    options: {
+        responsive: true,
+        plugins: {
+            legend: {
+                position: 'bottom'
+            }
+        }
+    }
+});
+
+// Investment Allocation Chart
+const investmentCtx = document.getElementById('investmentChart').getContext('2d');
+new Chart(investmentCtx, {
+    type: 'bar',
+    data: {
+        labels: ['Critical', 'High', 'Medium', 'Low'],
+        datasets: [{
+            label: 'Investment ($k)',
+            data: [
+                {{ "%.1f"|format(portfolio_metrics.critical_investment/1000) }},
+                {{ "%.1f"|format(portfolio_metrics.high_investment/1000) }},
+                {{ "%.1f"|format((portfolio_metrics.total_estimated_investment - portfolio_metrics.critical_investment - portfolio_metrics.high_investment)/1000) }},
+                {{ "%.1f"|format(0) }}
+            ],
+            backgroundColor: ['#ef4444', '#f59e0b', '#06b6d4', '#6b7280']
+        }]
+    },
+    options: {
+        responsive: true,
+        scales: {
+            y: {
+                beginAtZero: true,
+                title: {
+                    display: true,
+                    text: 'Investment ($k)'
+                }
+            }
+        }
+    }
+});
+</script>
+
+<!-- ROI Calculator Utilities -->
+<script src="{{ url_for('static', filename='js/roi_calculator.js') }}"></script>
+
+<!-- LLM-Powered Recommendations -->
+{% from 'components/llm_recommendations.html' import llm_recommendations %}
+
+{{ llm_recommendations(
+    dashboard='investment_matrix',
+    context_data={
+        'organization': {
+            'industry': 'general',
+            'size': 'medium',
+            'risk_tolerance': 'moderate'
+        },
+        'capability_scores': capability_scores[:15],
+        'portfolio_metrics': portfolio_metrics,
+        'critical_investments': critical_investments[:5],
+        'budget_constraints': 'not specified'
+    }
+) }}
+
+{% from 'components/arb_submission_modal.html' import arb_submission_modal %}
+{% from 'components/roi_calculator_modal.html' import roi_calculator_modal %}
+{% from 'components/scenario_comparison_modal.html' import scenario_comparison_modal %}
+
+{{ arb_submission_modal() }}
+{{ roi_calculator_modal() }}
+{{ scenario_comparison_modal(capability_scores) }}
+
+{% from 'components/initiative_modal.html' import initiative_modal %}
+
+{{ initiative_modal(
+    id='investment-proposal-modal',
+    title='Create Investment Proposal',
+    endpoint='/strategic/api/initiatives/from-investment',
+    fields=[
+        {'name': 'title', 'type': 'text', 'label': 'Proposal Title', 'required': True, 'placeholder': 'e.g., Customer Service Platform Investment'},
+        {'name': 'description', 'type': 'textarea', 'label': 'Business Case', 'required': True, 'placeholder': 'Describe the investment rationale...'},
+        {'name': 'priority', 'type': 'select', 'label': 'Priority', 'required': True, 'options': [('high', 'High'), ('medium', 'Medium'), ('low', 'Low')], 'value': 'high'},
+        {'name': 'owner', 'type': 'text', 'label': 'Owner', 'required': True, 'placeholder': 'Executive sponsor'},
+        {'name': 'budget', 'type': 'number', 'label': 'Requested Budget ($)', 'required': True, 'placeholder': '0'},
+        {'name': 'expected_roi', 'type': 'text', 'label': 'Expected ROI', 'required': False, 'placeholder': 'e.g., 200% in 2 years'}
+    ]
+) }}
+
+{% endblock %}

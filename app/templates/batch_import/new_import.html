@@ -1,0 +1,830 @@
+{% extends 'layouts/admin_base.html' %}
+{% from 'components/page_header.html' import page_header %}
+{% import 'components/card.html' as card %}
+{% import 'components/breadcrumb.html' as breadcrumb %}
+{% import 'components/tabs.html' as tabs %}
+
+{% block title %}New Batch Import{% endblock %}
+
+{% block content %}
+<div class="space-y-6" x-data="newImportForm()">
+    <!-- Breadcrumb -->
+    {% call breadcrumb.breadcrumb() %}
+        {% call breadcrumb.breadcrumb_item(href=url_for('admin.dashboard')) %}
+            <i data-lucide="home" class="h-4 w-4" aria-hidden="true"></i>
+        {% endcall %}
+        {{ breadcrumb.breadcrumb_separator() }}
+        {% call breadcrumb.breadcrumb_item(href=url_for('batch_import_view.dashboard')) %}
+            Batch Import
+        {% endcall %}
+        {{ breadcrumb.breadcrumb_separator() }}
+        {% call breadcrumb.breadcrumb_item(active=true) %}
+            New Import
+        {% endcall %}
+    {% endcall %}
+
+    <!-- Page Header -->
+    {{ page_header(
+        title='New Batch Import',
+        description='Import applications and generate ArchiMate elements using AI'
+    ) }}
+
+    <form @submit.prevent="submitForm()" class="space-y-6">
+        <div class="grid gap-6 lg:grid-cols-3">
+            <!-- Main Form Section -->
+            <div class="lg:col-span-2 space-y-6">
+                <!-- Job Configuration Card -->
+                {% call card.card() %}
+                    <div class="p-6">
+                        <h2 class="text-lg font-semibold mb-4">Job Configuration</h2>
+
+                        <div class="space-y-4">
+                            <!-- Job Name -->
+                            <div>
+                                <label for="jobName" class="text-sm font-medium">
+                                    Job Name <span class="text-destructive">*</span>
+                                </label>
+                                <input
+                                    type="text"
+                                    id="jobName"
+                                    x-model="form.name"
+                                    placeholder="e.g., Q1 2024 Application Import"
+                                    required
+                                    class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring mt-1"
+                                />
+                                <p class="text-xs text-muted-foreground mt-1">A descriptive name to identify this import job</p>
+                            </div>
+
+                            <!-- ArchiMate Mode -->
+                            <div>
+                                <label class="text-sm font-medium">
+                                    ArchiMate Generation Mode <span class="text-destructive">*</span>
+                                </label>
+                                <div class="grid grid-cols-3 gap-3 mt-2">
+                                    <template x-for="mode in archimateModesOptions" :key="mode.value">
+                                        <label
+                                            :class="{
+                                                'border-primary bg-primary/5 ring-2 ring-primary': form.archimate_mode === mode.value,
+                                                'border-border hover:border-primary/50': form.archimate_mode !== mode.value
+                                            }"
+                                            class="relative flex cursor-pointer rounded-lg border p-4 transition-all"
+                                        >
+                                            <input
+                                                type="radio"
+                                                x-model="form.archimate_mode"
+                                                :value="mode.value"
+                                                class="sr-only"
+                                             aria-label="Radio field"/>
+                                            <div class="flex flex-col">
+                                                <span class="font-medium" x-text="mode.label"></span>
+                                                <span class="text-xs text-muted-foreground mt-1" x-text="mode.description"></span>
+                                                <div class="flex items-center gap-2 mt-2">
+                                                    <span class="text-xs px-2 py-0.5 rounded-full" :class="mode.speedClass" x-text="mode.speed"></span>
+                                                    <span class="text-xs px-2 py-0.5 rounded-full" :class="mode.costClass" x-text="mode.cost"></span>
+                                                </div>
+                                            </div>
+                                        </label>
+                                    </template>
+                                </div>
+                            </div>
+
+                            <!-- PROG-002: Transformation Programme target -->
+                            <div>
+                                <label for="programme-target" class="text-sm font-medium">Transformation Programme <span class="text-muted-foreground font-normal">(optional)</span></label>
+                                <select id="programme-target" x-model="form.programme_initiative_id"
+                                        class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm mt-1">
+                                    <option value="">— None — import without programme linkage —</option>
+                                    <template x-for="p in programmes" :key="p.id">
+                                        <option :value="p.id" x-text="p.name + ' (' + p.initiative_type + ')'"></option>
+                                    </template>
+                                </select>
+                                <p class="text-xs text-muted-foreground mt-1">
+                                    Committed systems are linked to the programme's current-state baseline solution —
+                                    SAP landscape exports (SID / Product / Environment columns) are detected and normalised automatically.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                {% endcall %}
+
+                <!-- Data Source Card -->
+                {% call card.card() %}
+                    <div class="p-6">
+                        <h2 class="text-lg font-semibold mb-4">Data Source</h2>
+
+                        {% call tabs.tabs(default_value='file') %}
+                            {% call tabs.tabs_list(class='w-full justify-start') %}
+                                {% call tabs.tabs_trigger(value='file') %}
+                                    <i data-lucide="upload" class="h-4 w-4 mr-2" aria-hidden="true"></i>
+                                    Upload File
+                                {% endcall %}
+                                {% call tabs.tabs_trigger(value='paste') %}
+                                    <i data-lucide="clipboard" class="h-4 w-4 mr-2" aria-hidden="true"></i>
+                                    Paste Data
+                                {% endcall %}
+                                {% call tabs.tabs_trigger(value='existing') %}
+                                    <i data-lucide="database" class="h-4 w-4 mr-2" aria-hidden="true"></i>
+                                    Existing Applications
+                                {% endcall %}
+                            {% endcall %}
+
+                            {% call tabs.tabs_content(value='file') %}
+                                <div class="pt-4">
+                                    <div
+                                        @dragover.prevent="dragOver = true"
+                                        @dragleave.prevent="dragOver = false"
+                                        @drop.prevent="handleFileDrop($event)"
+                                        :class="{ 'border-primary bg-primary/5': dragOver }"
+                                        class="relative border-2 border-dashed rounded-lg p-8 text-center transition-colors"
+                                    >
+                                        <label for="fileUpload">Field</label>
+    <input
+                                            type="file"
+                                            id="fileUpload"
+                                            @change="handleFileSelect($event)"
+                                            accept=".csv,.xlsx,.xls"
+                                            class="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                        />
+                                        <div class="flex flex-col items-center">
+                                            <i data-lucide="upload-cloud" class="h-12 w-12 text-muted-foreground mb-4" aria-hidden="true"></i>
+                                            <p class="text-sm font-medium">
+                                                <span class="text-primary">Click to upload</span> or drag and drop
+                                            </p>
+                                            <p class="text-xs text-muted-foreground mt-1">CSV or Excel files (max 10MB)</p>
+                                        </div>
+                                    </div>
+
+                                    <!-- Selected File Display -->
+                                    <div x-show="form.file" x-cloak class="mt-4 p-4 rounded-lg border bg-muted/30">
+                                        <div class="flex items-center justify-between">
+                                            <div class="flex items-center gap-3">
+                                                <i data-lucide="file-spreadsheet" class="h-8 w-8 text-success" aria-hidden="true"></i>
+                                                <div>
+                                                    <p class="text-sm font-medium" x-text="form.file?.name"></p>
+                                                    <p class="text-xs text-muted-foreground" x-text="formatFileSize(form.file?.size)"></p>
+                                                </div>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                @click="form.file = null; form.source_type = null; previewData = []"
+                                                class="text-muted-foreground hover:text-destructive transition-colors"
+                                             aria-label="Action">
+                                                <i data-lucide="x" class="h-5 w-5" aria-hidden="true"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            {% endcall %}
+
+                            {% call tabs.tabs_content(value='paste') %}
+                                <div class="pt-4 space-y-4">
+                                    <div>
+                                        <label class="text-sm font-medium">Paste CSV Data</label>
+                                        <textarea
+                                            x-model="form.paste_data"
+                                            @input="form.source_type = 'paste'; parsePasteData()"
+                                            placeholder="name,description,vendor,technology&#10;App1,Description of App1,Vendor A,Java&#10;App2,Description of App2,Vendor B,Python"
+                                            rows="10"
+                                            class="flex min-h-[200px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring mt-1"
+                                        ></textarea>
+                                        <p class="text-xs text-muted-foreground mt-1">
+                                            Paste CSV data with headers. First row should contain column names.
+                                        </p>
+                                    </div>
+                                </div>
+                            {% endcall %}
+
+                            {% call tabs.tabs_content(value='existing') %}
+                                <div class="pt-4 space-y-4">
+                                    <div class="flex items-center gap-4">
+                                        <div class="relative flex-1">
+                                            <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden="true"></i>
+                                            <input
+                                                type="text"
+                                                x-model="appSearchQuery"
+                                                @input="searchApplications()"
+                                                placeholder="Search applications..."
+                                                class="flex h-10 w-full rounded-md border border-input bg-background pl-10 pr-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                             aria-label="Search applications..."/>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            @click="selectAllApplications()"
+                                            class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent h-10 px-4 py-2 transition-colors"
+                                         aria-label="Action">
+                                            Select All
+                                        </button>
+                                    </div>
+
+                                    <div class="border rounded-lg max-h-64 overflow-y-auto">
+                                        <template x-if="loadingApplications">
+                                            <div class="p-8 text-center">
+                                                <i data-lucide="loader-2" class="h-6 w-6 animate-spin mx-auto text-muted-foreground" aria-hidden="true"></i>
+                                                <p class="text-sm text-muted-foreground mt-2">Loading applications...</p>
+                                            </div>
+                                        </template>
+                                        <template x-if="!loadingApplications && availableApplications.length === 0">
+                                            <div class="p-8 text-center">
+                                                <i data-lucide="inbox" class="h-8 w-8 mx-auto text-muted-foreground" aria-hidden="true"></i>
+                                                <p class="text-sm text-muted-foreground mt-2">No applications found</p>
+                                            </div>
+                                        </template>
+                                        <template x-for="app in availableApplications" :key="app.id">
+                                            <label class="flex items-center gap-3 p-3 hover:bg-muted/50 cursor-pointer border-b last:border-b-0">
+                                                <input
+                                                    type="checkbox"
+                                                    :value="app.id"
+                                                    :checked="form.selected_applications.includes(app.id)"
+                                                    @change="toggleApplication(app.id)"
+                                                    class="h-4 w-4 rounded border-primary"
+                                                 aria-label="Checkbox field"/>
+                                                <div class="flex-1">
+                                                    <p class="text-sm font-medium" x-text="app.name"></p>
+                                                    <p class="text-xs text-muted-foreground" x-text="app.description || 'No description'"></p>
+                                                </div>
+                                                <span class="text-xs text-muted-foreground" x-text="app.vendor"></span>
+                                            </label>
+                                        </template>
+                                    </div>
+
+                                    <div x-show="form.selected_applications.length > 0" x-cloak class="text-sm text-muted-foreground">
+                                        <span x-text="form.selected_applications.length"></span> applications selected
+                                    </div>
+                                </div>
+                            {% endcall %}
+                        {% endcall %}
+                    </div>
+                {% endcall %}
+
+                <!-- Processing Options Card -->
+                {% call card.card() %}
+                    <div class="p-6">
+                        <h2 class="text-lg font-semibold mb-4">Processing Options</h2>
+
+                        <div class="space-y-6">
+                            <!-- Batch Size -->
+                            <div>
+                                <label class="text-sm font-medium">Batch Size</label>
+                                <div class="flex items-center gap-4 mt-2">
+                                    <input
+                                        type="range"
+                                        x-model="form.batch_size"
+                                        min="5"
+                                        max="50"
+                                        step="5"
+                                        class="flex-1 h-2 bg-secondary rounded-lg appearance-none cursor-pointer"
+                                     aria-label="Range field"/>
+                                    <span class="text-sm font-medium w-16 text-right" x-text="form.batch_size + ' apps'"></span>
+                                </div>
+                                <p class="text-xs text-muted-foreground mt-1">
+                                    Number of applications per batch. Smaller batches allow for more granular progress tracking.
+                                </p>
+                            </div>
+
+                            <!-- Budget Limit -->
+                            <div>
+                                <div class="flex items-center justify-between">
+                                    <label class="text-sm font-medium">Budget Limit (Optional)</label>
+                                    <button
+                                        type="button"
+                                        @click="form.budget_limit = form.budget_limit ? null : 10"
+                                        class="text-xs text-primary hover:underline"
+                                        x-text="form.budget_limit ? 'Remove limit' : 'Set limit'"
+                                     aria-label="Action"></button>
+                                </div>
+                                <div x-show="form.budget_limit !== null" x-cloak class="mt-2">
+                                    <div class="relative">
+                                        <span class="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                                        <input
+                                            type="number"
+                                            x-model="form.budget_limit"
+                                            min="1"
+                                            step="1"
+                                            placeholder="10.00"
+                                            class="flex h-10 w-full rounded-md border border-input bg-background pl-8 pr-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                         aria-label="10.00"/>
+                                    </div>
+                                    <p class="text-xs text-muted-foreground mt-1">
+                                        Processing will pause if the budget is exceeded.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <!-- AI Generation Toggle -->
+                            <div class="flex items-center justify-between p-4 rounded-lg border">
+                                <div>
+                                    <p class="font-medium">AI Element Generation</p>
+                                    <p class="text-sm text-muted-foreground">
+                                        Use AI to generate ArchiMate elements from application data
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    @click="form.ai_generation = !form.ai_generation"
+                                    :class="form.ai_generation ? 'bg-primary' : 'bg-input'"
+                                    class="relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full transition-colors"
+                                 aria-label="Action">
+                                    <span
+                                        :class="form.ai_generation ? 'translate-x-5' : 'translate-x-0'"
+                                        class="pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg ring-0 transition-transform translate-y-0.5 ml-0.5"
+                                    ></span>
+                                </button>
+                            </div>
+
+                            <!-- Auto Commit Toggle -->
+                            <div class="flex items-center justify-between p-4 rounded-lg border">
+                                <div>
+                                    <p class="font-medium">Auto-commit High Confidence</p>
+                                    <p class="text-sm text-muted-foreground">
+                                        Automatically commit elements with confidence score above 90%
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    @click="form.auto_commit = !form.auto_commit"
+                                    :class="form.auto_commit ? 'bg-primary' : 'bg-input'"
+                                    class="relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full transition-colors"
+                                 aria-label="Action">
+                                    <span
+                                        :class="form.auto_commit ? 'translate-x-5' : 'translate-x-0'"
+                                        class="pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg ring-0 transition-transform translate-y-0.5 ml-0.5"
+                                    ></span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                {% endcall %}
+            </div>
+
+            <!-- Sidebar - Preview and Cost Estimate -->
+            <div class="space-y-6">
+                <!-- Preview Card -->
+                {% call card.card() %}
+                    <div class="p-6">
+                        <h2 class="text-lg font-semibold mb-4">Data Preview</h2>
+
+                        <template x-if="previewData.length === 0">
+                            <div class="text-center py-8">
+                                <i data-lucide="file-search" class="h-12 w-12 mx-auto text-muted-foreground" aria-hidden="true"></i>
+                                <p class="text-sm text-muted-foreground mt-2">
+                                    Upload a file or paste data to see a preview
+                                </p>
+                            </div>
+                        </template>
+
+                        <template x-if="previewData.length > 0">
+                            <div>
+                                <div class="flex items-center justify-between mb-3">
+                                    <span class="text-sm text-muted-foreground">
+                                        <span x-text="totalApplications"></span> applications found
+                                    </span>
+                                    <span class="text-xs text-muted-foreground">
+                                        Showing first 5
+                                    </span>
+                                </div>
+
+                                <div class="space-y-2 max-h-64 overflow-y-auto">
+                                    <template x-for="(row, index) in previewData.slice(0, 5)" :key="index">
+                                        <div class="p-3 rounded-lg border bg-muted/30 text-sm">
+                                            <p class="font-medium truncate" x-text="row.name || row[Object.keys(row)[0]]"></p>
+                                            <p class="text-xs text-muted-foreground truncate mt-1" x-text="row.description || row[Object.keys(row)[1]] || '-'"></p>
+                                        </div>
+                                    </template>
+                                </div>
+
+                                <div x-show="previewData.length > 5" x-cloak class="text-center mt-3">
+                                    <span class="text-xs text-muted-foreground">
+                                        + <span x-text="previewData.length - 5"></span> more applications
+                                    </span>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                {% endcall %}
+
+                <!-- Cost Estimate Card -->
+                {% call card.card() %}
+                    <div class="p-6">
+                        <h2 class="text-lg font-semibold mb-4">Cost Estimate</h2>
+
+                        <template x-if="!form.ai_generation">
+                            <div class="text-center py-4">
+                                <p class="text-sm text-muted-foreground">
+                                    AI generation is disabled. No LLM costs will be incurred.
+                                </p>
+                            </div>
+                        </template>
+
+                        <template x-if="form.ai_generation && totalApplications === 0">
+                            <div class="text-center py-4">
+                                <p class="text-sm text-muted-foreground">
+                                    Select data source to see cost estimate
+                                </p>
+                            </div>
+                        </template>
+
+                        <template x-if="form.ai_generation && totalApplications > 0">
+                            <div class="space-y-4">
+                                <div class="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                                    <span class="text-sm">Applications</span>
+                                    <span class="font-medium" x-text="totalApplications"></span>
+                                </div>
+
+                                <div class="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                                    <span class="text-sm">Batches</span>
+                                    <span class="font-medium" x-text="estimatedBatches"></span>
+                                </div>
+
+                                <div class="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                                    <span class="text-sm">Est. LLM Calls</span>
+                                    <span class="font-medium" x-text="estimatedLLMCalls"></span>
+                                </div>
+
+                                <div class="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                                    <span class="text-sm">Est. Tokens</span>
+                                    <span class="font-medium" x-text="estimatedTokens.toLocaleString()"></span>
+                                </div>
+
+                                <div class="border-t pt-4">
+                                    <div class="flex items-center justify-between">
+                                        <span class="font-medium">Estimated Cost</span>
+                                        <span class="text-xl font-bold text-primary" x-text="'$' + estimatedCost.toFixed(2)"></span>
+                                    </div>
+                                    <p class="text-xs text-muted-foreground mt-1">
+                                        Based on current token prices. Actual cost may vary.
+                                    </p>
+                                </div>
+
+                                <template x-if="form.budget_limit && estimatedCost > form.budget_limit">
+                                    <div class="rounded-lg bg-warning/5 dark:bg-warning/20 border border-warning/20 dark:border-warning p-3">
+                                        <div class="flex items-start gap-2">
+                                            <i data-lucide="alert-triangle" class="h-4 w-4 text-warning mt-0.5" aria-hidden="true"></i>
+                                            <p class="text-xs text-warning dark:text-warning">
+                                                Estimated cost exceeds your budget limit of $<span x-text="form.budget_limit"></span>. Processing will pause when the budget is reached.
+                                            </p>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </template>
+                    </div>
+                {% endcall %}
+
+                <!-- Submit Button -->
+                {% call card.card() %}
+                    <div class="p-6">
+                        <button
+                            type="submit"
+                            :disabled="!canSubmit || submitting"
+                            class="w-full inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:pointer-events-none h-12 px-4 py-2 transition-colors"
+                         aria-label="Submit">
+                            <span x-show="!submitting" x-cloak class="flex items-center">
+                                <i data-lucide="upload" class="mr-2 h-5 w-5" aria-hidden="true"></i>
+                                Create Import Job
+                            </span>
+                            <span x-show="submitting" x-cloak class="flex items-center hidden">
+                                <i data-lucide="loader-2" class="mr-2 h-5 w-5 animate-spin" aria-hidden="true"></i>
+                                Creating...
+                            </span>
+                        </button>
+
+                        <p class="text-xs text-muted-foreground text-center mt-3">
+                            The job will be created in "Pending" status. You can start processing from the job detail page.
+                        </p>
+                    </div>
+                {% endcall %}
+            </div>
+        </div>
+    </form>
+</div>
+
+<script>
+function newImportForm() {
+    return {
+        form: {
+            name: '',
+            archimate_mode: 'standard',
+            source_type: null, // 'file', 'paste', 'existing'
+            file: null,
+            paste_data: '',
+            selected_applications: [],
+            batch_size: 10,
+            budget_limit: null,
+            ai_generation: true,
+            auto_commit: false,
+            programme_initiative_id: ''
+        },
+        programmes: [],
+        async loadProgrammes() {
+            try {
+                const r = await fetch('/solutions/programmes/api/list');
+                const d = await r.json();
+                this.programmes = d.programmes || [];
+            } catch (e) { this.programmes = []; }
+        },
+        dragOver: false,
+        previewData: [],
+        availableApplications: [],
+        loadingApplications: false,
+        appSearchQuery: '',
+        submitting: false,
+
+        archimateModesOptions: [
+            {
+                value: 'quick',
+                label: 'Quick',
+                description: 'Application Component + Application Service (ArchiMate 3.2 Application Layer basics)',
+                speed: 'Fast',
+                speedClass: 'bg-success/10 text-success',
+                cost: 'Low cost',
+                costClass: 'bg-success/10 text-success'
+            },
+            {
+                value: 'standard',
+                label: 'Standard',
+                description: 'Application Component, Service, Interface + Business Service, Process (Application & Business Layers)',
+                speed: 'Medium',
+                speedClass: 'bg-warning/10 text-warning',
+                cost: 'Medium cost',
+                costClass: 'bg-warning/10 text-warning'
+            },
+            {
+                value: 'comprehensive',
+                label: 'Comprehensive',
+                description: 'Full ArchiMate 3.2: Application, Business, Technology & Implementation layers with relationships',
+                speed: 'Slower',
+                speedClass: 'bg-destructive/10 text-destructive',
+                cost: 'Higher cost',
+                costClass: 'bg-destructive/10 text-destructive'
+            }
+        ],
+
+        init() {
+            this.loadAvailableApplications();
+            this.loadProgrammes();
+        },
+
+        get totalApplications() {
+            if (this.form.source_type === 'existing') {
+                return this.form.selected_applications.length;
+            }
+            return this.previewData.length;
+        },
+
+        get estimatedBatches() {
+            return Math.ceil(this.totalApplications / this.form.batch_size);
+        },
+
+        get estimatedLLMCalls() {
+            const callsPerApp = {
+                'quick': 1,
+                'standard': 2,
+                'comprehensive': 4
+            };
+            return this.totalApplications * (callsPerApp[this.form.archimate_mode] || 2);
+        },
+
+        get estimatedTokens() {
+            const tokensPerCall = {
+                'quick': 500,
+                'standard': 1000,
+                'comprehensive': 2000
+            };
+            return this.estimatedLLMCalls * (tokensPerCall[this.form.archimate_mode] || 1000);
+        },
+
+        get estimatedCost() {
+            // Approximate cost: $0.002 per 1000 tokens
+            return (this.estimatedTokens / 1000) * 0.002;
+        },
+
+        get canSubmit() {
+            if (!this.form.name.trim()) return false;
+            if (this.totalApplications === 0) return false;
+            return true;
+        },
+
+        formatFileSize(bytes) {
+            if (!bytes) return '';
+            const units = ['B', 'KB', 'MB', 'GB'];
+            let i = 0;
+            while (bytes >= 1024 && i < units.length - 1) {
+                bytes /= 1024;
+                i++;
+            }
+            return bytes.toFixed(1) + ' ' + units[i];
+        },
+
+        handleFileDrop(event) {
+            this.dragOver = false;
+            const file = event.dataTransfer.files[0];
+            if (file) {
+                this.processFile(file);
+            }
+        },
+
+        handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (file) {
+                this.processFile(file);
+            }
+        },
+
+        async processFile(file) {
+            const validTypes = [
+                'text/csv',
+                'application/vnd.ms-excel',
+                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            ];
+
+            const ext = file.name.split('.').pop().toLowerCase();
+            const validExtensions = ['csv', 'xls', 'xlsx'];
+
+            if (!validExtensions.includes(ext)) {
+                this.showToast('Please upload a CSV or Excel file', 'error');
+                return;
+            }
+
+            if (file.size > 10 * 1024 * 1024) {
+                this.showToast('File size must be less than 10MB', 'error');
+                return;
+            }
+
+            this.form.file = file;
+            this.form.source_type = 'file';
+
+            // Parse CSV for preview
+            if (ext === 'csv') {
+                const text = await file.text();
+                this.parseCSV(text);
+            } else {
+                // For Excel files, we'd need a library like SheetJS
+                // For now, show placeholder
+                this.previewData = [{ name: 'Excel file detected', description: 'Preview will be available after upload' }];
+            }
+        },
+
+        parseCSV(text) {
+            const lines = text.trim().split('\n');
+            if (lines.length < 2) {
+                this.previewData = [];
+                return;
+            }
+
+            const headers = lines[0].split(',').map(h => h.trim().replace(/^["']|["']$/g, ''));
+
+            this.previewData = lines.slice(1).map(line => {
+                const values = this.parseCSVLine(line);
+                const row = {};
+                headers.forEach((header, i) => {
+                    row[header] = values[i] || '';
+                });
+                return row;
+            }).filter(row => Object.values(row).some(v => v.trim()));
+        },
+
+        parseCSVLine(line) {
+            const result = [];
+            let current = '';
+            let inQuotes = false;
+
+            for (let i = 0; i < line.length; i++) {
+                const char = line[i];
+
+                if (char === '"') {
+                    inQuotes = !inQuotes;
+                } else if (char === ',' && !inQuotes) {
+                    result.push(current.trim());
+                    current = '';
+                } else {
+                    current += char;
+                }
+            }
+
+            result.push(current.trim());
+            return result;
+        },
+
+        parsePasteData() {
+            if (this.form.paste_data.trim()) {
+                this.parseCSV(this.form.paste_data);
+            } else {
+                this.previewData = [];
+            }
+        },
+
+        async loadAvailableApplications() {
+            this.loadingApplications = true;
+            try {
+                const response = await fetch('/capability-map/api/applications?limit=100');
+                const data = await response.json();
+                if (data.success) {
+                    this.availableApplications = data.applications || [];
+                }
+            } catch (error) {
+                console.error('Failed to load applications:', error);
+            } finally {
+                this.loadingApplications = false;
+            }
+        },
+
+        searchApplications() {
+            // Filter is done client-side for simplicity
+            // In production, this would be a server-side search
+        },
+
+        toggleApplication(appId) {
+            const idx = this.form.selected_applications.indexOf(appId);
+            if (idx > -1) {
+                this.form.selected_applications.splice(idx, 1);
+            } else {
+                this.form.selected_applications.push(appId);
+            }
+            this.form.source_type = 'existing';
+        },
+
+        selectAllApplications() {
+            const filteredIds = this.availableApplications
+                .filter(app => {
+                    if (!this.appSearchQuery) return true;
+                    const query = this.appSearchQuery.toLowerCase();
+                    return app.name.toLowerCase().includes(query) ||
+                           (app.description && app.description.toLowerCase().includes(query));
+                })
+                .map(app => app.id);
+
+            this.form.selected_applications = filteredIds;
+            this.form.source_type = 'existing';
+        },
+
+        async submitForm() {
+            if (!this.canSubmit) return;
+
+            this.submitting = true;
+
+            try {
+                const formData = new FormData();
+                formData.append('name', this.form.name);
+                formData.append('archimate_mode', this.form.archimate_mode);
+                if (this.form.programme_initiative_id) {
+                    formData.append('programme_initiative_id', this.form.programme_initiative_id);
+                }
+                formData.append('batch_size', this.form.batch_size);
+                formData.append('ai_generation', this.form.ai_generation);
+                formData.append('auto_commit', this.form.auto_commit);
+
+                if (this.form.budget_limit) {
+                    formData.append('budget_limit', this.form.budget_limit);
+                }
+
+                if (this.form.source_type === 'file' && this.form.file) {
+                    formData.append('file', this.form.file);
+                    formData.append('source_type', 'file');
+                } else if (this.form.source_type === 'paste') {
+                    formData.append('paste_data', this.form.paste_data);
+                    formData.append('source_type', 'paste');
+                } else if (this.form.source_type === 'existing') {
+                    formData.append('application_ids', JSON.stringify(this.form.selected_applications));
+                    formData.append('source_type', 'existing');
+                }
+
+                const response = await fetch('/api/batch-import/jobs', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    const jobId = data.job_id || (data.data && data.data.id) || (data.job && data.job.id);
+                    this.showToast('Import job created successfully', 'success');
+                    if (jobId) {
+                        window.location.href = `/batch-import/jobs/${jobId}`;
+                    }
+                } else {
+                    this.showToast(data.message || data.error || 'Failed to create import job', 'error');
+                }
+            } catch (error) {
+                console.error('Failed to create import job:', error);
+                this.showToast('Failed to create import job', 'error');
+            } finally {
+                this.submitting = false;
+            }
+        },
+
+        showToast(message, type = 'info') {
+            if (window.showToast) {
+                window.showToast(message, type);
+            } else {
+            }
+        }
+    };
+}
+</script>
+
+<script>
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
+</script>
+{% endblock %}

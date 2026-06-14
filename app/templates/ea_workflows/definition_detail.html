@@ -1,0 +1,476 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'components/page_header.html' import page_header %}
+
+{% block title %}{{ definition.workflow_name }}{% endblock %}
+
+{% block content %}
+{% set approval_steps = definition.steps|selectattr('requires_approval', 'defined')|selectattr('requires_approval')|list|length + definition.steps|selectattr('step_type', 'equalto', 'approval')|list|length %}
+{% set outputs_map = {
+    'APP_ONBOARDING': ['Application Portfolio Entry', 'APQC Process Mappings', 'ArchiMate Elements', 'Gap Analysis Report'],
+    'GAP_REMEDIATION': ['Gap Analysis Report', 'Remediation Roadmap', 'Task Assignments'],
+    'VENDOR_SELECTION': ['Vendor Scorecard', 'TCO Analysis', 'Implementation Roadmap', 'Board Decision'],
+    'COMPLIANCE_SCAN': ['Compliance Report', 'Violation Summary', 'Remediation Tasks'],
+    'ARCH_REVIEW': ['Completeness Report', 'Quality Scorecard', 'Updated ArchiMate Model'],
+    'ADM_PHASE_A_VISION': ['Architecture Vision Document', 'Stakeholder Map', 'Capability Assessment', 'Completion Summary'],
+} %}
+{% set prereqs_map = {
+    'APP_ONBOARDING': 'Select an application to onboard. Optionally attach a document describing the application.',
+    'GAP_REMEDIATION': 'Select an application to analyze for architecture gaps.',
+    'VENDOR_SELECTION': 'Select an application that needs a vendor solution.',
+    'COMPLIANCE_SCAN': 'Select an application to scan against active governance policies.',
+    'ARCH_REVIEW': 'Select an application whose architecture elements you want reviewed.',
+    'ADM_PHASE_A_VISION': 'Select an application as the focal point for the architecture vision.',
+} %}
+<div class="space-y-6">
+    <!-- Breadcrumbs -->
+    <nav class="flex items-center gap-2 text-sm text-muted-foreground mb-6" aria-label="Breadcrumb">
+        <a href="{{ url_for('main.index') }}" class="hover:text-foreground transition-colors">Dashboard</a>
+        <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
+        <a href="{{ url_for('main.ea_workflows_dashboard') }}" class="hover:text-foreground transition-colors">EA Workflows</a>
+        <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
+        <span class="text-foreground font-medium">{{ definition.workflow_name }}</span>
+    </nav>
+
+    <!-- Page Header -->
+    <div class="rounded-xl border-2 border-input bg-background p-6">
+        <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+            <div class="flex-1">
+                <div class="flex items-center gap-3 mb-2">
+                    <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
+                        {% if definition.workflow_category == 'application_management' %}
+                        <i data-lucide="app-window" class="h-6 w-6 text-primary" aria-hidden="true"></i>
+                        {% elif definition.workflow_category == 'vendor_management' %}
+                        <i data-lucide="building" class="h-6 w-6 text-primary" aria-hidden="true"></i>
+                        {% elif definition.workflow_category == 'compliance' %}
+                        <i data-lucide="shield" class="h-6 w-6 text-primary" aria-hidden="true"></i>
+                        {% elif definition.workflow_category == 'gap_analysis' %}
+                        <i data-lucide="search" class="h-6 w-6 text-primary" aria-hidden="true"></i>
+                        {% elif definition.workflow_category == 'togaf_adm' %}
+                        <i data-lucide="landmark" class="h-6 w-6 text-primary" aria-hidden="true"></i>
+                        {% else %}
+                        <i data-lucide="workflow" class="h-6 w-6 text-primary" aria-hidden="true"></i>
+                        {% endif %}
+                    </div>
+                    <div>
+                        <h1 class="text-2xl font-bold">{{ definition.workflow_name }}</h1>
+                        {% if definition.adm_phase %}
+                        <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-primary/10 text-primary mt-1">
+                            TOGAF Phase {{ definition.adm_phase }}: {{ definition.adm_phase_name }}
+                        </span>
+                        {% endif %}
+                    </div>
+                </div>
+                <p class="text-muted-foreground mt-3 max-w-2xl">{{ definition.workflow_description }}</p>
+
+                <div class="flex items-center gap-3 mt-4 flex-wrap">
+                    <span class="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium bg-muted">
+                        <i data-lucide="layers" class="h-3 w-3" aria-hidden="true"></i>
+                        {{ definition.steps|length }} steps
+                    </span>
+                    {% if approval_steps > 0 %}
+                    <span class="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium bg-warning/10 text-warning">
+                        <i data-lucide="hand" class="h-3 w-3" aria-hidden="true"></i>
+                        {{ approval_steps }} approval{{ 's' if approval_steps > 1 else '' }} required
+                    </span>
+                    {% endif %}
+                    <span class="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium
+                        {% if definition.automation_level == 'automated' %}bg-success/10 text-success
+                        {% elif definition.automation_level == 'assisted' %}bg-primary/10 text-primary
+                        {% else %}bg-muted text-foreground/80{% endif %}">
+                        <i data-lucide="{% if definition.automation_level == 'automated' %}bot{% elif definition.automation_level == 'assisted' %}sparkles{% else %}users{% endif %}" class="h-3 w-3" aria-hidden="true"></i>
+                        {{ definition.automation_level|title }}
+                    </span>
+                    <span class="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium bg-muted">
+                        {{ definition.workflow_category|replace('_', ' ')|title }}
+                    </span>
+                </div>
+            </div>
+            <div class="flex flex-wrap items-center gap-2 shrink-0">
+                {% if definition.workflow_code == 'ADM_PHASE_A_VISION' %}
+                <a href="#vision-deliverable-launcher"
+                   class="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg border border-input bg-background hover:bg-accent transition-colors font-medium">
+                    <i data-lucide="file-pen-line" class="h-4 w-4" aria-hidden="true"></i>
+                    Create Vision Deliverable
+                </a>
+                {% endif %}
+                <a href="{{ url_for('main.ea_workflows_dashboard') }}?start={{ definition.workflow_code }}"
+                   class="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors font-medium">
+                    <i data-lucide="play" class="h-4 w-4" aria-hidden="true"></i>
+                    Start Workflow
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Main Content -->
+        <div class="lg:col-span-2 space-y-6">
+
+            <!-- Before You Start -->
+            {% if prereqs_map.get(definition.workflow_code) %}
+            <div class="rounded-xl border-2 border-primary/20 bg-primary/5 p-5">
+                <div class="flex items-start gap-3">
+                    <i data-lucide="info" class="h-5 w-5 text-primary shrink-0 mt-0.5" aria-hidden="true"></i>
+                    <div>
+                        <h3 class="font-semibold text-sm">Before you start</h3>
+                        <p class="text-sm text-muted-foreground mt-1">{{ prereqs_map[definition.workflow_code] }}</p>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            {% if definition.workflow_code == 'ADM_PHASE_A_VISION' %}
+            <div id="vision-deliverable-launcher" class="rounded-xl border-2 border-primary/20 bg-primary/5 p-6" data-testid="vision-deliverable-launcher">
+                <div class="flex items-start gap-3">
+                    <i data-lucide="file-pen-line" class="h-5 w-5 text-primary shrink-0 mt-0.5" aria-hidden="true"></i>
+                    <div class="w-full">
+                        <h2 class="text-lg font-semibold">Create Architecture Vision deliverable</h2>
+                        <p class="text-sm text-muted-foreground mt-1">
+                            Launch the section-based TOGAF Vision editor with canonical prefills, traceability, readiness checks, and downstream ADM handoff guidance.
+                        </p>
+                        <form method="get" action="{{ url_for('main.ea_workflow_vision_deliverable_editor') }}" class="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <input type="hidden" name="workflow_code" value="{{ definition.workflow_code }}">
+                            <div>
+                                <label for="project_name" class="block text-sm font-medium mb-1">Project or initiative name</label>
+                                <input id="project_name" name="project_name" type="text" required value="{{ definition.workflow_name }}" class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm">
+                            </div>
+                            <div>
+                                <label for="application_id" class="block text-sm font-medium mb-1">Application context (optional)</label>
+                                <select id="application_id" name="application_id" class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm">
+                                    <option value="">Use workflow definition only</option>
+                                    {% for application in applications %}
+                                    <option value="{{ application.id }}">{{ application.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="md:col-span-2 flex items-center justify-between gap-3">
+                                <p class="text-xs text-muted-foreground">Vision launches now include source-backed content, traceability, readiness gating, and handoff planning.</p>
+                                <button type="submit" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors font-medium">
+                                    <i data-lucide="arrow-right" class="h-4 w-4" aria-hidden="true"></i>
+                                    Open Vision Editor
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Visual Flow Diagram -->
+            {% if definition.steps %}
+            <div class="rounded-xl border-2 border-input bg-background p-6">
+                <h2 class="text-xl font-semibold mb-4">Workflow Flow</h2>
+                <div class="overflow-x-auto pb-2">
+                    <div class="flex items-center gap-1 min-w-max">
+                        <!-- Start node -->
+                        <div class="flex flex-col items-center">
+                            <div class="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500 text-primary-foreground">
+                                <i data-lucide="play" class="h-3.5 w-3.5" aria-hidden="true"></i>
+                            </div>
+                            <span class="text-[10px] text-muted-foreground mt-1">Start</span>
+                        </div>
+                        {% for step in definition.steps %}
+                        {% set is_approval = step.step_type == 'approval' or step.get('requires_approval', false) %}
+                        <!-- Connector arrow -->
+                        <div class="flex items-center h-8">
+                            <div class="w-6 h-0.5 bg-border"></div>
+                            <div class="w-0 h-0 border-t-[4px] border-t-transparent border-b-[4px] border-b-transparent border-l-[6px] border-l-border"></div>
+                        </div>
+                        <!-- Step node -->
+                        <div class="flex flex-col items-center max-w-[140px]">
+                            {% if is_approval %}
+                            <div class="flex h-10 w-28 items-center justify-center rounded-lg border-2 border-amber-400 bg-amber-50 dark:bg-amber-900/20 text-center px-2 py-1">
+                                <span class="text-[10px] font-semibold text-amber-700 dark:text-amber-400 line-clamp-2 leading-tight">{{ step.step_name }}</span>
+                            </div>
+                            <div class="flex items-center gap-0.5 mt-1">
+                                <i data-lucide="hand" class="h-2.5 w-2.5 text-amber-500" aria-hidden="true"></i>
+                                <span class="text-[9px] text-amber-600 font-medium">Review</span>
+                            </div>
+                            {% elif step.step_type == 'notification' %}
+                            <div class="flex h-10 w-28 items-center justify-center rounded-lg border-2 border-primary/30 bg-primary/5 text-center px-2 py-1">
+                                <span class="text-[10px] font-semibold text-primary line-clamp-2 leading-tight">{{ step.step_name }}</span>
+                            </div>
+                            <div class="flex items-center gap-0.5 mt-1">
+                                <i data-lucide="bell" class="h-2.5 w-2.5 text-primary" aria-hidden="true"></i>
+                                <span class="text-[9px] text-primary font-medium">Notify</span>
+                            </div>
+                            {% else %}
+                            <div class="flex h-10 w-28 items-center justify-center rounded-lg border-2 border-input bg-background text-center px-2 py-1 hover:border-primary/30 transition-colors">
+                                <span class="text-[10px] font-semibold line-clamp-2 leading-tight">{{ step.step_name }}</span>
+                            </div>
+                            <div class="flex items-center gap-0.5 mt-1">
+                                <i data-lucide="bot" class="h-2.5 w-2.5 text-emerald-500" aria-hidden="true"></i>
+                                <span class="text-[9px] text-emerald-600 font-medium">Auto</span>
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                        <!-- Connector to end -->
+                        <div class="flex items-center h-8">
+                            <div class="w-6 h-0.5 bg-border"></div>
+                            <div class="w-0 h-0 border-t-[4px] border-t-transparent border-b-[4px] border-b-transparent border-l-[6px] border-l-border"></div>
+                        </div>
+                        <!-- End node -->
+                        <div class="flex flex-col items-center">
+                            <div class="flex h-8 w-8 items-center justify-center rounded-full bg-muted border-2 border-input">
+                                <i data-lucide="flag" class="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true"></i>
+                            </div>
+                            <span class="text-[10px] text-muted-foreground mt-1">End</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Step-by-Step Pipeline (detailed) -->
+            <div class="rounded-xl border-2 border-input bg-background p-6">
+                <h2 class="text-xl font-semibold mb-5">Step Details</h2>
+
+                {% if definition.steps %}
+                <div class="relative">
+                    {% for step in definition.steps %}
+                    {% set is_approval = step.step_type == 'approval' or step.get('requires_approval', false) %}
+                    <div class="flex gap-4 {% if not loop.last %}pb-6{% endif %}">
+                        <!-- Timeline connector -->
+                        <div class="flex flex-col items-center">
+                            <div class="flex h-9 w-9 items-center justify-center rounded-full font-bold text-sm shrink-0
+                                {% if is_approval %}bg-warning text-primary-foreground{% else %}bg-primary/10 text-primary{% endif %}">
+                                {{ loop.index }}
+                            </div>
+                            {% if not loop.last %}
+                            <div class="w-0.5 flex-1 mt-1 {% if is_approval %}bg-warning/30{% else %}bg-input{% endif %}"></div>
+                            {% endif %}
+                        </div>
+                        <!-- Step content -->
+                        <div class="flex-1 pb-1">
+                            <div class="rounded-lg border p-4 {% if is_approval %}border-warning/30 bg-warning/5{% else %}border-input{% endif %}">
+                                <div class="flex items-start justify-between gap-2">
+                                    <h3 class="font-semibold">{{ step.step_name }}</h3>
+                                    {% if is_approval %}
+                                    <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold bg-warning/15 text-warning shrink-0">
+                                        <i data-lucide="hand" class="h-3 w-3" aria-hidden="true"></i>
+                                        Your Review
+                                    </span>
+                                    {% elif step.step_type == 'notification' %}
+                                    <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium bg-primary/10 text-primary shrink-0">
+                                        <i data-lucide="bell" class="h-3 w-3" aria-hidden="true"></i>
+                                        Notification
+                                    </span>
+                                    {% else %}
+                                    <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 shrink-0">
+                                        <i data-lucide="bot" class="h-3 w-3" aria-hidden="true"></i>
+                                        Automated
+                                    </span>
+                                    {% endif %}
+                                </div>
+                                {% if step.get('step_description') %}
+                                <p class="text-sm text-muted-foreground mt-1.5 leading-relaxed">{{ step.step_description }}</p>
+                                {% endif %}
+                                {% if step.get('handler') %}
+                                <p class="text-xs text-muted-foreground mt-1.5">
+                                    <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 bg-muted text-muted-foreground">
+                                        <i data-lucide="cog" class="h-2.5 w-2.5" aria-hidden="true"></i>
+                                        {{ step.handler|replace('_', ' ')|title }}
+                                    </span>
+                                </p>
+                                {% endif %}
+                                {% if is_approval %}
+                                <p class="text-xs text-warning mt-2 flex items-center gap-1">
+                                    <i data-lucide="pause-circle" class="h-3 w-3" aria-hidden="true"></i>
+                                    The workflow will pause here until you review and approve.
+                                </p>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-muted-foreground">No steps defined for this workflow.</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Sidebar -->
+        <div class="space-y-6">
+            <!-- Expected Outputs -->
+            {% set outputs = outputs_map.get(definition.workflow_code, []) %}
+            {% if outputs %}
+            <div class="rounded-xl border-2 border-input bg-background p-6">
+                <h2 class="text-lg font-semibold mb-3">What You Will Receive</h2>
+                <div class="space-y-2">
+                    {% for output in outputs %}
+                    <div class="flex items-center gap-2.5 p-2.5 rounded-lg bg-success/5 border border-success/15">
+                        <i data-lucide="file-check" class="h-4 w-4 text-success shrink-0" aria-hidden="true"></i>
+                        <span class="text-sm font-medium">{{ output }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- How Triggers Work -->
+            <div class="rounded-xl border-2 border-input bg-background p-6">
+                <h2 class="text-lg font-semibold mb-3">How to Trigger</h2>
+                <div class="space-y-2">
+                    {% for trigger in definition.trigger_types or ['manual'] %}
+                    <div class="flex items-center gap-2.5 p-2 rounded-lg">
+                        {% if trigger == 'manual' %}
+                        <i data-lucide="mouse-pointer-click" class="h-4 w-4 text-primary shrink-0" aria-hidden="true"></i>
+                        <span class="text-sm">Start manually from the dashboard</span>
+                        {% elif trigger == 'scheduled' %}
+                        <i data-lucide="calendar-clock" class="h-4 w-4 text-primary shrink-0" aria-hidden="true"></i>
+                        <span class="text-sm">Runs on a recurring schedule</span>
+                        {% elif trigger == 'event' %}
+                        <i data-lucide="zap" class="h-4 w-4 text-primary shrink-0" aria-hidden="true"></i>
+                        <span class="text-sm">Triggered by system events</span>
+                        {% elif trigger == 'api' %}
+                        <i data-lucide="plug" class="h-4 w-4 text-primary shrink-0" aria-hidden="true"></i>
+                        <span class="text-sm">Available via REST API</span>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Statistics -->
+            <div class="rounded-xl border-2 border-input bg-background p-6">
+                <h2 class="text-lg font-semibold mb-3">Execution History</h2>
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="text-center p-3 rounded-lg bg-muted/50">
+                        <p class="text-2xl font-bold">{{ definition.execution_count or 0 }}</p>
+                        <p class="text-xs text-muted-foreground mt-0.5">Total Runs</p>
+                    </div>
+                    <div class="text-center p-3 rounded-lg bg-muted/50">
+                        <p class="text-2xl font-bold text-success">
+                            {% if definition.execution_count %}
+                            {{ ((definition.success_count or 0) / definition.execution_count * 100)|round|int }}%
+                            {% else %}
+                            --
+                            {% endif %}
+                        </p>
+                        <p class="text-xs text-muted-foreground mt-0.5">Success Rate</p>
+                    </div>
+                </div>
+                <p class="text-xs text-muted-foreground mt-3">
+                    Last run: {{ definition.last_executed_at.strftime('%b %d, %Y %H:%M') if definition.last_executed_at else 'Never' }}
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Executions -->
+    {% if instances %}
+    <div class="rounded-xl border-2 border-input bg-background p-6"
+         x-data="{
+            selected: [],
+            allIds: [{% for i in instances %}{{ i.id }}{{ ',' if not loop.last }}{% endfor %}],
+            cancelableIds: [{% for i in instances if i.status in ('running', 'waiting_approval') %}{{ i.id }}{{ ',' if not loop.last }}{% endfor %}],
+            retryableIds: [{% for i in instances if i.status == 'failed' %}{{ i.id }}{{ ',' if not loop.last }}{% endfor %}],
+            processing: false,
+            toggle(id) { this.selected.includes(id) ? this.selected = this.selected.filter(x => x !== id) : this.selected.push(id); },
+            get selectAll() { return this.selected.length === this.allIds.length && this.allIds.length > 0; },
+            set selectAll(v) { this.selected = v ? [...this.allIds] : []; },
+            get cancelCount() { return this.selected.filter(id => this.cancelableIds.includes(id)).length; },
+            get retryCount() { return this.selected.filter(id => this.retryableIds.includes(id)).length; },
+            async batchAction(action) {
+                const ids = this.selected.filter(id => action === 'cancel' ? this.cancelableIds.includes(id) : this.retryableIds.includes(id));
+                if (!ids.length) return;
+                const label = action === 'cancel' ? 'Cancel' : 'Retry';
+                if (!(await Platform.modal.confirm(label + ' ' + ids.length + ' workflow(s)?'))) return;
+                this.processing = true;
+                const csrf = document.querySelector('meta[name=csrf-token]')?.content || '';
+                let ok = 0, fail = 0;
+                for (const id of ids) {
+                    try {
+                        const r = await fetch('/api/ea-workflows/instances/' + id + '/' + action, {
+                            method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
+                            body: JSON.stringify({ reason: 'Batch ' + action })
+                        });
+                        (await r.json()).success ? ok++ : fail++;
+                    } catch { fail++; }
+                }
+                this.processing = false;
+                this.selected = [];
+                Platform.toast.error(ok + ' succeeded, ' + fail + ' failed');
+                location.reload();
+            }
+         }">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-xl font-semibold">Recent Executions</h2>
+            <!-- Batch action bar -->
+            <div x-show="selected.length > 0" x-cloak class="flex items-center gap-2" role="toolbar" aria-label="Batch actions">
+                <span class="text-sm text-muted-foreground" aria-live="polite" role="status" x-text="selected.length + ' selected'"></span>
+                <button type="button" @click="batchAction('cancel')" :disabled="!cancelCount || processing"
+                    class="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium border border-warning/50 text-warning hover:bg-warning/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    :aria-label="'Cancel ' + cancelCount + ' running workflow(s)'">
+                    <i data-lucide="square" class="h-3 w-3" aria-hidden="true"></i>
+                    Cancel (<span x-text="cancelCount"></span>)
+                </button>
+                <button type="button" @click="batchAction('retry')" :disabled="!retryCount || processing"
+                    class="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium border border-primary/50 text-primary hover:bg-primary/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    :aria-label="'Retry ' + retryCount + ' failed workflow(s)'">
+                    <i data-lucide="rotate-ccw" class="h-3 w-3" aria-hidden="true"></i>
+                    Retry (<span x-text="retryCount"></span>)
+                </button>
+            </div>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead>
+                    <tr class="border-b">
+                        <th class="w-10 py-3 px-2 text-center">
+                            <input type="checkbox" x-model="selectAll" class="rounded border-input text-primary focus:ring-primary" aria-label="Select all instances">
+                        </th>
+                        <th class="text-left py-3 px-4 font-medium text-muted-foreground">Instance</th>
+                        <th class="text-center py-3 px-4 font-medium text-muted-foreground">Status</th>
+                        <th class="text-center py-3 px-4 font-medium text-muted-foreground">Progress</th>
+                        <th class="text-left py-3 px-4 font-medium text-muted-foreground">Started</th>
+                        <th class="text-center py-3 px-4 font-medium text-muted-foreground">Duration</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y">
+                    {% for instance in instances %}
+                    <tr class="border-b hover:bg-muted/50" :class="selected.includes({{ instance.id }}) && 'bg-primary/5'">
+                        <td class="py-3 px-2 text-center">
+                            <input type="checkbox" :checked="selected.includes({{ instance.id }})" @change="toggle({{ instance.id }})" class="rounded border-input text-primary focus:ring-primary" aria-label="Select Run #{{ instance.id }}">
+                        </td>
+                        <td class="py-3 px-4">
+                            <a href="{{ url_for('main.ea_workflow_instance_detail', instance_id=instance.id) }}"
+                               class="font-mono text-sm text-primary hover:underline">
+                                {{ instance.instance_code[:25] }}...
+                            </a>
+                        </td>
+                        <td class="text-center py-3 px-4">
+                            <span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium
+                                {% if instance.status == 'completed' %}bg-success/10 text-success
+                                {% elif instance.status == 'running' %}bg-primary/10 text-primary
+                                {% elif instance.status == 'waiting_approval' %}bg-warning/10 text-warning
+                                {% elif instance.status == 'failed' %}bg-destructive/10 text-destructive
+                                {% else %}bg-muted text-foreground/80{% endif %}">
+                                {{ instance.status|replace('_', ' ')|title }}
+                            </span>
+                        </td>
+                        <td class="text-center py-3 px-4">
+                            <div class="flex items-center gap-2 justify-center">
+                                <div class="w-12 h-1.5 bg-muted rounded-full overflow-hidden"
+                                     role="progressbar"
+                                     aria-valuenow="{{ instance.progress_percent or 0 }}"
+                                     aria-valuemin="0" aria-valuemax="100"
+                                     aria-label="Progress: {{ instance.progress_percent or 0 }}%">
+                                    <div class="h-full bg-primary rounded-full" style="width: {{ instance.progress_percent or 0 }}%"></div><!-- ratchet-ok -->
+                                </div>
+                                <span class="text-xs text-muted-foreground">{{ instance.progress_percent or 0 }}%</span>
+                            </div>
+                        </td>
+                        <td class="py-3 px-4 text-sm">{{ instance.started_at.strftime('%b %d, %Y %H:%M') if instance.started_at else '-' }}</td>
+                        <td class="text-center py-3 px-4 text-sm text-muted-foreground">{{ instance.duration_seconds or 0 }}s</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,127 @@
+{#
+  UNIFIED MODAL COMPONENT — archie
+  ════════════════════════════════════════════════════════════════════════════
+  Requires: ui/modal.js (Platform.modal) loaded before Alpine initialises (admin_base.html)
+
+  Parameters
+  ──────────
+  id          string   Unique modal ID. Must be unique across the entire page.
+  title       string   Visible heading (also sets aria-labelledby to "{{ id }}-title").
+  description string   Optional subtitle rendered below the title.
+  size        string   sm | default | lg | xl | 2xl | full
+  closable    bool     Show the × close button (default true).
+  labelledby  string   Override aria-labelledby with an explicit element ID.
+                       Use when the modal renders its own custom <h*> inside the
+                       content slot (so aria-labelledby references the inner heading
+                       without requiring a duplicate visible title from this macro).
+
+  Usage
+  ──────────
+  {% from 'components/modal.html' import modal %}
+
+  {% call modal(id='confirm-delete', title='Delete item?', size='sm') %}
+      <p class="text-sm text-muted-foreground">This cannot be undone.</p>
+  {% endcall %}
+
+  <!-- Trigger (declarative — no JS required) -->
+  <button data-modal-open="confirm-delete" aria-label="Delete">Delete</button>
+
+  <!-- Or from JS -->
+  <script>Platform.modal.open('confirm-delete', { itemId: 42 });</script>
+
+  Migration from old patterns
+  ──────────
+  OLD: [at]open-modal-X.window / [at]close-modal-X.window  → data-modal-open="X"
+  OLD: window.openModal('X') / window.closeModal('X') → Platform.modal.open('X')
+  OLD: window.modalManager.open('X')                  → Platform.modal.open('X')
+  OLD: Modal.open('X')                                → Platform.modal.open('X')
+#}
+{% macro modal(id='modal', title='', description='', size='default', closable=true, labelledby='', help_text='') %}
+{# Resolve which element ID to reference for aria-labelledby.
+   Priority: explicit labelledby arg > title-derived id > omitted (if neither supplied). #}
+{% set _lby = labelledby if labelledby else (id ~ '-title' if title else '') %}
+{% set sizes = {
+    'sm':      'max-w-sm',
+    'default': 'max-w-lg',
+    'lg':      'max-w-2xl',
+    'xl':      'max-w-4xl',
+    '2xl':     'max-w-5xl',
+    'full':    'max-w-7xl'
+} %}
+{#
+  The root element carries `hidden` (native HTML attribute).
+  modal-system.js removes/adds `hidden` on open/close — no Alpine x-show
+  on the root, which prevents the Alpine hydration race that caused the
+  previous "open = true but still invisible" bug.
+#}
+<div
+    id="{{ id }}"
+    hidden
+    aria-hidden="true"
+    role="dialog"
+    aria-modal="true"
+    {% if _lby %}aria-labelledby="{{ _lby }}"{% endif %}
+    class="modal-root fixed inset-0 items-center justify-center p-4"
+    style="z-index: var(--modal-z, 1000);"
+>
+    <!-- Backdrop -->
+    <div
+        data-modal-backdrop="{{ id }}" aria-hidden="true"
+        class="modal-backdrop absolute inset-0 bg-background/80
+               transition-opacity duration-200"
+    ></div>
+
+    <!-- Panel -->
+    <div
+        data-modal-panel
+        class="modal-panel relative w-full {{ sizes.get(size, sizes['default']) }}
+               bg-background border border-border rounded-lg shadow-lg p-6
+               max-h-[90vh] overflow-y-auto
+               transition-all duration-200 ease-out
+               scale-100 opacity-100"
+        style="z-index: calc(var(--modal-z, 1000) + 1);"
+    >
+        {% if closable %}
+        <!-- Close button -->
+        <button
+            type="button"
+            data-modal-close="{{ id }}"
+            aria-label="Close"
+            class="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background
+                   transition-opacity hover:opacity-100
+                   focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+        >
+            <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
+        </button>
+        {% endif %}
+
+        <!-- Header -->
+        {% if title or description %}
+        <div class="flex flex-col space-y-1.5 {% if closable %}pr-8{% endif %} mb-4">
+            {% if title %}
+            <h2 id="{{ id }}-title"
+                class="text-lg font-semibold leading-none tracking-tight">
+                {{ title }}
+            </h2>
+            {% endif %}
+            {% if description %}
+            <p class="text-sm text-muted-foreground">{{ description }}</p>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        {% if help_text %}
+        <div class="text-xs text-muted-foreground mb-4 flex items-start gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            <span>{{ help_text }}</span>
+        </div>
+        {% endif %}
+
+        <!-- Content slot -->
+        <div class="modal-content">
+            {{ caller() }}
+        </div>
+    </div>
+</div>
+{% endmacro %}
+

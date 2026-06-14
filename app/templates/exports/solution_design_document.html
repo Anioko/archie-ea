@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Solution Design Document — {{ solution.name }}</title>
+    <style>
+        body { font-family: Georgia, serif; max-width: 900px; margin: 0 auto; padding: 40px 60px; color: #1a1a1a; }
+        h1 { font-size: 2rem; font-weight: 800; margin-bottom: 0.25rem; }
+        h2 { font-size: 1.25rem; font-weight: 700; border-bottom: 2px solid #e5e7eb; padding-bottom: 0.4rem; margin-top: 2.5rem; }
+        h3 { font-size: 1rem; font-weight: 600; margin-top: 1.5rem; color: #374151; }
+        .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 1.25rem; margin: 1.5rem 0; }
+        .meta-item label { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #6b7280; display: block; margin-bottom: 2px; }
+        .meta-item span { font-size: 0.9rem; font-weight: 600; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.875rem; margin-top: 0.75rem; }
+        th { text-align: left; padding: 0.5rem 0.75rem; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; color: #6b7280; border-bottom: 1px solid #e5e7eb; }
+        td { padding: 0.5rem 0.75rem; border-bottom: 1px solid #f3f4f6; }
+        .badge { display: inline-block; padding: 0.125rem 0.5rem; border-radius: 9999px; font-size: 0.7rem; font-weight: 600; background: #eff6ff; color: #1d4ed8; }
+        .badge-warn { background: #fff7ed; color: #c2410c; }
+        .empty-state { color: #9ca3af; font-style: italic; font-size: 0.875rem; }
+        .section-number { display: inline-flex; align-items: center; justify-content: center; width: 2rem; height: 2rem; background: #111827; color: #fff; border-radius: 6px; font-weight: 700; font-size: 0.875rem; margin-right: 0.75rem; }
+        @media print { body { padding: 20px 40px; } }
+    </style>
+</head>
+<body>
+
+    <header style="border-bottom: 3px solid #111827; padding-bottom: 1.5rem; margin-bottom: 2rem;">
+        <div style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.12em; color: #6b7280; margin-bottom: 0.5rem;">
+            Solution Architecture Document
+        </div>
+        <h1>{{ solution.name }}</h1>
+        {% if solution.description %}
+        <p style="color: #4b5563; margin-top: 0.5rem; font-size: 1rem;">{{ solution.description }}</p>
+        {% endif %}
+    </header>
+
+    <div class="meta-grid">
+        <div class="meta-item">
+            <label>Solution Owner</label>
+            <span>{{ solution.solution_owner or '—' }}</span>
+        </div>
+        <div class="meta-item">
+            <label>Technical Lead</label>
+            <span>{{ solution.technical_lead or '—' }}</span>
+        </div>
+        <div class="meta-item">
+            <label>ADM Phase</label>
+            <span>Phase {{ solution.adm_phase or 'A' }}</span>
+        </div>
+        <div class="meta-item">
+            <label>Status</label>
+            <span>{{ solution.status or 'Draft' }}</span>
+        </div>
+        {% if solution.solution_type %}
+        <div class="meta-item">
+            <label>Type</label>
+            <span>{{ solution.solution_type }}</span>
+        </div>
+        {% endif %}
+        {% if solution.business_domain %}
+        <div class="meta-item">
+            <label>Domain</label>
+            <span>{{ solution.business_domain }}</span>
+        </div>
+        {% endif %}
+    </div>
+
+    {# ── Section 1: Options ──────────────────────────────────────── #}
+    {% if options %}
+    <h2><span class="section-number">1</span>Solution Options</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Option</th>
+                <th>Score</th>
+                <th>Rank</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for opt in options %}
+            <tr>
+                <td>{{ opt.name or opt.title or 'Option' }}</td>
+                <td>{{ '%.2f'|format(opt.score) if opt.score is not none else '—' }}</td>
+                <td>{{ opt.rank or '—' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+
+    {# ── Section 2: Risks ────────────────────────────────────────── #}
+    <h2><span class="section-number">2</span>Risk Register</h2>
+    {% if risks %}
+    <table>
+        <thead>
+            <tr>
+                <th>Risk</th>
+                <th>Impact</th>
+                <th>Probability</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in risks %}
+            <tr>
+                <td>{{ r.risk_description or '—' }}</td>
+                <td>
+                    <span class="badge {% if r.impact in ['high','critical'] %}badge-warn{% endif %}">
+                        {{ r.impact or '—' }}
+                    </span>
+                </td>
+                <td>{{ r.probability or '—' }}</td>
+                <td>{{ r.status or 'open' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="empty-state">No risks documented.</p>
+    {% endif %}
+
+    {# ── Section 3: Capabilities ─────────────────────────────────── #}
+    {% if capabilities %}
+    <h2><span class="section-number">3</span>Capability Mappings</h2>
+    <ul>
+        {% for cap in capabilities %}
+        <li>{{ cap }}</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+
+    {# ── Section 4: Requirements ──────────────────────────────────── #}
+    {% if requirements %}
+    <h2><span class="section-number">4</span>Requirements</h2>
+    <ul>
+        {% for req in requirements %}
+        <li>{{ req }}</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+
+    <footer style="margin-top: 4rem; padding-top: 1rem; border-top: 1px solid #e5e7eb; font-size: 0.75rem; color: #9ca3af; text-align: center;">
+        Generated by A.R.C.H.I.E. · Solution Narrative Export (SA-004)
+    </footer>
+
+</body>
+</html>

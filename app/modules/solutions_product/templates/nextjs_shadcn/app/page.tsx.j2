@@ -1,0 +1,137 @@
+{# app/page.tsx — Dashboard with KPI cards, AI features, and quick actions #}
+{# Context: solution_name, modules (list of {name, slug, entity_count, has_state_machine, module_type}) #}
+"use client"
+
+import Link from "next/link"
+import { useQuery } from "@tanstack/react-query"
+{% set all_icons = [] %}
+{% for mod in modules %}
+{% if mod.icon | default("Box") not in all_icons %}
+{% set _ = all_icons.append(mod.icon | default("Box")) %}
+{% endif %}
+{% endfor %}
+import {
+{% for icon in all_icons %}
+  {{ icon }},
+{% endfor %}
+  ArrowRight,
+  TrendingUp,
+  Zap,
+  CheckCircle2,
+} from "lucide-react"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Badge } from "@/components/ui/badge"
+import { api } from "@/lib/api"
+
+{% set user_modules = modules | selectattr("user_facing") | list %}
+{% set crud_modules = user_modules | rejectattr("module_type", "equalto", "pipeline") | list %}
+{% set pipeline_modules = modules | selectattr("module_type", "equalto", "pipeline") | list %}
+
+export default function DashboardPage() {
+  return (
+    <div className="space-y-8">
+      {/* Header */}
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+        <p className="text-muted-foreground">Welcome to {{ solution_name }}</p>
+      </div>
+
+{% if crud_modules %}
+      {/* KPI Cards */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-{{ [crud_modules | length, 4] | min }}">
+{% for mod in crud_modules %}
+        <{{ mod.name }}Card />
+{% endfor %}
+      </div>
+{% endif %}
+
+{% if pipeline_modules %}
+      {/* AI Pipeline Features */}
+      <div>
+        <h2 className="text-lg font-semibold mb-1 flex items-center gap-2">
+          <Zap className="h-5 w-5 text-primary" /> AI Features
+        </h2>
+        <p className="text-sm text-muted-foreground mb-4">Automated processing pipelines powered by AI</p>
+        <div className="grid gap-4 md:grid-cols-2">
+{% for mod in pipeline_modules %}
+          <Link href="/{{ mod.slug }}">
+            <Card className="hover:bg-accent/50 transition-colors cursor-pointer border-primary/20">
+              <CardContent className="flex items-start gap-4 p-5">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 shrink-0">
+                  <Zap className="h-5 w-5 text-primary" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium">{{ mod.display_name_plural }}</p>
+                  <p className="text-sm text-muted-foreground mt-0.5">{{ mod.description | default(mod.display_name_plural ~ ' processing pipeline') }}</p>
+                  <Badge variant="secondary" className="mt-2 text-xs">AI Pipeline</Badge>
+                </div>
+                <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0 mt-1" />
+              </CardContent>
+            </Card>
+          </Link>
+{% endfor %}
+        </div>
+      </div>
+{% endif %}
+
+{% if crud_modules %}
+      {/* Quick Actions */}
+      <div>
+        <h2 className="text-lg font-semibold mb-4">Data Management</h2>
+        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+{% for mod in crud_modules %}
+          <Link href="/{{ mod.slug }}">
+            <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+              <CardContent className="flex items-center gap-4 p-4">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+                  <{{ mod.icon | default("Box") }} className="h-5 w-5 text-primary" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-medium">{{ mod.display_name_plural }}</p>
+                  <p className="text-xs text-muted-foreground">View and manage</p>
+                </div>
+                <ArrowRight className="h-4 w-4 text-muted-foreground" />
+              </CardContent>
+            </Card>
+          </Link>
+{% endfor %}
+        </div>
+      </div>
+{% endif %}
+    </div>
+  )
+}
+
+{# ── KPI Card per user-facing CRUD module only ── #}
+{% for mod in crud_modules %}
+function {{ mod.name }}Card() {
+  const { data, isLoading } = useQuery({
+    queryKey: ["{{ mod.slug }}", "count"],
+    queryFn: () => api.get<any>("/api/{{ mod.api_resource }}", { per_page: "1" }),
+  })
+  // Support both paginated { items, total } and plain array responses
+  const count: number = Array.isArray(data)
+    ? data.length
+    : (data as any)?.total ?? (data as any)?.items?.length ?? 0
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <CardTitle className="text-sm font-medium">{{ mod.display_name_plural }}</CardTitle>
+        <{{ mod.icon | default("Box") }} className="h-4 w-4 text-muted-foreground" />
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <Skeleton className="h-7 w-16" />
+        ) : (
+          <div className="text-2xl font-bold">{count}</div>
+        )}
+        <p className="text-xs text-muted-foreground">Total records</p>
+      </CardContent>
+    </Card>
+  )
+}
+
+{% endfor %}

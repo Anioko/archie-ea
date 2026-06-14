@@ -1,0 +1,742 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'components/page_header.html' import page_header %}
+
+{% block title %}New Transformation Programme{% endblock %}
+
+{% block extra_css %}
+<style>
+  [x-cloak] { display: none !important; }
+  .step-line { height: 2px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 sm:px-6 lg:px-8 py-6 max-w-4xl" x-data="programmeJourney()">
+
+  {# ── Step indicator ──────────────────────────────────────────── #}
+  <nav class="mb-8 flex items-center justify-between">
+    <template x-for="(step, idx) in steps" :key="step.num">
+      <div class="flex items-center" :class="idx < steps.length - 1 ? 'flex-1' : ''">
+        <button @click="if (completedSteps.includes(step.num) || step.num === currentStep) currentStep = step.num"
+                class="flex flex-col items-center gap-1.5">
+          <span class="flex items-center justify-center w-9 h-9 rounded-full text-xs font-bold transition-all border"
+                :class="{
+                  'bg-primary text-primary-foreground ring-4 ring-primary/20 border-primary': step.num === currentStep,
+                  'bg-emerald-500/15 text-emerald-400 border-emerald-500/30': completedSteps.includes(step.num) && step.num !== currentStep,
+                  'border-border text-muted-foreground': !completedSteps.includes(step.num) && step.num !== currentStep
+                }">
+            <span x-show="completedSteps.includes(step.num) && step.num !== currentStep" x-cloak>&check;</span>
+            <span x-show="!completedSteps.includes(step.num) || step.num === currentStep" x-text="step.num"></span>
+          </span>
+          <span class="text-[11px] font-medium whitespace-nowrap hidden sm:block"
+                :class="step.num === currentStep ? 'text-foreground' : 'text-muted-foreground'"
+                x-text="step.label"></span>
+        </button>
+        <div x-show="idx < steps.length - 1" class="flex-1 mx-2 sm:mx-3 mt-[-18px]">
+          <div class="step-line rounded-full" :class="completedSteps.includes(step.num) ? 'bg-emerald-500/40' : 'bg-border'"></div>
+        </div>
+      </div>
+    </template>
+  </nav>
+
+  {# ── Co-pilot message ────────────────────────────────────────── #}
+  <div class="rounded-xl border-l-4 border-l-primary border border-border bg-card px-5 py-3.5 flex items-start gap-3 mb-8">
+    <span class="flex items-center justify-center w-7 h-7 rounded-full bg-primary/10 text-primary shrink-0 mt-0.5 text-xs font-bold">AI</span>
+    <p class="text-sm text-foreground/90 leading-relaxed" x-text="copilotMessages[currentStep]"></p>
+  </div>
+
+  {# ══════════════════════════════════════════════════════════════ #}
+  {# STEP 1 — Mode + Intent                                        #}
+  {# ══════════════════════════════════════════════════════════════ #}
+  <section x-show="currentStep === 1" x-cloak class="space-y-6">
+    <div>
+      <h2 class="text-lg font-semibold mb-1">What is this programme trying to achieve?</h2>
+      <p class="text-sm text-muted-foreground">Describe the business problem and strategic goal. The platform will derive drivers, capabilities, and the impacted application landscape.</p>
+    </div>
+
+    {# Mode cards — matches /solutions/new-programme exactly #}
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div class="rounded-lg border p-6 cursor-pointer transition-all"
+           :class="form.mode === 'greenfield' ? 'border-primary bg-primary/5 shadow-[0_0_0_2px_hsl(var(--primary)/0.2)]' : 'border-border hover:border-primary'"
+           @click="form.mode = 'greenfield'" role="radio" :aria-checked="form.mode === 'greenfield'" tabindex="0"
+           @keydown.enter="form.mode = 'greenfield'" @keydown.space.prevent="form.mode = 'greenfield'">
+        <div class="flex items-center gap-3 mb-3">
+          <div class="h-10 w-10 rounded-md bg-primary/10 flex items-center justify-center shrink-0">
+            <svg class="h-5 w-5 text-primary" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+          </div>
+          <h3 class="font-semibold text-foreground">Greenfield Transformation</h3>
+        </div>
+        <p class="text-sm text-muted-foreground">Start from scratch with a clean-slate architecture vision. Define drivers, goals, and stakeholders before designing the target state.</p>
+        <p class="mt-3 text-xs text-muted-foreground">Starting phase:
+          <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30">Phase A</span>
+        </p>
+      </div>
+      <div class="rounded-lg border p-6 cursor-pointer transition-all"
+           :class="form.mode === 'brownfield' ? 'border-primary bg-primary/5 shadow-[0_0_0_2px_hsl(var(--primary)/0.2)]' : 'border-border hover:border-primary'"
+           @click="form.mode = 'brownfield'" role="radio" :aria-checked="form.mode === 'brownfield'" tabindex="0"
+           @keydown.enter="form.mode = 'brownfield'" @keydown.space.prevent="form.mode = 'brownfield'">
+        <div class="flex items-center gap-3 mb-3">
+          <div class="h-10 w-10 rounded-md bg-primary/10 flex items-center justify-center shrink-0">
+            <svg class="h-5 w-5 text-primary" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
+          </div>
+          <h3 class="font-semibold text-foreground">Brownfield Modernization</h3>
+        </div>
+        <p class="text-sm text-muted-foreground">Import an existing architecture baseline from an ArchiMate OEF XML export and plan the modernization journey.</p>
+        <p class="mt-3 text-xs text-muted-foreground">Starting phase:
+          <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30">Phase B</span>
+        </p>
+      </div>
+    </div>
+
+    {# Intent textarea #}
+    <div x-show="form.mode">
+      <label class="block text-sm font-medium text-foreground mb-2">Programme brief</label>
+      <div class="rounded-xl border border-border bg-card p-4">
+        <textarea x-model="form.description" rows="5"
+                  class="w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground resize-none focus:outline-none leading-relaxed"
+                  placeholder="Describe the business problem, strategic goal, and any known constraints..."></textarea>
+      </div>
+    </div>
+
+    {# Name + domain — shown once mode is chosen #}
+    <div x-show="form.mode" x-cloak class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div>
+        <label class="block text-sm font-medium text-foreground mb-1.5">Programme name *</label>
+        <input type="text" x-model="form.name"
+               class="w-full text-sm border border-input rounded-lg px-3 py-2.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+               placeholder="e.g. Digital Finance Transformation">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-foreground mb-1.5">Business domain *</label>
+        <select x-model="form.business_domain" class="w-full text-sm border border-input rounded-lg px-3 py-2.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary">
+          <option value="">Select domain...</option>
+          <option>Finance</option><option>Supply Chain</option><option>Customer</option>
+          <option>HR</option><option>IT Operations</option><option>Risk &amp; Compliance</option>
+          <option>Digital &amp; Innovation</option><option>Operations</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-foreground mb-1.5">Programme type</label>
+        <select x-model="form.solution_type" class="w-full text-sm border border-input rounded-lg px-3 py-2.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary">
+          <option>Platform</option><option>Product</option><option>Service</option>
+          <option>Integration</option><option>Analytics</option><option>Infrastructure</option>
+        </select>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-sm font-medium text-foreground mb-1.5">Start year</label>
+          <input type="number" x-model.number="form.programme_start_year" min="2024" max="2035"
+                 class="w-full text-sm border border-input rounded-lg px-3 py-2.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-foreground mb-1.5">End year</label>
+          <input type="number" x-model.number="form.programme_end_year" min="2024" max="2040"
+                 class="w-full text-sm border border-input rounded-lg px-3 py-2.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary">
+        </div>
+      </div>
+    </div>
+
+    {# Step 1 validation hint — shown when Continue is blocked #}
+    <p x-show="form.mode && (!form.name.trim() || !form.business_domain)" x-cloak
+       class="text-xs text-amber-500/80 flex items-center gap-1.5">
+      <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+      </svg>
+      Programme name and business domain are required to continue.
+    </p>
+    <p x-show="form.mode === 'brownfield' && form.name.trim().length >= 3 && form.business_domain && !oefXmlContent" x-cloak
+       class="text-xs text-amber-500/80 flex items-center gap-1.5">
+      <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+      </svg>
+      An ArchiMate OEF XML upload is required to continue with brownfield mode.
+    </p>
+
+    {# OEF upload — brownfield only #}
+    <div x-show="form.mode === 'brownfield'" x-cloak>
+      <label class="block text-sm font-medium text-foreground mb-1.5">ArchiMate OEF XML</label>
+      <div class="rounded-lg border border-dashed border-border bg-card p-6 text-center">
+        <input type="file" id="oef-upload" accept=".xml" class="sr-only" @change="handleOefUpload($event)">
+        <label for="oef-upload" class="cursor-pointer">
+          <p class="text-sm text-muted-foreground" x-show="!oefFilename">Click to upload OEF XML export</p>
+          <p class="text-sm text-emerald-400 font-medium" x-show="oefFilename" x-text="'✓ ' + oefFilename"></p>
+        </label>
+      </div>
+    </div>
+  </section>
+
+  {# ══════════════════════════════════════════════════════════════ #}
+  {# STEP 2 — Strategic Case (drivers + value)                     #}
+  {# ══════════════════════════════════════════════════════════════ #}
+  <section x-show="currentStep === 2" x-cloak class="space-y-6">
+    <div>
+      <h2 class="text-lg font-semibold mb-1">Strategic case for change</h2>
+      <p class="text-sm text-muted-foreground">Define the strategic drivers and value case. Each driver needs a measurable KPI and a benefit owner — these become the programme's value framework.</p>
+    </div>
+
+    <div class="space-y-3">
+      <template x-for="(driver, idx) in form.drivers" :key="idx">
+        <div class="rounded-xl border border-border bg-card overflow-hidden">
+          <div class="px-5 py-4 flex items-start gap-3">
+            <div class="flex-1 space-y-3">
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div class="sm:col-span-2">
+                  <label class="block text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Driver name *</label>
+                  <input type="text" x-model="driver.name"
+                         class="w-full text-sm border border-input rounded-lg px-3 py-2 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                         placeholder="e.g. SAP ECC 6.0 End-of-Life">
+                </div>
+                <div>
+                  <label class="block text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Type</label>
+                  <select x-model="driver.type" class="w-full text-sm border border-input rounded-lg px-3 py-2 bg-background focus:outline-none focus:ring-1 focus:ring-primary">
+                    <option value="internal">Internal</option>
+                    <option value="external">External</option>
+                    <option value="technology">Technology</option>
+                    <option value="stakeholder">Stakeholder</option>
+                  </select>
+                </div>
+              </div>
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div class="sm:col-span-2">
+                  <label class="block text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1">KPI / Measurable target</label>
+                  <input type="text" x-model="driver.kpi"
+                         class="w-full text-sm border border-input rounded-lg px-3 py-2 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                         placeholder="e.g. Migrate before Q4 2027, reduce close cycle to 3 days">
+                </div>
+                <div>
+                  <label class="block text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Urgency</label>
+                  <select x-model="driver.urgency" class="w-full text-sm border border-input rounded-lg px-3 py-2 bg-background focus:outline-none focus:ring-1 focus:ring-primary">
+                    <option value="critical">Critical</option>
+                    <option value="high">High</option>
+                    <option value="medium">Medium</option>
+                    <option value="low">Low</option>
+                  </select>
+                </div>
+              </div>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Benefit owner</label>
+                  <input type="text" x-model="driver.owner"
+                         class="w-full text-sm border border-input rounded-lg px-3 py-2 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                         placeholder="Role or name (e.g. Group CFO)">
+                </div>
+                <div>
+                  <label class="block text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Quantified benefit</label>
+                  <input type="text" x-model="driver.benefit"
+                         class="w-full text-sm border border-input rounded-lg px-3 py-2 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                         placeholder="e.g. £1.1M risk avoidance, £800K efficiency">
+                </div>
+              </div>
+            </div>
+            <button @click="removeDriver(idx)" x-show="form.drivers.length > 1"
+                    class="mt-1 p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors shrink-0">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+          </div>
+        </div>
+      </template>
+    </div>
+
+    <button @click="addDriver()"
+            class="w-full rounded-xl border border-dashed border-border text-muted-foreground hover:border-primary/40 hover:text-primary transition-colors px-5 py-3 text-sm flex items-center justify-center gap-2">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+      Add strategic driver
+    </button>
+
+    <div class="rounded-xl border border-border bg-card p-5 space-y-3">
+      <p class="text-sm font-semibold text-foreground">Programme goals</p>
+      <p class="text-xs text-muted-foreground">What does success look like? Add measurable outcomes.</p>
+      <template x-for="(goal, idx) in form.goals" :key="idx">
+        <div class="flex items-start gap-2">
+          <div class="flex-1 space-y-2">
+            <input type="text" x-model="goal.name"
+                   class="w-full text-sm border border-input rounded-lg px-3 py-2 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                   placeholder="Goal name (e.g. Reduce month-end close from 10 days to 3 days)">
+          </div>
+          <button @click="removeGoal(idx)" x-show="form.goals.length > 1"
+                  class="p-1.5 mt-1 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors shrink-0">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+          </button>
+        </div>
+      </template>
+      <button @click="addGoal()" class="text-xs text-primary hover:underline">+ Add goal</button>
+    </div>
+  </section>
+
+  {# ══════════════════════════════════════════════════════════════ #}
+  {# STEP 3 — Capabilities                                         #}
+  {# ══════════════════════════════════════════════════════════════ #}
+  <section x-show="currentStep === 3" x-cloak class="space-y-6">
+    <div>
+      <h2 class="text-lg font-semibold mb-1">Capabilities this programme must develop</h2>
+      <p class="text-sm text-muted-foreground">Search your enterprise capability catalog. Accept capabilities in scope. Maturity gaps define what must improve.</p>
+    </div>
+
+    {# Search picker #}
+    <div class="relative">
+      <input type="text" x-model="capSearch" @input.debounce.300ms="searchCapabilities()"
+             class="w-full text-sm border border-input rounded-lg px-3 py-2.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+             placeholder="Search 516 enterprise capabilities...">
+      <div x-show="capResults.length > 0" x-cloak
+           class="absolute z-10 w-full mt-1 border border-border rounded-lg bg-card shadow-lg max-h-48 overflow-y-auto">
+        <template x-for="cap in capResults" :key="cap.id">
+          <div @click="addCapability(cap)"
+               class="px-4 py-2.5 hover:bg-accent cursor-pointer flex items-center justify-between">
+            <div>
+              <p class="text-sm font-medium text-foreground" x-text="cap.name"></p>
+              <p class="text-xs text-muted-foreground" x-text="(cap.business_domain || '') + (cap.level ? ' · Level ' + cap.level : '')"></p>
+            </div>
+            <span class="text-xs text-primary">+ Add</span>
+          </div>
+        </template>
+      </div>
+    </div>
+
+    {# Selected capabilities #}
+    <div x-show="form.capabilities.length > 0" x-cloak class="space-y-2">
+      <p class="text-xs font-medium text-muted-foreground uppercase tracking-wider">In scope (<span x-text="form.capabilities.length"></span>)</p>
+      <template x-for="(cap, idx) in form.capabilities" :key="cap.id">
+        <div class="rounded-xl border border-emerald-500/30 bg-emerald-500/[0.03] px-5 py-3.5 flex items-center justify-between">
+          <div>
+            <p class="text-sm font-semibold text-foreground" x-text="cap.name"></p>
+            <p class="text-xs text-muted-foreground" x-text="(cap.domain || '') + (cap.level ? ' · Level ' + cap.level : '')"></p>
+          </div>
+          <button @click="removeCapability(idx)"
+                  class="text-xs text-muted-foreground hover:text-destructive transition-colors px-2 py-1">Remove</button>
+        </div>
+      </template>
+    </div>
+
+    <p x-show="form.capabilities.length === 0" x-cloak class="text-sm text-muted-foreground text-center py-8 rounded-xl border border-dashed border-border">
+      No capabilities added yet. Search above to find capabilities from your enterprise catalog.
+    </p>
+  </section>
+
+  {# ══════════════════════════════════════════════════════════════ #}
+  {# STEP 4 — Application Landscape                                #}
+  {# ══════════════════════════════════════════════════════════════ #}
+  <section x-show="currentStep === 4" x-cloak class="space-y-6">
+    <div>
+      <h2 class="text-lg font-semibold mb-1">Programme application landscape</h2>
+      <p class="text-sm text-muted-foreground">Which applications are in scope for this programme? Search 850 portfolio applications.</p>
+    </div>
+
+    {# Application search picker #}
+    <div class="relative">
+      <input type="text" x-model="appSearch" @input.debounce.300ms="searchApplications()"
+             class="w-full text-sm border border-input rounded-lg px-3 py-2.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+             placeholder="Search 850 applications...">
+      <div x-show="appResults.length > 0" x-cloak
+           class="absolute z-10 w-full mt-1 border border-border rounded-lg bg-card shadow-lg max-h-48 overflow-y-auto">
+        <template x-for="app in appResults" :key="app.id">
+          <div @click="addApplication(app)"
+               class="px-4 py-2.5 hover:bg-accent cursor-pointer flex items-center justify-between">
+            <div>
+              <p class="text-sm font-medium text-foreground" x-text="app.name"></p>
+              <p class="text-xs text-muted-foreground" x-text="[app.vendor_name, app.component_type].filter(Boolean).join(' · ')"></p>
+            </div>
+            <span class="text-xs text-primary">+ Add</span>
+          </div>
+        </template>
+      </div>
+    </div>
+
+    {# Selected applications #}
+    <div x-show="form.applications.length > 0" x-cloak class="space-y-2">
+      <p class="text-xs font-medium text-muted-foreground uppercase tracking-wider">In scope (<span x-text="form.applications.length"></span>)</p>
+      <div class="rounded-xl border border-border bg-card divide-y divide-border overflow-hidden">
+        <template x-for="(app, idx) in form.applications" :key="app.id">
+          <div class="px-5 py-3 flex items-center justify-between">
+            <p class="text-sm font-medium text-foreground" x-text="app.name"></p>
+            <button @click="removeApplication(idx)"
+                    class="text-xs text-muted-foreground hover:text-destructive transition-colors px-2 py-1">Remove</button>
+          </div>
+        </template>
+      </div>
+    </div>
+
+    <p x-show="form.applications.length === 0" x-cloak
+       class="text-sm text-muted-foreground text-center py-8 rounded-xl border border-dashed border-border">
+      No applications added yet. You can also link applications from the programme blueprint after creation.
+    </p>
+  </section>
+
+  {# ══════════════════════════════════════════════════════════════ #}
+  {# STEP 5 — Stakeholders & Governance                            #}
+  {# ══════════════════════════════════════════════════════════════ #}
+  <section x-show="currentStep === 5" x-cloak class="space-y-6">
+    <div>
+      <h2 class="text-lg font-semibold mb-1">Programme ownership &amp; governance</h2>
+      <p class="text-sm text-muted-foreground">Confirm who owns this programme. Set the governance forums it reports to.</p>
+    </div>
+
+    {# Key roles #}
+    <div class="rounded-xl border border-border bg-card p-5 space-y-4">
+      <p class="text-sm font-semibold text-foreground">Programme roles</p>
+      <template x-for="(stk, idx) in form.stakeholders" :key="idx">
+        <div class="flex items-center gap-3">
+          <div class="w-40 shrink-0">
+            <p class="text-xs font-medium text-foreground" x-text="stk.role"></p>
+            <p class="text-[10px] text-muted-foreground" x-text="stk.role === 'Programme Sponsor' ? 'Accountable executive' : stk.role === 'Programme Owner' ? 'Day-to-day lead' : 'Architecture authority'"></p>
+          </div>
+          <input type="text" x-model="stk.name"
+                 class="flex-1 text-sm border border-input rounded-lg px-3 py-2 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                 :placeholder="'Name or role (' + stk.role + ')'">
+          <span x-show="!stk.name.trim()"
+                class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20 shrink-0">Required</span>
+          <span x-show="stk.name.trim()"
+                class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0">&#10003;</span>
+        </div>
+      </template>
+    </div>
+
+    {# Governance forums #}
+    <div class="rounded-xl border border-border bg-card p-5 space-y-3">
+      <p class="text-sm font-semibold text-foreground">Governance &amp; reporting forums</p>
+      <p class="text-xs text-muted-foreground">Which forums will this programme report to?</p>
+      <div class="space-y-2.5">
+        <label class="flex items-center gap-3 cursor-pointer">
+          <input type="checkbox" value="arb" x-model="form.governance_forums"
+                 class="rounded border-input bg-background text-primary focus:ring-primary">
+          <div>
+            <p class="text-sm text-foreground font-medium">Architecture Review Board (ARB)</p>
+            <p class="text-xs text-muted-foreground">Technical architecture approval — required for all programmes</p>
+          </div>
+        </label>
+        <label class="flex items-center gap-3 cursor-pointer">
+          <input type="checkbox" value="programme_board" x-model="form.governance_forums"
+                 class="rounded border-input bg-background text-primary focus:ring-primary">
+          <div>
+            <p class="text-sm text-foreground font-medium">Programme Board</p>
+            <p class="text-xs text-muted-foreground">Executive oversight and benefits realisation</p>
+          </div>
+        </label>
+        <label class="flex items-center gap-3 cursor-pointer">
+          <input type="checkbox" value="investment_committee" x-model="form.governance_forums"
+                 class="rounded border-input bg-background text-primary focus:ring-primary">
+          <div>
+            <p class="text-sm text-foreground font-medium">IT Investment Committee</p>
+            <p class="text-xs text-muted-foreground">Required for programmes above £1M capex</p>
+          </div>
+        </label>
+        <label class="flex items-center gap-3 cursor-pointer">
+          <input type="checkbox" value="steering_group" x-model="form.governance_forums"
+                 class="rounded border-input bg-background text-primary focus:ring-primary">
+          <div>
+            <p class="text-sm text-foreground font-medium">Steering Group</p>
+            <p class="text-xs text-muted-foreground">Domain-specific oversight forum</p>
+          </div>
+        </label>
+      </div>
+    </div>
+  </section>
+
+  {# ══════════════════════════════════════════════════════════════ #}
+  {# STEP 6 — Review & Create                                      #}
+  {# ══════════════════════════════════════════════════════════════ #}
+  <section x-show="currentStep === 6" x-cloak class="space-y-6">
+    <div>
+      <h2 class="text-lg font-semibold mb-1">Review &amp; create programme</h2>
+      <p class="text-sm text-muted-foreground">Summary of your programme. You can complete remaining items after creation.</p>
+    </div>
+
+    {# Summary cards #}
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div class="rounded-xl border border-border bg-card p-4 space-y-1">
+        <p class="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Programme</p>
+        <p class="text-sm font-semibold text-foreground" x-text="form.name || '—'"></p>
+        <p class="text-xs text-muted-foreground" x-text="form.solution_type + ' · ' + (form.business_domain || 'No domain')"></p>
+      </div>
+      <div class="rounded-xl border border-border bg-card p-4 space-y-1">
+        <p class="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Type</p>
+        <p class="text-sm font-semibold text-foreground" x-text="form.mode === 'greenfield' ? 'Greenfield Transformation' : 'Brownfield Modernization'"></p>
+        <p class="text-xs text-muted-foreground" x-text="form.mode === 'greenfield' ? 'Starting Phase A' : 'Starting Phase B'"></p>
+      </div>
+      <div class="rounded-xl border border-border bg-card p-4 space-y-1">
+        <p class="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Horizon</p>
+        <p class="text-sm font-semibold text-foreground" x-text="form.programme_start_year + ' \u2013 ' + form.programme_end_year"></p>
+        <p class="text-xs text-muted-foreground" x-text="(form.programme_end_year - form.programme_start_year) + '-year programme'"></p>
+      </div>
+    </div>
+
+    {# Counts strip #}
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
+      <div class="rounded-xl border border-border bg-card py-4">
+        <p class="text-2xl font-bold text-foreground" x-text="validDrivers().length"></p>
+        <p class="text-[11px] text-muted-foreground mt-0.5">Strategic drivers</p>
+      </div>
+      <div class="rounded-xl border border-border bg-card py-4">
+        <p class="text-2xl font-bold text-foreground" x-text="form.goals.filter(g => g.name.trim()).length"></p>
+        <p class="text-[11px] text-muted-foreground mt-0.5">Programme goals</p>
+      </div>
+      <div class="rounded-xl border border-emerald-500/20 bg-emerald-500/5 py-4">
+        <p class="text-2xl font-bold text-emerald-400" x-text="form.capabilities.length"></p>
+        <p class="text-[11px] text-muted-foreground mt-0.5">Capabilities in scope</p>
+      </div>
+      <div class="rounded-xl border border-border bg-card py-4">
+        <p class="text-2xl font-bold text-foreground" x-text="form.applications.length"></p>
+        <p class="text-[11px] text-muted-foreground mt-0.5">Applications mapped</p>
+      </div>
+    </div>
+
+    {# What happens next #}
+    <div class="rounded-xl border border-border bg-card p-5 space-y-3">
+      <p class="text-sm font-semibold text-foreground">What happens after creation</p>
+      <div class="space-y-2">
+        <div class="flex items-start gap-3 text-xs text-muted-foreground">
+          <span class="w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">1</span>
+          <span>Programme blueprint created &mdash; organised by TOGAF phase and ArchiMate viewpoint</span>
+        </div>
+        <div class="flex items-start gap-3 text-xs text-muted-foreground">
+          <span class="w-5 h-5 rounded-full bg-muted border border-border text-muted-foreground flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">2</span>
+          <span>Add risks, options, and architecture decisions on the blueprint page to raise your maturity score</span>
+        </div>
+        <div class="flex items-start gap-3 text-xs text-muted-foreground">
+          <span class="w-5 h-5 rounded-full bg-muted border border-border text-muted-foreground flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">3</span>
+          <span>Submit to ARB when readiness score &ge; 70%</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  {# ── Navigation footer ───────────────────────────────────────── #}
+  <div class="flex items-center justify-between pt-6 mt-6 border-t border-border">
+    <button @click="prevStep()"
+            :class="currentStep === 1 ? 'opacity-30 cursor-not-allowed' : 'hover:bg-accent'"
+            class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-input bg-card text-foreground transition-colors">
+      &larr; Previous
+    </button>
+    <div class="flex items-center gap-3">
+      <span class="text-xs text-muted-foreground" x-text="'Step ' + currentStep + ' of 6'"></span>
+      <button @click="nextStep()"
+              :disabled="!canAdvance()"
+              :class="currentStep === 6 ? 'hidden' : canAdvance() ? 'hover:bg-primary/90' : 'opacity-40 cursor-not-allowed'"
+              class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-primary text-primary-foreground transition-colors">
+        Continue &rarr;
+      </button>
+      <button x-show="currentStep === 6" @click="submitProgramme()"
+              :disabled="submitting"
+              class="inline-flex items-center gap-2 px-5 py-2 text-sm font-medium rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50">
+        <span x-show="!submitting">Create Programme</span>
+        <span x-show="submitting" x-cloak>Creating...</span>
+      </button>
+    </div>
+  </div>
+
+  {# Error message #}
+  <div x-show="errorMsg" x-cloak class="mt-4 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3">
+    <p class="text-sm text-destructive" x-text="errorMsg"></p>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function programmeJourney() {
+  return {
+    currentStep: 1,
+    completedSteps: [],
+    submitting: false,
+    errorMsg: '',
+    oefFilename: '',
+    oefXmlContent: '',
+
+    steps: [
+      { num: 1, label: 'Intent' },
+      { num: 2, label: 'Strategic Case' },
+      { num: 3, label: 'Capabilities' },
+      { num: 4, label: 'Landscape' },
+      { num: 5, label: 'Stakeholders' },
+      { num: 6, label: 'Review' },
+    ],
+
+    copilotMessages: {
+      1: "Describe the business problem this programme solves. I'll search 850 applications, 516 capabilities, and 3,143 ArchiMate elements to enrich your programme brief.",
+      2: "Define the strategic drivers and value case. Each driver needs a measurable target and a benefit owner — these become the programme's value framework.",
+      3: "Search your enterprise capability catalog. Accept capabilities in scope. Maturity gaps shown are the programme's change agenda.",
+      4: "Portfolio applications serving your capabilities. Applications flagged in red are decommissioning within the programme window — these are the key decisions.",
+      5: "Confirm who owns this programme and which governance forums it reports to.",
+      6: "Review your programme summary. You can complete remaining items after creation.",
+    },
+
+    form: {
+      mode: '',
+      name: '',
+      description: '',
+      vision: '',
+      business_domain: '',
+      solution_type: 'Platform',
+      programme_start_year: new Date().getFullYear(),
+      programme_end_year: new Date().getFullYear() + 3,
+      drivers: [{ name: '', type: 'internal', urgency: 'high', kpi: '', owner: '', benefit: '' }],
+      goals: [{ name: '', description: '' }],
+      capabilities: [],
+      applications: [],
+      stakeholders: [
+        { name: '', role: 'Programme Sponsor', influence: 'high', interest: 'high' },
+        { name: '', role: 'Programme Owner',   influence: 'high', interest: 'high' },
+        { name: '', role: 'EA Lead',           influence: 'high', interest: 'medium' },
+      ],
+      governance_forums: ['arb'],
+    },
+
+    capSearch: '',
+    capResults: [],
+    capSearching: false,
+
+    appSearch: '',
+    appResults: [],
+    appSearching: false,
+
+    canAdvance() {
+      if (this.currentStep === 1) {
+        return this.form.mode !== '' && this.form.name.trim().length >= 3
+          && this.form.business_domain !== ''
+          && (this.form.mode === 'greenfield' || this.oefXmlContent !== '');
+      }
+      if (this.currentStep === 2) {
+        return this.validDrivers().length >= 1;
+      }
+      return true;
+    },
+
+    prevStep() {
+      if (this.currentStep > 1) this.currentStep--;
+    },
+
+    nextStep() {
+      if (!this.canAdvance()) return;
+      if (!this.completedSteps.includes(this.currentStep)) {
+        this.completedSteps.push(this.currentStep);
+      }
+      if (this.currentStep < 6) this.currentStep++;
+    },
+
+    validDrivers() {
+      return this.form.drivers.filter(d => d.name.trim() !== '');
+    },
+
+    addDriver() {
+      this.form.drivers.push({ name: '', type: 'internal', urgency: 'high', kpi: '', owner: '', benefit: '' });
+    },
+
+    removeDriver(idx) {
+      if (this.form.drivers.length > 1) this.form.drivers.splice(idx, 1);
+    },
+
+    addGoal() {
+      this.form.goals.push({ name: '', description: '' });
+    },
+
+    removeGoal(idx) {
+      if (this.form.goals.length > 1) this.form.goals.splice(idx, 1);
+    },
+
+    async searchCapabilities() {
+      if (this.capSearch.length < 2) { this.capResults = []; return; }
+      this.capSearching = true;
+      try {
+        const r = await fetch(`/solutions/capabilities/search?q=${encodeURIComponent(this.capSearch)}&limit=10`);
+        const data = await r.json();
+        if (data.success) {
+          const selectedIds = new Set(this.form.capabilities.map(c => c.id));
+          this.capResults = (data.capabilities || []).filter(c => !selectedIds.has(c.id));
+        }
+      } finally { this.capSearching = false; }
+    },
+
+    addCapability(cap) {
+      this.form.capabilities.push({ id: cap.id, name: cap.name, domain: cap.business_domain, level: cap.level, accepted: true });
+      this.capSearch = '';
+      this.capResults = [];
+    },
+
+    removeCapability(idx) {
+      this.form.capabilities.splice(idx, 1);
+    },
+
+    async searchApplications() {
+      if (this.appSearch.length < 2) { this.appResults = []; return; }
+      this.appSearching = true;
+      try {
+        const r = await fetch(`/api/enterprise/applications?search=${encodeURIComponent(this.appSearch)}&limit=10`);
+        const data = await r.json();
+        const selectedIds = new Set(this.form.applications.map(a => a.id));
+        this.appResults = (data.applications || []).filter(a => !selectedIds.has(a.id));
+      } finally { this.appSearching = false; }
+    },
+
+    addApplication(app) {
+      this.form.applications.push({ id: app.id, name: app.name });
+      this.appSearch = '';
+      this.appResults = [];
+    },
+
+    removeApplication(idx) {
+      this.form.applications.splice(idx, 1);
+    },
+
+    handleOefUpload(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      this.oefFilename = file.name;
+      const reader = new FileReader();
+      reader.onload = (e) => { this.oefXmlContent = e.target.result; };
+      reader.readAsText(file);
+    },
+
+    async submitProgramme() {
+      this.errorMsg = '';
+      this.submitting = true;
+      try {
+        const payload = {
+          mode: this.form.mode,
+          name: this.form.name.trim(),
+          description: this.form.description.trim(),
+          vision: this.form.vision.trim(),
+          business_domain: this.form.business_domain,
+          solution_type: this.form.solution_type,
+          programme_start_year: this.form.programme_start_year,
+          programme_end_year: this.form.programme_end_year,
+          drivers: this.validDrivers(),
+          goals: this.form.goals.filter(g => g.name.trim() !== ''),
+          stakeholders: this.form.stakeholders.filter(s => s.name.trim() !== ''),
+          capabilities: this.form.capabilities,
+          applications: this.form.applications,
+          governance_forums: this.form.governance_forums,
+        };
+        if (this.form.mode === 'brownfield') {
+          payload.xml_content = this.oefXmlContent;
+        }
+
+        const r = await fetch("{{ url_for('solution_design.create_programme') }}", {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || '' },
+          body: JSON.stringify(payload),
+        });
+        const data = await r.json();
+        if (data.success) {
+          const capIds = this.form.capabilities.map(c => c.id);
+          const appIds = this.form.applications.map(a => a.id);
+          if (capIds.length || appIds.length) {
+            await fetch(`/architecture-journey/${data.solution_id}/link-clarify-entities`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || '' },
+              body: JSON.stringify({ entities: { capabilities: capIds, applications: appIds } }),
+            });
+          }
+          window.location.href = data.redirect_url;
+        } else {
+          this.errorMsg = data.error || 'Failed to create programme.';
+        }
+      } catch (e) {
+        this.errorMsg = 'Network error. Please try again.';
+      } finally {
+        this.submitting = false;
+      }
+    },
+  };
+}
+</script>
+{% endblock %}

@@ -1,0 +1,77 @@
+{# app/modules/solutions_product/templates/python_fastapi/monitoring/grafana_dashboard.json.j2 #}
+{
+  "title": "{{ project_name }} — API Dashboard",
+  "uid": "{{ solution_id }}-api",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Request Rate (req/s)",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "targets": [{
+        "expr": "rate({{ solution_name | lower | replace(' ', '_') }}_requests_total[5m])",
+        "legendFormat": "{% raw %}{{method}} {{endpoint}}{% endraw %}",
+        "refId": "A"
+      }]
+    },
+    {
+      "id": 2,
+      "title": "P95 Latency (ms)",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "targets": [{
+        "expr": "histogram_quantile(0.95, rate({{ solution_name | lower | replace(' ', '_') }}_request_duration_seconds_bucket[5m])) * 1000",
+        "legendFormat": "p95 {% raw %}{{endpoint}}{% endraw %}",
+        "refId": "A"
+      }]
+    },
+    {
+      "id": 3,
+      "title": "Error Rate (%)",
+      "type": "stat",
+      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 8},
+      "targets": [{
+        "expr": "100 * sum(rate({{ solution_name | lower | replace(' ', '_') }}_requests_total{status_code=~\"5..\"}[5m])) / sum(rate({{ solution_name | lower | replace(' ', '_') }}_requests_total[5m]))",
+        "refId": "A"
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": {
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 1},
+              {"color": "red", "value": 5}
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Active Requests",
+      "type": "stat",
+      "gridPos": {"h": 4, "w": 6, "x": 6, "y": 8},
+      "targets": [{
+        "expr": "{{ solution_name | lower | replace(' ', '_') }}_active_requests",
+        "refId": "A"
+      }]
+    }{% for model_name in model_names %},
+    {
+      "id": {{ loop.index + 10 }},
+      "title": "{{ model_name }} Created/min",
+      "type": "timeseries",
+      "gridPos": {"h": 6, "w": 8, "x": {{ ((loop.index0 % 3) * 8) }}, "y": {{ 12 + (loop.index0 // 3) * 6 }}},
+      "targets": [{
+        "expr": "rate({{ solution_name | lower | replace(' ', '_') }}_{{ model_name | lower }}_created_total[1m]) * 60",
+        "legendFormat": "{{ model_name }} created",
+        "refId": "A"
+      }]
+    }{% endfor %}
+  ],
+  "time": {"from": "now-1h", "to": "now"},
+  "timezone": "browser"
+}

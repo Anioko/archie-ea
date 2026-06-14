@@ -1,0 +1,151 @@
+{# app/splash.tsx — Animated branded splash screen.
+   Context: solution_name, tagline, primary_color, accent_color #}
+import { useEffect, useRef } from "react"
+import { StyleSheet, View, Text, Animated, Dimensions } from "react-native"
+import { StatusBar } from "expo-status-bar"
+import * as ExpoSplashScreen from "expo-splash-screen"
+
+{% set bg_color = primary_color if primary_color else "#2563eb" %}
+{% set fg_color = "#ffffff" %}
+{% set sub_color = "rgba(255,255,255,0.72)" %}
+
+const { width } = Dimensions.get("window")
+
+interface SplashScreenProps {
+  onFinish: () => void
+}
+
+/**
+ * Branded animated splash screen for {{ solution_name }}.
+ *
+ * Shows for ~1.8s:
+ *   - Logo mark fades + scales in (0–600ms)
+ *   - App name slides up (300–900ms)
+ *   - Tagline fades in (700–1200ms)
+ *   - Whole screen fades out (1400–1800ms) → calls onFinish
+ *
+ * Call ExpoSplashScreen.hideAsync() before mounting this component so the
+ * native splash is replaced immediately and this one takes over.
+ */
+export function SplashScreen({ onFinish }: SplashScreenProps) {
+  // Animation values
+  const logoOpacity = useRef(new Animated.Value(0)).current
+  const logoScale   = useRef(new Animated.Value(0.6)).current
+  const nameOpacity = useRef(new Animated.Value(0)).current
+  const nameY       = useRef(new Animated.Value(18)).current
+  const tagOpacity  = useRef(new Animated.Value(0)).current
+  const screenOpacity = useRef(new Animated.Value(1)).current
+
+  useEffect(() => {
+    // Hide Expo's native static splash as soon as React is ready
+    ExpoSplashScreen.hideAsync().catch(() => {})
+
+    const spring = (value: Animated.Value, toValue: number, tension = 60, friction = 8) =>
+      Animated.spring(value, { toValue, tension, friction, useNativeDriver: true })
+
+    const timing = (value: Animated.Value, toValue: number, duration: number, delay = 0) =>
+      Animated.timing(value, { toValue, duration, delay, useNativeDriver: true })
+
+    Animated.sequence([
+      // Phase 1 — logo appears
+      Animated.parallel([
+        timing(logoOpacity, 1, 500),
+        spring(logoScale, 1),
+      ]),
+      // Phase 2 — name slides up + tagline fades in
+      Animated.parallel([
+        timing(nameOpacity, 1, 350),
+        timing(nameY, 0, 350),
+        timing(tagOpacity, 1, 500, 150),
+      ]),
+      // Hold
+      Animated.delay(600),
+      // Phase 3 — fade to black, call onFinish
+      timing(screenOpacity, 0, 380),
+    ]).start(() => onFinish())
+  }, [])
+
+  return (
+    <View style={styles.container}>
+      <StatusBar style="light" />
+
+      {/* Logo mark — initials in a rounded square */}
+      <Animated.View
+        style={[
+          styles.logoMark,
+          { opacity: logoOpacity, transform: [{ scale: logoScale }] },
+        ]}
+      >
+        <Text style={styles.logoText}>
+          {{ solution_name[:2].upper() }}
+        </Text>
+      </Animated.View>
+
+      {/* App name */}
+      <Animated.Text
+        style={[
+          styles.appName,
+          { opacity: nameOpacity, transform: [{ translateY: nameY }] },
+        ]}
+      >
+        {{ solution_name }}
+      </Animated.Text>
+
+      {/* Tagline */}
+      <Animated.Text style={[styles.tagline, { opacity: tagOpacity }]}>
+        {% if tagline %}{{ tagline }}{% else %}Powered by ARCHIE{% endif %}
+      </Animated.Text>
+
+      {/* Fade-out overlay */}
+      <Animated.View
+        style={[StyleSheet.absoluteFill, styles.fadeOverlay, { opacity: Animated.subtract(1, screenOpacity) }]}
+        pointerEvents="none"
+      />
+    </View>
+  )
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "{{ bg_color }}",
+  },
+  logoMark: {
+    width: 80,
+    height: 80,
+    borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.25)",
+  },
+  logoText: {
+    fontSize: 32,
+    fontWeight: "700",
+    color: "{{ fg_color }}",
+    letterSpacing: 1,
+  },
+  appName: {
+    fontSize: 30,
+    fontWeight: "700",
+    color: "{{ fg_color }}",
+    letterSpacing: -0.5,
+    textAlign: "center",
+    paddingHorizontal: 32,
+  },
+  tagline: {
+    marginTop: 10,
+    fontSize: 15,
+    color: "{{ sub_color }}",
+    textAlign: "center",
+    paddingHorizontal: 40,
+    lineHeight: 22,
+  },
+  fadeOverlay: {
+    backgroundColor: "#000",
+  },
+})

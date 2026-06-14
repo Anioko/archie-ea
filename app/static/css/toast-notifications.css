@@ -1,0 +1,223 @@
+/**
+ * Toast Notification Styles
+ * Shadcn-styled toast notifications matching the platform theme
+ */
+
+.toast-container {
+    position: fixed;
+    top: 1rem;
+    right: 1rem;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    max-width: 420px;
+    pointer-events: none;
+}
+
+.toast {
+    pointer-events: auto;
+    position: relative;
+    background: hsl(var(--card));
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--radius);
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    padding: 1rem;
+    opacity: 0;
+    transform: translateX(100%);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    max-width: 420px;
+    width: 100%;
+}
+
+.toast-show {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+.toast-hide {
+    opacity: 0;
+    transform: translateX(100%);
+}
+
+.toast-content {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+}
+
+.toast-icon {
+    flex-shrink: 0;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.toast-icon svg {
+    width: 20px;
+    height: 20px;
+}
+
+/* Type-specific styles */
+.toast-success {
+    border-left: 3px solid hsl(142, 76%, 36%);
+}
+
+.toast-success .toast-icon {
+    color: hsl(142, 76%, 36%);
+}
+
+.toast-error {
+    border-left: 3px solid hsl(0, 84%, 60%);
+}
+
+.toast-error .toast-icon {
+    color: hsl(0, 84%, 60%);
+}
+
+.toast-warning {
+    border-left: 3px solid hsl(38, 92%, 50%);
+}
+
+.toast-warning .toast-icon {
+    color: hsl(38, 92%, 50%);
+}
+
+.toast-info {
+    border-left: 3px solid hsl(221, 83%, 53%);
+}
+
+.toast-info .toast-icon {
+    color: hsl(221, 83%, 53%);
+}
+
+.toast-body {
+    flex: 1;
+    min-width: 0;
+}
+
+.toast-message {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: hsl(var(--foreground));
+    line-height: 1.4;
+}
+
+.toast-description {
+    font-size: 0.8125rem;
+    color: hsl(var(--muted-foreground));
+    margin-top: 0.25rem;
+    line-height: 1.4;
+}
+
+.toast-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-shrink: 0;
+}
+
+.toast-action-btn {
+    font-size: 0.8125rem;
+    font-weight: 500;
+    padding: 0.25rem 0.75rem;
+    border-radius: calc(var(--radius) - 2px);
+    border: 1px solid hsl(var(--border));
+    background: hsl(var(--background));
+    color: hsl(var(--foreground));
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.toast-action-btn:hover {
+    background: hsl(var(--accent));
+    color: hsl(var(--accent-foreground));
+}
+
+.toast-action-btn:active {
+    transform: scale(0.95);
+}
+
+.toast-close {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: hsl(var(--muted-foreground));
+    cursor: pointer;
+    border-radius: calc(var(--radius) - 2px);
+    transition: all 0.2s;
+}
+
+.toast-close:hover {
+    background: hsl(var(--accent));
+    color: hsl(var(--foreground));
+}
+
+.toast-close svg {
+    width: 14px;
+    height: 14px;
+}
+
+/* Loading animation */
+.toast-info .toast-icon [data-lucide="loader-2"] {
+    animation: toast-spin 1s linear infinite;
+}
+
+@keyframes toast-spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Mobile responsive */
+@media (max-width: 640px) {
+    .toast-container {
+        left: 1rem;
+        right: 1rem;
+        top: auto;
+        bottom: 1rem;
+        max-width: none;
+    }
+
+    .toast {
+        max-width: none;
+        transform: translateY(100%);
+    }
+
+    .toast-show {
+        transform: translateY(0);
+    }
+
+    .toast-hide {
+        transform: translateY(100%);
+    }
+}
+
+/* Dark mode adjustments */
+@media (prefers-color-scheme: dark) {
+    .toast {
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.2);
+    }
+}
+
+/* Accessibility */
+@media (prefers-reduced-motion: reduce) {
+    .toast {
+        transition: opacity 0.2s;
+    }
+
+    .toast-show,
+    .toast-hide {
+        transform: none;
+    }
+}

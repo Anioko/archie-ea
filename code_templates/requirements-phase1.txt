@@ -1,0 +1,36 @@
+# Phase 1 Requirements
+# Install with: pip install -r requirements-phase1.txt
+
+# Authentication & Authorization
+flask-login==0.6.3
+flask-principal==0.4.0
+
+# Security
+flask-limiter==3.3.1
+marshmallow==3.20.1
+bleach==6.1.0
+
+# LLM Integration
+openai==1.12.0
+anthropic==0.18.0
+tiktoken==0.6.0
+
+# Caching & Background Tasks (Phase 3, but good to have)
+redis==5.0.1
+flask-caching==2.1.0
+celery==5.3.4
+
+# Export capabilities
+python-markdown==3.5.2
+weasyprint==60.0  # For PDF export
+
+# Testing
+pytest==7.4.3
+pytest-cov==4.1.0
+pytest-flask==1.3.0
+factory-boy==3.3.0
+
+# Code Quality
+black==23.12.1
+flake8==7.0.0
+mypy==1.8.0

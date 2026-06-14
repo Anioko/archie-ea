@@ -1,0 +1,154 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'components/page_header.html' import page_header %}
+{% from 'components/metrics_card.html' import metrics_card %}
+
+{% block title %}Data Architecture Dashboard{% endblock %}
+
+{% block breadcrumb %}
+{% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
+{{ breadcrumb_nav(items=[
+    {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
+    {'text': 'Enterprise Architecture'},
+    {'text': 'Enterprise', 'current': true}
+]) }}
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Page Header -->
+    {{ page_header(
+        title='Data Architecture',
+        description='Manage and analyze data architecture models',
+        breadcrumbs=[
+            {'label': 'Dashboard', 'href': url_for('main.index')},
+            {'label': 'Data Architecture'}
+        ],
+        actions=[
+            {'text': 'Data Models', 'icon': 'database', 'href': url_for('enterprise.data_models'), 'variant': 'default'}
+        ]
+    ) }}
+
+    <!-- Metrics Cards -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-8">
+        {{ metrics_card(title='Conceptual Models', value=conceptual_count or 0, icon='brain') }}
+        {{ metrics_card(title='Logical Models', value=logical_count or 0, icon='git-branch') }}
+        {{ metrics_card(title='Physical Models', value=physical_count or 0, icon='server') }}
+        {{ metrics_card(title='Data Lineage Flows', value=data_lineage_count or 0, icon='git-merge') }}
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="rounded-xl border-2 border-input bg-background p-6">
+        <h2 class="text-xl font-semibold mb-6">Quick Actions</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <a href="{{ url_for('enterprise.data_models') }}" class="flex items-center gap-3 p-4 rounded-lg border-2 border-input bg-background hover:border-primary/50 hover:shadow-sm transition-all duration-200">
+                <i data-lucide="database" class="w-5 h-5 text-muted-foreground" aria-hidden="true"></i>
+                <span class="text-sm font-medium">View All Models</span>
+            </a>
+            <span class="flex items-center gap-3 p-4 rounded-lg border-2 border-input bg-muted/30 cursor-not-allowed opacity-60" title="Coming soon">
+                <i data-lucide="plus-circle" class="w-5 h-5 text-muted-foreground" aria-hidden="true"></i>
+                <span class="text-sm font-medium text-muted-foreground">Create Model</span>
+            </span>
+            <span class="flex items-center gap-3 p-4 rounded-lg border-2 border-input bg-muted/30 cursor-not-allowed opacity-60" title="Coming soon">
+                <i data-lucide="bar-chart" class="w-5 h-5 text-muted-foreground" aria-hidden="true"></i>
+                <span class="text-sm font-medium text-muted-foreground">Analytics</span>
+            </span>
+            <span class="flex items-center gap-3 p-4 rounded-lg border-2 border-input bg-muted/30 cursor-not-allowed opacity-60" title="Coming soon">
+                <i data-lucide="settings" class="w-5 h-5 text-muted-foreground" aria-hidden="true"></i>
+                <span class="text-sm font-medium text-muted-foreground">Settings</span>
+            </span>
+        </div>
+    </div>
+
+    <!-- Data Platform Capability Stack -->
+    <div class="mt-8 rounded-xl border-2 border-input bg-background overflow-hidden">
+        <div class="p-6 border-b border-input flex items-center justify-between bg-muted/30">
+            <div>
+                <h2 class="text-xl font-semibold">Data Platform Capability Stack</h2>
+                <p class="text-sm text-muted-foreground mt-1">Technical capabilities and products powering the data ecosystem</p>
+            </div>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm text-left">
+                <thead class="bg-muted/50 text-muted-foreground font-medium border-b border-input">
+                    <tr>
+                        <th class="px-6 py-4">Capability Area</th>
+                        <th class="px-6 py-4">Domain</th>
+                        <th class="px-6 py-4">Technology Solutions</th>
+                        <th class="px-6 py-4 text-center">Maturity Level</th>
+                        <th class="px-6 py-4 text-center">Solution Fit</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-input">
+                    {% for item in data_stack %}
+                    <tr class="hover:bg-muted/30 transition-colors">
+                        <td class="px-6 py-4">
+                            <div class="font-medium text-foreground">{{ item.capability }}</div>
+                        </td>
+                        <td class="px-6 py-4">
+                            <span class="text-[10px] px-2 py-0.5 bg-muted text-muted-foreground rounded-full border border-border font-bold uppercase tracking-wider">{{ item.domain }}</span>
+                        </td>
+                        <td class="px-6 py-4">
+                            <div class="flex flex-col">
+                                <span class="font-medium text-foreground">{{ item.product }}</span>
+                                <span class="text-xs text-muted-foreground italic">{{ item.vendor }}</span>
+                            </div>
+                        </td>
+                        <td class="px-6 py-4">
+                            <div class="flex items-center justify-center gap-1.5">
+                                {% for i in range(5) %}
+                                <div class="w-2 h-4 rounded-sm {% if i < item.maturity %}bg-primary shadow-sm{% else %}bg-muted{% endif %}"></div>
+                                {% endfor %}
+                                <span class="ml-2 text-xs font-black text-primary">L{{ item.maturity }}</span>
+                            </div>
+                        </td>
+                        <td class="px-6 py-4">
+                            <div class="flex items-center justify-center gap-3">
+                                <div class="flex-1 max-w-[100px] h-2 bg-muted rounded-full overflow-hidden border border-border shadow-inner">
+                                    <div class="h-full bg-emerald-500 rounded-full transition-all duration-700" style="width: {{ item.fit }}%"></div>
+                                </div>
+                                <span class="text-xs font-black text-success tabular-nums">{{ item.fit }}%</span>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+
+                    {% if not data_stack %}
+                    <tr>
+                        <td colspan="5" class="px-6 py-12 text-center text-muted-foreground">
+                            <div class="flex flex-col items-center gap-2">
+                                <i data-lucide="database" class="h-10 w-10 opacity-20 mb-2" aria-hidden="true"></i>
+                                <p class="text-sm font-medium">No data platform capabilities mapped.</p>
+                                <p class="text-xs opacity-70">Connect Technical Capabilities in DATA-STORAGE or AI-ANALYTICS to Vendor Products to populate this stack.</p>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+    <!-- ArchiMate Architecture Repository -->
+    <div class="mt-8 rounded-xl border-2 border-input bg-background overflow-hidden">
+        <div class="p-6 border-b border-input bg-muted/30">
+            <div>
+                <h2 class="text-xl font-semibold">Architecture Repository</h2>
+                <p class="text-sm text-muted-foreground mt-1">ArchiMate elements and relationships from the enterprise architecture model</p>
+            </div>
+        </div>
+        <div class="p-6">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                {{ metrics_card(title='Data & Application Elements', value=archimate_data_count or 0, icon='box') }}
+                {{ metrics_card(title='Architecture Relationships', value=archimate_rel_count or 0, icon='git-pull-request') }}
+            </div>
+        </div>
+    </div>
+
+<script>
+// Initialize Lucide icons
+if (typeof lucide !== 'undefined') {
+    lucide.createIcons();
+}
+</script>
+{% endblock %}

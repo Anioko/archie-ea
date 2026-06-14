@@ -1,0 +1,25 @@
+<!-- Business Output Display Component -->
+<div id="business-output-container" class="hidden">
+    <!-- Role Selector -->
+    <div class="mb-4 p-4 bg-card rounded-lg border">
+        <label class="block text-sm font-medium mb-2">View as:</label>
+        <select id="stakeholder-role" class="w-full p-2 border rounded-md bg-background">
+            <option value="business_analyst">Business Analyst</option>
+            <option value="product_owner">Product Owner</option>
+            <option value="business_architect">Business Architect</option>
+            <option value="enterprise_architect">Enterprise Architect</option>
+            <option value="executive">Executive</option>
+            <option value="technical_lead">Technical Lead</option>
+        </select>
+    </div>
+
+    <!-- Business Output Display -->
+    <div id="business-output-content" class="space-y-6">
+        <!-- Dynamic content will be inserted here -->
+    </div>
+</div>
+
+<script>
+  window.__APP_CONFIG__ = window.__APP_CONFIG__ || {};
+</script>
+<script src="{{ url_for('static', filename='js/ai_chat/business_output.js') }}"></script>

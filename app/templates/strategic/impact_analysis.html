@@ -1,0 +1,512 @@
+{% extends 'layouts/admin_base.html' %}
+{% from 'components/page_header.html' import page_header %}
+
+{% block title %}Architecture Impact Analysis{% endblock %}
+
+{% block breadcrumb %}
+{% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
+{{ breadcrumb_nav(items=[
+    {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
+    {'text': 'Strategy Layer', 'href': url_for('archimate_crud.dashboard') + '#strategy'},
+    {'text': 'Strategic Planning', 'current': true}
+]) }}
+{% endblock %}
+
+{% block content %}
+<div class="flex flex-col space-y-8 animate-in fade-in duration-500" x-data="impactAnalysis">
+    <!-- Header -->
+    <div class="flex flex-col space-y-2">
+        <div class="flex items-center justify-between">
+            {{ page_header(
+        title='Impact Analysis',
+        description='Analyze the ripple effects of changes across the enterprise architecture.'
+    ) }}
+            <div class="flex items-center gap-3">
+                <button type="button" 
+                    @click="$dispatch('open-impact-scenario-comparison.window')"
+                    class="inline-flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary text-primary-foreground font-medium rounded-lg transition-colors" aria-label="Open">
+                    <i data-lucide="git-compare" class="h-4 w-4" aria-hidden="true"></i>
+                    Compare Scenarios
+                </button>
+                <button type="button" 
+                    @click="$dispatch('open-initiative-change-request-modal')"
+                    class="inline-flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary text-primary-foreground font-medium rounded-lg transition-colors" aria-label="Open">
+                    <i data-lucide="git-branch" class="h-4 w-4" aria-hidden="true"></i>
+                    Create Change Request
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Grid -->
+    <div class="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        <!-- Selector Card -->
+        <div data-slot="card" class="lg:col-span-1 rounded-xl border bg-card text-card-foreground shadow">
+            <div class="flex flex-col space-y-1.5 p-6 border-b">
+                <h3 class="font-semibold leading-none tracking-tight">Select Element</h3>
+                <p class="text-sm text-muted-foreground">Select an architecture element to perform impact analysis.</p>
+            </div>
+            <div class="p-6 pt-6">
+                <div class="space-y-4">
+                    <div class="space-y-2">
+                        <label class="text-sm font-medium">Architecture Layer</label>
+                        <select x-model="selectedType" @change="searchQuery = ''; searchResults = []; selectedElement = null;"
+                            class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50">
+                            <option value="Application">Application Layer</option>
+                            <option value="Business">Business Layer</option>
+                            <option value="Technology">Technology Layer</option>
+                            <option value="Strategy">Strategy Layer</option>
+                            <option value="Motivation">Motivation Layer</option>
+                        </select>
+                    </div>
+                    <div class="space-y-2">
+                        <label class="text-sm font-medium">Search Element</label>
+                        <div class="relative">
+                            <input type="text" x-model="searchQuery" @input.debounce="searchElements"
+                                placeholder="Type to search..."
+                                class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50" aria-label="Type to search...">
+                        </div>
+                        <div x-show="searchResults.length > 0" x-cloak
+                            class="mt-2 border rounded-md max-h-48 overflow-y-auto bg-popover text-popover-foreground">
+                            <template x-for="item in searchResults" :key="item.id">
+                                <button type="button" @click="selectElement(item)"
+                                    class="w-full text-left px-4 py-2 hover:bg-accent hover:text-accent-foreground text-sm transition-colors border-b last:border-0" aria-label="Action">
+                                    <span x-text="item.name"></span>
+                                    <span class="text-xs text-muted-foreground block"
+                                        x-text="(item.element_type || '') + (item.description ? ' — ' + item.description.substring(0, 40) + '...' : '')"></span>
+                                </button>
+                            </template>
+                        </div>
+                    </div>
+                    <div class="space-y-2">
+                        <label class="text-sm font-medium">Change Type</label>
+                        <select x-model="changeType"
+                            class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50">
+                            <option value="REPLACE">Full Replacement</option>
+                            <option value="UPGRADE">Upgrade / Version Change</option>
+                            <option value="RETIRE">Decommission / Retirement</option>
+                            <option value="MODIFY">Minor Modification</option>
+                        </select>
+                    </div>
+                    <button type="button" @click="performAnalysis" :disabled="!selectedElement || loading"
+                        class="w-full inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2" aria-label="Action">
+                        <i data-lucide="play" class="mr-2 h-4 w-4" x-show="!loading" x-cloak></i>
+                        <i data-lucide="loader-2" class="mr-2 h-4 w-4 animate-spin" x-show="loading" x-cloak></i>
+                        Analyze Impact
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Analysis Results -->
+        <div data-slot="card" class="lg:col-span-2 rounded-xl border bg-card text-card-foreground shadow min-h-[400px]">
+            <div class="flex flex-col space-y-1.5 p-6 border-b">
+                <h3 class="font-semibold leading-none tracking-tight">Analysis Report</h3>
+                <p class="text-sm text-muted-foreground"
+                    x-text="selectedElement ? 'Impact of ' + changeType + ' on ' + selectedElement.name : 'Select an element to begin analysis'">
+                </p>
+            </div>
+
+            <!-- Empty State -->
+            <div x-cloak x-show="!analysisResult && !loading && !analysisError"
+                class="flex flex-col items-center justify-center h-full p-12 text-center">
+                <div class="rounded-full bg-muted p-4 mb-4">
+                    <i data-lucide="radar" class="h-8 w-8 text-muted-foreground" aria-hidden="true"></i>
+                </div>
+                <h4 class="text-lg font-medium">No Analysis Active</h4>
+                <p class="text-sm text-muted-foreground max-w-xs">Enter an element and change type to visualize
+                    architectural dependencies and risks.</p>
+            </div>
+
+            <!-- Loading State -->
+            <div x-cloak x-show="loading" class="flex flex-col items-center justify-center h-full p-12 text-center">
+                <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                <p class="text-sm text-muted-foreground mt-4">Traversing enterprise graph...</p>
+            </div>
+
+            <!-- Error State -->
+            <div x-cloak x-show="analysisError && !loading" class="flex flex-col items-center justify-center h-full p-12 text-center">
+                <div class="rounded-full bg-destructive/10 p-4 mb-4">
+                    <i data-lucide="alert-triangle" class="h-8 w-8 text-destructive" aria-hidden="true"></i>
+                </div>
+                <h4 class="text-lg font-medium">Analysis Failed</h4>
+                <p class="text-sm text-muted-foreground max-w-xs" x-text="analysisError"></p>
+            </div>
+
+            <!-- Results Display -->
+            <div x-cloak x-show="analysisResult" class="p-6 space-y-6">
+                <!-- Severity Alert -->
+                <div :class="{
+                    'bg-destructive/10 text-destructive border-destructive/20': analysisResult?.severity === 'CRITICAL' || analysisResult?.severity === 'HIGH',
+                    'bg-warning/10 text-warning border-warning/20': analysisResult?.severity === 'MEDIUM',
+                    'bg-success/10 text-success border-green-600/20': analysisResult?.severity === 'LOW'
+                }" class="border rounded-lg p-4 flex items-start space-x-3">
+                    <i data-lucide="alert-circle" class="h-5 w-5 mt-0.5" aria-hidden="true"></i>
+                    <div>
+                        <p class="font-bold uppercase text-xs tracking-wider"
+                            x-text="analysisResult?.severity + ' IMPACT DETECTED'"></p>
+                        <p class="text-sm" x-text="analysisResult?.summary"></p>
+                    </div>
+                </div>
+
+                <!-- Impact Metrics -->
+                <div class="grid grid-cols-3 gap-4">
+                    <div class="rounded-lg border p-3 flex flex-col items-center text-center">
+                        <span class="text-2xl font-bold"
+                            x-text="analysisResult?.impacted_capabilities?.length || 0"></span>
+                        <span class="text-xs text-muted-foreground uppercase">Capabilities</span>
+                    </div>
+                    <div class="rounded-lg border p-3 flex flex-col items-center text-center">
+                        <span class="text-2xl font-bold"
+                            x-text="analysisResult?.impacted_processes?.length || 0"></span>
+                        <span class="text-xs text-muted-foreground uppercase">Processes</span>
+                    </div>
+                    <div class="rounded-lg border p-3 flex flex-col items-center text-center">
+                        <span class="text-2xl font-bold font-mono tracking-tight"
+                            x-text="'$' + (analysisResult?.estimated_risk_cost / 1000).toFixed(0) + 'k'"></span>
+                        <span class="text-xs text-muted-foreground uppercase">TCO at Risk</span>
+                    </div>
+                </div>
+
+                <!-- Detailed Impacts -->
+                <div class="space-y-4">
+                    <h4 class="text-sm font-semibold flex items-center">
+                        <i data-lucide="layers" class="mr-2 h-4 w-4" aria-hidden="true"></i>
+                        Direct Architectural Dependencies
+                    </h4>
+                    <div class="space-y-2">
+                        <template x-for="impact in analysisResult?.dependencies" :key="impact.id">
+                            <div class="flex items-center justify-between p-2 rounded-md border bg-muted/30">
+                                <div class="flex items-center space-x-3">
+                                    <div class="w-2 h-2 rounded-full bg-primary/60"></div>
+                                    <div>
+                                        <p class="text-sm font-medium" x-text="impact.name"></p>
+                                        <p class="text-xs text-muted-foreground" x-text="(impact.app_name ? impact.app_name + ' · ' : '') + impact.type"></p>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-1.5">
+                                    <span x-show="impact.criticality" x-cloak
+                                        :class="{'bg-destructive/10 text-destructive border-destructive/20': impact.criticality === 'mission_critical', 'bg-warning/10 text-warning border-warning/20': impact.criticality === 'important', 'bg-muted text-muted-foreground border-border': !impact.criticality || (impact.criticality !== 'mission_critical' && impact.criticality !== 'important')}"
+                                        class="text-xs font-semibold px-2 py-0.5 rounded-full border capitalize"
+                                        x-text="(impact.criticality || '').replace('_', ' ')"></span>
+                                    <span
+                                        class="text-xs font-semibold px-2 py-0.5 rounded-full border border-primary/20 bg-primary/5 text-primary"
+                                        x-text="impact.relationship"></span>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- Transitive Dependencies -->
+                <div class="space-y-4" x-show="analysisResult?.indirect_dependencies?.length > 0" x-cloak>
+                    <h4 class="text-sm font-semibold flex items-center">
+                        <i data-lucide="git-branch" class="mr-2 h-4 w-4" aria-hidden="true"></i>
+                        Transitive Dependencies
+                        <span class="ml-2 text-xs text-muted-foreground" x-text="'(' + (analysisResult?.indirect_dependencies?.length || 0) + ' elements)'"></span>
+                    </h4>
+                    <div class="space-y-2">
+                        <template x-for="impact in analysisResult?.indirect_dependencies" :key="impact.id">
+                            <div class="flex items-center justify-between p-2 rounded-md border bg-muted/20">
+                                <div class="flex items-center space-x-3">
+                                    <div class="w-2 h-2 rounded-full bg-warning/60"></div>
+                                    <div>
+                                        <p class="text-sm font-medium" x-text="impact.name"></p>
+                                        <p class="text-xs text-muted-foreground" x-text="impact.type"></p>
+                                    </div>
+                                </div>
+                                <span
+                                    class="text-xs font-semibold px-2 py-0.5 rounded-full border border-warning/20 bg-warning/5 text-warning"
+                                    x-text="impact.relationship"></span>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- Mitigation Strategy -->
+                <div class="space-y-4 pt-4 border-t">
+                    <h4 class="text-sm font-semibold">Mitigation Strategy</h4>
+                    <div class="grid gap-2">
+                        <template x-for="rec in analysisResult?.recommendations" :key="rec.id">
+                            <div class="text-sm p-3 rounded-lg border bg-accent/20 flex items-start space-x-2">
+                                <i data-lucide="check-circle-2" class="h-4 w-4 mt-0.5 text-primary" aria-hidden="true"></i>
+                                <span x-text="rec.text"></span>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+                
+                <!-- Save Scenario -->
+                <div class="pt-4 border-t">
+                    <button type="button"
+                        @click="saveScenario()"
+                        class="w-full inline-flex items-center justify-center gap-2 px-4 py-2 bg-success hover:bg-success/90 text-primary-foreground font-medium rounded-lg transition-colors"
+                     aria-label="Save">
+                        <i data-lucide="save" class="h-4 w-4" aria-hidden="true"></i>
+                        Save Scenario for Comparison
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Analysis History Panel -->
+    <div x-show="history.length > 0" x-cloak class="rounded-xl border bg-card text-card-foreground shadow">
+        <button type="button" @click="historyOpen = !historyOpen"
+                class="w-full flex items-center justify-between p-4 text-left hover:bg-accent/30 transition-colors rounded-xl">
+            <div class="flex items-center gap-2">
+                <i data-lucide="clock" class="h-4 w-4 text-muted-foreground" aria-hidden="true"></i>
+                <span class="font-semibold text-sm">Recent Analyses</span>
+                <span class="text-xs text-muted-foreground" x-text="'(' + history.length + ')'"></span>
+            </div>
+            <i :class="historyOpen ? 'rotate-180' : ''" data-lucide="chevron-down" class="h-4 w-4 text-muted-foreground transition-transform" aria-hidden="true"></i>
+        </button>
+        <div x-show="historyOpen" x-cloak @keydown.escape.window="historyOpen = false" class="px-4 pb-4">
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="border-b text-xs text-muted-foreground uppercase tracking-wider">
+                            <th class="py-2 text-left font-medium">Element ID</th>
+                            <th class="py-2 text-left font-medium">Change Type</th>
+                            <th class="py-2 text-left font-medium">Severity</th>
+                            <th class="py-2 text-left font-medium">Apps Affected</th>
+                            <th class="py-2 text-left font-medium">Run At</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="h in history" :key="h.id">
+                            <tr class="border-b last:border-0 hover:bg-muted/30">
+                                <td class="py-2 font-mono text-xs" x-text="h.trigger_element_id"></td>
+                                <td class="py-2 text-xs uppercase" x-text="h.analysis_type"></td>
+                                <td class="py-2">
+                                    <span :class="{'bg-destructive/10 text-destructive': h.overall_severity === 'critical', 'bg-warning/10 text-warning': h.overall_severity === 'high', 'bg-muted text-muted-foreground': h.overall_severity === 'low' || h.overall_severity === 'medium'}"
+                                          class="text-xs px-2 py-0.5 rounded-full capitalize" x-text="h.overall_severity"></span>
+                                </td>
+                                <td class="py-2 text-xs" x-text="h.affected_applications_count"></td>
+                                <td class="py-2 text-xs text-muted-foreground" x-text="h.created_at ? new Date(h.created_at).toLocaleString() : '—'"></td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('alpine:init', () => {
+        /* Map dropdown value → ArchiMate CRUD layer for search API */
+        const LAYER_MAP = {
+            'Application': 'application',
+            'Business': 'business',
+            'Technology': 'technology',
+            'Strategy': 'strategy',
+            'Motivation': 'motivation'
+        };
+
+        Alpine.data('impactAnalysis', () => ({
+            selectedType: 'Application',
+            searchQuery: '',
+            searchResults: [],
+            selectedElement: null,
+            changeType: 'MODIFY',
+            loading: false,
+            analysisResult: null,
+            analysisError: null,
+            history: [],
+            historyOpen: false,
+
+            init() { this.loadHistory(); },
+
+            async loadHistory() {
+                try {
+                    let data = await Platform.fetch.get('/strategic/api/impact-analysis/history');
+                    this.history = Array.isArray(data) ? data : [];
+                } catch (e) {
+                    this.history = [];
+                }
+            },
+
+            async searchElements() {
+                if (this.searchQuery.length < 2) {
+                    this.searchResults = [];
+                    return;
+                }
+
+                try {
+                    const layer = LAYER_MAP[this.selectedType] || 'application';
+                    let data = await Platform.fetch.get(
+                        '/architecture/api/layer/' + layer + '/elements?search=' +
+                        encodeURIComponent(this.searchQuery) + '&per_page=8'
+                    );
+                    this.searchResults = (data.elements || []).slice(0, 8);
+                } catch (e) {
+                    Platform.log.error('Search failed', e);
+                    this.searchResults = [];
+                }
+            },
+
+            selectElement(item) {
+                this.selectedElement = item;
+                this.searchQuery = item.name;
+                this.searchResults = [];
+            },
+
+            async performAnalysis() {
+                this.loading = true;
+                this.analysisResult = null;
+                this.analysisError = null;
+
+                try {
+                    const raw = await Platform.fetch.post('/strategic/api/impact-analysis', {
+                        element_id: this.selectedElement.id,
+                        element_type: this.selectedType,
+                        change_type: this.changeType
+                    });
+
+                    /* Map backend response shape to template fields */
+                    const direct = raw.direct_dependencies || [];
+                    const indirect = raw.indirect_dependencies || [];
+                    const allDeps = direct.concat(indirect);
+
+                    this.analysisResult = {
+                        severity: raw.risk_level || 'LOW',
+                        summary: this._buildSummary(raw, direct, indirect),
+                        impacted_capabilities: allDeps.filter(function(d) {
+                            return (d.type || '').indexOf('Capability') >= 0 || (d.type || '').indexOf('Business') >= 0;
+                        }),
+                        impacted_processes: allDeps.filter(function(d) {
+                            return (d.type || '').indexOf('Process') >= 0 || (d.type || '').indexOf('Service') >= 0;
+                        }),
+                        estimated_risk_cost: raw.estimated_financial_risk || 0,
+                        dependencies: direct.map(function(d, i) {
+                            return { id: d.id || i, name: d.name, type: d.type, relationship: 'Level ' + d.level + ' dependency', criticality: d.criticality, app_name: d.app_name };
+                        }),
+                        indirect_dependencies: indirect.map(function(d, i) {
+                            return { id: d.id || i, name: d.name, type: d.type, relationship: 'Level ' + d.level + ' (transitive)', criticality: d.criticality, app_name: d.app_name };
+                        }),
+                        total_affected: raw.total_affected || 0,
+                        recommendations: this._buildRecommendations(raw, direct, indirect)
+                    };
+                } catch (e) {
+                    Platform.log.error('Analysis failed', e);
+                    this.analysisError = e.message || 'Impact analysis failed. Please try again.';
+                } finally {
+                    this.loading = false;
+                    this.$nextTick(function() { lucide.createIcons(); });
+                    this.loadHistory();
+                }
+            },
+
+            _buildSummary(raw, direct, indirect) {
+                const total = (raw.total_affected || 0);
+                if (total === 0) {
+                    return 'No downstream dependencies found for this element.';
+                }
+                const parts = [];
+                parts.push(total + ' element' + (total !== 1 ? 's' : '') + ' affected');
+                parts.push(direct.length + ' direct, ' + indirect.length + ' transitive');
+                return this.changeType + ' will impact ' + parts.join(' — ') + '.';
+            },
+
+            _buildRecommendations(raw, direct, indirect) {
+                const recs = [];
+                const total = raw.total_affected || 0;
+                const risk = raw.risk_level || 'LOW';
+                const changeType = this.changeType;
+
+                if (total === 0) {
+                    recs.push({id: 'r1', text: 'No downstream dependencies detected. This element can be modified with minimal risk.'});
+                    return recs;
+                }
+
+                if (risk === 'CRITICAL' || risk === 'HIGH') {
+                    recs.push({id: 'r1', text: 'Schedule a formal Architecture Review Board (ARB) session before proceeding — ' + total + ' elements will be affected.'});
+                }
+
+                if (direct.length > 0) {
+                    recs.push({id: 'r2', text: 'Notify owners of ' + direct.length + ' directly dependent element(s). Coordinate change windows to avoid service disruption.'});
+                }
+
+                if (indirect.length > 5) {
+                    recs.push({id: 'r3', text: 'Conduct staged rollout: ' + indirect.length + ' transitive dependencies suggest a phased migration approach.'});
+                }
+
+                if (changeType === 'RETIRE' || changeType === 'REPLACE') {
+                    recs.push({id: 'r4', text: 'Create a decommissioning plan with rollback procedures. Map data migration paths for all affected elements.'});
+                }
+
+                if (changeType === 'MODIFY' || changeType === 'UPGRADE') {
+                    recs.push({id: 'r5', text: 'Run integration tests against affected downstream components before production deployment.'});
+                }
+
+                if (total > 10) {
+                    recs.push({id: 'r6', text: 'Consider creating a strategic initiative to track this change — use "Create Change Request" above.'});
+                }
+
+                return recs;
+            },
+
+            saveScenario() {
+                if (!this.analysisResult || !this.selectedElement) return;
+
+                const scenarioName = prompt('Enter scenario name:', this.changeType + ' ' + this.selectedElement.name);
+                if (!scenarioName) return;
+
+                const scenario = {
+                    id: 'scenario-' + Date.now(),
+                    name: scenarioName,
+                    element: this.selectedElement,
+                    change_type: this.changeType,
+                    analysis_result: this.analysisResult,
+                    created_at: new Date().toISOString()
+                };
+
+                const saved = localStorage.getItem('impactAnalysisScenarios');
+                const scenarios = saved ? JSON.parse(saved) : [];
+                scenarios.push(scenario);
+                localStorage.setItem('impactAnalysisScenarios', JSON.stringify(scenarios));
+
+                Platform.toast.success('Scenario saved. Use Compare Scenarios to review.');
+            }
+        }));
+    });
+</script>
+
+<!-- LLM-Powered Recommendations -->
+{% from 'components/llm_recommendations.html' import llm_recommendations %}
+{% from 'components/impact_scenario_comparison_modal.html' import impact_scenario_comparison_modal %}
+
+{{ impact_scenario_comparison_modal() }}
+
+{{ llm_recommendations(
+    dashboard='impact_analysis',
+    context_data={
+        'organization': {
+            'industry': 'general',
+            'size': 'medium',
+            'risk_tolerance': 'moderate'
+        },
+        'capabilities': [],
+        'applications': [],
+        'dependencies': {}
+    }
+) }}
+
+{% from 'components/initiative_modal.html' import initiative_modal %}
+
+{{ initiative_modal(
+    id='change-request-modal',
+    title='Create Change Request',
+    endpoint='/strategic/api/initiatives/from-impact',
+    fields=[
+        {'name': 'title', 'type': 'text', 'label': 'Change Title', 'required': True, 'placeholder': 'e.g., Modernize Payment Processing'},
+        {'name': 'description', 'type': 'textarea', 'label': 'Description', 'required': True, 'placeholder': 'Describe the proposed change...'},
+        {'name': 'priority', 'type': 'select', 'label': 'Priority', 'required': True, 'options': [('critical', 'Critical'), ('high', 'High'), ('medium', 'Medium'), ('low', 'Low')], 'value': 'medium'},
+        {'name': 'owner', 'type': 'text', 'label': 'Owner', 'required': True, 'placeholder': 'Change sponsor'},
+        {'name': 'start_date', 'type': 'date', 'label': 'Start Date', 'required': False},
+        {'name': 'cost_estimate', 'type': 'number', 'label': 'Cost Estimate ($)', 'required': False, 'placeholder': '0'}
+    ]
+) }}
+
+{% endblock %}

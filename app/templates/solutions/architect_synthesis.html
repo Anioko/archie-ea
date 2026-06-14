@@ -1,0 +1,73 @@
+{% extends "layouts/admin_base.html" %}
+{% from "components/page_header.html" import page_header %}
+
+{% block title %}Chief Architect Synthesis{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 sm:px-6 lg:px-8 py-6 max-w-5xl">
+    {{ page_header(
+        title='Chief Architect Synthesis',
+        description='Portfolio-wide architecture health — average conformance, governance pipeline, and the solutions most in need of attention. Synthesised live across every solution review.',
+        breadcrumbs=[
+            {'label': 'Dashboard', 'href': url_for('main.index')},
+            {'label': 'Chief Architect'}
+        ]
+    ) }}
+
+    <div class="flex items-center gap-2 mt-4 mb-6">
+        <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30">
+            <i data-lucide="shield-check" class="h-3.5 w-3.5"></i> Chief Architect · live synthesis across all reviews
+        </span>
+    </div>
+
+    {# KPI strip #}
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <div class="border border-border rounded-xl bg-card p-4">
+            <p class="text-[10px] uppercase tracking-wider text-muted-foreground">Avg conformance</p>
+            <p class="text-2xl font-bold mt-1 {% if synthesis.avg_conformance and synthesis.avg_conformance >= 80 %}text-emerald-600{% elif synthesis.avg_conformance and synthesis.avg_conformance >= 50 %}text-amber-600{% else %}text-foreground{% endif %}">{{ synthesis.avg_conformance if synthesis.avg_conformance is not none else '—' }}{% if synthesis.avg_conformance is not none %}<span class="text-sm text-muted-foreground">/100</span>{% endif %}</p>
+        </div>
+        <div class="border border-border rounded-xl bg-card p-4">
+            <p class="text-[10px] uppercase tracking-wider text-muted-foreground">Solutions reviewed</p>
+            <p class="text-2xl font-bold text-foreground mt-1">{{ synthesis.solutions_reviewed }}</p>
+        </div>
+        <div class="border border-border rounded-xl bg-card p-4">
+            <p class="text-[10px] uppercase tracking-wider text-muted-foreground">Conformance issues</p>
+            <p class="text-2xl font-bold {% if synthesis.flagged_total %}text-amber-600{% else %}text-foreground{% endif %} mt-1">{{ synthesis.flagged_total }}</p>
+        </div>
+        <div class="border border-border rounded-xl bg-card p-4">
+            <p class="text-[10px] uppercase tracking-wider text-muted-foreground">ARB pipeline</p>
+            <p class="text-2xl font-bold text-foreground mt-1">{{ synthesis.in_pipeline }}<span class="text-sm text-muted-foreground"> open</span></p>
+            <p class="text-[10px] text-muted-foreground mt-0.5">{{ synthesis.decisions_made }} decided</p>
+        </div>
+    </div>
+
+    {# Solutions needing attention #}
+    <div class="border border-border rounded-xl bg-card overflow-hidden">
+        <div class="px-5 py-3 border-b border-border"><h2 class="text-sm font-semibold text-foreground">Solutions most in need of attention</h2></div>
+        {% if synthesis.worst %}
+        <table class="min-w-full divide-y divide-border text-sm">
+            <thead class="bg-muted/30">
+                <tr>
+                    <th class="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase">Solution</th>
+                    <th class="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase">Conformance</th>
+                    <th class="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase">Issues</th>
+                    <th class="px-4 py-2"></th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-border">
+                {% for s in synthesis.worst %}
+                <tr class="hover:bg-accent/40">
+                    <td class="px-4 py-2 font-medium text-foreground">{{ s.name|truncate(50) }}</td>
+                    <td class="px-4 py-2"><span class="{% if s.score >= 80 %}text-emerald-600{% elif s.score >= 50 %}text-amber-600{% else %}text-destructive{% endif %} font-semibold">{{ s.score }}</span></td>
+                    <td class="px-4 py-2 text-amber-600">{{ s.flagged }}</td>
+                    <td class="px-4 py-2 text-right"><a href="/solutions/{{ s.id }}/review-packet" class="text-xs text-primary hover:underline">Review packet →</a></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="p-8 text-center"><p class="text-sm text-muted-foreground">No conformance issues across the reviewed solutions.</p></div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

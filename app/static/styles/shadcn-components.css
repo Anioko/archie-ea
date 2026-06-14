@@ -1,0 +1,255 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   shadcn-components.css — Global component normalization for A.R.C.H.I.E.
+
+   - Scoped to #main-content for tables (avoids sidebar/header conflicts)
+   - Uses only CSS custom properties from shadcn_tokens.css (never raw colours)
+   - Designed for zero template changes: pure CSS upgrade
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── 1. Data Table ──────────────────────────────────────────────────────── */
+
+/* Give .overflow-x-auto containers that wrap a table card-like treatment */
+#main-content .overflow-x-auto:has(> table),
+#main-content .overflow-x-auto:has(> div > table),
+#main-content .table-responsive {
+    border-radius: var(--radius);
+    border: 1px solid hsl(var(--border));
+    overflow: hidden; /* clip border-radius on child rows */
+}
+
+/* Don't double-border containers that already have border classes */
+#main-content .overflow-x-auto.border,
+#main-content .overflow-x-auto[class*="border-"] {
+    border: none;
+}
+
+/* Base table */
+#main-content table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem; /* text-sm */
+    line-height: 1.5rem;
+}
+
+/* thead */
+#main-content thead {
+    background-color: hsl(var(--muted) / 0.5);
+    border-bottom: 1px solid hsl(var(--border));
+}
+
+/* th — override inconsistent templates */
+#main-content th {
+    padding: 0.75rem 1rem;
+    text-align: left;
+    font-size: 0.6875rem;        /* 11px — visually tight, professional */
+    font-weight: 600;
+    color: hsl(var(--muted-foreground));
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    white-space: nowrap;
+    border-bottom: 1px solid hsl(var(--border));
+}
+
+#main-content th.text-center { text-align: center; }
+#main-content th.text-right  { text-align: right; }
+
+/* td */
+#main-content td {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid hsl(var(--border));
+    vertical-align: middle;
+    color: hsl(var(--foreground));
+}
+
+/* No bottom border on last row */
+#main-content tbody tr:last-child td {
+    border-bottom: none;
+}
+
+/* Row hover */
+#main-content tbody tr {
+    transition: background-color 0.1s ease;
+}
+#main-content tbody tr:hover {
+    background-color: hsl(var(--muted) / 0.4);
+}
+
+/* Clickable rows */
+#main-content tbody tr[onclick],
+#main-content tbody tr.cursor-pointer,
+#main-content table.selectable tbody tr {
+    cursor: pointer;
+}
+#main-content tbody tr[onclick]:hover,
+#main-content tbody tr.cursor-pointer:hover,
+#main-content table.selectable tbody tr:hover {
+    background-color: hsl(var(--primary) / 0.05);
+}
+
+/* Compact variant */
+#main-content table.table-compact th,
+#main-content table.table-compact td {
+    padding: 0.4375rem 0.75rem;
+    font-size: 0.8125rem;
+}
+
+/* ── 2. Badge normalization ─────────────────────────────────────────────── */
+
+.badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    border-radius: 9999px;
+    padding: 0.1875rem 0.5625rem;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    line-height: 1.2;
+    white-space: nowrap;
+    transition: background-color 0.1s;
+}
+
+.badge-default {
+    background-color: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+}
+.badge-secondary {
+    background-color: hsl(var(--secondary));
+    color: hsl(var(--secondary-foreground));
+}
+.badge-outline {
+    border: 1px solid hsl(var(--border));
+    color: hsl(var(--foreground));
+    background: transparent;
+}
+.badge-success {
+    background-color: hsl(142 76% 36% / 0.1);
+    color: hsl(142 70% 30%);
+    border: 1px solid hsl(142 76% 36% / 0.25);
+}
+.badge-destructive {
+    background-color: hsl(var(--destructive) / 0.1);
+    color: hsl(var(--destructive));
+    border: 1px solid hsl(var(--destructive) / 0.2);
+}
+.badge-warning {
+    background-color: hsl(45 96% 53% / 0.1);
+    color: hsl(32 95% 44%);
+    border: 1px solid hsl(45 96% 53% / 0.25);
+}
+.badge-info {
+    background-color: hsl(var(--primary) / 0.1);
+    color: hsl(var(--primary));
+    border: 1px solid hsl(var(--primary) / 0.2);
+}
+
+/* ── 3. Skeleton loader ──────────────────────────────────────────────────── */
+
+.skeleton {
+    background: linear-gradient(
+        90deg,
+        hsl(var(--muted)) 0%,
+        hsl(var(--muted-foreground) / 0.12) 50%,
+        hsl(var(--muted)) 100%
+    );
+    background-size: 200% 100%;
+    animation: skeleton-shimmer 1.6s ease-in-out infinite;
+    border-radius: calc(var(--radius) - 2px);
+}
+
+@keyframes skeleton-shimmer {
+    0%   { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+/* ── 4. Empty state ─────────────────────────────────────────────────────── */
+
+.empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 3rem 1rem;
+    text-align: center;
+    gap: 0.5rem;
+    color: hsl(var(--muted-foreground));
+}
+
+.empty-state-icon {
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 50%;
+    background-color: hsl(var(--muted));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 0.5rem;
+}
+
+/* ── 5. Separator helper ────────────────────────────────────────────────── */
+
+.separator {
+    height: 1px;
+    background-color: hsl(var(--border));
+    margin: 1rem 0;
+}
+
+/* ── 6. Subtle section heading ──────────────────────────────────────────── */
+
+.section-heading {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: hsl(var(--muted-foreground));
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid hsl(var(--border));
+    margin-bottom: 1rem;
+}
+
+/* ── 7. Command palette / search modal (shadcn Command pattern) ─────────── */
+
+.cmd-palette {
+    background-color: hsl(var(--background));
+    border: 1px solid hsl(var(--border));
+    border-radius: calc(var(--radius) + 4px);
+    box-shadow: 0 20px 60px -10px hsl(0 0% 0% / 0.25),
+                0  4px 16px -4px hsl(0 0% 0% / 0.15);
+}
+
+.cmd-palette-input-wrap {
+    border-bottom: 1px solid hsl(var(--border));
+}
+
+.cmd-palette-results {
+    background-color: hsl(var(--background));
+}
+
+.cmd-palette-result-item {
+    border-bottom: 1px solid hsl(var(--border) / 0.5);
+    transition: background-color 0.1s;
+}
+.cmd-palette-result-item:last-child {
+    border-bottom: none;
+}
+.cmd-palette-result-item:hover,
+.cmd-palette-result-item.is-selected {
+    background-color: hsl(var(--accent));
+    color: hsl(var(--accent-foreground));
+}
+
+.cmd-palette-footer {
+    background-color: hsl(var(--muted) / 0.5);
+    border-top: 1px solid hsl(var(--border));
+}
+
+/* ── 8. Responsive table wrapper ────────────────────────────────────────── */
+
+.table-responsive {
+    overflow-x: auto;
+    border-radius: var(--radius);
+    border: 1px solid hsl(var(--border));
+}
+
+.table-responsive table {
+    min-width: 640px;
+}

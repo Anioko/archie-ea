@@ -1,0 +1,21 @@
+{# salesforce_apex/scratch_def.json.j2 #}
+{# Scratch org definition for CI/CD pipeline. #}
+{% set managed_package = is_managed_package if is_managed_package is defined else false %}
+{
+    "orgName": "{{ solution_name }} - Scratch Org",
+    "edition": "Developer",
+    "features": ["EnableSetPasswordInApi", "AuthorApex"{% if managed_package %}, "Packaging2"{% endif %}],
+    "settings": {
+        "lightningExperienceSettings": {
+            "enableS1DesktopEnabled": true
+        },
+        "securitySettings": {
+            "passwordPolicies": {
+                "enableSetPasswordInApi": true
+            }
+        },
+        "mobileSettings": {
+            "enableS1EncryptedStoragePref2": false
+        }
+    }
+}

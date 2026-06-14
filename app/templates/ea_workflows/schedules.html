@@ -1,0 +1,102 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'components/page_header.html' import page_header %}
+
+{% block title %}Workflow Schedules{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Breadcrumbs -->
+    <nav class="flex items-center gap-2 text-sm text-muted-foreground mb-6">
+        <a href="{{ url_for('main.index') }}" class="hover:text-foreground transition-colors">Dashboard</a>
+        <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
+        <a href="{{ url_for('main.ea_workflows_dashboard') }}" class="hover:text-foreground transition-colors">EA Workflows</a>
+        <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
+        <span class="text-foreground font-medium">Schedules</span>
+    </nav>
+
+    <!-- Page Header -->
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+        {{ page_header(
+        title='Workflow Schedules',
+        description='Automated workflow execution schedules'
+    ) }}
+    </div>
+
+    {% if schedules %}
+    <div class="rounded-xl border-2 border-input bg-background overflow-hidden">
+        <table class="w-full">
+            <thead>
+                <tr class="border-b bg-muted/50">
+                    <th class="text-left py-3 px-4 font-medium">Schedule</th>
+                    <th class="text-left py-3 px-4 font-medium">Workflow</th>
+                    <th class="text-center py-3 px-4 font-medium">Type</th>
+                    <th class="text-center py-3 px-4 font-medium">Status</th>
+                    <th class="text-left py-3 px-4 font-medium">Next Run</th>
+                    <th class="text-center py-3 px-4 font-medium">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y">
+                {% for schedule in schedules %}
+                <tr class="border-b hover:bg-muted/50">
+                    <td class="py-3 px-4">
+                        <span class="font-medium">{{ schedule.schedule_name }}</span>
+                    </td>
+                    <td class="py-3 px-4">
+                        {{ schedule.workflow_definition.workflow_name if schedule.workflow_definition else 'Unknown' }}
+                    </td>
+                    <td class="text-center py-3 px-4">
+                        <span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium bg-primary/10 text-primary">
+                            {{ schedule.schedule_type }}
+                        </span>
+                    </td>
+                    <td class="text-center py-3 px-4">
+                        <span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium
+                            {% if schedule.is_active %}bg-success/10 text-success{% else %}bg-muted text-foreground/80{% endif %}">
+                            {{ 'Active' if schedule.is_active else 'Inactive' }}
+                        </span>
+                    </td>
+                    <td class="py-3 px-4 text-sm">
+                        {{ schedule.next_run_at.strftime('%Y-%m-%d %H:%M') if schedule.next_run_at else '-' }}
+                    </td>
+                    <td class="text-center py-3 px-4">
+                        <button @click="toggleSchedule({{ schedule.id }})"
+                                class="text-sm text-primary hover:underline" aria-label="Toggle">
+                            {{ 'Disable' if schedule.is_active else 'Enable' }}
+                        </button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="rounded-xl border-2 border-input bg-background p-12 text-center">
+        <i data-lucide="calendar" class="h-12 w-12 text-muted-foreground mx-auto mb-4" aria-hidden="true"></i>
+        <h3 class="text-lg font-semibold mb-2">No Scheduled Workflows</h3>
+        <p class="text-muted-foreground">Create a schedule to automate workflow execution.</p>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+async function toggleSchedule(scheduleId) {
+    try {
+        const response = await fetch(`/api/ea-workflows/schedules/${scheduleId}/toggle`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token() }}'
+            }
+        });
+        const data = await response.json();
+        if (data.success) {
+            location.reload();
+        } else {
+            Platform.toast.error('Error: ' + data.error);
+        }
+    } catch (error) {
+        Platform.toast.error('Error: ' + error.message);
+    }
+}
+</script>
+{% endblock %}

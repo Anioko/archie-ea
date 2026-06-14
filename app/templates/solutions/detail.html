@@ -1,0 +1,2447 @@
+{% extends "layouts/admin_base.html" %}
+
+{% block title %}{{ solution.name }} - Solution Details{% endblock %}
+
+{% block extra_css %}
+<style>
+  [x-cloak]{display:none!important}
+  .gantt-bar{transition:opacity 0.15s}
+  .gantt-bar:hover{opacity:0.85}
+  .gantt-row:hover{background:hsl(var(--muted)/0.2)}
+</style>
+{% endblock %}
+
+{# ── Computed counts for tab completion ── #}
+{% set drivers = (lifecycle_json or {}).get('drivers', []) %}
+{% set goals = (lifecycle_json or {}).get('goals', []) %}
+{% set constraints = (lifecycle_json or {}).get('constraints', []) %}
+{% set requirements_list = (lifecycle_json or {}).get('requirements', []) %}
+{% set recommendations = (lifecycle_json or {}).get('recommendations', []) %}
+{% set risks_list = (lifecycle_json or {}).get('risks', []) %}
+{% set metrics_list = (lifecycle_json or {}).get('metrics', []) %}
+{% set tco_list = (lifecycle_json or {}).get('tcoItems', []) %}
+{% set plateaus_list = (lifecycle_json or {}).get('plateaus', []) %}
+{% set sad = (lifecycle_json or {}).get('sad', {}) %}
+{% set business_elements = sad.get('business_elements', []) %}
+{% set app_elements = sad.get('app_elements', []) %}
+{% set tech_elements = sad.get('tech_elements', []) %}
+{% set principles = sad.get('principles', []) %}
+{% set stakeholders_sad = sad.get('stakeholders_sad', []) %}
+{% set integration_flows = sad.get('integration_flows', []) %}
+{% set quality_attributes = sad.get('quality_attributes', []) %}
+{% set compliance_mappings = sad.get('compliance_mappings', []) %}
+{% set change_requests = sad.get('change_requests', []) %}
+{% set lessons_learned = sad.get('lessons_learned', []) %}
+{% set investment_phases = sad.get('investment_phases', []) %}
+
+{# Phase completion percentages (count of filled fields / total expected per phase) #}
+{% set vision_filled = (1 if drivers else 0) + (1 if goals else 0) + (1 if constraints else 0) + (1 if stakeholder_mappings else 0) + (1 if principles else 0) + (1 if solution.description else 0) %}
+{% set vision_pct = ((vision_filled / 6) * 100) | round | int %}
+
+{% set biz_filled = (1 if capabilities_json else 0) + (1 if applications else 0) + (1 if processes else 0) + (1 if business_elements else 0) %}
+{% set biz_pct = ((biz_filled / 4) * 100) | round | int %}
+
+{% set infosys_filled = (1 if app_elements else 0) + (1 if tech_elements else 0) + (1 if archimate_elements else 0) + (1 if integration_flows else 0) + (1 if quality_attributes else 0) %}
+{% set infosys_pct = ((infosys_filled / 5) * 100) | round | int %}
+
+{% set opps_filled = (1 if recommendations else 0) + (1 if tco_list else 0) %}
+{% set opps_pct = ((opps_filled / 2) * 100) | round | int %}
+
+{% set mig_filled = (1 if plateaus_list else 0) + (1 if investment_phases else 0) %}
+{% set mig_pct = ((mig_filled / 2) * 100) | round | int %}
+
+{% set gov_filled = (1 if arb_reviews else 0) + (1 if risks_list else 0) + (1 if metrics_list else 0) + (1 if compliance_mappings else 0) + (1 if change_requests else 0) %}
+{% set gov_pct = ((gov_filled / 5) * 100) | round | int %}
+
+{% set arb_pct = maturity_score | default(0) %}
+
+{# Status badge color mapping #}
+{% set _status = (solution.governance_status or 'draft') | lower %}
+{% if _status == 'approved' %}
+  {% set status_color = 'emerald' %}
+{% elif _status in ('arb_review', 'in_review', 'under_review') %}
+  {% set status_color = 'amber' %}
+{% elif _status == 'rejected' %}
+  {% set status_color = 'red' %}
+{% else %}
+  {% set status_color = 'slate' %}
+{% endif %}
+
+{% block content %}
+
+{# AIC-318: workspace return banner — visible when an active AI chat workspace is linked #}
+{% if active_workspace_id %}
+<div class="bg-blue-500/10 border-b border-blue-500/30 text-blue-700 dark:text-blue-400 px-4 py-2 text-sm flex items-center gap-2" role="alert" data-testid="workspace-return-banner">
+  <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+  This solution has an active AI workspace.
+  <a href="{{ url_for('unified_ai_chat.index') }}?workspace={{ active_workspace_id }}" class="font-medium underline hover:no-underline ml-1">Return to Chat Workspace &rarr;</a>
+</div>
+{% endif %}
+
+{% if show_created_banner %}
+<div class="bg-emerald-500/10 border-b border-emerald-500/30 text-emerald-700 dark:text-emerald-400 px-4 py-2.5 text-sm flex items-center gap-2" role="alert" data-testid="created-banner" x-data="dismissableBanner()" x-show="show">
+  <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+  <span><strong>Programme created.</strong> Your architecture blueprint is ready &mdash; fill in sections below to build it out.</span>
+  <button @click="show = false" class="ml-auto text-emerald-600 hover:text-emerald-800 dark:text-emerald-300" aria-label="Dismiss">
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+  </button>
+</div>
+{% endif %}
+
+<div x-data="sadPage()" x-cloak>
+
+  {# ══════════════════════════════════════════════════════════════ #}
+  {#  STICKY HEADER                                                 #}
+  {# ══════════════════════════════════════════════════════════════ #}
+  <div class="sticky top-0 z-30 bg-background/95 backdrop-blur-sm border-b border-border">
+    <div class="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between gap-4">
+      <div class="flex items-center gap-2 min-w-0">
+        <a href="{{ url_for('solution_design.list_solutions') }}" class="text-sm text-muted-foreground hover:text-foreground transition-colors shrink-0">&larr; Solutions</a>
+        <span class="text-muted-foreground/40">/</span>
+        <span class="text-sm font-semibold text-foreground truncate">{{ solution.name }}</span>
+      </div>
+      <div class="flex items-center gap-2 shrink-0">
+        <a href="{{ url_for('codegen.workbench_page', solution_id=solution.id) }}"
+           class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border border-input bg-card text-foreground hover:bg-accent transition-colors">
+            <i data-lucide="code-2" class="h-3.5 w-3.5"></i>Code Workbench</a>
+        <a href="{{ url_for('solution_design.export_solution_sad', solution_id=solution.id) }}" target="_blank"
+           class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border border-input bg-card text-foreground hover:bg-accent transition-colors">Export SAD</a>
+        <a href="{{ url_for('solution_design.edit_solution', solution_id=solution.id) }}"
+           class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">Edit</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="max-w-6xl mx-auto px-6 py-6 space-y-6">
+
+    {# ══════════════════════════════════════════════════════════════ #}
+    {#  TITLE CARD                                                    #}
+    {# ══════════════════════════════════════════════════════════════ #}
+    <div id="sec-1" data-section="sec-1" class="rounded-xl border border-border bg-card p-6">
+      <div class="flex items-start justify-between gap-4">
+        <div class="min-w-0">
+          <div class="flex items-center gap-3 mb-1">
+            <h2 class="text-xl font-bold text-foreground">{{ solution.name }}</h2>
+            <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-{{ status_color }}-500/10 text-{{ status_color }}-400 border border-{{ status_color }}-500/20">
+              <span class="w-1.5 h-1.5 rounded-full bg-{{ status_color }}-400"></span>{{ (solution.governance_status or 'Draft') | replace('_', ' ') | title }}
+            </span>
+            {# Submit to ARB (moved from sidebar) #}
+            <button @click="submitToArb()"
+                    :disabled="!canSubmitArb || submittingArb || governanceStatus === 'arb_review' || governanceStatus === 'approved'"
+                    x-show="canSubmitArb && governanceStatus !== 'approved'" x-cloak
+                    class="shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    :class="canSubmitArb ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/30 hover:bg-emerald-500/20' : 'bg-muted text-muted-foreground'">
+                <i data-lucide="send" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                <span class="hidden sm:inline" x-text="governanceStatus === 'arb_review' ? 'Under Review' : 'Submit to ARB'"></span>
+            </button>
+            {# Wave 1: Deterministic Product Generation (Beta) #}
+            <div x-data="productGenFlow()" class="shrink-0 relative hidden">
+                <button type="button" @click="generate()"
+                        :disabled="loading || !canGenerate"
+                        class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium border border-emerald-500/30 bg-emerald-500/5 text-emerald-700 hover:bg-emerald-500/10 transition-colors"
+                        :class="(loading || !canGenerate) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'"
+                        :title="!canGenerate ? disabledReason : 'Generate a runnable FastAPI project from this blueprint'"
+                        aria-label="Generate Product">
+                    <i data-lucide="package" class="w-3.5 h-3.5" aria-hidden="true" x-show="!loading"></i>
+                    <i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin" aria-hidden="true" x-show="loading" x-cloak></i>
+                    <span class="hidden sm:inline" x-text="loading ? 'Generating...' : 'Generate Product (Beta)'"></span>
+                </button>
+                {# Result panel (slides down after generation) #}
+                <div x-show="result || error" x-cloak x-transition
+                     class="absolute right-0 top-full mt-2 z-30 w-80 bg-background border border-border rounded-lg shadow-xl p-4 space-y-3">
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm font-semibold" x-text="result && result.bundle_id ? 'Product Generated' : 'Generation Failed'"></span>
+                        <button @click="result = null; error = null" class="text-muted-foreground hover:text-foreground" aria-label="Close">
+                            <i data-lucide="x" class="w-4 h-4" aria-hidden="true"></i>
+                        </button>
+                    </div>
+                    <template x-if="result && result.bundle_id">
+                        <div>
+                            <div class="text-xs space-y-1 text-muted-foreground">
+                                <p>Bundle: <span class="font-mono text-foreground" x-text="result.bundle_id"></span></p>
+                                <p>Language: <span class="text-foreground">Python (FastAPI)</span></p>
+                                <p>Files: <span class="text-foreground" x-text="result.file_count"></span></p>
+                                <p>Spec Maturity: <span class="text-foreground" x-text="Math.round((result.spec_maturity || 0) * 100) + '%'"></span></p>
+                            </div>
+                            <div class="flex gap-2 mt-3">
+                                <button @click="runTests()" :disabled="running"
+                                        class="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium border border-input bg-background hover:bg-accent"
+                                        :class="running ? 'opacity-50' : ''">
+                                    <i data-lucide="play" class="w-3 h-3" aria-hidden="true" x-show="!running"></i>
+                                    <i data-lucide="loader-2" class="w-3 h-3 animate-spin" aria-hidden="true" x-show="running" x-cloak></i>
+                                    <span x-text="running ? 'Testing...' : 'Run Tests'"></span>
+                                </button>
+                                <a :href="'/api/solutions/' + solutionId + '/product/' + result.bundle_id + '/download'"
+                                   class="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium border border-input bg-background hover:bg-accent">
+                                    <i data-lucide="download" class="w-3 h-3" aria-hidden="true"></i>
+                                    Download ZIP
+                                </a>
+                            </div>
+                        </div>
+                    </template>
+                    <template x-if="!result || !result.bundle_id">
+                        <p class="text-xs text-muted-foreground">Generate a product first to download code, run tests, or preview.</p>
+                    </template>
+                    {# Test results #}
+                    <template x-if="testResult">
+                        <div class="border-t border-border pt-2 space-y-1">
+                            <p class="text-xs font-medium">
+                                Sandbox: <span x-text="testResult.test_summary.passed + ' passed'" class="text-emerald-600"></span>,
+                                <span x-text="testResult.test_summary.failed + ' failed'" class="text-red-600"></span>
+                            </p>
+                            <template x-for="f in (testResult.failures || []).slice(0, 5)" :key="f.test_name">
+                                <p class="text-[11px] text-muted-foreground">
+                                    <span class="font-mono" x-text="f.test_name"></span>:
+                                    <span x-text="f.error.substring(0, 60)"></span>
+                                    <span x-show="f.expected_in_wave1" class="text-amber-600">(expected in Wave 1)</span>
+                                </p>
+                            </template>
+                        </div>
+                    </template>
+                    {# Error display #}
+                    <template x-if="error">
+                        <p class="text-xs text-red-600" x-text="error"></p>
+                    </template>
+                </div>
+            </div>
+            {# Code Workbench — Monaco editor with generated files #}
+            <a href="{{ url_for('codegen.workbench_page', solution_id=solution.id) }}"
+               class="shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium border border-input bg-background hover:bg-accent transition-colors"
+               aria-label="Code Workbench">
+                <i data-lucide="code-2" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                <span class="hidden sm:inline">Code Workbench</span>
+            </a>
+            {# REQ-SAD-001: Export SAD as print-ready document #}
+            <a href="{{ url_for('solution_design.export_solution_sad', solution_id=solution.id) }}" target="_blank"
+               class="shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium border border-input bg-background hover:bg-accent transition-colors"
+               aria-label="Export Solution Architecture Document">
+                <i data-lucide="file-text" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                <span class="hidden sm:inline">Export SAD</span>
+            </a>
+
+            <div x-data="codeSpecFlow()" class="shrink-0 relative hidden">
+                <button type="button" @click="start()"
+                        :disabled="loading"
+                        class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium border border-primary/30 bg-primary/5 text-primary hover:bg-primary/10 transition-colors cursor-pointer"
+                        :class="loading ? 'opacity-50 pointer-events-none' : ''"
+                        aria-label="Generate API contracts from architecture blueprint">
+                    <i data-lucide="code-2" class="w-3.5 h-3.5" aria-hidden="true" x-show="!loading"></i>
+                    <i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin" aria-hidden="true" x-show="loading" x-cloak></i>
+                    <span class="hidden sm:inline" x-text="loading ? 'Analyzing...' : 'API Contracts'"></span>
+                </button>
+
+                {# Inference confirmation modal #}
+                <!-- modal-a11y-ok -->
+                <div x-show="showPanel" x-cloak x-transition
+                     class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+                     @keydown.escape.window="showPanel = false">
+                    <div class="bg-background border border-border rounded-xl shadow-2xl w-full max-w-3xl max-h-[85vh] overflow-hidden flex flex-col"
+                         @click.stop>
+                        {# Header #}
+                        <div class="flex items-center justify-between px-6 py-4 border-b border-border">
+                            <div>
+                                <h3 class="text-lg font-semibold">API Contract — Field Review</h3>
+                                <p class="text-sm text-muted-foreground mt-0.5">AI-proposed fields from your architecture. Confirm, edit, or remove before generating.</p>
+                            </div>
+                            <button @click="showPanel = false" class="text-muted-foreground hover:text-foreground" aria-label="Close">
+                                <i data-lucide="x" class="w-5 h-5" aria-hidden="true"></i>
+                            </button>
+                        </div>
+
+                        {# Element tabs + fields #}
+                        <div class="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+                            <template x-for="(elem, elemId) in elements" :key="elemId">
+                                <div class="rounded-lg border border-border">
+                                    <div class="flex items-center justify-between px-4 py-3 bg-muted/30 cursor-pointer"
+                                         @click="elem._open = !elem._open">
+                                        <div class="flex items-center gap-2">
+                                            <i data-lucide="box" class="w-4 h-4 text-primary" aria-hidden="true"></i>
+                                            <span class="font-medium text-sm" x-text="elem.element_name"></span>
+                                            <span class="text-xs text-muted-foreground" x-text="elem.fields.length + ' fields'"></span>
+                                            <template x-if="elem.status === 'confirmed'">
+                                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-500/10 text-emerald-600">Confirmed</span>
+                                            </template>
+                                            <template x-if="elem.confidence">
+                                                <span class="text-[10px] text-muted-foreground" x-text="Math.round(elem.confidence * 100) + '% confidence'"></span>
+                                            </template>
+                                        </div>
+                                        <i data-lucide="chevron-down" class="w-4 h-4 text-muted-foreground transition-transform" :class="elem._open ? 'rotate-180' : ''" aria-hidden="true"></i>
+                                    </div>
+                                    <div x-show="elem._open" x-cloak class="px-4 py-3 space-y-2">
+                                        <template x-if="elem.reasoning">
+                                            <p class="text-xs text-muted-foreground italic mb-2" x-text="elem.reasoning"></p>
+                                        </template>
+                                        <table class="w-full text-sm">
+                                            <thead><tr class="text-xs text-muted-foreground border-b">
+                                                <th class="text-left py-1 w-6"></th>
+                                                <th class="text-left py-1">Field</th>
+                                                <th class="text-left py-1">Type</th>
+                                                <th class="text-left py-1">Required</th>
+                                                <th class="text-left py-1">Description</th>
+                                            </tr></thead>
+                                            <tbody>
+                                                <template x-for="(field, fi) in elem.fields" :key="fi">
+                                                    <tr class="border-b border-border/50 hover:bg-muted/20">
+                                                        <td class="py-1.5">
+                                                            <button @click="elem.fields.splice(fi, 1)" class="text-muted-foreground hover:text-destructive" aria-label="Remove field">
+                                                                <i data-lucide="x" class="w-3 h-3" aria-hidden="true"></i>
+                                                            </button>
+                                                        </td>
+                                                        <td class="py-1.5 font-mono text-xs" x-text="field.name"></td>
+                                                        <td class="py-1.5 text-xs">
+                                                            <span x-text="field.type"></span>
+                                                            <template x-if="field.format"><span class="text-muted-foreground" x-text="'(' + field.format + ')'"></span></template>
+                                                            <template x-if="field.enum"><span class="text-muted-foreground" x-text="'[' + field.enum.join(', ') + ']'"></span></template>
+                                                        </td>
+                                                        <td class="py-1.5">
+                                                            <span x-show="field.required" class="text-emerald-600 text-xs">Yes</span>
+                                                            <span x-show="field.readonly" class="text-muted-foreground text-xs ml-1">(readonly)</span>
+                                                        </td>
+                                                        <td class="py-1.5 text-xs text-muted-foreground" x-text="field.description"></td>
+                                                    </tr>
+                                                </template>
+                                            </tbody>
+                                        </table>
+                                        <div class="flex gap-2 pt-2">
+                                            <button @click="confirmElement(elemId)"
+                                                    :disabled="elem.confirming"
+                                                    class="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                                                <i data-lucide="check" class="w-3 h-3" aria-hidden="true"></i>
+                                                <span x-text="elem.confirming ? 'Saving...' : (elem.status === 'confirmed' ? 'Confirmed' : 'Confirm Fields')"></span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </template>
+                            <template x-if="Object.keys(elements).length === 0 && !loading">
+                                <p class="text-sm text-muted-foreground text-center py-8">No application elements found. Add elements in Phase C first.</p>
+                            </template>
+                        </div>
+
+                        {# Footer #}
+                        <div class="flex items-center justify-between px-6 py-4 border-t border-border bg-muted/20">
+                            <div class="text-xs text-muted-foreground">
+                                <span x-text="confirmedCount + '/' + Object.keys(elements).length + ' elements confirmed'"></span>
+                            </div>
+                            <div class="flex gap-2">
+                                <button @click="showPanel = false" class="px-4 py-2 text-sm font-medium border border-input rounded-md hover:bg-accent">Cancel</button>
+                                <a :href="'{{ url_for('solution_design.api_download_specs', solution_id=solution.id) }}'"
+                                   @click.prevent="downloadSpecs()"
+                                   :class="downloading ? 'opacity-50 pointer-events-none' : ''"
+                                   class="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-md hover:bg-primary/90">
+                                    <i data-lucide="download" class="w-4 h-4" aria-hidden="true" x-show="!downloading"></i>
+                                    <i data-lucide="loader-2" class="w-4 h-4 animate-spin" aria-hidden="true" x-show="downloading" x-cloak></i>
+                                    <span x-text="downloading ? 'Generating...' : 'Generate & Download'"></span>
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <script>
+            function codeSpecFlow() {
+                return {
+                    loading: false,
+                    showPanel: false,
+                    elements: {},
+                    downloading: false,
+                    get confirmedCount() {
+                        return Object.values(this.elements).filter(function(e) { return e.status === 'confirmed'; }).length;
+                    },
+                    start: function() {
+                        let self = this;
+                        self.loading = true;
+                        fetch('{{ url_for("solution_design.api_infer_code_specs", solution_id=solution.id) }}', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}' }
+                        })
+                        .then(function(r) { return r.json(); })
+                        .then(function(d) {
+                            self.loading = false;
+                            if (d.success) {
+                                const elems = d.elements || {};
+                                Object.keys(elems).forEach(function(k) { elems[k]._open = true; });
+                                self.elements = elems;
+                                self.showPanel = true;
+                            } else {
+                                if (window.Platform && Platform.toast) Platform.toast.error(d.error || 'Inference failed');
+                            }
+                        })
+                        .catch(function(e) {
+                            self.loading = false;
+                            if (window.Platform && Platform.toast) Platform.toast.error('Network error');
+                        });
+                        if (typeof lucide !== 'undefined') setTimeout(function() { lucide.createIcons(); }, 200);
+                    },
+                    confirmElement: function(elemId) {
+                        let self = this;
+                        const elem = self.elements[elemId];
+                        if (!elem) return;
+                        elem.confirming = true;
+                        fetch('{{ url_for("solution_design.api_confirm_code_spec", solution_id=solution.id, element_id=0) }}'.replace('/0', '/' + elemId), {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}' },
+                            body: JSON.stringify({ fields: elem.fields })
+                        })
+                        .then(function(r) { return r.json(); })
+                        .then(function(d) {
+                            elem.confirming = false;
+                            if (d.success) {
+                                elem.status = 'confirmed';
+                                if (window.Platform && Platform.toast) Platform.toast.success(elem.element_name + ' fields confirmed');
+                            } else {
+                                if (window.Platform && Platform.toast) Platform.toast.error(d.error || 'Save failed');
+                            }
+                        })
+                        .catch(function() { elem.confirming = false; });
+                    },
+                    downloadSpecs: function() {
+                        let self = this;
+                        self.downloading = true;
+                        fetch('{{ url_for("solution_design.api_generate_specs", solution_id=solution.id) }}', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}' }
+                        })
+                        .then(function(r) { return r.json(); })
+                        .then(function(d) {
+                            self.downloading = false;
+                            if (d.success) {
+                                window.location.href = '{{ url_for("solution_design.api_download_specs", solution_id=solution.id) }}';
+                                self.showPanel = false;
+                            } else {
+                                if (window.Platform && Platform.toast) Platform.toast.error(d.error || 'Generation failed');
+                            }
+                        })
+                        .catch(function() {
+                            self.downloading = false;
+                            if (window.Platform && Platform.toast) Platform.toast.error('Network error');
+                        });
+                    }
+                };
+            }
+            </script>
+            <script>
+            function productGenFlow() {
+                return {
+                    solutionId: {{ solution.id }},
+                    loading: false,
+                    running: false,
+                    result: null,
+                    testResult: null,
+                    error: null,
+                    canGenerate: {{ 'true' if app_element_count|default(0) >= 3 else 'false' }},
+                    disabledReason: {{ ("'Link at least 3 application elements to generate'" if app_element_count|default(0) < 3 else "''")|safe }},
+                    generate: function() {
+                        let self = this;
+                        self.loading = true;
+                        self.error = null;
+                        self.result = null;
+                        self.testResult = null;
+                        fetch('/api/solutions/' + self.solutionId + '/product/generate', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}' },
+                            body: JSON.stringify({ language: 'python-fastapi' })
+                        })
+                        .then(function(r) { return r.json(); })
+                        .then(function(d) {
+                            self.loading = false;
+                            if (d.success && d.bundle_id) {
+                                self.result = d;
+                            } else {
+                                self.error = (d.detail || d.error || 'Generation failed');
+                                self.result = null;
+                            }
+                        })
+                        .catch(function(e) {
+                            self.loading = false;
+                            self.error = 'Network error: ' + e.message;
+                            self.result = null;
+                        });
+                    },
+                    runTests: function() {
+                        let self = this;
+                        if (!self.result || !self.result.bundle_id) return;
+                        self.running = true;
+                        fetch('/api/solutions/' + self.solutionId + '/product/' + self.result.bundle_id + '/run', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}' }
+                        })
+                        .then(function(r) { return r.json(); })
+                        .then(function(d) {
+                            self.running = false;
+                            if (d.success) {
+                                self.testResult = d;
+                            } else {
+                                self.error = d.detail || d.error || 'Sandbox run failed';
+                            }
+                        })
+                        .catch(function(e) {
+                            self.running = false;
+                            self.error = 'Network error: ' + e.message;
+                        });
+                    }
+                };
+            }
+            </script>
+            {# Save as Template (ENT-016) — hidden on narrow viewports, in overflow menu #}
+            <div class="sad-actions hidden">
+                <button type="button" @click="saveAsTemplate()" :disabled="savingAsTemplate"
+                    class="shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium border border-input bg-background hover:bg-accent transition-colors">
+                    <i data-lucide="layout-template" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                    <span class="hidden sm:inline" x-text="savingAsTemplate ? 'Saving…' : 'Template'"></span>
+                </button>
+            </div>
+            {# Ask AI — moved to More dropdown #}
+            {# Edit button #}
+            <a href="{{ url_for('solution_design.edit_solution', solution_id=solution.id) }}"
+               class="shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+                <i data-lucide="pencil" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                <span class="hidden sm:inline">Edit</span>
+            </a>
+            {# More (⋮) dropdown #}
+            <div class="shrink-0 relative" x-data="{moreOpen: false}" @keydown.escape.window="moreOpen = false" @click.outside="moreOpen = false">
+                <button type="button" @click="moreOpen = !moreOpen"
+                    class="inline-flex items-center justify-center w-8 h-8 rounded-md text-muted-foreground border border-input bg-background hover:bg-accent hover:text-foreground transition-colors"
+                    aria-label="More actions" :aria-expanded="moreOpen">
+                    <i data-lucide="more-vertical" class="w-4 h-4" aria-hidden="true"></i>
+                </button>
+                <!-- modal-a11y-ok -->
+                <div x-show="moreOpen" x-cloak
+                     class="absolute right-0 mt-1 w-52 rounded-md border border-border bg-popover shadow-lg z-30 py-1 text-sm"
+                     role="menu">
+                    <a href="/solutions/{{ solution.id }}/codegen" role="menuitem" class="flex items-center gap-2.5 px-3 py-2 text-foreground hover:bg-accent transition-colors" @click="moreOpen=false">
+                        <i data-lucide="terminal" class="w-3.5 h-3.5 text-muted-foreground shrink-0" aria-hidden="true"></i> Code Workbench
+                    </a>
+                    <a href="{{ url_for('unified_ai_chat.index') }}?element_id={{ solution.id }}&context_type=solution&domain=architecture" role="menuitem" class="flex items-center gap-2.5 px-3 py-2 text-foreground hover:bg-accent transition-colors" @click="moreOpen=false">
+                        <i data-lucide="bot" class="w-3.5 h-3.5 text-muted-foreground shrink-0" aria-hidden="true"></i> Ask AI
+                    </a>
+                    <button type="button" @click="activeTab = 'version-history'; moreOpen=false" role="menuitem"
+                        class="w-full flex items-center gap-2.5 px-3 py-2 text-foreground hover:bg-accent transition-colors text-left">
+                        <i data-lucide="history" class="w-3.5 h-3.5 text-muted-foreground shrink-0" aria-hidden="true"></i> Version History
+                    </button>
+                    <hr class="my-1 border-border">
+                    <button type="button" @click="window.print(); moreOpen=false" role="menuitem"
+                        class="w-full flex items-center gap-2.5 px-3 py-2 text-foreground hover:bg-accent transition-colors text-left">
+                        <i data-lucide="printer" class="w-3.5 h-3.5 text-muted-foreground shrink-0" aria-hidden="true"></i> Print PDF
+                    </button>
+                    <a href="{{ url_for('solution_design.export_solution_markdown', solution_id=solution.id) }}" role="menuitem"
+                        class="flex items-center gap-2.5 px-3 py-2 text-foreground hover:bg-accent transition-colors" @click="moreOpen=false">
+                        <i data-lucide="download" class="w-3.5 h-3.5 text-muted-foreground shrink-0" aria-hidden="true"></i> Export .md
+                    </a>
+                    <a href="/solutions/{{ solution.id }}/sad" role="menuitem"
+                        class="flex items-center gap-2.5 px-3 py-2 text-foreground hover:bg-accent transition-colors" @click="moreOpen=false">
+                        <i data-lucide="file-text" class="w-3.5 h-3.5 text-muted-foreground shrink-0" aria-hidden="true"></i> View SAD
+                    </a>
+                    <a href="/solutions/{{ solution.id }}/sad/download" role="menuitem"
+                        class="flex items-center gap-2.5 px-3 py-2 text-foreground hover:bg-accent transition-colors" @click="moreOpen=false">
+                        <i data-lucide="file-down" class="w-3.5 h-3.5 text-muted-foreground shrink-0" aria-hidden="true"></i> Download SAD
+                    </a>
+                    <a href="{{ url_for('archimate.viewpoints_page') }}" role="menuitem"
+                        class="flex items-center gap-2.5 px-3 py-2 text-foreground hover:bg-accent transition-colors" @click="moreOpen=false">
+                        <i data-lucide="layers" class="w-3.5 h-3.5 text-muted-foreground shrink-0" aria-hidden="true"></i> Viewpoints
+                    </a>
+                    <a href="{{ url_for('adm_kanban_view.index') }}" role="menuitem"
+                        class="flex items-center gap-2.5 px-3 py-2 text-foreground hover:bg-accent transition-colors" @click="moreOpen=false">
+                        <i data-lucide="kanban" class="w-3.5 h-3.5 text-muted-foreground shrink-0" aria-hidden="true"></i> ADM Board
+                    </a>
+                    <hr class="my-1 border-border">
+                    <div class="px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Export</div>
+                    <a href="/solutions/{{ solution.id }}/export/blueprint" role="menuitem"
+                        class="flex items-center gap-2.5 px-3 py-2 text-foreground hover:bg-accent transition-colors" @click="moreOpen=false">
+                        <i data-lucide="file-badge" class="w-3.5 h-3.5 text-muted-foreground shrink-0" aria-hidden="true"></i> Blueprint PDF
+                    </a>
+                    <a href="/solutions/{{ solution.id }}/export/sad" role="menuitem"
+                        class="flex items-center gap-2.5 px-3 py-2 text-foreground hover:bg-accent transition-colors" @click="moreOpen=false">
+                        <i data-lucide="file-check" class="w-3.5 h-3.5 text-muted-foreground shrink-0" aria-hidden="true"></i> SAD Document
+                    </a>
+                    <a href="/solutions/{{ solution.id }}/export/narrative" role="menuitem"
+                        class="flex items-center gap-2.5 px-3 py-2 text-foreground hover:bg-accent transition-colors" @click="moreOpen=false">
+                        <i data-lucide="book-open" class="w-3.5 h-3.5 text-muted-foreground shrink-0" aria-hidden="true"></i> Narrative
+                    </a>
+                    <hr class="my-1 border-border">
+                    <button type="button"
+                        data-action="delete-solution"
+                        data-solution-id="{{ solution.id }}"
+                        data-solution-name="{{ solution.name|e }}"
+                        role="menuitem"
+                        class="w-full flex items-center gap-2.5 px-3 py-2 text-destructive hover:bg-destructive/10 transition-colors text-left">
+                        <i data-lucide="trash-2" class="w-3.5 h-3.5 shrink-0" aria-hidden="true"></i> Delete
+                    </button>
+                </div>
+            </div>
+          </div>
+          <p class="text-sm text-muted-foreground">{{ solution.business_domain or '' }}{% if solution.solution_type %} &middot; {{ solution.solution_type }}{% endif %}</p>
+        </div>
+        <div class="flex items-center gap-3 shrink-0">
+          <div class="text-right">
+            <p class="text-xs text-muted-foreground">ARB Readiness</p>
+            {% set arb_color = 'emerald' if arb_pct >= 80 else ('amber' if arb_pct >= 40 else 'red') %}
+            <p class="text-sm font-bold text-{{ arb_color }}-400">{{ arb_pct }}%</p>
+          </div>
+          <div class="relative w-12 h-12">
+            <svg viewBox="0 0 36 36" class="w-12 h-12 -rotate-90">
+              <circle cx="18" cy="18" r="15.9" fill="none" stroke="hsl(var(--border))" stroke-width="3"></circle>
+              <circle cx="18" cy="18" r="15.9" fill="none" stroke-width="3" stroke-linecap="round" stroke-dasharray="{{ arb_pct }} {{ 100 - arb_pct }}" class="stroke-{{ arb_color }}-400"></circle>
+            </svg>
+          </div>
+        </div>
+      </div>
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-5 pt-5 border-t border-border">
+        <div>
+          <p class="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Owner</p>
+          <p class="text-sm font-medium text-foreground">{{ solution.solution_owner or 'Not assigned' }}</p>
+        </div>
+        <div>
+          <p class="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1">ADM Phase</p>
+          <p class="text-sm font-medium text-foreground">Phase {{ solution.adm_phase or 'A' }}</p>
+        </div>
+        <div>
+          <p class="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Linked</p>
+          <div class="flex flex-wrap gap-1.5">
+            {% if capabilities_json %}<span class="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium">{{ capabilities_json | length }} cap</span>{% endif %}
+            {% if applications %}<span class="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium">{{ applications | length }} app</span>{% endif %}
+            {% if archimate_elements %}<span class="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium">{{ archimate_elements | length }} elem</span>{% endif %}
+            {% if not capabilities_json and not applications and not archimate_elements %}
+              <span class="text-xs text-muted-foreground">None yet</span>
+            {% endif %}
+          </div>
+        </div>
+        <div>
+          <p class="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Created</p>
+          <p class="text-sm font-medium text-foreground">{{ solution.created_at.strftime('%b %d, %Y') if solution.created_at else 'Unknown' }}</p>
+        </div>
+      </div>
+    </div>
+
+    {# ══════════════════════════════════════════════════════════════ #}
+    {#  PERSONA FILTER BAR — controls which sections are visible     #}
+    {# ══════════════════════════════════════════════════════════════ #}
+    <div id="sec-2" data-section="sec-2" class="flex items-center gap-2 flex-wrap">
+      <span class="text-xs font-medium text-muted-foreground">View as:</span>
+      <button data-persona="arb" @click="activePersona = activePersona === 'arb' ? '' : 'arb'; if (activePersona === 'arb') activeTab = 'governance'"
+              :class="activePersona === 'arb' ? 'bg-primary text-primary-foreground border-primary' : 'bg-card text-foreground border-input hover:bg-accent'"
+              class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border transition-colors">ARB</button>
+      <button data-persona="architect" @click="activePersona = activePersona === 'architect' ? '' : 'architect'; if (activePersona === 'architect') activeTab = 'infosys'"
+              :class="activePersona === 'architect' ? 'bg-primary text-primary-foreground border-primary' : 'bg-card text-foreground border-input hover:bg-accent'"
+              class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border transition-colors">Architect</button>
+      <button data-persona="executive" @click="activePersona = activePersona === 'executive' ? '' : 'executive'; if (activePersona === 'executive') activeTab = 'vision'"
+              :class="activePersona === 'executive' ? 'bg-primary text-primary-foreground border-primary' : 'bg-card text-foreground border-input hover:bg-accent'"
+              class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border transition-colors">Executive</button>
+      <button data-persona="developer" @click="activePersona = activePersona === 'developer' ? '' : 'developer'; if (activePersona === 'developer') activeTab = 'infosys'"
+              :class="activePersona === 'developer' ? 'bg-primary text-primary-foreground border-primary' : 'bg-card text-foreground border-input hover:bg-accent'"
+              class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border transition-colors">Developer</button>
+      <span x-show="activePersona" x-cloak class="text-xs text-muted-foreground ml-1">
+        — showing <span x-text="activePersona" class="font-medium text-foreground capitalize"></span> view
+        <button @click="activePersona = ''" class="ml-1 text-muted-foreground hover:text-foreground underline">reset</button>
+      </span>
+    </div>
+
+    {# ══════════════════════════════════════════════════════════════ #}
+    {#  NEXT BEST ACTION — uses maturity_gaps with projected scores  #}
+    {# ══════════════════════════════════════════════════════════════ #}
+    {% if maturity_gaps and arb_pct < 100 %}
+    <div class="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
+      <div class="flex items-center gap-2 mb-3">
+        <svg class="w-4 h-4 text-amber-400 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"/></svg>
+        <p class="text-sm font-semibold text-foreground">Next actions to improve ARB readiness ({{ arb_pct }}%)</p>
+      </div>
+      <div class="space-y-2">
+        {% for gap in maturity_gaps[:3] %}
+        <div class="flex items-center justify-between gap-3 text-sm">
+          <div class="flex items-center gap-2 min-w-0">
+            <span class="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0"></span>
+            <span class="text-foreground/80 truncate">{{ gap.get('phase', '') }}</span>
+          </div>
+          <span class="text-xs text-amber-400 font-medium whitespace-nowrap shrink-0">&rarr; {{ gap.get('projected_score', arb_pct) }}%</span>
+        </div>
+        {% endfor %}
+        {% if maturity_gaps | length > 3 %}
+        <p class="text-[10px] text-muted-foreground mt-1">+ {{ maturity_gaps | length - 3 }} more gaps</p>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
+    {# ══════════════════════════════════════════════════════════════ #}
+    {#  AI QUICK START — populate all phases from problem statement  #}
+    {# ══════════════════════════════════════════════════════════════ #}
+    {% if llm_available and solution.description and vision_pct <= 33 and biz_pct == 0 %}
+    <div x-show="!aiDismissed" class="rounded-xl border border-primary/20 bg-primary/5 p-5">
+      <div class="flex items-start gap-4">
+        <span class="flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10 border border-primary/20 shrink-0">
+          <svg class="w-5 h-5 text-primary" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z"/></svg>
+        </span>
+        <div class="flex-1 min-w-0">
+          <p class="text-sm font-semibold text-foreground mb-1">Generate Architecture from Problem Statement</p>
+          <p class="text-xs text-muted-foreground mb-3">AI will analyze your problem statement and generate drivers, goals, constraints, requirements, risks, options, and migration plateaus across all TOGAF phases. You can review and edit everything after.</p>
+          <div class="flex items-center gap-2">
+            <button @click="generateDraft()"
+                    :disabled="aiGenerating"
+                    class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors">
+              <svg x-show="!aiGenerating" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg>
+              <svg x-show="aiGenerating" x-cloak class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+              <span x-text="aiGenerating ? 'Generating architecture...' : 'Generate Architecture'"></span>
+            </button>
+            <button @click="aiDismissed = true" class="text-xs text-muted-foreground hover:text-foreground">I'll add manually</button>
+          </div>
+          <template x-if="aiResult">
+            <div class="mt-3 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+              <p class="text-xs text-emerald-400 font-medium" x-text="'Created ' + aiResult.total + ' entities across all phases'"></p>
+              <div class="flex flex-wrap gap-2 mt-1.5">
+                <template x-for="(count, type) in aiResult.created" :key="type">
+                  <span x-show="count > 0" class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400" x-text="count + ' ' + type"></span>
+                </template>
+              </div>
+            </div>
+          </template>
+          <p x-show="aiError" x-cloak class="mt-2 text-xs text-red-400" x-text="aiError"></p>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    {# ══════════════════════════════════════════════════════════════ #}
+    {#  6 HORIZONTAL TABS                                             #}
+    {# ══════════════════════════════════════════════════════════════ #}
+    <div id="sec-3" data-section="sec-3" class="border-b border-border">
+      <nav class="flex gap-0.5 -mb-px overflow-x-auto" x-data="{
+        tabs: [
+          {key:'vision',label:'Vision',phase:'A',pct:{{ vision_pct }}},
+          {key:'business',label:'Business',phase:'B',pct:{{ biz_pct }}},
+          {key:'infosys',label:'Information Systems',phase:'C/D',pct:{{ infosys_pct }}},
+          {key:'opportunities',label:'Opportunities',phase:'E',pct:{{ opps_pct }}},
+          {key:'migration',label:'Migration',phase:'F',pct:{{ mig_pct }}},
+          {key:'governance',label:'Governance',phase:'G-H',pct:{{ gov_pct }}}
+        ]
+      }">
+        <template x-for="tab in tabs" :key="tab.key">
+          <button @click="activeTab = tab.key"
+                  class="relative px-4 py-2.5 text-sm font-medium transition-colors rounded-t-md whitespace-nowrap"
+                  :class="activeTab === tab.key ? 'text-foreground bg-card border border-border border-b-transparent -mb-px' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'">
+            <span x-text="tab.label"></span>
+            <span class="ml-1 text-[10px] text-muted-foreground" x-text="'(' + tab.phase + ')'"></span>
+            <span class="ml-1 inline-flex items-center justify-center min-w-[20px] h-5 rounded-full text-[10px] font-bold px-1"
+                  :class="tab.pct === 100 ? 'bg-emerald-500/15 text-emerald-400' : tab.pct >= 40 ? 'bg-amber-500/15 text-amber-400' : tab.pct > 0 ? 'bg-red-500/15 text-red-400' : 'bg-muted text-muted-foreground'"
+                  x-html="tab.pct === 100 ? '&#10003;' : tab.pct + '%'"></span>
+          </button>
+        </template>
+      </nav>
+    </div>
+
+
+    {# ══════════════════════════════════════════════════════════════ #}
+    {#  TAB: VISION (A)                                               #}
+    {# ══════════════════════════════════════════════════════════════ #}
+    <div id="sec-4" x-show="activeTab === 'vision'" x-cloak class="space-y-6">
+      <div class="flex items-center justify-end">
+        <button data-action="open-comments" data-section-id="phase_a" data-section-label="Phase A – Vision &amp; Drivers"
+                class="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary border border-border/50 hover:border-primary/40 px-3 py-1.5 rounded-lg transition-colors">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z"/></svg>
+          Comments
+        </button>
+      </div>
+      <div class="rounded-xl border border-border bg-card overflow-hidden">
+        <div class="bg-muted/20 px-5 py-2 border-b border-border flex items-center justify-between">
+          <span class="text-xs font-medium text-muted-foreground">Motivation Viewpoint</span>
+          <span class="text-[10px] text-muted-foreground">Driver → Goal → Requirement</span>
+        </div>
+        <div id="viewpoint-diagram-vision" class="w-full" style="min-height:200px;"></div>
+      </div>
+
+      {# Problem Statement / Analysis Origin — WHY does this solution exist? #}
+      {% if analysis_origin and analysis_origin.get('problem_statement') %}
+      <div class="rounded-xl border border-border bg-card p-5">
+        <div class="flex items-center gap-2 mb-3">
+          <div class="w-1 h-5 rounded-full bg-violet-500"></div>
+          <p class="text-sm font-semibold text-foreground">Problem Statement</p>
+          {% if analysis_origin.get('recommendation_type') %}
+          <span class="ml-auto text-[10px] px-1.5 py-0.5 rounded bg-violet-500/10 text-violet-400">{{ analysis_origin.get('recommendation_type') }}{% if analysis_origin.get('recommendation_score') %} &middot; Score: {{ analysis_origin.get('recommendation_score') }}{% endif %}</span>
+          {% endif %}
+        </div>
+        <p class="text-sm text-foreground/80 leading-relaxed">{{ analysis_origin.get('problem_statement') }}</p>
+        {% if analysis_origin.get('created_at') %}
+        <p class="text-[10px] text-muted-foreground mt-3">Analysis session: {{ analysis_origin.get('session_name', '') }} &middot; {{ analysis_origin.get('created_at') }}</p>
+        {% endif %}
+      </div>
+      {% endif %}
+
+      {# Executive Summary callout #}
+      {% if solution.description %}
+      <div class="border-l-4 border-l-violet-500 rounded-r-lg bg-card/50 px-5 py-4">
+        <p class="text-sm text-foreground/90 leading-relaxed">{{ solution.description }}</p>
+      </div>
+      {% else %}
+      <div class="border-l-4 border-l-violet-500/30 rounded-r-lg bg-card/30 px-5 py-4">
+        <p class="text-sm text-muted-foreground italic">No executive summary yet &mdash; <a href="{{ url_for('solution_design.edit_solution', solution_id=solution.id) }}" class="text-primary hover:underline">add one</a></p>
+      </div>
+      {% endif %}
+
+      {# Strategic Context: stat cards + inline list #}
+      <div>
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-1 h-5 rounded-full bg-violet-500"></div>
+          <p class="text-sm font-semibold text-foreground">Strategic Context</p>
+          <div class="ml-auto flex gap-1 items-center">
+            {% if llm_available %}
+            <button @click="generateDraft()" :disabled="aiGenerating"
+                    class="text-[11px] text-violet-400/70 hover:text-violet-400 font-medium disabled:opacity-50 inline-flex items-center gap-1">
+              <svg x-show="!aiGenerating" class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg><!-- alpine-scope-ok -->
+              <svg x-show="aiGenerating" x-cloak class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+              <span x-text="aiGenerating ? 'Generating...' : 'Generate'"></span>
+            </button>
+            <span class="text-muted-foreground/30">|</span>
+            {% endif %}
+            <button @click="openAdd('driver')" class="text-[11px] text-primary/70 hover:text-primary font-medium">+ Driver</button>
+            <span class="text-muted-foreground/30">|</span>
+            <button @click="openAdd('goal')" class="text-[11px] text-primary/70 hover:text-primary font-medium">+ Goal</button>
+            <span class="text-muted-foreground/30">|</span>
+            <button @click="openAdd('constraint')" class="text-[11px] text-primary/70 hover:text-primary font-medium">+ Constraint</button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-3 gap-3 mb-4">
+          <div class="rounded-xl border border-border bg-card p-4">
+            <div class="flex items-center gap-3">
+              <span class="flex items-center justify-center w-10 h-10 rounded-lg bg-violet-500/10 border border-violet-500/20 shrink-0">
+                <svg class="w-5 h-5 text-violet-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z"/></svg>
+              </span>
+              <div>
+                <p class="text-2xl font-bold text-foreground">{{ drivers | length }}</p>
+                <p class="text-xs text-muted-foreground">Drivers</p>
+              </div>
+            </div>
+          </div>
+          <div class="rounded-xl border border-border bg-card p-4">
+            <div class="flex items-center gap-3">
+              <span class="flex items-center justify-center w-10 h-10 rounded-lg bg-emerald-500/10 border border-emerald-500/20 shrink-0">
+                <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+              </span>
+              <div>
+                <p class="text-2xl font-bold text-foreground">{{ goals | length }}</p>
+                <p class="text-xs text-muted-foreground">Goals</p>
+              </div>
+            </div>
+          </div>
+          <div class="rounded-xl border border-border bg-card p-4">
+            <div class="flex items-center gap-3">
+              <span class="flex items-center justify-center w-10 h-10 rounded-lg bg-red-500/10 border border-red-500/20 shrink-0">
+                <svg class="w-5 h-5 text-red-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/></svg>
+              </span>
+              <div>
+                <p class="text-2xl font-bold text-foreground">{{ constraints | length }}</p>
+                <p class="text-xs text-muted-foreground">Constraints</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {# PLT-002: Architecture Completeness breakdown card #}
+        {% set _ac = architecture_completeness %}
+        <div class="rounded-xl border border-border bg-card p-4 mb-4">
+          <div class="flex items-center justify-between mb-3">
+            <h4 class="text-sm font-semibold text-foreground flex items-center gap-2">
+              <svg class="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z"/></svg>
+              Architecture Completeness
+            </h4>
+            <span class="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold
+              {{ 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20' if _ac.score >= 80
+                 else ('bg-amber-500/10 text-amber-600 border border-amber-500/20' if _ac.score >= 40
+                 else 'bg-red-500/10 text-destructive border border-red-500/20') }}">
+              {{ _ac.score }}% &mdash; {{ _ac.filled_count }}/{{ _ac.total }} sections
+            </span>
+          </div>
+          <div class="h-2 w-full rounded-full bg-muted/50 overflow-hidden mb-3">
+            <div class="h-full rounded-full transition-all duration-500
+              {{ 'bg-emerald-500' if _ac.score >= 80 else ('bg-amber-500' if _ac.score >= 40 else 'bg-red-400') }}"
+                 style="width: {{ _ac.score }}%"></div>
+          </div>
+          <div class="flex flex-wrap gap-1.5">
+            {% for cat in _ac.filled %}
+            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+              <svg class="w-2.5 h-2.5 shrink-0" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>
+              {{ cat|replace('_',' ')|title }}
+            </span>
+            {% endfor %}
+            {% for cat in _ac.missing %}
+            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] bg-muted/50 text-muted-foreground border border-dashed border-border/70">
+              <svg class="w-2.5 h-2.5 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4m0 4h.01"/></svg>
+              {{ cat|replace('_',' ')|title }}
+            </span>
+            {% endfor %}
+          </div>
+        </div>
+
+        {# Cross-phase insight: detect broken chain starts #}
+        {% if drivers and not goals %}
+        <div class="rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-2.5 mb-4 flex items-start gap-2">
+          <svg class="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126z"/></svg>
+          <p class="text-xs text-foreground/80">{{ drivers | length }} driver{{ 's' if drivers | length != 1 }} defined but no goals yet. Drivers need goals to trace through to requirements &mdash; the first traceability chain is broken.</p>
+        </div>
+        {% elif goals and not drivers %}
+        <div class="rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-2.5 mb-4 flex items-start gap-2">
+          <svg class="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126z"/></svg>
+          <p class="text-xs text-foreground/80">{{ goals | length }} goal{{ 's' if goals | length != 1 }} defined but no drivers. Goals without drivers have no business justification &mdash; ARB will ask "why?"</p>
+        </div>
+        {% elif drivers and goals and not requirements_list %}
+        <div class="rounded-lg border border-blue-500/20 bg-blue-500/5 px-4 py-2.5 mb-4 flex items-start gap-2">
+          <svg class="w-3.5 h-3.5 text-blue-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3"/></svg>
+          <p class="text-xs text-foreground/80">Drivers and goals defined &mdash; next: define requirements to complete the Driver &rarr; Goal &rarr; Requirement chain.</p>
+        </div>
+        {% endif %}
+
+        {# Inline expandable list of drivers/goals/constraints #}
+        {% if drivers or goals or constraints %}
+        <div class="rounded-xl border border-border bg-card divide-y divide-border overflow-hidden text-sm">
+          {% for d in drivers %}
+          <div class="flex items-center gap-2.5 px-5 py-2.5 hover:bg-muted/20">
+            <span class="w-2 h-2 rounded-full bg-violet-400 shrink-0"></span>
+            <span class="flex-1">{{ d.get('name') or d.get('title') or d.get('description', 'Untitled') }}</span>
+            <span class="text-[10px] text-muted-foreground px-1.5 py-0.5 rounded bg-muted">Driver</span>
+          </div>
+          {% endfor %}
+          {% for g in goals %}
+          <div class="flex items-center gap-2.5 px-5 py-2.5 hover:bg-muted/20">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 shrink-0"></span>
+            <span class="flex-1">{{ g.get('name') or g.get('title') or g.get('description', 'Untitled') }}</span>
+            <span class="text-[10px] text-muted-foreground px-1.5 py-0.5 rounded bg-muted">Goal</span>
+          </div>
+          {% endfor %}
+          {% for c in constraints %}
+          <div class="flex items-center gap-2.5 px-5 py-2.5 hover:bg-muted/20">
+            <span class="w-2 h-2 rounded-full bg-red-400 shrink-0"></span>
+            <span class="flex-1">{{ c.get('name') or c.get('title') or c.get('description', 'Untitled') }}</span>
+            <span class="text-[10px] text-muted-foreground px-1.5 py-0.5 rounded bg-muted">Constraint</span>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-sm text-muted-foreground">No drivers, goals, or constraints yet &mdash;
+          {% if llm_available %}
+          <button @click="generateDraft()" :disabled="aiGenerating" class="text-violet-400 hover:underline font-medium">generate from problem statement</button> or
+          {% endif %}
+          <button @click="openAdd('driver')" class="text-primary hover:underline">add manually</button>
+        </p>
+        {% endif %}
+      </div>
+
+      {# Stakeholders: Mendelow grid via D3 #}
+      <div>
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-1 h-5 rounded-full bg-violet-500"></div>
+          <p class="text-sm font-semibold text-foreground">Stakeholders</p>
+          <span class="text-xs text-muted-foreground">({{ stakeholder_mappings | length }})</span>
+        </div>
+        {% if stakeholder_mappings %}
+        <div class="rounded-xl border border-border bg-card overflow-hidden">
+          <div id="stk-grid-embed" class="px-5 py-4" style="min-height:200px"></div>
+        </div>
+        {% else %}
+        <p class="text-sm text-muted-foreground">No stakeholders mapped yet &mdash; <a href="{{ url_for('solution_design.edit_solution', solution_id=solution.id) }}" class="text-primary hover:underline">add stakeholders</a></p>
+        {% endif %}
+      </div>
+
+      {# Requirements table #}
+      <div>
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-1 h-5 rounded-full bg-violet-500"></div>
+          <p class="text-sm font-semibold text-foreground">Requirements</p>
+          <span class="text-xs text-muted-foreground">({{ requirements_list | length }})</span>
+          <button @click="openAdd('requirement')" class="ml-auto text-[11px] text-primary/70 hover:text-primary font-medium">+ Add</button>
+        </div>
+        {% if requirements_list %}
+        <div class="rounded-xl border border-border bg-card overflow-hidden">
+          <table class="w-full text-sm">
+            <thead><tr class="border-b border-border bg-muted/30">
+              <th class="text-left px-5 py-2 text-xs font-medium text-muted-foreground">Requirement</th>
+              <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground w-[90px]">Type</th>
+              <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground w-[90px]">Priority</th>
+              <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground w-[90px]">Status</th>
+            </tr></thead>
+            <tbody class="divide-y divide-border">
+              {% for r in requirements_list %}
+              {% set r_priority = (r.get('priority') or 'medium') | lower %}
+              {% set r_status = (r.get('status') or 'open') | lower %}
+              <tr class="hover:bg-muted/20">
+                <td class="px-5 py-2.5">{{ r.get('name') or r.get('title') or r.get('description', 'Untitled') }}</td>
+                <td class="px-3 py-2.5"><span class="text-[10px] text-muted-foreground px-1.5 py-0.5 rounded bg-muted">{{ (r.get('requirement_type') or r.get('type') or 'Functional') | title }}</span></td>
+                <td class="px-3 py-2.5"><span class="text-[10px] {% if r_priority == 'critical' %}text-red-400{% elif r_priority == 'high' %}text-amber-400{% else %}text-muted-foreground{% endif %}">{{ r_priority | title }}</span></td>
+                <td class="px-3 py-2.5">
+                  <span class="flex items-center gap-1">
+                    <span class="w-1.5 h-1.5 rounded-full {% if r_status == 'met' or r_status == 'closed' %}bg-emerald-400{% elif r_status == 'in_progress' or r_status == 'in progress' %}bg-amber-400{% else %}bg-muted-foreground{% endif %}"></span>
+                    <span class="text-xs">{{ r_status | replace('_', ' ') | title }}</span>
+                  </span>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <p class="text-sm text-muted-foreground">No requirements defined yet &mdash; <button @click="openAdd('requirement')" class="text-primary hover:underline">add a requirement</button></p>
+        {% endif %}
+      </div>
+
+      {# Quality Attributes — NFRs that constrain every design choice #}
+      {% if quality_attributes %}
+      <div>
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-1 h-5 rounded-full bg-violet-500"></div>
+          <p class="text-sm font-semibold text-foreground">Quality Attributes</p>
+          <span class="text-xs text-muted-foreground">({{ quality_attributes | length }})</span>
+        </div>
+        <div class="rounded-xl border border-border bg-card divide-y divide-border overflow-hidden text-sm">
+          {% for qa in quality_attributes %}
+          <div class="flex items-center gap-3 px-5 py-2.5 hover:bg-muted/20">
+            <span class="flex-1">{{ qa.get('name') or qa.get('attribute_name') or 'Unnamed' }}</span>
+            {% if qa.get('target_value') or qa.get('target') %}
+            <span class="text-xs text-muted-foreground">Target: {{ qa.get('target_value') or qa.get('target') }}</span>
+            {% endif %}
+            {% if qa.get('priority') %}
+            <span class="text-[10px] px-1.5 py-0.5 rounded {% if qa.get('priority') | lower in ('critical', 'high') %}bg-red-500/10 text-red-400{% else %}bg-muted text-muted-foreground{% endif %}">{{ qa.get('priority') | title }}</span>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+    </div>
+
+
+    {# ══════════════════════════════════════════════════════════════ #}
+    {#  TAB: BUSINESS (B)                                             #}
+    {# ══════════════════════════════════════════════════════════════ #}
+    <div id="sec-5" x-show="activeTab === 'business'" x-cloak class="space-y-6">
+      <div class="flex items-center justify-end">
+        <button data-action="open-comments" data-section-id="phase_bcd" data-section-label="Phases B-D – Business &amp; Capabilities"
+                class="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary border border-border/50 hover:border-primary/40 px-3 py-1.5 rounded-lg transition-colors">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z"/></svg>
+          Comments
+        </button>
+      </div>
+      <div class="rounded-xl border border-border bg-card overflow-hidden">
+        <div class="bg-muted/20 px-5 py-2 border-b border-border flex items-center justify-between">
+          <span class="text-xs font-medium text-muted-foreground">Strategy Viewpoint</span>
+          <span class="text-[10px] text-muted-foreground">Capability → Value Stream → Course of Action</span>
+        </div>
+        <div id="viewpoint-diagram-business" class="w-full" style="min-height:200px;"></div>
+      </div>
+
+      {# Cross-phase insight: requirements → capability coverage #}
+      {% if requirements_list and not capabilities_json %}
+      <div class="rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-2.5 flex items-start gap-2">
+        <svg class="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126z"/></svg>
+        <p class="text-xs text-foreground/80">{{ requirements_list | length }} requirement{{ 's' if requirements_list | length != 1 }} defined in Phase A but no capabilities mapped. Requirements can't trace to applications without capabilities &mdash; the Requirement &rarr; Capability &rarr; Application chain is broken.</p>
+      </div>
+      {% elif capabilities_json and not applications %}
+      <div class="rounded-lg border border-blue-500/20 bg-blue-500/5 px-4 py-2.5 flex items-start gap-2">
+        <svg class="w-3.5 h-3.5 text-blue-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3"/></svg>
+        <p class="text-xs text-foreground/80">{{ capabilities_json | length }} capabilities mapped &mdash; next: link applications to show which systems realize these capabilities.</p>
+      </div>
+      {% endif %}
+
+      {# Capabilities domain cards #}
+      <div>
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-1 h-5 rounded-full bg-emerald-500"></div>
+          <p class="text-sm font-semibold text-foreground">Capabilities</p>
+          <span class="text-xs text-muted-foreground">({{ capabilities_json | length }})</span>
+        </div>
+        {% if capabilities_json %}
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {% for cap in capabilities_json %}
+          <div class="group rounded-xl border border-border bg-card p-4 hover:border-emerald-500/40 hover:bg-emerald-500/5 transition-all">
+            <div class="flex items-start gap-3">
+              <span class="flex items-center justify-center w-9 h-9 rounded-lg bg-emerald-500/10 text-emerald-400 text-xs font-bold shrink-0">{{ (cap.get('domain') or 'N/A')[:3] | upper }}</span>
+              <div class="min-w-0 flex-1">
+                <p class="text-sm font-medium text-foreground group-hover:text-emerald-400 transition-colors">{{ cap.get('name') or 'Unnamed' }}</p>
+                <div class="flex items-center gap-2 mt-2">
+                  {% set mat = cap.get('maturity_level') or cap.get('level') %}
+                  {% if mat %}
+                  <span class="inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium {% if mat >= 4 %}bg-emerald-500/10 text-emerald-400{% elif mat >= 3 %}bg-amber-500/10 text-amber-400{% else %}bg-red-500/10 text-red-400{% endif %}">L{{ mat }}</span>
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-sm text-muted-foreground">No capabilities linked yet &mdash; <a href="{{ url_for('solution_design.edit_solution', solution_id=solution.id) }}" class="text-primary hover:underline">link capabilities</a></p>
+        {% endif %}
+      </div>
+
+      {# Applications table #}
+      <div>
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-1 h-5 rounded-full bg-emerald-500"></div>
+          <p class="text-sm font-semibold text-foreground">Applications</p>
+          <span class="text-xs text-muted-foreground">({{ applications | length }})</span>
+        </div>
+        {% if applications %}
+        <div class="rounded-xl border border-border bg-card overflow-hidden">
+          <table class="w-full text-sm">
+            <thead><tr class="border-b border-border bg-muted/30">
+              <th class="text-left px-5 py-2 text-xs font-medium text-muted-foreground">Application</th>
+              <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground w-[100px]">Lifecycle</th>
+              <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground w-[80px]">Vendor</th>
+            </tr></thead>
+            <tbody class="divide-y divide-border">
+              {% for app in applications %}
+              {% set lc = (app.lifecycle_status or '') | lower %}
+              <tr class="hover:bg-muted/20">
+                <td class="px-5 py-2.5 font-medium">{{ app.name }}</td>
+                <td class="px-3 py-2.5">
+                  <span class="inline-flex items-center gap-1">
+                    <span class="w-1.5 h-1.5 rounded-full {% if 'strategic' in lc %}bg-emerald-400{% elif 'transition' in lc or 'tolerate' in lc %}bg-amber-400{% elif 'decommission' in lc or 'retire' in lc %}bg-red-400{% else %}bg-muted-foreground{% endif %}"></span>
+                    <span class="text-xs">{{ app.lifecycle_status or '&mdash;' }}</span>
+                  </span>
+                </td>
+                <td class="px-3 py-2.5 text-xs text-muted-foreground">{{ app.vendor_name or '&mdash;' }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <p class="text-sm text-muted-foreground">No applications linked yet &mdash; <a href="{{ url_for('solution_design.edit_solution', solution_id=solution.id) }}" class="text-primary hover:underline">link applications</a></p>
+        {% endif %}
+      </div>
+
+      {# Vendor Products — what commercial products are part of this solution? #}
+      {% if vendor_products_json %}
+      <div>
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-1 h-5 rounded-full bg-emerald-500"></div>
+          <p class="text-sm font-semibold text-foreground">Vendor Products</p>
+          <span class="text-xs text-muted-foreground">({{ vendor_products_json | length }})</span>
+        </div>
+        <div class="rounded-xl border border-border bg-card overflow-hidden">
+          <table class="w-full text-sm">
+            <thead><tr class="border-b border-border bg-muted/30">
+              <th class="text-left px-5 py-2 text-xs font-medium text-muted-foreground">Product</th>
+              <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground w-[100px]">Vendor</th>
+              <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground w-[100px]">Licensing</th>
+              <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground w-[100px]">Type</th>
+            </tr></thead>
+            <tbody class="divide-y divide-border">
+              {% for vp in vendor_products_json %}
+              <tr class="hover:bg-muted/20">
+                <td class="px-5 py-2.5 font-medium">{{ vp.get('name') or vp.get('product_name') or 'Unnamed' }}</td>
+                <td class="px-3 py-2.5 text-xs text-muted-foreground">{{ vp.get('vendor_name') or '&mdash;' }}</td>
+                <td class="px-3 py-2.5 text-xs text-muted-foreground">{{ vp.get('licensing_model') or '&mdash;' }}</td>
+                <td class="px-3 py-2.5">
+                  {% if vp.get('implementation_type') %}
+                  <span class="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{{ vp.get('implementation_type') }}</span>
+                  {% else %}&mdash;{% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% if has_subscription_vendors %}
+        <div class="rounded-lg border border-blue-500/20 bg-blue-500/5 px-4 py-2.5 mt-3 flex items-start gap-2">
+          <svg class="w-3.5 h-3.5 text-blue-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          <p class="text-xs text-foreground/80">Subscription-based products detected. Ensure recurring licence costs are reflected in TCO on the Opportunities tab.</p>
+        </div>
+        {% endif %}
+      </div>
+      {% endif %}
+
+      {# Business Processes #}
+      <div>
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-1 h-5 rounded-full bg-emerald-500"></div>
+          <p class="text-sm font-semibold text-foreground">Processes</p>
+          <span class="text-xs text-muted-foreground">({{ processes | length }})</span>
+        </div>
+        {% if processes %}
+        <div class="rounded-xl border border-border bg-card divide-y divide-border overflow-hidden text-sm">
+          {% for proc in processes %}
+          <div class="flex items-center gap-2.5 px-5 py-2.5 hover:bg-muted/20">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 shrink-0"></span>
+            <span class="flex-1">{{ proc.process_code }} {{ proc.process_name }}</span>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-sm text-muted-foreground">No processes mapped yet</p>
+        {% endif %}
+      </div>
+    </div>
+
+
+    {# ══════════════════════════════════════════════════════════════ #}
+    {#  TAB: INFORMATION SYSTEMS (C/D)                                #}
+    {# ══════════════════════════════════════════════════════════════ #}
+    <div id="sec-6" x-show="activeTab === 'infosys'" x-cloak class="space-y-6" x-data="{ activeLayer: 'all' }">
+      <div class="flex items-center justify-end">
+        <button data-action="open-comments" data-section-id="archimate" data-section-label="Information Systems Architecture"
+                class="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary border border-border/50 hover:border-primary/40 px-3 py-1.5 rounded-lg transition-colors">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z"/></svg>
+          Comments
+        </button>
+      </div>
+      <div class="rounded-xl border border-border bg-card overflow-hidden">
+        <div class="bg-muted/20 px-5 py-2 border-b border-border flex items-center justify-between">
+          <span class="text-xs font-medium text-muted-foreground">Solution Architecture Viewpoint</span>
+          <span class="text-[10px] text-muted-foreground">Application · Technology · Integration</span>
+        </div>
+        <div id="viewpoint-diagram-infosys" class="w-full" style="min-height:250px;"></div>
+      </div>
+
+      {# FRAG-005: Dependency & Technology Analysis Cards #}
+      <div x-show="strategicDependencyLoaded || strategicTechnologyLoaded" x-cloak class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div x-show="strategicDependencyLoaded" x-cloak class="rounded-xl border border-border bg-card p-5">
+          <div class="flex items-center gap-2 mb-3">
+            <i data-lucide="git-branch" class="w-4 h-4 text-primary" aria-hidden="true"></i>
+            <p class="text-sm font-semibold text-foreground">Dependency Analysis</p>
+          </div>
+          <template x-if="strategicDependency">
+            <div class="text-sm text-muted-foreground space-y-1">
+              <p x-show="strategicDependency.total_dependencies !== undefined" class="flex justify-between"><span>Total Dependencies</span><span class="font-medium text-foreground" x-text="strategicDependency.total_dependencies"></span></p>
+              <p x-show="strategicDependency.critical_path_length !== undefined" class="flex justify-between"><span>Critical Path</span><span class="font-medium text-foreground" x-text="strategicDependency.critical_path_length"></span></p>
+              <p x-show="strategicDependency.circular_dependencies !== undefined" class="flex justify-between"><span>Circular Deps</span><span class="font-medium" :class="strategicDependency.circular_dependencies > 0 ? 'text-destructive' : 'text-emerald-500'" x-text="strategicDependency.circular_dependencies"></span></p>
+            </div>
+          </template>
+        </div>
+        <div x-show="strategicTechnologyLoaded" x-cloak class="rounded-xl border border-border bg-card p-5">
+          <div class="flex items-center gap-2 mb-3">
+            <i data-lucide="cpu" class="w-4 h-4 text-violet-500" aria-hidden="true"></i>
+            <p class="text-sm font-semibold text-foreground">Technology Analysis</p>
+          </div>
+          <template x-if="strategicTechnology">
+            <div class="text-sm text-muted-foreground space-y-1">
+              <p x-show="strategicTechnology.total_technologies !== undefined" class="flex justify-between"><span>Technologies</span><span class="font-medium text-foreground" x-text="strategicTechnology.total_technologies"></span></p>
+              <p x-show="strategicTechnology.deprecated_count !== undefined" class="flex justify-between"><span>Deprecated</span><span class="font-medium" :class="strategicTechnology.deprecated_count > 0 ? 'text-amber-500' : 'text-emerald-500'" x-text="strategicTechnology.deprecated_count"></span></p>
+              <p x-show="strategicTechnology.stack_diversity !== undefined" class="flex justify-between"><span>Stack Diversity</span><span class="font-medium text-foreground" x-text="strategicTechnology.stack_diversity"></span></p>
+            </div>
+          </template>
+        </div>
+      </div>
+      <div x-show="strategicDependencyLoading || strategicTechnologyLoading" x-cloak class="text-xs text-muted-foreground flex items-center gap-2">
+        <span class="animate-spin h-3 w-3 border-2 border-current border-t-transparent rounded-full inline-block"></span> Loading analysis...
+      </div>
+
+      <div>
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-1 h-5 rounded-full bg-primary"></div>
+          <p class="text-sm font-semibold text-foreground">ArchiMate Elements</p>
+          <span class="text-xs text-muted-foreground">({{ archimate_elements | length }} elements)</span>
+          <button type="button"
+                  @click="$dispatch('open-archimate-picker', {linkEndpoint: '/api/solutions/{{ solution.id }}/elements'})"
+                  class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium text-primary hover:bg-primary/10 border border-primary/30 transition-colors">
+            <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
+            Add Element
+          </button>
+          {% if llm_available %}
+          <button @click="generateSection('architecture')" :disabled="sectionGenerating.architecture"
+                  class="ml-auto text-[11px] text-violet-400/70 hover:text-violet-400 font-medium disabled:opacity-50 inline-flex items-center gap-1">
+            <svg x-show="!sectionGenerating.architecture" class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg><!-- alpine-scope-ok -->
+            <svg x-show="sectionGenerating.architecture" x-cloak class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+            <span x-text="sectionGenerating.architecture ? 'Generating...' : 'Generate'"></span>
+          </button>
+          {% endif %}
+        </div>
+
+        {% if archimate_elements %}
+        {# Architecture health: layer coverage insight #}
+        {% set ns_layers = namespace(has_biz=false, has_app=false, has_tech=false, has_rel=0) %}
+        {% for e in archimate_elements %}
+          {% if (e.get('layer') or '') | lower == 'business' %}{% set ns_layers.has_biz = true %}{% endif %}
+          {% if (e.get('layer') or '') | lower == 'application' %}{% set ns_layers.has_app = true %}{% endif %}
+          {% if (e.get('layer') or '') | lower == 'technology' %}{% set ns_layers.has_tech = true %}{% endif %}
+          {% if e.get('relationship') %}{% set ns_layers.has_rel = ns_layers.has_rel + 1 %}{% endif %}
+        {% endfor %}
+        {% set missing_layers = [] %}
+        {% if not ns_layers.has_biz %}{% set _ = missing_layers.append('Business') %}{% endif %}
+        {% if not ns_layers.has_app %}{% set _ = missing_layers.append('Application') %}{% endif %}
+        {% if not ns_layers.has_tech %}{% set _ = missing_layers.append('Technology') %}{% endif %}
+        {% if missing_layers %}
+        <div class="rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-2.5 mb-4 flex items-start gap-2">
+          <svg class="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126z"/></svg>
+          <p class="text-xs text-foreground/80">Missing ArchiMate layer{{ 's' if missing_layers | length != 1 }}: <strong>{{ missing_layers | join(', ') }}</strong>. A complete SAD needs all three layers for cross-layer traceability. ARB readiness requires &ge;5 cross-layer relationships.</p>
+        </div>
+        {% elif ns_layers.has_rel == 0 %}
+        <div class="rounded-lg border border-blue-500/20 bg-blue-500/5 px-4 py-2.5 mb-4 flex items-start gap-2">
+          <svg class="w-3.5 h-3.5 text-blue-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3"/></svg>
+          <p class="text-xs text-foreground/80">All three ArchiMate layers present &mdash; but no cross-layer relationships defined yet. Link elements across layers to show how business processes are realized by applications and supported by technology.</p>
+        </div>
+        {% else %}
+        <div class="rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-4 py-2.5 mb-4 flex items-start gap-2">
+          <svg class="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          <p class="text-xs text-foreground/80">All three ArchiMate layers covered with {{ ns_layers.has_rel }} relationship{{ 's' if ns_layers.has_rel != 1 }}. Architecture model is traceable.</p>
+        </div>
+        {% endif %}
+
+        {# Layer filter tabs #}
+        {% set ns = namespace(biz=0, app=0, tech=0) %}
+        {% for e in archimate_elements %}
+          {% if (e.get('layer') or '') | lower == 'business' %}{% set ns.biz = ns.biz + 1 %}{% endif %}
+          {% if (e.get('layer') or '') | lower == 'application' %}{% set ns.app = ns.app + 1 %}{% endif %}
+          {% if (e.get('layer') or '') | lower == 'technology' %}{% set ns.tech = ns.tech + 1 %}{% endif %}
+        {% endfor %}
+        <div class="flex flex-wrap gap-2 mb-4">
+          <button @click="activeLayer = 'all'" class="px-3 py-1.5 rounded-full text-xs font-medium transition-colors" :class="activeLayer === 'all' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:text-foreground'">All ({{ archimate_elements | length }})</button>
+          {% if ns.biz %}<button @click="activeLayer = 'business'" class="px-3 py-1.5 rounded-full text-xs font-medium transition-colors" :class="activeLayer === 'business' ? 'bg-emerald-500 text-primary-foreground' : 'bg-muted text-muted-foreground hover:text-foreground'">Business ({{ ns.biz }})</button>{% endif %}
+          {% if ns.app %}<button @click="activeLayer = 'application'" class="px-3 py-1.5 rounded-full text-xs font-medium transition-colors" :class="activeLayer === 'application' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:text-foreground'">Application ({{ ns.app }})</button>{% endif %}
+          {% if ns.tech %}<button @click="activeLayer = 'technology'" class="px-3 py-1.5 rounded-full text-xs font-medium transition-colors" :class="activeLayer === 'technology' ? 'bg-sky-500 text-primary-foreground' : 'bg-muted text-muted-foreground hover:text-foreground'">Technology ({{ ns.tech }})</button>{% endif %}
+        </div>
+
+        {# Elements list #}
+        <div class="rounded-xl border border-border bg-card divide-y divide-border overflow-hidden">
+          {% for elem in archimate_elements %}
+          {% set layer = (elem.get('layer') or 'other') | lower %}
+          {% if layer == 'business' %}{% set lcolor = 'emerald' %}{% elif layer == 'application' %}{% set lcolor = 'blue' %}{% elif layer == 'technology' %}{% set lcolor = 'sky' %}{% else %}{% set lcolor = 'slate' %}{% endif %}
+          <div x-show="activeLayer === 'all' || activeLayer === '{{ layer }}'" class="flex items-center gap-3 px-5 py-3 hover:bg-muted/20">
+            <span class="w-3 h-3 rounded bg-{{ lcolor }}-500/30 border border-{{ lcolor }}-500/50 shrink-0"></span>
+            <div class="flex-1 min-w-0">
+              <p class="text-sm font-medium">{{ elem.get('name', 'Unnamed') }}</p>
+              <p class="text-[10px] text-muted-foreground">{{ elem.get('type', '') }}{% if elem.get('relationship') %} &middot; <span class="text-primary/70">{{ elem.get('relationship') }}</span>{% endif %}{% if elem.get('is_new') %} &middot; <span class="text-amber-400">new</span>{% endif %}</p>
+            </div>
+            <span class="text-[10px] text-muted-foreground px-1.5 py-0.5 rounded bg-{{ lcolor }}-500/10 text-{{ lcolor }}-400">{{ layer | title }}</span>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-sm text-muted-foreground">No ArchiMate elements linked yet &mdash; <a href="{{ url_for('solution_design.edit_solution', solution_id=solution.id) }}" class="text-primary hover:underline">link elements</a></p>
+        {% endif %}
+      </div>
+
+      {# Integration Flows — how systems connect #}
+      {% if integration_flows %}
+      <div>
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-1 h-5 rounded-full bg-primary"></div>
+          <p class="text-sm font-semibold text-foreground">Integration Flows</p>
+          <span class="text-xs text-muted-foreground">({{ integration_flows | length }})</span>
+        </div>
+        <div class="rounded-xl border border-border bg-card overflow-hidden">
+          <table class="w-full text-sm">
+            <thead><tr class="border-b border-border bg-muted/30">
+              <th class="text-left px-5 py-2 text-xs font-medium text-muted-foreground">Flow</th>
+              <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground w-[100px]">Source</th>
+              <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground w-[100px]">Target</th>
+              <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground w-[80px]">Protocol</th>
+            </tr></thead>
+            <tbody class="divide-y divide-border">
+              {% for flow in integration_flows %}
+              <tr class="hover:bg-muted/20">
+                <td class="px-5 py-2.5 font-medium">{{ flow.get('name') or flow.get('flow_name') or 'Unnamed' }}</td>
+                <td class="px-3 py-2.5 text-xs text-muted-foreground">{{ flow.get('source_system') or flow.get('source') or '&mdash;' }}</td>
+                <td class="px-3 py-2.5 text-xs text-muted-foreground">{{ flow.get('target_system') or flow.get('target') or '&mdash;' }}</td>
+                <td class="px-3 py-2.5 text-xs text-muted-foreground">{{ flow.get('protocol') or flow.get('integration_type') or '&mdash;' }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+
+
+    {# ══════════════════════════════════════════════════════════════ #}
+    {#  TAB: OPPORTUNITIES (E)                                        #}
+    {# ══════════════════════════════════════════════════════════════ #}
+    <div id="sec-7" x-show="activeTab === 'opportunities'" x-cloak class="space-y-6">
+
+      <div>
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-1 h-5 rounded-full bg-sky-500"></div>
+          <p class="text-sm font-semibold text-foreground">Solution Options</p>
+          <div class="ml-auto flex gap-1 items-center">
+            {% if llm_available %}
+            <button @click="generateSection('variants')" :disabled="sectionGenerating.variants"
+                    class="text-[11px] text-violet-400/70 hover:text-violet-400 font-medium disabled:opacity-50 inline-flex items-center gap-1">
+              <svg x-show="!sectionGenerating.variants" class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg><!-- alpine-scope-ok -->
+              <svg x-show="sectionGenerating.variants" x-cloak class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+              <span x-text="sectionGenerating.variants ? 'Generating...' : 'Generate Options'"></span>
+            </button>
+            <span class="text-muted-foreground/30">|</span>
+            {% endif %}
+            <button @click="openAdd('option')" class="text-[11px] text-primary/70 hover:text-primary font-medium">+ Add Option</button>
+          </div>
+        </div>
+
+        {% if recommendations %}
+        {# Check if any option is marked as selected #}
+        {% set ns_opts = namespace(has_selected=false) %}
+        {% for rec in recommendations %}
+          {% if rec.get('selected') or rec.get('is_recommended') %}{% set ns_opts.has_selected = true %}{% endif %}
+        {% endfor %}
+        {% if not ns_opts.has_selected %}
+        <div class="rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-2.5 mb-4 flex items-start gap-2">
+          <svg class="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126z"/></svg>
+          <p class="text-xs text-foreground/80">{{ recommendations | length }} option{{ 's' if recommendations | length != 1 }} evaluated but none selected as the recommended approach. ARB requires a selected option with justification before approval.</p>
+        </div>
+        {% endif %}
+        {% for rec in recommendations %}
+        {% set is_selected = rec.get('selected') or rec.get('is_recommended') %}
+        {% if is_selected %}
+        <div class="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4 mb-3">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <span class="flex items-center justify-center w-8 h-8 rounded-full bg-emerald-500/15 text-emerald-400">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+              </span>
+              <div>
+                <p class="text-sm font-semibold text-foreground">{{ rec.get('name') or rec.get('title') or rec.get('option_type', 'Option') }}</p>
+                <p class="text-xs text-emerald-400 font-medium mt-0.5">Selected{% if rec.get('score') %} &middot; Score: {{ rec.get('score') }}{% endif %}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        {% else %}
+        <div class="rounded-xl border border-border bg-card p-4 mb-3">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <span class="flex items-center justify-center w-8 h-8 rounded-full bg-muted text-muted-foreground text-xs">{{ loop.index }}</span>
+              <div>
+                <p class="text-sm font-medium text-muted-foreground">{{ rec.get('name') or rec.get('title') or rec.get('option_type', 'Option') }}</p>
+                <p class="text-xs text-muted-foreground mt-0.5">{% if rec.get('score') %}Score: {{ rec.get('score') }}{% endif %}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        {% endif %}
+        {% endfor %}
+        {% else %}
+        <p class="text-sm text-muted-foreground">No solution options evaluated yet &mdash;
+          {% if llm_available %}
+          <button @click="generateSection('variants')" :disabled="sectionGenerating.variants" class="text-violet-400 hover:underline font-medium">generate options with AI</button> or
+          {% endif %}
+          <button @click="openAdd('option')" class="text-primary hover:underline">add manually</button>
+        </p>
+        {% endif %}
+      </div>
+
+      {# TCO Summary #}
+      {% if tco_list %}
+      <div>
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-1 h-5 rounded-full bg-sky-500"></div>
+          <p class="text-sm font-semibold text-foreground">Total Cost of Ownership</p>
+        </div>
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {% for item in tco_list[:4] %}
+          <div class="rounded-xl border border-border bg-card p-4 text-center">
+            <p class="text-xl font-bold text-foreground">{{ currency_symbol }}{{ '{:,.0f}'.format(item.get('amount') or item.get('cost') or 0) }}</p>
+            <p class="text-[10px] text-muted-foreground mt-1">{{ item.get('label') or item.get('option_label', '') }} {{ item.get('year', '') }}</p>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+    </div>
+
+
+    {# ══════════════════════════════════════════════════════════════ #}
+    {#  TAB: MIGRATION (F)                                            #}
+    {# ══════════════════════════════════════════════════════════════ #}
+    <div id="sec-8" x-show="activeTab === 'migration'" x-cloak class="space-y-6">
+
+      {# Implementation & Migration Viewpoint diagram — rendered by _loadDiagram() on tab activate #}
+      <div class="rounded-xl border border-border bg-card overflow-hidden">
+        <div class="bg-muted/20 px-5 py-2 border-b border-border flex items-center justify-between">
+          <span class="text-xs font-medium text-muted-foreground">Implementation & Migration Viewpoint</span>
+          <span class="text-[10px] text-muted-foreground">Plateau → Gap → Work Package</span>
+        </div>
+        <div id="viewpoint-diagram-migration" class="w-full" style="min-height:200px;"></div>
+      </div>
+
+      <div>
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-1 h-5 rounded-full bg-sky-500"></div>
+          <p class="text-sm font-semibold text-foreground">Implementation Roadmap</p>
+          {% if plateaus_list %}
+          <span class="text-xs text-muted-foreground">({{ plateaus_list | length }} plateaus)</span>
+          {% endif %}
+          <div class="ml-auto flex gap-1 items-center">
+            {% if llm_available %}
+            <button @click="generateSection('implementation')" :disabled="sectionGenerating.implementation"
+                    class="text-[11px] text-violet-400/70 hover:text-violet-400 font-medium disabled:opacity-50 inline-flex items-center gap-1">
+              <svg x-show="!sectionGenerating.implementation" class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg><!-- alpine-scope-ok -->
+              <svg x-show="sectionGenerating.implementation" x-cloak class="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+              <span x-text="sectionGenerating.implementation ? 'Generating...' : 'Generate'"></span>
+            </button>
+            <span class="text-muted-foreground/30">|</span>
+            {% endif %}
+            <button @click="openAdd('plateau')" class="text-[11px] text-primary/70 hover:text-primary font-medium">+ Add Plateau</button>
+          </div>
+        </div>
+
+        {% if plateaus_list %}
+        <div class="rounded-xl border border-border bg-card divide-y divide-border overflow-hidden">
+          {% for plateau in plateaus_list %}
+          <div class="flex items-center gap-3 px-5 py-3 hover:bg-muted/20">
+            <span class="flex items-center justify-center w-8 h-8 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-bold shrink-0">{{ loop.index }}</span>
+            <div class="flex-1 min-w-0">
+              <p class="text-sm font-medium text-foreground">{{ plateau.get('name') or plateau.get('title') or 'Plateau ' ~ loop.index }}</p>
+              <p class="text-[10px] text-muted-foreground">{{ plateau.get('description', '') | truncate(100) }}</p>
+            </div>
+            {% if plateau.get('target_date') %}
+            <span class="text-xs text-muted-foreground shrink-0">{{ plateau.get('target_date') }}</span>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+        {% elif investment_phases %}
+        <div class="rounded-xl border border-border bg-card divide-y divide-border overflow-hidden">
+          {% for phase in investment_phases %}
+          <div class="flex items-center gap-3 px-5 py-3 hover:bg-muted/20">
+            <span class="flex items-center justify-center w-8 h-8 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-bold shrink-0">{{ phase.get('phase_number', loop.index) }}</span>
+            <div class="flex-1 min-w-0">
+              <p class="text-sm font-medium text-foreground">{{ phase.get('name') or phase.get('title') or 'Phase ' ~ loop.index }}</p>
+              {% if phase.get('budget') %}<p class="text-[10px] text-muted-foreground">Budget: {{ currency_symbol }}{{ '{:,.0f}'.format(phase.get('budget')) }}</p>{% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-sm text-muted-foreground">No migration roadmap defined yet &mdash;
+          {% if llm_available %}
+          <button @click="generateSection('implementation')" :disabled="sectionGenerating.implementation" class="text-violet-400 hover:underline font-medium">generate with AI</button> or
+          {% endif %}
+          <button @click="openAdd('plateau')" class="text-primary hover:underline">add manually</button>
+        </p>
+        {% endif %}
+      </div>
+    </div>
+
+
+    {# ══════════════════════════════════════════════════════════════ #}
+    {#  TAB: GOVERNANCE (G-H)                                         #}
+    {# ══════════════════════════════════════════════════════════════ #}
+    <div id="sec-9" x-show="activeTab === 'governance'" x-cloak class="space-y-6">
+
+      {# Layered Viewpoint diagram — rendered by _loadDiagram() on tab activate #}
+      <div class="rounded-xl border border-border bg-card overflow-hidden">
+        <div class="bg-muted/20 px-5 py-2 border-b border-border flex items-center justify-between">
+          <span class="text-xs font-medium text-muted-foreground">Layered Viewpoint</span>
+          <span class="text-[10px] text-muted-foreground">All architecture layers</span>
+        </div>
+        <div id="viewpoint-diagram-governance" class="w-full" style="min-height:200px;"></div>
+      </div>
+
+      {# FRAG-005: Strategic Analysis Summary Cards #}
+      <div x-show="strategicRiskLoaded || strategicInvestmentLoaded" x-cloak class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div x-show="strategicRiskLoaded" x-cloak class="rounded-xl border border-border bg-card p-5">
+          <div class="flex items-center gap-2 mb-3">
+            <i data-lucide="shield-alert" class="w-4 h-4 text-orange-500" aria-hidden="true"></i>
+            <p class="text-sm font-semibold text-foreground">Risk Analysis</p>
+            <span x-show="strategicRiskAnalysis && strategicRiskAnalysis.overall_risk_level"
+                  class="ml-auto inline-flex items-center px-2 py-0.5 rounded-md text-xs font-bold border"
+                  :class="riskLevelBadge(strategicRiskAnalysis.overall_risk_level)"
+                  x-text="strategicRiskAnalysis.overall_risk_level"></span>
+          </div>
+          <template x-if="strategicRiskAnalysis">
+            <div class="grid grid-cols-4 gap-2 text-center">
+              <div><p class="text-lg font-bold text-destructive" x-text="strategicRiskAnalysis.critical_risks || 0"></p><p class="text-[10px] text-muted-foreground">Critical</p></div>
+              <div><p class="text-lg font-bold text-orange-500" x-text="strategicRiskAnalysis.high_risks || 0"></p><p class="text-[10px] text-muted-foreground">High</p></div>
+              <div><p class="text-lg font-bold text-amber-500" x-text="strategicRiskAnalysis.medium_risks || 0"></p><p class="text-[10px] text-muted-foreground">Medium</p></div>
+              <div><p class="text-lg font-bold text-emerald-500" x-text="strategicRiskAnalysis.low_risks || 0"></p><p class="text-[10px] text-muted-foreground">Low</p></div>
+            </div>
+          </template>
+        </div>
+        <div x-show="strategicInvestmentLoaded" x-cloak class="rounded-xl border border-border bg-card p-5">
+          <div class="flex items-center gap-2 mb-3">
+            <i data-lucide="trending-up" class="w-4 h-4 text-emerald-500" aria-hidden="true"></i>
+            <p class="text-sm font-semibold text-foreground">Investment Analysis</p>
+          </div>
+          <template x-if="strategicInvestment">
+            <div class="text-sm text-muted-foreground space-y-1">
+              <p x-show="strategicInvestment.total_investment" class="flex justify-between"><span>Total Investment</span><span class="font-medium text-foreground" x-text="strategicInvestment.total_investment"></span></p>
+              <p x-show="strategicInvestment.roi" class="flex justify-between"><span>ROI</span><span class="font-medium text-foreground" x-text="strategicInvestment.roi"></span></p>
+              <p x-show="strategicInvestment.payback_period" class="flex justify-between"><span>Payback Period</span><span class="font-medium text-foreground" x-text="strategicInvestment.payback_period"></span></p>
+            </div>
+          </template>
+        </div>
+      </div>
+      <div x-show="strategicRiskLoading || strategicInvestmentLoading" x-cloak class="text-xs text-muted-foreground flex items-center gap-2">
+        <span class="animate-spin h-3 w-3 border-2 border-current border-t-transparent rounded-full inline-block"></span> Loading strategic analysis...
+      </div>
+
+      {# ARB Status #}
+      <div>
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-1 h-5 rounded-full bg-primary"></div>
+          <p class="text-sm font-semibold text-foreground">ARB Status</p>
+        </div>
+        <div class="rounded-xl border border-border bg-card p-5">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              {% set gov_status = (solution.governance_status or 'draft') | lower %}
+              <span class="flex items-center justify-center w-10 h-10 rounded-lg {% if gov_status == 'approved' %}bg-emerald-500/10 border-emerald-500/20{% elif gov_status in ('arb_review', 'in_review') %}bg-amber-500/10 border-amber-500/20{% elif gov_status == 'rejected' %}bg-red-500/10 border-red-500/20{% else %}bg-muted border-border{% endif %} border">
+                {% if gov_status == 'approved' %}
+                <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z"/></svg>
+                {% else %}
+                <svg class="w-5 h-5 text-muted-foreground" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"/></svg>
+                {% endif %}
+              </span>
+              <div>
+                <p class="text-sm font-semibold text-foreground">{{ (solution.governance_status or 'Draft') | replace('_', ' ') | title }}</p>
+                <p class="text-xs text-muted-foreground">
+                  {% if arb_reviews %}Latest review: {{ arb_reviews[-1].created_at.strftime('%b %d, %Y') if arb_reviews[-1].created_at else 'Unknown' }}{% else %}No ARB submissions yet{% endif %}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {# Risk Register #}
+      <div>
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-1 h-5 rounded-full bg-destructive"></div>
+          <p class="text-sm font-semibold text-foreground">Risk Register</p>
+          <span class="text-xs text-muted-foreground">({{ risks_list | length }})</span>
+          <button @click="openAdd('risk')" class="ml-auto text-[11px] text-primary/70 hover:text-primary font-medium">+ Add</button>
+        </div>
+        {% if risks_list and not adr_list %}
+        <div class="rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-2.5 mb-4 flex items-start gap-2">
+          <svg class="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126z"/></svg>
+          <p class="text-xs text-foreground/80">{{ risks_list | length }} risk{{ 's' if risks_list | length != 1 }} identified but no Architecture Decision Records (ADRs) linked. Each high/critical risk should have a documented decision on how it's being addressed.</p>
+        </div>
+        {% endif %}
+        {# Count high-severity risks without mitigation #}
+        {% set ns_risk = namespace(unmitigated_high=0) %}
+        {% for risk in risks_list %}
+          {% set sev = (risk.get('severity') or risk.get('impact') or '') | lower %}
+          {% set rst = (risk.get('status') or risk.get('mitigation_status') or '') | lower %}
+          {% if sev in ('high', 'critical') and 'mitigat' not in rst and 'accept' not in rst %}
+            {% set ns_risk.unmitigated_high = ns_risk.unmitigated_high + 1 %}
+          {% endif %}
+        {% endfor %}
+        {% if ns_risk.unmitigated_high > 0 %}
+        <div class="rounded-lg border border-red-500/20 bg-red-500/5 px-4 py-2.5 mb-4 flex items-start gap-2">
+          <svg class="w-3.5 h-3.5 text-red-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126z"/></svg>
+          <p class="text-xs text-foreground/80"><strong>{{ ns_risk.unmitigated_high }}</strong> high/critical risk{{ 's' if ns_risk.unmitigated_high != 1 }} without mitigation plan. ARB will not approve with unaddressed high-severity risks.</p>
+        </div>
+        {% endif %}
+        {% if risks_list %}
+        <div class="rounded-xl border border-border bg-card overflow-hidden">
+          <table class="w-full text-sm">
+            <thead><tr class="border-b border-border bg-muted/30">
+              <th class="text-left px-5 py-2 text-xs font-medium text-muted-foreground">Risk</th>
+              <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground w-[80px]">Severity</th>
+              <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground w-[80px]">Likelihood</th>
+              <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground w-[80px]">Status</th>
+            </tr></thead>
+            <tbody class="divide-y divide-border">
+              {% for risk in risks_list %}
+              {% set sev = (risk.get('severity') or risk.get('impact') or 'medium') | lower %}
+              {% set r_status = (risk.get('status') or risk.get('mitigation_status') or 'open') | lower %}
+              <tr class="hover:bg-muted/20">
+                <td class="px-5 py-2.5">{{ risk.get('name') or risk.get('title') or risk.get('description', 'Untitled') }}</td>
+                <td class="px-3 py-2.5">
+                  <span class="inline-flex items-center gap-1">
+                    <span class="w-1.5 h-1.5 rounded-full {% if sev == 'high' or sev == 'critical' %}bg-red-400{% elif sev == 'medium' %}bg-amber-400{% else %}bg-muted-foreground{% endif %}"></span>
+                    <span class="text-xs {% if sev == 'high' or sev == 'critical' %}text-red-400{% elif sev == 'medium' %}text-amber-400{% endif %}">{{ sev | title }}</span>
+                  </span>
+                </td>
+                <td class="px-3 py-2.5 text-xs text-muted-foreground">{{ (risk.get('likelihood') or risk.get('probability') or '&mdash;') | title }}</td>
+                <td class="px-3 py-2.5">
+                  <span class="text-[10px] px-1.5 py-0.5 rounded {% if 'mitigat' in r_status %}bg-emerald-500/10 text-emerald-400{% elif 'accept' in r_status %}bg-muted text-muted-foreground{% else %}bg-amber-500/10 text-amber-400{% endif %}">{{ r_status | replace('_', ' ') | title }}</span>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <p class="text-sm text-muted-foreground">No risks identified yet &mdash; <button @click="openAdd('risk')" class="text-primary hover:underline">add a risk</button></p>
+        {% endif %}
+      </div>
+
+      {# Architecture Decision Records — the backbone of governance #}
+      <div>
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-1 h-5 rounded-full bg-primary"></div>
+          <p class="text-sm font-semibold text-foreground">Architecture Decisions</p>
+          <span class="text-xs text-muted-foreground">({{ adr_list | length }})</span>
+        </div>
+        {% if adr_list %}
+        <div class="rounded-xl border border-border bg-card overflow-hidden">
+          <table class="w-full text-sm">
+            <thead><tr class="border-b border-border bg-muted/30">
+              <th class="text-left px-5 py-2 text-xs font-medium text-muted-foreground w-[60px]">ADR</th>
+              <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground">Title</th>
+              <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground w-[80px]">Status</th>
+              <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground">Decision</th>
+            </tr></thead>
+            <tbody class="divide-y divide-border">
+              {% for adr in adr_list %}
+              <tr class="hover:bg-muted/20">
+                <td class="px-5 py-2.5 text-xs font-mono text-muted-foreground">{{ adr.adr_number or loop.index }}</td>
+                <td class="px-3 py-2.5 font-medium">{{ adr.title or 'Untitled' }}</td>
+                <td class="px-3 py-2.5">
+                  {% set adr_status = (adr.status or 'draft') | lower %}
+                  <span class="text-[10px] px-1.5 py-0.5 rounded {% if adr_status == 'accepted' or adr_status == 'approved' %}bg-emerald-500/10 text-emerald-400{% elif adr_status == 'proposed' %}bg-amber-500/10 text-amber-400{% elif adr_status == 'superseded' or adr_status == 'deprecated' %}bg-muted text-muted-foreground{% else %}bg-blue-500/10 text-blue-400{% endif %}">{{ adr_status | title }}</span>
+                </td>
+                <td class="px-3 py-2.5 text-xs text-muted-foreground">{{ (adr.decision or '')[:80] }}{% if (adr.decision or '') | length > 80 %}&hellip;{% endif %}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <p class="text-sm text-muted-foreground">No architecture decisions recorded yet &mdash; <a href="{{ url_for('solution_design.edit_solution', solution_id=solution.id) }}" class="text-primary hover:underline">add ADRs</a></p>
+        {% endif %}
+      </div>
+
+      {# Success Metrics — Phase H: did this solution achieve its goals? #}
+      {% if metrics_list %}
+      <div>
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-1 h-5 rounded-full bg-primary"></div>
+          <p class="text-sm font-semibold text-foreground">Success Metrics</p>
+          <span class="text-xs text-muted-foreground">({{ metrics_list | length }})</span>
+        </div>
+        <div class="rounded-xl border border-border bg-card divide-y divide-border overflow-hidden text-sm">
+          {% for m in metrics_list %}
+          <div class="flex items-center gap-3 px-5 py-2.5 hover:bg-muted/20">
+            <div class="flex-1 min-w-0">
+              <p class="font-medium">{{ m.get('name') or m.get('metric_name') or 'Unnamed' }}</p>
+              {% if m.get('description') %}<p class="text-[10px] text-muted-foreground mt-0.5">{{ m.get('description') | truncate(100) }}</p>{% endif %}
+            </div>
+            {% if m.get('target_value') or m.get('target') %}
+            <div class="text-right shrink-0">
+              <p class="text-xs text-muted-foreground">Target</p>
+              <p class="text-sm font-medium">{{ m.get('target_value') or m.get('target') }}</p>
+            </div>
+            {% endif %}
+            {% if m.get('current_value') or m.get('actual') %}
+            <div class="text-right shrink-0">
+              <p class="text-xs text-muted-foreground">Current</p>
+              <p class="text-sm font-medium">{{ m.get('current_value') or m.get('actual') }}</p>
+            </div>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
+      {# Compliance Mappings — regulatory requirements this solution must meet #}
+      {% if compliance_mappings %}
+      <div>
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-1 h-5 rounded-full bg-primary"></div>
+          <p class="text-sm font-semibold text-foreground">Compliance</p>
+          <span class="text-xs text-muted-foreground">({{ compliance_mappings | length }})</span>
+        </div>
+        <div class="rounded-xl border border-border bg-card divide-y divide-border overflow-hidden text-sm">
+          {% for cm in compliance_mappings %}
+          <div class="flex items-center gap-3 px-5 py-2.5 hover:bg-muted/20">
+            <span class="flex-1">{{ cm.get('framework') or cm.get('regulation') or cm.get('name') or 'Unnamed' }}{% if cm.get('control_id') %} &middot; {{ cm.get('control_id') }}{% endif %}</span>
+            {% set cm_status = (cm.get('status') or cm.get('compliance_status') or 'pending') | lower %}
+            <span class="text-[10px] px-1.5 py-0.5 rounded {% if cm_status in ('compliant', 'met', 'passed') %}bg-emerald-500/10 text-emerald-400{% elif cm_status in ('partial', 'in_progress') %}bg-amber-500/10 text-amber-400{% else %}bg-red-500/10 text-red-400{% endif %}">{{ cm_status | replace('_', ' ') | title }}</span>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
+      {# Traceability chains — with specific gap diagnosis #}
+      <div>
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-1 h-5 rounded-full bg-slate-500"></div>
+          <p class="text-sm font-semibold text-foreground">Traceability</p>
+        </div>
+        {# Compute chain status with granular progress and gap diagnosis #}
+        {% set chain1_parts = (1 if drivers else 0) + (1 if goals else 0) + (1 if requirements_list else 0) %}
+        {% set chain1_pct = ((chain1_parts / 3) * 100) | round | int %}
+        {% set chain1_gap = 'drivers' if not drivers else ('goals' if not goals else ('requirements' if not requirements_list else '')) %}
+
+        {% set chain2_parts = (1 if requirements_list else 0) + (1 if capabilities_json else 0) + (1 if applications else 0) %}
+        {% set chain2_pct = ((chain2_parts / 3) * 100) | round | int %}
+        {% set chain2_gap = 'requirements' if not requirements_list else ('capabilities' if not capabilities_json else ('applications' if not applications else '')) %}
+
+        {% set chain3_parts = (1 if applications else 0) + (1 if archimate_elements else 0) %}
+        {% set chain3_pct = ((chain3_parts / 2) * 100) | round | int %}
+        {% set chain3_gap = 'applications' if not applications else ('ArchiMate elements' if not archimate_elements else '') %}
+
+        {% set chain4_parts = (1 if capabilities_json else 0) + (1 if processes else 0) %}
+        {% set chain4_pct = ((chain4_parts / 2) * 100) | round | int %}
+        {% set chain4_gap = 'capabilities' if not capabilities_json else ('processes' if not processes else '') %}
+
+        {% set chain5_parts = (1 if risks_list else 0) + (1 if adr_list else 0) %}
+        {% set chain5_pct = ((chain5_parts / 2) * 100) | round | int %}
+        {% set chain5_gap = 'risks' if not risks_list else ('architecture decisions (ADRs)' if not adr_list else '') %}
+
+        {% set chains = [
+          {'label': 'Driver &rarr; Goal &rarr; Requirement', 'pct': chain1_pct, 'gap': chain1_gap, 'tab': 'vision'},
+          {'label': 'Requirement &rarr; Capability &rarr; Application', 'pct': chain2_pct, 'gap': chain2_gap, 'tab': 'business'},
+          {'label': 'Application &rarr; Technology &rarr; Infrastructure', 'pct': chain3_pct, 'gap': chain3_gap, 'tab': 'infosys'},
+          {'label': 'Capability &rarr; Process &rarr; Organization', 'pct': chain4_pct, 'gap': chain4_gap, 'tab': 'business'},
+          {'label': 'Risk &rarr; Mitigation &rarr; Decision', 'pct': chain5_pct, 'gap': chain5_gap, 'tab': 'governance'}
+        ] %}
+        <div class="rounded-xl border border-border bg-card overflow-hidden divide-y divide-border">
+          {% for chain in chains %}
+          <div class="px-5 py-3 {% if chain.pct < 100 %}bg-red-500/5{% endif %}">
+            <div class="flex items-center justify-between mb-1.5">
+              <span class="text-sm">{{ chain.label | safe }}</span>
+              <span class="text-xs font-medium {% if chain.pct == 100 %}text-emerald-400{% elif chain.pct >= 50 %}text-amber-400{% else %}text-red-400{% endif %}">{{ chain.pct }}%</span>
+            </div>
+            <div class="w-full bg-muted rounded-full h-1.5">
+              <div class="h-1.5 rounded-full {% if chain.pct == 100 %}bg-emerald-400{% elif chain.pct >= 50 %}bg-amber-400{% else %}bg-red-400{% endif %}" style="width:{{ chain.pct }}%"></div>
+            </div>
+            {% if chain.gap %}
+            <p class="text-[10px] text-muted-foreground mt-1.5">
+              Broken at: <span class="text-foreground/70">{{ chain.gap }}</span> &mdash;
+              <button class="text-primary hover:underline" @click="activeTab = '{{ chain.tab }}'">go to {{ chain.tab | title }} tab</button>
+            </p>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+  </div>{# end max-w-6xl #}
+
+  {# ══════════════════════════════════════════════════════════════ #}
+  {#  UNIVERSAL ADD ENTITY MODAL                                    #}
+  {# ══════════════════════════════════════════════════════════════ #}
+  <!-- modal-a11y-ok -->
+  <div x-show="modal.open" x-cloak
+       class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+       @keydown.escape.window="modal.open = false">
+    <div class="bg-background border border-border rounded-xl shadow-2xl w-full max-w-lg mx-4"
+         @click.stop>
+      <div class="flex items-center justify-between px-6 py-4 border-b border-border">
+        <h3 class="text-base font-semibold text-foreground" x-text="modal.title"></h3>
+        <button @click="modal.open = false" class="text-muted-foreground hover:text-foreground" aria-label="Close">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="px-6 py-4 space-y-4">
+        <template x-for="field in modal.fields" :key="field.key">
+          <div>
+            <label class="block text-xs font-medium text-muted-foreground mb-1.5" x-text="field.label + (field.required ? ' *' : '')"></label>
+            <template x-if="field.type === 'textarea'">
+              <textarea x-model="form[field.key]" rows="3"
+                        class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-none"
+                        :placeholder="'Enter ' + field.label.toLowerCase()"></textarea>
+            </template>
+            <template x-if="field.type === 'select'">
+              <select x-model="form[field.key]"
+                      class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring">
+                <option value="">Select...</option>
+                <template x-for="opt in field.options" :key="typeof opt === 'object' ? opt.v : opt">
+                  <option :value="typeof opt === 'object' ? opt.v : opt"
+                          x-text="typeof opt === 'object' ? opt.l : opt.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())"></option>
+                </template>
+              </select>
+            </template>
+            <template x-if="field.type === 'date'">
+              <input type="date" x-model="form[field.key]"
+                     class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring">
+            </template>
+            <template x-if="!field.type || field.type === 'text'">
+              <input type="text" x-model="form[field.key]"
+                     class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                     :placeholder="'Enter ' + field.label.toLowerCase()"
+                     :required="field.required">
+            </template>
+          </div>
+        </template>
+        <p x-show="modal.error" x-cloak class="text-xs text-red-400" x-text="modal.error"></p>
+      </div>
+      <div class="flex items-center justify-end gap-2 px-6 py-4 border-t border-border">
+        <button @click="modal.open = false"
+                class="px-3 py-1.5 text-xs font-medium rounded-md border border-input text-foreground hover:bg-accent transition-colors">Cancel</button>
+        <button @click="saveEntity()"
+                :disabled="modal.saving"
+                class="px-3 py-1.5 text-xs font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors">
+          <span x-show="!modal.saving" x-text="'Add ' + modal.title.replace('Add ', '')"></span>
+          <span x-show="modal.saving" x-cloak>Saving...</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>{# end x-data #}
+
+{# PLT-011: Section comments drawer #}
+<div x-data="solutionComments({{ solution.id }})"
+     data-solution-comments
+     x-show="open"
+     x-cloak
+     @keydown.escape.window="open = false"
+     @open-comments.window="openFor($event.detail.section, $event.detail.label)"
+     class="fixed inset-y-0 right-0 z-50 flex flex-col w-full max-w-md bg-card border-l border-border shadow-2xl transition-transform"
+     :class="open ? 'translate-x-0' : 'translate-x-full'">
+  <div class="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
+    <div>
+      <h3 class="text-sm font-semibold text-foreground" x-text="'Comments — ' + sectionLabel"></h3>
+      <p class="text-xs text-muted-foreground mt-0.5" x-text="comments.length + ' comment' + (comments.length === 1 ? '' : 's')"></p>
+    </div>
+    <button @click="open = false" class="p-1.5 rounded-lg hover:bg-muted transition-colors" aria-label="Close comments">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+    </button>
+  </div>
+
+  <div class="flex-1 overflow-y-auto p-5 space-y-4" x-ref="commentList">
+    <template x-if="loading">
+      <div class="flex justify-center py-8">
+        <div class="w-5 h-5 rounded-full border-2 border-primary border-t-transparent animate-spin"></div>
+      </div>
+    </template>
+    <template x-if="!loading && comments.length === 0">
+      <div class="text-center py-10 text-muted-foreground">
+        <svg class="w-8 h-8 mx-auto mb-2 opacity-40" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z"/></svg>
+        <p class="text-sm">No comments yet. Be the first to annotate this section.</p>
+      </div>
+    </template>
+    <template x-for="c in comments" :key="c.id">
+      <div class="rounded-xl border border-border bg-muted/20 p-3.5 space-y-2">
+        <div class="flex items-start justify-between gap-2">
+          <div class="flex items-center gap-2">
+            <div class="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-xs font-semibold text-primary shrink-0"
+                 x-text="(c.author_name || 'U').charAt(0).toUpperCase()"></div>
+            <div>
+              <p class="text-xs font-medium text-foreground" x-text="c.author_name"></p>
+              <p class="text-[10px] text-muted-foreground" x-text="formatDate(c.created_at)"></p>
+            </div>
+          </div>
+        </div>
+        <p class="text-sm text-foreground/90 leading-relaxed" x-text="c.content"></p>
+        <div x-show="(c.replies || []).length > 0" class="pl-4 border-l-2 border-border/50 space-y-2">
+          <template x-for="r in (c.replies || [])" :key="r.id">
+            <div class="space-y-1">
+              <p class="text-[10px] font-medium text-muted-foreground" x-text="r.author_name + ' · ' + formatDate(r.created_at)"></p>
+              <p class="text-xs text-foreground/80" x-text="r.content"></p>
+            </div>
+          </template>
+        </div>
+        <button @click="startReply(c.id)" class="text-[10px] text-primary hover:underline" x-show="replyTo !== c.id">Reply</button>
+        <div x-show="replyTo === c.id" class="pt-1 space-y-2">
+          <textarea x-model="replyText" rows="2" placeholder="Write a reply..."
+                    class="w-full text-xs rounded-lg border border-border bg-background px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-primary/30"></textarea>
+          <div class="flex gap-2">
+            <button @click="submitReply(c.id)" :disabled="submitting" class="text-[10px] px-3 py-1.5 rounded-md bg-primary text-primary-foreground font-medium disabled:opacity-50">Reply</button>
+            <button @click="replyTo = null; replyText = ''" class="text-[10px] px-3 py-1.5 rounded-md border border-border text-muted-foreground">Cancel</button>
+          </div>
+        </div>
+      </div>
+    </template>
+  </div>
+
+  <div class="p-4 border-t border-border shrink-0 space-y-2">
+    <textarea x-model="newComment" rows="3" placeholder="Add a comment on this section..."
+              class="w-full text-sm rounded-lg border border-border bg-background px-3 py-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-primary/30"></textarea>
+    <button @click="submitComment()" :disabled="submitting || !newComment.trim()"
+            class="w-full text-sm font-medium rounded-lg bg-primary text-primary-foreground py-2 disabled:opacity-50 hover:bg-primary/90 transition-colors">
+      <span x-show="!submitting">Post Comment</span>
+      <span x-show="submitting" x-cloak>Posting...</span>
+    </button>
+  </div>
+</div>
+{# Overlay for comment drawer #}
+<div x-data x-show="$store.commentDrawer && $store.commentDrawer.open"
+     x-cloak @click="$store.commentDrawer.open = false"
+     class="fixed inset-0 z-40 bg-black/30 backdrop-blur-sm"></div>
+
+<script>
+document.addEventListener('alpine:init', () => {
+    Alpine.store('commentDrawer', { open: false });
+
+    Alpine.data('solutionComments', (solutionId) => ({
+        open: false,
+        section: '',
+        sectionLabel: '',
+        comments: [],
+        loading: false,
+        submitting: false,
+        newComment: '',
+        replyTo: null,
+        replyText: '',
+
+        init() {
+            this.$watch('open', v => { Alpine.store('commentDrawer').open = v; });
+        },
+
+        openFor(section, label) {
+            this.section = section;
+            this.sectionLabel = label || section.replace(/_/g, ' ');
+            this.open = true;
+            this.loadComments();
+        },
+
+        async loadComments() {
+            this.loading = true;
+            try {
+                const r = await fetch(`/solutions/${solutionId}/comments?section=${this.section}`);
+                const data = await r.json();
+                this.comments = data.comments || [];
+            } catch(e) { this.comments = []; }
+            this.loading = false;
+        },
+
+        async submitComment() {
+            if (!this.newComment.trim()) return;
+            this.submitting = true;
+            try {
+                const r = await fetch(`/solutions/${solutionId}/comments`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ section: this.section, content: this.newComment.trim() }),
+                });
+                if (r.ok) {
+                    this.newComment = '';
+                    await this.loadComments();
+                    this.$nextTick(() => {
+                        if (this.$refs.commentList) this.$refs.commentList.scrollTop = 9999;
+                    });
+                }
+            } catch(e) {}
+            this.submitting = false;
+        },
+
+        startReply(parentId) { this.replyTo = parentId; this.replyText = ''; },
+
+        async submitReply(parentId) {
+            if (!this.replyText.trim()) return;
+            this.submitting = true;
+            try {
+                const r = await fetch(`/solutions/${solutionId}/comments`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ section: this.section, content: this.replyText.trim(), parent_comment_id: parentId }),
+                });
+                if (r.ok) { this.replyTo = null; this.replyText = ''; await this.loadComments(); }
+            } catch(e) {}
+            this.submitting = false;
+        },
+
+        formatDate(iso) {
+            if (!iso) return '';
+            const d = new Date(iso);
+            return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+        },
+    }));
+});
+
+function openSectionComments(section, label) {
+    const comp = document.querySelector('[data-solution-comments]')?._x_dataStack?.[0];
+    if (comp) comp.openFor(section, label);
+    else document.dispatchEvent(new CustomEvent('open-comments', { detail: { section, label } }));
+}
+</script>
+
+{% endblock %}
+
+{% block modals %}
+{# ── ArchiMate Picker Modal (SOL-1) ── #}
+<div x-data="{
+    open: false,
+    query: '',
+    results: [],
+    loading: false,
+    error: '',
+    linkEndpoint: '',
+    _timer: null,
+    init() {
+        window.addEventListener('open-archimate-picker', (e) => {
+            this.linkEndpoint = e.detail.linkEndpoint || '';
+            this.query = '';
+            this.results = [];
+            this.error = '';
+            this.open = true;
+            this.$nextTick(() => { const inp = this.$el.querySelector('input[type=search]'); if (inp) inp.focus(); });
+        });
+    },
+    async search() {
+        if (this.query.length < 2) { this.results = []; return; }
+        if (this._timer) clearTimeout(this._timer);
+        this._timer = setTimeout(async () => {
+            this.loading = true;
+            this.error = '';
+            try {
+                const resp = await fetch('/archimate/api/elements/search?q=' + encodeURIComponent(this.query) + '&limit=20');
+                const json = await resp.json();
+                this.results = json.data || json.results || [];
+            } catch (e) {
+                this.error = 'Search unavailable';
+                this.results = [];
+            }
+            this.loading = false;
+        }, 300);
+    },
+    async select(element) {
+        if (!this.linkEndpoint) { this.open = false; return; }
+        const meta = document.querySelector('meta[name=csrf-token]');
+        const csrf = meta ? meta.content : '';
+        try {
+            const resp = await fetch(this.linkEndpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
+                body: JSON.stringify({ element_id: element.id, layer: element.layer || element.layer_name || '' })
+            });
+            if (resp.ok || resp.status === 409) {
+                this.open = false;
+                window.location.reload();
+            } else {
+                this.error = 'Failed to link element (' + resp.status + ')';
+            }
+        } catch (e) {
+            this.error = 'Network error';
+        }
+    }
+}"
+    x-show="open" x-cloak
+    @keydown.escape.window="open = false"
+    class="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 p-4">
+    <div class="bg-card rounded-xl border border-border shadow-2xl w-full max-w-md" @click.away="open = false">
+        <div class="flex items-center justify-between px-5 py-4 border-b border-border">
+            <h2 class="text-sm font-semibold text-foreground">Add ArchiMate Element</h2>
+            <button @click="open = false" class="text-muted-foreground hover:text-foreground" aria-label="Close">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+        <div class="p-4 space-y-3">
+            <input type="search" x-model="query" @input="search()" placeholder="Search elements…"
+                   class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"/>
+            <div x-show="error" x-text="error" class="text-xs text-destructive" x-cloak></div>
+            <div x-show="loading" x-cloak class="text-xs text-muted-foreground flex items-center gap-2">
+                <span class="animate-spin h-3 w-3 border-2 border-current border-t-transparent rounded-full inline-block"></span> Searching…
+            </div>
+            <div x-show="results.length > 0 && !loading" class="max-h-64 overflow-y-auto rounded-lg border border-border divide-y divide-border">
+                <template x-for="elem in results" :key="elem.id">
+                    <button type="button" @click="select(elem)"
+                            class="w-full flex items-start gap-3 px-4 py-2.5 hover:bg-muted/50 text-left transition-colors">
+                        <div class="flex-1 min-w-0">
+                            <p class="text-sm font-medium text-foreground truncate" x-text="elem.name"></p>
+                            <p class="text-xs text-muted-foreground" x-text="(elem.type || '') + (elem.layer ? ' · ' + elem.layer : '')"></p>
+                        </div>
+                    </button>
+                </template>
+            </div>
+            <div x-show="query.length >= 2 && results.length === 0 && !loading && !error" x-cloak
+                 class="text-xs text-muted-foreground text-center py-4">No elements found</div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_head_js %}
+<script>
+  window.__SOLUTION_CONFIG__ = {
+    solutionId: {{ solution.id }},
+    governanceApiBase: '{{ request.url_root.rstrip("/") }}/api',
+    deleteUrl: '{{ url_for("solution_design.delete_solution", solution_id=solution.id) }}',
+    capabilitiesApiUrl: '{{ url_for("solution_design.get_solution_capabilities", solution_id=solution.id) }}',
+    apiBase: '{{ url_for("solution_design.view_solution", solution_id=solution.id) }}',
+    currencySymbol: '{{ currency_symbol }}',
+    currentPhase: '{{ solution.adm_phase or "A" }}',
+    completedPhases: {{ (solution.adm_phases_completed or [])|tojson }},
+    governanceStatus: '{{ solution.governance_status or "draft" }}',
+    canSubmitArb: {{ 'true' if solution.arb_readiness and solution.arb_readiness.can_submit else 'false' }},
+    solutionDescription: {{ (solution.description or '')|tojson }},
+    archimateElements: {{ (archimate_elements or [])|tojson }},
+    initialData: {{ (lifecycle_json or {})|tojson }},
+    linkedApplications: {{ (applications_json or [])|tojson }},
+    linkedVendorProducts: {{ (vendor_products_json or [])|tojson }},
+    linkedADRs: {{ (adr_list_json or [])|tojson }},
+    linkedAPQCProcesses: {{ (processes_json or [])|tojson }},
+    linkedCapabilities: {{ (capabilities_json or [])|tojson }},
+    linkedRequirements: {{ ((lifecycle_json or {}).get('requirements') or [])|tojson }},
+    workspaceSummary: {{ (workspace_summary or {})|tojson }},
+    maturityGaps: {{ (maturity_gaps or [])|tojson }},
+    maturityScore: {{ maturity_score|default(0)|tojson }}
+  };
+</script>
+<script>
+function sadPage() {
+  const sid = {{ solution.id }};
+  const base = '/solutions/' + sid;
+  function csrf() {
+    const meta = document.querySelector('meta[name="csrf-token"]');
+    if (meta) return meta.content;
+    const cookie = document.cookie.match(/csrf_token=([^;]+)/);
+    return cookie ? cookie[1] : '';
+  }
+
+  const cfg = window.__SOLUTION_CONFIG__ || {};
+  return {
+    activeTab: 'vision',
+    activePersona: '',
+    expanded: {},
+    archimateElements: cfg.archimateElements || [],
+
+    // Modal state
+    modal: { open: false, title: '', entity: '', fields: [], saving: false, error: '' },
+    form: {},
+
+    // AI generation state
+    aiGenerating: false,
+    aiResult: null,
+    aiError: '',
+    aiDismissed: false,
+    sectionGenerating: {},
+
+    // Entity type configs: label, API path, field definitions
+    entityTypes: {
+      driver:      { label: 'Driver',      path: '/drivers',      fields: [{key:'name',label:'Name',required:true},{key:'description',label:'Description',type:'textarea'},{key:'driver_type',label:'Type',type:'select',options:['internal','external','regulatory','technology']}] },
+      goal:        { label: 'Goal',        path: '/goals',        fields: [{key:'name',label:'Name',required:true},{key:'description',label:'Description',type:'textarea'},{key:'priority',label:'Priority',type:'select',options:[{v:1,l:'Critical'},{v:2,l:'High'},{v:3,l:'Medium'},{v:4,l:'Low'}]}] },
+      constraint:  { label: 'Constraint',  path: '/constraints',  fields: [{key:'name',label:'Name',required:true},{key:'description',label:'Description',type:'textarea'},{key:'constraint_type',label:'Type',type:'select',options:['budget','time','technical','regulatory','resource']},{key:'severity',label:'Severity',type:'select',options:[{v:1,l:'Critical'},{v:2,l:'High'},{v:3,l:'Medium'},{v:4,l:'Low'}]}] },
+      requirement: { label: 'Requirement', path: '/requirements', fields: [{key:'name',label:'Name',required:true},{key:'description',label:'Description',type:'textarea'},{key:'requirement_type',label:'Type',type:'select',options:['functional','non_functional','compliance','security']},{key:'priority',label:'Priority',type:'select',options:[{v:1,l:'Critical'},{v:2,l:'High'},{v:3,l:'Medium'},{v:4,l:'Low'}]}] },
+      risk:        { label: 'Risk',        path: '/risks',        fields: [{key:'name',label:'Name',required:true},{key:'description',label:'Description',type:'textarea'},{key:'severity',label:'Severity',type:'select',options:['critical','high','medium','low']},{key:'likelihood',label:'Likelihood',type:'select',options:['almost_certain','likely','possible','unlikely','rare']}] },
+      option:      { label: 'Option',      path: '/options',      fields: [{key:'name',label:'Name',required:true},{key:'description',label:'Description',type:'textarea'},{key:'option_type',label:'Type',type:'select',options:['build','buy','partner','hybrid','reuse']}] },
+      plateau:     { label: 'Plateau',     path: '/plateaus',     fields: [{key:'name',label:'Name',required:true},{key:'description',label:'Description',type:'textarea'},{key:'target_date',label:'Target Date',type:'date'}] },
+    },
+
+    openAdd(entityType) {
+      const cfg = this.entityTypes[entityType];
+      if (!cfg) return;
+      this.form = {};
+      cfg.fields.forEach(f => { this.form[f.key] = ''; });
+      this.modal = { open: true, title: 'Add ' + cfg.label, entity: entityType, fields: cfg.fields, saving: false, error: '' };
+    },
+
+    async generateDraft() {
+      this.aiGenerating = true;
+      this.aiError = '';
+      this.aiResult = null;
+      try {
+        const d = await Platform.fetch.post(base + '/generate-draft', {
+          problem_statement: window.__SOLUTION_CONFIG__.solutionDescription || ''
+        });
+        if (d.success) {
+          this.aiResult = d;
+          setTimeout(() => window.location.reload(), 2000);
+        } else {
+          this.aiError = d.error || 'Generation failed';
+        }
+      } catch (e) {
+        this.aiError = e.message || 'Generation failed';
+      } finally {
+        this.aiGenerating = false;
+      }
+    },
+
+    async generateSection(section) {
+      const endpoints = {
+        strategy: '/generate-strategy',
+        architecture: '/generate-architecture-layers',
+        implementation: '/generate-implementation',
+        variants: '/generate-variants',
+      };
+      const ep = endpoints[section];
+      if (!ep) return;
+      this.sectionGenerating[section] = true;
+      try {
+        const d = await Platform.fetch.post(base + ep, {});
+        if (d.success || d.created) {
+          window.location.reload();
+        } else {
+          if (Platform.toast) Platform.toast.error(d.error || 'Generation failed');
+        }
+      } catch (e) {
+        if (Platform.toast) Platform.toast.error(e.message || 'Generation failed');
+      } finally {
+        this.sectionGenerating[section] = false;
+      }
+    },
+
+    async saveEntity() {
+      const cfg = this.entityTypes[this.modal.entity];
+      if (!cfg) return;
+      if (!this.form.name || !this.form.name.trim()) {
+        this.modal.error = 'Name is required';
+        return;
+      }
+      this.modal.saving = true;
+      this.modal.error = '';
+      try {
+        const d = await Platform.fetch.post(base + cfg.path, this.form);
+        if (d.success === false) {
+          this.modal.error = d.error || d.message || 'Save failed';
+          return;
+        }
+        this.modal.open = false;
+        window.location.reload();
+      } catch (e) {
+        this.modal.error = e.message || 'Save failed';
+      } finally {
+        this.modal.saving = false;
+      }
+    },
+
+    // ── Viewpoint diagrams ─────────────────────────────────────────
+    _vpMap: {
+      vision:     'motivation',
+      business:   'strategy',
+      infosys:    'solution_architecture',
+      migration:  'implementation_migration',
+      governance: 'layered'
+    },
+    _diagramsLoaded: {},
+
+    init() {
+      const self = this;
+      self._loadDiagram(self.activeTab);
+      this.$watch('activeTab', function(tab) { self._loadDiagram(tab); });
+    },
+
+    async _loadDiagram(tab) {
+      const vpType = this._vpMap[tab];
+      if (!vpType || this._diagramsLoaded[tab]) return;
+      const containerId = 'viewpoint-diagram-' + tab;
+      const container = document.getElementById(containerId);
+      if (!container) return;
+      try {
+        const resp = await fetch('/solutions/{{ solution.id }}/viewpoint-elements?viewpoint=' + vpType, {
+          credentials: 'same-origin',
+          headers: { 'Accept': 'application/json', 'X-CSRFToken': csrf() }
+        });
+        const data = await resp.json();
+        this._diagramsLoaded[tab] = true;
+        if (!resp.ok || !data.success) return;
+        if (!data.elements || data.elements.length === 0) {
+          container.innerHTML = '<div class="flex items-center justify-center py-8 text-center">' +
+            '<div><p class="text-sm text-muted-foreground">' + (data.empty_reason || 'No elements for this viewpoint.') + '</p>' +
+            '<p class="text-xs text-muted-foreground mt-1">Link ArchiMate elements to populate this diagram.</p></div></div>';
+          return;
+        }
+        if (typeof ComposerRenderer !== 'undefined') {
+          const r = ComposerRenderer.create(container, { mode: 'view', width: '100%', height: 300 });
+          const ids = {};
+          data.elements.slice(0, 30).forEach(function(e) { ids[e.id] = true; });
+          const rels = (data.relationships || []).filter(function(r) { return ids[r.source_id] && ids[r.target_id]; });
+          r.loadElements(data.elements.slice(0, 30), rels);
+          r.fitToContent();
+        }
+      } catch (e) {
+        console.warn('[detail] viewpoint diagram load failed:', e);
+      }
+    }
+  };
+}
+</script>
+<script src="{{ url_for('static', filename='js/archimate/composer_renderer.js') }}"></script> <!-- entity-picker-ok: script include -->
+{% if stakeholder_mappings %}
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<script>
+(function(){
+  'use strict';
+  const wrap = document.getElementById('stk-grid-embed');
+  if (!wrap) return;
+  const solutionId = {{ solution.id }};
+
+  fetch('/api/stakeholders/map-data?solution_id=' + solutionId)
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      if (!Array.isArray(data) || data.length === 0) {
+        wrap.innerHTML = '<p class="text-center text-xs text-muted-foreground py-8">No stakeholders with influence/interest data.</p>';
+        return;
+      }
+      renderGrid(data);
+    })
+    .catch(function(){
+      wrap.innerHTML = '<p class="text-center text-xs text-muted-foreground py-8">Could not load stakeholder data.</p>';
+    });
+
+  function renderGrid(stakeholders) {
+    const W = wrap.clientWidth || 600;
+    const H = Math.max(320, W * 0.5);
+    const M = {top:32, right:24, bottom:44, left:44};
+    const iW = W - M.left - M.right;
+    const iH = H - M.top - M.bottom;
+
+    const svg = d3.select(wrap).append('svg').attr('width', W).attr('height', H);
+    const g = svg.append('g').attr('transform','translate('+M.left+','+M.top+')');
+
+    const x = d3.scaleLinear().domain([0.5, 5.5]).range([0, iW]);
+    const y = d3.scaleLinear().domain([0.5, 5.5]).range([iH, 0]);
+    const bx = x(3.5), by = y(3.5);
+
+    const quads = [
+      {x:0, y:0, w:bx, h:by, fill:'hsl(217 91% 60% / 0.06)', label:'Keep Satisfied', lx:bx/2, ly:12},
+      {x:bx, y:0, w:iW-bx, h:by, fill:'hsl(142 71% 45% / 0.06)', label:'Manage Closely', lx:bx+(iW-bx)/2, ly:12},
+      {x:0, y:by, w:bx, h:iH-by, fill:'hsl(0 0% 50% / 0.04)', label:'Monitor', lx:bx/2, ly:by+12},
+      {x:bx, y:by, w:iW-bx, h:iH-by, fill:'hsl(48 96% 53% / 0.06)', label:'Keep Informed', lx:bx+(iW-bx)/2, ly:by+12}
+    ];
+    quads.forEach(function(q){
+      g.append('rect').attr('x',q.x).attr('y',q.y).attr('width',q.w).attr('height',q.h).attr('fill',q.fill);
+      g.append('text').attr('x',q.lx).attr('y',q.ly).attr('text-anchor','middle')
+        .attr('fill','hsl(var(--muted-foreground))').attr('font-size','10px').attr('opacity',0.7).text(q.label);
+    });
+
+    [1,2,3,4,5].forEach(function(v){
+      g.append('line').attr('x1',x(v)).attr('x2',x(v)).attr('y1',0).attr('y2',iH).attr('stroke','hsl(var(--border))').attr('stroke-dasharray','2,3');
+      g.append('line').attr('x1',0).attr('x2',iW).attr('y1',y(v)).attr('y2',y(v)).attr('stroke','hsl(var(--border))').attr('stroke-dasharray','2,3');
+    });
+
+    g.append('text').attr('x',iW/2).attr('y',iH+32).attr('text-anchor','middle').attr('font-size','11px').attr('fill','hsl(var(--muted-foreground))').text('Interest \u2192');
+    g.append('text').attr('transform','rotate(-90)').attr('x',-iH/2).attr('y',-30).attr('text-anchor','middle').attr('font-size','11px').attr('fill','hsl(var(--muted-foreground))').text('Power \u2192');
+
+    const attColors = {champion:'#10b981', supporter:'#3b82f6', neutral:'#9ca3af', skeptic:'#f59e0b', blocker:'#ef4444'};
+
+    const tip = document.createElement('div');
+    tip.style.cssText = 'position:absolute;background:hsl(var(--popover));color:hsl(var(--popover-foreground));padding:6px 10px;border-radius:6px;font-size:11px;line-height:1.5;pointer-events:none;opacity:0;transition:opacity 0.15s;z-index:50;box-shadow:0 2px 8px rgba(0,0,0,0.15);max-width:220px;white-space:pre-line';
+    wrap.style.position = 'relative';
+    wrap.appendChild(tip);
+
+    const nodes = g.selectAll('.stk-node').data(stakeholders).enter().append('g').attr('class','stk-node')
+      .attr('transform', function(d){
+        const jx = (Math.random()-0.5)*14;  // fabricated-values-ok
+        const jy = (Math.random()-0.5)*14;  // fabricated-values-ok
+        return 'translate('+(x(d.interest_level||3)+jx)+','+(y(d.influence_level||3)+jy)+')';
+      });
+
+    nodes.append('circle').attr('r',16)
+      .attr('fill',function(d){return attColors[d.attitude]||'#9ca3af';})
+      .attr('stroke','#fff').attr('stroke-width',1.5)
+      .attr('opacity',0.9).style('cursor','default');
+
+    nodes.append('text')
+      .text(function(d){return (d.name||'?').split(/\s/).map(function(w){return w[0]||'';}).join('').slice(0,2).toUpperCase();})
+      .attr('text-anchor','middle').attr('dominant-baseline','central')
+      .attr('font-size','9px').attr('font-weight','600').attr('fill','#fff')
+      .style('pointer-events','none');
+
+    nodes.on('mouseover', function(ev, d){
+      tip.textContent = d.name+'\nType: '+(d.stakeholder_type||'\u2014')+'\nAttitude: '+(d.attitude||'\u2014')+'\nPower: '+(d.influence_level||'?')+' / Interest: '+(d.interest_level||'?');
+      tip.style.opacity='1';
+    }).on('mousemove', function(ev){
+      const r = wrap.getBoundingClientRect();
+      tip.style.left = (ev.clientX-r.left+10)+'px';
+      tip.style.top = (ev.clientY-r.top-10)+'px';
+    }).on('mouseout', function(){tip.style.opacity='0';});
+  }
+})();
+</script>
+{% endif %}
+<script>
+function dismissableBanner() { return { show: true }; }
+window.deleteSolution = window.deleteSolution || async function(solutionId, solutionName) {
+    if (!(await Platform.modal.confirm('Delete "' + solutionName + '"? This cannot be undone.'))) return;
+    let csrf = document.querySelector('meta[name="csrf-token"]');
+    fetch('/solutions/' + solutionId + '/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf ? csrf.content : '' }
+    }).then(function(r) { return r.json(); }).then(function(d) {
+        if (d.success) { window.location.href = '/solutions/'; }
+        else { Platform.toast.error(d.error || 'Delete failed'); }
+    }).catch(function(e) { Platform.toast.error('Delete failed: ' + e.message); });
+};
+
+// CSP-safe event delegation for delete + section-comment buttons
+document.addEventListener('click', function (e) {
+    let btn = e.target.closest('[data-action]');
+    if (!btn) return;
+    let action = btn.dataset.action;
+    if (action === 'delete-solution') {
+        let sid = btn.dataset.solutionId;
+        let sname = btn.dataset.solutionName;
+        if (sid) window.deleteSolution(Number(sid), sname || '');
+    } else if (action === 'open-comments') {
+        let secId = btn.dataset.sectionId;
+        let secLabel = btn.dataset.sectionLabel;
+        if (secId && typeof openSectionComments === 'function') openSectionComments(secId, secLabel || secId);
+    }
+});
+</script>
+{% endblock %}

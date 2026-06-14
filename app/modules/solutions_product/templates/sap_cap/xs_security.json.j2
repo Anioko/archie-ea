@@ -1,0 +1,46 @@
+{# xs-security.json.j2 — XSUAA security descriptor.
+   Context: sol_snake, sol_pascal, solution_name, entities (list of entity dicts) #}
+{
+  "xsappname": "{{ sol_snake }}",
+  "tenant-mode": "dedicated",
+  "scopes": [
+{% for entity in entities %}
+    {
+      "name": "$XSAPPNAME.{{ entity.name }}.Read",
+      "description": "Read {{ entity.name }}"
+    },
+    {
+      "name": "$XSAPPNAME.{{ entity.name }}.Write",
+      "description": "Write {{ entity.name }}"
+    }{% if not loop.last %},{% endif %}
+
+{% endfor %}
+  ],
+  "role-templates": [
+{% for entity in entities %}
+    {
+      "name": "{{ entity.name }}Viewer",
+      "description": "Read-only access to {{ entity.name }}",
+      "scope-references": ["$XSAPPNAME.{{ entity.name }}.Read"]
+    },
+    {
+      "name": "{{ entity.name }}Editor",
+      "description": "Full access to {{ entity.name }}",
+      "scope-references": ["$XSAPPNAME.{{ entity.name }}.Read", "$XSAPPNAME.{{ entity.name }}.Write"]
+    }{% if not loop.last %},{% endif %}
+
+{% endfor %}
+  ],
+  "role-collections": [
+    {
+      "name": "{{ sol_pascal }}Admin",
+      "description": "Full access to all {{ solution_name }} services",
+      "role-template-references": [
+{% for entity in entities %}
+        "$XSAPPNAME.{{ entity.name }}Editor"{% if not loop.last %},{% endif %}
+
+{% endfor %}
+      ]
+    }
+  ]
+}

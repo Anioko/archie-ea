@@ -1,0 +1,10 @@
+# Testing requirements for Playwright Python
+pytest-playwright>=0.4.0
+pytest>=7.0.0
+pytest-cov>=4.0.0
+pytest-bdd>=6.0.0
+playwright>=1.40.0
+coverage>=7.0.0
+# Add to requirements-test.txt for performance testing
+psutil>=5.9.0
+requests>=2.31.0

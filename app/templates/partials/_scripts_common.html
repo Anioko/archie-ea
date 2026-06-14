@@ -1,0 +1,76 @@
+{# Common body scripts shared across all base layouts.
+   Included by: base.html, admin_base.html, public_base.html
+#}
+<script>
+    // Global CSRF token helper for AJAX requests
+    window.getCSRFToken = function() {
+        return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+    };
+
+    // Automatically add CSRF token to all native fetch requests.
+    // Guard: only patch once. Platform.fetch (core/03-fetch.js) already handles
+    // CSRF injection internally, so we only patch if Platform is not loaded yet
+    // or if this is a non-admin page without Platform core.
+    if (!window.__FETCH_CSRF_PATCHED__) {
+        window.__FETCH_CSRF_PATCHED__ = true;
+        const _nativeFetch = window.fetch;
+        window.fetch = function(url, options) {
+            options = options || {};
+            if (options.method && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(options.method.toUpperCase())) {
+                options.headers = options.headers || {};
+                if (!options.headers['X-CSRFToken']) {
+                    options.headers['X-CSRFToken'] = window.getCSRFToken();
+                }
+            }
+            return _nativeFetch.call(this, url, options);
+        };
+    }
+
+    // Helper for XMLHttpRequest
+    const originalXHROpen = XMLHttpRequest.prototype.open;
+    const originalXHRSend = XMLHttpRequest.prototype.send;
+    XMLHttpRequest.prototype.open = function(method, url, ...args) {
+        this._method = method;
+        this._url = url;
+        return originalXHROpen.apply(this, [method, url, ...args]);
+    };
+    XMLHttpRequest.prototype.send = function(data) {
+        if (this._method && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(this._method.toUpperCase())) {
+            this.setRequestHeader('X-CSRFToken', window.getCSRFToken());
+        }
+        return originalXHRSend.apply(this, [data]);
+    };
+
+    // Initialize Lucide icons
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
+
+    // Global event delegation for [data-action] elements
+    document.addEventListener('click', function(e) {
+      const el = e.target.closest('[data-action]');
+      if (!el) return;
+      const action = el.dataset.action;
+      const parts = action.split('.');
+      let fn = window;
+      for (let i = 0; i < parts.length; i++) {
+        fn = fn[parts[i]];
+        if (!fn) return;
+      }
+      if (typeof fn !== 'function') return;
+      if (el.hasAttribute('data-stop-propagation')) e.stopPropagation();
+      const args = [];
+      if (el.dataset.params) {
+        try { args.push(...JSON.parse(el.dataset.params)); } catch(err) { return; }
+      } else if (el.dataset.id !== undefined) {
+        const id = el.dataset.id;
+        args.push(isNaN(id) || id === '' ? id : Number(id));
+      }
+      fn.apply(null, args);
+    });
+</script>
+{# api-fetch.js is loaded by admin_base.html shim layer (after Platform core).
+   Loading it here would overwrite the Platform.fetch → window.apiFetch shim.
+   Non-admin pages that need apiFetch must include it explicitly.
+   debounce.js: admin_base.html already loads it in the shim layer. Non-admin
+   pages that need it must include it explicitly. #}

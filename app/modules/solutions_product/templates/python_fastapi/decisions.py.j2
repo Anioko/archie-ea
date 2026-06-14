@@ -1,0 +1,185 @@
+{# app/modules/solutions_product/templates/python_fastapi/decisions.py.j2 #}
+{# Context: solution_name, decision_models (list of DecisionModelDef) #}
+"""
+Decision service — auto-generated from {{ solution_name }} architecture brief.
+
+Each function is a pure, side-effect-free decision service derived from the
+business rules and decision models extracted from the solution brief.
+DMN hit policies: FIRST (default), UNIQUE, COLLECT, ANY.
+
+DO NOT EDIT — regenerate via ARCHIE codegen.
+"""
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass
+from typing import Any, Optional
+
+logger = logging.getLogger(__name__)
+
+{% for dm in decision_models %}
+
+# ── {{ dm.name | replace('_', ' ') | title }} ────────────────────────────────
+# Entity  : {{ dm.entity }}
+# Source  : {{ dm.description }}
+# Policy  : {{ dm.hit_policy }}
+# Inputs  : {{ dm.inputs | join(', ') }}
+# Outputs : {{ dm.outputs | join(', ') }}
+
+{% if dm.rows %}
+_{{ dm.name | upper }}_TABLE: list[tuple[dict, dict]] = [
+    {% for row in dm.rows %}
+    (
+        # conditions
+        {
+            {% for col, val in row.conditions.items() %}
+            "{{ col }}": {{ val | tojson }}{% if not loop.last %},{% endif %}
+
+            {% endfor %}
+        },
+        # outputs
+        {
+            {% for col, val in row.outputs.items() %}
+            "{{ col }}": {{ val | tojson }}{% if not loop.last %},{% endif %}
+
+            {% endfor %}
+        },
+    ),  # {{ row.annotation }}
+    {% endfor %}
+]
+{% else %}
+# No decision rows extracted — add rows to the decision model to enable evaluation.
+_{{ dm.name | upper }}_TABLE: list[tuple[dict, dict]] = []
+{% endif %}
+
+
+def _match_{{ dm.name }}_row(conditions: dict, inputs: dict) -> bool:
+    """Return True if all conditions match the provided inputs."""
+    for key, expected in conditions.items():
+        actual = inputs.get(key)
+        if actual is None:
+            return False
+        if isinstance(expected, str):
+            if expected.startswith(">="):
+                try:
+                    if not (float(str(actual)) >= float(expected[2:])):
+                        return False
+                except (TypeError, ValueError):
+                    return False
+            elif expected.startswith(">"):
+                try:
+                    if not (float(str(actual)) > float(expected[1:])):
+                        return False
+                except (TypeError, ValueError):
+                    return False
+            elif expected.startswith("<="):
+                try:
+                    if not (float(str(actual)) <= float(expected[2:])):
+                        return False
+                except (TypeError, ValueError):
+                    return False
+            elif expected.startswith("<"):
+                try:
+                    if not (float(str(actual)) < float(expected[1:])):
+                        return False
+                except (TypeError, ValueError):
+                    return False
+            elif expected.startswith("!="):
+                if str(actual) == expected[2:].strip():
+                    return False
+            elif expected.startswith("[") and ".." in expected:
+                # Range: [low..high]
+                try:
+                    parts = expected.strip("[]").split("..")
+                    low, high = float(parts[0]), float(parts[1])
+                    if not (low <= float(str(actual)) <= high):
+                        return False
+                except (TypeError, ValueError, IndexError):
+                    return False
+            elif expected == "*":
+                pass  # wildcard — always matches
+            elif str(actual) != str(expected):
+                return False
+        elif isinstance(expected, list):
+            if actual not in expected:
+                return False
+        elif actual != expected:
+            return False
+    return True
+
+
+{% if dm.hit_policy == "COLLECT" %}
+def {{ dm.name }}({% for inp in dm.inputs %}{{ inp }}: Any{% if not loop.last %}, {% endif %}{% endfor %}) -> list[dict]:
+    """{{ dm.description }}
+
+    Hit policy: COLLECT — returns ALL matching rows.
+    Returns [] if no rows match.
+    """
+    inputs = { {% for inp in dm.inputs %}"{{ inp }}": {{ inp }}{% if not loop.last %}, {% endif %}{% endfor %} }
+    results = []
+    for conditions, outputs in _{{ dm.name | upper }}_TABLE:
+        if _match_{{ dm.name }}_row(conditions, inputs):
+            results.append(outputs.copy())
+    return results
+
+{% elif dm.hit_policy == "UNIQUE" %}
+def {{ dm.name }}({% for inp in dm.inputs %}{{ inp }}: Any{% if not loop.last %}, {% endif %}{% endfor %}) -> Optional[dict]:
+    """{{ dm.description }}
+
+    Hit policy: UNIQUE — raises ValueError if more than one row matches.
+    Returns None if no rows match.
+    """
+    inputs = { {% for inp in dm.inputs %}"{{ inp }}": {{ inp }}{% if not loop.last %}, {% endif %}{% endfor %} }
+    matches = [
+        outputs.copy()
+        for conditions, outputs in _{{ dm.name | upper }}_TABLE
+        if _match_{{ dm.name }}_row(conditions, inputs)
+    ]
+    if len(matches) > 1:
+        raise ValueError(
+            f"Decision '{{ dm.name }}' hit policy UNIQUE violated: "
+            f"{len(matches)} rows matched inputs={inputs}"
+        )
+    return matches[0] if matches else None
+
+{% elif dm.hit_policy == "ANY" %}
+def {{ dm.name }}({% for inp in dm.inputs %}{{ inp }}: Any{% if not loop.last %}, {% endif %}{% endfor %}) -> Optional[dict]:
+    """{{ dm.description }}
+
+    Hit policy: ANY — all matching rows must produce identical outputs.
+    Raises ValueError if outputs conflict.
+    Returns None if no rows match.
+    """
+    inputs = { {% for inp in dm.inputs %}"{{ inp }}": {{ inp }}{% if not loop.last %}, {% endif %}{% endfor %} }
+    matches = [
+        outputs.copy()
+        for conditions, outputs in _{{ dm.name | upper }}_TABLE
+        if _match_{{ dm.name }}_row(conditions, inputs)
+    ]
+    if not matches:
+        return None
+    first = matches[0]
+    for m in matches[1:]:
+        if m != first:
+            raise ValueError(
+                f"Decision '{{ dm.name }}' hit policy ANY violated: "
+                f"conflicting outputs {first} vs {m} for inputs={inputs}"
+            )
+    return first
+
+{% else %}{# FIRST (default) #}
+def {{ dm.name }}({% for inp in dm.inputs %}{{ inp }}: Any{% if not loop.last %}, {% endif %}{% endfor %}) -> Optional[dict]:
+    """{{ dm.description }}
+
+    Hit policy: FIRST — returns the first matching row's outputs.
+    Returns None if no rows match.
+    """
+    inputs = { {% for inp in dm.inputs %}"{{ inp }}": {{ inp }}{% if not loop.last %}, {% endif %}{% endfor %} }
+    for conditions, outputs in _{{ dm.name | upper }}_TABLE:
+        if _match_{{ dm.name }}_row(conditions, inputs):
+            return outputs.copy()
+    logger.debug("Decision '{{ dm.name }}' returned no match for inputs=%s", inputs)
+    return None
+
+{% endif %}
+{% endfor %}

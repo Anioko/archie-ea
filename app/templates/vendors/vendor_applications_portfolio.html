@@ -1,0 +1,154 @@
+{% extends 'layouts/admin_base.html' %}
+{% from 'components/page_header.html' import page_header %}
+
+{% block title %}{{ vendor.name }} - Applications Portfolio{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto">
+  {{ page_header(
+      title=vendor.name,
+      description="All applications deployed from this vendor's products",
+      breadcrumbs=[
+          {'label': 'Vendors', 'href': url_for('application_mgmt.vendors_dashboard')},
+          {'label': vendor.name},
+          {'label': 'Applications Portfolio'}
+      ],
+      actions=[
+          {'text': 'Back to Vendor', 'href': url_for('unified_applications.vendor_detail', vendor_id=vendor.id), 'variant': 'outline'}
+      ]
+  ) }}
+
+  <!-- Stats Cards -->
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+    <div class="rounded-lg border bg-card text-card-foreground shadow-sm p-6">
+      <div class="flex flex-col gap-2">
+        <p class="text-xs font-semibold text-muted-foreground">Total Applications</p>
+        <p class="text-3xl font-bold text-foreground">{{ stats.total_applications }}</p>
+      </div>
+    </div>
+
+    <div class="rounded-lg border bg-card text-card-foreground shadow-sm p-6">
+      <div class="flex flex-col gap-2">
+        <p class="text-xs font-semibold text-muted-foreground">Products with Deployments</p>
+        <p class="text-3xl font-bold text-foreground">{{ stats.products_with_deployments }}</p>
+      </div>
+    </div>
+
+    <div class="rounded-lg border bg-card text-card-foreground shadow-sm p-6">
+      <div class="flex flex-col gap-2">
+        <p class="text-xs font-semibold text-muted-foreground">Total Products</p>
+        <p class="text-3xl font-bold text-foreground">{{ stats.total_products }}</p>
+      </div>
+    </div>
+
+    <div class="rounded-lg border bg-card text-card-foreground shadow-sm p-6">
+      <div class="flex flex-col gap-2">
+        <p class="text-xs font-semibold text-muted-foreground">Deployment Rate</p>
+        <p class="text-3xl font-bold text-foreground">
+          {% if stats.total_products > 0 %}
+            {{ ((stats.products_with_deployments / stats.total_products) * 100)|round(0)|int }}%
+          {% else %}
+            0%
+          {% endif %}
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Applications Table -->
+  <div class="rounded-lg border bg-card text-card-foreground shadow-sm mb-6">
+    <div class="p-6 border-b">
+      <h2 class="text-lg font-semibold">Deployed Applications</h2>
+      <p class="text-muted-foreground text-sm">Applications deployed from {{ vendor.name }}'s products</p>
+    </div>
+
+    <div class="p-6">
+      {% if applications %}
+      <div class="grid gap-6">
+        {% for item in applications %}
+        <div class="rounded-lg border bg-card p-6">
+          <div class="flex flex-col gap-4">
+            <div class="flex flex-wrap justify-between items-start gap-4">
+              <div class="flex-1 min-w-0">
+                <h3 class="text-lg font-semibold">{{ item.application.name }}</h3>
+                {% if item.application.description %}
+                <p class="text-muted-foreground text-sm mb-3">{{ item.application.description }}</p>
+                {% endif %}
+
+                <!-- Vendor Product Badge -->
+                <div class="inline-flex items-center gap-2 bg-muted px-3 py-2 rounded-lg text-sm">
+                  <svg class="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                    <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+                    <line x1="12" x2="12" y1="22.08" y2="12"></line>
+                  </svg>
+                  <span class="font-medium">Deployed from: <strong>{{ item.vendor_product.name }}</strong></span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Application Details -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
+              {% if item.application.deployment_status %}
+              <div>
+                <p class="text-xs font-semibold text-muted-foreground mb-1">Deployment Status</p>
+                {% if item.application.deployment_status == 'production' %}
+                  <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-success text-primary-foreground">{{ item.application.deployment_status.title() }}</span>
+                {% elif item.application.deployment_status == 'development' %}
+                  <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-warning text-primary-foreground">{{ item.application.deployment_status.title() }}</span>
+                {% else %}
+                  <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-primary text-primary-foreground">{{ item.application.deployment_status.title() }}</span>
+                {% endif %}
+              </div>
+              {% endif %}
+
+              {% if item.application.business_criticality %}
+              <div>
+                <p class="text-xs font-semibold text-muted-foreground mb-1">Criticality</p>
+                <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-muted text-foreground border">{{ item.application.business_criticality }}</span>
+              </div>
+              {% endif %}
+
+              {% if item.application.hosting_model %}
+              <div>
+                <p class="text-xs font-semibold text-muted-foreground mb-1">Hosting Model</p>
+                <span class="text-sm">{{ item.application.hosting_model }}</span>
+              </div>
+              {% endif %}
+
+              {% if item.application.owner_team %}
+              <div>
+                <p class="text-xs font-semibold text-muted-foreground mb-1">Owner Team</p>
+                <div class="flex items-center gap-2">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="9" cy="7" r="4"></circle>
+                    <path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path>
+                  </svg>
+                  <span class="text-sm">{{ item.application.owner_team }}</span>
+                </div>
+              </div>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="flex flex-col items-center justify-center gap-4 p-12 text-center border-2 border-dashed rounded-lg">
+        <div class="flex items-center justify-center w-12 h-12 bg-muted rounded-full">
+          <svg class="w-6 h-6 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+          </svg>
+        </div>
+        <div>
+          <h3 class="text-lg font-semibold mb-2">No Deployed Applications</h3>
+          <p class="text-muted-foreground text-sm">This vendor does not have any deployed applications yet.</p>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{% endblock %}

@@ -1,0 +1,48 @@
+{#
+  Inline hint banner — dismissable, 14-day auto-hide, localStorage-backed.
+
+  Usage in any template:
+    {% from 'components/inline_hint.html' import inline_hint %}
+    {{ inline_hint(
+        hint_id='rationalization',
+        text='This page scores your 850 applications by strategic fit and lifecycle status.',
+        action_text='Filter to Retired apps now',
+        action_href='#lifecycle-filter'
+    ) }}
+#}
+{% macro inline_hint(hint_id, text, action_text='', action_href='') %}
+<div x-data="{
+        hintKey: 'archie_hint_{{ hint_id }}',
+        visible: false,
+        init() {
+            const stored = localStorage.getItem('archie_hint_{{ hint_id }}');
+            const ts = stored ? parseInt(stored) : 0;
+            const fourteenDays = 14 * 24 * 60 * 60 * 1000;
+            this.visible = !ts || (Date.now() - ts < fourteenDays && stored !== 'dismissed');
+        },
+        dismiss() {
+            localStorage.setItem(this.hintKey, 'dismissed');
+            this.visible = false;
+        }
+     }"
+     x-show="visible"
+     x-cloak
+     x-init="init()"
+     class="mb-4 flex items-start gap-3 rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-sm">
+    <i data-lucide="info" class="mt-0.5 h-4 w-4 flex-shrink-0 text-primary" aria-hidden="true"></i>
+    <div class="flex-1 min-w-0">
+        <span class="text-foreground">{{ text }}</span>
+        {% if action_text and action_href %}
+        <a href="{{ action_href }}"
+           class="ml-2 font-medium text-primary hover:underline whitespace-nowrap">
+            → {{ action_text }}
+        </a>
+        {% endif %}
+    </div>
+    <button @click="dismiss()"
+            class="flex-shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+            aria-label="Dismiss hint">
+        <i data-lucide="x" class="h-4 w-4"></i>
+    </button>
+</div>
+{% endmacro %}

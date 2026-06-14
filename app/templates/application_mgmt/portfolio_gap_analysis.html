@@ -1,0 +1,514 @@
+{% extends 'layouts/admin_base.html' %}
+
+{% block content %}
+<style>
+  /* Portfolio Gap Analysis Styles */
+  .portfolio-gap-container {
+    padding: 2rem;
+    max-width: 1600px;
+    margin: 0 auto;
+  }
+  
+  .portfolio-header {
+    margin-bottom: 2rem;
+  }
+  
+  .portfolio-header h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    color: hsl(var(--foreground));
+    margin-bottom: 0.5rem;
+  }
+  
+  .portfolio-meta {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    color: hsl(var(--muted-foreground));
+    font-size: 0.875rem;
+  }
+  
+  /* Summary Cards */
+  .summary-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+  }
+  
+  .summary-card {
+    background: hsl(var(--background));
+    border: 1px solid hsl(var(--border));
+    border-radius: 12px;
+    padding: 1.5rem;
+    transition: all 0.2s;
+  }
+  
+  .summary-card:hover {
+    border-color: hsl(var(--border));
+    box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+  }
+  
+  .summary-px-6 py-4 border-b border-border {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+  }
+  
+  .summary-card-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+  }
+  
+  .icon-bg-red { background: hsl(var(--destructive) / 0.1); }
+  .icon-bg-yellow { background: hsl(var(--warning) / 0.15); }
+  .icon-bg-blue { background: hsl(var(--primary) / 0.1); }
+  .icon-bg-purple { background: hsl(270 100% 95%); }
+  .icon-bg-green { background: hsl(var(--success) / 0.15); }
+  
+  .summary-card-value {
+    font-size: 2.5rem;
+    font-weight: 800;
+    color: hsl(var(--foreground));
+    line-height: 1;
+  }
+  
+  .summary-card-label {
+    font-size: 0.875rem;
+    color: hsl(var(--muted-foreground));
+    font-weight: 600;
+    margin-top: 0.5rem;
+  }
+  
+  /* Gap Sections */
+  .gap-section {
+    background: hsl(var(--background));
+    border: 1px solid hsl(var(--border));
+    border-radius: 12px;
+    margin-bottom: 2rem;
+    overflow: hidden;
+  }
+  
+  .gap-section-header {
+    padding: 1.5rem;
+    background: hsl(var(--muted));
+    border-bottom: 1px solid hsl(var(--border));
+  }
+  
+  .gap-section-title {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: hsl(var(--foreground));
+  }
+  
+  .gap-section-body {
+    padding: 1.5rem;
+  }
+  
+  /* Table Styles */
+  .gap-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+  
+  .gap-table thead th {
+    background: hsl(var(--muted));
+    padding: 0.75rem 1rem;
+    text-align: left;
+    font-size: 0.875rem;
+    font-weight: 700;
+    color: hsl(var(--muted-foreground));
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 2px solid hsl(var(--border));
+  }
+  
+  .gap-table tbody td {
+    padding: 1rem;
+    border-bottom: 1px solid hsl(var(--muted));
+  }
+  
+  .gap-table tbody tr:hover {
+    background: hsl(var(--muted));
+  }
+  
+  .gap-table tbody tr:last-child td {
+    border-bottom: none;
+  }
+  
+  .table-capability {
+    font-weight: 600;
+    color: hsl(var(--foreground));
+  }
+  
+  .table-application {
+    color: hsl(var(--muted-foreground));
+  }
+  
+  .table-severity {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.25rem 0.75rem;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+  
+  .severity-critical {
+    background: hsl(var(--destructive) / 0.1);
+    color: hsl(var(--destructive));
+  }
+  
+  .severity-high {
+    background: hsl(var(--warning) / 0.15);
+    color: hsl(var(--warning));
+  }
+  
+  .severity-medium {
+    background: hsl(var(--primary) / 0.1);
+    color: hsl(var(--primary));
+  }
+  
+  .table-recommendation {
+    font-size: 0.875rem;
+    color: hsl(var(--muted-foreground));
+  }
+  
+  /* Empty State */
+  .empty-state {
+    text-align: center;
+    padding: 3rem;
+    color: hsl(var(--muted-foreground));
+  }
+  
+  .empty-state-icon {
+    font-size: 4rem;
+    margin-bottom: 1rem;
+  }
+  
+  .empty-state-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: hsl(var(--foreground));
+    margin-bottom: 0.5rem;
+  }
+  
+  /* Action Bar */
+  .action-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+    padding: 1rem 1.5rem;
+    background: hsl(var(--background));
+    border: 1px solid hsl(var(--border));
+    border-radius: 8px;
+  }
+  
+  .pga-nav-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    background: hsl(var(--background));
+    color: hsl(var(--muted-foreground));
+    border: 1px solid hsl(var(--border));
+    border-radius: 6px;
+    font-size: 0.875rem;
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  
+  .pga-nav-btn:hover {
+    background: hsl(var(--muted));
+    border-color: hsl(var(--border));
+    color: hsl(var(--muted-foreground));
+  }
+  
+  .pga-primary-btn {
+    background: hsl(var(--primary));
+    color: hsl(var(--background));
+    border-color: hsl(var(--primary));
+  }
+  
+  .pga-primary-btn:hover {
+    background: hsl(var(--primary));
+    border-color: hsl(var(--primary));
+    color: hsl(var(--background));
+  }
+</style>
+
+<div class="portfolio-gap-container">
+  <!-- Header -->
+  <div class="portfolio-header">
+    <h1>Enterprise Portfolio Gap Analysis</h1>
+    <div class="portfolio-meta">
+      <span><strong>Total Applications:</strong> {{ total_applications }}</span>
+      <span>•</span>
+      <span><strong>Analyzed:</strong> {{ portfolio_gaps.timestamp[:19] if portfolio_gaps.timestamp else 'Now' }}</span>
+    </div>
+  </div>
+  
+  <!-- Action Bar -->
+  <div class="action-bar">
+    <div>
+      <a href="{{ url_for('unified_applications.application_list') }}" class="pga-nav-btn">
+        ← Back to Applications
+      </a>
+    </div>
+    <div style="display: flex; gap: 0.75rem;">
+      <a href="{{ url_for('application_mgmt.portfolio_gap_analysis_api') }}" class="pga-nav-btn">
+        View JSON API
+      </a>
+    </div>
+  </div>
+  
+  <!-- Summary Cards -->
+  <div class="summary-cards">
+    <div class="summary-card">
+      <div class="summary-px-6 py-4 border-b border-border">
+        <div class="summary-card-icon icon-bg-red"><i data-lucide="alert-triangle" class="w-5 h-5"></i></div>
+      </div>
+      <div class="summary-card-value">{% if portfolio_gaps.compliance_risks is none %}N/A{% else %}{{ portfolio_gaps.compliance_risks|length }}{% endif %}</div>
+      <div class="summary-card-label">Compliance Risks</div>
+    </div>
+
+    <div class="summary-card">
+      <div class="summary-px-6 py-4 border-b border-border">
+        <div class="summary-card-icon icon-bg-yellow">⚠️</div>
+      </div>
+      <div class="summary-card-value">{% if portfolio_gaps.single_point_failures is none %}N/A{% else %}{{ portfolio_gaps.single_point_failures|length }}{% endif %}</div>
+      <div class="summary-card-label">Single Points of Failure</div>
+    </div>
+    
+    <div class="summary-card">
+      <div class="summary-px-6 py-4 border-b border-border">
+        <div class="summary-card-icon icon-bg-blue"><i data-lucide="target" class="w-5 h-5"></i></div>
+      </div>
+      <div class="summary-card-value">{{ portfolio_gaps.unsupported_capabilities|length }}</div>
+      <div class="summary-card-label">Unsupported Capabilities</div>
+    </div>
+    
+    <div class="summary-card">
+      <div class="summary-px-6 py-4 border-b border-border">
+        <div class="summary-card-icon icon-bg-purple"><i data-lucide="ghost" class="w-5 h-5"></i></div>
+      </div>
+      <div class="summary-card-value">{% if portfolio_gaps.orphaned_applications is none %}N/A{% else %}{{ portfolio_gaps.orphaned_applications|length }}{% endif %}</div>
+      <div class="summary-card-label">Orphaned Applications</div>
+    </div>
+  </div>
+  
+  <!-- Compliance Risks Section -->
+  {% if portfolio_gaps.compliance_risks is not none and portfolio_gaps.compliance_risks|length > 0 %}
+  <div class="gap-section">
+    <div class="gap-section-header">
+      <div class="gap-section-title">
+        <i data-lucide="alert-triangle" class="w-4 h-4"></i>
+        <span>Compliance Risks (CRITICAL)</span>
+      </div>
+    </div>
+    <div class="gap-section-body">
+      <table class="gap-table">
+        <thead>
+          <tr>
+            <th>Application</th>
+            <th>Severity</th>
+            <th>Impact</th>
+            <th>Recommendation</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y">
+          {% for gap in portfolio_gaps.compliance_risks %}
+          <tr>
+            <td class="table-capability">
+              <a href="{{ url_for('unified_applications.application_detail', id=gap.application_id) }}">
+                {{ gap.application_name }}
+              </a>
+            </td>
+            <td>
+              <span class="table-severity severity-{{ gap.severity|lower }}">
+                {{ gap.severity|upper }}
+              </span>
+            </td>
+            <td class="table-recommendation">{{ gap.impact }}</td>
+            <td class="table-recommendation">{{ gap.recommendation }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+  
+  <!-- Single Points of Failure Section -->
+  {% if portfolio_gaps.single_point_failures is not none and portfolio_gaps.single_point_failures|length > 0 %}
+  <div class="gap-section">
+    <div class="gap-section-header">
+      <div class="gap-section-title">
+        <span>⚠️</span>
+        <span>Single Points of Failure</span>
+      </div>
+    </div>
+    <div class="gap-section-body">
+      <table class="gap-table">
+        <thead>
+          <tr>
+            <th>Capability</th>
+            <th>Application</th>
+            <th>Severity</th>
+            <th>Impact</th>
+            <th>Recommendation</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y">
+          {% for gap in portfolio_gaps.single_point_failures %}
+          <tr>
+            <td class="table-capability">{{ gap.capability_name }}</td>
+            <td class="table-application">
+              <a href="{{ url_for('unified_applications.application_detail', id=gap.application_id) }}">
+                {{ gap.application_name }}
+              </a>
+            </td>
+            <td>
+              <span class="table-severity severity-{{ gap.severity|lower }}">
+                {{ gap.severity|upper }}
+              </span>
+            </td>
+            <td class="table-recommendation">{{ gap.impact }}</td>
+            <td class="table-recommendation">{{ gap.recommendation }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+  
+  <!-- Unsupported Capabilities Section -->
+  {% if portfolio_gaps.unsupported_capabilities|length > 0 %}
+  <div class="gap-section">
+    <div class="gap-section-header">
+      <div class="gap-section-title">
+        <i data-lucide="target" class="w-4 h-4"></i>
+        <span>Unsupported Business Capabilities</span>
+      </div>
+    </div>
+    <div class="gap-section-body">
+      <table class="gap-table">
+        <thead>
+          <tr>
+            <th>Capability</th>
+            <th>Severity</th>
+            <th>Impact</th>
+            <th>Recommendation</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y">
+          {% for gap in portfolio_gaps.unsupported_capabilities %}
+          <tr>
+            <td class="table-capability">{{ gap.capability_name }}</td>
+            <td>
+              <span class="table-severity severity-{{ gap.severity|lower }}">
+                {{ gap.severity|upper }}
+              </span>
+            </td>
+            <td class="table-recommendation">{{ gap.impact }}</td>
+            <td class="table-recommendation">{{ gap.recommendation }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+  
+  <!-- Orphaned Applications Section -->
+  {% if portfolio_gaps.orphaned_applications is not none and portfolio_gaps.orphaned_applications|length > 0 %}
+  <div class="gap-section">
+    <div class="gap-section-header">
+      <div class="gap-section-title">
+        <i data-lucide="ghost" class="w-4 h-4"></i>
+        <span>Orphaned Applications</span>
+      </div>
+    </div>
+    <div class="gap-section-body">
+      <table class="gap-table">
+        <thead>
+          <tr>
+            <th>Application</th>
+            <th>Severity</th>
+            <th>Impact</th>
+            <th>Recommendation</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y">
+          {% for gap in portfolio_gaps.orphaned_applications %}
+          <tr>
+            <td class="table-capability">
+              <a href="{{ url_for('unified_applications.application_detail', id=gap.application_id) }}">
+                {{ gap.application_name }}
+              </a>
+            </td>
+            <td>
+              <span class="table-severity severity-{{ gap.severity|lower }}">
+                {{ gap.severity|upper }}
+              </span>
+            </td>
+            <td class="table-recommendation">{{ gap.impact }}</td>
+            <td class="table-recommendation">{{ gap.recommendation }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+  
+  <!-- All Clear State — only shown when all analyses ran and returned no gaps -->
+  {% set analyses_complete = (
+    portfolio_gaps.compliance_risks is not none and
+    portfolio_gaps.single_point_failures is not none and
+    portfolio_gaps.orphaned_applications is not none
+  ) %}
+  {% if analyses_complete and
+        portfolio_gaps.compliance_risks|length == 0 and
+        portfolio_gaps.single_point_failures|length == 0 and
+        portfolio_gaps.unsupported_capabilities|length == 0 and
+        portfolio_gaps.orphaned_applications|length == 0 %}
+  <div class="gap-section">
+    <div class="gap-section-body">
+      <div class="empty-state">
+        <div class="empty-state-icon">✅</div>
+        <div class="empty-state-title">Excellent Portfolio Health!</div>
+        <div>No portfolio-wide architectural gaps detected. All capabilities are properly supported.</div>
+      </div>
+    </div>
+  </div>
+  {% elif portfolio_gaps.unsupported_capabilities|length == 0 %}
+  <div class="gap-section">
+    <div class="gap-section-body">
+      <div class="empty-state">
+        <div class="empty-state-icon"><i data-lucide="search" class="w-6 h-6"></i></div>
+        <div class="empty-state-title">Capability Coverage: No Gaps</div>
+        <div>All capabilities are supported. Additional analyses (compliance risks, single points of failure, orphaned applications) are not yet available.</div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+{% endblock %}
+

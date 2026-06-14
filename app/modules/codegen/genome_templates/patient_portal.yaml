@@ -1,0 +1,171 @@
+genome_version: "1.0.0"
+solution_id: 0
+solution_name: "Patient Portal"
+generated_at: "2026-04-01T00:00:00Z"
+language: "python-fastapi"
+
+problem:
+  statement: "Patients cannot view their records, book appointments, or communicate with providers online — phone-based scheduling causes 30% no-show rates and staff spend 40% of time on administrative calls."
+  success_metrics:
+    - "Reduce appointment no-show rate from 30% to 10%"
+    - "Enable 80% of appointments to be booked online"
+    - "Achieve HIPAA-grade data protection for all medical records"
+  constraints:
+    - "All medical data must be encrypted at rest and in transit"
+    - "MFA required for all users"
+    - "Must retain medical records for minimum 10 years"
+    - "Must support patient consent management"
+  business_domain: "Healthcare"
+  _rationale: "Healthcare portals have the highest regulatory bar and the biggest patient experience impact. Every manual touchpoint is a risk of data exposure and a source of patient frustration."
+
+modules:
+  patients:
+    _rationale: "Patient identity and demographics — the root entity for all clinical and administrative records."
+    aggregate_root: "Patient"
+    entities: ["Patient"]
+    fields:
+      Patient:
+        - {name: "first_name", type: "string", max_length: 100, required: true}
+        - {name: "last_name", type: "string", max_length: 100, required: true}
+        - {name: "date_of_birth", type: "date", required: true}
+        - {name: "email", type: "string", format: "email", required: true, unique: true}
+        - {name: "phone", type: "string", format: "phone", required: true}
+        - {name: "insurance_id", type: "string", max_length: 50, required: false}
+        - {name: "emergency_contact_name", type: "string", max_length: 255, required: false}
+        - {name: "emergency_contact_phone", type: "string", format: "phone", required: false}
+    sensitive_fields:
+      - {field: "Patient.date_of_birth", level: "pii"}
+      - {field: "Patient.insurance_id", level: "restricted"}
+      - {field: "Patient.phone", level: "pii"}
+    archimate_element_ids: [401]
+
+  appointments:
+    _rationale: "Appointments are the primary patient-facing interaction. State machine prevents double-booking and tracks attendance."
+    aggregate_root: "Appointment"
+    entities: ["Appointment"]
+    fields:
+      Appointment:
+        - {name: "patient_id", type: "integer", required: true, foreign_key: "Patient.id"}
+        - {name: "provider_id", type: "integer", required: true, foreign_key: "Provider.id"}
+        - {name: "appointment_type", type: "enum", enum_values: ["consultation", "follow_up", "procedure", "lab_work", "imaging"]}
+        - {name: "scheduled_at", type: "datetime", required: true}
+        - {name: "duration_minutes", type: "integer", required: true}
+        - {name: "reason", type: "text", required: false}
+        - {name: "notes", type: "text", required: false}
+    state_machine:
+      field: "status"
+      states: ["requested", "confirmed", "checked_in", "completed", "no_show", "cancelled"]
+      initial_state: "requested"
+      transitions:
+        - {from: "requested", to: "confirmed", trigger: "confirm"}
+        - {from: "confirmed", to: "checked_in", trigger: "check_in"}
+        - {from: "checked_in", to: "completed", trigger: "complete"}
+        - {from: "confirmed", to: "no_show", trigger: "mark_no_show"}
+        - {from: ["requested", "confirmed"], to: "cancelled", trigger: "cancel"}
+    operations:
+      book_appointment:
+        type: "command"
+        input: "AppointmentRequest"
+        output: "AppointmentId"
+        authorization: ["patient", "nurse", "admin"]
+        validation:
+          - {field: "scheduled_at", rule: "must be in the future"}
+          - {field: "provider_id", rule: "must reference available provider"}
+    views:
+      list:
+        columns: ["id", "patient_id", "provider_id", "status", "appointment_type", "scheduled_at"]
+        filters: ["status", "appointment_type", "provider_id"]
+        default_sort: {field: "scheduled_at", dir: "asc"}
+      detail:
+        sections: ["summary", "patient_info", "notes", "history"]
+      create:
+        fields: ["patient_id", "provider_id", "appointment_type", "scheduled_at", "duration_minutes", "reason"]
+    archimate_element_ids: [402]
+
+  providers:
+    _rationale: "Provider availability and specialization drive appointment scheduling logic."
+    aggregate_root: "Provider"
+    entities: ["Provider"]
+    fields:
+      Provider:
+        - {name: "name", type: "string", max_length: 255, required: true}
+        - {name: "email", type: "string", format: "email", required: true, unique: true}
+        - {name: "specialization", type: "string", max_length: 100, required: true}
+        - {name: "license_number", type: "string", max_length: 50, required: true, unique: true}
+        - {name: "is_accepting_patients", type: "boolean", required: false}
+    archimate_element_ids: [403]
+
+  medical_records:
+    _rationale: "Medical records are the most sensitive data in the system — encryption and access controls are non-negotiable."
+    aggregate_root: "MedicalRecord"
+    entities: ["MedicalRecord"]
+    fields:
+      MedicalRecord:
+        - {name: "patient_id", type: "integer", required: true, foreign_key: "Patient.id"}
+        - {name: "provider_id", type: "integer", required: true, foreign_key: "Provider.id"}
+        - {name: "record_type", type: "enum", enum_values: ["consultation_note", "lab_result", "imaging", "prescription", "referral"]}
+        - {name: "title", type: "string", max_length: 255, required: true}
+        - {name: "content", type: "text", required: true}
+        - {name: "recorded_at", type: "datetime", required: true}
+        - {name: "is_confidential", type: "boolean", required: false}
+    sensitive_fields:
+      - {field: "MedicalRecord.content", level: "restricted"}
+    archimate_element_ids: [404]
+
+  prescriptions:
+    _rationale: "Prescription management enables e-prescribing and reduces medication errors from illegible handwriting."
+    aggregate_root: "Prescription"
+    entities: ["Prescription"]
+    fields:
+      Prescription:
+        - {name: "patient_id", type: "integer", required: true, foreign_key: "Patient.id"}
+        - {name: "provider_id", type: "integer", required: true, foreign_key: "Provider.id"}
+        - {name: "medication_name", type: "string", max_length: 255, required: true}
+        - {name: "dosage", type: "string", max_length: 100, required: true}
+        - {name: "frequency", type: "string", max_length: 100, required: true}
+        - {name: "start_date", type: "date", required: true}
+        - {name: "end_date", type: "date", required: false}
+        - {name: "refills_remaining", type: "integer", required: false}
+    archimate_element_ids: [405]
+
+  billing:
+    _rationale: "Billing ties clinical encounters to financial records. Insurance claim submission requires structured billing codes."
+    aggregate_root: "BillingRecord"
+    entities: ["BillingRecord"]
+    fields:
+      BillingRecord:
+        - {name: "patient_id", type: "integer", required: true, foreign_key: "Patient.id"}
+        - {name: "appointment_id", type: "integer", required: false, foreign_key: "Appointment.id"}
+        - {name: "amount", type: "decimal", required: true}
+        - {name: "insurance_claim_id", type: "string", max_length: 100, required: false}
+        - {name: "paid", type: "boolean", required: false}
+        - {name: "due_date", type: "date", required: true}
+    archimate_element_ids: [406]
+
+infrastructure:
+  database: "postgresql"
+  cache: "redis"
+  auth: "keycloak"
+  observability: "opentelemetry"
+
+security:
+  mfa: "required_for_all"
+  api_keys: true
+  rate_limiting: {default: "100/min", authenticated: "1000/min"}
+  encryption_at_rest: true
+  multi_tenancy: true
+
+deployment:
+  target: "docker_compose"
+  environments: ["staging", "production"]
+  ci_cd: {provider: "github_actions", registry: "ghcr"}
+
+identity_provider:
+  type: "oidc"
+  preset: "keycloak"
+  roles: ["admin", "patient", "provider", "nurse"]
+
+compliance:
+  frameworks: ["hipaa", "soc2"]
+  audit_logging: "all_mutations"
+  data_retention_years: 10

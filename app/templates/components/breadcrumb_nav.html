@@ -1,0 +1,105 @@
+{# shadcn/ui Breadcrumb Navigation Component
+   
+   Accessible breadcrumb navigation with separators and current page indication.
+   
+   Usage Examples:
+   
+   1. Basic Breadcrumb:
+   {% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
+   {{ breadcrumb_nav(items=[
+       {'text': 'Dashboard', 'href': url_for('main.index')},
+       {'text': 'Capability Framework'},
+       {'text': 'Capability Map', 'current': true}
+   ]) }}
+   
+   2. Breadcrumb with Icons:
+   {{ breadcrumb_nav(items=[
+       {'text': 'Home', 'href': '/', 'icon': 'home'},
+       {'text': 'Applications', 'href': '/applications', 'icon': 'package'},
+       {'text': 'Details', 'current': true}
+   ]) }}
+   
+   3. Breadcrumb with Custom Separator:
+   {{ breadcrumb_nav(
+       items=[...],
+       separator='slash'
+   ) }}
+   
+   Separator Options: chevron (default), slash, dot, arrow
+#}
+
+{% macro breadcrumb_nav(
+    items=[],
+    separator='chevron',
+    class='',
+    show_home=false,
+    aria_label='Breadcrumb'
+) %}
+{% set separator_icons = {
+    'chevron': 'chevron-right',
+    'slash': 'slash',
+    'dot': 'dot',
+    'arrow': 'arrow-right'
+} %}
+
+<nav aria-label="{{ aria_label }}" class="{{ class }}">
+    <ol class="flex flex-wrap items-center gap-1.5 text-sm text-muted-foreground" role="list">
+        {% if show_home %}
+        <li class="flex items-center gap-1.5">
+            <a 
+                href="{{ url_for('main.index') if url_for else '/' }}"
+                class="hover:text-foreground transition-colors inline-flex items-center gap-1"
+            >
+                <i data-lucide="home" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                <span class="sr-only">Home</span>
+            </a>
+            {% if items %}
+            <i data-lucide="{{ separator_icons.get(separator, 'chevron-right') }}" class="w-3.5 h-3.5" aria-hidden="true"></i>
+            {% endif %}
+        </li>
+        {% endif %}
+        
+        {% for item in items %}
+        <li class="flex items-center gap-1.5">
+            {% if item.current or loop.last and not item.href %}
+                {# Current page - not a link #}
+                <span class="text-foreground font-medium inline-flex items-center gap-1" aria-current="page">
+                    {% if item.icon %}
+                    <i data-lucide="{{ item.icon }}" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                    {% endif %}
+                    {{ item.text }}
+                </span>
+            {% else %}
+                {# Link to other pages #}
+                <a 
+                    href="{{ item.href }}"
+                    class="hover:text-foreground transition-colors inline-flex items-center gap-1"
+                >
+                    {% if item.icon %}
+                    <i data-lucide="{{ item.icon }}" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                    {% endif %}
+                    {{ item.text }}
+                </a>
+            {% endif %}
+            
+            {# Show separator unless it's the last item #}
+            {% if not loop.last %}
+            <i data-lucide="{{ separator_icons.get(separator, 'chevron-right') }}" class="w-3.5 h-3.5" aria-hidden="true"></i>
+            {% endif %}
+        </li>
+        {% endfor %}
+    </ol>
+</nav>
+{% endmacro %}
+
+{# Convenience macro for common admin breadcrumbs #}
+{% macro admin_breadcrumb(current_page, parent_page='', parent_href='') %}
+{% set items = [
+    {'text': 'Dashboard', 'href': url_for('main.index') if url_for else '/'}
+] %}
+{% if parent_page %}
+    {% set _ = items.append({'text': parent_page, 'href': parent_href}) %}
+{% endif %}
+{% set _ = items.append({'text': current_page, 'current': true}) %}
+{{ breadcrumb_nav(items=items) }}
+{% endmacro %}

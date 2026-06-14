@@ -1,0 +1,145 @@
+{# Import Preview Partial - Entity change preview and validation results #}
+{# Included in job_detail.html when show_preview is True #}
+
+<!-- Import Preview Section -->
+<div class="rounded-lg border bg-card text-card-foreground shadow-sm">
+    <div class="p-6">
+        <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-3">
+                <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-primary">
+                    <i data-lucide="scan-search" class="h-5 w-5 text-primary-foreground"></i>
+                </div>
+                <div>
+                    <h3 class="text-lg font-semibold">Import Preview</h3>
+                    <p class="text-sm text-muted-foreground">Validate data and detect conflicts before processing</p>
+                </div>
+            </div>
+            <button
+                @click="loadPreview()"
+                :disabled="previewLoading"
+                class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary disabled:opacity-50 h-10 px-4 py-2 transition-colors"
+             aria-label="Action">
+                <i data-lucide="scan-search" class="mr-2 h-4 w-4" :class="{ 'animate-spin': previewLoading }"></i>
+                <span x-text="previewLoading ? 'Analyzing...' : 'Analyze Import'"></span>
+            </button>
+        </div>
+
+        <!-- Loading State -->
+        <div x-show="previewLoading" x-cloak class="flex items-center justify-center py-12">
+            <div class="text-center">
+                <div class="inline-flex h-12 w-12 animate-spin rounded-full border-4 border-muted border-t-primary"></div>
+                <p class="mt-4 text-sm text-muted-foreground">Validating data and checking for duplicates...</p>
+            </div>
+        </div>
+
+        <!-- Empty State -->
+        <div x-show="!previewLoading && !previewData" x-cloak class="rounded-lg border-2 border-dashed border-muted p-8 text-center">
+            <i data-lucide="file-search" class="mx-auto h-12 w-12 text-muted-foreground/50"></i>
+            <p class="mt-3 text-sm text-muted-foreground">Click "Analyze Import" to preview your data before processing</p>
+        </div>
+
+        <!-- Preview Results -->
+        <div x-show="previewData && !previewLoading" x-cloak>
+            <!-- Summary Stats -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                <div class="rounded-lg border p-4 text-center">
+                    <div class="text-2xl font-bold text-foreground" x-text="previewData?.total_applications || 0"></div>
+                    <div class="text-xs text-muted-foreground mt-1">Total Rows</div>
+                </div>
+                <div class="rounded-lg border p-4 text-center">
+                    <div class="text-2xl font-bold text-success" x-text="previewData?.validation?.summary?.valid_rows || 0"></div>
+                    <div class="text-xs text-muted-foreground mt-1">Valid Rows</div>
+                </div>
+                <div class="rounded-lg border p-4 text-center">
+                    <div class="text-2xl font-bold text-warning" x-text="previewData?.validation?.summary?.rows_with_warnings || 0"></div>
+                    <div class="text-xs text-muted-foreground mt-1">With Warnings</div>
+                </div>
+                <div class="rounded-lg border p-4 text-center">
+                    <div class="text-2xl font-bold text-destructive" x-text="previewData?.duplicates?.length || 0"></div>
+                    <div class="text-xs text-muted-foreground mt-1">Potential Duplicates</div>
+                </div>
+            </div>
+
+            <!-- Validation Issues -->
+            <div x-show="previewData?.validation?.summary?.total_errors > 0 || previewData?.validation?.summary?.total_warnings > 0" x-cloak class="mb-6">
+                <div class="flex items-center gap-2 mb-3">
+                    <i data-lucide="alert-triangle" class="h-5 w-5 text-warning"></i>
+                    <h4 class="font-semibold">Validation Issues</h4>
+                    <span class="inline-flex items-center rounded-full bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning"
+                          x-text="(previewData?.validation?.summary?.total_errors || 0) + (previewData?.validation?.summary?.total_warnings || 0) + ' issues'"></span>
+                </div>
+                <div class="rounded-md border overflow-hidden">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="border-b bg-muted/50">
+                                <th class="px-4 py-2 text-left font-medium">Row</th>
+                                <th class="px-4 py-2 text-left font-medium">Field</th>
+                                <th class="px-4 py-2 text-left font-medium">Severity</th>
+                                <th class="px-4 py-2 text-left font-medium">Message</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <template x-for="row in (previewData?.validation?.row_details || []).filter(r => r.issues?.length > 0).slice(0, 20)" :key="row.row">
+                                <template x-for="issue in row.issues" :key="issue.field + issue.message">
+                                    <tr class="border-b">
+                                        <td class="px-4 py-2 text-muted-foreground" x-text="issue.row || row.row"></td>
+                                        <td class="px-4 py-2 font-mono text-xs" x-text="issue.field"></td>
+                                        <td class="px-4 py-2">
+                                            <span
+                                                :class="{
+                                                    'bg-destructive/10 text-destructive': issue.severity === 'error',
+                                                    'bg-warning/10 text-warning': issue.severity === 'warning',
+                                                    'bg-primary/10 text-primary': issue.severity === 'info'
+                                                }"
+                                                class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
+                                                x-text="issue.severity"
+                                            ></span>
+                                        </td>
+                                        <td class="px-4 py-2 text-sm" x-text="issue.message"></td>
+                                    </tr>
+                                </template>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Impact Analysis -->
+            <div class="mb-4">
+                <div class="flex items-center gap-2 mb-3">
+                    <i data-lucide="bar-chart-3" class="h-5 w-5 text-primary"></i>
+                    <h4 class="font-semibold">Impact Analysis</h4>
+                </div>
+                <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    <div class="rounded-lg border p-3">
+                        <div class="text-lg font-bold text-success" x-text="previewData?.impact?.new_applications || 0"></div>
+                        <div class="text-xs text-muted-foreground">New Applications</div>
+                    </div>
+                    <div class="rounded-lg border p-3">
+                        <div class="text-lg font-bold text-warning" x-text="previewData?.impact?.potential_duplicates || 0"></div>
+                        <div class="text-xs text-muted-foreground">Potential Duplicates</div>
+                    </div>
+                    <div class="rounded-lg border p-3">
+                        <div class="text-lg font-bold text-primary" x-text="previewData?.impact?.estimated_elements?.total || 0"></div>
+                        <div class="text-xs text-muted-foreground">Estimated Elements</div>
+                    </div>
+                </div>
+
+                <!-- Layer Breakdown -->
+                <div x-show="previewData?.impact?.ai_generation_enabled" x-cloak class="mt-3">
+                    <p class="text-xs text-muted-foreground mb-2">
+                        Elements by ArchiMate layer (<span x-text="previewData?.impact?.archimate_mode"></span> mode):
+                    </p>
+                    <div class="flex flex-wrap gap-2">
+                        <template x-for="[layer, count] in Object.entries(previewData?.impact?.estimated_elements?.by_layer || {})" :key="layer">
+                            <span class="inline-flex items-center rounded-md border px-2 py-1 text-xs">
+                                <span class="font-medium capitalize" x-text="layer"></span>:
+                                <span class="ml-1 text-muted-foreground" x-text="count"></span>
+                            </span>
+                        </template>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

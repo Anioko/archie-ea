@@ -1,0 +1,114 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'components/page_header.html' import page_header %}
+{% from 'components/button.html' import button %}
+{% from 'components/card.html' import card, card_header, card_title, card_content %}
+{% from 'components/input.html' import input, label, textarea %}
+
+{% block title %}Create Application{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    {{ page_header(
+        title='Create Application',
+        description='Add a new application to the portfolio',
+        actions=[
+            {'text': 'Back to Applications', 'icon': 'arrow-left', 'href': url_for('unified_applications.application_list'), 'variant': 'outline'}
+        ]
+    ) }}
+
+    {% call card() %}
+        {% call card_content() %}
+            <form method="POST" id="createForm" class="space-y-6">
+                {{ form.hidden_tag() if form.hidden_tag is defined else '' }}
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="space-y-2">
+                        {% call label(for='name', required=true) %}Application Name{% endcall %}
+                        {{ form.name(id='name', class='flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2', placeholder='Enter application name', autofocus='') }}
+                    </div>
+                    <div class="space-y-2">
+                        {% call label(for='application_code') %}Application Code{% endcall %}
+                        {{ form.application_code(id='application_code', class='flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2', placeholder='e.g., APP-001') if form.application_code is defined else input(id='application_code', name='application_code', placeholder='e.g., APP-001') }}
+                    </div>
+                </div>
+
+                <div class="space-y-2">
+                    {% call label(for='description') %}Description{% endcall %}
+                    {{ form.description(id='description', class='flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2', rows=3, placeholder='Describe the application') if form.description is defined else '' }}
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div class="space-y-2">
+                        {% call label(for='component_type') %}Application Type{% endcall %}
+                        {{ form.component_type(id='component_type', class='flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2') if form.component_type is defined else '' }}
+                    </div>
+                    <div class="space-y-2">
+                        {% call label(for='business_criticality') %}Criticality{% endcall %}
+                        {{ form.business_criticality(id='business_criticality', class='flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2') if form.business_criticality is defined else '' }}
+                    </div>
+                    <div class="space-y-2">
+                        {% call label(for='deployment_status') %}Deployment Status{% endcall %}
+                        {{ form.deployment_status(id='deployment_status', class='flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2') if form.deployment_status is defined else '' }}
+                    </div>
+                </div>
+
+                <div class="space-y-2">
+                    {% call label(for='technology_stack') %}Technology Stack{% endcall %}
+                    {{ form.technology_stack(id='technology_stack', class='flex min-h-[60px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2', rows=2, placeholder='e.g., React, Node.js, PostgreSQL') if form.technology_stack is defined else '' }}
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {% for field_id, field_label in [('business_owner', 'Business Owner'), ('technical_owner', 'Technical Owner')] %}
+                    <div class="space-y-2" x-data="{
+                        ures: [], ushow: false,
+                        async usearch() {
+                            const q = document.getElementById('{{ field_id }}').value;
+                            if (q.length < 2) { this.ures = []; this.ushow = false; return; }
+                            try {
+                                const r = await fetch('/api/users', { headers: { 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || '' } });
+                                const d = await r.json();
+                                if (d.success) { const lq = q.toLowerCase(); this.ures = d.users.filter(u => u.name.toLowerCase().includes(lq) || u.email.toLowerCase().includes(lq)).slice(0, 5); this.ushow = this.ures.length > 0; }
+                            } catch (e) {}
+                        },
+                        uselect(u) { document.getElementById('{{ field_id }}').value = u.name; this.ushow = false; this.ures = []; }
+                    }" @click.outside="ushow = false">
+                        {% call label(for=field_id) %}{{ field_label }}{% endcall %}
+                        <div class="relative">
+                            {{ form[field_id](id=field_id, class='flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2', placeholder='Search by name or email...', autocomplete='off', **{'@input.debounce.300ms': 'usearch()', '@focus': 'usearch()'}) if form[field_id] is defined else '' }}
+                            <div x-show="ushow" x-cloak class="absolute z-20 mt-1 w-full bg-popover border border-border rounded-md shadow-lg max-h-40 overflow-y-auto">
+                                <template x-for="u in ures" :key="u.id">
+                                    <button type="button" @click="uselect(u)" class="w-full px-3 py-1.5 text-left text-sm hover:bg-muted flex items-center justify-between">
+                                        <span x-text="u.name" class="font-medium"></span>
+                                        <span x-text="u.email" class="text-xs text-muted-foreground"></span>
+                                    </button>
+                                </template>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <div class="space-y-2">
+                    {% call label(for='business_purpose') %}Business Purpose{% endcall %}
+                    {{ form.business_purpose(id='business_purpose', class='flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2', rows=3, placeholder='Describe the business purpose and value of this application') if form.business_purpose is defined else '' }}
+                </div>
+
+                {% if form.vendor_products is defined %}
+                <div class="space-y-2">
+                    {% call label(for='vendor_products') %}Vendor Products{% endcall %}
+                    {{ form.vendor_products(id='vendor_products', class='flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2') }}
+                </div>
+                {% endif %}
+
+                <div class="flex justify-between pt-4">
+                    <a href="{{ url_for('unified_applications.application_list') }}" class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2">
+                        Cancel
+                    </a>
+                    {{ button('Create Application', variant='default', type='submit', icon='plus') }}
+                </div>
+            </form>
+        {% endcall %}
+    {% endcall %}
+</div>
+{% endblock %}

@@ -1,0 +1,49 @@
+{# shadcn/ui Table Component #}
+{% macro table(class='') %}
+    <div class="relative w-full overflow-auto" aria-live="polite" aria-atomic="false">
+        <table class="w-full caption-bottom text-sm {{ class }}">
+            {{ caller() }}
+        </table>
+    </div>
+{% endmacro %}
+
+{% macro table_header(class='') %}
+    <thead class="[&_tr]:border-b {{ class }}">
+        {{ caller() }}
+    </thead>
+{% endmacro %}
+
+{% macro table_body(class='') %}
+    <tbody class="[&_tr:last-child]:border-0 {{ class }}">
+        {{ caller() }}
+    </tbody>
+{% endmacro %}
+
+{% macro table_row(class='') %}
+    <tr class="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted {{ class }}">
+        {{ caller() }}
+    </tr>
+{% endmacro %}
+
+{% macro table_head(class='') %}
+    <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0 {{ class }}">
+        {{ caller() }}
+    </th>
+{% endmacro %}
+
+{% macro table_cell(class='') %}
+    <td class="p-4 align-middle [&:has([role=checkbox])]:pr-0 {{ class }}">
+        {{ caller() }}
+    </td>
+{% endmacro %}
+
+{% macro table_empty_state(message='No data available', icon='inbox', class='') %}
+    <tr class="{{ class }}">
+        <td colspan="99" class="px-6 py-12 text-center">
+            <div class="flex flex-col items-center gap-2">
+                <i data-lucide="{{ icon }}" class="h-8 w-8 text-muted-foreground/40"></i>
+                <p class="text-sm text-muted-foreground">{{ message }}</p>
+            </div>
+        </td>
+    </tr>
+{% endmacro %}

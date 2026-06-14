@@ -1,0 +1,451 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'components/page_header.html' import page_header %}
+
+{% block title %}Buy / Build / Reuse Analysis{% endblock %}
+
+{% block breadcrumb %}
+{% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
+{{ breadcrumb_nav(items=[
+    {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
+    {'text': 'Enterprise Architecture'},
+    {'text': 'Enterprise', 'current': true}
+]) }}
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6" x-data="solutionWorkspace()" x-init="init()">
+    <!-- Breadcrumbs -->
+    <nav class="flex items-center gap-2 text-sm text-muted-foreground">
+        <a href="{{ url_for('main.index') }}" class="hover:text-foreground transition-colors">Dashboard</a>
+        <i data-lucide="chevron-right" class="h-4 w-4"></i>
+        <span class="text-foreground font-medium">Solutions Architecture</span>
+    </nav>
+
+    <!-- Page Header -->
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        {{ page_header(
+            title='Buy / Build / Reuse Analysis',
+            description='AI-powered options analysis for solution architects — TOGAF ADM Phase B/C'
+        ) }}
+    </div>
+
+    <!-- ANALYSIS FORM -->
+    <div class="rounded-xl border-2 border-input bg-background p-6 space-y-5">
+        <div class="flex items-center gap-3">
+            <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-primary">
+                <i data-lucide="brain-circuit" class="h-5 w-5 text-primary-foreground"></i>
+            </div>
+            <div>
+                <h2 class="text-lg font-semibold">Problem Statement</h2>
+                <p class="text-xs text-muted-foreground">Describe the architectural problem or business need</p>
+            </div>
+        </div>
+
+        <div>
+            <label class="block text-sm font-medium mb-1.5">Problem / Requirement <span class="text-destructive">*</span></label>
+            <textarea x-model="form.problem" rows="4"
+                placeholder="e.g. We need a document management platform to replace SharePoint 2013, supporting 3,000 users, integrating with SAP ECC and meeting UK GDPR requirements..."
+                class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none"></textarea>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+                <label class="block text-sm font-medium mb-1.5">Budget Min (£)</label>
+                <input x-model="form.budget_min" type="number" placeholder="e.g. 50000"
+                    class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+            </div>
+            <div>
+                <label class="block text-sm font-medium mb-1.5">Budget Max (£)</label>
+                <input x-model="form.budget_max" type="number" placeholder="e.g. 500000"
+                    class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+            </div>
+            <div>
+                <label class="block text-sm font-medium mb-1.5">Timeline (months)</label>
+                <input x-model="form.timeline_months" type="number" placeholder="e.g. 12"
+                    class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+            </div>
+            <div>
+                <label class="block text-sm font-medium mb-1.5">Number of Users</label>
+                <input x-model="form.user_count" type="number" placeholder="e.g. 500"
+                    class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+            <div>
+                <label class="block text-sm font-medium mb-2">Compliance Requirements</label>
+                <div class="flex flex-wrap gap-3">
+                    <template x-for="c in complianceOptions" :key="c">
+                        <label class="flex items-center gap-1.5 cursor-pointer">
+                            <input type="checkbox" :value="c" x-model="form.compliance"
+                                class="rounded border-input text-primary focus:ring-ring">
+                            <span class="text-sm" x-text="c"></span>
+                        </label>
+                    </template>
+                </div>
+            </div>
+            <div>
+                <label class="block text-sm font-medium mb-1.5">Integration Constraints</label>
+                <input x-model="form.constraints" type="text"
+                    placeholder="e.g. Must integrate with SAP ECC 6.0, Azure AD"
+                    class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+            </div>
+        </div>
+
+        <div class="flex items-center justify-between pt-1">
+            <label class="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" x-model="form.is_critical"
+                    class="rounded border-input text-primary focus:ring-ring">
+                <span class="text-sm font-medium">Business-critical system</span>
+            </label>
+            <button @click="runAnalysis()"
+                :disabled="!form.problem.trim() || loading"
+                class="inline-flex items-center gap-2 h-10 px-6 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                <template x-if="loading">
+                    <svg class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                    </svg>
+                </template>
+                <template x-if="!loading">
+                    <i data-lucide="zap" class="h-4 w-4"></i>
+                </template>
+                <span x-text="loading ? 'Analysing...' : 'Run Analysis'"></span>
+            </button>
+        </div>
+
+        <div x-show="loading" x-cloak x-transition class="flex items-center gap-3 p-4 rounded-lg bg-primary/5 border border-primary/20">
+            <svg class="animate-spin h-5 w-5 text-primary shrink-0" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+            </svg>
+            <div>
+                <p class="text-sm font-medium text-primary">AI analysis running...</p>
+                <p class="text-xs text-muted-foreground">Evaluating Buy / Build / Reuse across existing applications, vendor market and capability gaps</p>
+            </div>
+        </div>
+
+        <div x-show="error" x-cloak x-transition class="flex items-start gap-3 p-4 rounded-lg bg-destructive/10 border border-destructive/20">
+            <i data-lucide="alert-circle" class="h-5 w-5 text-destructive shrink-0 mt-0.5"></i>
+            <p class="text-sm text-destructive" x-text="error"></p>
+        </div>
+    </div>
+
+    <!-- ANALYSIS RESULTS -->
+    <div x-show="results" x-cloak x-transition.opacity>
+        <div x-show="topRec" x-cloak class="flex items-center gap-4 p-4 rounded-xl border-2 border-primary/40 bg-primary/5 mb-4">
+            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary">
+                <i data-lucide="award" class="h-5 w-5 text-primary-foreground"></i>
+            </div>
+            <div class="flex-1">
+                <p class="text-xs text-muted-foreground font-medium uppercase tracking-wide">Top Recommendation</p>
+                <p class="font-semibold" x-text="topRec ? topRec.option_type + ' — Score ' + topRec.score + '/100' : ''"></p>
+                <p class="text-sm text-muted-foreground" x-text="topRec ? topRec.description : ''"></p>
+            </div>
+            <span class="text-2xl font-bold" :class="scoreTextClass(topRec ? topRec.score : null)" x-text="topRec ? topRec.score : ''"></span>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <template x-for="(rec, idx) in (results ? results.recommendations : [])" :key="rec.option_type">
+                <div class="rounded-xl border-2 bg-background p-5 space-y-4"
+                     :class="idx === 0 ? 'border-primary/50 shadow-sm' : 'border-input'">
+                    <div class="flex items-start justify-between gap-3">
+                        <div class="flex items-center gap-2.5">
+                            <span class="inline-flex items-center justify-center h-8 px-3 rounded-full text-primary-foreground text-xs font-bold uppercase tracking-wide"
+                                  :class="optionBadgeClass(rec.option_type)"
+                                  x-text="rec.option_type"></span>
+                            <template x-if="idx === 0">
+                                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 text-primary text-xs font-medium">
+                                    <i data-lucide="star" class="h-3 w-3"></i> Recommended
+                                </span>
+                            </template>
+                        </div>
+                        <div class="text-right shrink-0">
+                            <span class="text-2xl font-bold" :class="scoreTextClass(rec.score)" x-text="rec.score"></span>
+                            <span class="text-xs text-muted-foreground">/100</span>
+                        </div>
+                    </div>
+
+                    <div class="w-full h-2 bg-muted rounded-full overflow-hidden">
+                        <div class="h-full rounded-full transition-all duration-700"
+                             :class="scoreBarClass(rec.score)"
+                             :style="'width: ' + rec.score + '%'"></div>
+                    </div>
+
+                    <p class="text-sm text-muted-foreground" x-text="rec.description"></p>
+
+                    <div class="flex flex-wrap items-center gap-3 text-sm">
+                        <template x-if="rec.estimated_cost">
+                            <div class="flex items-center gap-1.5">
+                                <i data-lucide="pound-sterling" class="h-4 w-4 text-muted-foreground"></i>
+                                <span class="font-medium" x-text="'£' + formatCost(rec.estimated_cost)"></span>
+                                <span class="text-muted-foreground text-xs">est.</span>
+                            </div>
+                        </template>
+                        <template x-if="rec.timeline_months">
+                            <div class="flex items-center gap-1.5">
+                                <i data-lucide="clock" class="h-4 w-4 text-muted-foreground"></i>
+                                <span x-text="rec.timeline_months + ' months'"></span>
+                            </div>
+                        </template>
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium"
+                              :class="riskBadgeClass(rec.risk_level)"
+                              x-text="(rec.risk_level || '') + ' RISK'"></span>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-3 text-xs">
+                        <div>
+                            <p class="font-semibold text-success mb-1.5">+ Pros</p>
+                            <ul class="space-y-1">
+                                <template x-for="p in (rec.pros || [])" :key="p">
+                                    <li class="text-muted-foreground flex gap-1.5">
+                                        <span class="text-success shrink-0">+</span><span x-text="p"></span>
+                                    </li>
+                                </template>
+                            </ul>
+                        </div>
+                        <div>
+                            <p class="font-semibold text-destructive mb-1.5">- Cons</p>
+                            <ul class="space-y-1">
+                                <template x-for="c in (rec.cons || [])" :key="c">
+                                    <li class="text-muted-foreground flex gap-1.5">
+                                        <span class="text-destructive shrink-0">-</span><span x-text="c"></span>
+                                    </li>
+                                </template>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="pt-1 border-t border-input">
+                        <template x-if="savedSolutions[rec.option_type]">
+                            <a :href="'/solutions/' + savedSolutions[rec.option_type]"
+                               class="inline-flex items-center gap-1.5 text-sm font-medium text-success hover:underline">
+                                <i data-lucide="check-circle-2" class="h-4 w-4"></i> View Saved Solution
+                            </a>
+                        </template>
+                        <template x-if="!savedSolutions[rec.option_type]">
+                            <button @click="saveAsSolution(rec)"
+                                :disabled="savingOption === rec.option_type"
+                                class="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-input bg-background text-sm font-medium hover:border-primary/50 hover:bg-muted/30 transition-colors disabled:opacity-50">
+                                <template x-if="savingOption === rec.option_type">
+                                    <svg class="animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24">
+                                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                                    </svg>
+                                </template>
+                                <template x-if="savingOption !== rec.option_type">
+                                    <i data-lucide="save" class="h-3.5 w-3.5"></i>
+                                </template>
+                                <span>Save as Solution</span>
+                            </button>
+                        </template>
+                    </div>
+                </div>
+            </template>
+        </div>
+
+        <template x-if="results && results.existing_applications && results.existing_applications.found_count > 0">
+            <div class="rounded-xl border-2 border-input bg-background overflow-hidden mt-4">
+                <div class="px-6 py-4 border-b border-input bg-muted/30 flex items-center gap-3">
+                    <i data-lucide="database" class="h-4 w-4 text-muted-foreground"></i>
+                    <div>
+                        <h3 class="font-semibold text-sm">Existing Applications Found</h3>
+                        <p class="text-xs text-muted-foreground"
+                           x-text="results.existing_applications.found_count + ' applications in your portfolio may address this need'"></p>
+                    </div>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm text-left">
+                        <thead class="bg-muted/50 text-muted-foreground text-xs font-medium border-b border-input">
+                            <tr>
+                                <th class="px-5 py-3">Application</th>
+                                <th class="px-5 py-3">Status</th>
+                                <th class="px-5 py-3">Relevance</th>
+                                <th class="px-5 py-3">Annual Cost</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-input">
+                            <template x-for="app in results.existing_applications.applications" :key="app.id">
+                                <tr class="hover:bg-muted/30 transition-colors">
+                                    <td class="px-5 py-3">
+                                        <p class="font-medium" x-text="app.name"></p>
+                                        <p class="text-xs text-muted-foreground truncate max-w-xs" x-text="app.description || ''"></p>
+                                    </td>
+                                    <td class="px-5 py-3">
+                                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-muted text-muted-foreground" x-text="app.status || ''"></span>
+                                    </td>
+                                    <td class="px-5 py-3">
+                                        <div class="flex items-center gap-2">
+                                            <div class="w-16 h-1.5 bg-muted rounded-full overflow-hidden">
+                                                <div class="h-full bg-primary rounded-full" :style="'width:' + app.relevance_score + '%'"></div>
+                                            </div>
+                                            <span class="text-xs font-mono" x-text="app.relevance_score + '%'"></span>
+                                        </div>
+                                    </td>
+                                    <td class="px-5 py-3 font-mono text-xs"
+                                        x-text="app.annual_cost ? '£' + formatCost(app.annual_cost) : ''"></td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </template>
+    </div>
+
+    <!-- SAVED SOLUTIONS TABLE -->
+    <div class="rounded-xl border-2 border-input bg-background overflow-hidden">
+        <div class="p-6 border-b border-input bg-muted/30 flex items-center justify-between">
+            <div>
+                <h2 class="text-lg font-semibold">Saved Solutions</h2>
+                <p class="text-sm text-muted-foreground">Solutions created from analysis recommendations</p>
+            </div>
+            <span class="inline-flex items-center justify-center h-6 min-w-6 px-2 rounded-full bg-muted text-muted-foreground text-xs font-medium">{{ solution_count or 0 }}</span>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm text-left">
+                <thead class="bg-muted/50 text-muted-foreground font-medium border-b border-input text-xs uppercase tracking-wide">
+                    <tr>
+                        <th class="px-6 py-3">Solution</th>
+                        <th class="px-6 py-3">Status</th>
+                        <th class="px-6 py-3">Apps</th>
+                        <th class="px-6 py-3">Capabilities</th>
+                        <th class="px-6 py-3 text-right">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-input">
+                    {% for sol in solutions %}
+                    <tr class="hover:bg-muted/30 transition-colors">
+                        <td class="px-6 py-4">
+                            <p class="font-medium">{{ sol.name }}</p>
+                            <p class="text-xs text-muted-foreground mt-0.5 truncate max-w-xs">{{ sol.description or '' }}</p>
+                        </td>
+                        <td class="px-6 py-4">
+                            <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium
+                                {% if sol.status == 'deployed' %}bg-success/10 text-success
+                                {% elif sol.status == 'in_progress' %}bg-primary/10 text-primary
+                                {% else %}bg-muted text-muted-foreground{% endif %}">
+                                {{ sol.status|title }}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 text-muted-foreground font-mono text-xs">{{ sol.app_count }}</td>
+                        <td class="px-6 py-4 text-xs">{{ sol.capability_count }} mappings</td>
+                        <td class="px-6 py-4 text-right">
+                            <a href="{{ url_for('solution_design.view_solution', solution_id=sol.id) }}"
+                               class="text-sm font-medium text-primary hover:underline">View</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    {% if not solutions %}
+                    <tr>
+                        <td colspan="5" class="px-6 py-12 text-center text-muted-foreground">
+                            <div class="flex flex-col items-center gap-2">
+                                <i data-lucide="inbox" class="h-8 w-8 opacity-20"></i>
+                                <p class="text-sm">No solutions yet. Run an analysis above and save the recommendation.</p>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+function solutionWorkspace() {
+    return {
+        form: { problem: '', budget_min: '', budget_max: '', timeline_months: '', user_count: '', is_critical: false, compliance: [], constraints: '' },
+        complianceOptions: ['GDPR', 'UK GDPR', 'ISO 27001', 'SOC 2', 'PCI-DSS', 'HIPAA'],
+        loading: false,
+        error: null,
+        results: null,
+        savedSolutions: {},
+        savingOption: null,
+
+        init() { if (typeof lucide !== 'undefined') lucide.createIcons(); },
+
+        get topRec() { return this.results && this.results.recommendations && this.results.recommendations.length ? this.results.recommendations[0] : null; },
+
+        async runAnalysis() {
+            if (!this.form.problem.trim()) return;
+            this.loading = true; this.error = null; this.results = null;
+            try {
+                const resp = await fetch('/architecture/solutions-architecture/analyze', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || '' },
+                    body: JSON.stringify({
+                        problem_description: this.form.problem,
+                        budget_min: this.form.budget_min ? parseFloat(this.form.budget_min) : null,
+                        budget_max: this.form.budget_max ? parseFloat(this.form.budget_max) : null,
+                        timeline_months: this.form.timeline_months ? parseInt(this.form.timeline_months) : null,
+                        user_count: this.form.user_count ? parseInt(this.form.user_count) : null,
+                        is_critical: this.form.is_critical,
+                        organization_size: 'enterprise',
+                        compliance_requirements: this.form.compliance,
+                        existing_constraints: this.form.constraints ? [this.form.constraints] : []
+                    })
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    this.results = data;
+                    this.$nextTick(() => { if (typeof lucide !== 'undefined') lucide.createIcons(); });
+                } else {
+                    this.error = data.error || 'Analysis failed. Check server logs.';
+                }
+            } catch (e) {
+                this.error = 'Network error: ' + e.message;
+            } finally {
+                this.loading = false;
+            }
+        },
+
+        async saveAsSolution(rec) {
+            this.savingOption = rec.option_type;
+            try {
+                const resp = await fetch('/architecture/solutions-architecture/save-solution', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || '' },
+                    body: JSON.stringify({ name: this.form.problem.substring(0, 100), problem_description: this.form.problem, option_type: rec.option_type, estimated_cost: rec.estimated_cost || null })
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    this.savedSolutions = Object.assign({}, this.savedSolutions, { [rec.option_type]: data.solution_id });
+                    this.$nextTick(() => { if (typeof lucide !== 'undefined') lucide.createIcons(); });
+                } else {
+                    Platform.toast.error('Save failed: ' + (data.error || 'unknown error'));
+                }
+            } catch (e) {
+                Platform.toast.error('Network error: ' + e.message);
+            } finally {
+                this.savingOption = null;
+            }
+        },
+
+        scoreTextClass(score) {
+            if (score === null || score === undefined) return 'text-muted-foreground';
+            if (score >= 70) return 'text-success';
+            if (score >= 40) return 'text-amber-500';
+            return 'text-destructive';
+        },
+        scoreBarClass(score) {
+            if (score >= 70) return 'bg-success';
+            if (score >= 40) return 'bg-amber-500';
+            return 'bg-destructive';
+        },
+        riskBadgeClass(risk) {
+            if (risk === 'LOW') return 'bg-success/10 text-success';
+            if (risk === 'MEDIUM') return 'bg-amber-500/10 text-amber-600';
+            return 'bg-destructive/10 text-destructive';
+        },
+        optionBadgeClass(type) {
+            return { REUSE: 'bg-emerald-600', BUY: 'bg-primary', BUILD: 'bg-orange-600', HYBRID: 'bg-primary' }[type] || 'bg-slate-600';
+        },
+        formatCost(v) {
+            if (!v && v !== 0) return '';
+            return Number(v).toLocaleString('en-GB', { maximumFractionDigits: 0 });
+        }
+    };
+}
+</script>
+{% endblock %}

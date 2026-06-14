@@ -1,0 +1,322 @@
+{# Step 4: Architecture Decisions — derived from element properties #}
+<div class="bg-card border border-border rounded-lg p-6 space-y-4">
+
+    {# TRAC-001: chain health warning banner for Step 4 #}
+    <template x-if="stepWarnings[4] && !stepWarningsDismissed[4]">
+        <div class="rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3">
+            <div class="flex items-start justify-between gap-3">
+                <div class="flex items-start gap-3 flex-1">
+                    <svg class="h-4 w-4 text-amber-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+                    </svg>
+                    <div class="space-y-1">
+                        <template x-for="w in stepWarnings[4]" :key="w.code">
+                            <p class="text-sm text-amber-700" x-text="w.message"></p>
+                        </template>
+                    </div>
+                </div>
+                <button type="button" @click="stepWarningsDismissed[4] = true" class="text-amber-500 hover:text-amber-700 shrink-0" aria-label="Dismiss">
+                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </div>
+        </div>
+    </template>
+
+    <div class="flex items-center justify-between">
+        <div>
+            <h2 class="text-lg font-semibold text-foreground">
+                <span x-show="domainsPopulated" x-cloak>Step 4: Architecture Decisions</span>
+                <span x-show="!domainsPopulated" x-cloak>Step 4: Gap Analysis</span>
+            </h2>
+            <p class="text-sm text-muted-foreground">
+                <span x-show="domainsPopulated">Review key architecture decisions derived from element properties filled in Step 2.</span>
+                <span x-show="!domainsPopulated" x-cloak>Capability gaps and coverage issues detected from your application landscape.</span>
+            </p>
+        </div>
+        <button type="button" @click="loadDecisionPoints()"
+                :disabled="decisionsLoading"
+                x-show="domainsPopulated && (!decisionPoints || decisionPoints.length === 0)"
+                class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50">
+            <template x-if="!decisionsLoading">
+                <span class="flex items-center gap-2">
+                    <i data-lucide="scale" class="w-4 h-4" aria-hidden="true"></i>
+                    Load Decisions
+                </span>
+            </template>
+            <template x-if="decisionsLoading">
+                <span class="flex items-center gap-2">
+                    <span class="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full"></span>
+                    Loading...
+                </span>
+            </template>
+        </button>
+    </div>
+
+    {# LLM degradation warning — no decision properties found #}
+    <div x-show="llmDegraded.step4 && !decisionsLoading" x-cloak
+         class="flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3">
+        <svg class="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+        </svg>
+        <div>
+            <p class="text-sm font-medium text-amber-700">No decision properties found</p>
+            <p class="text-xs text-amber-600/80 mt-0.5">Fill in <strong>Build/Buy</strong> and <strong>Deployment Model</strong> for your architecture elements in Step 2 to generate decision points here.</p>
+        </div>
+    </div>
+
+    {# Loading state #}
+    <div x-show="decisionsLoading" x-cloak class="py-8 text-center">
+        <span class="animate-spin h-8 w-8 border-3 border-primary border-t-transparent rounded-full inline-block mb-3"></span>
+        <p class="text-sm text-muted-foreground">Analyzing element properties for decision points...</p>
+    </div>
+
+    {# No decisions yet (domain mode) #}
+    <div x-show="domainsPopulated && !decisionsLoading && (!decisionPoints || decisionPoints.length === 0) && architectureResult" x-cloak class="py-8 text-center space-y-2">
+        <p class="text-sm text-muted-foreground">No decisions found. Ensure elements have Build/Buy, Deployment Model, and Availability properties set in Step 2.</p>
+    </div>
+
+    {# ── Reasoning mode: Gap Analysis ───────────────────────────── #}
+    <div x-show="!domainsPopulated && reasoningGaps.length > 0" x-cloak class="space-y-4">
+        {# Summary #}
+        <div class="rounded-md border border-border bg-background px-4 py-3">
+            <div class="flex items-center gap-4 text-sm">
+                <span class="font-medium" x-text="reasoningGaps.length + ' gaps detected'"></span>
+                <span class="text-muted-foreground"
+                      x-text="reasoningGaps.filter(function(g){return g.severity === 'critical';}).length + ' critical, ' +
+                              reasoningGaps.filter(function(g){return g.severity === 'high';}).length + ' high'"></span>
+            </div>
+        </div>
+
+        <template x-for="(gap, idx) in reasoningGaps" :key="gap.id || idx">
+            <div class="rounded-md border overflow-hidden"
+                 :class="{
+                     'border-red-500/40': gap.severity === 'critical',
+                     'border-amber-500/40': gap.severity === 'high',
+                     'border-border': gap.severity !== 'critical' && gap.severity !== 'high'
+                 }">
+                <div class="px-4 py-3 flex items-center justify-between gap-3">
+                    <div class="min-w-0 flex-1">
+                        <div class="flex items-center gap-2">
+                            <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium"
+                                  :class="{
+                                      'bg-red-500/10 text-red-600 border border-red-500/30': gap.severity === 'critical',
+                                      'bg-amber-500/10 text-amber-600 border border-amber-500/30': gap.severity === 'high',
+                                      'bg-blue-500/10 text-blue-600 border border-blue-500/30': gap.severity === 'medium',
+                                      'bg-zinc-500/10 text-zinc-600 border border-zinc-500/30': true
+                                  }"
+                                  x-text="gap.severity || 'unknown'"></span>
+                            <span class="text-sm font-medium truncate" x-text="gap.title || gap.name || gap.gap_type || 'Gap'"></span>
+                        </div>
+                        <p class="text-xs text-muted-foreground mt-0.5" x-text="gap.description || ''"></p>
+                    </div>
+                    <template x-if="gap.capability_name">
+                        <span class="text-xs text-muted-foreground flex-shrink-0" x-text="gap.capability_name"></span>
+                    </template>
+                </div>
+            </div>
+        </template>
+    </div>
+
+    {# Reasoning mode: empty gaps state #}
+    <div x-show="!domainsPopulated && reasoningGaps.length === 0 && !decisionsLoading && reasoningLandscape.length > 0" x-cloak class="py-8 text-center space-y-2">
+        <p class="text-sm text-muted-foreground">No gaps detected. Your capability coverage looks complete.</p>
+    </div>
+
+    {# ── LLM Architecture Options — generate + select variants ─────── #}
+    <div x-show="domainsPopulated || architectureResult" x-cloak class="rounded-xl border border-border bg-card overflow-hidden">
+        <button type="button" @click="expandedLayers._variants = !expandedLayers._variants"
+                class="w-full flex items-center justify-between px-5 py-4 hover:bg-muted/30 transition-colors">
+            <div class="flex items-center gap-3">
+                <span class="flex items-center justify-center w-8 h-8 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-600">
+                    <i data-lucide="git-branch" class="w-4 h-4" aria-hidden="true"></i>
+                </span>
+                <div class="text-left">
+                    <p class="text-sm font-semibold text-foreground">Architecture Options</p>
+                    <p class="text-xs text-muted-foreground">
+                        <span x-show="!llmVariants">LLM-generated build/buy, deployment, and approach trade-offs</span>
+                        <span x-show="llmVariants" x-text="(llmVariants && llmVariants.decision_points ? llmVariants.decision_points.length : 0) + ' decision points — ' + Object.keys(selectedVariants).length + ' selected'"></span>
+                    </p>
+                </div>
+            </div>
+            <div class="flex items-center gap-2">
+                <span x-show="!llmVariants && !llmVariantsLoading"
+                      @click.stop="generateLlmVariants()"
+                      role="button" tabindex="0"
+                      class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors cursor-pointer">
+                    <i data-lucide="sparkles" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                    Generate Options
+                </span>
+                <span x-show="llmVariantsLoading" class="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <span class="animate-spin h-3.5 w-3.5 border-2 border-primary border-t-transparent rounded-full"></span>
+                    Generating...
+                </span>
+                <span x-show="llmVariants"
+                     @click.stop="llmVariants = null; selectedVariants = {}; expandedLayers._variants = true"
+                     role="button" tabindex="0"
+                     class="text-[11px] text-muted-foreground hover:text-foreground cursor-pointer">Regenerate</span>
+                <svg class="w-3.5 h-3.5 text-muted-foreground transition-transform"
+                     :class="expandedLayers._variants ? 'rotate-180' : ''"
+                     fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+                </svg>
+            </div>
+        </button>
+
+        <div x-show="expandedLayers._variants && llmVariants" x-cloak class="border-t border-border divide-y divide-border">
+            <template x-for="dp in (llmVariants && llmVariants.decision_points ? llmVariants.decision_points : [])" :key="dp.id">
+                <div class="px-5 py-4 space-y-3">
+                    {# Decision point header #}
+                    <div class="flex items-start justify-between gap-4">
+                        <div>
+                            <p class="text-sm font-semibold text-foreground" x-text="dp.name"></p>
+                            <p class="text-xs text-muted-foreground mt-0.5" x-text="dp.description"></p>
+                            <div class="flex flex-wrap gap-1 mt-1.5" x-show="dp.affected_elements && dp.affected_elements.length">
+                                <template x-for="el in (dp.affected_elements || []).slice(0, 4)" :key="el">
+                                    <span class="inline-flex px-1.5 py-0.5 rounded bg-muted text-[10px] text-muted-foreground" x-text="el"></span>
+                                </template>
+                            </div>
+                        </div>
+                        <span x-show="selectedVariants[dp.id]"
+                              class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-600 border border-emerald-500/30 text-[10px] font-medium flex-shrink-0">
+                            <i data-lucide="check" class="w-3 h-3" aria-hidden="true"></i>
+                            <span x-text="selectedVariants[dp.id] && selectedVariants[dp.id].option_name"></span>
+                        </span>
+                    </div>
+
+                    {# Option cards #}
+                    <div class="grid gap-3" :class="dp.options && dp.options.length >= 3 ? 'grid-cols-1 sm:grid-cols-3' : 'grid-cols-1 sm:grid-cols-2'">
+                        <template x-for="opt in (dp.options || [])" :key="opt.id">
+                            <div class="rounded-lg border transition-colors p-3 space-y-2"
+                                 :class="selectedVariants[dp.id] && selectedVariants[dp.id].option_id === opt.id
+                                     ? 'border-emerald-500/50 bg-emerald-500/5'
+                                     : 'border-border bg-background hover:border-primary/40'">
+                                <div class="flex items-start justify-between gap-2">
+                                    <div>
+                                        <p class="text-xs font-semibold text-foreground" x-text="opt.name"></p>
+                                        <span class="inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium mt-0.5"
+                                              :class="{
+                                                'bg-blue-500/10 text-blue-600': opt.approach === 'build',
+                                                'bg-emerald-500/10 text-emerald-600': opt.approach === 'buy',
+                                                'bg-amber-500/10 text-amber-600': opt.approach === 'extend' || opt.approach === 'hybrid',
+                                                'bg-purple-500/10 text-purple-600': opt.approach === 'hybrid',
+                                                'bg-zinc-500/10 text-zinc-600': true
+                                              }"
+                                              x-text="opt.approach || 'custom'"></span>
+                                    </div>
+                                    <button type="button" @click="selectVariant(dp.id, opt.id, opt.name, llmVariants.decision_points)"
+                                            :disabled="variantSelecting === dp.id"
+                                            :class="selectedVariants[dp.id] && selectedVariants[dp.id].option_id === opt.id
+                                                ? 'bg-emerald-600 text-white'
+                                                : 'bg-primary text-primary-foreground hover:bg-primary/90'"
+                                            class="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium transition-colors disabled:opacity-50 flex-shrink-0">
+                                        <template x-if="variantSelecting === dp.id">
+                                            <span class="animate-spin h-3 w-3 border border-current border-t-transparent rounded-full"></span>
+                                        </template>
+                                        <template x-if="variantSelecting !== dp.id">
+                                            <span x-text="selectedVariants[dp.id] && selectedVariants[dp.id].option_id === opt.id ? '✓ Selected' : 'Select'"></span>
+                                        </template>
+                                    </button>
+                                </div>
+                                <p class="text-[11px] text-muted-foreground" x-text="opt.description"></p>
+                                {# Impact badges #}
+                                <div x-show="opt.impact" class="flex flex-wrap gap-1">
+                                    <span x-show="opt.impact && opt.impact.timeline" class="inline-flex px-1.5 py-0.5 rounded bg-muted text-[10px] text-foreground"
+                                          x-text="'⏱ ' + opt.impact.timeline"></span>
+                                    <span x-show="opt.impact && opt.impact.cost_annual" class="inline-flex px-1.5 py-0.5 rounded bg-muted text-[10px] text-foreground"
+                                          x-text="opt.impact.cost_annual"></span>
+                                    <span x-show="opt.impact && opt.impact.complexity"
+                                          class="inline-flex px-1.5 py-0.5 rounded text-[10px]"
+                                          :class="{
+                                            'bg-red-500/10 text-red-600': opt.impact.complexity === 'high',
+                                            'bg-amber-500/10 text-amber-600': opt.impact.complexity === 'medium',
+                                            'bg-emerald-500/10 text-emerald-600': opt.impact.complexity === 'low'
+                                          }"
+                                          x-text="opt.impact.complexity + ' complexity'"></span>
+                                </div>
+                                {# Risks #}
+                                <div x-show="opt.risks && opt.risks.length > 0" class="space-y-1">
+                                    <template x-for="risk in (opt.risks || [])" :key="risk.name">
+                                        <div class="flex items-start gap-1.5">
+                                            <span class="inline-flex px-1 py-0.5 rounded text-[9px] font-medium flex-shrink-0 mt-px"
+                                                  :class="{
+                                                    'bg-red-500/10 text-red-600': risk.likelihood === 'high' || risk.impact === 'high',
+                                                    'bg-amber-500/10 text-amber-600': risk.likelihood === 'medium' || risk.impact === 'medium',
+                                                    'bg-zinc-500/10 text-zinc-600': true
+                                                  }"
+                                                  x-text="risk.likelihood + '/' + risk.impact"></span>
+                                            <p class="text-[10px] text-muted-foreground" x-text="risk.name"></p>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </template>
+        </div>
+    </div>
+
+    {# Decision point cards (domain mode — element property decisions) #}
+    <div x-show="decisionPoints && decisionPoints.length > 0" x-cloak class="space-y-4">
+        {# Summary #}
+        <div class="rounded-md border border-border bg-background px-4 py-3">
+            <div class="flex items-center gap-4 text-sm">
+                <span class="font-medium" x-text="decisionPoints.length + ' decision categories'"></span>
+                <span class="text-muted-foreground" x-text="'across ' + (decisionsTotalElements || 0) + ' elements'"></span>
+            </div>
+        </div>
+
+        <template x-for="dp in decisionPoints" :key="dp.type">
+            <div class="rounded-md border border-border">
+                <div class="px-4 py-3 bg-muted/30 border-b border-border">
+                    <div class="flex items-center justify-between">
+                        <h3 class="text-sm font-semibold text-foreground" x-text="dp.name"></h3>
+                        <span class="text-xs text-muted-foreground" x-text="dp.elements.length + ' element' + (dp.elements.length !== 1 ? 's' : '')"></span>
+                    </div>
+                </div>
+                <div class="divide-y divide-border">
+                    <template x-for="el in dp.elements" :key="el.id">
+                        <div class="px-4 py-3 flex items-center justify-between gap-4">
+                            <div class="min-w-0 flex-1">
+                                <div class="flex items-center gap-2">
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium"
+                                          :class="getDomainBadgeClass(el.acm_domain)"
+                                          x-text="el.acm_domain"></span>
+                                    <span class="text-sm font-medium truncate" x-text="el.name"></span>
+                                    <span class="text-[10px] text-muted-foreground" x-text="el.type"></span>
+                                </div>
+                                <p class="text-xs text-muted-foreground mt-0.5 truncate" x-text="el.description"></p>
+                            </div>
+                            <div class="flex items-center gap-2 flex-shrink-0">
+                                <span class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold"
+                                      :class="{
+                                          'bg-blue-500/10 text-blue-600 border border-blue-500/30': el.value === 'build',
+                                          'bg-emerald-500/10 text-emerald-600 border border-emerald-500/30': el.value === 'buy' || el.value === 'SaaS',
+                                          'bg-amber-500/10 text-amber-600 border border-amber-500/30': el.value === 'extend-existing',
+                                          'bg-purple-500/10 text-purple-600 border border-purple-500/30': el.value === 'cloud-native' || el.value === 'cloud-hosted',
+                                          'bg-cyan-500/10 text-cyan-600 border border-cyan-500/30': el.value === 'on-prem' || el.value === 'hybrid',
+                                          'bg-zinc-500/10 text-zinc-600 border border-zinc-500/30': true
+                                      }"
+                                      x-text="el.value"></span>
+                                <template x-if="el.detail">
+                                    <span class="text-xs text-muted-foreground max-w-[150px] truncate" x-text="el.detail"></span>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+                {# Decision summary per group #}
+                <div class="px-4 py-2 bg-muted/20 border-t border-border">
+                    <div class="flex flex-wrap gap-2 text-[10px]">
+                        <template x-for="val in [...new Set(dp.elements.map(e => e.value))]" :key="val">
+                            <span class="inline-flex items-center gap-1 text-muted-foreground">
+                                <span class="font-semibold" x-text="dp.elements.filter(e => e.value === val).length"></span>
+                                <span x-text="val"></span>
+                            </span>
+                        </template>
+                    </div>
+                </div>
+            </div>
+        </template>
+    </div>
+</div>

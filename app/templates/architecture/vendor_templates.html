@@ -1,0 +1,51 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'components/page_header.html' import page_header %}
+
+{% block title %}Vendor Templates{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-background">
+    {{ page_header(title='Vendor Stack Templates', description='Pre-configured vendor technology stacks for rapid deployment') }}
+
+    <!-- Templates Grid -->
+    <div class="space-y-6">
+        {% if templates %}
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {% for template in templates %}
+            <div class="bg-card rounded-lg border border-border p-6 hover:shadow-lg transition-shadow">
+                <div class="flex items-start justify-between mb-4">
+                    <div class="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center">
+                        <i data-lucide="package" class="w-6 h-6 text-primary" aria-hidden="true"></i>
+                    </div>
+                    <span class="px-2 py-1 rounded-full text-xs font-medium bg-success/10 text-success">
+                        {{ template.status or 'Active' }}
+                    </span>
+                </div>
+                <h3 class="text-lg font-semibold text-foreground mb-2">{{ template.name }}</h3>
+                <p class="text-sm text-muted-foreground mb-4">{{ template.description or 'No description available' }}</p>
+                <div class="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>{{ template.vendor_name or 'Unknown Vendor' }}</span>
+                    <span>{{ template.technology_stack or 'Mixed' }}</span>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="bg-card rounded-lg border border-border p-12 text-center">
+            <div class="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
+                <i data-lucide="package-x" class="w-8 h-8 text-muted-foreground" aria-hidden="true"></i>
+            </div>
+            <h3 class="text-lg font-semibold text-foreground mb-2">No Vendor Templates Available</h3>
+            <p class="text-muted-foreground mb-4">Vendor stack templates will appear here once they are created.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+    // Initialize Lucide icons
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
+</script>
+{% endblock %}

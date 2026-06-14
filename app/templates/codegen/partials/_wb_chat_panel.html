@@ -1,0 +1,350 @@
+{# app/templates/codegen/partials/_wb_chat_panel.html
+   Monaco NL editing chat panel — Alpine.js component.
+   Requires: window.SOLUTION_ID, window.CSRF_TOKEN
+#}
+<div
+  id="wb-chat-panel"
+  x-data="{ ...wbChatPanel(), chatWide: false }"
+  x-init="init()"
+  x-show="isOpen"
+  x-transition:enter="transition ease-out duration-200"
+  x-transition:enter-start="opacity-0 translate-x-4"
+  x-transition:enter-end="opacity-100 translate-x-0"
+  class="flex flex-col bg-[var(--color-surface)] border-l border-[var(--color-border)] h-full transition-all duration-200"
+  :style="chatWide ? 'width:680px; min-width:0' : 'width:400px; min-width:280px; max-width:720px'"
+  @keydown.ctrl.i.window.prevent="isOpen = !isOpen"
+  @keydown.meta.i.window.prevent="isOpen = !isOpen"
+  @wb-chat-toggle.window="isOpen = !isOpen"
+>
+  {# Header #}
+  <div class="flex items-center justify-between px-3 py-2 border-b border-[var(--color-border)] bg-[var(--color-surface-secondary)]">
+    <div class="flex items-center gap-2">
+      <svg class="w-4 h-4 text-[var(--color-primary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-3 3v-3z" />
+      </svg>
+      <span class="text-xs font-semibold text-[var(--color-text)]">AI Assistant</span>
+      <span
+        class="text-xs text-[var(--color-muted)] max-w-[160px] truncate"
+        x-text="currentFile ? 'Context: ' + currentFile.split('/').pop() : 'No file open'"
+      ></span>
+    </div>
+    <div class="flex items-center gap-1">
+      <!-- Wide/narrow toggle -->
+      <button
+        @click="chatWide = !chatWide"
+        class="text-[var(--color-muted)] hover:text-[var(--color-text)] p-0.5 rounded"
+        :title="chatWide ? 'Narrow' : 'Expand'"
+      >
+        <svg class="w-3.5 h-3.5 transition-transform" :class="chatWide ? 'rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M11 19l-7-7 7-7m8 14l-7-7 7-7"/>
+        </svg>
+      </button>
+      <button
+        @click="isOpen = false"
+        class="text-[var(--color-muted)] hover:text-[var(--color-text)] p-0.5"
+      >
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  {# Message list #}
+  <div
+    class="flex-1 overflow-y-auto px-3 py-3 space-y-3 text-sm"
+    id="wb-chat-messages"
+    x-ref="messageList"
+  >
+    <template x-if="messages.length === 0">
+      <div class="text-center text-[var(--color-muted)] mt-8">
+        <p class="font-medium text-[var(--color-text)] mb-1">Ask about this code</p>
+        <p class="text-xs">Describe a change, ask for an explanation, or request new functionality.</p>
+        <div class="mt-4 space-y-1 text-xs text-left">
+          <p class="text-[var(--color-muted)]">Try:</p>
+          <button @click="setInput('Add pagination to the list endpoint')" class="block w-full text-left px-2 py-1.5 rounded bg-[var(--color-surface-secondary)] hover:bg-[var(--color-surface-tertiary)] text-[var(--color-text)]">"Add pagination to the list endpoint"</button>
+          <button @click="setInput('Add a status field with draft/active/archived states')" class="block w-full text-left px-2 py-1.5 rounded bg-[var(--color-surface-secondary)] hover:bg-[var(--color-surface-tertiary)] text-[var(--color-text)]">"Add a status field with draft/active/archived states"</button>
+          <button @click="setInput('Explain what this file does')" class="block w-full text-left px-2 py-1.5 rounded bg-[var(--color-surface-secondary)] hover:bg-[var(--color-surface-tertiary)] text-[var(--color-text)]">"Explain what this file does"</button>
+        </div>
+      </div>
+    </template>
+
+    <template x-for="(msg, idx) in messages" :key="idx">
+      <div :class="msg.role === 'user' ? 'flex justify-end' : 'flex justify-start'">
+        <div
+          :class="msg.role === 'user'
+            ? 'bg-[var(--color-primary)] text-primary-foreground rounded-xl rounded-br-sm max-w-[85%]'
+            : 'bg-[var(--color-surface-secondary)] text-[var(--color-text)] rounded-xl rounded-bl-sm max-w-[95%] w-full'"
+          class="px-3 py-2 text-xs"
+        >
+          <p x-text="msg.content" class="whitespace-pre-wrap break-words"></p>
+
+          {# Diff previews #}
+          <template x-if="msg.patches && msg.patches.length > 0">
+            <div class="mt-2 space-y-2">
+              <template x-for="(patch, pi) in msg.patches" :key="pi">
+                <div class="rounded-md overflow-hidden border border-[var(--color-border)]">
+                  <div class="flex items-center justify-between px-2 py-1 bg-[var(--color-surface-tertiary)] text-[var(--color-muted)] font-mono">
+                    <span class="text-[10px] truncate" x-text="patch.file"></span>
+                    <template x-if="patch.warnings && patch.warnings.length > 0">
+                      <span class="text-amber-500 text-[10px]">⚠ security warning</span>
+                    </template>
+                  </div>
+                  <pre class="p-2 text-[10px] font-mono overflow-x-auto max-h-40 bg-gray-950 text-foreground/90" x-text="patch.diff.substring(0, 800) + (patch.diff.length > 800 ? '\n...' : '')"></pre>
+                  <div class="flex gap-1 p-1.5 bg-[var(--color-surface-tertiary)]">
+                    <button
+                      @click="applyPatch(msg, patch, pi)"
+                      :disabled="patch.applied"
+                      :class="patch.applied ? 'bg-emerald-500 cursor-default' : 'bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)]'"
+                      class="px-2.5 py-1 text-primary-foreground text-[10px] font-semibold rounded"
+                      x-text="patch.applied ? '✓ Applied' : 'Accept'"
+                    ></button>
+                    <button
+                      @click="msg.patches.splice(pi, 1)"
+                      :disabled="patch.applied"
+                      class="px-2.5 py-1 bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text)] text-[10px] rounded hover:bg-destructive/5 hover:border-destructive/30 hover:text-destructive"
+                    >Reject</button>
+                  </div>
+                </div>
+              </template>
+              <template x-if="msg.patches.length > 1 && !msg.allApplied">
+                <button
+                  @click="applyAllPatches(msg)"
+                  class="w-full px-2 py-1.5 bg-emerald-600 hover:bg-green-700 text-primary-foreground text-[10px] font-semibold rounded"
+                  x-text="`Accept All (${msg.patches.length} files)`"
+                ></button>
+              </template>
+            </div>
+          </template>
+
+          {# Streaming indicator #}
+          <template x-if="msg.streaming">
+            <div class="flex gap-0.5 mt-1">
+              <span class="w-1.5 h-1.5 bg-[var(--color-primary)] rounded-full animate-bounce" style="animation-delay:0ms"></span>
+              <span class="w-1.5 h-1.5 bg-[var(--color-primary)] rounded-full animate-bounce" style="animation-delay:150ms"></span>
+              <span class="w-1.5 h-1.5 bg-[var(--color-primary)] rounded-full animate-bounce" style="animation-delay:300ms"></span>
+            </div>
+          </template>
+        </div>
+      </div>
+    </template>
+  </div>
+
+  {# Input area #}
+  <div class="border-t border-[var(--color-border)] p-2">
+    <div class="flex gap-1.5 items-end">
+      <textarea
+        x-model="input"
+        @keydown.enter.prevent="if (!$event.shiftKey) send()"
+        @keydown.shift.enter.prevent="input += '\n'"
+        class="flex-1 resize-none rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-secondary)] text-[var(--color-text)] text-xs px-2.5 py-2 focus:outline-none focus:border-[var(--color-primary)] min-h-[60px] max-h-[160px]"
+        placeholder="Ask about this code or request a change... (Enter to send, Shift+Enter for newline)"
+        :disabled="isStreaming"
+        x-ref="input"
+      ></textarea>
+      <button
+        @click="send()"
+        :disabled="!input.trim() || isStreaming"
+        class="p-2 rounded-lg text-primary-foreground flex-shrink-0"
+        :class="input.trim() && !isStreaming ? 'bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)]' : 'bg-[var(--color-muted)] cursor-not-allowed'"
+      >
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
+        </svg>
+      </button>
+    </div>
+    <p class="text-[10px] text-[var(--color-muted)] mt-1 px-0.5">
+      Ctrl+I / ⌘I to toggle · Shift+Enter for newline
+    </p>
+  </div>
+</div>
+
+<script>
+function wbChatPanel() {
+  return {
+    isOpen: false,
+    input: '',
+    messages: [],
+    isStreaming: false,
+    currentFile: null,
+    solutionId: window.SOLUTION_ID || null,
+
+    init() {
+      this.loadHistory();
+      // Listen for file context changes from editor
+      window.addEventListener('wb:file-changed', (e) => {
+        this.currentFile = e.detail?.path || null;
+      });
+    },
+
+    setInput(text) { this.input = text; this.$refs.input?.focus(); },
+
+    async loadHistory() {
+      if (!this.solutionId) return;
+      try {
+        const r = await fetch(`/solutions/${this.solutionId}/codegen/chat-edit/history?limit=40`);
+        if (r.ok) {
+          const history = await r.json();
+          this.messages = history.map(m => ({
+            role: m.role,
+            content: m.content,
+            patches: m.patches || [],
+            streaming: false,
+            allApplied: false,
+            dbId: m.id,
+          }));
+          this.$nextTick(() => this.scrollToBottom());
+        }
+      } catch (e) { /* Non-critical */ }
+    },
+
+    async send() {
+      const instruction = this.input.trim();
+      if (!instruction || this.isStreaming) return;
+
+      // Add user message
+      this.messages.push({ role: 'user', content: instruction, patches: [], streaming: false });
+      this.input = '';
+      this.isStreaming = true;
+
+      // Add streaming assistant message
+      const assistantMsg = { role: 'assistant', content: '', patches: [], streaming: true, allApplied: false };
+      this.messages.push(assistantMsg);
+      this.$nextTick(() => this.scrollToBottom());
+
+      try {
+        const currentContent = window.wbGetCurrentFileContent?.() || '';
+        const payload = {
+          instruction,
+          context: {
+            current_file: this.currentFile || '',
+            current_file_content: currentContent,
+            related_files: [],
+          },
+          conversation_history: this.messages.slice(-16, -1).map(m => ({
+            role: m.role,
+            content: m.content,
+          })),
+        };
+
+        const resp = await fetch(`/solutions/${this.solutionId}/codegen/chat-edit`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': window.CSRF_TOKEN || '',
+          },
+          body: JSON.stringify(payload),
+        });
+
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({}));
+          assistantMsg.content = err.error || 'Request failed.';
+          assistantMsg.streaming = false;
+          this.isStreaming = false;
+          return;
+        }
+
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let status = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const events = buffer.split('\n\n');
+          buffer = events.pop() || '';
+
+          for (const eventBlock of events) {
+            const lines = eventBlock.split('\n');
+            const eventType = lines.find(l => l.startsWith('event:'))?.slice(6).trim();
+            const dataLine = lines.find(l => l.startsWith('data:'))?.slice(5).trim();
+            if (!dataLine) continue;
+
+            try {
+              const data = JSON.parse(dataLine);
+              if (eventType === 'thinking') {
+                assistantMsg.content = data.status || 'Thinking...';
+              } else if (eventType === 'patch') {
+                data.applied = false;
+                assistantMsg.patches.push(data);
+                assistantMsg.content = `Generating ${assistantMsg.patches.length} file change(s)...`;
+              } else if (eventType === 'complete') {
+                assistantMsg.content = data.summary || 'Done.';
+                if (data.warnings?.length > 0) {
+                  assistantMsg.content += '\n\n⚠ Warnings:\n' + data.warnings.join('\n');
+                }
+              } else if (eventType === 'error') {
+                assistantMsg.content = '❌ ' + (data.message || 'Unknown error');
+              }
+            } catch (e) { /* skip malformed */ }
+          }
+          this.$nextTick(() => this.scrollToBottom());
+        }
+      } catch (err) {
+        assistantMsg.content = '❌ Network error: ' + err.message;
+      } finally {
+        assistantMsg.streaming = false;
+        this.isStreaming = false;
+        this.$nextTick(() => this.scrollToBottom());
+      }
+    },
+
+    async applyPatch(msg, patch, pi) {
+      if (patch.applied) return;
+      try {
+        const r = await fetch(`/solutions/${this.solutionId}/codegen/chat-edit/apply-patch`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': window.CSRF_TOKEN || '',
+          },
+          body: JSON.stringify({
+            file: patch.file,
+            diff: patch.diff,
+            message_id: msg.dbId || null,
+          }),
+        });
+        const result = await r.json();
+        if (r.ok) {
+          patch.applied = true;
+          // Refresh editor if file is open
+          window.wbRefreshFile?.(patch.file);
+          // Check if all patches are applied
+          msg.allApplied = msg.patches.every(p => p.applied);
+        } else {
+          if (result.requires_force) {
+            if (confirm('⚠ Security warning: ' + (result.warnings || []).join('\n') + '\n\nApply anyway?')) {
+              const r2 = await fetch(`/solutions/${this.solutionId}/codegen/chat-edit/apply-patch`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': window.CSRF_TOKEN || '' },
+                body: JSON.stringify({ file: patch.file, diff: patch.diff, force: true }),
+              });
+              if (r2.ok) { patch.applied = true; window.wbRefreshFile?.(patch.file); }
+            }
+          } else {
+            alert('Failed to apply patch: ' + (result.error || 'Unknown error'));
+          }
+        }
+      } catch (e) {
+        alert('Network error: ' + e.message);
+      }
+    },
+
+    async applyAllPatches(msg) {
+      for (let i = 0; i < msg.patches.length; i++) {
+        if (!msg.patches[i].applied) {
+          await this.applyPatch(msg, msg.patches[i], i);
+        }
+      }
+    },
+
+    scrollToBottom() {
+      const el = this.$refs.messageList;
+      if (el) el.scrollTop = el.scrollHeight;
+    },
+  };
+}
+</script>

@@ -1,0 +1,104 @@
+{# app/forgot-password/page.tsx.j2 — Password reset request form #}
+"use client"
+
+import { useState, FormEvent } from "react"
+import Link from "next/link"
+import { Loader2, ArrowLeft, CheckCircle } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { toast } from "sonner"
+
+{% if base_path %}
+const BASE_PATH = "{{ base_path }}"
+{% else %}
+const BASE_PATH = ""
+{% endif %}
+
+export default function ForgotPasswordPage() {
+  const [email, setEmail] = useState("")
+  const [loading, setLoading] = useState(false)
+  const [sent, setSent] = useState(false)
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    if (!email) return
+    setLoading(true)
+    try {
+      await fetch(BASE_PATH + "/api/auth/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      })
+      // Always show success — don't leak whether email exists
+      setSent(true)
+    } catch {
+      toast.error("Connection error", { description: "Could not reach the server" })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (sent) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background p-4">
+        <Card className="w-full max-w-sm text-center">
+          <CardContent className="pt-8 pb-6 space-y-4">
+            <CheckCircle className="h-12 w-12 text-green-500 mx-auto" />
+            <h2 className="text-lg font-semibold">Check your email</h2>
+            <p className="text-sm text-muted-foreground">
+              If an account exists for <strong>{email}</strong>, you will receive
+              a password reset link within a few minutes.
+            </p>
+            <Button asChild variant="outline" className="w-full">
+              <Link href={BASE_PATH + "/login"}>
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Back to login
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-background p-4">
+      <Card className="w-full max-w-sm">
+        <CardHeader className="text-center">
+          <CardTitle className="text-2xl font-bold">Reset password</CardTitle>
+          <CardDescription>
+            Enter your email and we'll send you a reset link
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                placeholder="name@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                autoComplete="email"
+                required
+              />
+            </div>
+            <Button type="submit" className="w-full" disabled={loading}>
+              {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {loading ? "Sending..." : "Send reset link"}
+            </Button>
+            <Button asChild variant="ghost" className="w-full">
+              <Link href={BASE_PATH + "/login"}>
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Back to login
+              </Link>
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}

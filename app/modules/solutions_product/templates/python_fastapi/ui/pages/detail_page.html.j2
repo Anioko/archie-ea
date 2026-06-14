@@ -1,0 +1,204 @@
+{# detail_page.html.j2 — Entity detail page with tabs, state machine actions, related entities.
+   Context (from ARCHIE): entity (dict), state_machines #}
+{% raw %}{% extends "layout.html" %}
+{% from "_components.html" import status_badge %}
+
+{% block title %}{% endraw %}{{ entity.name_display }}{% raw %} Detail{% endblock %}
+
+{% block breadcrumb %}
+<nav class="flex items-center gap-1.5 text-sm text-zinc-500">
+    <a href="/" class="hover:text-zinc-700">Home</a>
+    <span>/</span>
+    <a href="/{% endraw %}{{ entity.name_snake }}{% raw %}s" class="hover:text-zinc-700">{% endraw %}{{ entity.name_display }}{% raw %}</a>
+    <span>/</span>
+    <span class="text-zinc-900 font-medium" x-data x-text="'#' + (new URLSearchParams(window.location.search).get('id') || window.location.pathname.split('/').pop())">Detail</span>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div x-data="detailPage()" x-init="init()">
+    {# Loading #}
+    <div x-show="loading" class="py-12 text-center">
+        <div class="w-6 h-6 border-2 border-zinc-200 border-t-blue-600 rounded-full animate-spin mx-auto"></div>
+    </div>
+
+    <div x-show="!loading && item" x-cloak>
+        {# Header #}
+        <div class="flex items-center justify-between mb-6">
+            <div class="flex items-center gap-3">
+                <a href="/{% endraw %}{{ entity.name_snake }}{% raw %}s" class="text-zinc-400 hover:text-zinc-600">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+                </a>
+                <h1 class="text-xl font-semibold text-zinc-900">{% endraw %}{{ entity.name_display }}{% raw %}</h1>
+                <span class="text-zinc-400 text-lg" x-text="'#' + item.id"></span>
+{% endraw %}
+{% if entity.status_field %}
+{% raw %}
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium border"
+                      :class="statusColor(item.{% endraw %}{{ entity.status_field }}{% raw %})"
+                      x-text="(item.{% endraw %}{{ entity.status_field }}{% raw %} || 'N/A').replace(/_/g, ' ')"></span>
+{% endraw %}
+{% endif %}
+{% raw %}
+            </div>
+            <div class="flex items-center gap-2">
+{% endraw %}
+{% if entity.transitions %}
+{% raw %}
+                <template x-for="t in availableTransitions()" :key="t.trigger">
+                    <button @click="executeTransition(t.trigger)"
+                            class="px-3 py-1.5 text-sm font-medium rounded-md bg-blue-600/10 text-blue-600 border border-blue-600/30 hover:bg-blue-600/20 transition"
+                            x-text="t.trigger.replace(/_/g, ' ')"></button>
+                </template>
+{% endraw %}
+{% endif %}
+{% raw %}
+                <a :href="'/{% endraw %}{{ entity.name_snake }}{% raw %}s/' + item.id + '/edit'"
+                   class="px-3 py-1.5 text-sm font-medium rounded-md border border-zinc-200 text-zinc-700 hover:bg-zinc-50 transition">Edit</a>
+                <button @click="showDeleteModal = true"
+                        class="px-3 py-1.5 text-sm font-medium rounded-md text-red-600 border border-red-200 hover:bg-red-50 transition">Delete</button>
+            </div>
+        </div>
+
+        {# Tabs #}
+{% endraw %}
+{% set sections = entity.view_sections if entity.view_sections else ['summary'] %}
+{% raw %}
+        <div class="border-b border-zinc-200 mb-6">
+            <nav class="flex gap-1 -mb-px">
+{% endraw %}
+{% for section in sections %}
+                <button @click="activeTab = '{{ section }}'"
+                        :class="activeTab === '{{ section }}' ? 'border-blue-600 text-blue-600' : 'border-transparent text-zinc-500 hover:text-zinc-700'"
+                        class="px-4 py-2.5 text-sm font-medium border-b-2 transition-colors">{{ section | replace('_', ' ') | title }}</button>
+{% endfor %}
+{% raw %}
+            </nav>
+        </div>
+
+        {# Summary tab #}
+        <div x-show="activeTab === 'summary'">
+            <div class="bg-white border border-zinc-200 rounded-lg divide-y divide-zinc-100">
+{% endraw %}
+{% for field in entity.fields %}
+{% if not field.is_auto %}
+                <div class="px-6 py-3 flex items-start">
+                    <dt class="w-48 shrink-0 text-sm font-medium text-zinc-500">{{ field.display_name }}</dt>
+                    <dd class="text-sm text-zinc-900">
+{% if field.name == entity.status_field %}
+                        {% raw %}<span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium border"
+                              :class="statusColor(item.{% endraw %}{{ field.name }}{% raw %})"
+                              x-text="(item.{% endraw %}{{ field.name }}{% raw %} || 'N/A').replace(/_/g, ' ')"></span>{% endraw %}
+{% elif field.type == 'boolean' %}
+                        {% raw %}<span :class="item.{% endraw %}{{ field.name }}{% raw %} ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-zinc-50 text-zinc-600 border-zinc-200'"
+                              class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium border"
+                              x-text="item.{% endraw %}{{ field.name }}{% raw %} ? 'Yes' : 'No'"></span>{% endraw %}
+{% elif field.is_fk %}
+                        {% raw %}<a :href="'{% endraw %}{{ field.fk_api_path | replace('/api/', '/') }}{% raw %}/' + item.{% endraw %}{{ field.name }}{% raw %}'"
+                           class="text-blue-600 hover:underline"
+                           x-text="item.{% endraw %}{{ field.name }}{% raw %} || '—'"></a>{% endraw %}
+{% elif field.name.endswith('_at') or field.name.endswith('_date') %}
+                        {% raw %}<span x-text="item.{% endraw %}{{ field.name }}{% raw %} ? new Date(item.{% endraw %}{{ field.name }}{% raw %}).toLocaleString() : '—'"></span>{% endraw %}
+{% else %}
+                        {% raw %}<span x-text="item.{% endraw %}{{ field.name }}{% raw %} ?? '—'"></span>{% endraw %}
+{% endif %}
+                    </dd>
+                </div>
+{% endif %}
+{% endfor %}
+{% raw %}
+            </div>
+
+            {# Timestamps #}
+            <div class="mt-4 flex gap-6 text-xs text-zinc-400">
+                <span x-show="item.created_at" x-text="'Created: ' + new Date(item.created_at).toLocaleString()"></span>
+                <span x-show="item.updated_at" x-text="'Updated: ' + new Date(item.updated_at).toLocaleString()"></span>
+            </div>
+        </div>
+
+{% endraw %}
+{% for section in sections %}
+{% if section != 'summary' %}
+        <div {% raw %}x-show="activeTab === '{% endraw %}{{ section }}{% raw %}'"{% endraw %}>
+            <div class="bg-white border border-zinc-200 rounded-lg p-6 text-center text-sm text-zinc-500">
+                {{ section | replace('_', ' ') | title }} data will appear here when available.
+            </div>
+        </div>
+{% endif %}
+{% endfor %}
+{% raw %}
+    </div>
+
+    {# Not found #}
+    <div x-show="!loading && !item" x-cloak class="text-center py-16">
+        <p class="text-sm font-medium text-zinc-900">Record not found</p>
+        <a href="/{% endraw %}{{ entity.name_snake }}{% raw %}s" class="mt-4 inline-block text-sm text-blue-600 hover:underline">Back to list</a>
+    </div>
+
+    {# Delete modal #}
+    <div x-show="showDeleteModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center" @keydown.escape.window="showDeleteModal = false">
+        <div class="absolute inset-0 bg-black/20" @click="showDeleteModal = false"></div>
+        <div class="relative bg-white rounded-xl shadow-xl p-6 max-w-sm w-full mx-4 border border-zinc-200" @click.stop>
+            <h3 class="text-base font-semibold text-zinc-900">Delete this {% endraw %}{{ entity.name_display | lower }}{% raw %}?</h3>
+            <p class="text-sm text-zinc-500 mt-1">This action cannot be undone.</p>
+            <div class="flex gap-2 justify-end mt-5">
+                <button @click="showDeleteModal = false" class="px-4 py-2 text-sm font-medium border border-zinc-200 rounded-lg hover:bg-zinc-50 transition">Cancel</button>
+                <button @click="executeDelete()" class="px-4 py-2 text-sm font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 transition">Delete</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function detailPage() {
+    return {
+        item: null, loading: true, activeTab: 'summary', showDeleteModal: false,
+
+        async init() {
+            const id = window.location.pathname.split('/').filter(Boolean).pop();
+            const h = localStorage.getItem('archie_token') ? {'Authorization': 'Bearer ' + localStorage.getItem('archie_token')} : {};
+            try {
+                const r = await fetch('{% endraw %}{{ entity.api_path }}{% raw %}/' + id, { headers: h });
+                if (r.ok) this.item = await r.json();
+            } catch (e) { console.error('Load failed:', e); }
+            this.loading = false;
+        },
+
+        statusColor(status) {
+            const s = (status || '').toLowerCase();
+            if (['active','approved','completed','verified','resolved'].includes(s)) return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+            if (['pending','submitted','in_progress','processing','under_review'].includes(s)) return 'bg-amber-50 text-amber-700 border-amber-200';
+            if (['rejected','failed','cancelled','expired','blocked'].includes(s)) return 'bg-red-50 text-red-700 border-red-200';
+            return 'bg-zinc-50 text-zinc-600 border-zinc-200';
+        },
+{% endraw %}
+{% if entity.transitions %}
+
+        availableTransitions() {
+            if (!this.item) return [];
+            const status = this.item.{{ entity.status_field }};
+            const all = {{ entity.transitions | tojson }};
+            return all.filter(t => {
+                const froms = Array.isArray(t.from) ? t.from : (t.from_state ? [t.from_state] : [t.from]);
+                return froms.includes(status);
+            });
+        },
+
+        async executeTransition(trigger) {
+            const h = localStorage.getItem('archie_token') ? {'Authorization': 'Bearer ' + localStorage.getItem('archie_token'), 'Content-Type': 'application/json'} : {'Content-Type': 'application/json'};
+            const r = await fetch('{{ entity.api_path }}/' + this.item.id + '/' + trigger, { method: 'POST', headers: h });
+            if (r.ok) { this.item = await r.json(); }
+        },
+{% endif %}
+{% raw %}
+
+        async executeDelete() {
+            const h = localStorage.getItem('archie_token') ? {'Authorization': 'Bearer ' + localStorage.getItem('archie_token')} : {};
+            const r = await fetch('{% endraw %}{{ entity.api_path }}{% raw %}/' + this.item.id, { method: 'DELETE', headers: h });
+            if (r.ok) { window.location = '/{% endraw %}{{ entity.name_snake }}{% raw %}s'; }
+        },
+    };
+}
+</script>
+{% endblock %}
+{% endraw %}

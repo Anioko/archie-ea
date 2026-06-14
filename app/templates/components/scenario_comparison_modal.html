@@ -1,0 +1,396 @@
+{% from 'components/modal.html' import modal %}
+{% macro scenario_comparison_modal(capability_scores) %}
+<!-- Scenario Comparison Modal — uses shared modal.html component -->
+<div
+    x-data="{
+        capabilities: {{ capability_scores | tojson }},
+        selectedCapabilities: [],
+        selectedIds: [null, null, null],
+        scenarios: [],
+        charts: { roi: null, payback: null, bubble: null },
+
+        initModal() {
+            Platform.modal.open('scenario-comparison');
+            this.$nextTick(() => this.renderCharts());
+        },
+
+        addScenario(index) {
+            const capId = parseInt(this.selectedIds[index]);
+            if (!capId) return;
+
+            const capability = this.capabilities.find(c => c.id === capId);
+            if (!capability) return;
+
+            const saved = loadScenario(capId);
+            const investment = saved?.investment || capability.estimated_cost || 0;
+            const timeline = saved?.timeline || capability.timeframe || 12;
+            const annualBenefit = saved?.annualBenefit || investment * 0.3;
+            const discountRate = saved?.discountRate || 10;
+
+            const metrics = calculateROI(investment, annualBenefit, timeline, discountRate);
+
+            this.scenarios[index] = {
+                ...capability,
+                investment,
+                annualBenefit,
+                timeline,
+                discountRate,
+                ...metrics
+            };
+
+            this.updateCharts();
+        },
+
+        removeScenario(index) {
+            this.selectedIds[index] = null;
+            this.scenarios[index] = null;
+            this.scenarios = this.scenarios.filter((s, i) => i !== index || s !== null);
+            this.updateCharts();
+        },
+
+        clearAll() {
+            this.selectedIds = [null, null, null];
+            this.scenarios = [];
+            this.updateCharts();
+        },
+
+        getRecommendedIndex() {
+            if (this.scenarios.length === 0) return -1;
+
+            let bestIndex = -1;
+            let bestScore = -Infinity;
+
+            this.scenarios.forEach((scenario, index) => {
+                if (!scenario) return;
+                const score = (scenario.roi || 0) * 2 - (scenario.risk_score || 0);
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestIndex = index;
+                }
+            });
+
+            return bestIndex;
+        },
+
+        renderCharts() {
+            this.destroyCharts();
+            const roiTickFormatter = (v) => v + '%';
+            const monthTickFormatter = (v) => v + ' mo';
+
+            const roiCtx = document.getElementById('comparisonRoiChart');
+            if (roiCtx) {
+                this.charts.roi = new Chart(roiCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: ['Scenario 1', 'Scenario 2', 'Scenario 3'],
+                        datasets: [{
+                            label: 'ROI %',
+                            data: [0, 0, 0],
+                            backgroundColor: ['rgba(59, 130, 246, 0.7)', 'rgba(168, 85, 247, 0.7)', 'rgba(236, 72, 153, 0.7)'],
+                            borderColor: ['rgb(59, 130, 246)', 'rgb(168, 85, 247)', 'rgb(236, 72, 153)'],
+                            borderWidth: 2
+                        }]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        scales: { y: { beginAtZero: true, ticks: { callback: roiTickFormatter } } },
+                        plugins: { legend: { display: false } }
+                    }
+                });
+            }
+
+            const paybackCtx = document.getElementById('comparisonPaybackChart');
+            if (paybackCtx) {
+                this.charts.payback = new Chart(paybackCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: ['Scenario 1', 'Scenario 2', 'Scenario 3'],
+                        datasets: [{
+                            label: 'Payback Period (months)',
+                            data: [0, 0, 0],
+                            backgroundColor: ['rgba(34, 197, 94, 0.7)', 'rgba(251, 191, 36, 0.7)', 'rgba(239, 68, 68, 0.7)'],
+                            borderColor: ['rgb(34, 197, 94)', 'rgb(251, 191, 36)', 'rgb(239, 68, 68)'],
+                            borderWidth: 2
+                        }]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        scales: { y: { beginAtZero: true, ticks: { callback: monthTickFormatter } } },
+                        plugins: { legend: { display: false } }
+                    }
+                });
+            }
+
+            const bubbleCtx = document.getElementById('comparisonBubbleChart');
+            if (bubbleCtx) {
+                this.charts.bubble = new Chart(bubbleCtx, {
+                    type: 'bubble',
+                    data: { datasets: [] },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        scales: {
+                            x: { title: { display: true, text: 'ROI %' } },
+                            y: { title: { display: true, text: 'Risk Score' }, reverse: true }
+                        },
+                        plugins: {
+                            legend: { display: true },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        return [
+                                            context.dataset.label || '',
+                                            `ROI: ${context.parsed.x.toFixed(1)}%`,
+                                            `Risk: ${context.parsed.y.toFixed(1)}`,
+                                            `Investment: ${formatCurrency(context.raw.r * 1000)}`
+                                        ];
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+        },
+
+        updateCharts() {
+            if (!this.charts.roi || !this.charts.payback || !this.charts.bubble) return;
+
+            this.charts.roi.data.datasets[0].data = [
+                this.scenarios[0]?.roi || 0, this.scenarios[1]?.roi || 0, this.scenarios[2]?.roi || 0
+            ];
+            this.charts.roi.update();
+
+            this.charts.payback.data.datasets[0].data = [
+                this.scenarios[0]?.paybackPeriod || 0, this.scenarios[1]?.paybackPeriod || 0, this.scenarios[2]?.paybackPeriod || 0
+            ];
+            this.charts.payback.update();
+
+            const bubbleData = [];
+            ['Scenario 1', 'Scenario 2', 'Scenario 3'].forEach((label, index) => {
+                const scenario = this.scenarios[index];
+                if (scenario && scenario.roi !== null) {
+                    bubbleData.push({
+                        label: `${label}: ${scenario.name}`,
+                        data: [{ x: scenario.roi, y: scenario.risk_score || 0, r: Math.sqrt((scenario.investment || 0) / 1000) }],
+                        backgroundColor: ['rgba(59, 130, 246, 0.6)', 'rgba(168, 85, 247, 0.6)', 'rgba(236, 72, 153, 0.6)'][index]
+                    });
+                }
+            });
+            this.charts.bubble.data.datasets = bubbleData;
+            this.charts.bubble.update();
+        },
+
+        destroyCharts() {
+            Object.values(this.charts).forEach(chart => {
+                if (chart) chart.destroy();
+            });
+            this.charts = { roi: null, payback: null, bubble: null };
+        },
+
+        exportComparison() {
+            const scenarios = this.scenarios.filter(s => s !== null);
+            exportToCSV(scenarios, `investment_comparison_${new Date().toISOString().split('T')[0]}.csv`);
+            window.toast && window.toast.success('Comparison exported successfully');
+        }
+    }"
+    @open-scenario-comparison.window="initModal()"
+    @modal:close.document="$event.detail && $event.detail.id === 'scenario-comparison' && destroyCharts()"
+>
+{% call modal(id='scenario-comparison', labelledby='modal-scenario-comparison-title', size='full') %}
+    <!-- Custom Header (aria-labelledby → modal-scenario-comparison-title) -->
+    <div class="flex items-center gap-3 mb-6">
+        <div class="p-2 bg-primary/10 rounded-lg">
+            <i data-lucide="git-compare" class="h-5 w-5 text-primary"></i>
+        </div>
+        <div>
+            <h3 id="modal-scenario-comparison-title" class="text-lg font-semibold">Investment Scenario Comparison</h3>
+            <p class="text-sm text-muted-foreground">Compare up to 3 investment scenarios side-by-side</p>
+        </div>
+    </div>
+
+    <div class="space-y-6">
+        <!-- Scenario Selection -->
+        <div class="bg-muted/50 rounded-lg p-4">
+            <h4 class="text-sm font-semibold mb-3">Select Capabilities to Compare</h4>
+            <div class="grid grid-cols-3 gap-4">
+                <template x-for="(id, index) in selectedIds" :key="index">
+                    <div>
+                        <label class="block text-xs font-medium text-muted-foreground mb-2" x-text="`Scenario ${index + 1}`"></label>
+                        <div class="flex gap-2">
+                            <select
+                                x-model="selectedIds[index]"
+                                @change="addScenario(index)"
+                                class="flex-1 px-3 py-2 text-sm border border-input rounded-lg bg-background focus:ring-2 focus:ring-ring focus:border-transparent"
+                            >
+                                <option value="">Select capability...</option>
+                                <template x-for="cap in capabilities" :key="cap.id">
+                                    <option :value="cap.id" x-text="cap.name"></option>
+                                </template>
+                            </select>
+                            <button
+                                @click="removeScenario(index)"
+                                :disabled="!selectedIds[index]"
+                                class="p-2 text-muted-foreground hover:text-destructive disabled:opacity-30 disabled:cursor-not-allowed"
+                             aria-label="Remove">
+                                <i data-lucide="trash-2" class="h-4 w-4"></i>
+                            </button>
+                        </div>
+                    </div>
+                </template>
+            </div>
+            <div class="mt-3 flex justify-end">
+                <button @click="clearAll()" class="text-sm text-muted-foreground hover:text-foreground" aria-label="Action">
+                    Clear All
+                </button>
+            </div>
+        </div>
+
+        <!-- Comparison Table -->
+        <div class="overflow-x-auto" x-show="scenarios.filter(s => s).length > 0" x-cloak>
+            <table class="w-full text-sm">
+                <thead class="bg-muted/50">
+                    <tr>
+                        <th class="px-4 py-3 text-left text-xs font-semibold uppercase">Metric</th>
+                        <template x-for="(scenario, index) in scenarios" :key="index">
+                            <th
+                                class="px-4 py-3 text-center text-xs font-semibold uppercase"
+                                :class="getRecommendedIndex() === index ? 'bg-warning/10 border-2 border-warning/50' : ''"
+                                x-show="scenario" x-cloak
+                            >
+                                <div class="flex items-center justify-center gap-2">
+                                    <span x-text="`Scenario ${index + 1}`"></span>
+                                    <span
+                                        x-show="getRecommendedIndex() === index" x-cloak
+                                        class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-warning/10 text-warning border border-warning/30"
+                                    >
+                                        Recommended
+                                    </span>
+                                </div>
+                            </th>
+                        </template>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-border">
+                    <tr>
+                        <td class="px-4 py-3 font-medium">Capability</td>
+                        <template x-for="(scenario, index) in scenarios" :key="`name-${index}`">
+                            <td class="px-4 py-3 text-center" :class="getRecommendedIndex() === index ? 'bg-warning/5' : ''" x-show="scenario" x-cloak x-text="scenario?.name || 'N/A'"></td>
+                        </template>
+                    </tr>
+                    <tr class="bg-muted/30">
+                        <td class="px-4 py-3 font-medium">Initial Investment</td>
+                        <template x-for="(scenario, index) in scenarios" :key="`investment-${index}`">
+                            <td class="px-4 py-3 text-center font-semibold" :class="getRecommendedIndex() === index ? 'bg-warning/5' : ''" x-show="scenario" x-cloak x-text="formatCurrency(scenario?.investment || 0)"></td>
+                        </template>
+                    </tr>
+                    <tr>
+                        <td class="px-4 py-3 font-medium">Annual Benefit</td>
+                        <template x-for="(scenario, index) in scenarios" :key="`benefit-${index}`">
+                            <td class="px-4 py-3 text-center" :class="getRecommendedIndex() === index ? 'bg-warning/5' : ''" x-show="scenario" x-cloak x-text="formatCurrency(scenario?.annualBenefit || 0)"></td>
+                        </template>
+                    </tr>
+                    <tr class="bg-muted/30">
+                        <td class="px-4 py-3 font-medium">ROI %</td>
+                        <template x-for="(scenario, index) in scenarios" :key="`roi-${index}`">
+                            <td class="px-4 py-3 text-center font-bold" :class="[getRecommendedIndex() === index ? 'bg-warning/5' : '', scenario?.roi >= 20 ? 'text-success' : scenario?.roi >= 0 ? 'text-warning' : 'text-destructive']" x-show="scenario" x-cloak x-text="formatPercentage(scenario?.roi || 0)"></td>
+                        </template>
+                    </tr>
+                    <tr>
+                        <td class="px-4 py-3 font-medium">Payback Period</td>
+                        <template x-for="(scenario, index) in scenarios" :key="`payback-${index}`">
+                            <td class="px-4 py-3 text-center" :class="getRecommendedIndex() === index ? 'bg-warning/5' : ''" x-show="scenario" x-cloak x-text="formatDuration(scenario?.paybackPeriod)"></td>
+                        </template>
+                    </tr>
+                    <tr class="bg-muted/30">
+                        <td class="px-4 py-3 font-medium">Net Present Value</td>
+                        <template x-for="(scenario, index) in scenarios" :key="`npv-${index}`">
+                            <td class="px-4 py-3 text-center font-semibold" :class="[getRecommendedIndex() === index ? 'bg-warning/5' : '', scenario?.npv >= 0 ? 'text-success' : 'text-destructive']" x-show="scenario" x-cloak x-text="formatCurrency(scenario?.npv || 0)"></td>
+                        </template>
+                    </tr>
+                    <tr>
+                        <td class="px-4 py-3 font-medium">Strategic Score</td>
+                        <template x-for="(scenario, index) in scenarios" :key="`strategic-${index}`">
+                            <td class="px-4 py-3 text-center" :class="getRecommendedIndex() === index ? 'bg-warning/5' : ''" x-show="scenario" x-cloak x-text="`${scenario?.strategic_score || 0} / 25`"></td>
+                        </template>
+                    </tr>
+                    <tr class="bg-muted/30">
+                        <td class="px-4 py-3 font-medium">Risk Score</td>
+                        <template x-for="(scenario, index) in scenarios" :key="`risk-${index}`">
+                            <td class="px-4 py-3 text-center" :class="[getRecommendedIndex() === index ? 'bg-warning/5' : '', scenario?.risk_score <= 10 ? 'text-success' : scenario?.risk_score <= 15 ? 'text-warning' : 'text-destructive']" x-show="scenario" x-cloak x-text="`${scenario?.risk_score || 0} / 25`"></td>
+                        </template>
+                    </tr>
+                    <tr>
+                        <td class="px-4 py-3 font-medium">Priority Level</td>
+                        <template x-for="(scenario, index) in scenarios" :key="`priority-${index}`">
+                            <td class="px-4 py-3 text-center" :class="getRecommendedIndex() === index ? 'bg-warning/5' : ''" x-show="scenario" x-cloak>
+                                <span
+                                    class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium"
+                                    :class="{
+                                        'bg-destructive/10 text-destructive border border-destructive/30': scenario?.priority === 'CRITICAL',
+                                        'bg-warning/10 text-warning border border-warning/30': scenario?.priority === 'HIGH',
+                                        'bg-warning/10 text-warning border border-warning/30': scenario?.priority === 'MEDIUM',
+                                        'bg-muted text-muted-foreground': scenario?.priority === 'LOW'
+                                    }"
+                                    x-text="scenario?.priority || 'MEDIUM'"
+                                ></span>
+                            </td>
+                        </template>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Visualizations -->
+        <div class="grid grid-cols-3 gap-4" x-show="scenarios.filter(s => s).length > 0" x-cloak>
+            <div class="border border-border rounded-lg p-4 bg-background">
+                <h5 class="text-sm font-semibold mb-3">ROI Comparison</h5>
+                <canvas id="comparisonRoiChart" height="200"></canvas>
+            </div>
+            <div class="border border-border rounded-lg p-4 bg-background">
+                <h5 class="text-sm font-semibold mb-3">Payback Period</h5>
+                <canvas id="comparisonPaybackChart" height="200"></canvas>
+            </div>
+            <div class="border border-border rounded-lg p-4 bg-background">
+                <h5 class="text-sm font-semibold mb-3">Risk vs Return</h5>
+                <canvas id="comparisonBubbleChart" height="200"></canvas>
+            </div>
+        </div>
+
+        <!-- Empty State -->
+        <div x-show="scenarios.filter(s => s).length === 0" x-cloak class="text-center py-12">
+            <div class="inline-flex items-center justify-center w-16 h-16 bg-muted rounded-full mb-4">
+                <i data-lucide="bar-chart-3" class="h-8 w-8 text-muted-foreground"></i>
+            </div>
+            <h4 class="text-lg font-medium mb-2">No Scenarios Selected</h4>
+            <p class="text-sm text-muted-foreground">Select capabilities above to compare investment scenarios</p>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="flex items-center justify-between mt-6 pt-6 border-t border-border">
+        <div class="text-sm text-muted-foreground">
+            <span x-text="`${scenarios.filter(s => s).length} scenario(s) selected`"></span>
+            <span x-show="getRecommendedIndex() >= 0" x-cloak class="ml-2">
+                <span class="font-medium text-warning">Scenario <span x-text="getRecommendedIndex() + 1"></span> recommended</span>
+            </span>
+        </div>
+        <div class="flex items-center gap-3">
+            <button
+                @click="exportComparison()"
+                :disabled="scenarios.filter(s => s).length === 0"
+                class="inline-flex items-center gap-2 px-4 py-2 border border-input text-foreground font-medium rounded-lg hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+             aria-label="Export">
+                <i data-lucide="download" class="h-4 w-4"></i>
+                Export CSV
+            </button>
+            <button
+                @click="Platform.modal.close('scenario-comparison')"
+                class="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground font-medium rounded-lg hover:bg-primary/90 transition-colors"
+             aria-label="Close">
+                Close
+            </button>
+        </div>
+    </div>
+{% endcall %}
+</div>
+{% endmacro %}

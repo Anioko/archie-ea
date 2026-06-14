@@ -1,0 +1,1411 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'components/page_header.html' import page_header %}
+
+{% from 'components/button.html' import button %}
+{% from 'components/card.html' import card, card_header, card_title, card_content %}
+{% from 'components/badge.html' import badge %}
+
+{% block title %}EA Automated Workflows{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Breadcrumbs -->
+    <nav class="flex items-center gap-2 text-sm text-muted-foreground mb-6">
+        <a href="{{ url_for('main.index') }}" class="hover:text-foreground transition-colors">Dashboard</a>
+        <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
+        <span class="text-foreground font-medium">EA Automated Workflows</span>
+    </nav>
+
+    <!-- Page Header -->
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+        {{ page_header(
+        title='EA Automated Workflows',
+        description='End-to-end automation for enterprise architecture processes'
+    ) }}
+        <div class="flex flex-wrap items-center gap-2">
+            <button @click="seedWorkflows()" class="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-lg border-2 border-input bg-background hover:border-primary/50 hover:shadow-sm transition-all duration-200 text-sm font-medium" aria-label="Action">
+                <i data-lucide="database" class="h-4 w-4" aria-hidden="true"></i>
+                <span class="hidden sm:inline">Seed Defaults</span>
+            </button>
+            <a href="{{ url_for('main.ea_workflows_approvals') }}" class="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-lg border-2 border-input bg-background hover:border-primary/50 hover:shadow-sm transition-all duration-200 text-sm font-medium">
+                <i data-lucide="check-square" class="h-4 w-4" aria-hidden="true"></i>
+                <span class="hidden sm:inline">Pending Approvals</span>
+                {% if status_counts.waiting_approval %}
+                <span class="ml-1 inline-flex items-center justify-center w-5 h-5 rounded-full bg-warning text-white text-xs">
+                    {{ status_counts.waiting_approval }}
+                </span>
+                {% endif %}
+            </a>
+            <a href="{{ url_for('main.ea_workflows_definitions') }}" class="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium">
+                <i data-lucide="list" class="h-4 w-4" aria-hidden="true"></i>
+                <span class="hidden sm:inline">All Workflows</span>
+            </a>
+        </div>
+    </div>
+
+    {% if error %}
+    <div class="rounded-xl border-2 border-destructive/50 bg-destructive/10 p-4 mb-6">
+        <div class="flex items-center gap-2 text-destructive">
+            <i data-lucide="alert-circle" class="h-5 w-5" aria-hidden="true"></i>
+            <span class="font-medium">Error: {{ error }}</span>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Workflow Status Counts -->
+    <div class="grid grid-cols-3 gap-4 mb-8">
+        <div class="rounded-xl border-2 border-input bg-background p-5 flex items-center gap-4">
+            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-500">
+                <i data-lucide="play" class="h-5 w-5 text-primary-foreground" aria-hidden="true"></i>
+            </div>
+            <div>
+                <p class="text-2xl font-bold tracking-tight">{{ status_counts.running or 0 }}</p>
+                <p class="text-xs text-muted-foreground">Running</p>
+            </div>
+        </div>
+        <div class="rounded-xl border-2 {% if status_counts.waiting_approval %}border-warning/50 bg-warning/5{% else %}border-input bg-background{% endif %} p-5 flex items-center gap-4">
+            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-500">
+                <i data-lucide="clock" class="h-5 w-5 text-primary-foreground" aria-hidden="true"></i>
+            </div>
+            <div>
+                <p class="text-2xl font-bold tracking-tight">{{ status_counts.waiting_approval or 0 }}</p>
+                <p class="text-xs text-muted-foreground">Waiting Approval</p>
+            </div>
+            {% if status_counts.waiting_approval %}
+            <a href="{{ url_for('main.ea_workflows_approvals') }}" class="ml-auto text-xs font-semibold text-warning hover:underline">Review →</a>
+            {% endif %}
+        </div>
+        <div class="rounded-xl border-2 border-input bg-background p-5 flex items-center gap-4">
+            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-violet-500">
+                <i data-lucide="check-circle" class="h-5 w-5 text-primary-foreground" aria-hidden="true"></i>
+            </div>
+            <div>
+                <p class="text-2xl font-bold tracking-tight">{{ status_counts.completed or 0 }}</p>
+                <p class="text-xs text-muted-foreground">Completed</p>
+            </div>
+        </div>
+    </div>
+
+
+    {% set COVERAGE_MATRIX = [
+            ('APP_DISPOSITION',      'arrow-left-right', 'bg-emerald-600', 'Application Disposition',
+             'What should happen to each application in scope?',
+             ['B','E','F'],
+             'Retire / Retain / Replace / Re-engineer across scoped portfolio'),
+            ('PLATFORM_MIGRATION_SCOPING', 'server', 'bg-amber-600', 'Platform Migration Scoping',
+             'What integrations break when this platform is cut over?',
+             ['C','D','E','F','G'],
+             'Integration inventory with BREAKING / AT_RISK / MONITOR classification'),
+            ('ARB_PACK_GENERATION',  'file-check-2', 'bg-primary', 'ARB Pack Generation',
+             'What does the ARB need to approve this change?',
+             ['A','B','C','D','E','F','G','H'],
+             'Current-state baseline + impact assessment + ARB decision template'),
+            ('CAPABILITY_INVESTMENT_PLANNING', 'trending-up', 'bg-violet-600', 'Capability Investment Planning',
+             'Where are the gaps and what investment closes them?',
+             ['A','B','E'],
+             'Capability heat map + Build/Buy/Partner options ranked by ROI'),
+            ('INTEGRATION_IMPACT_ASSESSMENT', 'git-branch', 'bg-rose-600', 'Integration Impact Assessment',
+             'What is the blast radius of retiring or changing this application?',
+             ['C','F','G'],
+             'Direct + transitive impact chain at depth-2 via ArchiMate graph'),
+        ] %}
+
+        <!-- ADM Phase Coverage Matrix -->
+        <div class="mb-8">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-lg font-semibold">ADM Phase Coverage Matrix</h2>
+                <a href="{{ url_for('main.ea_workflows_definitions') }}" class="text-sm text-primary hover:underline">All runs →</a>
+            </div>
+            <div class="rounded-xl border-2 border-input bg-background overflow-hidden">
+                <table class="w-full text-sm" aria-label="ADM Phase Coverage Matrix">
+                    <thead>
+                        <tr class="border-b border-input bg-muted/40">
+                            <th class="text-left px-4 py-3 font-semibold text-foreground">Workflow</th>
+                            <th class="text-left px-4 py-3 font-semibold text-foreground hidden md:table-cell">Scenario</th>
+                            <th class="text-left px-4 py-3 font-semibold text-foreground">ADM Phases</th>
+                            <th class="text-right px-4 py-3 font-semibold text-foreground">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-input">
+                        {% for wf_code, icon, color, name, scenario, phases, summary in COVERAGE_MATRIX %}
+                        {% set defn = definitions | selectattr('workflow_code', 'equalto', wf_code) | first | default(None) %}
+                        <tr class="hover:bg-muted/30 transition-colors" data-workflow-row="{{ wf_code }}">
+                            <td class="px-4 py-3">
+                                <div class="flex items-center gap-3">
+                                    <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg {{ color }}">
+                                        <i data-lucide="{{ icon }}" class="h-4 w-4 text-primary-foreground" aria-hidden="true"></i>
+                                    </div>
+                                    <div>
+                                        <p class="font-medium text-foreground leading-tight">{{ name }}</p>
+                                        <p class="text-xs text-muted-foreground mt-0.5 hidden sm:block">{{ summary }}</p>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="px-4 py-3 text-muted-foreground italic hidden md:table-cell">
+                                "{{ scenario }}"
+                            </td>
+                            <td class="px-4 py-3">
+                                <div class="flex flex-wrap gap-1">
+                                    {% for p in phases %}
+                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-muted text-muted-foreground">{{ p }}</span>
+                                    {% endfor %}
+                                </div>
+                            </td>
+                            <td class="px-4 py-3 text-right">
+                                {% if defn %}
+                                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-500/10 text-emerald-700">
+                                    <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+                                    Active
+                                </span>
+                                {% else %}
+                                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-muted text-muted-foreground">
+                                    Not seeded
+                                </span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Start by Scenario -->
+        <div class="mb-8" x-data="quickStart()">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-lg font-semibold">Start by Scenario</h2>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
+                {% for wf_code, icon, color, name, scenario, phases, summary in COVERAGE_MATRIX %}
+                {% set defn = definitions | selectattr('workflow_code', 'equalto', wf_code) | first | default(None) %}
+                <div class="rounded-xl border-2 border-input bg-background hover:border-primary/40 hover:shadow-md transition-all duration-200 p-4 flex flex-col gap-3 scenario-card" data-scenario-card="{{ wf_code }}">
+                    <div class="flex items-center gap-3">
+                        <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg {{ color }}">
+                            <i data-lucide="{{ icon }}" class="h-4 w-4 text-primary-foreground" aria-hidden="true"></i>
+                        </div>
+                        <h3 class="font-semibold text-sm leading-tight">{{ name }}</h3>
+                    </div>
+                    <p class="text-xs text-muted-foreground italic flex-1 leading-snug">"{{ scenario }}"</p>
+                    <div class="flex items-center justify-between pt-2 border-t border-input mt-auto">
+                        <div class="flex gap-1 flex-wrap">
+                            {% for p in phases[:3] %}
+                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-muted text-muted-foreground">{{ p }}</span>
+                            {% endfor %}
+                            {% if phases|length > 3 %}
+                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium text-muted-foreground">+{{ phases|length - 3 }}</span>
+                            {% endif %}
+                        </div>
+                        {% if defn %}
+                        <button @click="startWorkflow('{{ wf_code }}')"
+                                class="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-xs font-medium"
+                                aria-label="Start {{ name }}">
+                            <i data-lucide="play" class="h-3 w-3" aria-hidden="true"></i>
+                            Start
+                        </button>
+                        {% else %}
+                        <span class="text-[10px] text-muted-foreground">Not seeded</span>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+    <!-- ADM Phase Views -->
+    <div class="mb-8" x-data="admArchimateStats()">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-lg font-semibold">ADM Phase Views</h2>
+            <div class="flex items-center gap-1.5" x-show="loaded">
+                <template x-for="p in phaseSummary" :key="p.phase">
+                    <span x-show="p.element_count > 0"
+                          class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-primary/10 text-primary border border-primary/20"
+                          :title="'Phase ' + p.phase + ': ' + p.element_count + ' ArchiMate elements'">
+                        <span x-text="'Phase ' + p.phase"></span>
+                        <span class="font-bold" x-text="p.element_count"></span>
+                    </span>
+                </template>
+            </div>
+        </div>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4" id="adm-phase-cards">
+            <!-- TD-004: Phase D Technology Architecture -->
+            <div class="rounded-xl border-2 border-input bg-background hover:border-primary/40 hover:shadow-md transition-all duration-200 p-5 flex flex-col gap-4">
+                <div class="flex items-start gap-4">
+                    <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-sky-600">
+                        <i data-lucide="cpu" class="h-5 w-5 text-primary-foreground" aria-hidden="true"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-start justify-between gap-2">
+                            <h3 class="font-semibold text-base leading-tight">Technology Architecture</h3>
+                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-muted text-muted-foreground shrink-0">Phase D</span>
+                        </div>
+                        <p class="text-sm text-muted-foreground italic mt-1 leading-snug">"What is our current technology estate?"</p>
+                    </div>
+                </div>
+                <ul class="space-y-1 pl-1">
+                    <li class="flex items-start gap-2 text-xs text-foreground/80">
+                        <i data-lucide="arrow-right" class="h-3 w-3 mt-0.5 text-primary shrink-0" aria-hidden="true"></i>
+                        Hosting model breakdown across 881 applications
+                    </li>
+                    <li class="flex items-start gap-2 text-xs text-foreground/80">
+                        <i data-lucide="arrow-right" class="h-3 w-3 mt-0.5 text-primary shrink-0" aria-hidden="true"></i>
+                        Technology debt scoring with EOL risk indicators
+                    </li>
+                    <li class="flex items-start gap-2 text-xs text-foreground/80">
+                        <i data-lucide="arrow-right" class="h-3 w-3 mt-0.5 text-primary shrink-0" aria-hidden="true"></i>
+                        Infrastructure complexity matrix and dependency depth
+                    </li>
+                </ul>
+                <div class="flex items-center justify-between pt-3 border-t border-input mt-auto">
+                    <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-sky-100 text-sky-700">Phase D</span>
+                    <a href="{{ '/ea-workflows/phase-d' if (phase_available|default({})).get('phase_d') else '#' }}"
+                       class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium">
+                        <i data-lucide="arrow-right" class="h-3.5 w-3.5" aria-hidden="true"></i>
+                        Open
+                    </a>
+                </div>
+            </div>
+            <!-- AG-004: Phase G Implementation Governance -->
+            <div class="rounded-xl border-2 border-input bg-background hover:border-primary/40 hover:shadow-md transition-all duration-200 p-5 flex flex-col gap-4">
+                <div class="flex items-start gap-4">
+                    <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-amber-600">
+                        <i data-lucide="shield-check" class="h-5 w-5 text-primary-foreground" aria-hidden="true"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-start justify-between gap-2">
+                            <h3 class="font-semibold text-base leading-tight">Implementation Governance</h3>
+                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-muted text-muted-foreground shrink-0">Phase G</span>
+                        </div>
+                        <p class="text-sm text-muted-foreground italic mt-1 leading-snug">"Are implementations compliant with architecture?"</p>
+                    </div>
+                </div>
+                <ul class="space-y-1 pl-1">
+                    <li class="flex items-start gap-2 text-xs text-foreground/80">
+                        <i data-lucide="arrow-right" class="h-3 w-3 mt-0.5 text-primary shrink-0" aria-hidden="true"></i>
+                        Architecture compliance matrix across application portfolio
+                    </li>
+                    <li class="flex items-start gap-2 text-xs text-foreground/80">
+                        <i data-lucide="arrow-right" class="h-3 w-3 mt-0.5 text-primary shrink-0" aria-hidden="true"></i>
+                        Active violations and derogation tracking
+                    </li>
+                    <li class="flex items-start gap-2 text-xs text-foreground/80">
+                        <i data-lucide="arrow-right" class="h-3 w-3 mt-0.5 text-primary shrink-0" aria-hidden="true"></i>
+                        ARB review status and governance exceptions
+                    </li>
+                </ul>
+                <div class="flex items-center justify-between pt-3 border-t border-input mt-auto">
+                    <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-700">Phase G</span>
+                    <a href="{{ '/ea-workflows/phase-g' if (phase_available|default({})).get('phase_g') else '#' }}"
+                       class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium">
+                        <i data-lucide="arrow-right" class="h-3.5 w-3.5" aria-hidden="true"></i>
+                        Open
+                    </a>
+                </div>
+            </div>
+            <!-- OA-004: Phase E Opportunities & Solutions -->
+            <div class="rounded-xl border-2 border-input bg-background hover:border-primary/40 hover:shadow-md transition-all duration-200 p-5 flex flex-col gap-4">
+                <div class="flex items-start gap-4">
+                    <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-emerald-600">
+                        <i data-lucide="lightbulb" class="h-5 w-5 text-primary-foreground" aria-hidden="true"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-start justify-between gap-2">
+                            <h3 class="font-semibold text-base leading-tight">Opportunities &amp; Solutions</h3>
+                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-muted text-muted-foreground shrink-0">Phase E</span>
+                        </div>
+                        <p class="text-sm text-muted-foreground italic mt-1 leading-snug">"What are our options to close the architecture gaps?"</p>
+                    </div>
+                </div>
+                <ul class="space-y-1 pl-1">
+                    <li class="flex items-start gap-2 text-xs text-foreground/80">
+                        <i data-lucide="arrow-right" class="h-3 w-3 mt-0.5 text-primary shrink-0" aria-hidden="true"></i>
+                        Unified gap register across Business, Application, and Technology layers
+                    </li>
+                    <li class="flex items-start gap-2 text-xs text-foreground/80">
+                        <i data-lucide="arrow-right" class="h-3 w-3 mt-0.5 text-primary shrink-0" aria-hidden="true"></i>
+                        Solution options scored by strategic alignment and feasibility
+                    </li>
+                    <li class="flex items-start gap-2 text-xs text-foreground/80">
+                        <i data-lucide="arrow-right" class="h-3 w-3 mt-0.5 text-primary shrink-0" aria-hidden="true"></i>
+                        Prioritised initiative shortlist for roadmap input
+                    </li>
+                </ul>
+                <div class="flex items-center justify-between pt-3 border-t border-input mt-auto">
+                    <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-700">Phase E</span>
+                    <a href="{{ '/ea-workflows/phase-e' if (phase_available|default({})).get('phase_e') else '#' }}"
+                       class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium">
+                        <i data-lucide="arrow-right" class="h-3.5 w-3.5" aria-hidden="true"></i>
+                        Open
+                    </a>
+                </div>
+            </div>
+            <!-- MP-004: Phase F Migration Planning -->
+            <div class="rounded-xl border-2 border-input bg-background hover:border-primary/40 hover:shadow-md transition-all duration-200 p-5 flex flex-col gap-4">
+                <div class="flex items-start gap-4">
+                    <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-violet-600">
+                        <i data-lucide="git-branch" class="h-5 w-5 text-primary-foreground" aria-hidden="true"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-start justify-between gap-2">
+                            <h3 class="font-semibold text-base leading-tight">Migration Planning</h3>
+                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-muted text-muted-foreground shrink-0">Phase F</span>
+                        </div>
+                        <p class="text-sm text-muted-foreground italic mt-1 leading-snug">"In what sequence should we execute the migration?"</p>
+                    </div>
+                </div>
+                <ul class="space-y-1 pl-1">
+                    <li class="flex items-start gap-2 text-xs text-foreground/80">
+                        <i data-lucide="arrow-right" class="h-3 w-3 mt-0.5 text-primary shrink-0" aria-hidden="true"></i>
+                        Dependency-ordered migration waves with effort estimates
+                    </li>
+                    <li class="flex items-start gap-2 text-xs text-foreground/80">
+                        <i data-lucide="arrow-right" class="h-3 w-3 mt-0.5 text-primary shrink-0" aria-hidden="true"></i>
+                        Work package grouping by application disposition decision
+                    </li>
+                    <li class="flex items-start gap-2 text-xs text-foreground/80">
+                        <i data-lucide="arrow-right" class="h-3 w-3 mt-0.5 text-primary shrink-0" aria-hidden="true"></i>
+                        Migration roadmap with plateau and transition architecture states
+                    </li>
+                </ul>
+                <div class="flex items-center justify-between pt-3 border-t border-input mt-auto">
+                    <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-violet-100 text-violet-700">Phase F</span>
+                    <a href="{{ '/ea-workflows/phase-f' if (phase_available|default({})).get('phase_f') else '#' }}"
+                       class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium">
+                        <i data-lucide="arrow-right" class="h-3.5 w-3.5" aria-hidden="true"></i>
+                        Open
+                    </a>
+                </div>
+            </div>
+            <!-- CM-004: Phase H Architecture Change Management -->
+            <div class="rounded-xl border-2 border-input bg-background hover:border-primary/40 hover:shadow-md transition-all duration-200 p-5 flex flex-col gap-4">
+                <div class="flex items-start gap-4">
+                    <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-rose-600">
+                        <i data-lucide="git-merge" class="h-5 w-5 text-primary-foreground" aria-hidden="true"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-start justify-between gap-2">
+                            <h3 class="font-semibold text-base leading-tight">Architecture Change Management</h3>
+                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-muted text-muted-foreground shrink-0">Phase H</span>
+                        </div>
+                        <p class="text-sm text-muted-foreground italic mt-1 leading-snug">"What is the blast radius of this architecture change?"</p>
+                    </div>
+                </div>
+                <ul class="space-y-1 pl-1">
+                    <li class="flex items-start gap-2 text-xs text-foreground/80">
+                        <i data-lucide="arrow-right" class="h-3 w-3 mt-0.5 text-primary shrink-0" aria-hidden="true"></i>
+                        Change request registry with trigger classification
+                    </li>
+                    <li class="flex items-start gap-2 text-xs text-foreground/80">
+                        <i data-lucide="arrow-right" class="h-3 w-3 mt-0.5 text-primary shrink-0" aria-hidden="true"></i>
+                        ArchiMate graph traversal for impact assessment across 720 elements
+                    </li>
+                    <li class="flex items-start gap-2 text-xs text-foreground/80">
+                        <i data-lucide="arrow-right" class="h-3 w-3 mt-0.5 text-primary shrink-0" aria-hidden="true"></i>
+                        ADM cycle trigger determination — change or new cycle
+                    </li>
+                </ul>
+                <div class="flex items-center justify-between pt-3 border-t border-input mt-auto">
+                    <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-rose-100 text-rose-700">Phase H</span>
+                    <a href="{{ '/ea-workflows/phase-h' if (phase_available|default({})).get('phase_h') else '#' }}"
+                       class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium">
+                        <i data-lucide="arrow-right" class="h-3.5 w-3.5" aria-hidden="true"></i>
+                        Open
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Active Work: pending approvals + recent runs -->
+    <div class="rounded-xl border-2 border-input bg-background p-6" id="recent-activity">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-base font-semibold">Recent Runs</h2>
+            <div class="flex items-center gap-3">
+                <a href="/api/ea-workflows/instances/export"
+                   class="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                   aria-label="Export all runs as CSV">
+                    <i data-lucide="download" class="h-3.5 w-3.5" aria-hidden="true"></i>
+                    Export CSV
+                </a>
+                <a href="{{ url_for('main.ea_workflows_definitions') }}"
+                   class="text-xs font-medium text-primary hover:underline">
+                    View all →
+                </a>
+            </div>
+        </div>
+
+        {% if recent_instances %}
+        <div class="space-y-0.5" aria-label="Recent workflow executions" aria-live="polite">
+            {% for instance in recent_instances[:10] %}
+            <a href="{{ url_for('main.ea_workflow_instance_detail', instance_id=instance.id) }}"
+               class="flex items-center gap-3 rounded-lg px-3 py-2.5 hover:bg-muted/50 transition-colors group"
+               aria-label="Run #{{ instance.id }}: {{ instance.definition.workflow_name if instance.definition else 'Unknown' }}, {{ instance.status|replace('_', ' ')|title }}">
+                <div class="h-2 w-2 rounded-full shrink-0
+                    {% if instance.status == 'completed' %}bg-emerald-500
+                    {% elif instance.status == 'running' %}bg-primary animate-pulse
+                    {% elif instance.status == 'waiting_approval' %}bg-amber-500
+                    {% elif instance.status == 'failed' %}bg-destructive
+                    {% else %}bg-muted-foreground{% endif %}"
+                    aria-hidden="true"></div>
+                <span class="flex-1 text-sm font-medium truncate group-hover:text-primary transition-colors">
+                    {{ instance.definition.workflow_name if instance.definition else 'Unknown' }}
+                </span>
+                <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium shrink-0
+                    {% if instance.status == 'completed' %}bg-emerald-500/10 text-emerald-700
+                    {% elif instance.status == 'running' %}bg-primary/10 text-primary
+                    {% elif instance.status == 'waiting_approval' %}bg-amber-500/10 text-amber-700
+                    {% elif instance.status == 'failed' %}bg-destructive/10 text-destructive
+                    {% else %}bg-muted text-muted-foreground{% endif %}"
+                    role="status">
+                    {{ instance.status|replace('_', ' ')|title }}
+                </span>
+                {% if instance.status == 'waiting_approval' %}
+                <span class="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-600 shrink-0">
+                    <i data-lucide="hand" class="h-3 w-3" aria-hidden="true"></i>
+                    Review
+                </span>
+                {% endif %}
+                <span class="text-xs text-muted-foreground shrink-0">#{{ instance.id }}</span>
+                <i data-lucide="chevron-right" class="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" aria-hidden="true"></i>
+            </a>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-center py-8 text-muted-foreground">
+            <i data-lucide="inbox" class="h-8 w-8 mx-auto mb-2" aria-hidden="true"></i>
+            <p class="text-sm">No runs yet — start a tool above.</p>
+        </div>
+        {% endif %}
+    </div>
+
+    {# PRC-007: Cross-workflow Journey View — ADM iteration timeline #}
+    <div class="rounded-xl border-2 border-input bg-background p-6" id="journey-view"
+         x-data="{
+            journeyTab: 'journeys',
+            journeys: [],
+            loading: true,
+            error: null,
+            async init() {
+                try {
+                    const res = await fetch('/ea-workflows/journeys');
+                    const data = await res.json();
+                    if (data.success) {
+                        this.journeys = data.journeys || [];
+                    } else {
+                        this.error = data.error || 'Failed to load journeys';
+                    }
+                } catch(e) {
+                    this.error = 'Network error loading journeys';
+                } finally {
+                    this.loading = false;
+                }
+            },
+            phaseColor(status) {
+                const map = {
+                    'completed': 'bg-emerald-500',
+                    'running': 'bg-primary animate-pulse',
+                    'waiting_approval': 'bg-amber-500',
+                    'failed': 'bg-destructive',
+                    'pending': 'bg-muted-foreground/40'
+                };
+                return map[status] || 'bg-muted-foreground/40';
+            },
+            phaseBadgeClass(status) {
+                const map = {
+                    'completed': 'bg-emerald-500/10 text-emerald-700',
+                    'running': 'bg-primary/10 text-primary',
+                    'waiting_approval': 'bg-amber-500/10 text-amber-700',
+                    'failed': 'bg-destructive/10 text-destructive',
+                    'pending': 'bg-muted text-muted-foreground'
+                };
+                return map[status] || 'bg-muted text-muted-foreground';
+            }
+         }" x-cloak>
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-base font-semibold">Journey View</h2>
+            <p class="text-xs text-muted-foreground">End-to-end ADM iteration cycles</p>
+        </div>
+
+        <template x-if="loading">
+            <div class="text-center py-8">
+                <div class="animate-spin h-5 w-5 border-2 border-primary border-t-transparent rounded-full mx-auto mb-2"></div>
+                <p class="text-sm text-muted-foreground">Loading journeys...</p>
+            </div>
+        </template>
+
+        <template x-if="!loading && error">
+            <div class="text-center py-8 text-destructive">
+                <i data-lucide="alert-circle" class="h-6 w-6 mx-auto mb-2" aria-hidden="true"></i>
+                <p class="text-sm" x-text="error"></p>
+            </div>
+        </template>
+
+        <template x-if="!loading && !error && journeys.length === 0">
+            <div class="text-center py-8 text-muted-foreground">
+                <i data-lucide="map" class="h-8 w-8 mx-auto mb-2" aria-hidden="true"></i>
+                <p class="text-sm">No ADM iteration cycles yet. Start a Preliminary or Phase A workflow to begin.</p>
+            </div>
+        </template>
+
+        <template x-if="!loading && !error && journeys.length > 0">
+            <div class="space-y-4">
+                <template x-for="journey in journeys" :key="journey.iteration_number">
+                    <div class="rounded-lg border border-border p-4">
+                        <div class="flex items-center justify-between mb-3">
+                            <div class="flex items-center gap-2">
+                                <span class="text-sm font-semibold text-foreground" x-text="'Iteration ' + journey.iteration_number"></span>
+                                <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-primary/10 text-primary"
+                                      x-text="journey.completed_phases + '/' + journey.total_phases + ' phases'"></span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <div class="w-24 h-1.5 rounded-full bg-muted overflow-hidden">
+                                    <div class="h-full rounded-full bg-primary transition-all" :style="'width:' + journey.progress_pct + '%'"></div>
+                                </div>
+                                <span class="text-xs text-muted-foreground" x-text="journey.progress_pct + '%'"></span>
+                            </div>
+                        </div>
+                        {# Horizontal phase timeline #}
+                        <div class="flex items-center gap-1 overflow-x-auto pb-1">
+                            <template x-for="phase in journey.phases" :key="phase.id">
+                                <a :href="'/ea-workflows/instance/' + phase.id"
+                                   class="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 border border-border hover:border-primary/50 hover:bg-muted/50 transition-colors shrink-0">
+                                    <span class="h-2 w-2 rounded-full shrink-0" :class="phaseColor(phase.status)"></span>
+                                    <span class="text-xs font-medium text-foreground truncate max-w-[120px]" x-text="phase.togaf_phase || phase.workflow_name"></span>
+                                    <span class="inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-medium shrink-0"
+                                          :class="phaseBadgeClass(phase.status)"
+                                          x-text="phase.status.replace('_', ' ')"></span>
+                                </a>
+                            </template>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </template>
+    </div>
+</div>
+
+<!-- Start Workflow Modal (two-panel) -->
+<div id="startWorkflowModal" class="modal-root hidden fixed inset-0 z-50"
+     role="dialog" aria-modal="true" aria-labelledby="startWorkflowTitle">
+    <div class="modal-backdrop fixed inset-0 bg-black/50" @click="closeWorkflowModal()" aria-hidden="true" role="dialog"></div>
+    <div class="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-3xl max-h-[90vh] bg-background rounded-xl border-2 border-input shadow-lg overflow-hidden">
+        <div class="flex items-center justify-between px-6 py-4 border-b border-input">
+            <div>
+                <h3 class="text-lg font-semibold" id="startWorkflowTitle">Start Workflow</h3>
+                <p class="text-sm text-muted-foreground mt-0.5" id="startWorkflowDesc"></p>
+            </div>
+            <button type="button" @click="closeWorkflowModal()" class="text-muted-foreground hover:text-foreground" aria-label="Close">
+                <i data-lucide="x" class="h-5 w-5" aria-hidden="true"></i>
+            </button>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-5 divide-y md:divide-y-0 md:divide-x divide-input overflow-y-auto max-h-[calc(90vh-4rem)]">
+            <!-- Left panel: Configuration -->
+            <div class="md:col-span-2 p-6">
+                <form id="startWorkflowForm">
+                    <input type="hidden" id="workflowCode" name="workflow_code">
+
+                    <!-- Dynamic form fields rendered by renderFormFields() -->
+                    <div id="dynamicFields" class="space-y-4 mb-4"></div>
+
+                    <div class="mb-5">
+                        <label for="workflowNotes" class="block text-sm font-medium mb-2">Notes <span class="text-muted-foreground font-normal">(optional)</span></label>
+                        <textarea id="workflowNotes" rows="2"
+                                  class="w-full rounded-lg border-2 border-input p-3 text-sm bg-background focus:border-primary focus:outline-none"
+                                  placeholder="Reason for running this workflow..."></textarea>
+                    </div>
+
+                    <div id="workflowFormError" class="hidden mb-4 rounded-lg bg-destructive/10 text-destructive text-sm p-3"></div>
+
+                    <div class="flex gap-2">
+                        <button type="button" @click="closeWorkflowModal()"
+                                class="flex-1 px-4 py-2 rounded-lg border-2 border-input hover:bg-muted transition-colors text-sm" aria-label="Close">
+                            Cancel
+                        </button>
+                        <button type="submit" id="startWorkflowBtn"
+                                class="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium" aria-label="Submit">
+                            <i data-lucide="play" class="h-4 w-4" aria-hidden="true"></i>
+                            Start Workflow
+                        </button>
+                    </div>
+                </form>
+            </div>
+            <!-- Right panel: Step Preview -->
+            <div class="md:col-span-3 p-6 bg-muted/30">
+                <h4 class="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">What will happen</h4>
+                <div id="stepPreviewList" class="space-y-0.5">
+                    <p class="text-sm text-muted-foreground">Select a workflow to see its steps.</p>
+                </div>
+                <div id="stepPreviewOutputs" class="hidden mt-5 pt-4 border-t border-input">
+                    <h4 class="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-2">You will receive</h4>
+                    <div id="stepPreviewOutputsList" class="flex flex-wrap gap-1.5"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+const WORKFLOW_DATA = {
+    {% for defn in definitions %}
+    '{{ defn.workflow_code }}': {
+        label: {{ defn.workflow_name|tojson }},
+        description: {{ defn.workflow_description|tojson }},
+        steps: {{ defn.steps|tojson }},
+        outputs: {{ ({'APP_ONBOARDING': ['Application Portfolio Entry', 'APQC Process Mappings', 'ArchiMate Elements', 'Gap Analysis Report'], 'GAP_REMEDIATION': ['Gap Analysis Report', 'Remediation Roadmap', 'Task Assignments'], 'VENDOR_SELECTION': ['Vendor Scorecard', 'TCO Analysis', 'Implementation Roadmap', 'Board Decision'], 'COMPLIANCE_SCAN': ['Compliance Report', 'Violation Summary', 'Remediation Tasks'], 'ARCH_REVIEW': ['Completeness Report', 'Quality Scorecard', 'Updated ArchiMate Model'], 'INTELLIGENT_INTEGRATION': ['Integration Health Report', 'Communication View', 'Optimization Recommendations'], 'ADM_PHASE_A_VISION': ['Architecture Vision Document', 'Stakeholder Map', 'Capability Assessment', 'Completion Summary']}).get(defn.workflow_code, [])|tojson }},
+    },
+    {% endfor %}
+};
+
+/* ── Data sources for dynamic form selects (Jinja-rendered) ── */
+const FORM_DATA_SOURCES = {
+    applications: [
+        {% for app in applications %}
+        { id: {{ app.id }}, name: {{ app.name|tojson }} },
+        {% endfor %}
+    ],
+    linkable_instances: [
+        {% for inst in linkable_instances %}
+        { id: {{ inst.id }}, label: {{ ((inst.definition.workflow_code if inst.definition else 'Unknown') ~ ' #' ~ inst.id ~ ' (' ~ inst.status ~ ')')|tojson }} },
+        {% endfor %}
+    ]
+};
+
+/* ── Phase-specific field definitions ── */
+const PHASE_FIELDS = {
+    ADM_PRELIMINARY: [
+        { name: 'org_scope', label: 'Organisation Scope', type: 'text', required: true,
+          placeholder: 'e.g. Group IT, APAC Division', help: 'Which part of the organisation is in scope for this architecture effort' },
+        { name: 'maturity_level', label: 'Current Maturity Level', type: 'select', required: true,
+          options: [
+            { value: '', label: '-- select --' },
+            { value: 'initial', label: 'Level 1 — Initial (ad hoc)' },
+            { value: 'managed', label: 'Level 2 — Managed (repeatable)' },
+            { value: 'defined', label: 'Level 3 — Defined (standardised)' },
+            { value: 'measured', label: 'Level 4 — Measured (quantitative)' },
+            { value: 'optimizing', label: 'Level 5 — Optimising (continuous)' }
+          ] },
+        { name: 'principles', label: 'Architecture Principles', type: 'textarea', required: false,
+          placeholder: 'List key architecture principles (one per line)', rows: 3 },
+        { name: 'governance_model', label: 'Governance Model', type: 'select', required: false,
+          options: [
+            { value: '', label: '-- select --' },
+            { value: 'centralised', label: 'Centralised' },
+            { value: 'federated', label: 'Federated' },
+            { value: 'hybrid', label: 'Hybrid' }
+          ] }
+    ],
+
+    ADM_PHASE_A_VISION: [
+        { name: 'project_name', label: 'Initiative Name', type: 'text', required: true,
+          placeholder: 'e.g. Digital Customer Experience Transformation', help: 'Name of the architecture initiative (TOGAF Phase A scope)' },
+        { name: 'business_problem', label: 'Business Problem', type: 'textarea', required: false,
+          placeholder: 'What business problem or opportunity is being addressed?', rows: 3 },
+        { name: 'strategic_drivers', label: 'Strategic Drivers', type: 'multiselect', required: false,
+          options: [
+            { value: 'cost_reduction', label: 'Cost Reduction' },
+            { value: 'revenue_growth', label: 'Revenue Growth' },
+            { value: 'customer_experience', label: 'Customer Experience' },
+            { value: 'regulatory_compliance', label: 'Regulatory Compliance' },
+            { value: 'digital_transformation', label: 'Digital Transformation' },
+            { value: 'operational_efficiency', label: 'Operational Efficiency' },
+            { value: 'risk_mitigation', label: 'Risk Mitigation' },
+            { value: 'innovation', label: 'Innovation / New Capabilities' }
+          ] },
+        { name: 'desired_outcomes', label: 'Desired Outcomes', type: 'textarea', required: false,
+          placeholder: 'What does success look like? Key measurable outcomes.', rows: 2 },
+        { name: 'scope_domains', label: 'Scope — Architecture Domains', type: 'multiselect', required: false,
+          options: [
+            { value: 'business', label: 'Business Architecture' },
+            { value: 'data', label: 'Data Architecture' },
+            { value: 'application', label: 'Application Architecture' },
+            { value: 'technology', label: 'Technology Architecture' }
+          ] },
+        { name: 'constraints', label: 'Constraints', type: 'textarea', required: false,
+          placeholder: 'Budget, timeline, regulatory, technology constraints', rows: 2 }
+    ],
+
+    ADM_PHASE_B_BUSINESS: [
+        { name: 'linked_instance_id', label: 'Link to Phase A Instance', type: 'select', required: false,
+          source: 'linkable_instances', help: 'Optionally link to a completed Phase A instance for context continuity' },
+        { name: 'application_id', label: 'Application', type: 'select', required: false, source: 'applications' },
+        { name: 'business_domain', label: 'Business Domain', type: 'text', required: false,
+          placeholder: 'e.g. Retail Banking, Supply Chain, HR Services' },
+        { name: 'value_streams', label: 'Value Streams', type: 'textarea', required: false,
+          placeholder: 'Key value streams to model (one per line)', rows: 3 },
+        { name: 'pain_points', label: 'Known Pain Points', type: 'textarea', required: false,
+          placeholder: 'Current-state issues to address in the business architecture', rows: 3 }
+    ],
+
+    ADM_PHASE_C_IS: [
+        { name: 'linked_instance_id', label: 'Link to Phase B Instance', type: 'select', required: false,
+          source: 'linkable_instances', help: 'Link to a Phase B instance for baseline business architecture' },
+        { name: 'sub_phase', label: 'Sub-Phase Focus', type: 'radio', required: true,
+          options: [
+            { value: 'data', label: 'Data Architecture' },
+            { value: 'application', label: 'Application Architecture' },
+            { value: 'both', label: 'Both (Data + Application)' }
+          ] },
+        { name: 'application_id', label: 'Application', type: 'select', required: false, source: 'applications' },
+        { name: 'data_domains', label: 'Data Domains', type: 'text', required: false,
+          placeholder: 'e.g. Customer, Product, Financial, Operational' },
+        { name: 'integration_pattern', label: 'Integration Pattern', type: 'select', required: false,
+          options: [
+            { value: '', label: '-- select --' },
+            { value: 'point_to_point', label: 'Point-to-Point' },
+            { value: 'esb', label: 'ESB / Integration Bus' },
+            { value: 'api_gateway', label: 'API Gateway' },
+            { value: 'event_driven', label: 'Event-Driven / Messaging' },
+            { value: 'hybrid', label: 'Hybrid' }
+          ] }
+    ],
+
+    ADM_PHASE_D_TECH: [
+        { name: 'linked_instance_id', label: 'Link to Phase C Instance', type: 'select', required: false,
+          source: 'linkable_instances' },
+        { name: 'application_id', label: 'Application', type: 'select', required: false, source: 'applications' },
+        { name: 'infra_scope', label: 'Infrastructure Scope', type: 'select', required: true,
+          options: [
+            { value: '', label: '-- select --' },
+            { value: 'cloud_native', label: 'Cloud-Native' },
+            { value: 'hybrid_cloud', label: 'Hybrid Cloud' },
+            { value: 'on_premises', label: 'On-Premises' },
+            { value: 'edge', label: 'Edge Computing' },
+            { value: 'multi_cloud', label: 'Multi-Cloud' }
+          ] },
+        { name: 'platform_strategy', label: 'Platform Strategy', type: 'textarea', required: false,
+          placeholder: 'Key platform decisions and technology standards', rows: 2 },
+        { name: 'nfrs', label: 'Non-Functional Requirements', type: 'textarea', required: false,
+          placeholder: 'Performance, availability, scalability, security requirements', rows: 2 },
+        { name: 'compliance_frameworks', label: 'Compliance Frameworks', type: 'multiselect', required: false,
+          options: [
+            { value: 'iso27001', label: 'ISO 27001' },
+            { value: 'soc2', label: 'SOC 2' },
+            { value: 'gdpr', label: 'GDPR' },
+            { value: 'pci_dss', label: 'PCI DSS' },
+            { value: 'hipaa', label: 'HIPAA' },
+            { value: 'nist', label: 'NIST CSF' }
+          ] }
+    ],
+
+    ADM_PHASE_E_OPPORTUNITIES: [
+        { name: 'linked_instance_id', label: 'Link to Prior Phase', type: 'select', required: false,
+          source: 'linkable_instances' },
+        { name: 'implementation_approach', label: 'Implementation Approach', type: 'select', required: true,
+          options: [
+            { value: '', label: '-- select --' },
+            { value: 'big_bang', label: 'Big Bang' },
+            { value: 'phased', label: 'Phased Rollout' },
+            { value: 'parallel', label: 'Parallel Run' },
+            { value: 'pilot', label: 'Pilot / Proof of Concept' }
+          ] },
+        { name: 'build_vs_buy', label: 'Build vs Buy', type: 'select', required: false,
+          options: [
+            { value: '', label: '-- select --' },
+            { value: 'build', label: 'Build (custom)' },
+            { value: 'buy', label: 'Buy (COTS)' },
+            { value: 'hybrid', label: 'Hybrid' },
+            { value: 'saas', label: 'SaaS' }
+          ] },
+        { name: 'timeline_constraints', label: 'Timeline Constraints', type: 'text', required: false,
+          placeholder: 'e.g. Must go live by Q3 2026' }
+    ],
+
+    ADM_PHASE_F_MIGRATION: [
+        { name: 'linked_instance_id', label: 'Link to Phase E Instance', type: 'select', required: false,
+          source: 'linkable_instances' },
+        { name: 'planning_horizon', label: 'Planning Horizon', type: 'select', required: true,
+          options: [
+            { value: '', label: '-- select --' },
+            { value: '3_months', label: '3 Months' },
+            { value: '6_months', label: '6 Months' },
+            { value: '12_months', label: '12 Months' },
+            { value: '18_months', label: '18 Months' },
+            { value: '24_months', label: '24 Months' }
+          ] },
+        { name: 'migration_waves', label: 'Number of Migration Waves', type: 'number', required: false,
+          placeholder: 'e.g. 3', min: 1, max: 20 },
+        { name: 'quick_wins', label: 'Quick Wins', type: 'textarea', required: false,
+          placeholder: 'Low-effort, high-impact items to prioritise in wave 1', rows: 2 }
+    ],
+
+    ADM_PHASE_G_GOVERNANCE: [
+        { name: 'linked_instance_id', label: 'Project to Govern', type: 'select', required: false,
+          source: 'linkable_instances', help: 'Select the workflow instance to apply governance oversight to' },
+        { name: 'review_frequency', label: 'Review Frequency', type: 'select', required: true,
+          options: [
+            { value: '', label: '-- select --' },
+            { value: 'weekly', label: 'Weekly' },
+            { value: 'fortnightly', label: 'Fortnightly' },
+            { value: 'monthly', label: 'Monthly' },
+            { value: 'quarterly', label: 'Quarterly' }
+          ] },
+        { name: 'compliance_checkpoints', label: 'Compliance Checkpoints', type: 'textarea', required: false,
+          placeholder: 'Key checkpoints and gates to enforce (one per line)', rows: 3 }
+    ],
+
+    ADM_PHASE_H_CHANGE: [
+        { name: 'change_trigger', label: 'Change Trigger', type: 'select', required: true,
+          options: [
+            { value: '', label: '-- select --' },
+            { value: 'technology_change', label: 'Technology Change' },
+            { value: 'business_change', label: 'Business Change' },
+            { value: 'regulatory_change', label: 'Regulatory / Compliance Change' },
+            { value: 'incident', label: 'Incident / Failure' },
+            { value: 'strategic_shift', label: 'Strategic Shift' },
+            { value: 'merger_acquisition', label: 'Merger / Acquisition' }
+          ] },
+        { name: 'change_description', label: 'Change Description', type: 'textarea', required: true,
+          placeholder: 'Describe the change and its expected impact on the architecture', rows: 3 },
+        { name: 'impact_scope', label: 'Impact Scope', type: 'multiselect', required: false,
+          options: [
+            { value: 'business', label: 'Business Architecture' },
+            { value: 'data', label: 'Data Architecture' },
+            { value: 'application', label: 'Application Architecture' },
+            { value: 'technology', label: 'Technology Architecture' }
+          ] },
+        { name: 'urgency', label: 'Urgency', type: 'select', required: true,
+          options: [
+            { value: '', label: '-- select --' },
+            { value: 'critical', label: 'Critical — immediate action' },
+            { value: 'high', label: 'High — this sprint' },
+            { value: 'medium', label: 'Medium — this quarter' },
+            { value: 'low', label: 'Low — backlog' }
+          ] }
+    ],
+
+    ADM_REQUIREMENTS_MGMT: [
+        { name: 'requirement_source', label: 'Source', type: 'text', required: false,
+          placeholder: 'e.g. Stakeholder interview, RFP, Regulatory body' },
+        { name: 'requirement_type', label: 'Requirement Type', type: 'select', required: true,
+          options: [
+            { value: '', label: '-- select --' },
+            { value: 'functional', label: 'Functional' },
+            { value: 'non_functional', label: 'Non-Functional' },
+            { value: 'constraint', label: 'Constraint' },
+            { value: 'assumption', label: 'Assumption' },
+            { value: 'principle', label: 'Architecture Principle' }
+          ] },
+        { name: 'priority', label: 'Priority (MoSCoW)', type: 'select', required: true,
+          options: [
+            { value: '', label: '-- select --' },
+            { value: 'must', label: 'Must Have' },
+            { value: 'should', label: 'Should Have' },
+            { value: 'could', label: 'Could Have' },
+            { value: 'wont', label: "Won't Have (this iteration)" }
+          ] },
+        { name: 'requirements_text', label: 'Requirement Description', type: 'textarea', required: true,
+          placeholder: 'Describe the requirement in detail', rows: 3 },
+        { name: 'validation_criteria', label: 'Validation Criteria', type: 'textarea', required: false,
+          placeholder: 'How will this requirement be validated / tested?', rows: 2 }
+    ],
+
+    ARCH_REVIEW: [
+        { name: 'application_id', label: 'Application', type: 'select', required: true, source: 'applications' }
+    ],
+
+    APP_ONBOARDING: [
+        { name: 'application_id', label: 'Application', type: 'select', required: true, source: 'applications' }
+    ],
+
+    COMPLIANCE_SCAN: [
+        { name: '_info', label: '', type: 'info',
+          text: 'This workflow scans the entire application portfolio. No application selection needed.' }
+    ],
+
+    GAP_REMEDIATION: [
+        { name: '_info', label: '', type: 'info',
+          text: 'This workflow scans the entire portfolio for gaps and generates a remediation roadmap. No application selection needed.' }
+    ],
+
+    VENDOR_SELECTION: [
+        { name: 'requirements_text', label: 'Requirements', type: 'textarea', required: true,
+          placeholder: 'Paste or describe your technology, service, or product requirements for vendor analysis (e.g. integration patterns, compliance needs, scalability).', rows: 4,
+          help: 'Paste requirements above or upload a document (.txt, .md). Drives vendor matching and scoring.',
+          fileUpload: true }
+    ]
+};
+
+/* ── Field renderer helpers ── */
+const _FC = 'w-full rounded-lg border-2 border-input p-2.5 text-sm bg-background focus:border-primary focus:outline-none';
+
+function _label(field) {
+    if (!field.label) return '';
+    const req = field.required ? ' <span class="text-destructive">*</span>' : ' <span class="text-muted-foreground font-normal">(optional)</span>';
+    return '<label for="field_' + field.name + '" class="block text-sm font-medium mb-2">' + field.label + req + '</label>';
+}
+
+function _help(field) {
+    return field.help ? '<p class="text-xs text-muted-foreground mt-1">' + field.help + '</p>' : '';
+}
+
+function _renderText(field) {
+    let html = _label(field);
+    html += '<input type="text" id="field_' + field.name + '" name="' + field.name + '"'
+        + ' class="' + _FC + '"'
+        + ' placeholder="' + (field.placeholder || '') + '"'
+        + (field.required ? ' required' : '')
+        + ' maxlength="' + (field.maxlength || 200) + '">';
+    html += _help(field);
+    return html;
+}
+
+function _renderTextarea(field) {
+    let html = _label(field);
+    if (field.fileUpload) {
+        html += '<div class="flex gap-2 mb-2">'
+            + '<label class="inline-flex items-center gap-2 px-3 py-2 rounded-lg border-2 border-input hover:border-primary/50 cursor-pointer text-sm transition-colors">'
+            + '<i data-lucide="upload" class="h-4 w-4" aria-hidden="true"></i>'
+            + '<span>Upload document</span>'
+            + '<input type="file" id="field_' + field.name + '_file" accept=".txt,.md" class="sr-only">'
+            + '</label>'
+            + '<button type="button" id="field_' + field.name + '_clear" class="hidden px-3 py-2 rounded-lg border-2 border-input hover:bg-muted text-sm">Clear</button>'
+            + '</div>';
+    }
+    html += '<textarea id="field_' + field.name + '" name="' + field.name + '"'
+        + ' rows="' + (field.rows || 3) + '"'
+        + ' class="' + _FC + '"'
+        + ' placeholder="' + (field.placeholder || '') + '"'
+        + (field.required ? ' required' : '')
+        + '></textarea>';
+    html += _help(field);
+    return html;
+}
+
+function _renderSelect(field) {
+    let html = _label(field);
+    html += '<select id="field_' + field.name + '" name="' + field.name + '" class="' + _FC + '"'
+        + (field.required ? ' required' : '') + '>';
+    if (field.source) {
+        html += '<option value="">-- select --</option>';
+        const items = FORM_DATA_SOURCES[field.source] || [];
+        items.forEach(function(item) {
+            html += '<option value="' + item.id + '">' + (item.name || item.label) + '</option>';
+        });
+    } else if (field.options) {
+        field.options.forEach(function(opt) {
+            html += '<option value="' + opt.value + '">' + opt.label + '</option>';
+        });
+    }
+    html += '</select>';
+    html += _help(field);
+    return html;
+}
+
+function _renderMultiselect(field) {
+    let html = _label(field);
+    html += '<div class="grid grid-cols-2 gap-2" id="field_' + field.name + '">';
+    (field.options || []).forEach(function(opt) {
+        html += '<label class="inline-flex items-center gap-2 p-2 rounded-lg border-2 border-input hover:border-primary/30 cursor-pointer text-sm transition-colors">'
+            + '<input type="checkbox" name="' + field.name + '" value="' + opt.value + '" class="rounded border-input text-primary focus:ring-primary">'
+            + '<span>' + opt.label + '</span>'
+            + '</label>';
+    });
+    html += '</div>';
+    html += _help(field);
+    return html;
+}
+
+function _renderRadio(field) {
+    let html = _label(field);
+    html += '<div class="flex flex-wrap gap-2" id="field_' + field.name + '">';
+    (field.options || []).forEach(function(opt, idx) {
+        html += '<label class="inline-flex items-center gap-2 px-3 py-2 rounded-lg border-2 border-input hover:border-primary/30 cursor-pointer text-sm transition-colors">'
+            + '<input type="radio" name="' + field.name + '" value="' + opt.value + '"'
+            + (idx === 0 && field.required ? ' required' : '')
+            + ' class="text-primary focus:ring-primary">'
+            + '<span>' + opt.label + '</span>'
+            + '</label>';
+    });
+    html += '</div>';
+    html += _help(field);
+    return html;
+}
+
+function _renderNumber(field) {
+    let html = _label(field);
+    html += '<input type="number" id="field_' + field.name + '" name="' + field.name + '"'
+        + ' class="' + _FC + '"'
+        + ' placeholder="' + (field.placeholder || '') + '"'
+        + (field.min != null ? ' min="' + field.min + '"' : '')
+        + (field.max != null ? ' max="' + field.max + '"' : '')
+        + (field.required ? ' required' : '') + '>';
+    html += _help(field);
+    return html;
+}
+
+function _renderInfo(field) {
+    return '<p class="text-sm text-muted-foreground rounded-lg border-2 border-input p-3 bg-muted/30">'
+        + field.text + '</p>';
+}
+
+const FIELD_RENDERERS = {
+    text: _renderText,
+    textarea: _renderTextarea,
+    select: _renderSelect,
+    multiselect: _renderMultiselect,
+    radio: _renderRadio,
+    number: _renderNumber,
+    info: _renderInfo
+};
+
+function renderFormFields(workflowCode) {
+    const container = document.getElementById('dynamicFields');
+    const fields = PHASE_FIELDS[workflowCode];
+    if (!fields || fields.length === 0) {
+        container.innerHTML = '<p class="text-sm text-muted-foreground">No additional configuration needed.</p>';
+        return;
+    }
+    let html = '';
+    fields.forEach(function(field) {
+        const renderer = FIELD_RENDERERS[field.type];
+        if (renderer) {
+            html += '<div>' + renderer(field) + '</div>';
+        }
+    });
+    container.innerHTML = html;
+
+    // Wire up file upload if any textarea has fileUpload
+    fields.forEach(function(field) {
+        if (field.fileUpload) {
+            _wireFileUpload(field.name);
+        }
+    });
+
+    if (window.lucide) window.lucide.createIcons();
+}
+
+function _wireFileUpload(fieldName) {
+    const fileInput = document.getElementById('field_' + fieldName + '_file');
+    const textarea = document.getElementById('field_' + fieldName);
+    const clearBtn = document.getElementById('field_' + fieldName + '_clear');
+    if (!fileInput || !textarea) return;
+    fileInput.addEventListener('change', function() {
+        const file = this.files && this.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = function() {
+            textarea.value = reader.result || '';
+            if (clearBtn) clearBtn.classList.remove('hidden');
+        };
+        reader.readAsText(file, 'UTF-8');
+    });
+    if (clearBtn) {
+        clearBtn.addEventListener('click', function() {
+            fileInput.value = '';
+            textarea.value = '';
+            clearBtn.classList.add('hidden');
+        });
+    }
+}
+
+function renderStepPreview(workflowCode) {
+    const wf = WORKFLOW_DATA[workflowCode];
+    const container = document.getElementById('stepPreviewList');
+    const outputsSection = document.getElementById('stepPreviewOutputs');
+    const outputsList = document.getElementById('stepPreviewOutputsList');
+
+    if (!wf || !wf.steps) {
+        container.innerHTML = '<p class="text-sm text-muted-foreground">No step data available.</p>';
+        outputsSection.classList.add('hidden');
+        return;
+    }
+
+    let html = '';
+    wf.steps.forEach(function(step, idx) {
+        const isApproval = step.step_type === 'approval' || step.requires_approval;
+        const typeClass = isApproval
+            ? 'bg-warning/15 text-warning border-warning/20'
+            : 'bg-background border-input';
+        const iconName = isApproval ? 'hand' : (step.step_type === 'notification' ? 'bell' : 'cog');
+        const typeBadge = isApproval
+            ? '<span class="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold bg-warning/15 text-warning">YOUR REVIEW</span>'
+            : '';
+
+        html += '<div class="flex items-start gap-3 p-2.5 rounded-lg border ' + typeClass + '">'
+            + '<div class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full '
+            + (isApproval ? 'bg-warning text-primary-foreground' : 'bg-primary/10 text-primary')
+            + ' text-xs font-bold mt-0.5">' + (idx + 1) + '</div>'
+            + '<div class="flex-1 min-w-0">'
+            + '<div class="flex items-center gap-2 flex-wrap">'
+            + '<span class="text-sm font-medium">' + step.step_name + '</span>'
+            + typeBadge
+            + '</div>';
+        if (step.step_description) {
+            html += '<p class="text-xs text-muted-foreground mt-0.5 leading-relaxed">' + step.step_description + '</p>';
+        }
+        html += '</div></div>';
+    });
+
+    container.innerHTML = html;
+
+    if (wf.outputs && wf.outputs.length > 0) {
+        outputsList.innerHTML = wf.outputs.map(function(o) {
+            return '<span class="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium bg-success/10 text-success border border-success/20">'
+                + '<i data-lucide="file-check" class="h-3 w-3"></i>' + o + '</span>';
+        }).join('');
+        outputsSection.classList.remove('hidden');
+    } else {
+        outputsSection.classList.add('hidden');
+    }
+
+    if (window.lucide) window.lucide.createIcons();
+}
+
+function startWorkflow(workflowCode) {
+    const wf = WORKFLOW_DATA[workflowCode] || {};
+    document.getElementById('workflowCode').value = workflowCode;
+    document.getElementById('startWorkflowTitle').textContent = wf.label || workflowCode;
+    document.getElementById('startWorkflowDesc').textContent = wf.description || '';
+    document.getElementById('workflowNotes').value = '';
+    document.getElementById('workflowFormError').classList.add('hidden');
+
+    renderFormFields(workflowCode);
+    renderStepPreview(workflowCode);
+
+    if (window.Platform && window.Platform.modal) {
+        window.Platform.modal.open('startWorkflowModal');
+    } else {
+        document.getElementById('startWorkflowModal').classList.remove('hidden');
+    }
+    if (window.lucide) window.lucide.createIcons();
+}
+
+function closeWorkflowModal() {
+    if (window.Platform && window.Platform.modal) {
+        window.Platform.modal.close('startWorkflowModal');
+    } else {
+        document.getElementById('startWorkflowModal').classList.add('hidden');
+    }
+}
+
+document.getElementById('startWorkflowForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    const errorEl = document.getElementById('workflowFormError');
+    errorEl.classList.add('hidden');
+
+    const workflowCode = document.getElementById('workflowCode').value;
+    const notes = document.getElementById('workflowNotes').value.trim();
+    const fields = PHASE_FIELDS[workflowCode] || [];
+
+    // Collect values from dynamic fields
+    let context = {};
+    if (notes) context.notes = notes;
+
+    for (const field of fields) {
+        if (field.type === 'info') continue;
+
+        let val;
+        if (field.type === 'multiselect') {
+            const checked = document.querySelectorAll('input[name="' + field.name + '"]:checked');
+            val = Array.from(checked).map(function(cb) { return cb.value; });
+            if (val.length > 0) context[field.name] = val;
+            if (field.required && val.length === 0) {
+                errorEl.textContent = field.label + ' is required.';
+                errorEl.classList.remove('hidden');
+                return;
+            }
+        } else if (field.type === 'radio') {
+            const selected = document.querySelector('input[name="' + field.name + '"]:checked');
+            val = selected ? selected.value : '';
+            if (val) context[field.name] = val;
+            if (field.required && !val) {
+                errorEl.textContent = field.label + ' is required.';
+                errorEl.classList.remove('hidden');
+                return;
+            }
+        } else {
+            const el = document.getElementById('field_' + field.name);
+            val = el ? (el.value || '').trim() : '';
+            if (val) {
+                // Parse numeric IDs for select fields referencing data sources
+                if (field.type === 'select' && field.source && val) {
+                    context[field.name] = parseInt(val) || val;
+                } else if (field.type === 'number' && val) {
+                    context[field.name] = parseInt(val);
+                } else {
+                    context[field.name] = val;
+                }
+            }
+            if (field.required && !val) {
+                errorEl.textContent = field.label + ' is required.';
+                errorEl.classList.remove('hidden');
+                return;
+            }
+        }
+    }
+
+    // Portfolio-scope flag for backwards compatibility
+    if (workflowCode === 'COMPLIANCE_SCAN' || workflowCode === 'GAP_REMEDIATION') {
+        context.portfolio_scope = true;
+    }
+    // Vendor selection: copy requirements_text to description for backward compat
+    if (workflowCode === 'VENDOR_SELECTION' && context.requirements_text) {
+        context.description = context.requirements_text;
+    }
+
+    const btn = document.getElementById('startWorkflowBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<i data-lucide="loader-2" class="h-4 w-4 animate-spin" aria-hidden="true"></i> Starting...';
+
+    try {
+        const response = await fetch('/api/ea-workflows/start', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token() }}'
+            },
+            body: JSON.stringify({
+                workflow_code: workflowCode,
+                context: context
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            closeWorkflowModal();
+            const instanceId = data.instance && data.instance.id;
+            if (instanceId) {
+                window.location.href = '/ea-workflows/instance/' + instanceId;
+            } else {
+                location.reload();
+            }
+        } else {
+            errorEl.textContent = data.error || 'Failed to start workflow.';
+            errorEl.classList.remove('hidden');
+        }
+    } catch (error) {
+        errorEl.textContent = 'Network error -- please try again.';
+        errorEl.classList.remove('hidden');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i data-lucide="play" class="h-4 w-4" aria-hidden="true"></i> Start Workflow';
+        if (window.lucide) window.lucide.createIcons();
+    }
+});
+
+</script>
+
+<script>
+async function seedWorkflows() {
+    try {
+        const response = await fetch('/api/ea-workflows/seed-defaults', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token() }}'
+            }
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            if (window.Platform && window.Platform.toast) {
+                Platform.toast.success(`Successfully created ${data.total_created} workflows`);
+            }
+            location.reload();
+        } else {
+            if (window.Platform && window.Platform.toast) {
+                Platform.toast.error(data.error || 'Failed to seed workflows');
+            }
+        }
+    } catch (error) {
+        if (window.Platform && window.Platform.toast) {
+            Platform.toast.error('Network error: ' + error.message);
+        }
+    }
+}
+
+function quickStart() {
+    return {
+        search: '',
+        pins: JSON.parse(localStorage.getItem('wf_pins') || '[]'),
+        togglePin(code) {
+            if (this.pins.includes(code)) {
+                this.pins = this.pins.filter(c => c !== code);
+            } else {
+                this.pins.push(code);
+            }
+            localStorage.setItem('wf_pins', JSON.stringify(this.pins));
+        },
+        isPinned(code) {
+            return this.pins.includes(code);
+        }
+    };
+}
+
+function analyticsPanel() {
+    return {
+        analytics: {},
+        loaded: false,
+        async loadAnalytics() {
+            try {
+                const resp = await fetch('/api/ea-workflows/analytics');
+                const data = await resp.json();
+                if (data.success) {
+                    this.analytics = data.analytics;
+                }
+            } catch (e) {
+                console.error('Failed to load analytics:', e);
+            }
+            this.loaded = true;
+        }
+    };
+}
+
+// Auto-open start modal when arriving via ?start=WORKFLOW_CODE
+(function() {
+    var autoStartCode = new URLSearchParams(window.location.search).get('start') || ''; // frontend-quality-ok
+    if (autoStartCode && WORKFLOW_DATA[autoStartCode]) {
+        startWorkflow(autoStartCode);
+    }
+})();
+
+async function approveWorkflow(instanceId) {
+    try {
+        const response = await fetch(`/api/ea-workflows/instances/${instanceId}/resume`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token() }}'
+            },
+            body: JSON.stringify({})
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            if (window.Platform && window.Platform.toast) {
+                Platform.toast.success('Workflow approved and resumed');
+            }
+            location.reload();
+        } else {
+            if (window.Platform && window.Platform.toast) {
+                Platform.toast.error(data.error || 'Failed to approve workflow');
+            }
+        }
+    } catch (error) {
+        if (window.Platform && window.Platform.toast) {
+            Platform.toast.error('Network error: ' + error.message);
+        }
+    }
+}
+</script>
+
+<script>
+document.addEventListener('alpine:init', () => {
+    Alpine.data('admArchimateStats', () => ({
+        loaded: false,
+        phaseSummary: [],
+        async init() {
+            try {
+                const r = await fetch('/api/ea/phases/archimate-summary');
+                const data = await r.json();
+                this.phaseSummary = (data.phases || []).filter(p => p.element_count > 0);
+                this.loaded = true;
+            } catch(e) { this.loaded = false; }
+        },
+    }));
+});
+</script>
+{% endblock %}

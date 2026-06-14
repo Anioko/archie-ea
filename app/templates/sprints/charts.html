@@ -1,0 +1,252 @@
+{% extends "layouts/admin_base.html" %}
+
+{% block title %}Sprint Charts — Velocity &amp; Burndown{% endblock %}
+
+{% block content %}
+<!-- modal-a11y-ok -->
+<div class="space-y-6 max-w-6xl mx-auto"
+     x-data="{
+         selectedSprintId: null,
+         sprints: [],
+         burndownData: null,
+         velocityData: null,
+         burndownChart: null,
+         velocityChart: null,
+         loading: false,
+         error: null,
+
+         async init() {
+             await this.loadVelocity();
+             await this.loadSprints();
+             if (this.sprints.length > 0) {
+                 this.selectedSprintId = this.sprints[0].id;
+                 await this.loadBurndown();
+             }
+         },
+
+         async loadSprints() {
+             try {
+                 const r = await fetch('/api/sprints?board_id=0', { headers: { 'Accept': 'application/json' } });
+                 if (!r.ok) { this.sprints = []; return; }
+                 this.sprints = await r.json();
+             } catch (e) {
+                 this.sprints = [];
+             }
+         },
+
+         async loadBurndown() {
+             if (!this.selectedSprintId) return;
+             this.loading = true;
+             this.error = null;
+             try {
+                 const r = await fetch(`/api/sprints/${this.selectedSprintId}/burndown`);
+                 if (!r.ok) { this.burndownData = null; this.loading = false; return; }
+                 this.burndownData = await r.json();
+                 this.$nextTick(() => this.renderBurndown());
+             } catch (e) {
+                 this.error = 'Failed to load burndown data.';
+             } finally {
+                 this.loading = false;
+             }
+         },
+
+         async loadVelocity() {
+             try {
+                 const r = await fetch('/api/sprints/velocity');
+                 if (!r.ok) { this.velocityData = null; return; }
+                 this.velocityData = await r.json();
+                 this.$nextTick(() => this.renderVelocity());
+             } catch (e) {
+                 this.velocityData = null;
+             }
+         },
+
+         renderBurndown() {
+             const canvas = document.getElementById('burndownCanvas');
+             if (!canvas || !this.burndownData) return;
+             if (this.burndownChart) { this.burndownChart.destroy(); }
+             const d = this.burndownData;
+             const labels = d.ideal_line.map(p => `Day ${p.day + 1}`);
+             this.burndownChart = new Chart(canvas, {
+                 type: 'line',
+                 data: {
+                     labels: labels,
+                     datasets: [
+                         {
+                             label: 'Ideal',
+                             data: d.ideal_line.map(p => p.points),
+                             borderColor: '#94a3b8',
+                             borderDash: [6, 3],
+                             tension: 0,
+                             pointRadius: 0,
+                             fill: false,
+                         },
+                         {
+                             label: 'Actual',
+                             data: d.actual_line.map((p, i) => ({ x: i, y: p.points })),
+                             borderColor: '#6366f1',
+                             backgroundColor: 'rgba(99,102,241,0.1)',
+                             tension: 0.2,
+                             fill: true,
+                             pointRadius: 4,
+                         },
+                     ],
+                 },
+                 options: {
+                     responsive: true,
+                     maintainAspectRatio: false,
+                     plugins: {
+                         legend: { position: 'top' },
+                         title: {
+                             display: true,
+                             text: d.sprint_name ? `Burndown — ${d.sprint_name}` : 'Burndown Chart',
+                         },
+                     },
+                     scales: {
+                         y: { beginAtZero: true, title: { display: true, text: 'Story Points' } },
+                         x: { title: { display: true, text: 'Day' } },
+                     },
+                 },
+             });
+         },
+
+         renderVelocity() {
+             const canvas = document.getElementById('velocityCanvas');
+             if (!canvas || !this.velocityData || !this.velocityData.sprints.length) return;
+             if (this.velocityChart) { this.velocityChart.destroy(); }
+             const d = this.velocityData;
+             this.velocityChart = new Chart(canvas, {
+                 type: 'bar',
+                 data: {
+                     labels: d.sprints.map(s => s.name),
+                     datasets: [
+                         {
+                             label: 'Committed',
+                             data: d.sprints.map(s => s.committed),
+                             backgroundColor: 'rgba(148,163,184,0.7)',
+                             borderColor: '#94a3b8',
+                             borderWidth: 1,
+                         },
+                         {
+                             label: 'Completed',
+                             data: d.sprints.map(s => s.completed),
+                             backgroundColor: 'rgba(99,102,241,0.8)',
+                             borderColor: '#6366f1',
+                             borderWidth: 1,
+                         },
+                     ],
+                 },
+                 options: {
+                     responsive: true,
+                     maintainAspectRatio: false,
+                     plugins: {
+                         legend: { position: 'top' },
+                         title: {
+                             display: true,
+                             text: `Velocity (avg: ${d.average_velocity} pts/sprint)`,
+                         },
+                     },
+                     scales: {
+                         y: { beginAtZero: true, title: { display: true, text: 'Story Points' } },
+                     },
+                 },
+             });
+         },
+     }">
+
+    <!-- Page header -->
+    <div class="flex items-center justify-between pt-2">
+        <div>
+            <h1 class="text-2xl font-bold tracking-tight">Sprint Charts</h1>
+            <p class="text-sm text-muted-foreground mt-1">Velocity &amp; burndown analytics</p>
+        </div>
+    </div>
+
+    <!-- Burndown chart -->
+    <section aria-labelledby="burndown-heading">
+        <div data-slot="card" class="rounded-xl border bg-card text-card-foreground shadow-sm p-6">
+            <div class="flex items-center justify-between mb-4">
+                <h2 id="burndown-heading" class="text-lg font-semibold">Burndown Chart</h2>
+
+                <!-- Sprint selector -->
+                <div class="flex items-center gap-2" x-show="sprints.length > 0" x-cloak>
+                    <label for="sprint-selector" class="text-sm text-muted-foreground">Sprint:</label>
+                    <select id="sprint-selector"
+                            class="border border-input bg-background text-sm rounded-md px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-ring"
+                            x-model="selectedSprintId"
+                            @change="loadBurndown()">
+                        <template x-for="s in sprints" :key="s.id">
+                            <option :value="s.id" x-text="s.name"></option>
+                        </template>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Loading state -->
+            <div x-show="loading" class="flex items-center justify-center h-48 text-muted-foreground" x-cloak>
+                <svg class="animate-spin h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                </svg>
+                Loading…
+            </div>
+
+            <!-- Error state -->
+            <div x-show="error" class="rounded-md bg-destructive/10 text-destructive text-sm p-3" x-cloak x-text="error"></div>
+
+            <!-- Empty state -->
+            <div x-show="!loading && !error && (!burndownData || !burndownData.ideal_line || burndownData.ideal_line.length === 0)" x-cloak
+                 class="flex flex-col items-center justify-center h-48 text-muted-foreground" x-cloak>
+                <svg class="h-10 w-10 mb-2 opacity-40" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                          d="M9 17v-2m3 2v-4m3 4v-6M5 20h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v11a2 2 0 002 2z"/>
+                </svg>
+                <p class="font-medium">No sprint data available</p>
+                <p class="text-xs mt-1">Create a sprint with start/end dates to see the burndown chart.</p>
+            </div>
+
+            <!-- Chart -->
+            <div x-show="!loading && burndownData && burndownData.ideal_line && burndownData.ideal_line.length > 0" x-cloak
+                 class="relative h-64" x-cloak>
+                <canvas id="burndownCanvas" aria-label="Burndown chart" role="img"></canvas>
+            </div>
+        </div>
+    </section>
+
+    <!-- Velocity chart -->
+    <section aria-labelledby="velocity-heading">
+        <div data-slot="card" class="rounded-xl border bg-card text-card-foreground shadow-sm p-6">
+            <h2 id="velocity-heading" class="text-lg font-semibold mb-4">Velocity Chart</h2>
+
+            <!-- Empty state -->
+            <div x-show="!velocityData || !velocityData.sprints || velocityData.sprints.length === 0" x-cloak
+                 class="flex flex-col items-center justify-center h-48 text-muted-foreground">
+                <svg class="h-10 w-10 mb-2 opacity-40" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                          d="M9 17v-2m3 2v-4m3 4v-6M5 20h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v11a2 2 0 002 2z"/>
+                </svg>
+                <p class="font-medium">No sprint data available</p>
+                <p class="text-xs mt-1">Close sprints to see velocity history.</p>
+            </div>
+
+            <!-- Average velocity badge -->
+            <div x-show="velocityData && velocityData.sprints && velocityData.sprints.length > 0" x-cloak
+                 class="mb-4 flex items-center gap-2" x-cloak>
+                <span class="inline-flex items-center rounded-full bg-primary/10 px-3 py-0.5 text-sm font-medium text-primary">
+                    Avg velocity: <span class="ml-1 font-bold" x-text="velocityData ? velocityData.average_velocity : 0"></span> pts
+                </span>
+            </div>
+
+            <!-- Chart -->
+            <div x-show="velocityData && velocityData.sprints && velocityData.sprints.length > 0" x-cloak
+                 class="relative h-64" x-cloak>
+                <canvas id="velocityCanvas" aria-label="Velocity chart" role="img"></canvas>
+            </div>
+        </div>
+    </section>
+</div>
+{% endblock %}
+
+{% block extra_head_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+{% endblock %}

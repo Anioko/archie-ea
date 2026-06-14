@@ -1,0 +1,282 @@
+{% extends 'layouts/admin_base.html' %}
+
+{% block title %}Impact Analysis: {{ element.name }}{% endblock %}
+
+{% block breadcrumb %}
+{% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
+{{ breadcrumb_nav(items=[
+    {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
+    {'text': 'Architecture Elements', 'href': url_for('archimate_crud.dashboard')},
+    {'text': 'Views & Analysis'},
+    {'text': 'Impact Analysis', 'current': true}
+]) }}
+{% endblock %}
+
+{% block content %}
+<div class="container mx-auto p-6 space-y-6">
+
+    <!-- Header -->
+    <div class="flex items-center justify-between">
+        <div>
+            <nav class="flex items-center gap-2 text-sm text-muted-foreground mb-2">
+                <a href="{{ url_for('archimate_crud.dashboard') }}" class="hover:text-foreground">Dashboard</a>
+                <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
+                <span>Impact Analysis</span>
+            </nav>
+            <h1 class="text-3xl font-bold">Impact Analysis: {{ element.name }}</h1>
+            <p class="text-muted-foreground mt-2">
+                What would be affected if this element changes or is retired?
+            </p>
+        </div>
+        <div class="flex gap-2">
+            <a href="{{ url_for('architect_ui.impact_analysis', element_id=element.id) }}?hops=1"
+               class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2">
+                Direct only
+            </a>
+            <a href="{{ url_for('architect_ui.api_impact_analysis', element_id=element.id) }}"
+               class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2"
+               target="_blank">
+                <i data-lucide="code" class="h-4 w-4 mr-2" aria-hidden="true"></i>
+                JSON
+            </a>
+        </div>
+    </div>
+
+    <!-- Root element info -->
+    <div class="border rounded-lg p-4 bg-muted/10 flex items-center gap-4">
+        <i data-lucide="box" class="h-8 w-8 text-primary shrink-0" aria-hidden="true"></i>
+        <div>
+            <div class="font-semibold text-lg">{{ element.name }}</div>
+            <div class="text-sm text-muted-foreground">
+                {{ element.layer or 'Unknown layer' }} &nbsp;·&nbsp; {{ element.type or 'Unknown type' }}
+            </div>
+        </div>
+    </div>
+
+    {% if analysis.get('error') %}
+    <!-- Error state -->
+    <div class="border border-destructive rounded-lg p-6 text-center">
+        <i data-lucide="alert-circle" class="h-8 w-8 text-destructive mx-auto mb-2" aria-hidden="true"></i>
+        <p class="text-destructive">{{ analysis.error }}</p>
+    </div>
+    {% else %}
+
+    <!-- Stat cards -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="border rounded-lg p-6">
+            <div class="text-2xl font-bold">{{ analysis.total_impacted }}</div>
+            <div class="text-sm text-muted-foreground mt-1">Total Impacted</div>
+        </div>
+        <div class="border rounded-lg p-6">
+            <div class="text-2xl font-bold text-amber-600">{{ analysis.direct_impacts | length }}</div>
+            <div class="text-sm text-muted-foreground mt-1">Direct (1 hop)</div>
+        </div>
+        <div class="border rounded-lg p-6">
+            <div class="text-2xl font-bold text-violet-600">{{ analysis.indirect_impacts | length }}</div>
+            <div class="text-sm text-muted-foreground mt-1">Indirect (2–3 hops)</div>
+        </div>
+    </div>
+
+    <!-- Capability Gaps warning -->
+    {% if capability_gaps %}
+    <div class="border border-amber-400 bg-amber-500/10 rounded-lg p-4 flex items-start gap-3">
+        <i data-lucide="triangle-alert" class="h-5 w-5 text-amber-600 shrink-0 mt-0.5" aria-hidden="true"></i>
+        <div>
+            <div class="font-semibold text-amber-800">Strategy Capabilities at Risk</div>
+            <p class="text-sm text-amber-700 mt-1">
+                {{ capability_gaps | length }} Strategy
+                {{ 'capability' if capability_gaps | length == 1 else 'capabilities' }}
+                would lose coverage if this element is removed:
+                {% for gap in capability_gaps %}
+                    <span class="font-medium">{{ gap.name }}</span>{% if not loop.last %}, {% endif %}
+                {% endfor %}
+            </p>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- By Layer bar chart -->
+    {% if analysis.by_layer %}
+    <div class="border rounded-lg p-6">
+        <h2 class="text-lg font-semibold mb-4">Impact by Layer</h2>
+        {% set max_count = analysis.by_layer.values() | max %}
+        <div class="space-y-3">
+            {% for layer, count in analysis.by_layer.items() %}
+            {% set bar_pct = ((count / max_count) * 100) | int %}
+            {% if layer == 'Strategy' %}
+                {% set bar_class = 'bg-primary/70' %}
+                {% set badge_class = 'bg-primary/10 text-primary' %}
+            {% elif layer == 'Business' %}
+                {% set bar_class = 'bg-emerald-500/70' %}
+                {% set badge_class = 'bg-emerald-500/10 text-emerald-700' %}
+            {% elif layer == 'Application' %}
+                {% set bar_class = 'bg-amber-500/70' %}
+                {% set badge_class = 'bg-amber-500/10 text-amber-700' %}
+            {% elif layer == 'Technology' %}
+                {% set bar_class = 'bg-violet-500/70' %}
+                {% set badge_class = 'bg-violet-500/10 text-violet-700' %}
+            {% else %}
+                {% set bar_class = 'bg-muted-foreground/50' %}
+                {% set badge_class = 'bg-muted text-muted-foreground' %}
+            {% endif %}
+            <div class="flex items-center gap-3">
+                <span class="w-28 text-sm shrink-0">
+                    <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium {{ badge_class }}">
+                        {{ layer }}
+                    </span>
+                </span>
+                <div class="flex-1 bg-muted rounded-full h-4 overflow-hidden">
+                    <div class="{{ bar_class }} h-4 rounded-full" style="width: {{ bar_pct }}%"></div>
+                </div>
+                <span class="text-sm font-medium w-6 text-right">{{ count }}</span>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Empty state -->
+    {% if analysis.total_impacted == 0 %}
+    <div class="border rounded-lg p-12 text-center">
+        <i data-lucide="zap-off" class="h-10 w-10 text-muted-foreground mx-auto mb-4" aria-hidden="true"></i>
+        <p class="text-muted-foreground">No relationships found. This element has no dependencies.</p>
+    </div>
+    {% else %}
+
+    <!-- Tabs -->
+    <div x-data="{ activeTab: 'direct' }">
+        <div class="border-b mb-4">
+            <nav class="flex space-x-8">
+                <button @click="activeTab = 'direct'"
+                        :class="activeTab === 'direct' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:border-border'"
+                        class="border-b-2 px-1 py-4 text-sm font-medium" aria-label="Direct Impact">
+                    Direct Impact
+                    <span class="ml-1 inline-flex items-center rounded-full px-1.5 py-0.5 text-xs bg-muted">{{ analysis.direct_impacts | length }}</span>
+                </button>
+                <button @click="activeTab = 'all'"
+                        :class="activeTab === 'all' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:border-border'"
+                        class="border-b-2 px-1 py-4 text-sm font-medium" aria-label="All Impact">
+                    All Impact
+                    <span class="ml-1 inline-flex items-center rounded-full px-1.5 py-0.5 text-xs bg-muted">{{ analysis.total_impacted }}</span>
+                </button>
+            </nav>
+        </div>
+
+        <!-- Direct Impact tab -->
+        <div x-show="activeTab === 'direct'" x-cloak>
+            {% if analysis.direct_impacts %}
+            <div class="border rounded-lg overflow-hidden">
+                <table class="w-full text-sm">
+                    <thead class="bg-muted/50">
+                        <tr>
+                            <th class="text-left p-3 font-medium">Element Name</th>
+                            <th class="text-left p-3 font-medium">Layer</th>
+                            <th class="text-left p-3 font-medium">Type</th>
+                            <th class="text-left p-3 font-medium">Via Relationship</th>
+                            <th class="text-left p-3 font-medium">Direction</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y">
+                        {% for imp in analysis.direct_impacts %}
+                        <tr class="hover:bg-muted/30">
+                            <td class="p-3 font-medium">{{ imp.name }}</td>
+                            <td class="p-3">
+                                {% if imp.layer == 'Strategy' %}
+                                    <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-primary/10 text-primary">{{ imp.layer }}</span>
+                                {% elif imp.layer == 'Business' %}
+                                    <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-emerald-500/10 text-emerald-700">{{ imp.layer }}</span>
+                                {% elif imp.layer == 'Application' %}
+                                    <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-amber-500/10 text-amber-700">{{ imp.layer }}</span>
+                                {% elif imp.layer == 'Technology' %}
+                                    <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-violet-500/10 text-violet-700">{{ imp.layer }}</span>
+                                {% else %}
+                                    <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-muted text-muted-foreground">{{ imp.layer }}</span>
+                                {% endif %}
+                            </td>
+                            <td class="p-3 text-muted-foreground">{{ imp.type }}</td>
+                            <td class="p-3 text-muted-foreground">{{ imp.via_relationship }}</td>
+                            <td class="p-3">
+                                {% if imp.direction == 'outgoing' %}
+                                    <span class="inline-flex items-center gap-1 text-xs text-primary">
+                                        <i data-lucide="arrow-right" class="h-3 w-3" aria-hidden="true"></i> outgoing
+                                    </span>
+                                {% else %}
+                                    <span class="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                                        <i data-lucide="arrow-left" class="h-3 w-3" aria-hidden="true"></i> incoming
+                                    </span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-muted-foreground text-sm p-4">No direct impacts found.</p>
+            {% endif %}
+        </div>
+
+        <!-- All Impact tab -->
+        <div x-show="activeTab === 'all'" x-cloak>
+            <div class="border rounded-lg overflow-hidden">
+                <table class="w-full text-sm">
+                    <thead class="bg-muted/50">
+                        <tr>
+                            <th class="text-left p-3 font-medium">Element Name</th>
+                            <th class="text-left p-3 font-medium">Layer</th>
+                            <th class="text-left p-3 font-medium">Type</th>
+                            <th class="text-left p-3 font-medium">Via Relationship</th>
+                            <th class="text-left p-3 font-medium">Direction</th>
+                            <th class="text-left p-3 font-medium">Hop</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y">
+                        {% for imp in (analysis.direct_impacts + analysis.indirect_impacts) | sort(attribute='hop') %}
+                        <tr class="hover:bg-muted/30">
+                            <td class="p-3 font-medium">{{ imp.name }}</td>
+                            <td class="p-3">
+                                {% if imp.layer == 'Strategy' %}
+                                    <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-primary/10 text-primary">{{ imp.layer }}</span>
+                                {% elif imp.layer == 'Business' %}
+                                    <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-emerald-500/10 text-emerald-700">{{ imp.layer }}</span>
+                                {% elif imp.layer == 'Application' %}
+                                    <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-amber-500/10 text-amber-700">{{ imp.layer }}</span>
+                                {% elif imp.layer == 'Technology' %}
+                                    <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-violet-500/10 text-violet-700">{{ imp.layer }}</span>
+                                {% else %}
+                                    <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-muted text-muted-foreground">{{ imp.layer }}</span>
+                                {% endif %}
+                            </td>
+                            <td class="p-3 text-muted-foreground">{{ imp.type }}</td>
+                            <td class="p-3 text-muted-foreground">{{ imp.via_relationship }}</td>
+                            <td class="p-3">
+                                {% if imp.direction == 'outgoing' %}
+                                    <span class="inline-flex items-center gap-1 text-xs text-primary">
+                                        <i data-lucide="arrow-right" class="h-3 w-3" aria-hidden="true"></i> outgoing
+                                    </span>
+                                {% else %}
+                                    <span class="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                                        <i data-lucide="arrow-left" class="h-3 w-3" aria-hidden="true"></i> incoming
+                                    </span>
+                                {% endif %}
+                            </td>
+                            <td class="p-3 text-center">
+                                <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium
+                                    {% if imp.hop == 1 %}bg-amber-500/10 text-amber-700{% else %}bg-violet-500/10 text-violet-700{% endif %}">
+                                    {{ imp.hop }}
+                                </span>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    {% endif %}{# end empty state #}
+
+    {% endif %}{# end error check #}
+
+</div>
+{% endblock %}

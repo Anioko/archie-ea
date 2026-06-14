@@ -1,0 +1,485 @@
+<!-- AI Review Queue Panel Component -->
+<!-- Professional EA tool for reviewing AI-generated mappings with confidence scores -->
+<div id="review-queue-panel" hidden class="modal-root fixed inset-0 bg-foreground bg-opacity-50 items-center justify-center" style="z-index:1000;">
+  <div class="bg-background rounded-lg shadow-2xl w-full max-w-7xl h-5/6 flex flex-col">
+    <!-- Header -->
+    <div class="flex items-center justify-between p-6 border-b border-border">
+      <div>
+        <h2 class="text-2xl font-bold text-foreground">Review Low-Confidence Mappings</h2>
+        <p class="text-sm text-muted-foreground mt-1">Only uncertain AI mappings (<70% confidence) require review. High-confidence mappings are auto-approved.</p>
+      </div>
+      <div class="flex items-center gap-4">
+        <div class="text-sm">
+          <span class="font-semibold text-foreground/80">Pending:</span>
+          <span id="review-pending-count" class="text-primary font-bold">0</span>
+          <span id="review-breakdown" class="text-xs text-muted-foreground ml-2"></span>
+        </div>
+        <button @click="closeReviewQueue()" class="text-muted-foreground hover:text-muted-foreground" aria-label="Close review queue">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Filters and Bulk Actions -->
+    <div class="p-4 border-b border-border bg-muted">
+      <div class="flex items-center justify-between">
+        <div class="flex gap-4">
+          <!-- Select All Checkbox -->
+          <label class="flex items-center gap-2 px-4 py-2 bg-background border border-border rounded-md hover:bg-muted cursor-pointer">
+            <label for="select-all-checkbox">Field</label>
+    <input type="checkbox" id="select-all-checkbox" class="w-5 h-5 text-primary border-border rounded focus:ring-primary" @change="toggleSelectAll(this.checked)">
+            <span class="font-medium text-foreground/80">Select All</span>
+          </label>
+
+          <select id="review-type-filter" class="px-4 py-2 border border-border rounded-lg" @change="filterReviewQueue(this.value)">
+            <option value="">All Types</option>
+            <option value="capability">Capabilities</option>
+            <option value="process">APQC Processes</option>
+            <option value="archimate">ArchiMate Elements</option>
+            <option value="vendor">Vendor Products</option>
+          </select>
+
+          <select id="review-confidence-filter" class="px-4 py-2 border border-border rounded-lg" @change="filterByConfidence(this.value)">
+            <option value="">All Confidence Levels</option>
+            <option value="high">High (≥80%)</option>
+            <option value="medium">Medium (60-79%)</option>
+            <option value="low">Low (<60%)</option>
+          </select>
+        </div>
+
+        <div class="flex gap-2">
+          <button @click="selectHighConfidence()" class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary font-medium" aria-label="Select high confidence mappings">
+            ⚡ Select High Confidence (≥70%)
+          </button>
+          <button @click="bulkApproveSelected()" class="px-4 py-2 bg-success text-primary-foreground rounded-md hover:bg-success font-medium" aria-label="Approve selected mappings">
+            ✓ Approve Selected
+          </button>
+          <button @click="bulkRejectSelected()" class="px-4 py-2 bg-destructive text-primary-foreground rounded-md hover:bg-destructive font-medium" aria-label="Reject selected mappings">
+            ✗ Reject Selected
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Review Items List -->
+    <div class="flex-1 overflow-y-auto">
+      <div id="review-queue-content" class="divide-y divide-border">
+        <div class="flex items-center justify-center py-12">
+          <div class="text-center">
+            <svg class="animate-spin h-8 w-8 text-primary mx-auto mb-4" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <p class="text-muted-foreground">Loading review queue...</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer Actions -->
+    <div class="p-4 border-t border-border bg-muted flex items-center justify-between">
+      <div class="text-sm text-muted-foreground">
+        <span id="review-selected-count">0</span> items selected
+      </div>
+      <div class="flex gap-3">
+        <button @click="closeReviewQueue()" class="px-6 py-2 border border-border rounded-md hover:bg-muted font-medium" aria-label="Cancel review">
+          Cancel
+        </button>
+        <button @click="confirmReviewedMappings()" class="px-6 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary font-medium" aria-label="Confirm and import reviewed mappings">
+          Confirm & Import
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function escapeHtml(str) {
+    if (str == null) return '';
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+let reviewQueueItems = [];
+let selectedReviewItems = new Set();
+
+function openReviewQueue(previewData) {
+  Platform.modal.open('review-queue-panel');
+  loadReviewQueue(previewData);
+}
+
+function closeReviewQueue() {
+  Platform.modal.close('review-queue-panel');
+  selectedReviewItems.clear();
+}
+
+async function loadReviewQueue(previewData) {
+  try {
+    // If preview data provided, use it; otherwise fetch from API
+    if (previewData && previewData.applications) {
+      reviewQueueItems = buildReviewItemsFromPreview(previewData);
+      renderReviewQueue(reviewQueueItems);
+    } else {
+      const response = await fetch('/api/review-queue');
+      const data = await response.json();
+
+      if (data.success) {
+        reviewQueueItems = data.items || [];
+        renderReviewQueue(reviewQueueItems);
+      }
+    }
+
+    updateReviewCounts();
+  } catch (error) {
+    document.getElementById('review-queue-content').innerHTML =
+      `<div class="text-destructive text-center py-8">Failed to load review queue: ${error.message}</div>`;
+  }
+}
+
+function buildReviewItemsFromPreview(previewData) {
+  const items = [];
+  let itemId = 1;
+  const LOW_CONFIDENCE_THRESHOLD = 0.70; // Only show items below 70% confidence
+
+  if (!previewData.applications || previewData.applications.length === 0) {
+    console.warn('No applications found in preview data');
+    return items;
+  }
+
+  let totalMappings = 0;
+  let lowConfidenceMappings = 0;
+
+  previewData.applications.forEach(app => {
+
+    // Capability mappings - only include low confidence
+    if (app.capabilities) {
+      app.capabilities.forEach(cap => {
+        totalMappings++;
+        const confidence = cap.confidence_score || 0;
+        if (confidence < LOW_CONFIDENCE_THRESHOLD) {
+          lowConfidenceMappings++;
+          items.push({
+            id: itemId++,
+            type: 'capability',
+            application_name: app.name,
+            item_name: cap.capability_name || 'Unknown Capability',
+            confidence_score: confidence,
+            rationale: Array.isArray(cap.rationale) ? cap.rationale.join('; ') : (cap.rationale || 'AI-generated mapping'),
+            status: 'pending',
+            metadata: cap
+          });
+        }
+      });
+    }
+
+    // Process mappings - only include low confidence
+    if (app.processes) {
+      app.processes.forEach(proc => {
+        totalMappings++;
+        const confidence = proc.similarity_score || 0;
+        if (confidence < LOW_CONFIDENCE_THRESHOLD) {
+          lowConfidenceMappings++;
+          items.push({
+            id: itemId++,
+            type: 'process',
+            application_name: app.name,
+            item_name: `${proc.process_code} - ${proc.process_name}`,
+            confidence_score: confidence,
+            rationale: proc.match_rationale || 'Semantic similarity match',
+            status: 'pending',
+            metadata: proc
+          });
+        }
+      });
+    }
+
+    // ArchiMate elements - only include low confidence
+    if (app.archimate) {
+      app.archimate.forEach(elem => {
+        totalMappings++;
+        const confidence = elem.confidence || 0.75;
+        if (confidence < LOW_CONFIDENCE_THRESHOLD) {
+          lowConfidenceMappings++;
+          items.push({
+            id: itemId++,
+            type: 'archimate',
+            application_name: app.name,
+            item_name: `${elem.type}: ${elem.name}`,
+            confidence_score: confidence,
+            rationale: `Generated ${elem.type} in ${elem.layer} layer`,
+            status: 'pending',
+            metadata: elem
+          });
+        }
+      });
+    }
+  });
+
+  return items;
+}
+
+function renderReviewQueue(items) {
+  if (!items || items.length === 0) {
+    document.getElementById('review-queue-content').innerHTML =
+      `<div class="text-muted-foreground text-center py-12">No items pending review</div>`;
+    return;
+  }
+
+  const html = items.map(item => {
+    const confidencePercent = Math.round(item.confidence_score * 100);
+    const confidenceColor = confidencePercent >= 80 ? 'text-success' :
+                           confidencePercent >= 60 ? 'text-warning' : 'text-destructive';
+    const confidenceBg = confidencePercent >= 80 ? 'bg-success/5' :
+                        confidencePercent >= 60 ? 'bg-warning/5' : 'bg-destructive/5';
+
+    const typeIcons = {
+      capability: 'target',
+      process: 'settings',
+      archimate: 'landmark',
+      vendor: 'building-2'
+    };
+
+    const typeLabels = {
+      capability: 'Capability Mapping',
+      process: 'APQC Process',
+      archimate: 'ArchiMate Element',
+      vendor: 'Vendor Product'
+    };
+
+    return `
+      <div class="p-4 hover:bg-muted transition-colors" data-item-id="${item.id}" data-type="${escapeHtml(item.type)}" data-confidence="${confidencePercent}">
+        <div class="flex items-start gap-4">
+          <!-- Checkbox -->
+          <input type="checkbox"
+                 class="mt-1 w-5 h-5 text-primary border-border rounded focus:ring-primary"
+                 @change="toggleReviewItem(${item.id}, this.checked)" aria-label="Select mapping for review">
+
+          <!-- Content -->
+          <div class="flex-1">
+            <div class="flex items-center gap-3 mb-2">
+              <span class="inline-flex items-center justify-center w-8 h-8 rounded-md bg-muted"><i data-lucide="${typeIcons[item.type] || 'box'}" class="w-4 h-4 text-muted-foreground"></i></span>
+              <span class="px-2 py-1 bg-primary/10 text-primary text-xs font-semibold rounded">
+                ${typeLabels[item.type]}
+              </span>
+              <span class="text-sm font-medium text-foreground/80">${escapeHtml(item.application_name)}</span>
+            </div>
+
+            <h4 class="text-lg font-semibold text-foreground mb-1">${escapeHtml(item.item_name)}</h4>
+            <p class="text-sm text-muted-foreground mb-3">${escapeHtml(item.rationale)}</p>
+
+            <!-- Confidence Score -->
+            <div class="flex items-center gap-4">
+              <div class="${confidenceBg} px-3 py-1 rounded-lg">
+                <span class="text-xs font-medium text-foreground/80">Confidence:</span>
+                <span class="${confidenceColor} font-bold ml-2">${confidencePercent}%</span>
+              </div>
+
+              <!-- Progress Bar -->
+              <div class="flex-1 bg-muted rounded-full h-2 max-w-xs">
+                <div class="h-2 rounded-full ${confidencePercent >= 80 ? 'bg-success' : confidencePercent >= 60 ? 'bg-warning' : 'bg-destructive'}"
+                     style="width: ${confidencePercent}%"></div>  <!-- inline-style-ok -->
+              </div>
+            </div>
+          </div>
+
+          <!-- Actions -->
+          <div class="flex gap-2">
+            <button @click="approveReviewItem(${item.id})"
+                    class="px-4 py-2 bg-success text-primary-foreground rounded-md hover:bg-success text-sm font-medium" aria-label="Approve this mapping">
+              ✓ Approve
+            </button>
+            <button @click="rejectReviewItem(${item.id})"
+                    class="px-4 py-2 bg-destructive text-primary-foreground rounded-md hover:bg-destructive text-sm font-medium" aria-label="Reject this mapping">
+              ✗ Reject
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  document.getElementById('review-queue-content').innerHTML = html;
+  if (window.lucide) window.lucide.createIcons();
+}
+
+function toggleReviewItem(itemId, checked) {
+  if (checked) {
+    selectedReviewItems.add(itemId);
+  } else {
+    selectedReviewItems.delete(itemId);
+  }
+  updateReviewCounts();
+  updateSelectAllCheckbox();
+}
+
+function toggleSelectAll(checked) {
+  const checkboxes = document.querySelectorAll('#review-queue-content input[type="checkbox"]');
+  checkboxes.forEach(cb => {
+    const itemDiv = cb.closest('[data-item-id]');
+    if (itemDiv && itemDiv.style.display !== 'none') {
+      cb.checked = checked;
+      const itemId = parseInt(itemDiv.dataset.itemId);
+      if (checked) {
+        selectedReviewItems.add(itemId);
+      } else {
+        selectedReviewItems.delete(itemId);
+      }
+    }
+  });
+  updateReviewCounts();
+}
+
+function selectHighConfidence() {
+  const checkboxes = document.querySelectorAll('#review-queue-content input[type="checkbox"]');
+  checkboxes.forEach(cb => {
+    const itemDiv = cb.closest('[data-item-id]');
+    if (itemDiv && itemDiv.style.display !== 'none') {
+      const confidence = parseInt(itemDiv.dataset.confidence);
+      if (confidence >= 70) {
+        cb.checked = true;
+        const itemId = parseInt(itemDiv.dataset.itemId);
+        selectedReviewItems.add(itemId);
+      }
+    }
+  });
+  updateReviewCounts();
+  updateSelectAllCheckbox();
+}
+
+function updateSelectAllCheckbox() {
+  const allCheckboxes = document.querySelectorAll('#review-queue-content input[type="checkbox"]');
+  const visibleCheckboxes = Array.from(allCheckboxes).filter(cb => {
+    const itemDiv = cb.closest('[data-item-id]');
+    return itemDiv && itemDiv.style.display !== 'none';
+  });
+  const allChecked = visibleCheckboxes.length > 0 && visibleCheckboxes.every(cb => cb.checked);
+  const selectAllCb = document.getElementById('select-all-checkbox');
+  if (selectAllCb) {
+    selectAllCb.checked = allChecked;
+  }
+}
+
+function updateReviewCounts() {
+  const pending = reviewQueueItems.filter(i => i.status === 'pending');
+  document.getElementById('review-pending-count').textContent = pending.length;
+  document.getElementById('review-selected-count').textContent = selectedReviewItems.size;
+
+  // Calculate breakdown by type
+  const breakdown = {
+    capability: pending.filter(i => i.type === 'capability').length,
+    process: pending.filter(i => i.type === 'process').length,
+    archimate: pending.filter(i => i.type === 'archimate').length,
+    vendor: pending.filter(i => i.type === 'vendor').length
+  };
+
+  // Build breakdown text
+  const parts = [];
+  if (breakdown.capability > 0) parts.push(`${breakdown.capability} Capabilities`);
+  if (breakdown.process > 0) parts.push(`${breakdown.process} Processes`);
+  if (breakdown.archimate > 0) parts.push(`${breakdown.archimate} ArchiMate`);
+  if (breakdown.vendor > 0) parts.push(`${breakdown.vendor} Vendor`);
+
+  const breakdownEl = document.getElementById('review-breakdown');
+  if (breakdownEl && parts.length > 0) {
+    breakdownEl.textContent = `(${parts.join(' • ')})`;
+  }
+}
+
+async function approveReviewItem(itemId) {
+  const item = reviewQueueItems.find(i => i.id === itemId);
+  if (!item) return;
+
+  item.status = 'approved';
+
+  // Remove from DOM
+  const element = document.querySelector(`[data-item-id="${itemId}"]`);
+  if (element) element.remove();
+
+  updateReviewCounts();
+}
+
+async function rejectReviewItem(itemId) {
+  const item = reviewQueueItems.find(i => i.id === itemId);
+  if (!item) return;
+
+  item.status = 'rejected';
+
+  // Remove from DOM
+  const element = document.querySelector(`[data-item-id="${itemId}"]`);
+  if (element) element.remove();
+
+  updateReviewCounts();
+}
+
+async function bulkApproveSelected() {
+  if (selectedReviewItems.size === 0) {
+    alert('Please select items to approve');
+    return;
+  }
+
+  for (const itemId of selectedReviewItems) {
+    await approveReviewItem(itemId);
+  }
+
+  selectedReviewItems.clear();
+  updateReviewCounts();
+}
+
+async function bulkRejectSelected() {
+  if (selectedReviewItems.size === 0) {
+    alert('Please select items to reject');
+    return;
+  }
+
+  for (const itemId of selectedReviewItems) {
+    await rejectReviewItem(itemId);
+  }
+
+  selectedReviewItems.clear();
+  updateReviewCounts();
+}
+
+function filterReviewQueue(type) {
+  const items = document.querySelectorAll('[data-item-id]');
+  items.forEach(item => {
+    if (!type || item.dataset.type === type) {
+      item.style.display = '';
+    } else {
+      item.style.display = 'none';
+    }
+  });
+  updateSelectAllCheckbox();
+}
+
+function filterByConfidence(level) {
+  const items = document.querySelectorAll('[data-item-id]');
+  items.forEach(item => {
+    const confidence = parseInt(item.dataset.confidence);
+    let show = true;
+
+    if (level === 'high') show = confidence >= 80;
+    else if (level === 'medium') show = confidence >= 60 && confidence < 80;
+    else if (level === 'low') show = confidence < 60;
+
+    item.style.display = show ? '' : 'none';
+  });
+  updateSelectAllCheckbox();
+}
+
+async function confirmReviewedMappings() {
+  const approved = reviewQueueItems.filter(i => i.status === 'approved');
+
+  if (approved.length === 0) {
+    alert('No mappings approved. Please review and approve items before confirming.');
+    return;
+  }
+
+  // Call the import confirmation callback
+  if (window.onReviewConfirmed) {
+    window.onReviewConfirmed(approved);
+  }
+
+  closeReviewQueue();
+}
+</script>

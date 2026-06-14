@@ -1,0 +1,62 @@
+{
+  "name": "archie-e2e-tests",
+  "version": "1.0.0",
+  "description": "End-to-end test suite for A.R.C.H.I.E. Enterprise Architecture Platform",
+  "main": "index.js",
+  "scripts": {
+    "test": "playwright test",
+    "test:prod:readonly": "playwright test -c playwright.prod-readonly.config.js",
+    "test:headed": "playwright test --headed",
+    "test:debug": "playwright test --debug",
+    "test:smoke": "playwright test --grep @smoke",
+    "test:regression": "playwright test --grep @regression",
+    "test:workflow": "playwright test --grep @workflow",
+    "test:performance": "playwright test --grep @performance",
+    "test:ui": "playwright test --ui",
+    "test:e2e:all": "playwright test",
+    "test:e2e:smoke": "playwright test --grep @smoke",
+    "test:e2e:regression": "playwright test --grep @regression",
+    "test:e2e:workflow": "playwright test --grep @workflow",
+    "test:e2e:performance": "playwright test --grep @performance",
+    "test:chromium": "playwright test --project=chromium",
+    "test:auth-only": "playwright test --project=auth-setup",
+    "report": "playwright show-report",
+    "install:browsers": "playwright install --with-deps",
+    "lint": "eslint tests/e2e/**/*.ts",
+    "type-check": "tsc --noEmit --project tsconfig.e2e.json",
+    "build:css": "python scripts/build_css.py",
+    "build:css:dev": "python scripts/build_css.py --dev",
+    "build:css:watch": "python scripts/build_css.py --watch"
+  },
+  "keywords": [
+    "e2e",
+    "testing",
+    "playwright",
+    "enterprise",
+    "architecture"
+  ],
+  "author": "A.R.C.H.I.E. Development Team",
+  "license": "MIT",
+  "devDependencies": {
+    "@playwright/test": "^1.40.0",
+    "@types/archiver": "^6.0.2",
+    "@types/node": "^20.10.0",
+    "archiver": "^6.0.1",
+    "eslint": "^8.55.0",
+    "typescript": "^5.3.0"
+  },
+  "playwright": {
+    "tsconfig": "tsconfig.e2e.json"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/your-org/archie-platform.git"
+  },
+  "bugs": {
+    "url": "https://github.com/your-org/archie-platform/issues"
+  },
+  "homepage": "https://github.com/your-org/archie-platform#readme"
+}

@@ -1,0 +1,188 @@
+genome_version: "1.0.0"
+solution_id: 0
+solution_name: "Enterprise Procurement"
+generated_at: "2026-04-01T00:00:00Z"
+language: "python-fastapi"
+
+problem:
+  statement: "Procurement processes rely on email threads and spreadsheets — no audit trail, no compliance enforcement, and vendor evaluations are subjective and undocumented."
+  success_metrics:
+    - "100% procurement decisions auditable within 24 hours"
+    - "Reduce procurement cycle time from 45 days to 15 days"
+    - "Achieve SOC2 compliance for all vendor financial data"
+  constraints:
+    - "Must integrate with existing ERP for PO creation"
+    - "Must support multi-currency for global vendors"
+    - "Approval workflows must be configurable per spend threshold"
+  business_domain: "Procurement"
+  _rationale: "Based on production solution 3259 (180 ArchiMate elements). Procurement is high-value because every dollar saved in process efficiency flows directly to bottom line."
+
+modules:
+  vendors:
+    _rationale: "Vendor master data is the foundation — contracts, tenders, and POs all reference vendors."
+    aggregate_root: "Vendor"
+    entities: ["Vendor", "VendorContact"]
+    fields:
+      Vendor:
+        - {name: "name", type: "string", max_length: 255, required: true}
+        - {name: "registration_number", type: "string", max_length: 50, required: true, unique: true}
+        - {name: "email", type: "string", format: "email", required: true}
+        - {name: "country", type: "string", max_length: 2, required: true}
+        - {name: "risk_rating", type: "enum", enum_values: ["low", "medium", "high", "critical"]}
+        - {name: "annual_revenue", type: "decimal", required: false}
+        - {name: "is_approved", type: "boolean", required: false}
+      VendorContact:
+        - {name: "vendor_id", type: "integer", required: true, foreign_key: "Vendor.id"}
+        - {name: "name", type: "string", max_length: 255, required: true}
+        - {name: "email", type: "string", format: "email", required: true}
+        - {name: "phone", type: "string", format: "phone", required: false}
+        - {name: "role", type: "string", max_length: 100, required: false}
+    sensitive_fields:
+      - {field: "Vendor.annual_revenue", level: "restricted"}
+      - {field: "Vendor.registration_number", level: "pii"}
+    archimate_element_ids: [201, 202]
+
+  tenders:
+    _rationale: "Tenders formalize the request for proposals. Structured evaluation prevents subjective vendor selection."
+    aggregate_root: "Tender"
+    entities: ["Tender", "TenderResponse"]
+    fields:
+      Tender:
+        - {name: "title", type: "string", max_length: 255, required: true}
+        - {name: "description", type: "text", required: true}
+        - {name: "budget_ceiling", type: "decimal", required: false}
+        - {name: "currency", type: "string", max_length: 3, required: true}
+        - {name: "submission_deadline", type: "datetime", required: true}
+        - {name: "evaluation_criteria", type: "json", required: false}
+      TenderResponse:
+        - {name: "tender_id", type: "integer", required: true, foreign_key: "Tender.id"}
+        - {name: "vendor_id", type: "integer", required: true, foreign_key: "Vendor.id"}
+        - {name: "proposal_text", type: "text", required: true}
+        - {name: "quoted_amount", type: "decimal", required: true}
+        - {name: "score", type: "float", required: false}
+    archimate_element_ids: [203, 204]
+
+  contracts:
+    _rationale: "Contracts bind vendor commitments. Tracking expiry and renewal dates prevents service gaps."
+    aggregate_root: "Contract"
+    entities: ["Contract"]
+    fields:
+      Contract:
+        - {name: "vendor_id", type: "integer", required: true, foreign_key: "Vendor.id"}
+        - {name: "title", type: "string", max_length: 255, required: true}
+        - {name: "value", type: "decimal", required: true}
+        - {name: "currency", type: "string", max_length: 3, required: true}
+        - {name: "start_date", type: "date", required: true}
+        - {name: "end_date", type: "date", required: true}
+        - {name: "auto_renew", type: "boolean", required: false}
+        - {name: "terms_document_url", type: "string", required: false}
+    archimate_element_ids: [205]
+
+  purchase_orders:
+    _rationale: "POs are the transactional core. State machine enforces the approval-before-commitment workflow."
+    aggregate_root: "PurchaseOrder"
+    entities: ["PurchaseOrder", "PurchaseOrderLine"]
+    fields:
+      PurchaseOrder:
+        - {name: "vendor_id", type: "integer", required: true, foreign_key: "Vendor.id"}
+        - {name: "contract_id", type: "integer", required: false, foreign_key: "Contract.id"}
+        - {name: "requester_name", type: "string", max_length: 255, required: true}
+        - {name: "total_amount", type: "decimal", required: false}
+        - {name: "currency", type: "string", max_length: 3, required: true}
+        - {name: "justification", type: "text", required: true}
+        - {name: "delivery_date", type: "date", required: false}
+      PurchaseOrderLine:
+        - {name: "purchase_order_id", type: "integer", required: true, foreign_key: "PurchaseOrder.id"}
+        - {name: "description", type: "string", max_length: 500, required: true}
+        - {name: "quantity", type: "integer", required: true, minimum: 1}
+        - {name: "unit_price", type: "decimal", required: true}
+    state_machine:
+      field: "status"
+      states: ["draft", "submitted", "evaluated", "awarded", "cancelled"]
+      initial_state: "draft"
+      transitions:
+        - {from: "draft", to: "submitted", trigger: "submit", guard: "has_lines"}
+        - {from: "submitted", to: "evaluated", trigger: "evaluate"}
+        - {from: "evaluated", to: "awarded", trigger: "award"}
+        - {from: ["draft", "submitted", "evaluated"], to: "cancelled", trigger: "cancel"}
+    operations:
+      create_purchase_order:
+        type: "command"
+        input: "PurchaseOrderDraft"
+        output: "PurchaseOrderId"
+        authorization: ["procurement_officer", "admin"]
+        validation:
+          - {field: "vendor_id", rule: "must reference approved vendor"}
+          - {field: "justification", rule: "minimum 50 characters"}
+    views:
+      list:
+        columns: ["id", "vendor_id", "status", "total_amount", "currency"]
+        filters: ["status", "vendor_id"]
+        default_sort: {field: "created_at", dir: "desc"}
+      detail:
+        sections: ["summary", "lines", "approvals", "history"]
+      create:
+        fields: ["vendor_id", "justification", "currency", "delivery_date"]
+    archimate_element_ids: [206, 207]
+
+  invoices:
+    _rationale: "Invoice matching against POs prevents overbilling. Three-way matching (PO, receipt, invoice) is industry standard."
+    aggregate_root: "Invoice"
+    entities: ["Invoice"]
+    fields:
+      Invoice:
+        - {name: "purchase_order_id", type: "integer", required: true, foreign_key: "PurchaseOrder.id"}
+        - {name: "vendor_id", type: "integer", required: true, foreign_key: "Vendor.id"}
+        - {name: "invoice_number", type: "string", max_length: 100, required: true, unique: true}
+        - {name: "amount", type: "decimal", required: true}
+        - {name: "currency", type: "string", max_length: 3, required: true}
+        - {name: "due_date", type: "date", required: true}
+        - {name: "paid_date", type: "date", required: false}
+    archimate_element_ids: [208]
+
+  approvals:
+    _rationale: "Approval workflows enforce spend authority limits and create an audit trail for compliance."
+    aggregate_root: "Approval"
+    entities: ["Approval"]
+    fields:
+      Approval:
+        - {name: "purchase_order_id", type: "integer", required: true, foreign_key: "PurchaseOrder.id"}
+        - {name: "approver_name", type: "string", max_length: 255, required: true}
+        - {name: "decision_notes", type: "text", required: false}
+        - {name: "decided_at", type: "datetime", required: false}
+    state_machine:
+      field: "status"
+      states: ["pending", "approved", "rejected"]
+      initial_state: "pending"
+      transitions:
+        - {from: "pending", to: "approved", trigger: "approve"}
+        - {from: "pending", to: "rejected", trigger: "reject"}
+    archimate_element_ids: [209]
+
+infrastructure:
+  database: "postgresql"
+  cache: "redis"
+  auth: "keycloak"
+  observability: "opentelemetry"
+
+security:
+  mfa: "required_for_admin"
+  api_keys: true
+  rate_limiting: {default: "100/min", authenticated: "1000/min"}
+  encryption_at_rest: true
+  multi_tenancy: true
+
+deployment:
+  target: "docker_compose"
+  environments: ["staging", "production"]
+  ci_cd: {provider: "github_actions", registry: "ghcr"}
+
+identity_provider:
+  type: "oidc"
+  preset: "keycloak"
+  roles: ["admin", "procurement_officer", "approver", "vendor", "finance"]
+
+compliance:
+  frameworks: ["soc2"]
+  audit_logging: "all_mutations"
+  data_retention_years: 7

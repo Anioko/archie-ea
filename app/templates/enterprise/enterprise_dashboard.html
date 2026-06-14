@@ -1,0 +1,268 @@
+{% extends "layouts/admin_base.html" %}
+{% import 'components/card.html' as card %}
+
+{% block title %}Enterprise Architecture{% endblock %}
+
+{% block breadcrumb %}
+{% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
+{{ breadcrumb_nav(items=[
+    {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
+    {'text': 'Enterprise Architecture'},
+    {'text': 'Enterprise Dashboard', 'current': true}
+]) }}
+{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+
+    {# ════════════════════════════════════════════════════════════════════════ #}
+    {# EXECUTIVE HEADER                                                         #}
+    {# ════════════════════════════════════════════════════════════════════════ #}
+    <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+        <div>
+            <nav class="flex items-center gap-2 text-xs text-muted-foreground mb-2">
+                <a href="{{ url_for('main.index') }}" class="hover:text-foreground transition-colors">Dashboard</a>
+                <i data-lucide="chevron-right" class="w-3 h-3" aria-hidden="true"></i>
+                <span class="text-foreground font-medium">Enterprise Architecture</span>
+            </nav>
+            <h1 class="text-2xl font-bold tracking-tight text-foreground">Enterprise Architecture</h1>
+            <p class="text-sm text-muted-foreground mt-1">Strategic architecture management and portfolio intelligence</p>
+        </div>
+        <div class="flex items-center gap-3">
+            <a href="{{ url_for('enterprise.gap_analysis') }}"
+               class="inline-flex items-center gap-2 h-10 px-4 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-semibold shadow-sm">
+                <i data-lucide="search" class="w-4 h-4" aria-hidden="true"></i>
+                Gap Analysis
+            </a>
+            <a href="{{ url_for('enterprise.ai_architecture_analysis') }}"
+               class="inline-flex items-center gap-2 h-10 px-4 rounded-lg border border-border/50 bg-card hover:bg-accent/50 transition-colors text-sm font-medium">
+                <i data-lucide="sparkles" class="w-4 h-4" aria-hidden="true"></i>
+                AI Analysis
+            </a>
+        </div>
+    </div>
+
+    {# ════════════════════════════════════════════════════════════════════════ #}
+    {# KEY METRICS                                                              #}
+    {# ════════════════════════════════════════════════════════════════════════ #}
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="rounded-xl border border-border/50 bg-card p-5">
+            <div class="flex items-start justify-between">
+                <div>
+                    <p class="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Data Models</p>
+                    <p class="text-3xl font-bold tracking-tight text-foreground mt-2">{{ data_models_count }}</p>
+                    <p class="text-[11px] text-muted-foreground mt-1">Conceptual, logical & physical</p>
+                </div>
+                <div class="p-2.5 rounded-lg bg-primary/10">
+                    <i data-lucide="database" class="w-5 h-5 text-primary" aria-hidden="true"></i>
+                </div>
+            </div>
+        </div>
+        <div class="rounded-xl border border-border/50 bg-card p-5">
+            <div class="flex items-start justify-between">
+                <div>
+                    <p class="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Solutions</p>
+                    <p class="text-3xl font-bold tracking-tight text-foreground mt-2">{{ solutions_count }}</p>
+                    <p class="text-[11px] text-muted-foreground mt-1">Architecture solutions</p>
+                </div>
+                <div class="p-2.5 rounded-lg bg-emerald-500/10">
+                    <i data-lucide="puzzle" class="w-5 h-5 text-emerald-500" aria-hidden="true"></i>
+                </div>
+            </div>
+        </div>
+        <div class="rounded-xl border border-border/50 bg-card p-5">
+            <div class="flex items-start justify-between">
+                <div>
+                    <p class="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Software Modules</p>
+                    <p class="text-3xl font-bold tracking-tight text-foreground mt-2">{{ software_modules_count }}</p>
+                    <p class="text-[11px] text-muted-foreground mt-1">Design components</p>
+                </div>
+                <div class="p-2.5 rounded-lg bg-violet-500/10">
+                    <i data-lucide="code" class="w-5 h-5 text-violet-500" aria-hidden="true"></i>
+                </div>
+            </div>
+        </div>
+        <div class="rounded-xl border border-border/50 bg-card p-5">
+            <div class="flex items-start justify-between">
+                <div>
+                    <p class="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Gaps Identified</p>
+                    <p class="text-3xl font-bold tracking-tight {% if gaps_count %}text-amber-500{% else %}text-foreground{% endif %} mt-2">{{ gaps_count }}</p>
+                    <p class="text-[11px] text-muted-foreground mt-1">Require attention</p>
+                </div>
+                <div class="p-2.5 rounded-lg {% if gaps_count %}bg-amber-500/10{% else %}bg-muted{% endif %}">
+                    <i data-lucide="alert-triangle" class="w-5 h-5 {% if gaps_count %}text-amber-500{% else %}text-muted-foreground{% endif %}" aria-hidden="true"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# ════════════════════════════════════════════════════════════════════════ #}
+    {# ARCHITECTURE DOMAINS                                                     #}
+    {# ════════════════════════════════════════════════════════════════════════ #}
+    <div>
+        <div class="flex items-center gap-2 mb-4">
+            <h2 class="text-sm font-semibold text-foreground uppercase tracking-wider">Architecture Domains</h2>
+            <div class="flex-1 h-px bg-border/50"></div>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <a href="{{ url_for('enterprise.data_architecture_dashboard') }}" class="group rounded-xl border border-border/50 bg-card hover:border-primary/30 hover:shadow-md transition-all duration-200 p-6">
+                <div class="flex items-start gap-4">
+                    <div class="p-3 rounded-xl bg-gradient-to-br from-primary/15 to-primary/5 group-hover:from-primary/20 group-hover:to-primary/10 transition-colors">
+                        <i data-lucide="database" class="w-6 h-6 text-primary" aria-hidden="true"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <h3 class="font-semibold text-foreground group-hover:text-primary transition-colors">Data Architecture</h3>
+                        <p class="text-xs text-muted-foreground mt-1 leading-relaxed">Conceptual, Logical & Physical Models</p>
+                    </div>
+                    <i data-lucide="chevron-right" class="w-4 h-4 text-muted-foreground/50 group-hover:text-primary group-hover:translate-x-0.5 transition-all mt-1" aria-hidden="true"></i>
+                </div>
+            </a>
+            <a href="{{ url_for('enterprise.solutions_architecture_dashboard') }}" class="group rounded-xl border border-border/50 bg-card hover:border-emerald-500/30 hover:shadow-md transition-all duration-200 p-6">
+                <div class="flex items-start gap-4">
+                    <div class="p-3 rounded-xl bg-gradient-to-br from-emerald-500/15 to-emerald-500/5 group-hover:from-emerald-500/20 group-hover:to-emerald-500/10 transition-colors">
+                        <i data-lucide="puzzle" class="w-6 h-6 text-emerald-500" aria-hidden="true"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <h3 class="font-semibold text-foreground group-hover:text-emerald-600 transition-colors">Solutions Architecture</h3>
+                        <p class="text-xs text-muted-foreground mt-1 leading-relaxed">Solutions & Patterns</p>
+                    </div>
+                    <i data-lucide="chevron-right" class="w-4 h-4 text-muted-foreground/50 group-hover:text-emerald-500 group-hover:translate-x-0.5 transition-all mt-1" aria-hidden="true"></i>
+                </div>
+            </a>
+            <a href="{{ url_for('enterprise.software_architecture_dashboard') }}" class="group rounded-xl border border-border/50 bg-card hover:border-violet-500/30 hover:shadow-md transition-all duration-200 p-6">
+                <div class="flex items-start gap-4">
+                    <div class="p-3 rounded-xl bg-gradient-to-br from-violet-500/15 to-violet-500/5 group-hover:from-violet-500/20 group-hover:to-violet-500/10 transition-colors">
+                        <i data-lucide="code" class="w-6 h-6 text-violet-500" aria-hidden="true"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <h3 class="font-semibold text-foreground group-hover:text-violet-600 transition-colors">Software Architecture</h3>
+                        <p class="text-xs text-muted-foreground mt-1 leading-relaxed">Modules & Design Patterns</p>
+                    </div>
+                    <i data-lucide="chevron-right" class="w-4 h-4 text-muted-foreground/50 group-hover:text-violet-500 group-hover:translate-x-0.5 transition-all mt-1" aria-hidden="true"></i>
+                </div>
+            </a>
+            <a href="{{ url_for('enterprise.strategic_planning_dashboard') }}" class="group rounded-xl border border-border/50 bg-card hover:border-orange-500/30 hover:shadow-md transition-all duration-200 p-6">
+                <div class="flex items-start gap-4">
+                    <div class="p-3 rounded-xl bg-gradient-to-br from-orange-500/15 to-orange-500/5 group-hover:from-orange-500/20 group-hover:to-orange-500/10 transition-colors">
+                        <i data-lucide="target" class="w-6 h-6 text-orange-500" aria-hidden="true"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <h3 class="font-semibold text-foreground group-hover:text-orange-600 transition-colors">Strategic Planning</h3>
+                        <p class="text-xs text-muted-foreground mt-1 leading-relaxed">Strategy & Roadmaps</p>
+                    </div>
+                    <i data-lucide="chevron-right" class="w-4 h-4 text-muted-foreground/50 group-hover:text-orange-500 group-hover:translate-x-0.5 transition-all mt-1" aria-hidden="true"></i>
+                </div>
+            </a>
+        </div>
+    </div>
+
+    {# ════════════════════════════════════════════════════════════════════════ #}
+    {# QUICK ACTIONS & ANALYSIS TOOLS                                           #}
+    {# ════════════════════════════════════════════════════════════════════════ #}
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {# Quick Actions #}
+        <div class="rounded-xl border border-border/50 bg-card overflow-hidden">
+            <div class="px-5 py-4 border-b border-border/50 bg-muted/20">
+                <h3 class="text-sm font-semibold text-foreground">Quick Actions</h3>
+            </div>
+            <div class="p-5">
+                <div class="grid grid-cols-2 gap-3">
+                    <a href="{{ url_for('arb.create_review') }}" class="group flex items-center gap-3 p-4 rounded-xl border border-border/50 bg-card hover:border-primary/30 hover:bg-accent/30 transition-all">
+                        <div class="p-2.5 rounded-lg bg-primary/10 group-hover:bg-primary/15 transition-colors">
+                            <i data-lucide="shield-check" class="w-4 h-4 text-primary" aria-hidden="true"></i>
+                        </div>
+                        <div class="min-w-0">
+                            <p class="text-sm font-medium text-foreground">New ARB Review</p>
+                            <p class="text-[11px] text-muted-foreground">Submit for governance</p>
+                        </div>
+                    </a>
+                    <a href="{{ url_for('unified_applications.application_list') }}" class="group flex items-center gap-3 p-4 rounded-xl border border-border/50 bg-card hover:border-emerald-500/30 hover:bg-accent/30 transition-all">
+                        <div class="p-2.5 rounded-lg bg-emerald-500/10 group-hover:bg-emerald-500/15 transition-colors">
+                            <i data-lucide="layout-grid" class="w-4 h-4 text-emerald-500" aria-hidden="true"></i>
+                        </div>
+                        <div class="min-w-0">
+                            <p class="text-sm font-medium text-foreground">Applications</p>
+                            <p class="text-[11px] text-muted-foreground">Manage portfolio</p>
+                        </div>
+                    </a>
+                    <a href="{{ url_for('enterprise.impact_analysis') }}" class="group flex items-center gap-3 p-4 rounded-xl border border-border/50 bg-card hover:border-amber-500/30 hover:bg-accent/30 transition-all">
+                        <div class="p-2.5 rounded-lg bg-amber-500/10 group-hover:bg-amber-500/15 transition-colors">
+                            <i data-lucide="git-compare" class="w-4 h-4 text-amber-500" aria-hidden="true"></i>
+                        </div>
+                        <div class="min-w-0">
+                            <p class="text-sm font-medium text-foreground">Impact Analysis</p>
+                            <p class="text-[11px] text-muted-foreground">Assess changes</p>
+                        </div>
+                    </a>
+                    <a href="/capability-map" class="group flex items-center gap-3 p-4 rounded-xl border border-border/50 bg-card hover:border-violet-500/30 hover:bg-accent/30 transition-all">
+                        <div class="p-2.5 rounded-lg bg-violet-500/10 group-hover:bg-violet-500/15 transition-colors">
+                            <i data-lucide="map" class="w-4 h-4 text-violet-500" aria-hidden="true"></i>
+                        </div>
+                        <div class="min-w-0">
+                            <p class="text-sm font-medium text-foreground">Capability Map</p>
+                            <p class="text-[11px] text-muted-foreground">View capabilities</p>
+                        </div>
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        {# Analysis Tools #}
+        <div class="rounded-xl border border-border/50 bg-card overflow-hidden">
+            <div class="px-5 py-4 border-b border-border/50 bg-muted/20">
+                <h3 class="text-sm font-semibold text-foreground">Analysis Tools</h3>
+            </div>
+            <div class="p-5">
+                <div class="space-y-2">
+                    <a href="{{ url_for('enterprise.gap_analysis') }}" class="group flex items-center gap-4 p-3 rounded-lg hover:bg-accent/50 transition-colors">
+                        <div class="p-2 rounded-lg bg-muted/50 group-hover:bg-primary/10 transition-colors">
+                            <i data-lucide="search" class="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" aria-hidden="true"></i>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <p class="text-sm font-medium text-foreground">Gap Analysis</p>
+                            <p class="text-[11px] text-muted-foreground">Identify architecture gaps</p>
+                        </div>
+                        <i data-lucide="chevron-right" class="w-4 h-4 text-muted-foreground/50 group-hover:text-foreground transition-colors" aria-hidden="true"></i>
+                    </a>
+                    <a href="{{ url_for('enterprise.ai_architecture_analysis') }}" class="group flex items-center gap-4 p-3 rounded-lg hover:bg-accent/50 transition-colors">
+                        <div class="p-2 rounded-lg bg-muted/50 group-hover:bg-primary/10 transition-colors">
+                            <i data-lucide="sparkles" class="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" aria-hidden="true"></i>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <p class="text-sm font-medium text-foreground">AI Architecture Analysis</p>
+                            <p class="text-[11px] text-muted-foreground">Intelligent recommendations</p>
+                        </div>
+                        <i data-lucide="chevron-right" class="w-4 h-4 text-muted-foreground/50 group-hover:text-foreground transition-colors" aria-hidden="true"></i>
+                    </a>
+                    <a href="{{ url_for('enterprise.impact_analysis') }}" class="group flex items-center gap-4 p-3 rounded-lg hover:bg-accent/50 transition-colors">
+                        <div class="p-2 rounded-lg bg-muted/50 group-hover:bg-primary/10 transition-colors">
+                            <i data-lucide="git-compare" class="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" aria-hidden="true"></i>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <p class="text-sm font-medium text-foreground">Impact Analysis</p>
+                            <p class="text-[11px] text-muted-foreground">Change impact assessment</p>
+                        </div>
+                        <i data-lucide="chevron-right" class="w-4 h-4 text-muted-foreground/50 group-hover:text-foreground transition-colors" aria-hidden="true"></i>
+                    </a>
+                    <a href="{{ url_for('enterprise.process_optimization') }}" class="group flex items-center gap-4 p-3 rounded-lg hover:bg-accent/50 transition-colors">
+                        <div class="p-2 rounded-lg bg-muted/50 group-hover:bg-primary/10 transition-colors">
+                            <i data-lucide="workflow" class="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" aria-hidden="true"></i>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <p class="text-sm font-medium text-foreground">Process Optimization</p>
+                            <p class="text-[11px] text-muted-foreground">Workflow improvements</p>
+                        </div>
+                        <i data-lucide="chevron-right" class="w-4 h-4 text-muted-foreground/50 group-hover:text-foreground transition-colors" aria-hidden="true"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+if (typeof lucide !== 'undefined') {
+    lucide.createIcons();
+}
+</script>
+{% endblock %}

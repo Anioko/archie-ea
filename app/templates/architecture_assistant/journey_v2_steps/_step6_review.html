@@ -1,0 +1,471 @@
+{# Step 6: ARB Review Package — complete submission #}
+<div class="bg-card border border-border rounded-lg p-6 space-y-4">
+    <div class="flex items-center justify-between">
+        <div>
+            <h2 class="text-lg font-semibold text-foreground">
+                <span x-show="domainsPopulated" x-cloak>Step 6: ARB Review Package</span>
+                <span x-show="!domainsPopulated" x-cloak>Step 6: Blueprint Review</span>
+            </h2>
+            <p class="text-sm text-muted-foreground">
+                <span x-show="domainsPopulated">Complete architecture review board submission with all domains, properties, and coverage scores.</span>
+                <span x-show="!domainsPopulated" x-cloak>Review your solution blueprint, costs, gaps, and recommended option.</span>
+            </p>
+        </div>
+        <button type="button" @click="loadArbPackage()"
+                :disabled="arbLoading || readinessScore() < 100"
+                x-show="domainsPopulated && !arbPackage"
+                class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50">
+            <template x-if="!arbLoading">
+                <span class="flex items-center gap-2">
+                    <i data-lucide="file-check" class="w-4 h-4" aria-hidden="true"></i>
+                    Build Package
+                </span>
+            </template>
+            <template x-if="arbLoading">
+                <span class="flex items-center gap-2">
+                    <span class="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full"></span>
+                    Building...
+                </span>
+            </template>
+        </button>
+    </div>
+
+    {# Loading state #}
+    <div x-show="arbLoading" x-cloak class="py-8 text-center">
+        <span class="animate-spin h-8 w-8 border-3 border-primary border-t-transparent rounded-full inline-block mb-3"></span>
+        <p class="text-sm text-muted-foreground">Assembling ARB submission package...</p>
+    </div>
+
+    {# ── ARB Readiness Checklist (domains mode only, before package is built) ── #}
+    <div x-show="domainsPopulated && !arbPackage && !arbLoading" x-cloak class="rounded-xl border border-border bg-card p-5 space-y-4">
+        <div class="flex items-center justify-between">
+            <p class="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">ARB Readiness</p>
+            <span class="text-sm font-bold"
+                  :class="readinessScore() === 100 ? 'text-emerald-600' : readinessScore() >= 60 ? 'text-amber-600' : 'text-red-600'"
+                  x-text="readinessScore() + '%'"></span>
+        </div>
+        {# Progress bar #}
+        <div class="w-full bg-muted rounded-full h-1.5">
+            <div class="rounded-full h-1.5 transition-all duration-500"
+                 :class="readinessScore() === 100 ? 'bg-emerald-500' : readinessScore() >= 60 ? 'bg-amber-500' : 'bg-red-500'"
+                 :style="'width: ' + readinessScore() + '%'"></div>
+        </div>
+        {# Checklist items #}
+        <ul class="space-y-2">
+            <template x-for="item in readinessItems()" :key="item.label">
+                <li class="flex items-center gap-2.5 text-sm">
+                    <span :class="item.pass ? 'text-emerald-600' : 'text-muted-foreground'" class="flex-shrink-0 font-bold w-4 text-center"
+                          x-text="item.pass ? '✓' : '—'"></span>
+                    <span :class="item.pass ? 'text-foreground' : 'text-muted-foreground'" x-text="item.label"></span>
+                </li>
+            </template>
+        </ul>
+        <p x-show="readinessScore() < 100" x-cloak class="text-[11px] text-muted-foreground">
+            Complete all steps above to enable the Build Package button.
+        </p>
+    </div>
+
+    {# ── Reasoning mode: Blueprint Summary ───────────────────────── #}
+    <div x-show="!domainsPopulated && (reasoningRecommendation || reasoningCompleteness > 0) && !arbPackage" x-cloak class="space-y-4">
+
+        {# Completeness score #}
+        <div class="rounded-md border border-border bg-background px-4 py-3 space-y-2">
+            <div class="flex items-center justify-between">
+                <span class="text-sm font-semibold">Blueprint Completeness</span>
+                <span class="text-lg font-bold"
+                      :class="reasoningCompleteness >= 0.8 ? 'text-emerald-600' : reasoningCompleteness >= 0.5 ? 'text-amber-600' : 'text-red-600'"
+                      x-text="Math.round(reasoningCompleteness * 100) + '%'"></span>
+            </div>
+            <div class="w-full bg-muted rounded-full h-2">
+                <div class="rounded-full h-2 transition-all duration-500"
+                     :class="reasoningCompleteness >= 0.8 ? 'bg-emerald-500' : reasoningCompleteness >= 0.5 ? 'bg-amber-500' : 'bg-red-500'"
+                     :style="'width: ' + (reasoningCompleteness * 100) + '%'"></div>
+            </div>
+        </div>
+
+        {# Summary cards #}
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div class="rounded-md border border-border bg-background p-3 text-center">
+                <p class="text-2xl font-bold text-foreground" x-text="reasoningCapabilities.length"></p>
+                <p class="text-xs text-muted-foreground">Capabilities</p>
+            </div>
+            <div class="rounded-md border border-border bg-background p-3 text-center">
+                <p class="text-2xl font-bold text-foreground" x-text="reasoningLandscape.length"></p>
+                <p class="text-xs text-muted-foreground">Applications</p>
+            </div>
+            <div class="rounded-md border border-border bg-background p-3 text-center">
+                <p class="text-2xl font-bold text-foreground" x-text="reasoningGaps.length"></p>
+                <p class="text-xs text-muted-foreground">Gaps Found</p>
+            </div>
+            <div class="rounded-md border border-border bg-background p-3 text-center">
+                <p class="text-2xl font-bold text-foreground" x-text="reasoningOptions.length"></p>
+                <p class="text-xs text-muted-foreground">Options</p>
+            </div>
+        </div>
+
+        {# Recommendation detail #}
+        <template x-if="reasoningRecommendation">
+            <div class="rounded-md border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 space-y-2">
+                <div class="flex items-center gap-2">
+                    <svg class="w-5 h-5 text-emerald-600" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+                    </svg>
+                    <span class="text-sm font-semibold text-emerald-600">Recommended Option</span>
+                </div>
+                <p class="text-sm font-medium" x-text="reasoningRecommendation.title || ''"></p>
+                <p class="text-xs text-muted-foreground" x-text="reasoningRecommendation.rationale || reasoningRecommendation.description || ''"></p>
+            </div>
+        </template>
+
+        {# Gap summary #}
+        <div x-show="reasoningGaps.length > 0" class="space-y-2">
+            <h3 class="text-sm font-semibold">Gap Summary</h3>
+            <div class="space-y-1.5">
+                <template x-for="(gap, idx) in reasoningGaps.slice(0, 10)" :key="gap.id || idx">
+                    <div class="rounded-md border border-border px-3 py-2 flex items-center justify-between">
+                        <div class="flex items-center gap-2 min-w-0">
+                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
+                                  :class="{
+                                      'bg-red-500/10 text-red-600': gap.severity === 'critical',
+                                      'bg-amber-500/10 text-amber-600': gap.severity === 'high',
+                                      'bg-blue-500/10 text-blue-600': gap.severity === 'medium',
+                                      'bg-zinc-500/10 text-zinc-600': true
+                                  }"
+                                  x-text="gap.severity || 'unknown'"></span>
+                            <span class="text-xs font-medium truncate" x-text="gap.title || gap.name || gap.gap_type || 'Gap'"></span>
+                        </div>
+                    </div>
+                </template>
+                <p x-show="reasoningGaps.length > 10" class="text-[10px] text-muted-foreground pl-2"
+                   x-text="'+ ' + (reasoningGaps.length - 10) + ' more gaps'"></p>
+            </div>
+        </div>
+
+        {# Cost summary #}
+        <template x-if="reasoningCostSummary && reasoningCostSummary.total_annual_operating > 0">
+            <div class="rounded-md border border-border bg-background px-4 py-3">
+                <h3 class="text-sm font-semibold mb-2">Cost Estimate</h3>
+                <div class="grid grid-cols-3 gap-3 text-center">
+                    <div>
+                        <p class="text-lg font-bold text-foreground" x-text="'$' + Math.round(reasoningCostSummary.total_annual_operating).toLocaleString()"></p>
+                        <p class="text-[10px] text-muted-foreground">Annual Operating</p>
+                    </div>
+                    <div>
+                        <p class="text-lg font-bold text-foreground" x-text="'$' + Math.round(reasoningCostSummary.tco_5_year || 0).toLocaleString()"></p>
+                        <p class="text-[10px] text-muted-foreground">5-Year TCO</p>
+                    </div>
+                    <div>
+                        <p class="text-lg font-bold text-foreground" x-text="(reasoningCostSummary.cost_coverage_pct || 0) + '%'"></p>
+                        <p class="text-[10px] text-muted-foreground">Cost Coverage</p>
+                    </div>
+                </div>
+            </div>
+        </template>
+
+        {# Frontend Framework selector — pre-select before opening Code Workbench #}
+        <div class="pt-2 border-t border-border space-y-2">
+            <p class="text-sm font-medium text-foreground">Frontend Framework</p>
+            <p class="text-xs text-muted-foreground mb-2">Choose the frontend to generate alongside your backend in the Code Workbench.</p>
+            <div class="flex flex-wrap gap-2"
+                 x-data="{ ui_framework: 'none' }">
+                <label class="flex items-center gap-2 cursor-pointer px-3 py-2 rounded-md border text-sm transition-colors"
+                       :class="ui_framework === 'none' ? 'border-primary bg-primary/5 text-foreground' : 'border-border text-muted-foreground hover:border-primary/50'">
+                    <input type="radio" name="step6_ui_framework" value="none" x-model="ui_framework" class="sr-only">
+                    <span>None</span>
+                    <span class="text-xs text-muted-foreground">— API only</span>
+                </label>
+                <label class="flex items-center gap-2 cursor-pointer px-3 py-2 rounded-md border text-sm transition-colors"
+                       :class="ui_framework === 'refine-antd' ? 'border-primary bg-primary/5 text-foreground' : 'border-border text-muted-foreground hover:border-primary/50'">
+                    <input type="radio" name="step6_ui_framework" value="refine-antd" x-model="ui_framework" class="sr-only">
+                    <span>Refine + Ant Design</span>
+                    <span class="text-xs text-muted-foreground">— React admin</span>
+                </label>
+                <label class="flex items-center gap-2 cursor-pointer px-3 py-2 rounded-md border text-sm transition-colors"
+                       :class="ui_framework === 'shadcn-nextjs' ? 'border-primary bg-primary/5 text-foreground' : 'border-border text-muted-foreground hover:border-primary/50'">
+                    <input type="radio" name="step6_ui_framework" value="shadcn-nextjs" x-model="ui_framework" class="sr-only">
+                    <span>shadcn/ui + Next.js 14</span>
+                    <span class="text-xs text-muted-foreground">— App Router</span>
+                </label>
+                {# Save selection to codegen config when navigating to workbench #}
+                <template x-if="ui_framework !== 'none'">
+                    <p class="w-full text-xs text-primary mt-1">
+                        Selected — the Code Workbench will generate a <span x-text="ui_framework === 'shadcn-nextjs' ? 'shadcn/ui + Next.js 14' : 'Refine + Ant Design'"></span> frontend automatically.
+                    </p>
+                </template>
+            </div>
+        </div>
+
+        {# Link to blueprint page #}
+        <div class="pt-2 border-t border-border">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm font-medium text-foreground">Blueprint populated</p>
+                    <p class="text-xs text-muted-foreground">Open the Solution Blueprint to review all sections, or generate implementation code from the architecture.</p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button type="button" @click="currentStep = 7"
+                            class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium border border-input bg-card text-foreground rounded-md hover:bg-accent transition-colors">
+                        <i data-lucide="code-2" class="w-4 h-4" aria-hidden="true"></i>
+                        Generate Code
+                    </button>
+                    <a :href="'/solutions/' + solutionId"
+                       class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors">
+                        <i data-lucide="external-link" class="w-4 h-4" aria-hidden="true"></i>
+                        View Blueprint
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# Reasoning mode: empty state #}
+    <div x-show="!domainsPopulated && !reasoningRecommendation && reasoningCompleteness === 0 && !arbPackage && !arbLoading" x-cloak class="py-8 text-center space-y-2">
+        <p class="text-sm text-muted-foreground">The reasoning pipeline will populate your blueprint after selecting a recommendation in Step 5.</p>
+    </div>
+
+    {# ARB Package Content (domain mode) #}
+    <div x-show="arbPackage && !arbLoading" x-cloak class="space-y-4">
+
+        {# Solution header #}
+        <div class="rounded-md border border-border bg-background px-4 py-3">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm font-semibold" x-text="arbPackage.solution ? arbPackage.solution.name : ''"></p>
+                    <p class="text-xs text-muted-foreground" x-text="arbPackage.solution ? arbPackage.solution.description : ''"></p>
+                </div>
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium"
+                      :class="arbPackage.solution && arbPackage.solution.governance_status === 'arb_review' ? 'bg-amber-500/10 text-amber-600 border border-amber-500/30' : 'bg-zinc-500/10 text-zinc-600 border border-zinc-500/30'"
+                      x-text="arbPackage.solution ? arbPackage.solution.governance_status : 'draft'"></span>
+            </div>
+        </div>
+
+        {# Summary cards #}
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div class="rounded-md border border-border bg-background p-3 text-center">
+                <p class="text-2xl font-bold text-foreground" x-text="arbPackage.summary ? arbPackage.summary.total_elements : 0"></p>
+                <p class="text-xs text-muted-foreground">Total Elements</p>
+            </div>
+            <div class="rounded-md border border-border bg-background p-3 text-center">
+                <p class="text-2xl font-bold text-foreground" x-text="arbPackage.summary ? arbPackage.summary.domain_coverage : '0/7'"></p>
+                <p class="text-xs text-muted-foreground">Domain Coverage</p>
+            </div>
+            <div class="rounded-md border border-border bg-background p-3 text-center">
+                <p class="text-2xl font-bold text-foreground" x-text="arbPackage.summary ? arbPackage.summary.total_nfrs : 0"></p>
+                <p class="text-xs text-muted-foreground">NFR Requirements</p>
+            </div>
+            <div class="rounded-md border border-border bg-background p-3 text-center">
+                <p class="text-2xl font-bold text-foreground" x-text="arbPackage.summary ? arbPackage.summary.total_waivers : 0"></p>
+                <p class="text-xs text-muted-foreground">Waivers</p>
+            </div>
+        </div>
+
+        {# Layer coverage strip #}
+        <template x-if="arbPackage.summary && arbPackage.summary.layer_counts">
+            <div class="rounded-md border border-border bg-background p-3">
+                <div class="flex items-center justify-between mb-2">
+                    <p class="text-xs font-semibold text-muted-foreground uppercase tracking-wider">ArchiMate Layer Coverage</p>
+                    <p class="text-xs font-bold"
+                       :class="arbPackage.summary.layer_coverage && parseInt(arbPackage.summary.layer_coverage) >= 4 ? 'text-emerald-600' : 'text-amber-600'"
+                       x-text="arbPackage.summary.layer_coverage || '—'"></p>
+                </div>
+                <div class="grid grid-cols-6 gap-2 text-center">
+                    <template x-for="[layer, color] in [['motivation','violet'],['strategy','rose'],['business','amber'],['application','blue'],['technology','emerald'],['implementation','sky']]" :key="layer">
+                        <div>
+                            <p class="text-[10px] text-muted-foreground capitalize" x-text="layer.slice(0,5) + '.'"></p>
+                            <p class="text-sm font-bold"
+                               :class="(arbPackage.summary.layer_counts[layer] || 0) >= 3 ? 'text-emerald-600' : (arbPackage.summary.layer_counts[layer] || 0) > 0 ? 'text-amber-600' : 'text-destructive'"
+                               x-text="arbPackage.summary.layer_counts[layer] || 0"></p>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </template>
+
+        {# Domain breakdown #}
+        <div class="space-y-2">
+            <h3 class="text-sm font-semibold">Domain Summary</h3>
+            <div class="space-y-1.5">
+                <template x-for="code in ['UX','APP','DATA','SEC','DEV','AI','COM']" :key="code">
+                    <template x-if="arbPackage.domains && arbPackage.domains[code]">
+                        <div class="rounded-md border border-border px-3 py-2">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center gap-2">
+                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider"
+                                          :class="getDomainBadgeClass(code)"
+                                          x-text="code"></span>
+                                    <span class="text-sm font-medium" x-text="getDomainName(code)"></span>
+                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
+                                          :class="{
+                                              'bg-emerald-500/10 text-emerald-600': arbPackage.domains[code].status === 'confirmed',
+                                              'bg-amber-500/10 text-amber-600': arbPackage.domains[code].status === 'pending',
+                                              'bg-zinc-500/10 text-zinc-600': arbPackage.domains[code].status === 'not_applicable'
+                                          }"
+                                          x-text="arbPackage.domains[code].status"></span>
+                                </div>
+                                <div class="flex items-center gap-3 text-xs text-muted-foreground">
+                                    <span x-text="arbPackage.domains[code].element_count + ' elements'"></span>
+                                    <span x-text="arbPackage.domains[code].relevance_tier"></span>
+                                    <div class="w-16 h-1.5 bg-muted rounded-full overflow-hidden">
+                                        <div class="h-full rounded-full transition-all"
+                                             :class="arbPackage.domains[code].property_coverage >= 80 ? 'bg-emerald-500' : arbPackage.domains[code].property_coverage >= 60 ? 'bg-amber-500' : 'bg-red-500'"
+                                             :style="'width:' + arbPackage.domains[code].property_coverage + '%'"></div>
+                                    </div>
+                                    <span class="text-[10px] font-medium" x-text="arbPackage.domains[code].property_coverage + '%'"></span>
+                                </div>
+                            </div>
+                            {# Waivers for this domain #}
+                            <template x-if="arbPackage.domains[code].waivers && arbPackage.domains[code].waivers.length > 0">
+                                <div class="mt-1.5 pl-8 space-y-0.5">
+                                    <template x-for="w in arbPackage.domains[code].waivers" :key="w.name">
+                                        <div class="flex items-center gap-2 text-[10px]">
+                                            <span class="text-amber-600 font-medium">Waived:</span>
+                                            <span class="text-muted-foreground" x-text="w.name + (w.reason ? ' — ' + w.reason : '')"></span>
+                                        </div>
+                                    </template>
+                                </div>
+                            </template>
+                            {# N/A justification #}
+                            <template x-if="arbPackage.domains[code].status === 'not_applicable' && arbPackage.domains[code].justification">
+                                <div class="mt-1.5 pl-8 text-[10px] text-muted-foreground">
+                                    <span class="font-medium">Justification:</span>
+                                    <span x-text="arbPackage.domains[code].justification"></span>
+                                </div>
+                            </template>
+                            {# NFR summary for this domain #}
+                            <template x-if="arbPackage.domains[code].nfr_count > 0">
+                                <div class="mt-1.5 pl-8">
+                                    <p class="text-[10px] text-muted-foreground" x-text="arbPackage.domains[code].nfr_count + ' NFR requirements defined'"></p>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+                </template>
+            </div>
+        </div>
+
+        {# Already submitted — shown when returning to Step 6 after a prior submission (detected from governance_status) #}
+        <div x-show="arbPackage.solution && arbPackage.solution.governance_status === 'arb_review' && !arbSubmitResult"
+             x-cloak class="pt-2 border-t border-border">
+            <div class="rounded-md border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 flex items-center gap-3">
+                <svg class="w-5 h-5 text-emerald-600 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+                </svg>
+                <div>
+                    <p class="text-sm font-semibold text-emerald-600">Already submitted to ARB</p>
+                    <p class="text-xs text-muted-foreground">This solution is under Architecture Review Board review. No further action needed unless revisions are requested.</p>
+                </div>
+            </div>
+        </div>
+
+        {# Submit to ARB #}
+        <div class="pt-2 border-t border-border space-y-3"
+             x-show="arbPackage.solution && arbPackage.solution.governance_status !== 'arb_review'">
+            <div x-show="arbPackage.ready_for_arb && !arbSubmitResult" class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm font-medium text-emerald-600">Ready for ARB submission</p>
+                    <p class="text-xs text-muted-foreground">All domains covered. Click to submit for Architecture Review Board review.</p>
+                </div>
+                <button type="button" @click="submitToArb()"
+                        :disabled="arbSubmitting"
+                        class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50">
+                    <template x-if="!arbSubmitting">
+                        <span class="flex items-center gap-2">
+                            <i data-lucide="send" class="w-4 h-4" aria-hidden="true"></i>
+                            Submit to ARB
+                        </span>
+                    </template>
+                    <template x-if="arbSubmitting">
+                        <span class="flex items-center gap-2">
+                            <span class="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full"></span>
+                            Submitting...
+                        </span>
+                    </template>
+                </button>
+            </div>
+            <div x-show="!arbPackage.ready_for_arb && !arbSubmitResult" x-cloak class="rounded-md border border-amber-500/30 bg-amber-500/5 px-4 py-3 space-y-2">
+                <p class="text-sm font-medium text-amber-600">Not ready for submission</p>
+                {# Surface specific gaps returned by the server so users know exactly what to fix #}
+                <template x-if="arbPackage.readiness_gaps && arbPackage.readiness_gaps.length > 0">
+                    <ul class="space-y-1">
+                        <template x-for="gap in arbPackage.readiness_gaps" :key="gap">
+                            <li class="flex items-start gap-2 text-xs text-amber-700">
+                                <span class="mt-0.5 shrink-0">•</span>
+                                <span x-text="gap"></span>
+                            </li>
+                        </template>
+                    </ul>
+                </template>
+                <template x-if="!arbPackage.readiness_gaps || arbPackage.readiness_gaps.length === 0">
+                    <p class="text-xs text-muted-foreground">Ensure all 7 domains are confirmed or marked N/A with justification, and at least one element exists.</p>
+                </template>
+            </div>
+
+            {# ARB submission success + post-submit actions #}
+            <div x-show="arbSubmitResult" x-cloak class="space-y-3">
+                <div class="rounded-md border border-emerald-500/30 bg-emerald-500/5 px-4 py-3">
+                    <div class="flex items-center justify-between flex-wrap gap-3">
+                        <div class="flex items-center gap-2">
+                            <svg class="w-5 h-5 text-emerald-600 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+                            </svg>
+                            <div>
+                                <p class="text-sm font-semibold text-emerald-600">Submitted to ARB</p>
+                                <p class="text-xs text-muted-foreground"
+                                   x-text="'Review number: ' + (arbSubmitResult && arbSubmitResult.review_number ? arbSubmitResult.review_number : '—') + '  ·  Status: under review'"></p>
+                            </div>
+                        </div>
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-amber-500/10 text-amber-600 border border-amber-500/30">
+                            arb_review
+                        </span>
+                    </div>
+                </div>
+
+                {# Post-submit action row #}
+                <div class="flex flex-wrap items-center gap-2">
+                    <button type="button" @click="goToStep(4)"
+                            class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-input bg-card text-foreground rounded-md hover:bg-accent transition-colors">
+                        <i data-lucide="arrow-left" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                        Revise Architecture
+                    </button>
+                    <a :href="'/architecture-journey/' + solutionId + '/export/roadmap.csv'"
+                       class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-input bg-card text-foreground rounded-md hover:bg-accent transition-colors">
+                        <i data-lucide="download" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                        Roadmap CSV
+                    </a>
+                    <a :href="'/architecture-journey/' + solutionId + '/export/arb-package'"
+                       target="_blank"
+                       class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-input bg-card text-foreground rounded-md hover:bg-accent transition-colors">
+                        <i data-lucide="printer" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                        ARB Package
+                    </a>
+                    <button type="button" @click="currentStep = 7"
+                            class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors">
+                        <i data-lucide="code-2" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                        Generate Code
+                    </button>
+                </div>
+            </div>
+
+            {# Export row — always visible once package is loaded #}
+            <div x-show="!arbSubmitResult" class="flex flex-wrap items-center gap-2 pt-1">
+                <span class="text-xs text-muted-foreground">Export:</span>
+                <a :href="'/architecture-journey/' + solutionId + '/export/roadmap.csv'"
+                   class="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium border border-input bg-card text-foreground rounded-md hover:bg-accent transition-colors">
+                    <i data-lucide="download" class="w-3 h-3" aria-hidden="true"></i>
+                    Roadmap CSV
+                </a>
+                <a :href="'/architecture-journey/' + solutionId + '/export/arb-package'"
+                   target="_blank"
+                   class="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium border border-input bg-card text-foreground rounded-md hover:bg-accent transition-colors">
+                    <i data-lucide="printer" class="w-3 h-3" aria-hidden="true"></i>
+                    Print ARB Package
+                </a>
+                <button type="button" @click="currentStep = 7"
+                        class="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors">
+                    <i data-lucide="code-2" class="w-3 h-3" aria-hidden="true"></i>
+                    Generate Code
+                </button>
+            </div>
+        </div>{# /submit section (x-show governance_status !== arb_review) #}
+    </div>
+</div>

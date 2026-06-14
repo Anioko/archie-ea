@@ -1,0 +1,306 @@
+{# UX Preferences Panel — auto-inferred tab order, enum badges, brand colour, auth requirement #}
+<div x-data="uxPreferences('{{ solution_id }}')"
+     class="rounded-xl border border-border/60 bg-card overflow-hidden mt-4">
+
+    {# ── Header / toggle ── #}
+    <button type="button" @click="open = !open; if (open && !enrichment.loaded) load()"
+            class="w-full flex items-center justify-between px-5 py-3 hover:bg-muted/50 transition-colors">
+        <div class="flex items-center gap-2">
+            <svg class="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 10h16M4 14h10M4 18h6"/>
+            </svg>
+            <span class="text-sm font-semibold text-foreground">UX Preferences</span>
+            <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-violet-500/10 text-violet-600 border border-violet-500/20">Auto-inferred</span>
+        </div>
+        <div class="flex items-center gap-2">
+            <span x-show="saved" x-cloak
+                  class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                Saved
+            </span>
+            <svg class="w-4 h-4 text-muted-foreground transition-transform" :class="open ? 'rotate-180' : ''"
+                 fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+            </svg>
+        </div>
+    </button>
+
+    {# ── Body ── #}
+    <div x-show="open" x-cloak x-collapse class="border-t border-border">
+
+        {# Loading state #}
+        <div x-show="loading" class="flex items-center justify-center gap-2 py-10">
+            <svg class="h-5 w-5 animate-spin text-primary" viewBox="0 0 24 24" fill="none">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+            </svg>
+            <span class="text-sm text-muted-foreground">Loading UX preferences…</span>
+        </div>
+
+        {# Content #}
+        <div x-show="!loading" class="px-5 py-4 space-y-6">
+
+            {# ── 1. Tab / Navigation Order ── #}
+            <div>
+                <div class="flex items-center gap-2 mb-3">
+                    <svg class="w-3.5 h-3.5 text-muted-foreground" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>
+                    </svg>
+                    <h3 class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Navigation Order</h3>
+                    <span class="text-[10px] text-muted-foreground/60">Drag or use arrows to reorder entities in sidebar/tabs</span>
+                </div>
+
+                <div x-show="tabOrder.length === 0" class="text-xs text-muted-foreground/60 italic">
+                    No entities detected yet — generate architecture first.
+                </div>
+
+                <div class="space-y-1.5">
+                    <template x-for="(tab, idx) in tabOrder" :key="tab.entity">
+                        <div class="flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-background">
+                            <span class="text-[10px] font-mono text-muted-foreground w-5 text-right shrink-0" x-text="idx + 1 + '.'"></span>
+                            <span class="flex-1 text-sm font-medium text-foreground" x-text="tab.entity"></span>
+                            <div class="flex items-center gap-1 shrink-0">
+                                <button type="button"
+                                        @click="moveTab(idx, -1)"
+                                        :disabled="idx === 0"
+                                        class="p-1 rounded hover:bg-muted transition-colors disabled:opacity-30"
+                                        aria-label="Move up">
+                                    <svg class="w-3.5 h-3.5 text-muted-foreground" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M5 15l7-7 7 7"/>
+                                    </svg>
+                                </button>
+                                <button type="button"
+                                        @click="moveTab(idx, 1)"
+                                        :disabled="idx === tabOrder.length - 1"
+                                        class="p-1 rounded hover:bg-muted transition-colors disabled:opacity-30"
+                                        aria-label="Move down">
+                                    <svg class="w-3.5 h-3.5 text-muted-foreground" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 15l-7-7-7 7"/>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+
+            {# ── 2. Detected Enum Values ── #}
+            <div x-show="Object.keys(enumFields).length > 0">
+                <div class="flex items-center gap-2 mb-3">
+                    <svg class="w-3.5 h-3.5 text-muted-foreground" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M7 7h.01M7 12h.01M7 17h.01M11 7h6M11 12h6M11 17h6"/>
+                    </svg>
+                    <h3 class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Detected Enum Values</h3>
+                    <span class="text-[10px] text-muted-foreground/60">Read-only — inferred from your data model</span>
+                </div>
+
+                <div class="space-y-3">
+                    <template x-for="[entity, fields] in Object.entries(enumFields)" :key="entity">
+                        <div class="rounded-lg border border-border bg-background px-3 py-2.5">
+                            <p class="text-xs font-semibold text-foreground mb-2" x-text="entity"></p>
+                            <div class="space-y-1.5">
+                                <template x-for="[field, meta] in Object.entries(fields)" :key="field">
+                                    <div class="flex items-start gap-2" x-show="meta.type === 'enum'">
+                                        <span class="text-[10px] text-muted-foreground font-mono w-28 pt-0.5 shrink-0" x-text="field"></span>
+                                        <div class="flex flex-wrap gap-1">
+                                            <template x-for="val in (meta.detected_values || [])" :key="val">
+                                                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-blue-500/10 text-primary border border-blue-500/20"
+                                                      x-text="val"></span>
+                                            </template>
+                                            <span x-show="!meta.detected_values || meta.detected_values.length === 0"
+                                                  class="text-[10px] text-muted-foreground/50 italic">no values detected</span>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+
+            {# ── 3. Brand Colour ── #}
+            <div>
+                <div class="flex items-center gap-2 mb-3">
+                    <svg class="w-3.5 h-3.5 text-muted-foreground" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"/>
+                    </svg>
+                    <h3 class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Primary Brand Colour</h3>
+                </div>
+
+                <div class="flex items-center gap-3">
+                    <div class="relative">
+                        <input type="color" x-model="primaryColor"
+                               class="w-10 h-10 rounded-lg border border-border cursor-pointer p-0.5 bg-background"
+                               aria-label="Primary brand colour">
+                    </div>
+                    <div>
+                        <p class="text-sm font-mono font-medium text-foreground" x-text="primaryColor"></p>
+                        <p class="text-xs text-muted-foreground">Used for button, link, and accent colours in generated UI</p>
+                    </div>
+                    <div class="ml-auto flex items-center gap-2">
+                        <template x-for="preset in ['#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6']" :key="preset">
+                            <button type="button"
+                                    @click="primaryColor = preset"
+                                    :title="preset"
+                                    class="w-6 h-6 rounded-full border-2 transition-all"
+                                    :class="primaryColor === preset ? 'border-foreground scale-110' : 'border-transparent hover:border-muted-foreground/40'"
+                                    :style="'background-color:' + preset"></button>
+                        </template>
+                    </div>
+                </div>
+            </div>
+
+            {# ── 4. Screen Auth Requirement ── #}
+            <div>
+                <div class="flex items-center gap-2 mb-3">
+                    <svg class="w-3.5 h-3.5 text-muted-foreground" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                    </svg>
+                    <h3 class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Screen Auth Requirement</h3>
+                    <span class="text-[10px] text-muted-foreground/60">Controls which screens require authentication in generated code</span>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <template x-for="opt in [
+                        {key: 'login_required', label: 'Login required', desc: 'Every screen requires login', icon: 'lock'},
+                        {key: 'admin_only',label: 'Admin only',   desc: 'Public landing + authenticated app',   icon: 'unlock'},
+                        {key: 'none',   label: 'None',           desc: 'Public app, no auth gate',             icon: 'eye'},
+                    ]" :key="opt.key">
+                        <label class="flex items-start gap-2.5 p-3 rounded-lg border transition-colors cursor-pointer"
+                               :class="authRequirement === opt.key
+                                       ? 'border-primary bg-primary/5'
+                                       : 'border-border hover:border-muted-foreground/30'">
+                            <input type="radio" name="ux_auth_requirement" class="mt-0.5 sr-only"
+                                   :value="opt.key"
+                                   :checked="authRequirement === opt.key"
+                                   @change="authRequirement = opt.key">
+                            <div>
+                                <p class="text-sm font-medium text-foreground" x-text="opt.label"></p>
+                                <p class="text-xs text-muted-foreground mt-0.5" x-text="opt.desc"></p>
+                            </div>
+                        </label>
+                    </template>
+                </div>
+            </div>
+
+            {# ── Error / success feedback ── #}
+            <div x-show="saveError" x-cloak
+                 class="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/5 px-4 py-3">
+                <svg class="h-4 w-4 text-destructive shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+                </svg>
+                <p class="text-sm text-destructive" x-text="saveError"></p>
+            </div>
+
+            {# ── Confirm button ── #}
+            <div class="pt-2 border-t border-border flex items-center justify-between">
+                <p class="text-xs text-muted-foreground">Preferences are stored on the solution and injected into the code genome before generation.</p>
+                <button type="button"
+                        @click="save()"
+                        :disabled="saving"
+                        class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 shrink-0 ml-4">
+                    <svg x-show="saving" class="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                    </svg>
+                    <svg x-show="!saving" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+                    </svg>
+                    <span x-text="saving ? 'Saving…' : 'Confirm Preferences'"></span>
+                </button>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<script>
+function uxPreferences(solutionId) {
+    return {
+        open: false,
+        loading: false,
+        saving: false,
+        saved: false,
+        saveError: null,
+        enrichment: {},
+        tabOrder: [],
+        enumFields: {},
+        primaryColor: '#6366f1',
+        authRequirement: 'login_required',
+
+        async load() {
+            if (!solutionId) return;
+            this.loading = true;
+            this.saveError = null;
+            try {
+                const resp = await fetch('/architecture-journey/' + solutionId + '/ux-enrichment', {
+                    headers: { 'Accept': 'application/json' }
+                });
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                const data = await resp.json();
+                this.enrichment = data;
+                this.enrichment.loaded = true;
+                // Tab order: array of {entity: "..."} objects
+                this.tabOrder = Array.isArray(data.tab_order)
+                    ? data.tab_order
+                    : (data.entities || []).map(function(e) { return { entity: typeof e === 'string' ? e : e.entity }; });
+                // Enum fields: {"EntityName": {"field": {type:"enum", detected_values:[...]}}}
+                this.enumFields = data.enum_fields || {};
+                // Persisted preferences
+                if (data.design_system?.primary_color) this.primaryColor = data.design_system.primary_color;
+                if (data.security?.require_auth) this.authRequirement = data.security.require_auth;
+            } catch (err) {
+                console.warn('[ux-preferences] load failed:', err);
+                this.saveError = 'Could not load preferences — showing defaults.';
+                this.enrichment = { loaded: true };
+            } finally {
+                this.loading = false;
+            }
+        },
+
+        moveTab(idx, dir) {
+            let newIdx = idx + dir;
+            if (newIdx < 0 || newIdx >= this.tabOrder.length) return;
+            let tmp = this.tabOrder[idx];
+            this.tabOrder[idx] = this.tabOrder[newIdx];
+            this.tabOrder[newIdx] = tmp;
+            // Trigger Alpine reactivity — replace array
+            this.tabOrder = this.tabOrder.slice();
+        },
+
+        async save() {
+            if (!solutionId) return;
+            this.saving = true;
+            this.saveError = null;
+            this.saved = false;
+            try {
+                const resp = await fetch('/architecture-journey/' + solutionId + '/save-ux-preferences', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''
+                    },
+                    body: JSON.stringify({
+                        navigation:    { tab_order: this.tabOrder },
+                        design_system: { primary_color: this.primaryColor },
+                        security:      { require_auth: this.authRequirement }
+                    })
+                });
+                if (!resp.ok) {
+                    let errData = {};
+                    try { errData = await resp.json(); } catch(_) {}
+                    throw new Error(errData.error || errData.message || 'Save failed (HTTP ' + resp.status + ')');
+                }
+                this.saved = true;
+                // Auto-hide the saved badge after 3 s
+                setTimeout(() => { this.saved = false; }, 3000);
+            } catch (err) {
+                this.saveError = err.message || 'Could not save preferences. Please try again.';
+                console.warn('[ux-preferences] save failed:', err);
+            } finally {
+                this.saving = false;
+            }
+        }
+    };
+}
+</script>

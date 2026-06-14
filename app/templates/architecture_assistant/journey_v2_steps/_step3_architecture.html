@@ -1,0 +1,1017 @@
+{# Step 3: Application Landscape + Architecture Elements — progressive disclosure #}
+<div class="space-y-6">
+    <div>
+        <h2 class="text-lg font-bold text-foreground mb-1">
+            <span x-show="domainsPopulated" x-cloak>Architecture Review</span>
+            <span x-show="!domainsPopulated" x-cloak>Application Landscape</span>
+        </h2>
+        <p class="text-sm text-muted-foreground">
+            <span x-show="domainsPopulated">ArchiMate elements generated from your domains. Click any element to view and edit properties.</span>
+            <span x-show="!domainsPopulated" x-cloak>Portfolio applications serving your capabilities. Click any row for full detail.</span>
+        </p>
+    </div>
+
+    {# Loading state #}
+    <div x-show="architectureLoading" x-cloak class="rounded-xl border border-border bg-card p-12 text-center">
+        <span class="animate-spin h-8 w-8 border-3 border-primary border-t-transparent rounded-full inline-block mb-3"></span>
+        <p class="text-sm text-muted-foreground">Loading architecture elements...</p>
+    </div>
+
+    {# No capabilities warning #}
+    <div x-show="acceptedCapabilities.length === 0 && !architectureResult && !domainsPopulated && reasoningLandscape.length === 0 && !architectureLoading" x-cloak
+         class="rounded-xl border border-dashed border-border bg-card p-12 text-center">
+        <p class="text-sm text-muted-foreground mb-1">No data yet</p>
+        <p class="text-xs text-muted-foreground/60">Accept at least one capability in Step 2, then the platform will map your application landscape.</p>
+    </div>
+
+    {# ── LLM degradation warning ─────────────────────────── #}
+    <div x-show="llmDegraded.step3" x-cloak
+         class="flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3">
+        <svg class="h-4 w-4 text-amber-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+        </svg>
+        <div>
+            <p class="text-sm font-medium text-amber-700">AI architecture generation produced no elements</p>
+            <p class="text-xs text-amber-600/80 mt-0.5">The LLM returned 0 elements. Review your capabilities in Step 2 and retry generation, or add elements manually below.</p>
+        </div>
+    </div>
+
+    {# TRAC-001: chain health warning banner for Step 3 (empty layers) #}
+    <template x-if="stepWarnings[3] && !stepWarningsDismissed[3]">
+        <div class="rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3">
+            <div class="flex items-start justify-between gap-3">
+                <div class="flex items-start gap-3 flex-1">
+                    <svg class="h-4 w-4 text-amber-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+                    </svg>
+                    <div class="space-y-1">
+                        <template x-for="w in stepWarnings[3]" :key="w.code">
+                            <p class="text-sm text-amber-700" x-text="w.message"></p>
+                        </template>
+                    </div>
+                </div>
+                <button type="button" @click="stepWarningsDismissed[3] = true" class="text-amber-500 hover:text-amber-700 shrink-0" aria-label="Dismiss">
+                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </div>
+        </div>
+    </template>
+
+    {# TRAC-003: per-capability application coverage panel #}
+    <div x-show="acceptedCapabilities.length > 0 && reasoningLandscape.length > 0" x-cloak class="rounded-xl border border-border bg-card overflow-hidden">
+        <div class="px-4 py-2.5 border-b border-border bg-muted/20 flex items-center gap-2">
+            <svg class="w-3.5 h-3.5 text-muted-foreground" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/></svg>
+            <span class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Capability Coverage</span>
+        </div>
+        <div class="divide-y divide-border">
+            <template x-for="cap in acceptedCapabilities" :key="cap.name || cap.id">
+                <div class="px-4 py-2.5 flex items-center gap-3">
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm font-medium text-foreground truncate" x-text="cap.name"></p>
+                    </div>
+                    <div x-data="{
+                        get apps() {
+                            var name = (cap.name || '').toLowerCase();
+                            return reasoningLandscape.filter(function(a) {
+                                return (a.capabilities || []).some(function(c) {
+                                    return (c || '').toLowerCase().indexOf(name.substring(0,10)) > -1;
+                                }) || (a.matched_capabilities || []).some(function(c) {
+                                    return (c || '').toLowerCase().indexOf(name.substring(0,10)) > -1;
+                                });
+                            });
+                        }
+                    }">
+                        <template x-if="apps.length === 0">
+                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium bg-amber-500/10 text-amber-700 border border-amber-500/30">
+                                <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                                Greenfield — no existing app
+                            </span>
+                        </template>
+                        <template x-if="apps.length > 0">
+                            <span class="text-xs text-muted-foreground">
+                                <span x-text="apps.slice(0,3).map(function(a){return a.name}).join(', ')"></span>
+                                <span x-show="apps.length > 3" class="text-muted-foreground/60" x-text="' +' + (apps.length - 3) + ' more'"></span>
+                            </span>
+                        </template>
+                    </div>
+                </div>
+            </template>
+        </div>
+    </div>
+
+    {# ── APPLICATION LANDSCAPE: real portfolio apps ─────────────── #}
+    <div class="space-y-4">
+            {# Summary strip — 4 stat cards (hidden when no apps) #}
+            <div x-show="reasoningLandscape.length > 0" x-cloak>
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <div class="rounded-xl border border-border bg-card px-4 py-3">
+                    <p class="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Applications</p>
+                    <p class="text-xl font-bold text-foreground" x-text="reasoningLandscape.length"></p>
+                </div>
+                <div class="rounded-xl border border-border bg-card px-4 py-3">
+                    <p class="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Annual Operating</p>
+                    <p class="text-xl font-bold text-foreground"
+                       x-text="reasoningCostSummary && reasoningCostSummary.total_annual_operating ? '$' + Math.round(reasoningCostSummary.total_annual_operating / 1000) + 'K' : '—'"></p>
+                    <p x-show="reasoningCostSummary && reasoningCostSummary.cost_coverage_pct > 0" class="text-[10px] text-muted-foreground"
+                       x-text="reasoningCostSummary.cost_coverage_pct + '% cost coverage'"></p>
+                </div>
+                <div class="rounded-xl border border-border bg-card px-4 py-3">
+                    <p class="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Strategic</p>
+                    <p class="text-xl font-bold text-emerald-600"
+                       x-text="reasoningLandscape.filter(function(a){ return !a.is_decommissioning; }).length"></p>
+                </div>
+                <div class="rounded-xl border border-border bg-card px-4 py-3">
+                    <p class="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Decommissioning</p>
+                    <p class="text-xl font-bold"
+                       :class="reasoningLandscape.filter(function(a){ return a.is_decommissioning; }).length > 0 ? 'text-red-600' : 'text-muted-foreground'"
+                       x-text="reasoningLandscape.filter(function(a){ return a.is_decommissioning; }).length"></p>
+                </div>
+            </div>
+            </div>
+
+            {# Application list with expandable detail panels #}
+            <div class="rounded-xl border border-border bg-card divide-y divide-border overflow-hidden">
+                <template x-for="(app, idx) in reasoningLandscape" :key="idx">
+                    <div :class="app.is_decommissioning ? 'bg-red-500/[0.02]' : ''">
+                        {# Top row: always visible #}
+                        <div class="px-5 py-4 hover:bg-muted/20 transition-colors cursor-pointer flex items-center justify-between"
+                             @click="expandedLayers['app-' + (app.app_id || idx)] = !expandedLayers['app-' + (app.app_id || idx)]">
+                            <div class="flex items-center gap-3 min-w-0">
+                                <span class="flex items-center justify-center w-10 h-10 rounded-lg shrink-0"
+                                      :class="app.is_decommissioning ? 'bg-red-500/10 border border-red-500/20' : 'bg-blue-500/10 border border-blue-500/20'">
+                                    <svg :class="app.is_decommissioning ? 'text-red-500' : 'text-blue-500'" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8m-4-4v4"/></svg>
+                                </span>
+                                <div class="min-w-0">
+                                    <p class="text-sm font-semibold text-foreground truncate" x-text="app.app_name || app.application_name || app.name || ('App #' + (app.app_id || idx))"></p>
+                                    <p class="text-xs text-muted-foreground truncate" x-text="(app.capability_name || '') + (app.vendor_name ? ' · ' + app.vendor_name : '')"></p>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-3 shrink-0">
+                                <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-medium"
+                                      :class="app.is_decommissioning
+                                          ? 'bg-red-500/10 text-red-600 border border-red-500/20'
+                                          : (app.lifecycle_status || '').indexOf('STRATEGIC') >= 0
+                                              ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20'
+                                              : (app.lifecycle_status || '').indexOf('CONTAIN') >= 0
+                                                  ? 'bg-amber-500/10 text-amber-600 border border-amber-500/20'
+                                                  : 'bg-muted text-muted-foreground border border-border'">
+                                    <span class="w-1.5 h-1.5 rounded-full"
+                                          :class="app.is_decommissioning ? 'bg-red-500' : (app.lifecycle_status || '').indexOf('STRATEGIC') >= 0 ? 'bg-emerald-500' : 'bg-muted-foreground'"></span>
+                                    <span x-text="app.lifecycle_status || 'Unknown'"></span>
+                                </span>
+                                <span class="text-xs text-muted-foreground"
+                                      :class="app.is_decommissioning ? 'line-through' : ''"
+                                      x-text="app.annual_license_cost ? '$' + Math.round(app.annual_license_cost / 1000) + 'K/yr' : ''"></span>
+                                <svg class="w-3.5 h-3.5 text-muted-foreground transition-transform"
+                                     :class="expandedLayers['app-' + (app.app_id || idx)] ? 'rotate-180' : ''"
+                                     fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                            </div>
+                        </div>
+                        {# Expanded detail panel — full LandscapeApplication fields #}
+                        <div x-show="expandedLayers['app-' + (app.app_id || idx)]" x-cloak
+                             class="border-t border-border px-5 py-4 bg-muted/10">
+                            <div class="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-3">
+                                <div>
+                                    <p class="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">Lifecycle Status</p>
+                                    <p class="text-xs font-medium" :class="app.is_decommissioning ? 'text-red-600' : ''" x-text="app.lifecycle_status || '—'"></p>
+                                </div>
+                                <div>
+                                    <p class="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">Evidence Level</p>
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium"
+                                          :class="{
+                                              'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20': app.evidence_level === 'strong',
+                                              'bg-amber-500/10 text-amber-600 border border-amber-500/20': app.evidence_level === 'weak',
+                                              'bg-muted text-muted-foreground border border-border': !app.evidence_level || app.evidence_level === 'inferred'
+                                          }"
+                                          x-text="(app.evidence_level || 'inferred')"></span>
+                                </div>
+                                <div>
+                                    <p class="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">Support Level</p>
+                                    <p class="text-xs font-medium" x-text="app.support_level || '—'"></p>
+                                </div>
+                                <div>
+                                    <p class="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">Vendor</p>
+                                    <p class="text-xs font-medium" x-text="app.vendor_name || '—'"></p>
+                                </div>
+                                <div>
+                                    <p class="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">Vendor Product</p>
+                                    <p class="text-xs font-medium" x-text="app.vendor_product_name || '—'"></p>
+                                </div>
+                                <div>
+                                    <p class="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">Annual License Cost</p>
+                                    <p class="text-xs font-medium"
+                                       :class="app.is_decommissioning ? 'line-through text-muted-foreground' : ''"
+                                       x-text="app.annual_license_cost ? '$' + Math.round(app.annual_license_cost).toLocaleString() : '—'"></p>
+                                </div>
+                                <div>
+                                    <p class="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">Implementation Cost</p>
+                                    <p class="text-xs font-medium" x-text="app.implementation_cost ? '$' + Math.round(app.implementation_cost).toLocaleString() : '—'"></p>
+                                </div>
+                                <div>
+                                    <p class="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">Support Cost %</p>
+                                    <p class="text-xs font-medium" x-text="app.support_cost_pct ? app.support_cost_pct + '%' : '—'"></p>
+                                </div>
+                                <div>
+                                    <p class="text-[10px] text-muted-foreground uppercase tracking-wider mb-0.5">Capability Served</p>
+                                    <p class="text-xs font-medium" x-text="app.capability_name || '—'"></p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+            </div>
+    </div>
+
+    {# ── ARCHITECTURE ELEMENTS: ArchiMate model with property editors ── #}
+    <div x-show="architectureResult && !architectureLoading" x-cloak>
+
+      {# ── Zero-touch quality dashboard ── #}
+      <div x-show="architectureResult && architectureResult.auto_quality" x-cloak
+           class="rounded-xl border border-border bg-card overflow-hidden mb-4">
+        <div class="px-5 py-4 border-b border-border bg-muted/20 flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <svg class="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <span class="text-sm font-semibold text-foreground">Architecture Generated</span>
+          </div>
+          <button type="button" @click="nextStep()" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 transition-colors">
+            Proceed to Blueprint
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+          </button>
+        </div>
+
+        <div class="divide-y divide-border">
+          {# ── Auto-accepted row ── #}
+          <div class="px-5 py-3 flex items-center gap-3">
+            <svg class="w-4 h-4 text-emerald-500 shrink-0" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+            </svg>
+            <span class="text-sm text-foreground font-medium tabular-nums"
+                  x-text="(architectureResult.auto_quality.auto_accepted || 0) + ' auto-accepted'"></span>
+            <span class="ml-auto text-xs text-muted-foreground">no action needed</span>
+          </div>
+
+          {# ── Needs review row (expandable) ── #}
+          <div x-data="reviewRowPanel()">
+            <button type="button" @click="open = !open"
+                    class="w-full px-5 py-3 flex items-center gap-3 hover:bg-muted/30 transition-colors"
+                    x-show="(architectureResult.auto_quality.pending_review || 0) > 0">
+              <svg class="w-4 h-4 text-amber-500 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+              </svg>
+              <span class="text-sm text-amber-700 font-medium tabular-nums"
+                    x-text="(architectureResult.auto_quality.pending_review || 0) + ' need review'"></span>
+              <span class="ml-auto text-xs text-muted-foreground">optional · expand to inspect</span>
+              <svg class="w-3.5 h-3.5 text-muted-foreground transition-transform" :class="open ? 'rotate-180' : ''"
+                   fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+              </svg>
+            </button>
+            <div x-show="(architectureResult.auto_quality.pending_review || 0) === 0" class="px-5 py-3 flex items-center gap-3">
+              <svg class="w-4 h-4 text-muted-foreground/40 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+              </svg>
+              <span class="text-sm text-muted-foreground/60">0 need review</span>
+            </div>
+            <div x-show="open" x-cloak class="border-t border-border bg-muted/10 px-5 py-2 space-y-1">
+              <p class="text-xs text-muted-foreground mb-1">These elements passed generation but have minor quality signals. They are included as pending — review and accept below if correct.</p>
+              {# Review elements listed in the expandable element panel below #}
+              <p class="text-xs text-amber-600/80">Scroll down to the layer panels → filter by "pending" to inspect.</p>
+            </div>
+          </div>
+
+          {# ── Auto-rejected row (expandable) ── #}
+          <div x-data="{ openRej: false }">
+            <button type="button" @click="openRej = !openRej"
+                    class="w-full px-5 py-3 flex items-center gap-3 hover:bg-muted/30 transition-colors"
+                    x-show="(architectureResult.auto_quality.auto_rejected || 0) > 0">
+              <svg class="w-4 h-4 text-rose-400 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+              </svg>
+              <span class="text-sm text-rose-600 font-medium tabular-nums"
+                    x-text="(architectureResult.auto_quality.auto_rejected || 0) + ' auto-rejected'"></span>
+              <span class="ml-auto text-xs text-muted-foreground">generic / hollow · expand to see why</span>
+              <svg class="w-3.5 h-3.5 text-muted-foreground transition-transform" :class="openRej ? 'rotate-180' : ''"
+                   fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+              </svg>
+            </button>
+            <div x-show="(architectureResult.auto_quality.auto_rejected || 0) === 0" class="px-5 py-3 flex items-center gap-3">
+              <svg class="w-4 h-4 text-muted-foreground/40 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+              </svg>
+              <span class="text-sm text-muted-foreground/60">0 auto-rejected</span>
+            </div>
+            <div x-show="openRej" x-cloak class="border-t border-border bg-muted/10 px-5 py-3 space-y-1">
+              <p class="text-xs text-muted-foreground mb-2">Rejected elements are not saved to the database and do not appear in code generation.</p>
+              <template x-for="rej in (architectureResult.auto_quality.rejected_reasons || [])" :key="rej.name + rej.type">
+                <div class="flex items-start gap-2 py-1">
+                  <span class="text-xs text-rose-500 font-mono shrink-0" x-text="rej.type"></span>
+                  <span class="text-xs text-foreground font-medium" x-text="rej.name"></span>
+                  <span class="text-xs text-muted-foreground ml-1" x-text="'(' + (rej.reasons || []).join(', ') + ')'"></span>
+                </div>
+              </template>
+            </div>
+          </div>
+        </div>
+
+        {# ── Semantic review flags (LLM self-critique) ── #}
+        <template x-if="critiqueFlags.length > 0 && !critiqueDismissed">
+          <div class="border-t border-border">
+            <div class="px-5 py-3 bg-violet-500/5 border-b border-violet-500/20 flex items-center justify-between gap-3">
+              <div class="flex items-center gap-2 flex-wrap">
+                <svg class="w-4 h-4 text-violet-500 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                <span class="text-sm font-medium text-violet-700">
+                  <span x-text="critiqueFlags.length"></span>
+                  <span x-text="critiqueFlags.length === 1 ? ' semantic flag' : ' semantic flags'"></span>
+                </span>
+                <span class="text-xs text-muted-foreground">possible type mismatches — review before proceeding</span>
+              </div>
+              <button type="button" @click="critiqueDismissed = true"
+                      class="text-muted-foreground hover:text-foreground shrink-0"
+                      aria-label="Dismiss semantic flags">
+                <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+              </button>
+            </div>
+            <div class="px-5 py-3 space-y-1.5">
+              <p class="text-xs text-muted-foreground mb-2">These elements may be misclassified. Use the Composer to correct types before code generation.</p>
+              <template x-for="flag in critiqueFlags" :key="flag.name + flag.type">
+                <div class="flex items-start gap-2 py-1.5 border-b border-border/40 last:border-0">
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2 flex-wrap">
+                      <span class="text-xs font-medium text-foreground" x-text="flag.name"></span>
+                      <span class="text-[10px] font-mono bg-rose-500/10 text-rose-600 border border-rose-500/20 px-1.5 py-0.5 rounded" x-text="flag.type"></span>
+                      <svg class="w-3 h-3 text-muted-foreground/60 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M17 8l4 4m0 0l-4 4m4-4H3"/>
+                      </svg>
+                      <span class="text-[10px] font-mono bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 px-1.5 py-0.5 rounded" x-text="flag.suggested_type"></span>
+                    </div>
+                    <p class="text-xs text-muted-foreground mt-0.5" x-text="flag.reason"></p>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+        </template>
+        <div x-show="critiqueStatus === 'running'" x-cloak
+             class="border-t border-border px-5 py-2.5 flex items-center gap-2">
+          <span class="animate-pulse w-2 h-2 rounded-full bg-violet-400 inline-block shrink-0"></span>
+          <span class="text-xs text-muted-foreground">Running semantic review...</span>
+        </div>
+
+        {# ── SEM-001: Structural quality flags ── #}
+        <template x-if="architectureResult && architectureResult.semantic_quality">
+          <div x-data="{ semOpen: false }"
+               x-show="(architectureResult.semantic_quality.orphan_count || 0) > 0 ||
+                        (architectureResult.semantic_quality.thin_layers || []).length > 0 ||
+                        (architectureResult.semantic_quality.disconnected_layer_pairs || []).length > 0 ||
+                        (architectureResult.semantic_quality.duplicate_count || 0) > 0"
+               class="border-t border-border">
+            <button type="button" @click="semOpen = !semOpen"
+                    class="w-full px-5 py-3 flex items-center gap-3 hover:bg-muted/30 transition-colors">
+              <svg class="w-4 h-4 text-orange-500 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+              </svg>
+              <span class="text-sm font-medium text-orange-700">Structural quality issues</span>
+              <span class="ml-auto text-xs text-muted-foreground">expand to inspect</span>
+              <svg class="w-3.5 h-3.5 text-muted-foreground transition-transform" :class="semOpen ? 'rotate-180' : ''"
+                   fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+              </svg>
+            </button>
+            <div x-show="semOpen" x-cloak class="border-t border-border bg-orange-500/5 px-5 py-3 space-y-3">
+
+              {# Orphan count #}
+              <div x-show="(architectureResult.semantic_quality.orphan_count || 0) > 0" class="flex items-start gap-2">
+                <svg class="w-3.5 h-3.5 text-orange-400 mt-0.5 shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+                </svg>
+                <div>
+                  <span class="text-xs font-medium text-orange-700"
+                        x-text="(architectureResult.semantic_quality.orphan_count || 0) + ' orphan elements'"></span>
+                  <span class="text-xs text-muted-foreground ml-1">— no relationships connect them. Run relationship generation or add connections in Composer.</span>
+                </div>
+              </div>
+
+              {# Thin layers #}
+              <template x-for="tl in (architectureResult.semantic_quality.thin_layers || [])" :key="tl.layer">
+                <div class="flex items-start gap-2">
+                  <svg class="w-3.5 h-3.5 text-orange-400 mt-0.5 shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+                  </svg>
+                  <div>
+                    <span class="text-xs font-medium text-orange-700 capitalize" x-text="tl.layer + ' layer'"></span>
+                    <span class="text-xs text-muted-foreground ml-1" x-text="'— ' + tl.issue"></span>
+                  </div>
+                </div>
+              </template>
+
+              {# Disconnected layer pairs #}
+              <template x-for="dp in (architectureResult.semantic_quality.disconnected_layer_pairs || [])" :key="dp.from + dp.to">
+                <div class="flex items-start gap-2">
+                  <svg class="w-3.5 h-3.5 text-rose-400 mt-0.5 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M14.828 14.828a4 4 0 015.656 0l4 4a4 4 0 01-5.656 5.656l-1.102-1.101"/>
+                  </svg>
+                  <div>
+                    <span class="text-xs font-medium text-rose-600" x-text="dp.from + ' → ' + dp.to"></span>
+                    <span class="text-xs text-muted-foreground ml-1">layers are disconnected — no cross-layer relationship exists between them</span>
+                  </div>
+                </div>
+              </template>
+
+              {# Duplicates #}
+              <div x-show="(architectureResult.semantic_quality.duplicate_count || 0) > 0" class="flex items-start gap-2">
+                <svg class="w-3.5 h-3.5 text-amber-400 mt-0.5 shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M7 9a2 2 0 012-2h6a2 2 0 012 2v6a2 2 0 01-2 2H9a2 2 0 01-2-2V9z"/>
+                  <path d="M5 3a2 2 0 00-2 2v6a2 2 0 002 2V5h8a2 2 0 00-2-2H5z"/>
+                </svg>
+                <div>
+                  <span class="text-xs font-medium text-amber-700"
+                        x-text="(architectureResult.semantic_quality.duplicate_count || 0) + ' duplicate elements'"></span>
+                  <span class="text-xs text-muted-foreground ml-1">— same name+type generated more than once. May indicate multi-run accumulation.</span>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </template>
+      </div>
+
+      {# ── Elements content ── #}
+      <div>
+        <div class="rounded-xl border border-border bg-card overflow-hidden">
+            {# Collapsible header #}
+            <button type="button" @click="expandedLayers._archimate = !expandedLayers._archimate"
+                    class="w-full flex items-center justify-between px-5 py-4 hover:bg-muted/30 transition-colors">
+                <div class="flex items-center gap-3">
+                    <span class="flex items-center justify-center w-8 h-8 rounded-lg bg-violet-500/10 border border-violet-500/20 text-violet-600 text-xs font-bold"
+                          x-text="architectureResult.total || Object.values(architectureResult.elements_by_layer || {}).reduce(function(s,a){return s+a.length},0)"></span>
+                    <div class="text-left">
+                        <p class="text-sm font-semibold text-foreground">Architecture Elements</p>
+                        <p class="text-xs text-muted-foreground">
+                            <template x-for="layer in ['motivation','strategy','business','application','technology','implementation']" :key="layer">
+                                <span x-show="getElementsByLayer(layer).length > 0"
+                                      x-text="getElementsByLayer(layer).length + ' ' + layer + (getElementsByLayer(layer).length > 1 ? '' : '') + ' '"
+                                      class="capitalize"></span>
+                            </template>
+                        </p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span @click.stop="acceptAllElements()" x-show="architectureResult && !architectureLoading"
+                          class="text-[11px] text-emerald-600 hover:text-emerald-700 font-medium cursor-pointer">Accept all</span>
+                    <span class="text-[11px] text-muted-foreground" x-show="architectureResult && !architectureLoading">·</span>
+                    <span @click.stop="architectureResult = null; generateArchitecture()" x-show="architectureResult && !architectureLoading"
+                          class="text-[11px] text-muted-foreground hover:text-foreground cursor-pointer">Regenerate</span>
+                    <span class="text-[11px] text-muted-foreground" x-show="architectureResult && !architectureLoading">·</span>
+                    <span @click.stop="rebuildRelationships()" x-show="architectureResult && !architectureLoading && !rebuildingRelationships"
+                          class="text-[11px] text-muted-foreground hover:text-foreground cursor-pointer">Rebuild Relationships</span>
+                    <span x-show="rebuildingRelationships" class="text-[11px] text-muted-foreground animate-pulse">Rebuilding...</span>
+                    <span class="text-[11px] text-muted-foreground" x-show="architectureResult && !architectureLoading">·</span>
+                    <span @click.stop="openInComposer()" x-show="architectureResult"
+                          class="text-[11px] text-primary hover:text-primary/80 font-medium cursor-pointer">Open in Composer &rarr;</span>
+                    <svg class="w-3.5 h-3.5 text-muted-foreground transition-transform"
+                         :class="expandedLayers._archimate ? 'rotate-180' : ''"
+                         fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                </div>
+            </button>
+
+            {# Expanded: layer sections #}
+            <div x-show="expandedLayers._archimate" x-cloak class="border-t border-border">
+
+                {# Layer coverage — 6-column grid, always shows all layers including gaps #}
+                <div class="px-5 py-3 border-b border-border">
+                    <div class="grid gap-2" style="grid-template-columns: repeat(6, minmax(0, 1fr))">
+                        {% for lk, ln, tc in [
+                            ('motivation',      'Motivation',     'violet'),
+                            ('strategy',        'Strategy',       'rose'),
+                            ('business',        'Business',       'amber'),
+                            ('application',     'Application',    'blue'),
+                            ('technology',      'Technology',     'emerald'),
+                            ('implementation',  'Implementation', 'sky'),
+                        ] %}
+                        <div class="rounded-lg border px-2 py-2 flex flex-col items-center gap-1 text-center transition-colors"
+                             :class="getElementsByLayer('{{ lk }}').length === 0
+                                 ? 'border-dashed border-border bg-muted/20'
+                                 : getElementsByLayer('{{ lk }}').length < 3
+                                 ? 'border-amber-500/30 bg-amber-500/5'
+                                 : 'border-{{ tc }}-500/20 bg-{{ tc }}-500/5'">
+                            <span class="text-base font-bold tabular-nums leading-none"
+                                  :class="getElementsByLayer('{{ lk }}').length === 0
+                                      ? 'text-muted-foreground/30'
+                                      : getElementsByLayer('{{ lk }}').length < 3
+                                      ? 'text-amber-600'
+                                      : 'text-{{ tc }}-600'"
+                                  x-text="getElementsByLayer('{{ lk }}').length"></span>
+                            <span class="text-[10px] text-muted-foreground leading-tight">{{ ln }}</span>
+                            <button type="button" x-show="getElementsByLayer('{{ lk }}').length < 3 && !architectureLoading"
+                                    x-cloak
+                                    @click.stop="regenerateLayer('{{ lk }}')"
+                                    class="text-[9px] font-medium px-1.5 py-0.5 rounded transition-colors leading-tight"
+                                    :class="getElementsByLayer('{{ lk }}').length === 0
+                                        ? 'bg-primary/10 text-primary hover:bg-primary/20'
+                                        : 'bg-amber-500/10 text-amber-700 hover:bg-amber-500/20'"
+                                    x-text="getElementsByLayer('{{ lk }}').length === 0 ? 'Generate' : 'Regen'">
+                            </button>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                {# Auto-generated layered viewpoint diagram #}
+                <div class="border-b border-border"
+                     x-data="{ diagramReady: false }"
+                     x-init="(function(){
+                         function renderDiagram(val) {
+                             if (!val || !val.elements_by_layer) return;
+                             $nextTick(function() {
+                                 var container = document.getElementById('journey-arch-diagram');
+                                 if (!container || typeof ComposerRenderer === 'undefined') return;
+                                 var els = [], rels = [];
+                                 var idCounter = 1;
+                                 var nameToId = {};
+                                 Object.keys(val.elements_by_layer).forEach(function(layer) {
+                                     (val.elements_by_layer[layer] || []).forEach(function(el) {
+                                         var eid = el.id || ('gen-' + idCounter++);
+                                         nameToId[el.name] = eid;
+                                         els.push({id: eid, name: el.name, type: el.type, layer: layer});
+                                     });
+                                 });
+                                 (val.relationships || []).forEach(function(r) {
+                                     var sid = nameToId[r.source_name], tid = nameToId[r.target_name];
+                                     if (sid && tid) rels.push({id: 'r-' + sid + '-' + tid, source_id: sid, target_id: tid, type: r.type});
+                                 });
+                                 if (els.length === 0) return;
+                                 try {
+                                     var renderer = ComposerRenderer.create(container, {mode: 'view', width: '100%', height: 280});
+                                     renderer.loadElements(els, rels);
+                                     renderer.fitToContent();
+                                     diagramReady = true;
+                                 } catch(e) { console.warn('Diagram render failed:', e); }
+                             });
+                         }
+                         $watch('architectureResult', renderDiagram);
+                         if (architectureResult && architectureResult.elements_by_layer) renderDiagram(architectureResult);
+                     })()">
+                    <div class="px-5 py-3">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Architecture Diagram</span>
+                            <a :href="'/archimate/composer?solution_id=' + solutionId" class="text-[10px] text-primary hover:underline">Open in Composer &rarr;</a>
+                        </div>
+                        <div id="journey-arch-diagram" class="w-full rounded-lg border border-border bg-background overflow-hidden" style="min-height:280px;"></div>
+                        <p x-show="!diagramReady" class="text-xs text-muted-foreground text-center py-8">Generate architecture to see the layered viewpoint diagram</p>
+                    </div>
+                </div>
+
+                {# Relationships summary #}
+                <template x-if="architectureResult.relationships && architectureResult.relationships.length > 0">
+                    <div class="border-b border-border">
+                        <button type="button" @click="expandedLayers._rels = !expandedLayers._rels"
+                                class="w-full flex items-center justify-between px-5 py-3 hover:bg-muted/20 transition-colors">
+                            <div class="flex items-center gap-2">
+                                <span class="w-2 h-2 rounded-full bg-violet-500"></span>
+                                <p class="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Relationships</p>
+                                <span class="text-[10px] text-muted-foreground" x-text="'(' + architectureResult.relationships.length + ')'"></span>
+                            </div>
+                            <svg class="w-3.5 h-3.5 text-muted-foreground transition-transform"
+                                 :class="expandedLayers._rels ? 'rotate-180' : ''"
+                                 fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                        </button>
+                        <div x-show="expandedLayers._rels" x-cloak class="px-5 pb-3 space-y-1">
+                            <template x-for="rel in architectureResult.relationships" :key="rel.source_id + '-' + rel.target_id + '-' + rel.rel_type">
+                                <div class="flex items-center gap-2 text-xs px-2 py-1 rounded bg-muted/30">
+                                    <span class="font-medium truncate max-w-[180px]" x-text="_getElementName(rel.source_id)"></span>
+                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-violet-500/10 text-violet-600 border border-violet-500/30 flex-shrink-0"
+                                          x-text="rel.rel_type"></span>
+                                    <span class="font-medium truncate max-w-[180px]" x-text="_getElementName(rel.target_id)"></span>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </template>
+
+                {# Layer sections #}
+                {% set layers = [
+                    ('motivation', 'Motivation', 'text-violet-600', 'bg-violet-500/10', 'border-violet-500/20', 'bg-violet-500', 'hover:border-violet-500/30'),
+                    ('strategy', 'Strategy', 'text-rose-600', 'bg-rose-500/10', 'border-rose-500/20', 'bg-rose-500', 'hover:border-rose-500/30'),
+                    ('business', 'Business', 'text-amber-600', 'bg-amber-500/10', 'border-amber-500/20', 'bg-amber-500', 'hover:border-amber-500/30'),
+                    ('application', 'Application', 'text-blue-600', 'bg-blue-500/10', 'border-blue-500/20', 'bg-blue-500', 'hover:border-blue-500/30'),
+                    ('technology', 'Technology', 'text-emerald-600', 'bg-emerald-500/10', 'border-emerald-500/20', 'bg-emerald-500', 'hover:border-emerald-500/30'),
+                    ('implementation', 'Implementation', 'text-sky-600', 'bg-sky-500/10', 'border-sky-500/20', 'bg-sky-500', 'hover:border-sky-500/30'),
+                ] %}
+                {% for layer_key, layer_name, text_color, bg_color, border_color, dot_color, hover_border in layers %}
+                <div class="border-b border-border last:border-b-0" x-show="getElementsByLayer('{{ layer_key }}').length > 0">
+                    {# Layer header #}
+                    <button type="button" @click="toggleLayer('{{ layer_key }}')"
+                            class="w-full flex items-center justify-between px-5 py-3 hover:bg-muted/20 transition-colors">
+                        <div class="flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full {{ dot_color }}"></span>
+                            <p class="text-xs font-semibold {{ text_color }} uppercase tracking-wider">{{ layer_name }}</p>
+                            <span class="text-[10px] text-muted-foreground" x-text="'(' + getElementsByLayer('{{ layer_key }}').length + ')'"></span>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <span @click.stop="acceptAllInLayer('{{ layer_key }}')"
+                                  class="text-[10px] text-emerald-600 hover:text-emerald-700 font-medium cursor-pointer">Accept all</span>
+                            <span @click.stop="rejectAllInLayer('{{ layer_key }}')"
+                                  class="text-[10px] text-red-500 hover:text-red-600 font-medium cursor-pointer">Reject all</span>
+                            <svg class="w-3.5 h-3.5 text-muted-foreground transition-transform"
+                                 :class="expandedLayers.{{ layer_key }} ? 'rotate-180' : ''"
+                                 fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                        </div>
+                    </button>
+
+                    {# Layer elements #}
+                    <div x-show="expandedLayers.{{ layer_key }}" x-cloak class="px-5 pb-3 space-y-2">
+                        <template x-for="el in getElementsByLayer('{{ layer_key }}')" :key="el.id || el.name">
+                            <div class="rounded-lg border border-border {{ hover_border }} transition-colors overflow-hidden">
+                                {# Element top row #}
+                                <div class="px-4 py-2.5 flex items-center justify-between cursor-pointer"
+                                     @click="el.acm_domain ? toggleElementProperties(el.acm_domain, el.id || el.name, el.type) : (expandedLayers['el-' + (el.id || el.name)] = !expandedLayers['el-' + (el.id || el.name)])">
+                                    <div class="flex items-center gap-2 min-w-0">
+                                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium {{ bg_color }} {{ text_color }} border {{ border_color }}"
+                                              x-text="el.type"></span>
+                                        <span class="text-sm font-medium truncate" x-text="el.name"></span>
+                                    </div>
+                                    <div class="flex items-center gap-2 shrink-0">
+                                        {# Property completeness — only for elements with properties #}
+                                        <span x-show="el.acm_domain && getTemplatesForElement(el.type).length > 0"
+                                              class="text-[9px] font-medium"
+                                              :class="getElementPropertyScore(el.acm_domain, el.id || el.name, el.type).pct >= 75 ? 'text-emerald-600' : getElementPropertyScore(el.acm_domain, el.id || el.name, el.type).pct >= 25 ? 'text-amber-600' : 'text-muted-foreground'"
+                                              x-text="getElementPropertyScore(el.acm_domain, el.id || el.name, el.type).pct + '%'"></span>
+                                        {# Source badge #}
+                                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium"
+                                              :class="(el.source || 'derived') === 'existing' ? 'bg-muted text-muted-foreground border border-border' : 'bg-violet-500/10 text-violet-600 border border-violet-500/20'"
+                                              x-text="el.source || 'derived'"></span>
+                                        {# ACM domain badge #}
+                                        <span x-show="el.acm_domain"
+                                              class="text-[9px] font-bold uppercase tracking-wider {{ text_color }}"
+                                              x-text="el.acm_domain"></span>
+                                        {# Accept/reject toggle #}
+                                        <button type="button" @click.stop="toggleElement(el.id || el.name)"
+                                                class="p-1 rounded hover:bg-muted transition-colors">
+                                            <svg x-show="isElementAccepted(el.id || el.name)" class="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                                            <svg x-show="!isElementAccepted(el.id || el.name)" x-cloak class="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                                        </button>
+                                        <svg class="w-3 h-3 text-muted-foreground transition-transform"
+                                             :class="(el.acm_domain && isElementExpanded(el.acm_domain, el.id || el.name)) || expandedLayers['el-' + (el.id || el.name)] ? 'rotate-180' : ''"
+                                             fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                                    </div>
+                                </div>
+
+                                {# Expanded detail panel with description + metadata + property editor #}
+                                <template x-if="(el.acm_domain && isElementExpanded(el.acm_domain, el.id || el.name)) || expandedLayers['el-' + (el.id || el.name)]">
+                                    <div class="border-t border-border px-4 py-3 bg-muted/10 space-y-3">
+                                        {# Description #}
+                                        <p class="text-xs text-muted-foreground" x-text="el.description || 'No description'"></p>
+
+                                        {# Metadata grid #}
+                                        <div class="grid grid-cols-3 gap-3">
+                                            <div>
+                                                <p class="text-[9px] text-muted-foreground uppercase tracking-wider mb-0.5">ACM Domain</p>
+                                                <p class="text-[11px] font-medium" x-text="el.acm_domain || '—'"></p>
+                                            </div>
+                                            <div>
+                                                <p class="text-[9px] text-muted-foreground uppercase tracking-wider mb-0.5">Source</p>
+                                                <p class="text-[11px] font-medium" x-text="el.source || 'derived'"></p>
+                                            </div>
+                                            <div x-show="el.acm_domain && getTemplatesForElement(el.type).length > 0">
+                                                <p class="text-[9px] text-muted-foreground uppercase tracking-wider mb-0.5">Properties</p>
+                                                <p class="text-[11px] font-medium"
+                                                   x-text="getElementPropertyScore(el.acm_domain, el.id || el.name, el.type).filled + '/' + getElementPropertyScore(el.acm_domain, el.id || el.name, el.type).total + ' (' + getElementPropertyScore(el.acm_domain, el.id || el.name, el.type).pct + '%)'"></p>
+                                            </div>
+                                        </div>
+
+                                        {# Property editor — only for elements with ACM domain + property templates #}
+                                        <template x-if="el.acm_domain && getTemplatesForElement(el.type).length > 0">
+                                            <div class="pt-2 border-t border-border/50 space-y-1.5">
+                                                <template x-for="tmpl in getTemplatesForElement(el.type)" :key="tmpl.property_key">
+                                                    <div x-show="isPropertyVisible(tmpl, el.acm_domain, el.id || el.name)" class="flex items-center gap-2">
+                                                        <label class="text-[10px] text-muted-foreground w-28 text-right shrink-0"
+                                                               x-text="tmpl.display_name + (tmpl.required ? ' *' : '')"></label>
+
+                                                        {# Enum dropdown #}
+                                                        <template x-if="tmpl.property_type === 'enum'">
+                                                            <select class="flex-1 text-xs border border-input rounded px-2 py-1 bg-background"
+                                                                    :value="getPropertyValue(el.acm_domain, el.id || el.name, tmpl.property_key)"
+                                                                    @change="setPropertyValue(el.acm_domain, el.id || el.name, tmpl.property_key, $event.target.value)">
+                                                                <option value="">Select...</option>
+                                                                <template x-for="opt in (tmpl.enum_options || [])" :key="opt">
+                                                                    <option :value="opt" :selected="getPropertyValue(el.acm_domain, el.id || el.name, tmpl.property_key) === opt" x-text="opt"></option>
+                                                                </template>
+                                                            </select>
+                                                        </template>
+
+                                                        {# Boolean toggle #}
+                                                        <template x-if="tmpl.property_type === 'boolean'">
+                                                            <input type="checkbox" class="rounded border-input"
+                                                                   :checked="getPropertyValue(el.acm_domain, el.id || el.name, tmpl.property_key) === true || getPropertyValue(el.acm_domain, el.id || el.name, tmpl.property_key) === 'true'"
+                                                                   @change="setPropertyValue(el.acm_domain, el.id || el.name, tmpl.property_key, $event.target.checked)">
+                                                        </template>
+
+                                                        {# Text/number input #}
+                                                        <template x-if="tmpl.property_type === 'text' || tmpl.property_type === 'number'">
+                                                            <input type="text" class="flex-1 text-xs border border-input rounded px-2 py-1 bg-background"
+                                                                   :value="getPropertyValue(el.acm_domain, el.id || el.name, tmpl.property_key)"
+                                                                   @blur="setPropertyValue(el.acm_domain, el.id || el.name, tmpl.property_key, $event.target.value)"
+                                                                   :placeholder="tmpl.help_text ? tmpl.help_text.substring(0, 40) : ''">
+                                                        </template>
+
+                                                        {# Multi-select as text #}
+                                                        <template x-if="tmpl.property_type === 'multi-select'">
+                                                            <input type="text" class="flex-1 text-xs border border-input rounded px-2 py-1 bg-background"
+                                                                   :value="getPropertyValue(el.acm_domain, el.id || el.name, tmpl.property_key)"
+                                                                   @blur="setPropertyValue(el.acm_domain, el.id || el.name, tmpl.property_key, $event.target.value)"
+                                                                   :placeholder="(tmpl.enum_options || []).join(', ')">
+                                                        </template>
+
+                                                        {# AI source indicator #}
+                                                        <span x-show="getPropertySource(el.acm_domain, el.id || el.name, tmpl.property_key) === 'llm'"
+                                                              class="text-[8px] text-violet-500 shrink-0 font-medium">AI</span>
+                                                    </div>
+                                                </template>
+                                            </div>
+                                        </template>
+
+                                        {# Business Rules section — always shown in expanded panel #}
+                                        <div class="pt-2 border-t border-border/50"
+                                             x-data="{
+                                                brOpen: false,
+                                                brRules: (el.acm_properties && el.acm_properties.business_rules) ? el.acm_properties.business_rules : [],
+                                                brName: '',
+                                                brCond: '',
+                                                brSev: 'must',
+                                                brSaving: false,
+                                                brError: '',
+                                                addRule() {
+                                                    if (!this.brName.trim()) return;
+                                                    this.brRules.push({name: this.brName.trim(), condition: this.brCond.trim(), severity: this.brSev});
+                                                    this.brName = ''; this.brCond = ''; this.brSev = 'must';
+                                                    this.saveRules();
+                                                },
+                                                removeRule(idx) {
+                                                    this.brRules.splice(idx, 1);
+                                                    this.saveRules();
+                                                },
+                                                async saveRules() {
+                                                    this.brSaving = true; this.brError = '';
+                                                    try {
+                                                        const resp = await fetch('/architecture-journey/{{ solution_id }}/proposal/' + el.proposal_id + '/business-rules', {
+                                                            method: 'PATCH',
+                                                            headers: {'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('[name=csrf_token]')?.value || ''},
+                                                            body: JSON.stringify({rules: this.brRules})
+                                                        });
+                                                        if (!resp.ok) this.brError = 'Save failed';
+                                                    } catch(e) { this.brError = 'Network error'; }
+                                                    this.brSaving = false;
+                                                }
+                                             }">
+                                            <button type="button"
+                                                    @click="brOpen = !brOpen"
+                                                    class="flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground hover:text-foreground transition-colors">
+                                                <svg class="w-3 h-3 transition-transform" :class="brOpen ? 'rotate-90' : ''"
+                                                     fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+                                                Business Rules
+                                                <span x-show="brRules.length > 0"
+                                                      class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] bg-amber-500/10 text-amber-600 border border-amber-500/20"
+                                                      x-text="brRules.length + ' rule' + (brRules.length !== 1 ? 's' : '')"></span>
+                                            </button>
+                                            <div x-show="brOpen" x-cloak class="mt-2 space-y-2">
+                                                {# Existing rules #}
+                                                <template x-for="(rule, idx) in brRules" :key="idx">
+                                                    <div class="flex items-start gap-2 p-2 rounded border border-border bg-muted/10">
+                                                        <div class="flex-1 min-w-0">
+                                                            <div class="flex items-center gap-1.5 mb-0.5">
+                                                                <span class="text-[11px] font-medium" x-text="rule.name"></span>
+                                                                <span class="text-[9px] px-1.5 py-0.5 rounded border"
+                                                                      :class="rule.severity === 'must' ? 'bg-red-500/10 text-red-600 border-red-500/20' :
+                                                                              rule.severity === 'should' ? 'bg-amber-500/10 text-amber-600 border-amber-500/20' :
+                                                                              'bg-muted text-muted-foreground border-border'"
+                                                                      x-text="rule.severity || 'must'"></span>
+                                                            </div>
+                                                            <p class="text-[10px] text-muted-foreground leading-snug" x-text="rule.condition || ''" x-show="rule.condition"></p>
+                                                        </div>
+                                                        <button type="button" @click="removeRule(idx)"
+                                                                class="shrink-0 p-0.5 text-muted-foreground hover:text-destructive transition-colors">
+                                                            <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                                                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                                                        </button>
+                                                    </div>
+                                                </template>
+                                                {# Add rule form #}
+                                                <div class="space-y-1.5 pt-1 border-t border-border/40">
+                                                    <input type="text" x-model="brName" placeholder="Rule name (e.g. must-validate-email)"
+                                                           class="w-full text-xs border border-input rounded px-2 py-1 bg-background"/>
+                                                    <input type="text" x-model="brCond" placeholder="Condition / assertion (e.g. email must match RFC 5322)"
+                                                           class="w-full text-xs border border-input rounded px-2 py-1 bg-background"/>
+                                                    <div class="flex gap-2">
+                                                        <select x-model="brSev" class="text-xs border border-input rounded px-2 py-1 bg-background">
+                                                            <option value="must">must</option>
+                                                            <option value="should">should</option>
+                                                            <option value="may">may</option>
+                                                        </select>
+                                                        <button type="button" @click="addRule()"
+                                                                :disabled="!brName.trim() || brSaving"
+                                                                class="flex-1 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 rounded px-3 py-1 transition-colors disabled:opacity-50">
+                                                            <span x-show="!brSaving">+ Add Rule</span>
+                                                            <span x-show="brSaving">Saving…</span>
+                                                        </button>
+                                                    </div>
+                                                    <p x-show="brError" class="text-[10px] text-destructive" x-text="brError"></p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </template>
+
+                        {# ── Per-layer intra-layer Sankey ── #}
+                        <div x-show="getElementsByLayer('{{ layer_key }}').length >= 2" x-cloak
+                             class="mt-3 pt-3 border-t border-border/50">
+                          <p class="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                            {{ layer_name }} layer flow
+                          </p>
+                          {% set sankey_solution_id = solution_id %}
+                          {% set sankey_layer = layer_key %}
+                          {% include 'solutions/partials/_layer_sankey.html' %}
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+      </div>{# end elements tab #}
+
+    </div>{# end architectureResult block #}
+
+    {# ── Traceability Flow — standalone card, auto-loads from DB ── #}
+    <div class="rounded-xl border border-border bg-card overflow-hidden mt-4">
+      <div class="px-5 py-3 border-b border-border bg-muted/20 flex items-center gap-2">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-sky-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
+        </svg>
+        <span class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Traceability Flow</span>
+        <span class="text-[10px] text-muted-foreground/60 ml-1">Capability &rarr; Architecture &rarr; Code</span>
+      </div>
+      <div class="px-4 py-4">
+        {% set sankey_solution_id = solution_id %}
+        {% include 'solutions/partials/_traceability_sankey.html' %}
+      </div>
+    </div>
+
+    {# ── Data Model Review — field confirmation panel ── #}
+    <div class="rounded-xl border border-border bg-card overflow-hidden mt-4">
+      <div class="px-5 py-3 border-b border-border bg-muted/20">
+        <div class="flex items-center gap-2">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-violet-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
+          </svg>
+          <span class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Data Model Review</span>
+          <span class="text-[10px] text-muted-foreground/60 ml-1">Confirm field schemas — confirmed fields are used verbatim by code generation</span>
+        </div>
+      </div>
+      <div class="px-4 py-4">
+        {% set field_confirm_solution_id = solution_id %}
+        {% include 'solutions/partials/_field_confirmation.html' %}
+      </div>
+    </div>
+
+    {# ── Business Process Step Editor — define actor/action/target/validation per process element ── #}
+    <div class="rounded-xl border border-border bg-card overflow-hidden mt-4">
+      <div class="px-5 py-3 border-b border-border bg-muted/20">
+        <div class="flex items-center gap-2">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/>
+          </svg>
+          <span class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Business Process Steps</span>
+          <span class="text-[10px] text-muted-foreground/60 ml-1">Define actor → action → target per process element — used to generate concrete service methods</span>
+        </div>
+      </div>
+      <div class="px-4 py-4">
+        {% set step_editor_solution_id = solution_id %}
+        {% include 'solutions/partials/_process_step_editor.html' %}
+      </div>
+    </div>
+
+    {# ── Application Capabilities — cross-cutting concern toggles ─────── #}
+    <div x-show="architectureResult || domainsPopulated" x-cloak
+         class="rounded-xl border border-border bg-card overflow-hidden">
+        <button type="button" @click="capabilitiesOpen = !capabilitiesOpen"
+                class="w-full flex items-center justify-between px-5 py-3 hover:bg-muted/50 transition-colors">
+            <div class="flex items-center gap-2">
+                <i data-lucide="settings-2" class="w-4 h-4 text-muted-foreground"></i>
+                <span class="text-sm font-semibold text-foreground">Application Capabilities</span>
+                <span class="text-xs text-muted-foreground"
+                      x-text="Object.values(codegenCaps || {}).filter(Boolean).length + ' selected'"></span>
+            </div>
+            <i :class="capabilitiesOpen ? 'rotate-180' : ''" data-lucide="chevron-down"
+               class="w-4 h-4 text-muted-foreground transition-transform"></i>
+        </button>
+        <div x-show="capabilitiesOpen" x-collapse class="border-t border-border px-5 py-4 space-y-4">
+            <p class="text-xs text-muted-foreground">Select the cross-cutting concerns your application needs. These drive what the code generator produces — auth, multi-tenancy, webhooks, etc. Capabilities are auto-inferred from your domain and entities but you can override them.</p>
+
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                <template x-for="cap in [
+                    {key: 'audit_trail', label: 'Audit Trail', icon: 'shield-check', desc: 'Log all data mutations with actor, timestamp, diff'},
+                    {key: 'multi_tenancy', label: 'Multi-Tenancy', icon: 'building-2', desc: 'Organization-scoped data isolation'},
+                    {key: 'webhooks', label: 'Webhooks', icon: 'webhook', desc: 'Event delivery to external systems with HMAC + retry'},
+                    {key: 'notifications', label: 'Notifications', icon: 'bell', desc: 'Email and in-app notification system'},
+                    {key: 'search', label: 'Full-Text Search', icon: 'search', desc: 'ILIKE / pg_trgm search across entities'},
+                    {key: 'export', label: 'CSV / JSON Export', icon: 'download', desc: 'Export entity data as CSV or JSON'},
+                    {key: 'file_storage', label: 'File Storage', icon: 'paperclip', desc: 'File upload, S3-compatible storage'},
+                    {key: 'encryption_at_rest', label: 'Field Encryption', icon: 'lock', desc: 'AES-256 encryption for sensitive fields'},
+                    {key: 'mfa', label: 'MFA', icon: 'shield', desc: 'Multi-factor authentication (TOTP)'},
+                    {key: 'api_keys', label: 'API Keys', icon: 'key', desc: 'API key management for B2B integrations'},
+                    {key: 'rate_limiting', label: 'Rate Limiting', icon: 'gauge', desc: 'Request throttling per user/IP'},
+                    {key: 'admin_panel', label: 'Admin Panel', icon: 'layout-dashboard', desc: 'Super admin dashboard with user management'},
+                ]" :key="cap.key">
+                    <label class="flex items-start gap-2.5 p-3 rounded-lg border transition-colors cursor-pointer"
+                           :class="codegenCaps[cap.key] ? 'border-primary bg-primary/5' : 'border-border hover:border-muted-foreground/30'">
+                        <input type="checkbox" class="mt-0.5 rounded border-border"
+                               :checked="codegenCaps[cap.key]"
+                               @change="codegenCaps[cap.key] = $event.target.checked; saveCapabilities()">
+                        <div>
+                            <span class="text-sm font-medium text-foreground" x-text="cap.label"></span>
+                            <p class="text-xs text-muted-foreground mt-0.5" x-text="cap.desc"></p>
+                        </div>
+                    </label>
+                </template>
+            </div>
+
+            <div class="pt-2 border-t border-border">
+                <p class="text-xs font-medium text-foreground mb-2">Authentication</p>
+                <div class="flex gap-2">
+                    <template x-for="auth in [
+                        {key: 'jwt-local', label: 'JWT Local', desc: 'Built-in email/password auth'},
+                        {key: 'oidc', label: 'OIDC / Keycloak', desc: 'External identity provider'},
+                        {key: 'none', label: 'None', desc: 'No auth (internal service)'},
+                    ]" :key="auth.key">
+                        <label class="flex-1 p-2.5 rounded-lg border text-center cursor-pointer transition-colors"
+                               :class="codegenCaps.auth_type === auth.key ? 'border-primary bg-primary/5' : 'border-border hover:border-muted-foreground/30'">
+                            <input type="radio" name="auth_type" class="sr-only"
+                                   :value="auth.key" :checked="codegenCaps.auth_type === auth.key"
+                                   @change="codegenCaps.auth_type = auth.key; saveCapabilities()">
+                            <span class="text-sm font-medium" x-text="auth.label"></span>
+                            <p class="text-xs text-muted-foreground mt-0.5" x-text="auth.desc"></p>
+                        </label>
+                    </template>
+                </div>
+            </div>
+
+            {# Vendor suggestions for enabled capabilities #}
+            <div x-show="Object.entries(capabilities).some(([k,v]) => v && vendorSuggestions[k])"
+                 class="pt-3 border-t border-border">
+                <p class="text-xs font-medium text-foreground mb-2">Vendor Integrations</p>
+                <p class="text-xs text-muted-foreground mb-3">Select a vendor product to generate a typed SDK client instead of a generic implementation.</p>
+                <div class="space-y-2">
+                    <template x-for="[capKey, vendors] in Object.entries(vendorSuggestions).filter(([k]) => codegenCaps[k])" :key="capKey">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <span class="text-xs font-medium text-muted-foreground w-24 shrink-0" x-text="capKey.replace(/_/g, ' ')"></span>
+                            <template x-for="v in vendors" :key="v.key">
+                                <label class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-xs cursor-pointer transition-colors"
+                                       :class="codegenCaps['vendor_' + capKey] === v.key ? 'border-primary bg-primary/5 font-medium' : 'border-border hover:border-muted-foreground/30'">
+                                    <input type="radio" :name="'vendor_' + capKey" class="sr-only"
+                                           :value="v.key" :checked="codegenCaps['vendor_' + capKey] === v.key"
+                                           @change="codegenCaps['vendor_' + capKey] = v.key; saveCapabilities()">
+                                    <span x-text="v.label"></span>
+                                </label>
+                            </template>
+                            <label class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-xs cursor-pointer transition-colors"
+                                   :class="!codegenCaps['vendor_' + capKey] ? 'border-primary bg-primary/5 font-medium' : 'border-border hover:border-muted-foreground/30'">
+                                <input type="radio" :name="'vendor_' + capKey" class="sr-only"
+                                       value="" :checked="!codegenCaps['vendor_' + capKey]"
+                                       @change="codegenCaps['vendor_' + capKey] = ''; saveCapabilities()">
+                                <span>Generic</span>
+                            </label>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# Generate button — only when no data exists yet #}
+    <div x-show="!architectureResult && reasoningLandscape.length === 0 && !architectureLoading && (acceptedCapabilities.length > 0 || domainsPopulated)" x-cloak>
+        <button type="button" @click="generateArchitecture()"
+                :disabled="architectureLoading"
+                class="w-full inline-flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 transition-colors disabled:opacity-50">
+            <i data-lucide="boxes" class="w-4 h-4" aria-hidden="true"></i>
+            Generate Architecture
+        </button>
+    </div>
+
+    {# UX Preferences — auto-inferred tab order, enum values, colour, auth #}
+    {% include 'architecture_assistant/journey_v2_steps/_ux_preferences_panel.html' %}
+</div>
+<script>
+function reviewRowPanel() { return { open: false }; }
+</script>

@@ -1,0 +1,321 @@
+<!-- Async-loaded AI suggestions panel for solution detail view -->
+<div id="ai-suggestions-panel" class="space-y-4 p-4 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg border border-primary/20">
+    <div class="flex items-center justify-between mb-4">
+        <h3 class="text-lg font-semibold text-foreground flex items-center">
+            <svg class="w-5 h-5 mr-2 text-primary" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M11 3a1 1 0 10-2 0v1a1 1 0 102 0V3zM15.657 5.757a1 1 0 00-1.414-1.414l-.707.707a1 1 0 001.414 1.414l.707-.707zM18 10a1 1 0 01-1 1h-1a1 1 0 110-2h1a1 1 0 011 1zM15.657 14.243a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414l.707.707zM11 17a1 1 0 102 0v-1a1 1 0 10-2 0v1zM5.757 15.657a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414l-.707.707zM5 10a1 1 0 01-1-1V8a1 1 0 112 0v1a1 1 0 01-1 1zM5.757 5.757a1 1 0 01-1.414 1.414l-.707-.707a1 1 0 011.414-1.414l.707.707zM10 5.5a4.5 4.5 0 100 9 4.5 4.5 0 000-9zm0 2a2.5 2.5 0 110 5 2.5 2.5 0 010-5z"/>
+            </svg>
+            AI-Powered Suggestions
+        </h3>
+        <span id="suggestion-loading" class="text-xs font-medium text-primary">Loading...</span>
+    </div>
+
+    <!-- Vendor Recommendations -->
+    <div id="vendor-suggestions-container" class="hidden">
+        <h4 class="font-semibold text-foreground mb-2 flex items-center">
+            <span class="w-2 h-2 bg-emerald-500 rounded-full mr-2"></span>
+            Recommended Vendors
+        </h4>
+        <div id="vendor-list" class="space-y-2 max-h-48 overflow-y-auto"></div>
+    </div>
+
+    <!-- ArchiMate Element Suggestions -->
+    <div id="archimate-suggestions-container" class="hidden">
+        <h4 class="font-semibold text-foreground mb-2 flex items-center">
+            <span class="w-2 h-2 bg-primary rounded-full mr-2"></span>
+            ArchiMate Elements to Add
+        </h4>
+        <div id="archimate-list" class="space-y-2 max-h-48 overflow-y-auto"></div>
+    </div>
+
+    <!-- Risk Suggestions -->
+    <div id="risk-suggestions-container" class="hidden">
+        <h4 class="font-semibold text-foreground mb-2 flex items-center">
+            <span class="w-2 h-2 bg-destructive rounded-full mr-2"></span>
+            Identified Risks & Mitigations
+        </h4>
+        <div id="risk-list" class="space-y-2 max-h-48 overflow-y-auto"></div>
+    </div>
+
+    <!-- Cost Estimate -->
+    <div id="cost-suggestions-container" class="hidden">
+        <h4 class="font-semibold text-foreground mb-2 flex items-center">
+            <span class="w-2 h-2 bg-amber-500 rounded-full mr-2"></span>
+            Cost Estimate
+        </h4>
+        <div id="cost-data" class="p-3 bg-background rounded border border-yellow-200"></div>
+    </div>
+
+    <!-- Next Actions -->
+    <div id="next-actions-container" class="hidden">
+        <h4 class="font-semibold text-foreground mb-2 flex items-center">
+            <span class="w-2 h-2 bg-primary rounded-full mr-2"></span>
+            Next Phase Actions
+        </h4>
+        <div id="actions-list" class="space-y-2 max-h-48 overflow-y-auto"></div>
+    </div>
+
+    <!-- Feedback Section -->
+    <div id="feedback-section" class="hidden mt-4 pt-4 border-t border-border">
+        <h4 class="font-semibold text-foreground mb-3">Share Feedback</h4>
+        <div class="flex gap-2 flex-wrap">
+            <button class="feedback-btn px-3 py-1 rounded text-sm font-medium transition-all"
+                    data-type="accepted" title="These suggestions are helpful">
+                ✓ Helpful
+            </button>
+            <button class="feedback-btn px-3 py-1 rounded text-sm font-medium transition-all"
+                    data-type="needs_refinement" title="Suggestions need adjustment">
+                ≈ Refine
+            </button>
+            <button class="feedback-btn px-3 py-1 rounded text-sm font-medium transition-all"
+                    data-type="rejected" title="Not applicable">
+                ✗ Not Relevant
+            </button>
+        </div>
+        <input type="text" id="feedback-reason" placeholder="Optional: Why?" 
+               class="w-full mt-2 px-2 py-1 text-sm border rounded" />
+    </div>
+
+    <!-- Error State -->
+    <div id="suggestion-error" class="hidden p-3 bg-destructive/10 border border-destructive/30 rounded text-sm text-destructive">
+        Failed to load suggestions. Please refresh.
+    </div>
+</div>
+
+<style>
+    .feedback-btn {
+        background: white;
+        border: 1px solid hsl(var(--border));
+        color: hsl(var(--foreground));
+    }
+    .feedback-btn:hover {
+        background: hsl(var(--muted));
+        border-color: hsl(var(--border));
+    }
+    .feedback-btn.selected {
+        background: hsl(var(--primary));
+        color: hsl(var(--primary-foreground));
+        border-color: hsl(var(--primary));
+    }
+</style>
+
+<script>
+// Phase 2: Async suggestion loading
+(function() {
+    const solutionId = window.SOLUTION_ID || null; // Must be set in page template
+    const suggestionPanel = document.getElementById('ai-suggestions-panel');
+    const loadingIndicator = document.getElementById('suggestion-loading');
+    const errorDiv = document.getElementById('suggestion-error');
+    const feedbackSection = document.getElementById('feedback-section');
+    let reasoningStateId = null;
+
+    if (!solutionId) {
+        suggestionPanel.innerHTML = '<p class="text-sm text-muted-foreground">Solution ID not found</p>';
+        return;
+    }
+
+    // Fetch suggestion status first
+    async function loadSuggestions() {
+        try {
+            loadingIndicator.textContent = 'Loading...';
+            const statusRes = await fetch(`/api/solutions/${solutionId}/suggestions/status`);
+            const statusData = await statusRes.json();
+
+            if (!statusData.enhanced) {
+                loadingIndicator.textContent = 'Pending AI enhancement...';
+                setTimeout(loadSuggestions, 3000); // Retry in 3s
+                return;
+            }
+
+            reasoningStateId = statusData.reasoning_state_id;
+            const confidence = (statusData.confidence * 100).toFixed(0);
+            loadingIndicator.innerHTML = `Ready <span class="text-xs text-muted-foreground">(${confidence}% confidence)</span>`;
+
+            // Load all suggestion types in parallel
+            await Promise.all([
+                loadVendorSuggestions(),
+                loadArchitecture(),
+                loadRisks(),
+                loadCosts(),
+                loadNextActions()
+            ]);
+
+            feedbackSection.classList.remove('hidden');
+            attachFeedbackHandlers();
+        } catch (err) {
+            console.error('Suggestion load error:', err);
+            errorDiv.classList.remove('hidden');
+            loadingIndicator.textContent = 'Error';
+        }
+    }
+
+    async function loadVendorSuggestions() {
+        try {
+            const res = await fetch(`/api/solutions/${solutionId}/suggestions/vendors`);
+            const data = await res.json();
+            if (data.suggestions && data.suggestions.length > 0) {
+                const container = document.getElementById('vendor-suggestions-container');
+                const list = document.getElementById('vendor-list');
+                list.innerHTML = data.suggestions.map(v => `
+                    <div class="p-2 bg-background rounded border border-emerald-200 text-sm cursor-pointer hover:bg-emerald-500/5 vendor-suggestion-item" 
+                         data-action="toggle-vendor-select">
+                        <strong>${v.name || 'Vendor'}</strong>
+                        ${v.match_score ? `<span class="text-xs text-muted-foreground ml-2">${(v.match_score*100).toFixed(0)}% fit</span>` : ''}
+                        <p class="text-xs text-muted-foreground mt-1">${v.capabilities || v.description || ''}</p>
+                    </div>
+                `).join('');
+                container.classList.remove('hidden');
+            }
+        } catch (err) {
+            console.warn('Vendor suggestions failed:', err);
+        }
+    }
+
+    async function loadArchitecture() {
+        try {
+            const res = await fetch(`/api/solutions/${solutionId}/suggestions/archimate`);
+            const data = await res.json();
+            if (data.suggestions && data.suggestions.length > 0) {
+                const container = document.getElementById('archimate-suggestions-container');
+                const list = document.getElementById('archimate-list');
+                list.innerHTML = data.suggestions.map(a => `
+                    <div class="p-2 bg-background rounded border border-primary/20 text-sm cursor-pointer hover:bg-primary/5 archimate-suggestion-item"
+                         data-action="toggle-archimate-select">
+                        <strong>${a.element_type || 'Element'}</strong>: ${a.name || a.description || 'N/A'}
+                        ${a.rationale ? `<p class="text-xs text-muted-foreground mt-1">${a.rationale}</p>` : ''}
+                    </div>
+                `).join('');
+                container.classList.remove('hidden');
+            }
+        } catch (err) {
+            console.warn('Architecture suggestions failed:', err);
+        }
+    }
+
+    async function loadRisks() {
+        try {
+            const res = await fetch(`/api/solutions/${solutionId}/suggestions/risks`);
+            const data = await res.json();
+            if (data.suggestions && data.suggestions.length > 0) {
+                const container = document.getElementById('risk-suggestions-container');
+                const list = document.getElementById('risk-list');
+                list.innerHTML = data.suggestions.map(r => `
+                    <div class="p-2 bg-background rounded border border-destructive/20 text-sm">
+                        <div class="flex justify-between">
+                            <strong>${r.category || 'Risk'}</strong>
+                            <span class="text-xs font-semibold ${
+                                r.severity === 'high' ? 'text-destructive' :
+                                r.severity === 'medium' ? 'text-amber-600' : 'text-primary'
+                            }">${r.severity || 'medium'}</span>
+                        </div>
+                        <p class="text-xs text-muted-foreground mt-1">${r.description || ''}</p>
+                        ${r.mitigation ? `<p class="text-xs text-emerald-700 mt-1"><strong>Mitigation:</strong> ${r.mitigation}</p>` : ''}
+                    </div>
+                `).join('');
+                container.classList.remove('hidden');
+            }
+        } catch (err) {
+            console.warn('Risk suggestions failed:', err);
+        }
+    }
+
+    async function loadCosts() {
+        try {
+            const res = await fetch(`/api/solutions/${solutionId}/suggestions/costs`);
+            const data = await res.json();
+            if (data.suggestion) {
+                const container = document.getElementById('cost-suggestions-container');
+                const costDiv = document.getElementById('cost-data');
+                const estimate = data.suggestion;
+                costDiv.innerHTML = `
+                    <div class="grid grid-cols-2 gap-2 text-sm">
+                        <div>
+                            <p class="text-muted-foreground">Estimated Cost</p>
+                            <p class="font-semibold text-lg">${estimate.total_cost ? `$${estimate.total_cost.toLocaleString()}` : 'N/A'}</p>
+                        </div>
+                        <div>
+                            <p class="text-muted-foreground">Timeline</p>
+                            <p class="font-semibold">${estimate.timeline || 'N/A'}</p>
+                        </div>
+                        ${estimate.breakdown ? `<div class="col-span-2"><p class="text-xs text-muted-foreground">${estimate.breakdown}</p></div>` : ''}
+                    </div>
+                `;
+                container.classList.remove('hidden');
+            }
+        } catch (err) {
+            console.warn('Cost suggestions failed:', err);
+        }
+    }
+
+    async function loadNextActions() {
+        try {
+            const res = await fetch(`/api/solutions/${solutionId}/suggestions/next-actions`);
+            const data = await res.json();
+            if (data.next_actions && data.next_actions.length > 0) {
+                const container = document.getElementById('next-actions-container');
+                const list = document.getElementById('actions-list');
+                list.innerHTML = data.next_actions.map((a, i) => `
+                    <div class="p-2 bg-background rounded border border-purple-200 text-sm flex gap-2">
+                        <span class="font-bold text-primary">${i + 1}</span>
+                        <div>
+                            <strong>${a.action || 'Action'}</strong>
+                            ${a.description ? `<p class="text-xs text-muted-foreground mt-1">${a.description}</p>` : ''}
+                        </div>
+                    </div>
+                `).join('');
+                container.classList.remove('hidden');
+            }
+        } catch (err) {
+            console.warn('Next actions failed:', err);
+        }
+    }
+
+    function attachFeedbackHandlers() {
+        const feedbackBtns = document.querySelectorAll('.feedback-btn');
+        const reasonInput = document.getElementById('feedback-reason');
+
+        feedbackBtns.forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const feedbackType = btn.getAttribute('data-type');
+                const reason = reasonInput.value || '';
+
+                // Visual feedback
+                feedbackBtns.forEach(b => b.classList.remove('selected'));
+                btn.classList.add('selected');
+
+                // Submit feedback
+                try {
+                    const res = await fetch(`/api/solutions/${solutionId}/suggestions/feedback`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            type: feedbackType,
+                            reason: reason,
+                            reasoning_state_id: reasoningStateId
+                        })
+                    });
+                    const result = await res.json();
+                    if (result.success) {
+                    } else {
+                        alert('Failed to record feedback');
+                    }
+                } catch (err) {
+                    console.error('Feedback submission error:', err);
+                    alert('Error submitting feedback');
+                }
+            });
+        });
+    }
+
+    // CSP-safe: handle toggle-select clicks on suggestion items
+    document.getElementById('ai-suggestions-panel').addEventListener('click', function(e) {
+        const item = e.target.closest('[data-action="toggle-vendor-select"]');
+        if (item) { item.classList.toggle('bg-emerald-500/10'); return; }
+        const aItem = e.target.closest('[data-action="toggle-archimate-select"]');
+        if (aItem) { aItem.classList.toggle('bg-primary/10'); }
+    });
+
+    // Start loading when panel is visible
+    loadSuggestions();
+})();
+</script>

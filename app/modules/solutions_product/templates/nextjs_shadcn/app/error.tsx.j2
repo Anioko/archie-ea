@@ -1,0 +1,46 @@
+{# nextjs_shadcn/app/error.tsx.j2 — Next.js error boundary with error ID for support #}
+"use client"
+
+import { useEffect } from "react"
+import { Button } from "@/components/ui/button"
+import { AlertTriangle } from "lucide-react"
+
+export default function Error({
+  error,
+  reset,
+}: {
+  error: Error & { digest?: string }
+  reset: () => void
+}) {
+  useEffect(() => {
+    // Log error to monitoring service
+    console.error("Application error:", error)
+  }, [error])
+
+  return (
+    <div className="flex min-h-[60vh] flex-col items-center justify-center gap-6 text-center">
+      <div className="flex h-16 w-16 items-center justify-center rounded-full bg-destructive/10">
+        <AlertTriangle className="h-8 w-8 text-destructive" />
+      </div>
+      <div className="space-y-2">
+        <h2 className="text-2xl font-bold">Something went wrong</h2>
+        <p className="text-muted-foreground max-w-md">
+          {error.digest
+            ? "An unexpected error occurred. Use the error ID below to contact support."
+            : "An unexpected error occurred. Our team has been notified."}
+        </p>
+        {error.digest && (
+          <p className="text-xs text-muted-foreground font-mono">
+            Error ID: {error.digest}
+          </p>
+        )}
+      </div>
+      <div className="flex gap-2">
+        <Button onClick={reset}>Try again</Button>
+        <Button variant="outline" onClick={() => window.location.href = "/"}>
+          Go home
+        </Button>
+      </div>
+    </div>
+  )
+}

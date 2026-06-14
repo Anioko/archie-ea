@@ -1,0 +1,329 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'components/page_header.html' import page_header %}
+{% from 'components/metrics_card.html' import metrics_card %}
+
+{% block page_title %}Hybrid Multi-Path Mapping Dashboard{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    {{ page_header(
+        title='Hybrid Multi-Path Mapping Dashboard',
+        description='Comprehensive analysis of capability-to-product mappings across all three approaches'
+    ) }}
+
+    <!-- Key Statistics -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        {{ metrics_card(title='Total Capabilities', value=stats.application_centric.total_capabilities, icon='layers') }}
+        {{ metrics_card(
+            title='Multi-Path Coverage',
+            value="%.1f"|format(stats.multi_path.coverage_percentage) ~ '%',
+            description=stats.multi_path.capabilities_with_multi_path ~ '/' ~ stats.application_centric.total_capabilities ~ ' mapped',
+            icon='git-merge'
+        ) }}
+        {{ metrics_card(title='Total Mappings', value=stats.quality_metrics.total_mappings, description='Across all paths', icon='link') }}
+        {{ metrics_card(
+            title='Quality Score',
+            value="%.1f"|format(stats.quality_metrics.quality_score) ~ '/5.0',
+            description=stats.quality_metrics.high_quality_mappings ~ ' high-quality',
+            icon='star'
+        ) }}
+    </div>
+
+    <!-- Mapping Coverage Cards -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+        <!-- Application-Centric Coverage -->
+        <div class="bg-card border border-border rounded-lg p-6">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-semibold text-foreground">Application-Centric Mapping</h3>
+                <div class="text-2xl font-bold {% if stats.application_centric.coverage_percentage >= 80 %}text-success{% elif stats.application_centric.coverage_percentage >= 60 %}text-warning{% else %}text-destructive{% endif %}">
+                    {{ "%.1f"|format(stats.application_centric.coverage_percentage) }}%
+                </div>
+            </div>
+            
+            <div class="space-y-3">
+                <div class="flex justify-between text-sm">
+                    <span class="text-muted-foreground">Capability → Application</span>
+                    <span class="font-medium">{{ stats.application_centric.capabilities_with_apps }}/{{ stats.application_centric.total_capabilities }}</span>
+                </div>
+                <div class="w-full bg-muted rounded-full h-2">
+                    <div class="h-2 rounded-full {% if stats.application_centric.coverage_percentage >= 80 %}bg-success{% elif stats.application_centric.coverage_percentage >= 60 %}bg-warning{% else %}bg-destructive{% endif %}"
+                         style="width: {{ stats.application_centric.coverage_percentage }}%"></div>
+                </div>
+                <div class="flex justify-between text-sm">
+                    <span class="text-muted-foreground">Application → ArchiMate</span>
+                    <span class="font-medium">{{ stats.application_centric.apps_with_archimate }}/{{ stats.application_centric.capabilities_with_apps }}</span>
+                </div>
+                <div class="w-full bg-muted rounded-full h-2">
+                    <div class="h-2 rounded-full bg-primary" style="width: {{ stats.application_centric.archimate_coverage_percentage }}%"></div>
+                </div>
+            </div>
+            
+            <div class="mt-4 pt-4 border-t border-border">
+                <div class="flex justify-between text-sm">
+                    <span class="text-muted-foreground">End-to-End Coverage</span>
+                    <span class="font-medium {% if stats.application_centric.end_to_end_coverage >= 80 %}text-success{% elif stats.application_centric.end_to_end_coverage >= 60 %}text-warning{% else %}text-destructive{% endif %}">
+                        {{ "%.1f"|format(stats.application_centric.end_to_end_coverage) }}%
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Product-Centric Coverage -->
+        <div class="bg-card border border-border rounded-lg p-6">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-semibold text-foreground">Product-Centric Mapping</h3>
+                <div class="text-2xl font-bold {% if stats.product_centric.coverage_percentage >= 80 %}text-success{% elif stats.product_centric.coverage_percentage >= 60 %}text-warning{% else %}text-destructive{% endif %}">
+                    {{ "%.1f"|format(stats.product_centric.coverage_percentage) }}%
+                </div>
+            </div>
+            
+            <div class="space-y-3">
+                <div class="flex justify-between text-sm">
+                    <span class="text-muted-foreground">Capability → Products</span>
+                    <span class="font-medium">{{ stats.product_centric.capabilities_with_products }}/{{ stats.product_centric.total_capabilities }}</span>
+                </div>
+                <div class="w-full bg-muted rounded-full h-2">
+                    <div class="h-2 rounded-full {% if stats.product_centric.coverage_percentage >= 80 %}bg-success{% elif stats.product_centric.coverage_percentage >= 60 %}bg-warning{% else %}bg-destructive{% endif %}"
+                         style="width: {{ stats.product_centric.coverage_percentage }}%"></div>
+                </div>
+            </div>
+            
+            <div class="mt-4 pt-4 border-t border-border">
+                <div class="flex justify-between text-sm">
+                    <span class="text-muted-foreground">Products with ArchiMate</span>
+                    {% if stats.product_centric.archimate_coverage_percentage is not none %}
+                    <span class="font-medium {% if stats.product_centric.archimate_coverage_percentage >= 80 %}text-success{% elif stats.product_centric.archimate_coverage_percentage >= 50 %}text-warning{% else %}text-destructive{% endif %}">{{ "%.1f"|format(stats.product_centric.archimate_coverage_percentage) }}%</span>
+                    {% else %}
+                    <span class="font-medium text-muted-foreground">Not calculated</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Direct ArchiMate Coverage -->
+        <div class="bg-card border border-border rounded-lg p-6">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-semibold text-foreground">Direct ArchiMate Mapping</h3>
+                <div class="text-2xl font-bold {% if stats.direct_archimate.coverage_percentage >= 80 %}text-success{% elif stats.direct_archimate.coverage_percentage >= 60 %}text-warning{% else %}text-destructive{% endif %}">
+                    {{ "%.1f"|format(stats.direct_archimate.coverage_percentage) }}%
+                </div>
+            </div>
+            
+            <div class="space-y-3">
+                <div class="flex justify-between text-sm">
+                    <span class="text-muted-foreground">Capability → ArchiMate</span>
+                    <span class="font-medium">{{ stats.direct_archimate.capabilities_with_archimate }}/{{ stats.direct_archimate.total_capabilities }}</span>
+                </div>
+                <div class="w-full bg-muted rounded-full h-2">
+                    <div class="h-2 rounded-full {% if stats.direct_archimate.coverage_percentage >= 80 %}bg-success{% elif stats.direct_archimate.coverage_percentage >= 60 %}bg-warning{% else %}bg-destructive{% endif %}"
+                         style="width: {{ stats.direct_archimate.coverage_percentage }}%"></div>
+                </div>
+            </div>
+            
+            <div class="mt-4 pt-4 border-t border-border">
+                <div class="flex justify-between text-sm">
+                    <span class="text-muted-foreground">Strategic Implementation</span>
+                    <span class="font-medium text-primary">Direct Path</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Unmapped Items Alert -->
+    {% if unmapped_caps or unmapped_products or unmapped_archimate %}
+    <div class="bg-warning/5 border border-warning/20 rounded-lg p-4 mb-6">
+        <div class="flex items-start gap-3">
+            <div class="flex-shrink-0">
+                <i data-lucide="alert-triangle" class="h-6 w-6 text-warning" aria-hidden="true"></i>
+            </div>
+            <div>
+                <h3 class="text-lg font-semibold text-warning">Mapping Gaps Identified</h3>
+                <div class="mt-2 text-warning">
+                    <ul class="list-disc list-inside space-y-1">
+                        {% if unmapped_caps %}
+                        <li><strong>{{ unmapped_caps|length }}</strong> capabilities have no mappings</li>
+                        {% endif %}
+                        {% if unmapped_products %}
+                        <li><strong>{{ unmapped_products|length }}</strong> vendor products have no capability mappings</li>
+                        {% endif %}
+                        {% if unmapped_archimate %}
+                        <li><strong>{{ unmapped_archimate|length }}</strong> ArchiMate elements have no capability mappings</li>
+                        {% endif %}
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Detailed Mapping Tables -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Application Mappings -->
+        <div class="bg-card border border-border rounded-lg">
+            <div class="p-4 border-b border-border">
+                <h3 class="text-lg font-semibold text-foreground">Application-Centric Mappings</h3>
+                <p class="text-sm text-muted-foreground">Capabilities mapped through applications</p>
+            </div>
+            <div class="p-4">
+                {% if app_mappings %}
+                <div class="space-y-2 max-h-96 overflow-y-auto">
+                    {% for mapping in app_mappings[:10] %}
+                    <div class="p-3 border border-border rounded-lg">
+                        <div class="flex items-start justify-between">
+                            <div>
+                                <h4 class="font-medium text-foreground">{{ mapping.capability_name }}</h4>
+                                <p class="text-sm text-muted-foreground">Application: {{ mapping.application_name }}</p>
+                                {% if mapping.archimate_element_name %}
+                                <p class="text-xs text-muted-foreground">ArchiMate: {{ mapping.archimate_element_name }} ({{ mapping.archimate_type }})</p>
+                                {% endif %}
+                            </div>
+                            <div class="flex flex-col items-end gap-1">
+                                <span class="px-2 py-1 bg-primary/10 text-primary text-xs rounded-full">
+                                    {{ mapping.mapping_strength }}/5
+                                </span>
+                                {% if mapping.strategic_importance %}
+                                <span class="px-2 py-1 bg-{{ 'red' if mapping.strategic_importance == 'critical' else 'orange' if mapping.strategic_importance == 'high' else 'green' }}-100 text-{{ 'red' if mapping.strategic_importance == 'critical' else 'orange' if mapping.strategic_importance == 'high' else 'green' }}-800 text-xs rounded-full">
+                                    {{ mapping.strategic_importance }}
+                                </span>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="text-center py-8">
+                    <i data-lucide="inbox" class="h-12 w-12 text-muted-foreground mx-auto mb-4" aria-hidden="true"></i>
+                    <h4 class="text-lg font-semibold text-foreground">No Application Mappings</h4>
+                    <p class="text-muted-foreground">No application-centric mappings found</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Product Mappings -->
+        <div class="bg-card border border-border rounded-lg">
+            <div class="p-4 border-b border-border">
+                <h3 class="text-lg font-semibold text-foreground">Product-Centric Mappings</h3>
+                <p class="text-sm text-muted-foreground">Capabilities mapped through vendor products</p>
+            </div>
+            <div class="p-4">
+                {% if product_mappings %}
+                <div class="space-y-2 max-h-96 overflow-y-auto">
+                    {% for mapping in product_mappings[:10] %}
+                    <div class="p-3 border border-border rounded-lg">
+                        <div class="flex items-start justify-between">
+                            <div>
+                                <h4 class="font-medium text-foreground">{{ mapping.capability_name }}</h4>
+                                <p class="text-sm text-muted-foreground">Product: {{ mapping.product_name }}</p>
+                                <p class="text-xs text-muted-foreground">Vendor: {{ mapping.vendor_name }}</p>
+                                {% if mapping.archimate_element_name %}
+                                <p class="text-xs text-muted-foreground">ArchiMate: {{ mapping.archimate_element_name }}</p>
+                                {% endif %}
+                            </div>
+                            <div class="flex flex-col items-end gap-1">
+                                <span class="px-2 py-1 bg-success/10 text-success text-xs rounded-full">
+                                    {{ mapping.mapping_strength }}/5
+                                </span>
+                                <span class="px-2 py-1 bg-accent text-primary text-xs rounded-full">
+                                    ${{ mapping.business_value }}/10
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="text-center py-8">
+                    <i data-lucide="package" class="h-12 w-12 text-muted-foreground mx-auto mb-4" aria-hidden="true"></i>
+                    <h4 class="text-lg font-semibold text-foreground">No Product Mappings</h4>
+                    <p class="text-muted-foreground">No product-centric mappings found</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Direct ArchiMate Mappings -->
+    <div class="mt-6 bg-card border border-border rounded-lg">
+        <div class="p-4 border-b border-border">
+            <h3 class="text-lg font-semibold text-foreground">Direct ArchiMate Mappings</h3>
+            <p class="text-sm text-muted-foreground">Capabilities mapped directly to ArchiMate elements</p>
+        </div>
+        <div class="p-4">
+            {% if archimate_mappings %}
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {% for mapping in archimate_mappings[:12] %}
+                <div class="p-3 border border-border rounded-lg">
+                    <div class="flex items-start justify-between">
+                        <div>
+                            <h4 class="font-medium text-foreground">{{ mapping.capability_name }}</h4>
+                            <p class="text-sm text-muted-foreground">{{ mapping.archimate_element_name }}</p>
+                            <p class="text-xs text-muted-foreground">{{ mapping.archimate_type }} ({{ mapping.archimate_layer }})</p>
+                        </div>
+                        <span class="px-2 py-1 bg-primary/10 text-primary text-xs rounded-full">
+                            {{ mapping.mapping_strength }}/5
+                        </span>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="text-center py-8">
+                <i data-lucide="git-branch" class="h-12 w-12 text-muted-foreground mx-auto mb-4" aria-hidden="true"></i>
+                <h4 class="text-lg font-semibold text-foreground">No Direct ArchiMate Mappings</h4>
+                <p class="text-muted-foreground">No direct ArchiMate mappings found</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="mt-6 flex justify-between items-center bg-card border border-border rounded-lg p-4">
+        <div class="text-sm text-muted-foreground">
+            <i data-lucide="info" class="h-4 w-4 inline mr-1" aria-hidden="true"></i>
+            Hybrid multi-path mapping provides comprehensive coverage across all three mapping approaches
+        </div>
+        <div class="flex gap-2">
+            <button @click="exportMappingData()"
+                    class="px-3 py-2 bg-primary text-primary-foreground rounded-md text-sm hover:bg-primary transition-colors" aria-label="Export">
+                <i data-lucide="download" class="h-4 w-4 inline mr-1" aria-hidden="true"></i>
+                Export Data
+            </button>
+            <button @click="window.print()"
+                    class="px-3 py-2 bg-muted-foreground text-primary-foreground rounded-md text-sm hover:bg-foreground/80 transition-colors" aria-label="Action">
+                <i data-lucide="printer" class="h-4 w-4 inline mr-1" aria-hidden="true"></i>
+                Print Report
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+function exportMappingData() {
+    fetch('/api/hybrid-mapping/export')
+        .then(response => response.json())
+        .then(data => {
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `hybrid_mapping_data_${new Date().toISOString().split('T')[0]}.json`;
+            a.click();
+            window.URL.revokeObjectURL(url);
+        })
+        .catch(error => {
+            console.error('Export failed:', error);
+            toast.error('Export Failed', {
+                description: 'Unable to export the data. Please try again.',
+                duration: 5000
+            });
+        });
+}
+
+// Initialize Lucide icons
+document.addEventListener('DOMContentLoaded', function() {
+    lucide.createIcons();
+});
+</script>
+{% endblock %}

@@ -1,0 +1,214 @@
+import { useCallback, useEffect, useMemo, useState } from "react"
+import { FlatList, RefreshControl, StyleSheet, View } from "react-native"
+import { useRouter } from "expo-router"
+import { SafeAreaView } from "react-native-safe-area-context"
+import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query"
+import {
+  ActivityIndicator,
+  FAB,
+  List,
+  Searchbar,
+  Surface,
+  Text,
+  useTheme,
+} from "react-native-paper"
+import { {{ name | lower }}Api } from "@/lib/api"
+import type { {{ name }} } from "@/lib/schemas"
+import { OfflineBanner } from "@/components/OfflineBanner"
+import { StatusBadge, PriorityBadge } from "@/components/StatusBadge"
+
+const PER_PAGE = 25
+
+{% set status_field = none %}
+{% set priority_field = none %}
+{% for field in fields %}
+{% if field.name == 'status' %}{% set status_field = field %}{% endif %}
+{% if field.name == 'priority' %}{% set priority_field = field %}{% endif %}
+{% endfor %}
+
+// First non-pk non-id field is the display title; next two are sub-labels
+const DISPLAY_FIELDS = [
+  {% for field in fields %}{% if not field.primary_key %}
+  "{{ field.name }}",
+  {% endif %}{% endfor %}
+].slice(0, 3)
+
+// Style constants — never use inline object literals to avoid Jinja2 double-brace collision
+const S = StyleSheet.create({
+  safeArea: { flex: 1, backgroundColor: "#f8fafc" },
+  searchbar: { margin: 12, marginBottom: 4, elevation: 0, backgroundColor: "#ffffff" },
+  listContent: { padding: 12, paddingBottom: 96 },
+  itemSurface: { marginBottom: 8, borderRadius: 12, elevation: 1 },
+  fab: { position: "absolute", right: 20, bottom: 24, backgroundColor: "{{ primary_color }}" },
+  loadingContainer: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#f8fafc" },
+  errorContainer: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#f8fafc", padding: 24 },
+  errorTitle: { color: "#0f172a", marginBottom: 8, textAlign: "center" },
+  errorBody: { color: "#64748b", textAlign: "center", marginBottom: 20 },
+  emptyContainer: { alignItems: "center", justifyContent: "center", paddingVertical: 64, paddingHorizontal: 24 },
+  emptyTitle: { color: "#0f172a", marginBottom: 6, textAlign: "center" },
+  emptyBody: { color: "#64748b", textAlign: "center" },
+  rightChip: { justifyContent: "center", marginRight: 8 },
+  subText: { color: "#64748b", fontSize: 13 },
+  loadMoreStyle: { marginVertical: 16 },
+})
+
+function LoadingScreen() {
+  return (
+    <View style={S.loadingContainer}>
+      <ActivityIndicator size="large" color="{{ primary_color }}" />
+    </View>
+  )
+}
+
+export default function {{ name }}ListScreen() {
+  const router = useRouter()
+  const queryClient = useQueryClient()
+  const [search, setSearch] = useState("")
+  const [debouncedSearch, setDebouncedSearch] = useState("")
+
+  // Debounce search to avoid per-keystroke fetches
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300)
+    return () => clearTimeout(t)
+  }, [search])
+
+  const {
+    data,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isLoading,
+    isError,
+    error,
+    refetch,
+    isFetching,
+  } = useInfiniteQuery({
+    queryKey: ["{{ table_name }}", debouncedSearch],
+    queryFn: ({ pageParam = 1 }) =>
+      {{ name | lower }}Api.list({
+        page: pageParam as number,
+        per_page: PER_PAGE,
+        ...(debouncedSearch ? { search: debouncedSearch } : {}),
+      }),
+    getNextPageParam: (lastPage, pages) => lastPage.has_next ? pages.length + 1 : undefined,
+    initialPageParam: 1,
+  })
+
+  const items: {{ name }}[] = useMemo(
+    () => (data?.pages.flatMap(p => p.items) ?? []) as {{ name }}[],
+    [data]
+  )
+
+  const onRefresh = useCallback(() => {
+    queryClient.resetQueries({ queryKey: ["{{ table_name }}"] })
+  }, [queryClient])
+
+  if (isLoading) return <LoadingScreen />
+
+  if (isError) {
+    return (
+      <View style={S.errorContainer}>
+        <Text variant="titleMedium" style={S.errorTitle}>Something went wrong</Text>
+        <Text variant="bodyMedium" style={S.errorBody}>
+          {error instanceof Error ? error.message : "Failed to load records"}
+        </Text>
+        <FAB
+          icon="refresh"
+          label="Try Again"
+          onPress={() => refetch()}
+          style={S.fab}
+          accessibilityLabel="Retry loading"
+        />
+      </View>
+    )
+  }
+
+  return (
+    <SafeAreaView style={S.safeArea} edges={["bottom"]}>
+      <OfflineBanner />
+
+      <Searchbar
+        placeholder="Search {{ name | replace('_', ' ') | lower }}..."
+        onChangeText={setSearch}
+        value={search}
+        style={S.searchbar}
+        accessibilityLabel="Search {{ name }}"
+        onClearIconPress={() => setSearch("")}
+      />
+
+      <FlatList
+        data={items}
+        keyExtractor={(item) => String(item.id)}
+        contentContainerStyle={S.listContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={isFetching && !isLoading}
+            onRefresh={onRefresh}
+            tintColor="{{ primary_color }}"
+          />
+        }
+        {% if use_pagination %}
+        onEndReached={() => {
+          if (hasNextPage && !isFetchingNextPage) fetchNextPage()
+        }}
+        onEndReachedThreshold={0.3}
+        {% endif %}
+        ListFooterComponent={
+          isFetchingNextPage
+            ? <ActivityIndicator size="small" color="{{ primary_color }}" style={S.loadMoreStyle} />
+            : null
+        }
+        ListEmptyComponent={
+          <View style={S.emptyContainer}>
+            <Text variant="titleMedium" style={S.emptyTitle}>
+              {search ? "No results" : "No records yet"}
+            </Text>
+            <Text variant="bodyMedium" style={S.emptyBody}>
+              {search
+                ? `No {{ name | replace('_', ' ') | lower }} matching "${String(search)}"`
+                : "Create your first {{ name | replace('_', ' ') | lower }} to get started."}
+            </Text>
+          </View>
+        }
+        renderItem={({ item }) => {
+          const rec = item as Record<string, unknown>
+          const title = String(rec[DISPLAY_FIELDS[0]] ?? `#${item.id}`)
+          const subtitle = DISPLAY_FIELDS.slice(1)
+            .filter((f) => f !== "status" && f !== "priority" && rec[f] != null)
+            .map((f) => String(rec[f]))
+            .join(" · ")
+
+          return (
+            <Surface style={S.itemSurface} elevation={1}>
+              <List.Item
+                title={title}
+                description={subtitle || undefined}
+                descriptionStyle={S.subText}
+                onPress={() => router.push(`/{{ table_name }}/${item.id}` as never)}
+                accessibilityLabel={`Open {{ name }}: ${title}`}
+                right={() => (
+                  <View style={S.rightChip}>
+                    {% if status_field %}
+                    <StatusBadge value={rec.status as string} />
+                    {% endif %}
+                    {% if priority_field %}
+                    {rec.priority != null && <PriorityBadge value={rec.priority as string} />}
+                    {% endif %}
+                  </View>
+                )}
+              />
+            </Surface>
+          )
+        }}
+      />
+
+      <FAB
+        icon="plus"
+        onPress={() => router.push("/{{ table_name }}/new" as never)}
+        style={S.fab}
+        color="#ffffff"
+        accessibilityLabel="Create new {{ name }}"
+      />
+    </SafeAreaView>
+  )
+}

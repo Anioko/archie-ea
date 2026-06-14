@@ -1,0 +1,203 @@
+{# components/entity-picker.tsx — Typeahead component for FK fields.
+   Searches GET /api/<entity>s?search=, renders dropdown, returns selected ID.
+   Context: (none — fully generic, parameterized at render time) #}
+"use client"
+
+import { useCallback, useEffect, useRef, useState } from "react"
+import { Check, ChevronsUpDown, Loader2, X } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import {
+  Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList,
+} from "@/components/ui/command"
+import {
+  Popover, PopoverContent, PopoverTrigger,
+} from "@/components/ui/popover"
+import { cn } from "@/lib/utils"
+import { api } from "@/lib/api"
+
+type EntityOption = {
+  id: string
+  label: string
+  [key: string]: unknown
+}
+
+type EntityPickerProps = {
+  /** Entity type for display (singular, e.g., "work_order") */
+  entityType: string
+  /** Explicit API resource path segment (plural, e.g., "work_orders"). Defaults to entityType + "s". */
+  apiResource?: string
+  /** Current selected ID */
+  value: string | null | undefined
+  /** Called with the selected entity ID */
+  onChange: (id: string | null) => void
+  /** Placeholder text */
+  placeholder?: string
+  /** Field to use as the label (default: "name") */
+  labelField?: string
+  /** Disabled state */
+  disabled?: boolean
+  /** Additional query params for the search API */
+  queryParams?: Record<string, string>
+}
+
+/**
+ * EntityPicker — typeahead component for FK field selection.
+ *
+ * Searches the backend API as the user types (300ms debounce).
+ * Shows selected item label when a value is chosen.
+ *
+ * Usage:
+ *   <EntityPicker
+ *     entityType="customer"
+ *     value={form.customer_id}
+ *     onChange={(id) => form.setValue("customer_id", id)}
+ *     placeholder="Search customers..."
+ *   />
+ */
+export function EntityPicker({
+  entityType,
+  apiResource,
+  value,
+  onChange,
+  placeholder = `Search ${entityType}s...`,
+  labelField = "name",
+  disabled = false,
+  queryParams = {},
+}: EntityPickerProps) {
+  const resource = apiResource ?? `${entityType}s`
+  const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState("")
+  const [options, setOptions] = useState<EntityOption[]>([])
+  const [loading, setLoading] = useState(false)
+  const [selectedLabel, setSelectedLabel] = useState<string>("")
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Fetch label for existing value on mount
+  useEffect(() => {
+    if (!value) {
+      setSelectedLabel("")
+      return
+    }
+    api
+      .get<EntityOption>(`/api/${resource}/${value}`)
+      .then((data) => {
+        setSelectedLabel(String(data[labelField] ?? data.id))
+      })
+      .catch(() => setSelectedLabel(value))
+  }, [resource, labelField, value])
+
+  const fetchOptions = useCallback(
+    (query: string) => {
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+      debounceRef.current = setTimeout(async () => {
+        setLoading(true)
+        try {
+          const data = await api.get<EntityOption[] | { items: EntityOption[] }>(
+            `/api/${resource}`,
+            { search: query, limit: "20", ...queryParams },
+          )
+          const items = Array.isArray(data) ? data : (data as any).items ?? []
+          setOptions(
+            items.map((item: any) => ({
+              id: String(item.id),
+              label: String(item[labelField] ?? item.name ?? item.id),
+              ...item,
+            })),
+          )
+        } catch {
+          setOptions([])
+        } finally {
+          setLoading(false)
+        }
+      }, 300)
+    },
+    [resource, labelField, queryParams],
+  )
+
+  useEffect(() => {
+    if (open) fetchOptions(search)
+  }, [open, search, fetchOptions])
+
+  function handleSelect(option: EntityOption) {
+    onChange(option.id)
+    setSelectedLabel(option.label)
+    setOpen(false)
+    setSearch("")
+  }
+
+  function handleClear(e: React.MouseEvent) {
+    e.stopPropagation()
+    onChange(null)
+    setSelectedLabel("")
+  }
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          disabled={disabled}
+          className="w-full justify-between font-normal"
+        >
+          <span className={cn("truncate", !selectedLabel && "text-muted-foreground")}>
+            {selectedLabel || placeholder}
+          </span>
+          <div className="flex items-center gap-1 shrink-0">
+            {value && (
+              <span
+                role="button"
+                onClick={handleClear}
+                className="rounded-sm p-0.5 hover:bg-muted"
+              >
+                <X className="h-3 w-3" />
+              </span>
+            )}
+            <ChevronsUpDown className="h-4 w-4 opacity-50" />
+          </div>
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[400px] p-0" align="start">
+        <Command shouldFilter={false}>
+          <CommandInput
+            placeholder={placeholder}
+            value={search}
+            onValueChange={setSearch}
+          />
+          <CommandList>
+            {loading && (
+              <div className="flex items-center justify-center py-6">
+                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+              </div>
+            )}
+            {!loading && options.length === 0 && (
+              <CommandEmpty>No {entityType}s found.</CommandEmpty>
+            )}
+            {!loading && options.length > 0 && (
+              <CommandGroup>
+                {options.map((option) => (
+                  <CommandItem
+                    key={option.id}
+                    value={option.id}
+                    onSelect={() => handleSelect(option)}
+                  >
+                    <Check
+                      className={cn(
+                        "mr-2 h-4 w-4",
+                        value === option.id ? "opacity-100" : "opacity-0",
+                      )}
+                    />
+                    {option.label}
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            )}
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+export default EntityPicker

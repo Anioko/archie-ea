@@ -1,0 +1,288 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'components/page_header.html' import page_header %}
+{% from 'components/metrics_card.html' import metrics_card %}
+
+{% block page_title %}Market Intelligence{% endblock %}
+
+{% block extra_css %}
+<style>
+    .vendor-card {
+        transition: all 0.2s ease;
+    }
+    .vendor-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    .quadrant-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        grid-template-rows: 1fr 1fr;
+        gap: 2px;
+        background: hsl(var(--border));
+        border-radius: 8px;
+        overflow: hidden;
+        height: 400px;
+    }
+    .quadrant-cell {
+        position: relative;
+        padding: 12px;
+    }
+    .quadrant-leaders { background: linear-gradient(135deg, hsl(var(--success) / 0.15), hsl(var(--success) / 0.2)); }
+    .quadrant-challengers { background: linear-gradient(135deg, hsl(var(--primary) / 0.1), hsl(var(--primary) / 0.15)); }
+    .quadrant-visionaries { background: linear-gradient(135deg, hsl(var(--warning) / 0.15), hsl(var(--warning) / 0.25)); }
+    .quadrant-niche { background: linear-gradient(135deg, hsl(var(--muted)), hsl(var(--border))); }
+    .quadrant-label {
+        position: absolute;
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        opacity: 0.6;
+    }
+    .vendor-dot {
+        position: absolute;
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 10px;
+        font-weight: bold;
+        color: white;
+        cursor: pointer;
+        transition: transform 0.2s ease;
+    }
+    .vendor-dot:hover {
+        transform: scale(1.2);
+    }
+    .risk-indicator {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: 500;
+    }
+    .risk-critical { background: hsl(var(--destructive) / 0.1); color: hsl(var(--destructive)); }
+    .risk-high { background: hsl(var(--warning) / 0.15); color: hsl(var(--warning)); }
+    .risk-medium { background: hsl(var(--warning) / 0.1); color: hsl(var(--warning)); }
+    .risk-low { background: hsl(var(--success) / 0.15); color: hsl(var(--success)); }
+    .trend-card {
+        transition: all 0.2s ease;
+    }
+    .trend-card:hover {
+        border-color: hsl(var(--primary));
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Header -->
+    <div class="flex justify-between items-center mb-6">
+        <div>
+            <h1 class="text-3xl font-bold text-foreground mb-2">Market Intelligence</h1>
+            <p class="text-muted-foreground">Monitor vendor risks, market trends, and alternative solutions</p>
+        </div>
+        <div class="flex gap-3">
+            <button id="btn-sync-data" class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 flex items-center gap-2" aria-label="Action">
+                <i data-lucide="refresh-cw" class="h-4 w-4" aria-hidden="true"></i>
+                Sync Market Data
+            </button>
+        </div>
+    </div>
+
+    <!-- Summary Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <div class="bg-card border border-border rounded-lg p-4">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
+                    <i data-lucide="building-2" class="h-5 w-5 text-primary" aria-hidden="true"></i>
+                </div>
+                <div>
+                    <div class="text-2xl font-bold" id="total-vendors">0</div>
+                    <div class="text-sm text-muted-foreground">Tracked Vendors</div>
+                </div>
+            </div>
+        </div>
+        <div class="bg-card border border-border rounded-lg p-4">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-destructive/10 rounded-lg flex items-center justify-center">
+                    <i data-lucide="alert-triangle" class="h-5 w-5 text-destructive" aria-hidden="true"></i>
+                </div>
+                <div>
+                    <div class="text-2xl font-bold" id="risk-alerts">0</div>
+                    <div class="text-sm text-muted-foreground">Risk Alerts</div>
+                </div>
+            </div>
+        </div>
+        <div class="bg-card border border-border rounded-lg p-4">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-success/10 rounded-lg flex items-center justify-center">
+                    <i data-lucide="trending-up" class="h-5 w-5 text-success" aria-hidden="true"></i>
+                </div>
+                <div>
+                    <div class="text-2xl font-bold" id="market-trends">0</div>
+                    <div class="text-sm text-muted-foreground">Active Trends</div>
+                </div>
+            </div>
+        </div>
+        <div class="bg-card border border-border rounded-lg p-4">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-accent rounded-lg flex items-center justify-center">
+                    <i data-lucide="star" class="h-5 w-5 text-primary" aria-hidden="true"></i>
+                </div>
+                <div>
+                    <div class="text-2xl font-bold" id="leaders-count">0</div>
+                    <div class="text-sm text-muted-foreground">Market Leaders</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tab Navigation -->
+    <div class="flex border-b border-border mb-6">
+        <button class="tab-btn px-6 py-3 text-sm font-medium border-b-2 border-primary text-primary" data-tab="quadrant" aria-label="Action">
+            <i data-lucide="grid-3x3" class="h-4 w-4 inline mr-2" aria-hidden="true"></i>
+            Vendor Quadrant
+        </button>
+        <button class="tab-btn px-6 py-3 text-sm font-medium text-muted-foreground hover:text-foreground" data-tab="risks" aria-label="Action">
+            <i data-lucide="shield-alert" class="h-4 w-4 inline mr-2" aria-hidden="true"></i>
+            Risk Alerts
+        </button>
+        <button class="tab-btn px-6 py-3 text-sm font-medium text-muted-foreground hover:text-foreground" data-tab="trends" aria-label="Action">
+            <i data-lucide="trending-up" class="h-4 w-4 inline mr-2" aria-hidden="true"></i>
+            Market Trends
+        </button>
+        <button class="tab-btn px-6 py-3 text-sm font-medium text-muted-foreground hover:text-foreground" data-tab="alternatives" aria-label="Action">
+            <i data-lucide="shuffle" class="h-4 w-4 inline mr-2" aria-hidden="true"></i>
+            Alternatives
+        </button>
+    </div>
+
+    <!-- Tab Content -->
+    <div id="tab-content">
+        <!-- Vendor Quadrant Tab -->
+        <div id="quadrant-tab" class="tab-panel">
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- Quadrant Visualization -->
+                <div class="lg:col-span-2 bg-card border border-border rounded-lg p-6">
+                    <h2 class="text-lg font-semibold mb-4 flex items-center gap-2">
+                        <i data-lucide="grid-3x3" class="h-5 w-5 text-primary" aria-hidden="true"></i>
+                        Vendor Magic Quadrant
+                    </h2>
+                    <div class="quadrant-grid" id="quadrant-chart">
+                        <div class="quadrant-cell quadrant-challengers">
+                            <span class="quadrant-label absolute top-2 left-2">Challengers</span>
+                        </div>
+                        <div class="quadrant-cell quadrant-leaders">
+                            <span class="quadrant-label absolute top-2 right-2">Leaders</span>
+                        </div>
+                        <div class="quadrant-cell quadrant-niche">
+                            <span class="quadrant-label absolute bottom-2 left-2">Niche Players</span>
+                        </div>
+                        <div class="quadrant-cell quadrant-visionaries">
+                            <span class="quadrant-label absolute bottom-2 right-2">Visionaries</span>
+                        </div>
+                    </div>
+                    <div class="flex justify-between mt-4 text-xs text-muted-foreground">
+                        <span>Ability to Execute</span>
+                        <span>Completeness of Vision</span>
+                    </div>
+                </div>
+
+                <!-- Vendor List -->
+                <div class="bg-card border border-border rounded-lg p-4">
+                    <h3 class="font-semibold mb-4">Vendor List</h3>
+                    <div id="vendor-list" class="space-y-2 max-h-96 overflow-y-auto">
+                        <!-- Vendor list will be populated here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Risk Alerts Tab -->
+        <div id="risks-tab" class="tab-panel hidden">
+            <div class="bg-card border border-border rounded-lg">
+                <div class="p-4 border-b border-border">
+                    <div class="flex justify-between items-center">
+                        <h2 class="text-lg font-semibold flex items-center gap-2">
+                            <i data-lucide="shield-alert" class="h-5 w-5 text-primary" aria-hidden="true"></i>
+                            Vendor Risk Alerts
+                        </h2>
+                        <div class="flex gap-2">
+                            <select id="filter-risk-severity" class="px-3 py-2 border border-border rounded-md text-sm">
+                                <option value="">All Severities</option>
+                                <option value="critical">Critical</option>
+                                <option value="high">High</option>
+                                <option value="medium">Medium</option>
+                                <option value="low">Low</option>
+                            </select>
+                            <select id="filter-risk-type" class="px-3 py-2 border border-border rounded-md text-sm">
+                                <option value="">All Types</option>
+                                <option value="STOCK_DROP">Stock Drop</option>
+                                <option value="ACQUISITION">Acquisition</option>
+                                <option value="LEADERSHIP_CHANGE">Leadership Change</option>
+                                <option value="SECURITY_INCIDENT">Security Incident</option>
+                                <option value="PRODUCT_EOL">Product EOL</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div id="risk-alerts-list" class="divide-y divide-border">
+                    <!-- Risk alerts will be listed here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Market Trends Tab -->
+        <div id="trends-tab" class="tab-panel hidden">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="trends-grid">
+                <!-- Trends will be populated here -->
+            </div>
+        </div>
+
+        <!-- Alternatives Tab -->
+        <div id="alternatives-tab" class="tab-panel hidden">
+            <div class="bg-card border border-border rounded-lg p-6">
+                <h2 class="text-lg font-semibold mb-4 flex items-center gap-2">
+                    <i data-lucide="shuffle" class="h-5 w-5 text-primary" aria-hidden="true"></i>
+                    Find Alternative Vendors
+                </h2>
+                <div class="mb-6">
+                    <label class="block text-sm font-medium mb-2">Select Current Vendor</label>
+                    <select id="current-vendor-select" class="w-full max-w-md px-4 py-3 border border-border rounded-md">
+                        <option value="">Choose a vendor...</option>
+                    </select>
+                </div>
+                <div id="alternatives-results" class="space-y-4">
+                    <!-- Alternatives will be shown here -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Vendor Detail Dialog -->
+<div id="vendor-detail-dialog" class="modal-root hidden fixed inset-0 z-50 bg-black/80 items-center justify-center" role="dialog">
+    <div class="bg-card rounded-lg p-6 w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
+        <div class="flex justify-between items-start mb-4">
+            <h3 class="text-lg font-semibold" id="vendor-detail-name">Vendor Details</h3>
+            <button id="close-vendor-detail" class="p-2 hover:bg-accent rounded-md" aria-label="Action">
+                <i data-lucide="x" class="h-5 w-5" aria-hidden="true"></i>
+            </button>
+        </div>
+        <div id="vendor-detail-content">
+            <!-- Vendor details will be rendered here -->
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_head_js %}
+<script>
+  window.__APP_CONFIG__ = window.__APP_CONFIG__ || {};
+</script>
+<script src="{{ url_for('static', filename='js/market_intelligence/index.js') }}"></script>
+{% endblock %}

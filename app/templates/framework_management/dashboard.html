@@ -1,0 +1,71 @@
+{% extends "layouts/admin_base.html" %}
+{% block title %}Framework Management{% endblock %}
+
+{% block breadcrumb %}
+{% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
+{{ breadcrumb_nav(items=[
+    {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
+    {'text': 'Framework Management', 'current': true}
+]) }}
+{% endblock %}
+{% block content %}
+<div class="space-y-6 p-6">
+  <div>
+    <h1 class="text-2xl font-semibold text-foreground">Framework Management</h1>
+    <p class="text-muted-foreground mt-1">Manage capability frameworks, extensions, and deployment templates.</p>
+  </div>
+
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <a href="{{ url_for('main.framework_management.framework_dashboard') }}"
+       class="flex flex-col gap-2 rounded-lg border border-border bg-card p-5 hover:bg-accent transition-colors">
+      <div class="text-sm font-medium text-foreground">Manufacturing Dashboard</div>
+      <div class="text-xs text-muted-foreground">View manufacturing excellence framework instances and maturity levels.</div>
+    </a>
+    <a href="{{ url_for('main.framework_management.framework_table') }}"
+       class="flex flex-col gap-2 rounded-lg border border-border bg-card p-5 hover:bg-accent transition-colors">
+      <div class="text-sm font-medium text-foreground">Framework Instances</div>
+      <div class="text-xs text-muted-foreground">Browse all framework instances and their implementation status.</div>
+    </a>
+    <a href="{{ url_for('dashboard.overview') }}"
+       class="flex flex-col gap-2 rounded-lg border border-border bg-card p-5 hover:bg-accent transition-colors">
+      <div class="text-sm font-medium text-foreground">Back to Dashboard</div>
+      <div class="text-xs text-muted-foreground">Return to the main architecture dashboard.</div>
+    </a>
+  </div>
+
+  <div class="rounded-lg border border-border bg-card p-6" x-data="frameworkStats()" x-init="load()">
+    <h2 class="text-base font-semibold text-foreground mb-4">Overview</h2>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div class="text-center">
+        <div class="text-2xl font-bold text-foreground" x-text="stats.total_configurations ?? '—'"></div>
+        <div class="text-xs text-muted-foreground mt-1">Configurations</div>
+      </div>
+      <div class="text-center">
+        <div class="text-2xl font-bold text-foreground" x-text="stats.total_extensions ?? '—'"></div>
+        <div class="text-xs text-muted-foreground mt-1">Extensions</div>
+      </div>
+      <div class="text-center">
+        <div class="text-2xl font-bold text-foreground" x-text="stats.total_templates ?? '—'"></div>
+        <div class="text-xs text-muted-foreground mt-1">Templates</div>
+      </div>
+      <div class="text-center">
+        <div class="text-2xl font-bold text-foreground" x-text="stats.active_instances ?? '—'"></div>
+        <div class="text-xs text-muted-foreground mt-1">Active Instances</div>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+function frameworkStats() {
+  return {
+    stats: {},
+    load() {
+      fetch('/framework-management/api/statistics')
+        .then(r => r.json())
+        .then(d => { this.stats = d; })
+        .catch(() => {});
+    }
+  }
+}
+</script>
+{% endblock %}

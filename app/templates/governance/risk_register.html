@@ -1,0 +1,30 @@
+{% extends 'layouts/admin_base.html' %}
+
+{% block title %}Risk Register{% endblock %}
+
+{% block breadcrumb %}
+{% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
+{{ breadcrumb_nav(items=[
+    {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
+    {'text': 'Governance', 'href': url_for('capability_governance.governance_dashboard')},
+    {'text': 'Risk Register', 'current': true}
+]) }}
+{% endblock %}
+
+{% block content %}
+<div class="container mx-auto p-6 space-y-6">
+    <div class="flex items-center justify-between">
+        <div>
+            <h1 class="text-3xl font-bold">Risk Register</h1>
+            <p class="text-muted-foreground mt-2">Enterprise architecture risk tracking and mitigation</p>
+        </div>
+        <button class="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90">
+            <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i> Add Risk
+        </button>
+    </div>
+    
+    <div class="rounded-lg border bg-card p-6">
+        <p class="text-sm text-muted-foreground">Risk register and mitigation planning</p>
+    </div>
+</div>
+{% endblock %}

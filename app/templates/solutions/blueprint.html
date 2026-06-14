@@ -1,0 +1,1980 @@
+{% extends "layouts/admin_base.html" %}
+{% from "components/gantt_timeline.html" import gantt_timeline %}
+
+{% block title %}{{ solution.name }} — Architecture Blueprint{% endblock %}
+
+{% block extra_css %}
+<style>
+    [x-cloak] { display: none !important; }
+    .bp-diagram-area { min-height: 400px; }
+    @media print {
+        .bp-sticky-strip, .bp-governance-panel, .bp-action-btn { display: none !important; }
+        .bp-section { break-inside: avoid; }
+    }
+</style>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jointjs@3.7.7/dist/joint.min.css?v=1"
+      crossorigin="anonymous">
+{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/lodash@4.17.21/lodash.min.js?v=1"
+        crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js?v=1"
+        crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/backbone@1.4.1/backbone-min.js?v=1"
+        crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/jointjs@3.7.7/dist/joint.min.js?v=1"
+        crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/d3-sankey@0.12.3/dist/d3-sankey.min.js" defer></script>
+{% endblock %}
+
+{# ══════════════════════════════════════════════════════════════════════════ #}
+{# MAIN CONTENT                                                              #}
+{# ══════════════════════════════════════════════════════════════════════════ #}
+{% block content %}
+{% if show_created_banner %}
+<div class="bg-emerald-500/10 border-b border-emerald-500/30 text-emerald-700 dark:text-emerald-400 px-4 py-2.5 text-sm flex items-center gap-2" role="alert" data-testid="created-banner" x-data="dismissableBanner()" x-show="show">
+  <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+  <span><strong>Programme created.</strong> Your architecture blueprint is ready &mdash; fill in sections below to build it out.</span>
+  <button @click="show = false" class="ml-auto text-emerald-600 hover:text-emerald-800 dark:text-emerald-300" aria-label="Dismiss">
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+  </button>
+</div>
+{% endif %}
+<div class="flex gap-6 items-start max-w-[1600px] mx-auto"
+     x-data="blueprintPage()"
+     x-init="init()">
+
+    {# ── Left / Center: main document ── #}
+    <div class="flex-1 min-w-0">
+
+        {# Header + completeness strip #}
+        {% include 'solutions/partials/_blueprint_header.html' %}
+
+        {# Gap advisor — shows incomplete sections with specific guidance #}
+        {% include 'solutions/partials/_blueprint_gap_advisor.html' %}
+
+        {# ════════════════════════════════════════════════════════════════ #}
+        {# Document Ingestion Panel — upload docs to extract elements      #}
+        {# Backend: /architecture-journey/<id>/upload-documents + /proposals #}
+        {# ════════════════════════════════════════════════════════════════ #}
+        <div class="mb-6"
+             x-data="blueprintDocIngestion({{ solution.id }})"
+             x-init="loadProposals()">
+
+            {# Collapsed trigger #}
+            <div x-show="!open && pendingCount === 0" x-cloak>
+                <button type="button" @click="open = true"
+                        class="w-full flex items-center justify-between px-4 py-2.5 rounded-xl border border-dashed border-border bg-muted/20 hover:bg-muted/40 hover:border-border/70 transition-colors group">
+                    <span class="flex items-center gap-2 text-sm text-muted-foreground group-hover:text-foreground transition-colors">
+                        <i data-lucide="file-input" class="w-4 h-4"></i>
+                        Import architecture elements from a document (RFP, business case, architecture brief, requirements…)
+                    </span>
+                    <i data-lucide="chevron-down" class="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors"></i>
+                </button>
+            </div>
+
+            {# Pending proposals badge — always visible when proposals exist #}
+            <div x-show="!open && pendingCount > 0" x-cloak>
+                <button type="button" @click="open = true"
+                        class="w-full flex items-center justify-between px-4 py-2.5 rounded-xl border border-amber-500/40 bg-amber-500/5 hover:bg-amber-500/10 transition-colors">
+                    <span class="flex items-center gap-2 text-sm font-medium text-amber-700">
+                        <i data-lucide="sparkles" class="w-4 h-4"></i>
+                        <span x-text="pendingCount"></span> extracted elements waiting for review
+                    </span>
+                    <i data-lucide="chevron-down" class="w-4 h-4 text-amber-600"></i>
+                </button>
+            </div>
+
+            {# Expanded panel #}
+            <div x-show="open" x-cloak
+                 class="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+
+                {# Panel header #}
+                <div class="flex items-center justify-between px-5 py-3 border-b border-border bg-muted/30">
+                    <div class="flex items-center gap-2">
+                        <i data-lucide="file-input" class="w-4 h-4 text-muted-foreground"></i>
+                        <h3 class="text-sm font-semibold text-foreground">Import from Document</h3>
+                        <span class="text-xs text-muted-foreground">— upload a document and AI extracts architecture elements for review</span>
+                    </div>
+                    <button @click="open = false" class="text-muted-foreground hover:text-foreground">
+                        <i data-lucide="x" class="w-4 h-4"></i>
+                    </button>
+                </div>
+
+                {# Upload zone #}
+                <div x-show="!extracting && proposals.length === 0" x-cloak class="p-5">
+                    <label class="flex flex-col items-center justify-center w-full h-28 rounded-lg border-2 border-dashed border-border bg-muted/20 hover:bg-muted/40 cursor-pointer transition-colors group">
+                        <i data-lucide="upload-cloud" class="w-7 h-7 text-muted-foreground group-hover:text-foreground mb-2 transition-colors"></i>
+                        <span class="text-sm text-muted-foreground group-hover:text-foreground transition-colors">
+                            Drop a file here or <span class="text-primary font-medium">click to browse</span>
+                        </span>
+                        <span class="text-xs text-muted-foreground mt-1">PDF, DOCX, TXT, CSV — max 50 MB</span>
+                        <input type="file" class="sr-only"
+                               @change="uploadDocument($event)"
+                               accept=".pdf,.docx,.doc,.txt,.csv,.md">
+                    </label>
+                </div>
+
+                {# Extracting state #}
+                <div x-show="extracting" x-cloak class="p-5 flex flex-col items-center gap-3">
+                    <svg class="animate-spin h-6 w-6 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                    </svg>
+                    <p class="text-sm text-muted-foreground">Extracting architecture elements…</p>
+                </div>
+
+                {# Upload error #}
+                <div x-show="uploadError" x-cloak class="px-5 pb-4 text-sm text-destructive" x-text="uploadError"></div>
+
+                {# Proposals list #}
+                <div x-show="proposals.length > 0" x-cloak class="p-5 space-y-3">
+                    <div class="flex items-center justify-between">
+                        <p class="text-sm font-medium text-foreground">
+                            <span x-text="proposals.length"></span> elements extracted
+                            <span class="text-muted-foreground font-normal">— review and accept what applies</span>
+                        </p>
+                        <div class="flex items-center gap-2">
+                            <button type="button" @click="acceptAll()"
+                                    :disabled="accepting"
+                                    class="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium bg-emerald-500/10 text-emerald-700 border border-emerald-500/30 hover:bg-emerald-500/20 disabled:opacity-50 transition-colors">
+                                <i data-lucide="check-check" class="w-3.5 h-3.5"></i> Accept All
+                            </button>
+                            <button type="button" @click="rejectAll()"
+                                    :disabled="accepting"
+                                    class="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive border border-destructive/30 hover:bg-destructive/20 disabled:opacity-50 transition-colors">
+                                <i data-lucide="x" class="w-3.5 h-3.5"></i> Dismiss All
+                            </button>
+                            <button type="button" @click="resetPanel()"
+                                    class="inline-flex items-center gap-1 px-2 py-1.5 rounded-md text-xs text-muted-foreground hover:text-foreground border border-border hover:bg-muted transition-colors">
+                                <i data-lucide="upload" class="w-3.5 h-3.5"></i> Upload another
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="space-y-2 max-h-80 overflow-y-auto pr-1">
+                        <template x-for="p in proposals" :key="p.id">
+                            <div class="flex items-start gap-3 p-3 rounded-lg border border-border bg-background hover:bg-muted/20 transition-colors">
+                                {# Type badge #}
+                                <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium shrink-0 mt-0.5"
+                                      :class="{
+                                          'bg-blue-500/10 text-blue-700 border border-blue-500/30': ['Goal','Driver'].includes(p.archimate_type),
+                                          'bg-violet-500/10 text-violet-700 border border-violet-500/30': p.archimate_type === 'Capability',
+                                          'bg-amber-500/10 text-amber-700 border border-amber-500/30': p.archimate_type === 'Constraint',
+                                          'bg-emerald-500/10 text-emerald-700 border border-emerald-500/30': ['ApplicationComponent','BusinessProcess'].includes(p.archimate_type),
+                                          'bg-muted text-muted-foreground border border-border': !['Goal','Driver','Capability','Constraint','ApplicationComponent','BusinessProcess'].includes(p.archimate_type)
+                                      }"
+                                      x-text="p.archimate_type"></span>
+                                {# Content #}
+                                <div class="flex-1 min-w-0">
+                                    <p class="text-sm font-medium text-foreground" x-text="p.name"></p>
+                                    <p class="text-xs text-muted-foreground mt-0.5 leading-relaxed" x-text="p.description"></p>
+                                    {# Confidence bar #}
+                                    <div class="mt-1.5 flex items-center gap-2">
+                                        <div class="h-1 w-16 bg-muted rounded-full overflow-hidden">
+                                            <div class="h-full rounded-full"
+                                                 :class="p.confidence >= 0.8 ? 'bg-emerald-500' : p.confidence >= 0.5 ? 'bg-amber-500' : 'bg-muted-foreground/40'"
+                                                 :style="`width:${Math.round(p.confidence * 100)}%`"></div>
+                                        </div>
+                                        <span class="text-[10px] text-muted-foreground"
+                                              x-text="`${Math.round(p.confidence * 100)}% confident`"></span>
+                                    </div>
+                                </div>
+                                {# Actions #}
+                                <div class="flex items-center gap-1 shrink-0">
+                                    <button type="button" @click="accept(p.id)"
+                                            :disabled="accepting"
+                                            title="Accept — create element in blueprint"
+                                            class="p-1.5 rounded-md text-emerald-600 hover:bg-emerald-500/10 disabled:opacity-50 transition-colors">
+                                        <i data-lucide="check" class="w-4 h-4"></i>
+                                    </button>
+                                    <button type="button" @click="reject(p.id)"
+                                            :disabled="accepting"
+                                            title="Dismiss — don't add to blueprint"
+                                            class="p-1.5 rounded-md text-destructive hover:bg-destructive/10 disabled:opacity-50 transition-colors">
+                                        <i data-lucide="x" class="w-4 h-4"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                {# All handled — done state #}
+                <div x-show="allDone" x-cloak class="p-5 flex items-center gap-3 text-sm text-emerald-700">
+                    <i data-lucide="check-circle" class="w-4 h-4 shrink-0"></i>
+                    All proposals reviewed. The accepted elements have been added to your blueprint.
+                    <button type="button" @click="resetPanel()" class="ml-auto text-xs text-muted-foreground hover:text-foreground underline">Upload another</button>
+                </div>
+            </div>
+        </div>
+
+        {# ════════════════════════════════════════════════════════════════ #}
+        {# SECTION 1 — Executive Summary (text-only, no diagram/table)    #}
+        {# ════════════════════════════════════════════════════════════════ #}
+        <section id="executive_summary" data-bp-section data-section="executive_summary" class="bp-section mb-8">
+            <div class="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+                {# Section header #}
+                <div class="flex items-center justify-between px-5 py-3 border-b border-border bg-muted/30">
+                    <div class="flex items-center gap-2.5">
+                        {% set es_score = scores.get('executive_summary', {}).get('overall', 0) if scores else 0 %}
+                        <span class="w-2.5 h-2.5 rounded-full shrink-0
+                            {% if es_score >= 80 %}bg-emerald-500
+                            {% elif es_score >= 40 %}bg-amber-500
+                            {% elif es_score >= 1 %}bg-destructive
+                            {% else %}bg-muted-foreground/30
+                            {% endif %}"></span>
+                        <h2 class="text-sm font-semibold text-foreground">1. Executive Summary</h2>
+                    </div>
+                </div>
+                {# Narrative textarea — larger for exec summary #}
+                <div class="p-5">
+                    {# ── Guidance block ── #}
+                    <div class="mb-4 rounded-lg border border-border bg-muted/40 p-4 text-xs space-y-2.5">
+                        <div class="flex items-center gap-1.5 font-semibold text-foreground">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 shrink-0 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                            About this section
+                        </div>
+                        <p class="text-muted-foreground leading-relaxed"><strong class="text-foreground font-medium">What it is:</strong> A concise narrative — typically 300–600 words — that answers three questions in plain language: what problem does this solution solve, what approach was chosen, and what are the most consequential decisions made. It is the only section guaranteed to be read by every stakeholder, so it must stand alone without requiring any other section as context.</p>
+                        <p class="text-muted-foreground leading-relaxed"><strong class="text-foreground font-medium">What to include:</strong> The business problem or opportunity driving the work (be specific — "reduce manual reconciliation effort from 3 FTE to 0.5 FTE", not "improve efficiency"); the solution approach chosen and why alternatives were ruled out; the two or three architectural decisions that shaped everything else (e.g. event-driven over synchronous, cloud-native over lift-and-shift); key stakeholders and the systems in scope; what is explicitly out of scope; and a headline timeline and cost range.</p>
+                        <p class="text-muted-foreground leading-relaxed"><strong class="text-foreground font-medium">Who reads it and why:</strong> C-suite and programme sponsors use it to make funding and governance decisions. ARB members use it to judge alignment with enterprise standards before reading the detail. Future architects and engineers use it to understand intent when maintaining or extending the solution years later. If this section is vague, every downstream reader fills the gaps with their own assumptions.</p>
+                        <p class="text-muted-foreground leading-relaxed"><strong class="text-foreground font-medium">What "good" looks like:</strong> Someone with no prior knowledge of this project can read the summary in two minutes and correctly answer: what does this solution do, which systems are affected, what is the biggest risk, and when does it go live. Specific system names, team names, and measurable outcomes appear in the text. Generic phrases like "improve agility" or "enable digital transformation" do not appear without a concrete metric attached.</p>
+                    </div>
+                    <div class="flex items-center justify-between mb-1.5">
+                        <label class="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536M9 13l6.586-6.586a2 2 0 112.828 2.828L11.828 15.828a2 2 0 01-1.414.586H7v-3.414a2 2 0 01.586-1.414z"/></svg>
+                            Summary narrative
+                        </label>
+                        <button type="button"
+                                @click="generateNarrative('executive_summary')"
+                                :disabled="generatingNarrative['executive_summary']"
+                                class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium bg-violet-500/10 text-violet-700 border border-violet-500/30 hover:bg-violet-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                            <template x-if="!generatingNarrative['executive_summary']">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg>
+                            </template>
+                            <template x-if="generatingNarrative['executive_summary']">
+                                <svg class="animate-spin h-3 w-3 shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                            </template>
+                            <span x-text="generatingNarrative['executive_summary'] ? 'Generating…' : 'Generate with AI'"></span>
+                        </button>
+                    </div>
+                    <div class="group relative">
+                        <textarea x-model="narratives.executive_summary"
+                                  @input.debounce.2000ms="autoSave('executive_summary')"
+                                  @blur="autoSave('executive_summary')"
+                                  @focus="narrativeSaving['executive_summary'] = narrativeSaving['executive_summary'] || 'idle'"
+                                  rows="10"
+                                  placeholder="Click to write your executive summary — describe the solution's purpose, key decisions, and architectural approach..."
+                                  class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring hover:ring-1 hover:ring-ring/30 hover:border-ring/50 transition-colors resize-y"></textarea>
+                    </div>
+                    <div class="flex items-center justify-end mt-1 h-4">
+                        <span x-show="narrativeSaving['executive_summary'] === 'saving'" x-cloak
+                              class="text-[10px] text-muted-foreground flex items-center gap-1">
+                            <svg class="animate-spin h-2.5 w-2.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                            Saving…
+                        </span>
+                        <span x-show="narrativeSaving['executive_summary'] === 'saved'" x-cloak
+                              class="text-[10px] text-emerald-600 flex items-center gap-1">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                            Saved
+                        </span>
+                        <span x-show="narrativeSaving['executive_summary'] === 'error'" x-cloak
+                              class="text-[10px] text-destructive">Save failed — try again</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        {# ════════════════════════════════════════════════════════════════ #}
+        {# SECTIONS 2–13 — Viewpoint sections (diagram + element table)   #}
+        {# ════════════════════════════════════════════════════════════════ #}
+        {% set viewpoint_sections = [
+            ('vision_motivation', '2', 'Vision & Motivation', 'Motivation Viewpoint'),
+            ('value_stream_map', '3', 'Value Stream Map', 'Value Stream Viewpoint'),
+            ('business_process_view', '4', 'Business Process View', 'Business Process Cooperation Viewpoint'),
+            ('application_cooperation', '5', 'Application Cooperation', 'Application Cooperation Viewpoint'),
+            ('data_information', '6', 'Data & Information', 'Information Structure Viewpoint'),
+            ('deployment_view', '7', 'Deployment & Migration', 'Deployment Viewpoint'),
+            ('network_communication', '8', 'Network & Communication', 'Technology Viewpoint'),
+            ('gap_analysis', '9', 'Gap Analysis', 'Gap Analysis'),
+            ('transition_roadmap', '10', 'Transition Roadmap', 'Migration Viewpoint'),
+            ('work_packages', '11', 'Work Packages', 'Implementation & Migration Viewpoint'),
+            ('security_viewpoint', '12', 'Security Viewpoint', 'Security Viewpoint'),
+            ('nfr_satisfaction', '13', 'NFR Satisfaction', 'Requirements Realization Viewpoint')
+        ] %}
+
+        {% for section_id, num, title, viewpoint in viewpoint_sections %}
+        <section id="{{ section_id }}" data-bp-section data-section="{{ section_id }}" class="bp-section mb-8">
+            <div class="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+                {# Section header bar #}
+                <div class="flex items-center justify-between px-5 py-3 border-b border-border bg-muted/30">
+                    <div class="flex items-center gap-2.5 min-w-0">
+                        {% set sec_score = scores.get(section_id, {}).get('overall', 0) if scores else 0 %}
+                        <span class="w-2.5 h-2.5 rounded-full shrink-0
+                            {% if sec_score >= 80 %}bg-emerald-500
+                            {% elif sec_score >= 40 %}bg-amber-500
+                            {% elif sec_score >= 1 %}bg-destructive
+                            {% else %}bg-muted-foreground/30
+                            {% endif %}"></span>
+                        <div class="min-w-0">
+                            <h2 class="text-sm font-semibold text-foreground">{{ num }}. {{ title }}</h2>
+                            <p class="text-[10px] text-muted-foreground truncate">{{ viewpoint }}</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-1.5 shrink-0 ml-3">
+                        <button type="button"
+                                @click="openComposer('{{ section_id }}')"
+                                class="bp-action-btn inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-medium border border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+                                title="Open in Composer">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"/></svg>
+                            Composer
+                        </button>
+                        <button type="button"
+                                @click="exportPng('{{ section_id }}')"
+                                class="bp-action-btn inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-medium border border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+                                title="Export PNG">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                            PNG
+                        </button>
+                        <button type="button"
+                                @click="linkElements('{{ section_id }}')"
+                                class="bp-action-btn inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-medium bg-primary/10 text-primary border border-primary/30 hover:bg-primary/20 transition-colors"
+                                title="Link Elements">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+                            Link
+                        </button>
+                        {# Codegen button — only on supported sections #}
+                        {% if section_id in ['deployment_view', 'application_cooperation', 'network_communication', 'work_packages', 'security_viewpoint', 'nfr_satisfaction'] %}
+                        <button type="button"
+                                @click="$dispatch('bp-codegen-open', {sectionId: '{{ section_id }}'})"
+                                class="bp-action-btn inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-medium bg-emerald-500/10 text-emerald-700 border border-emerald-500/30 hover:bg-emerald-500/20 transition-colors"
+                                title="Generate infrastructure/API code">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
+                            Codegen
+                        </button>
+                        {% endif %}
+                        {# Section-specific entity add buttons #}
+                        {% if section_id == 'vision_motivation' %}
+                        <button type="button" @click="openAdd('driver')"
+                                class="bp-action-btn inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-medium border border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors">
+                            + Driver
+                        </button>
+                        <button type="button" @click="openAdd('goal')"
+                                class="bp-action-btn inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-medium border border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors">
+                            + Goal
+                        </button>
+                        <button type="button" @click="openAdd('constraint')"
+                                class="bp-action-btn inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-medium border border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors">
+                            + Constraint
+                        </button>
+                        {% endif %}
+                        {% if section_id == 'nfr_satisfaction' %}
+                        <button type="button" @click="openAdd('requirement')"
+                                class="bp-action-btn inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-medium border border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors">
+                            + Requirement
+                        </button>
+                        {% endif %}
+                        {% if section_id == 'security_viewpoint' %}
+                        <button type="button" @click="openAdd('risk')"
+                                class="bp-action-btn inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-medium border border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors">
+                            + Risk
+                        </button>
+                        <label class="bp-action-btn inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-medium border border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 cursor-pointer transition-colors"
+                               :class="riskImporting ? 'opacity-50 cursor-not-allowed' : ''"
+                               :title="riskImporting ? 'Importing…' : 'Bulk-import risks from CSV'">
+                            <i data-lucide="file-spreadsheet" class="w-3 h-3"></i>
+                            <span x-show="!riskImporting">Import CSV</span>
+                            <span x-show="riskImporting" x-cloak>Importing…</span>
+                            <input type="file" class="sr-only" accept=".csv" :disabled="riskImporting"
+                                   @change="importRisksCsv($event)">
+                        </label>
+                        <a :href="`/static/templates/risk_register_template.csv`"
+                           download="risk_register_template.csv"
+                           class="bp-action-btn inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted/50 border border-border transition-colors"
+                           title="Download CSV template">
+                            <i data-lucide="download" class="w-3 h-3"></i>
+                        </a>
+                        {% endif %}
+                        {% if section_id == 'transition_roadmap' %}
+                        <button type="button" @click="openAdd('option')"
+                                class="bp-action-btn inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-medium border border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors">
+                            + Option
+                        </button>
+                        <button type="button" @click="openAdd('plateau')"
+                                class="bp-action-btn inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-medium border border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors">
+                            + Plateau
+                        </button>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="p-5 space-y-5">
+                    {# ── Section guidance blocks ── #}
+                    {% if section_id == 'vision_motivation' %}
+                    <div class="rounded-lg border border-border bg-muted/40 p-4 text-xs space-y-2.5">
+                        <div class="flex items-center gap-1.5 font-semibold text-foreground">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 shrink-0 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                            About this section
+                        </div>
+                        <p class="text-muted-foreground leading-relaxed"><strong class="text-foreground font-medium">What it is:</strong> The motivation layer of the architecture — the WHY that makes this solution necessary. It captures external pressures, goals the organisation is committing to, constraints that cannot be violated, and assumptions the architecture depends on. All decisions in later sections should trace back here; if they don't, something was designed without a business reason.</p>
+                        <p class="text-muted-foreground leading-relaxed"><strong class="text-foreground font-medium">What to include:</strong> Business drivers (regulatory change, competitive pressure, cost reduction mandate — name the specific driver and its origin); goals with measurable outcomes and named owners ("Reduce MTTR for Tier-1 incidents from 4 h to 30 min — owned by Head of Operations"); assessments of the current state (which capabilities are weak, which applications are at end-of-life); principles the design must respect (e.g. "no new on-premise servers", "GDPR-compliant by default"); and explicit assumptions (e.g. "assumes SAP upgrade will be complete before Phase 2").</p>
+                        <p class="text-muted-foreground leading-relaxed"><strong class="text-foreground font-medium">Who reads it and why:</strong> Architects use it to validate that design decisions are grounded in real business need. Programme governance boards use it to confirm the investment is justified. Future teams use it to understand why constraints exist before trying to remove them. Without a well-documented motivation layer, solutions drift as individuals make local decisions that contradict the original intent.</p>
+                        <p class="text-muted-foreground leading-relaxed"><strong class="text-foreground font-medium">What "good" looks like:</strong> At least three named drivers with a stated business impact each. At least five goals that are specific and measurable, not aspirational. At least two constraints that visibly shaped architectural choices in later sections. Every assumption is listed even if it seems obvious — unwritten assumptions are the root cause of most architecture failures.</p>
+                    </div>
+
+                    {# ── Drivers ── #}
+                    <div x-show="drivers.length > 0" x-cloak class="space-y-2">
+                        <h4 class="text-xs font-semibold text-foreground uppercase tracking-wide flex items-center gap-1.5">  <!-- frontend-quality-ok -->
+                            <span class="inline-block w-2 h-2 rounded-full bg-blue-500"></span> Drivers
+                        </h4>
+                        <template x-for="item in drivers" :key="item.id">
+                            <div class="rounded-lg border border-border bg-background px-4 py-3 space-y-1">
+                                <div class="flex items-start justify-between gap-2">
+                                    <span class="text-sm font-medium text-foreground" x-text="item.name"></span>
+                                    <span class="shrink-0 inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-blue-700 border border-blue-500/30" x-text="item.driver_type || 'internal'"></span>
+                                </div>
+                                <p class="text-xs text-muted-foreground leading-relaxed" x-show="item.description" x-text="item.description"></p>
+                            </div>
+                        </template>
+                    </div>
+
+                    {# ── Goals ── #}
+                    <div x-show="goals.length > 0" x-cloak class="space-y-2">
+                        <h4 class="text-xs font-semibold text-foreground uppercase tracking-wide flex items-center gap-1.5">
+                            <span class="inline-block w-2 h-2 rounded-full bg-emerald-500"></span> Goals
+                        </h4>
+                        <template x-for="item in goals" :key="item.id">
+                            <div class="rounded-lg border border-border bg-background px-4 py-3 space-y-1">
+                                <div class="flex items-start justify-between gap-2">
+                                    <span class="text-sm font-medium text-foreground" x-text="item.name"></span>
+                                    <span class="shrink-0 inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-emerald-500/10 text-emerald-700 border border-emerald-500/30" x-text="item.priority ? 'P' + item.priority : ''"></span>
+                                </div>
+                                <p class="text-xs text-muted-foreground leading-relaxed" x-show="item.description" x-text="item.description"></p>
+                                <p class="text-xs text-muted-foreground" x-show="item.measurement_criteria"><em x-text="item.measurement_criteria"></em></p>
+                            </div>
+                        </template>
+                    </div>
+
+                    {# ── Constraints ── #}
+                    <div x-show="constraints.length > 0" x-cloak class="space-y-2">
+                        <h4 class="text-xs font-semibold text-foreground uppercase tracking-wide flex items-center gap-1.5">
+                            <span class="inline-block w-2 h-2 rounded-full bg-amber-500"></span> Constraints
+                        </h4>
+                        <template x-for="item in constraints" :key="item.id">
+                            <div class="rounded-lg border border-border bg-background px-4 py-3 space-y-1">
+                                <div class="flex items-start justify-between gap-2">
+                                    <span class="text-sm font-medium text-foreground" x-text="item.name"></span>
+                                    <span class="shrink-0 inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-amber-500/10 text-amber-700 border border-amber-500/30" x-text="item.constraint_type || 'technical'"></span>
+                                </div>
+                                <p class="text-xs text-muted-foreground leading-relaxed" x-show="item.description" x-text="item.description"></p>
+                            </div>
+                        </template>
+                    </div>
+                    {% elif section_id == 'value_stream_map' %}
+                    <div class="rounded-lg border border-border bg-muted/40 p-4 text-xs space-y-3">
+                        <div class="flex items-center gap-1.5 font-semibold text-foreground">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 shrink-0 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                            About this section
+                        </div>
+                        <p class="text-muted-foreground leading-relaxed"><strong class="text-foreground font-medium">What it is:</strong> The strategy layer — the bridge between why this solution exists (Goals, Drivers) and what the business does (Processes, Actors). It answers: which Capabilities must exist, in what sequence, to deliver the promised Outcome? Everything below — applications, data, infrastructure — exists to realise this chain.</p>
+                        <div class="rounded-md border border-primary/20 bg-primary/5 p-3 space-y-2.5">
+                            <p class="font-semibold text-foreground text-[11px] uppercase tracking-wide">Required ArchiMate chain &mdash; scored</p>
+                            <pre class="text-[11px] leading-relaxed text-foreground/80 font-mono overflow-x-auto bg-transparent">  Goal  &larr;&mdash; realizes &mdash;&mdash;  ValueStream  &mdash;&mdash; uses &mdash;&mdash;  Capability
+                  &brvbar;                                   &brvbar;
+                  &brvbar;         stages (triggering)        &brvbar;
+                  &brvbar;  Stage1 &rarr; Stage2 &rarr; Stage3 &mdash; uses &mdash; Capability
+  ValueStream  &mdash;&mdash; realization &mdash;&mdash;  Outcome</pre>
+                            <div class="space-y-1.5 pt-0.5">
+                                <div class="flex items-start gap-2">
+                                    <span class="shrink-0 mt-0.5 inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-bold bg-blue-500/10 text-primary border border-blue-500/20 whitespace-nowrap">35 pts</span>
+                                    <span class="text-muted-foreground"><strong class="text-foreground">Goal &rarr; ValueStream (realization)</strong> &mdash; add a Goal in Vision &amp; Motivation first, then draw a realization relationship from it to the ValueStream here. The stream is the mechanism by which the Goal becomes real.</span>
+                                </div>
+                                <div class="flex items-start gap-2">
+                                    <span class="shrink-0 mt-0.5 inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-bold bg-amber-500/10 text-amber-700 border border-amber-500/20 whitespace-nowrap">35 pts</span>
+                                    <span class="text-muted-foreground"><strong class="text-foreground">ValueStream &rarr; Capability (association)</strong> &mdash; name the organisational capabilities each stage depends on. These are Strategy-layer Capability elements (&ldquo;Real-time Monitoring&rdquo;, &ldquo;Automated Alerting&rdquo;) — not applications. The Capability is then realized by BusinessProcesses below.</span>
+                                </div>
+                                <div class="flex items-start gap-2">
+                                    <span class="shrink-0 mt-0.5 inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-bold bg-green-500/10 text-emerald-600 border border-green-500/20 whitespace-nowrap">30 pts</span>
+                                    <span class="text-muted-foreground"><strong class="text-foreground">ValueStream &rarr; Outcome (realization)</strong> &mdash; the measurable result signalling the stream completed. &ldquo;MTTR &le; 30 min&rdquo; is an Outcome; &ldquo;improve MTTR&rdquo; is a Goal. Distinct ArchiMate elements with different roles in the chain.</span>
+                                </div>
+                            </div>
+                        </div>
+                        <p class="text-muted-foreground leading-relaxed"><strong class="text-foreground font-medium">Stages:</strong> Each stage is a child ValueStream element linked in sequence via <em>triggering</em> (Stage 1 &rarr; Stage 2 &rarr; Stage 3). Each stage uses one or more Capabilities. A reviewer should be able to trace from any Goal in Section 2 through a stage to the Capability it requires and down to a BusinessProcess in Section 4 that delivers it.</p>
+                        <p class="text-muted-foreground leading-relaxed"><strong class="text-foreground font-medium">What good looks like:</strong> Three to six named stages, each with an actor, a system, and the Capability it depends on. An Outcome with a measurable target (SLA, &pound; saved, error rate %). Individual elements without relationships score partial credit only &mdash; the chain score rewards connected architecture, not element lists.</p>
+                    </div>
+                    {% include 'solutions/partials/_blueprint_capabilities.html' %}
+                    {% elif section_id == 'business_process_view' %}
+                    <div class="rounded-lg border border-border bg-muted/40 p-4 text-xs space-y-2.5">
+                        <div class="flex items-center gap-1.5 font-semibold text-foreground">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 shrink-0 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                            About this section
+                        </div>
+                        <p class="text-muted-foreground leading-relaxed"><strong class="text-foreground font-medium">What it is:</strong> A detailed view of the business processes this solution changes, supports, or replaces — at the level of individual tasks and decision points, not just high-level steps. Where the value stream map shows the journey, the business process view shows the road: every turn, junction, and possible detour. It is the primary input for change management, user training, and test case design.</p>
+                        <p class="text-muted-foreground leading-relaxed"><strong class="text-foreground font-medium">What to include:</strong> Process flows with swim lanes organised by actor or department; decision points and the logic that determines which path is taken; exception paths (what happens when a step fails, times out, or produces an invalid result); manual approval gates and their escalation rules; the specific screens, forms, or APIs a user interacts with at each step; integration touchpoints where the process crosses into another system; and any steps that are being eliminated, automated, or significantly changed by this solution.</p>
+                        <p class="text-muted-foreground leading-relaxed"><strong class="text-foreground font-medium">Who reads it and why:</strong> Business analysts use it to validate scope and identify missed requirements. Change managers use it to plan organisational impact and design training. QA engineers use it to derive test cases — every branch in the process is a test case waiting to be written. Operations teams use it to understand what breaks when a system is unavailable.</p>
+                        <p class="text-muted-foreground leading-relaxed"><strong class="text-foreground font-medium">What "good" looks like:</strong> Every human-facing touchpoint has a named actor and a named system. Exception and error paths are documented with the same level of detail as the happy path — they are not marked "TBD." The process model has been reviewed by someone who performs the work today and confirmed as accurate. New steps introduced by this solution are clearly distinguished from existing steps that are being retained.</p>
+                    </div>
+                    {% elif section_id == 'application_cooperation' %}
+                    <div class="rounded-lg border border-border bg-muted/40 p-4 text-xs space-y-2.5">
+                        <div class="flex items-center gap-1.5 font-semibold text-foreground">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 shrink-0 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                            About this section
+                        </div>
+                        <p class="text-muted-foreground leading-relaxed"><strong class="text-foreground font-medium">What it is:</strong> The application layer of the architecture — which software systems are involved, how they cooperate, and through what interfaces they exchange data. It answers the question "when system A needs to tell system B something, how does that actually happen?" This section drives API design, integration development, and determines how complex the solution is to build, test, and operate.</p>
+                        <p class="text-muted-foreground leading-relaxed"><strong class="text-foreground font-medium">What to include:</strong> Every application component in scope (new and existing); the integration pattern for each system-to-system interaction (synchronous REST, asynchronous event, file transfer, database replication — be specific); sequence diagrams or interaction descriptions for the key flows; API contracts or message schemas for critical interfaces; error handling strategy for each integration (what happens on timeout, network failure, or invalid data); and data transformation rules where formats differ between systems.</p>
+                        <p class="text-muted-foreground leading-relaxed"><strong class="text-foreground font-medium">Who reads it and why:</strong> Integration architects use it to design APIs and middleware. Development teams use it to scope their work and identify dependencies. Operations teams use it to plan monitoring — every integration point is a failure point that needs an alert. The more precisely this section is written, the fewer surprises appear during development.</p>
+                        <p class="text-muted-foreground leading-relaxed"><strong class="text-foreground font-medium">What "good" looks like:</strong> Every system-to-system interaction is named, has a stated protocol, and has an error handling strategy. There are no "and then magic happens" gaps where data moves between systems without explanation. API contracts reference real endpoints or schema definitions. The section distinguishes between synchronous calls (where the caller waits) and asynchronous events (where it does not) — this distinction determines retry logic, latency budgets, and failure modes.</p>
+                    </div>
+                    {% elif section_id == 'data_information' %}
+                    <div class="rounded-lg border border-border bg-muted/40 p-4 text-xs space-y-2.5">
+                        <div class="flex items-center gap-1.5 font-semibold text-foreground">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 shrink-0 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                            About this section
+                        </div>
+                        <p class="text-muted-foreground leading-relaxed"><strong class="text-foreground font-medium">What it is:</strong> The data architecture — what information exists in this solution, how it is structured, who owns it, and how it flows from creation to consumption to archival. Data decisions made here constrain every other layer: a poorly defined data model forces integration workarounds, creates reporting blind spots, and generates compliance exposure. This section is the most consequential to get right and the most expensive to fix once development has started.</p>
+                        <p class="text-muted-foreground leading-relaxed"><strong class="text-foreground font-medium">What to include:</strong> Canonical data entities and their key attributes (name, type, owner, source of truth); data flows showing where each entity is created, transformed, and consumed; data quality rules and what happens when data does not meet them; data ownership by domain and the governance model for disputed data; retention, archival, and deletion policies with regulatory references where applicable; master data management approach (which system is the golden record for each entity, how conflicts are resolved); and any data migration required from legacy systems including transformation rules and acceptance criteria.</p>
+                        <p class="text-muted-foreground leading-relaxed"><strong class="text-foreground font-medium">Who reads it and why:</strong> Data architects use it to design schemas and pipelines. Compliance and privacy officers use it to assess GDPR, data residency, and audit requirements. Integration developers use it to understand what data they will receive and in what format. Analysts use it to understand what reporting is possible. Poor data architecture is the single most common root cause of failed enterprise integrations.</p>
+                        <p class="text-muted-foreground leading-relaxed"><strong class="text-foreground font-medium">What "good" looks like:</strong> Every significant data entity has a named owner, a single source of truth, and at least one stated quality rule. Data flows cover both the happy path and failure scenarios (what happens to a message if the destination is unavailable). Retention policies exist for every entity class, with a regulatory reference where relevant. The data model has been reviewed by someone who will actually query it in production.</p>
+                    </div>
+                    {% elif section_id == 'deployment_view' %}
+                    <div class="rounded-lg border border-border bg-muted/40 p-4 text-xs space-y-2.5">
+                        <div class="flex items-center gap-1.5 font-semibold text-foreground">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 shrink-0 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                            About this section
+                        </div>
+                        <p class="text-muted-foreground leading-relaxed"><strong class="text-foreground font-medium">What it is:</strong> How the solution will be physically deployed and how it will transition from the current operating state to the future one. It covers infrastructure topology, environment strategy, the deployment pipeline, the migration approach, and what happens if something goes wrong. The migration plan in this section carries more project risk than any other architectural decision — a technically excellent design can still fail if the transition plan is unrealistic.</p>
+                        <p class="text-muted-foreground leading-relaxed"><strong class="text-foreground font-medium">What to include:</strong> Infrastructure topology diagram or description (cloud provider and region, on-premise data centres, hybrid connectivity); environment strategy (dev, test, staging, production — and who can deploy to each); CI/CD pipeline approach (tools, gates, automated test requirements before promotion); migration approach (big bang vs phased vs parallel run — with justification for the choice); rollback strategy including the trigger condition ("if X happens within Y hours, we revert") and the rollback procedure; estimated downtime window and the business approval required for it; and a day-zero operations checklist (what monitoring is in place, who is on call, what alerts fire, who receives them).</p>
+                        <p class="text-muted-foreground leading-relaxed"><strong class="text-foreground font-medium">Who reads it and why:</strong> Infrastructure and DevOps engineers use it to provision and configure environments. Release managers use it to plan go-live windows and communicate to the business. Operations teams use it to prepare support runbooks. Governance boards use it to assess deployment risk before approving go-live. The operations team that inherits this solution in two years uses it to understand how it was put together.</p>
+                        <p class="text-muted-foreground leading-relaxed"><strong class="text-foreground font-medium">What "good" looks like:</strong> The migration plan names the rollback trigger, the rollback procedure, and the maximum tolerable downtime. The environment strategy is specific enough that a new engineer can set up a local environment from it. The day-zero checklist exists and has been rehearsed in a non-production environment. "Cloud deployment" without a named provider, region, service tier, and cost estimate is not good enough.</p>
+                    </div>
+                    {% elif section_id == 'network_communication' %}
+                    <div class="rounded-lg border border-border bg-muted/40 p-4 text-xs space-y-2.5">
+                        <div class="flex items-center gap-1.5 font-semibold text-foreground">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 shrink-0 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                            About this section
+                        </div>
+                        <p class="text-muted-foreground leading-relaxed"><strong class="text-foreground font-medium">What it is:</strong> The technology layer — network topology, communication protocols, security zones, and the physical or virtual infrastructure that carries the solution's traffic. Network decisions affect performance, compliance, and cost in ways that are extremely expensive to change post-deployment. This section is where latency budgets are established, encryption requirements are confirmed, and firewall rule changes are catalogued before they surprise the security team at go-live.</p>
+                        <p class="text-muted-foreground leading-relaxed"><strong class="text-foreground font-medium">What to include:</strong> Network zone diagram (DMZ, internal, restricted — and which components live in each); the protocol for every communication path in the application cooperation view (HTTPS, AMQP, gRPC, SFTP — with port numbers); latency and bandwidth requirements for each major data flow; load balancing and CDN strategy; DNS and certificate management approach (who owns the certs, how long they are valid, what the rotation process is); any new firewall rules required, stated as source/destination/port/protocol; and whether any traffic crosses organisational or geographic boundaries with the compliance implications.</p>
+                        <p class="text-muted-foreground leading-relaxed"><strong class="text-foreground font-medium">Who reads it and why:</strong> Network engineers use it to provision routing and firewall rules before the solution can be tested end-to-end — these changes often have multi-week lead times. Security architects use it to assess attack surface and confirm encryption coverage. Compliance officers use it to verify data residency and cross-border transfer rules. These are the stakeholders most likely to block a go-live if their questions are not answered in writing.</p>
+                        <p class="text-muted-foreground leading-relaxed"><strong class="text-foreground font-medium">What "good" looks like:</strong> Every communication path has a protocol, a port, and a classification (internal/external, encrypted/unencrypted). Every security zone crossing is explicitly documented with the firewall rule required. Latency budgets are stated as numbers, not as "should be fast." Certificate expiry dates are recorded and there is a named person responsible for rotation. A network engineer who has never seen this solution can derive their firewall change request directly from this section.</p>
+                    </div>
+                    {% elif section_id == 'gap_analysis' %}
+                    <div class="rounded-lg border border-border bg-muted/40 p-4 text-xs space-y-2.5">
+                        <div class="flex items-center gap-1.5 font-semibold text-foreground">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 shrink-0 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                            About this section
+                        </div>
+                        <p class="text-muted-foreground leading-relaxed"><strong class="text-foreground font-medium">What it is:</strong> A structured comparison of current architecture versus target architecture — what capabilities, applications, data structures, or infrastructure elements are missing, insufficient, or need to change. The gap analysis is the business case written in architectural language: it quantifies why the current state cannot serve the goals in Section 2 and what specifically must change. Without it, the solution is a list of features with no explanation of why they were chosen over alternatives.</p>
+                        <p class="text-muted-foreground leading-relaxed"><strong class="text-foreground font-medium">What to include:</strong> A current state inventory of the relevant capability or domain (applications, data, integrations, infrastructure that exist today); target state requirements derived from Sections 2 and 4; a gap for each layer — business process, application, data, technology — stating what is missing and what the business consequence of the gap is; a prioritised list of gaps (high/medium/low) with the business impact of each; reuse opportunities (what existing assets can serve the target state without change or with minor change); and explicit disposal decisions (what is being retired and why).</p>
+                        <p class="text-muted-foreground leading-relaxed"><strong class="text-foreground font-medium">Who reads it and why:</strong> Programme managers use it to scope the transformation and estimate effort. Portfolio architects use it to identify reuse opportunities across other programmes. Investment committees use it to justify the spend — a gap that cannot be traced to a business driver should not exist. This section is also the primary source for Section 9 (Transition Roadmap) sequencing decisions.</p>
+                        <p class="text-muted-foreground leading-relaxed"><strong class="text-foreground font-medium">What "good" looks like:</strong> Gaps are numbered and prioritised. Each gap has a stated business impact ("Without closing this gap, we cannot achieve Goal G3 — reduce MTTR to 30 min"). Each gap traces to a driver in Section 2 and contributes to a work package in Section 11. Reuse opportunities are quantified: "CRM module X satisfies 70% of the customer data requirement without modification." Gaps marked "low priority" still have a resolution path or an explicit acceptance decision.</p>
+                    </div>
+                    {% elif section_id == 'transition_roadmap' %}
+                    <div class="rounded-lg border border-border bg-muted/40 p-4 text-xs space-y-2.5">
+                        <div class="flex items-center gap-1.5 font-semibold text-foreground">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 shrink-0 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                            About this section
+                        </div>
+                        <p class="text-muted-foreground leading-relaxed"><strong class="text-foreground font-medium">What it is:</strong> The sequenced path from current state to target state, broken into plateaus — stable interim states where the organisation can pause, consolidate, and realise benefits before moving to the next phase. A roadmap without plateaus is a waterfall; a roadmap without milestones is a wish list. The transition roadmap is the commitment the architecture team makes to the business, so it must be realistic, not optimistic.</p>
+                        <p class="text-muted-foreground leading-relaxed"><strong class="text-foreground font-medium">What to include:</strong> Plateaus with named dates and a description of the stable state achieved at each one; the work packages completed in each plateau (reference Section 11); hard dependencies between phases — "Phase 2 cannot start until Phase 1's data migration has passed acceptance testing"; go/no-go decision gates with named decision makers and criteria; resource requirements per phase (teams, vendors, budget draw-down); benefits realisation schedule — which business benefits become available at each plateau and how they will be measured; and the critical path — which sequence of activities determines the overall timeline.</p>
+                        <p class="text-muted-foreground leading-relaxed"><strong class="text-foreground font-medium">Who reads it and why:</strong> Programme directors and PMOs use it to staff projects and manage dependencies. Steering committees use it at governance gates to approve progression to the next phase. Vendor and partner teams use it to plan their own resource allocation. Business stakeholders use it to plan organisational change and benefits realisation activities. An unrealistic roadmap destroys trust; an overly conservative one wastes investment.</p>
+                        <p class="text-muted-foreground leading-relaxed"><strong class="text-foreground font-medium">What "good" looks like:</strong> Each plateau has a named date, a named set of deliverables, and a measurable business benefit that can be confirmed without reading the rest of the document. Dependencies are explicit and directed — "Phase 2 requires X, which is delivered in Phase 1" — not implicit. The critical path is identified and the risks on that path are addressed in Section 12. The roadmap has been reviewed by the delivery leads who will execute it and confirmed as achievable.</p>
+                    </div>
+                    {% elif section_id == 'work_packages' %}
+                    <div class="rounded-lg border border-border bg-muted/40 p-4 text-xs space-y-2.5">
+                        <div class="flex items-center gap-1.5 font-semibold text-foreground">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 shrink-0 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                            About this section
+                        </div>
+                        <p class="text-muted-foreground leading-relaxed"><strong class="text-foreground font-medium">What it is:</strong> The discrete, executable units of work that realise the transition roadmap. Each work package is a bounded scope of activity with an owner, a cost estimate, dependencies, and acceptance criteria. Work packages are the bridge between architecture and delivery: the architecture team defines them, the delivery team executes them. Vague work packages become missed milestones — the more precisely they are defined here, the fewer change requests appear during delivery.</p>
+                        <p class="text-muted-foreground leading-relaxed"><strong class="text-foreground font-medium">What to include:</strong> For each work package: a short name and a scope statement ("Deploy API gateway and configure routing for 12 upstream consumers — excludes consumer application changes"); the responsible team or vendor; effort estimate in person-days or story points with a confidence level; cost estimate in currency with assumptions stated; dependencies on other work packages or external events; acceptance criteria written as observable outcomes a non-technical stakeholder can verify; and lessons learned from similar work in this organisation (what was underestimated, what surprised the team).</p>
+                        <p class="text-muted-foreground leading-relaxed"><strong class="text-foreground font-medium">Who reads it and why:</strong> Project managers use it to create work breakdown structures and assign resources. Finance uses it to create budget lines and track actuals against estimates. Governance boards use it at stage gates to approve funding for the next phase. Delivery leads use it to negotiate scope when timelines compress. Lessons learned make future estimates more accurate and prevent teams from repeating known mistakes.</p>
+                        <p class="text-muted-foreground leading-relaxed"><strong class="text-foreground font-medium">What "good" looks like:</strong> Every work package has a named owner, a currency estimate (even a rough order of magnitude), and at least one acceptance criterion a non-technical stakeholder can verify. The sum of all work package estimates is consistent with the overall programme budget. Dependencies are directed and complete — if WP-3 depends on WP-1, WP-1 knows about it. Acceptance criteria use the pattern "given X, when Y, then Z" — not "feature is working."</p>
+                    </div>
+                    {% elif section_id == 'security_viewpoint' %}
+                    <div class="rounded-lg border border-border bg-muted/40 p-4 text-xs space-y-2.5">
+                        <div class="flex items-center gap-1.5 font-semibold text-foreground">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 shrink-0 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                            About this section
+                        </div>
+                        <p class="text-muted-foreground leading-relaxed"><strong class="text-foreground font-medium">What it is:</strong> The security architecture — threat model, control framework, risk posture, and compliance mapping for this solution. Security controls designed into the architecture at this stage cost a fraction of what they cost to retrofit after development. This section is not a checklist of security best practices; it is a structured argument that the solution's specific threat landscape has been analysed and the controls chosen are proportionate to the risks identified.</p>
+                        <p class="text-muted-foreground leading-relaxed"><strong class="text-foreground font-medium">What to include:</strong> Threat actors and their likely attack vectors against this specific solution (not generic threats — name what is realistic given the data handled and the exposure surface); security controls by layer (network isolation, application authentication and authorisation, data encryption at rest and in transit, identity and access management, audit logging); regulatory and compliance requirements with specific articles or controls mapped to architectural decisions (e.g. "GDPR Art.32 — satisfied by AES-256 encryption of PII at rest in the data warehouse"); residual risks with a stated risk owner and acceptance decision; and penetration testing scope and schedule.</p>
+                        <p class="text-muted-foreground leading-relaxed"><strong class="text-foreground font-medium">Who reads it and why:</strong> Security architects use it to validate that the design follows enterprise security standards. The CISO office uses it to maintain the organisational risk register. External auditors use it as evidence of due diligence during compliance assessments. Developers use it to understand what security requirements they are responsible for implementing. A security section that says "we will follow security best practices" provides no assurance to any of these readers.</p>
+                        <p class="text-muted-foreground leading-relaxed"><strong class="text-foreground font-medium">What "good" looks like:</strong> Every identified threat has a stated control and a residual risk rating (accepted/mitigated/transferred). Compliance requirements are mapped to specific architectural decisions, not just listed. The threat model names realistic adversaries for this solution's context — not a generic list of OWASP categories. A penetration test scope has been agreed with the security team and a date is in the project plan. Security is treated as an architectural quality, not a project phase.</p>
+                    </div>
+                    {% elif section_id == 'nfr_satisfaction' %}
+                    <div class="rounded-lg border border-border bg-muted/40 p-4 text-xs space-y-2.5">
+                        <div class="flex items-center gap-1.5 font-semibold text-foreground">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 shrink-0 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                            About this section
+                        </div>
+                        <p class="text-muted-foreground leading-relaxed"><strong class="text-foreground font-medium">What it is:</strong> Proof that the architecture meets the non-functional requirements — the quality attributes that determine whether the solution is usable and operable in production, not just functionally correct. NFRs that are not designed in from the architecture stage always become expensive incidents: the database that was not sized for peak load, the API that times out under real traffic, the service that cannot be restored in an acceptable RTO. This section is the architecture team's warranty on system quality.</p>
+                        <p class="text-muted-foreground leading-relaxed"><strong class="text-foreground font-medium">What to include:</strong> For each NFR category (performance, availability, scalability, maintainability, recoverability, security — add others relevant to this solution): the target metric stated as a number with units ("99.9% uptime = max 8.76 hours downtime per year across all planned and unplanned outages"); the architectural mechanism or decision that achieves it ("Active-passive failover with 60-second automatic failover, data replicated synchronously to standby"); the current baseline if known; the test approach that will verify the target is met before go-live ("Load test with 2× expected peak concurrent users for 30 minutes, monitored by APM"); and the named owner responsible for that NFR in production.</p>
+                        <p class="text-muted-foreground leading-relaxed"><strong class="text-foreground font-medium">Who reads it and why:</strong> Engineering leads use it to validate that the design can physically achieve the targets before committing to them. Operations and SRE teams use it to design monitoring thresholds and on-call runbooks. Service level managers use it to negotiate SLAs with the business. Capacity planners use it to size infrastructure. NFRs that are agreed verbally but not written here get forgotten in delivery and discovered in production.</p>
+                        <p class="text-muted-foreground leading-relaxed"><strong class="text-foreground font-medium">What "good" looks like:</strong> Every NFR has a number, not an adjective. "Fast" is not an NFR; "P95 response time under 200ms at 500 concurrent users" is. Every NFR has an architectural decision that achieves it and a test that can verify it before go-live — if there is no test, there is no confidence. The NFR targets have been agreed with the business owner who will be affected if they are missed, not set unilaterally by the architecture team.</p>
+                    </div>
+                    {% endif %}
+                    {# Narrative textarea #}
+                    <div>
+                        <div class="flex items-center justify-between mb-1.5">
+                            <label class="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536M9 13l6.586-6.586a2 2 0 112.828 2.828L11.828 15.828a2 2 0 01-1.414.586H7v-3.414a2 2 0 01.586-1.414z"/></svg>
+                                Section narrative
+                            </label>
+                            <button type="button"
+                                    @click="generateNarrative('{{ section_id }}')"
+                                    :disabled="generatingNarrative['{{ section_id }}']"
+                                    class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium bg-violet-500/10 text-violet-700 border border-violet-500/30 hover:bg-violet-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                                <template x-if="!generatingNarrative['{{ section_id }}']">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg>
+                                </template>
+                                <template x-if="generatingNarrative['{{ section_id }}']">
+                                    <svg class="animate-spin h-3 w-3 shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                                </template>
+                                <span x-text="generatingNarrative['{{ section_id }}'] ? 'Generating…' : 'Generate with AI'"></span>
+                            </button>
+                        </div>
+                        <textarea x-model="narratives.{{ section_id }}"
+                                  @input.debounce.2000ms="autoSave('{{ section_id }}')"
+                                  @blur="autoSave('{{ section_id }}')"
+                                  @focus="narrativeSaving['{{ section_id }}'] = narrativeSaving['{{ section_id }}'] || 'idle'"
+                                  rows="4"
+                                  placeholder="Click to write architectural decisions and rationale for this viewpoint..."
+                                  class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring hover:ring-1 hover:ring-ring/30 hover:border-ring/50 transition-colors resize-y"></textarea>
+                        <div class="flex items-center justify-end mt-1 h-4">
+                            <span x-show="narrativeSaving['{{ section_id }}'] === 'saving'" x-cloak
+                                  class="text-[10px] text-muted-foreground flex items-center gap-1">
+                                <svg class="animate-spin h-2.5 w-2.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                                Saving…
+                            </span>
+                            <span x-show="narrativeSaving['{{ section_id }}'] === 'saved'" x-cloak
+                                  class="text-[10px] text-emerald-600 flex items-center gap-1">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                                Saved
+                            </span>
+                            <span x-show="narrativeSaving['{{ section_id }}'] === 'error'" x-cloak
+                                  class="text-[10px] text-destructive">Save failed — try again</span>
+                        </div>
+                    </div>
+
+                    {# Diagram area — lazy-loaded via x-intersect #}
+                    <div class="rounded-lg border border-border bg-muted/50 bp-diagram-area flex items-center justify-center"
+                         x-intersect.once="loadDiagram('{{ section_id }}')"
+                         :id="'diagram-' + '{{ section_id }}'">
+                        <template x-if="!diagramsLoaded['{{ section_id }}']">
+                            <div class="text-center py-16">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 mx-auto text-muted-foreground/40 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"/></svg>
+                                <p class="text-xs text-muted-foreground">Loading diagram...</p>
+                            </div>
+                        </template>
+                    </div>
+
+                    {# Element table #}
+                    <div x-show="(sectionElements['{{ section_id }}'] || []).length > 0">
+                        <div class="overflow-x-auto rounded-lg border border-border">
+                            <table class="w-full text-sm">
+                                <thead>
+                                    <tr class="border-b border-border bg-muted/30">
+                                        <th class="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Element</th>
+                                        <th class="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Type</th>
+                                        <th class="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Layer</th>
+                                        <th class="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Context</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-border">
+                                    <template x-for="elem in (sectionElements['{{ section_id }}'] || [])" :key="elem.id">
+                                        <tr class="hover:bg-muted/30 transition-colors">
+                                            <td class="px-3 py-2">
+                                                <div class="font-medium text-foreground text-xs" x-text="elem.name"></div>
+                                                <div x-show="elem.description" class="text-[10px] text-muted-foreground truncate max-w-[160px]" x-text="elem.description"></div>
+                                            </td>
+                                            <td class="px-3 py-2 text-xs text-muted-foreground" x-text="elem.type"></td>
+                                            <td class="px-3 py-2">
+                                                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-muted text-muted-foreground"
+                                                      x-text="elem.layer"></span>
+                                            </td>
+                                            <td class="px-3 py-2">
+                                                {# Decommission / low score flag #}
+                                                <template x-if="elem.context_flag === 'decommission'">
+                                                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-destructive/10 text-destructive border border-destructive/20"
+                                                          :title="'Lifecycle: ' + elem.lifecycle">&#9888; Decommission risk</span>
+                                                </template>
+                                                <template x-if="elem.context_flag === 'low_score'">
+                                                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-amber-500/10 text-amber-600 border border-amber-500/20">Low score</span>
+                                                </template>
+                                                <template x-if="!elem.context_flag && elem.other_solutions > 0">
+                                                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-sky-500/10 text-sky-600 border border-sky-500/20"
+                                                          :title="elem.other_solutions + ' other solution(s) reference this element'"
+                                                          x-text="'+' + elem.other_solutions + ' sol'"></span>
+                                                </template>
+                                                <template x-if="!elem.context_flag && !elem.other_solutions">
+                                                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">linked</span>
+                                                </template>
+                                            </td>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    {# Empty state #}
+                    <div x-show="!(sectionElements['{{ section_id }}'] || []).length" x-cloak
+                         class="rounded-lg border border-dashed border-border bg-muted/30 py-10 text-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 mx-auto text-muted-foreground/40 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg>
+                        <p class="text-sm text-muted-foreground mb-3">No elements linked to this viewpoint yet.</p>
+                        <div class="flex items-center justify-center gap-2">
+                            <button type="button"
+                                    @click="generateFromJourney('{{ section_id }}')"
+                                    class="inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z"/></svg>
+                                Generate from Journey
+                            </button>
+                            <button type="button"
+                                    @click="linkElements('{{ section_id }}')"
+                                    class="inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium border border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m9.86-2.02a4.5 4.5 0 00-1.242-7.244l-4.5-4.5a4.5 4.5 0 00-6.364 6.364L4.757 8.81"/></svg>
+                                Link Existing Elements
+                            </button>
+                        </div>
+                    </div>
+
+                    {# ── Section-specific reusable partials ── #}
+                    {% if section_id == 'data_information' %}
+                        {% include 'solutions/partials/_integration_flows.html' ignore missing %}
+                        {% include 'solutions/partials/_blueprint_integration_contracts.html' ignore missing %}
+                    {% endif %}
+
+                    {% if section_id == 'application_cooperation' %}
+                        {% include 'solutions/partials/_linked_applications_picker.html' ignore missing %}
+                        {% include 'solutions/partials/_solution_composition.html' ignore missing %}
+                        {% include 'solutions/partials/_blueprint_component_specs.html' ignore missing %}
+                    {% endif %}
+
+                    {% if section_id == 'deployment_view' %}
+                        {% include 'solutions/partials/_technology_elements.html' ignore missing %}
+                        {% include 'solutions/partials/_blueprint_deployment_specs.html' ignore missing %}
+                    {% endif %}
+
+                    {% if section_id == 'transition_roadmap' %}
+                        {{ gantt_timeline(endpoint='/solutions/' ~ solution.id ~ '/api/roadmap-tasks', container_id='blueprint-gantt', title='Transition Roadmap') }}
+                    {% endif %}
+
+                    {% if section_id == 'work_packages' %}
+                        {% include 'solutions/partials/_migration_investment.html' ignore missing %}
+                        {% include 'solutions/partials/_benefit_realization.html' ignore missing %}
+                        {% include 'solutions/partials/_lessons_learned.html' ignore missing %}
+                    {% endif %}
+
+                    {% if section_id == 'security_viewpoint' %}
+                        {% include 'solutions/partials/_risk_trending.html' ignore missing %}
+                    {% endif %}
+
+                    {% if section_id == 'nfr_satisfaction' %}
+                        {% include 'solutions/partials/_quality_sla.html' ignore missing %}
+                    {% endif %}
+                </div>
+            </div>
+        </section>
+        {% endfor %}
+
+        {# ════════════════════════════════════════════════════════════════ #}
+        {# SECTION 14 — Requirements Traceability Matrix                  #}
+        {# ════════════════════════════════════════════════════════════════ #}
+        <section id="requirements_traceability" data-bp-section data-section="requirements_traceability" class="bp-section mb-8">
+            <div class="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+                <div class="flex items-center justify-between px-5 py-3 border-b border-border bg-muted/30">
+                    <div class="flex items-center gap-2.5">
+                        {% set trace_score = scores.get('requirements_traceability', {}).get('overall', 0) if scores else 0 %}
+                        <span class="w-2.5 h-2.5 rounded-full shrink-0
+                            {% if trace_score >= 80 %}bg-emerald-500
+                            {% elif trace_score >= 40 %}bg-amber-500
+                            {% elif trace_score >= 1 %}bg-destructive
+                            {% else %}bg-muted-foreground/30
+                            {% endif %}"></span>
+                        <h2 class="text-sm font-semibold text-foreground">14. Requirements Traceability</h2>
+                    </div>
+                </div>
+                <div class="p-5">
+                    {# ── Guidance block ── #}
+                    <div class="mb-4 rounded-lg border border-border bg-muted/40 p-4 text-xs space-y-2.5">
+                        <div class="flex items-center gap-1.5 font-semibold text-foreground">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 shrink-0 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                            About this section
+                        </div>
+                        <p class="text-muted-foreground leading-relaxed"><strong class="text-foreground font-medium">What it is:</strong> A matrix that proves every stated requirement has been addressed by an architectural decision and can be verified by a test — and that nothing was forgotten. Traceability is the architecture team's accountability mechanism: it makes gaps visible rather than hidden, and it gives governance boards objective evidence that the design is complete before approving go-live. A solution with no traceability matrix has no systematic way to know what it has and has not addressed.</p>
+                        <p class="text-muted-foreground leading-relaxed"><strong class="text-foreground font-medium">What to include:</strong> For each requirement: a unique ID and a short statement of the requirement; the source of the requirement (a stakeholder, a regulation, a driver from Section 2, or an NFR from Section 13); the architectural element or decision that satisfies it (with a reference to which section of this blueprint contains that decision); the test case or acceptance criterion that verifies it has been implemented correctly; and the status (traced and tested / traced but not yet tested / untested gap / explicitly deferred with justification). The matrix should be exhaustive — every requirement in scope, including the ones that are difficult to trace.</p>
+                        <p class="text-muted-foreground leading-relaxed"><strong class="text-foreground font-medium">Who reads it and why:</strong> QA leads use it to ensure test coverage matches architectural intent — missing traces are missing tests. Governance boards use it at stage gates to confirm the design is complete before approving funding for the next phase. Compliance auditors use it to verify regulatory requirements have been addressed. Project sponsors use it to confirm that the original business drivers from Section 2 are actually satisfied by the architecture, not just mentioned in it. Traceability is the closing argument of the blueprint.</p>
+                        <p class="text-muted-foreground leading-relaxed"><strong class="text-foreground font-medium">What "good" looks like:</strong> Coverage is 100% — every requirement in scope has an entry, even requirements that are explicitly out of scope or deferred (those need a row with a clear status and justification, not omission). Every traced requirement has both an architectural decision reference AND a test reference — a requirement that is designed for but not tested is not satisfied. Gaps are explicitly flagged in red, not silently omitted. The matrix has been reviewed by a QA lead and a business analyst, not just the architect who wrote the blueprint.</p>
+                    </div>
+                    {# ── Narrative textarea — same pattern as other blueprint sections ── #}
+                    <div class="mb-5">
+                        <div class="flex items-center justify-between mb-1">
+                            <label class="flex items-center gap-1 text-xs font-medium text-foreground">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
+                                Section narrative
+                            </label>
+                            <button type="button"
+                                    @click="generateNarrative('requirements_traceability')"
+                                    :disabled="generatingNarrative['requirements_traceability']"
+                                    class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium bg-violet-500/10 text-violet-700 border border-violet-500/30 hover:bg-violet-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                                <template x-if="!generatingNarrative['requirements_traceability']">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                                </template>
+                                <template x-if="generatingNarrative['requirements_traceability']">
+                                    <svg class="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 22 6.477 22 12h-4z"></path></svg>
+                                </template>
+                                <span x-text="generatingNarrative['requirements_traceability'] ? 'Generating…' : 'Generate with AI'"></span>
+                            </button>
+                        </div>
+                        <textarea x-model="narratives.requirements_traceability"
+                                  @input.debounce.2000ms="autoSave('requirements_traceability')"
+                                  @blur="autoSave('requirements_traceability')"
+                                  @focus="narrativeSaving['requirements_traceability'] = narrativeSaving['requirements_traceability'] || 'idle'"
+                                  rows="4"
+                                  placeholder="Describe the traceability approach, coverage methodology, and any known requirement gaps…"
+                                  class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring hover:ring-1 hover:ring-ring/30 hover:border-ring/50 transition-colors resize-y"></textarea>
+                        <div class="flex items-center justify-end mt-1 h-4">
+                            <span x-show="narrativeSaving['requirements_traceability'] === 'saving'" x-cloak
+                                  class="text-[10px] text-muted-foreground flex items-center gap-1">
+                                <svg class="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 22 6.477 22 12h-4z"></path></svg>
+                                Saving…
+                            </span>
+                            <span x-show="narrativeSaving['requirements_traceability'] === 'saved'" x-cloak
+                                  class="text-[10px] text-emerald-600 font-medium">Saved</span>
+                        </div>
+                    </div>
+                    {# ── Traceability Sankey flow — lazy-loads on button click ── #}
+                    <div class="mt-4">
+                      <div class="flex items-center justify-between mb-3">
+                        <span class="text-xs font-medium text-foreground">Capability &#x2192; Architecture &#x2192; Code traceability</span>
+                        <button type="button"
+                                @click="window.dispatchEvent(new CustomEvent('load-sankey-{{ solution.id }}'))"
+                                class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium bg-sky-500/10 text-sky-700 border border-sky-500/30 hover:bg-sky-500/20 transition-colors">
+                          <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
+                          </svg>
+                          Load Flow
+                        </button>
+                      </div>
+                      <div x-ref="bpSankey">
+                        {% set sankey_solution_id = solution.id %}
+                        {% include 'solutions/partials/_traceability_sankey.html' %}
+                      </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        {# ════════════════════════════════════════════════════════════════ #}
+        {# SECTION 15 — Architecture Decision Records (GOV-02)           #}
+        {# ════════════════════════════════════════════════════════════════ #}
+        {% include 'solutions/partials/_blueprint_decisions.html' %}
+
+    </div>{# end left/center column #}
+
+    {# ── Right: Governance panel (280px, hidden below lg) ── #}
+    <aside class="hidden lg:block w-[280px] shrink-0 sticky top-[72px] max-h-[calc(100vh-88px)] overflow-y-auto bp-governance-panel">
+        {% include 'solutions/partials/_blueprint_governance.html' %}
+    </aside>
+
+</div>{# end flex container #}
+{% endblock %}
+
+{# ══════════════════════════════════════════════════════════════════════════ #}
+{# MODALS — rendered outside content to avoid overflow issues                #}
+{# ══════════════════════════════════════════════════════════════════════════ #}
+{% block modals %}
+{# ─── AI Copilot slide-out panel ─────────────────────────────────────── #}
+<div
+    x-data="blueprintChat()"
+    data-solution-id="{{ solution.id }}"
+    data-solution-name="{{ solution.name | e }}"
+    data-phase="{{ (solution.adm_phase or 'A') | e }}"
+    @blueprint-chat-toggle.window="toggle()"
+    x-cloak>
+
+    {# Backdrop #}
+    <div
+        x-show="open"
+        x-transition:enter="transition ease-out duration-200"
+        x-transition:enter-start="opacity-0"
+        x-transition:enter-end="opacity-100"
+        x-transition:leave="transition ease-in duration-150"
+        x-transition:leave-start="opacity-100"
+        x-transition:leave-end="opacity-0"
+        @click="toggle()"
+        class="fixed inset-0 bg-black/20 z-40"
+        style="display:none">
+    </div>
+
+    {# Slide-out panel #}
+    <aside
+        x-show="open"
+        x-transition:enter="transition ease-out duration-300"
+        x-transition:enter-start="translate-x-full"
+        x-transition:enter-end="translate-x-0"
+        x-transition:leave="transition ease-in duration-200"
+        x-transition:leave-start="translate-x-0"
+        x-transition:leave-end="translate-x-full"
+        class="fixed right-0 top-0 h-full w-[420px] bg-background border-l border-border
+               shadow-xl z-50 flex flex-col transform"
+        style="display:none">
+
+        {# Panel header #}
+        <div class="flex items-center justify-between px-4 py-3 border-b border-border/50">
+            <div class="flex items-center gap-2">
+                <span class="text-sm font-semibold text-foreground">AI Copilot</span>
+                <span class="text-xs text-muted-foreground truncate max-w-[160px]">{{ solution.name }}</span>
+            </div>
+            <div class="flex items-center gap-2">
+                {# Auto-execute toggle #}
+                <button
+                    @click="toggleAutoExecute()"
+                    :class="autoExecute
+                        ? 'bg-violet-500/10 text-violet-600 border-violet-500/30'
+                        : 'bg-muted text-muted-foreground border-border'"
+                    class="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium border transition-colors">
+                    <span x-text="autoExecute ? 'Auto ON' : 'Approve each'"></span>
+                </button>
+                <button @click="toggle()" class="text-muted-foreground/60 hover:text-muted-foreground p-1 rounded">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        {# Message thread #}
+        <div x-ref="chatThread" class="flex-1 overflow-y-auto p-4 space-y-3 text-sm">
+            <template x-if="messages.length === 0">
+                <p class="text-muted-foreground/60 text-xs text-center mt-8 px-4">
+                    Ask me to add drivers, goals, link applications, run the inference engine, and more.
+                </p>
+            </template>
+
+            <template x-for="(msg, idx) in messages" :key="idx">
+                <div>
+                    {# User message #}
+                    <template x-if="msg.role === 'user'">
+                        <div class="flex justify-end">
+                            <div class="bg-violet-500 text-primary-foreground rounded-xl rounded-tr-sm px-3 py-2 max-w-[85%] text-xs">
+                                <span x-text="msg.text"></span>
+                            </div>
+                        </div>
+                    </template>
+
+                    {# Assistant message #}
+                    <template x-if="msg.role === 'assistant'">
+                        <div class="flex gap-2">
+                            <div class="w-6 h-6 rounded-full bg-violet-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                                <span class="text-violet-600 text-xs font-semibold">AI</span>
+                            </div>
+                            <div class="bg-muted/30 border border-border/50 rounded-xl rounded-tl-sm px-3 py-2 max-w-[85%] text-xs text-foreground">
+                                <span x-text="msg.text"></span>
+                                <span x-show="msg.streaming"
+                                      class="inline-block w-0.5 h-3 bg-muted/50 ml-0.5 align-middle animate-pulse"></span>
+                            </div>
+                        </div>
+                    </template>
+
+                    {# Action cards #}
+                    <template x-if="msg.role === 'actions'">
+                        <div class="space-y-1">
+                            <template x-for="(action, ai) in msg.actions" :key="ai">
+                                <div
+                                    :class="action.undone ? 'opacity-50' : ''"
+                                    class="flex items-center justify-between border-l-2 border-green-400 bg-emerald-500/5 rounded-r px-3 py-1.5">
+                                    <span class="text-xs text-emerald-700 flex items-center gap-1.5">
+                                        <template x-if="!action.undone"><span>✓</span></template>
+                                        <template x-if="action.undone"><span>↩ Undone</span></template>
+                                        <span x-text="action.message || action.tool"></span>
+                                    </span>
+                                    <template x-if="!action.undone && !action.undoExpired && action.result && action.result.id">
+                                        <button
+                                            @click="undoAction(action)"
+                                            class="text-xs text-muted-foreground/60 hover:text-destructive ml-2 flex-shrink-0">
+                                            Undo
+                                        </button>
+                                    </template>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+
+                    {# Approval cards #}
+                    <template x-if="msg.role === 'approvals'">
+                        <div class="space-y-1">
+                            <template x-for="(approval, api) in msg.approvals" :key="api">
+                                <div
+                                    x-show="!approval.dismissed"
+                                    class="border-l-2 border-amber-400 bg-amber-50 rounded-r px-3 py-2">
+                                    <p class="text-xs text-amber-700 mb-1.5">
+                                        ⏳ <span x-text="approval.summary"></span>
+                                    </p>
+                                    <div class="flex gap-2">
+                                        <button
+                                            @click="approveAction(approval)"
+                                            class="px-2 py-1 bg-amber-500 text-primary-foreground rounded text-xs hover:bg-amber-600">
+                                            Approve
+                                        </button>
+                                        <button
+                                            @click="dismissApproval(approval)"
+                                            class="px-2 py-1 bg-muted text-muted-foreground rounded text-xs hover:bg-muted">
+                                            Dismiss
+                                        </button>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+
+                    {# Error #}
+                    <template x-if="msg.role === 'error'">
+                        <div class="text-xs text-destructive bg-destructive/5 border border-red-100 rounded px-3 py-2">
+                            <span x-text="msg.text"></span>
+                        </div>
+                    </template>
+
+                    {# Tool thinking card — shown while agent executes a tool #}
+                    <template x-if="msg.role === 'tool_thinking'">
+                        <div class="flex gap-2 items-center">
+                            <div class="w-6 h-6 rounded-full bg-violet-100 flex items-center justify-center flex-shrink-0">
+                                <span class="text-violet-600 text-xs font-semibold">AI</span>
+                            </div>
+                            <div class="flex items-center gap-1.5 text-xs text-muted-foreground/60 bg-muted/30 border border-border/50 rounded-xl rounded-tl-sm px-3 py-1.5">
+                                <svg class="w-3 h-3 animate-spin text-violet-400" fill="none" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                                </svg>
+                                <span>Calling <span x-text="msg.tool" class="font-mono text-violet-500"></span>…</span>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </template>
+
+            {# Loading indicator #}
+            <template x-if="loading">
+                <div class="flex gap-2">
+                    <div class="w-6 h-6 rounded-full bg-violet-100 flex items-center justify-center flex-shrink-0">
+                        <span class="text-violet-600 text-xs font-semibold">AI</span>
+                    </div>
+                    <div class="bg-muted/30 border border-border/50 rounded-xl rounded-tl-sm px-3 py-2 text-xs text-muted-foreground/60">
+                        Thinking…
+                    </div>
+                </div>
+            </template>
+        </div>
+
+        {# Input area #}
+        <div class="border-t border-border/50 p-3">
+            <div class="flex gap-2">
+                <textarea
+                    x-ref="chatInput"
+                    x-model="inputText"
+                    @keydown="handleKeydown($event)"
+                    placeholder="Add a driver, link an app, run inference…"
+                    rows="2"
+                    class="flex-1 resize-none rounded-lg border border-border px-3 py-2 text-xs
+                           focus:outline-none focus:ring-1 focus:ring-violet-400">
+                </textarea>
+                <button
+                    @click="sendMessage()"
+                    :disabled="loading || !inputText.trim()"
+                    class="px-3 py-2 bg-violet-500 text-primary-foreground rounded-lg text-xs font-medium
+                           hover:bg-violet-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                    Send
+                </button>
+            </div>
+            <p class="text-foreground/70 text-xs mt-1">Enter to send · Shift+Enter for newline</p>
+        </div>
+    </aside>
+</div>
+
+{# Load blueprint chat component #}
+<script src="{{ url_for('static', filename='js/blueprint_chat.js') }}?v=2"></script>
+
+{# ─── AI Diagram Context Menu ─────────────────────────────────────────── #}
+<div x-data="diagramContextMenu()"
+     x-show="visible" x-cloak
+     :style="`position: fixed; left: ${x}px; top: ${y}px; z-index: 9999;`"
+     @click.stop
+     class="bg-background border border-border rounded-lg shadow-xl py-1 min-w-[220px]">
+    <p class="px-3 py-1 text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wide border-b border-border/50 mb-1"
+       x-text="element ? element.elementName : ''"></p>
+    <template x-for="action in actions()" :key="action.label">
+        <button @click="selectAction(action)"
+                class="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-foreground
+                       hover:bg-violet-50 hover:text-violet-700 transition-colors text-left">
+            <span x-text="action.icon" class="text-base leading-none"></span>
+            <span x-text="action.label" class="text-xs"></span>
+        </button>
+    </template>
+</div>
+
+{# Universal Add Entity Modal — event-driven (bp-add-entity dispatched by blueprintPage.openAdd) #}
+<!-- modal-a11y-ok -->
+<div x-data="entityAddModal()"
+     x-show="modal.open" x-cloak
+     @bp-add-entity.window="openFor($event.detail)"
+     @keydown.escape.window="modal.open = false"
+     class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+    <div class="bg-background border border-border rounded-xl shadow-2xl w-full max-w-lg mx-4" @click.stop>
+        <div class="flex items-center justify-between px-6 py-4 border-b border-border">
+            <h3 class="text-base font-semibold text-foreground" x-text="modal.title"></h3>
+            <button @click="modal.open = false" class="text-muted-foreground hover:text-foreground" aria-label="Close">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+        <div class="px-6 py-4 space-y-4">
+            <template x-for="field in modal.fields" :key="field.key">
+                <div>
+                    <label class="block text-xs font-medium text-muted-foreground mb-1.5" x-text="field.label + (field.required ? ' *' : '')"></label>
+                    <template x-if="field.type === 'textarea'">
+                        <textarea x-model="form[field.key]" rows="3"
+                                  class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-none"
+                                  :placeholder="'Enter ' + field.label.toLowerCase()"></textarea>
+                    </template>
+                    <template x-if="field.type === 'select'">
+                        <select x-model="form[field.key]"
+                                class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring">
+                            <option value="">Select...</option>
+                            <template x-for="opt in field.options" :key="typeof opt === 'object' ? opt.v : opt">
+                                <option :value="typeof opt === 'object' ? opt.v : opt"
+                                        x-text="typeof opt === 'object' ? opt.l : opt.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())"></option>
+                            </template>
+                        </select>
+                    </template>
+                    <template x-if="field.type === 'date'">
+                        <input type="date" x-model="form[field.key]"
+                               class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring">
+                    </template>
+                    <template x-if="!field.type || field.type === 'text'">
+                        <input type="text" x-model="form[field.key]"
+                               class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                               :placeholder="'Enter ' + field.label.toLowerCase()"
+                               :required="field.required">
+                    </template>
+                </div>
+            </template>
+            <p x-show="modal.error" x-cloak class="text-xs text-red-400" x-text="modal.error"></p>
+        </div>
+        <div class="flex items-center justify-end gap-2 px-6 py-4 border-t border-border">
+            <button @click="modal.open = false"
+                    class="px-3 py-1.5 text-xs font-medium rounded-md border border-input text-foreground hover:bg-accent transition-colors">Cancel</button>
+            <button @click="saveEntity()" :disabled="modal.saving"
+                    class="px-3 py-1.5 text-xs font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors">
+                <span x-show="!modal.saving" x-text="'Add ' + modal.title.replace('Add ', '')"></span>
+                <span x-show="modal.saving" x-cloak>Saving...</span>
+            </button>
+        </div>
+    </div>
+</div>
+<script>
+function entityAddModal() {
+    return {
+        modal: { open: false, title: '', entity: '', fields: [], saving: false, error: '' },
+        form: {},
+        _sid: 0,
+        _csrf: '',
+        _types: {},
+
+        openFor: function (detail) {
+            let self = this;
+            self._sid = detail.solutionId;
+            self._csrf = detail.csrfToken;
+            self._types = detail.entityTypes || {};
+            let cfg = self._types[detail.entityType];
+            if (!cfg) return;
+            self.form = {};
+            cfg.fields.forEach(function (f) { self.form[f.key] = ''; });
+            self.modal = { open: true, title: 'Add ' + cfg.label, entity: detail.entityType, fields: cfg.fields, saving: false, error: '' };
+        },
+
+        saveEntity: function () {
+            let self = this;
+            let cfg = self._types[self.modal.entity];
+            if (!cfg) return;
+            if (!self.form.name || !self.form.name.trim()) { self.modal.error = 'Name is required'; return; }
+            self.modal.saving = true;
+            self.modal.error = '';
+            fetch('/solutions/' + self._sid + cfg.path, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': self._csrf },
+                body: JSON.stringify(self.form)
+            })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                if (d.success === false) { self.modal.error = d.error || d.message || 'Save failed'; return; }
+                self.modal.open = false;
+                window.location.reload();
+            })
+            .catch(function (e) { self.modal.error = e.message || 'Save failed'; })
+            .finally(function () { self.modal.saving = false; });
+        }
+    };
+}
+</script>
+
+{# GOV-02 — Architecture Decision Records modals + Alpine component #}
+{% include 'solutions/partials/_blueprint_decisions_modals.html' %}
+
+{# ── Codegen Modal ────────────────────────────────────────────────────── #}
+<!-- modal-a11y-ok: uses $store.modal registry with fixed inset-0 overlay -->
+<div data-modal-key="bp-codegen-modal"
+     x-data="codegenModal()"
+     x-init="$store.modal.register('bp-codegen-modal')"
+     x-show="$store.modal.isOpen('bp-codegen-modal')" x-cloak
+     @bp-codegen-open.window="openFor($event.detail.sectionId); $store.modal.open('bp-codegen-modal')"
+     @keydown.escape.window="open = false; $store.modal.close('bp-codegen-modal')"
+     class="fixed inset-0 z-50 flex items-center justify-center">
+
+    <div class="absolute inset-0 bg-background/80 backdrop-blur-sm" @click="open = false; $store.modal.close('bp-codegen-modal')"></div>
+
+    <div class="relative w-full max-w-3xl mx-4 rounded-xl border border-border bg-card shadow-xl flex flex-col max-h-[85vh]">
+
+        {# Header #}
+        <div class="flex items-center justify-between px-5 py-4 border-b border-border flex-shrink-0">
+            <div>
+                <h3 class="text-sm font-semibold text-foreground flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
+                    Code Generation
+                </h3>
+                <p class="text-xs text-muted-foreground mt-0.5" x-text="sectionLabel"></p>
+            </div>
+            <button @click="open = false; $store.modal.close('bp-codegen-modal')" class="text-muted-foreground hover:text-foreground transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+
+        {# Target selector #}
+        <div class="px-5 py-3 border-b border-border flex-shrink-0">
+            <div class="flex items-center gap-2 flex-wrap">
+                <span class="text-xs text-muted-foreground mr-1">Generate:</span>
+                <template x-for="t in availableTargets" :key="t.value">
+                    <button type="button"
+                            @click="selectedTarget = t.value"
+                            :class="selectedTarget === t.value
+                                ? 'bg-emerald-500/15 text-emerald-700 border-emerald-500/40'
+                                : 'bg-muted text-muted-foreground border-border hover:text-foreground'"
+                            class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium border transition-colors"
+                            x-text="t.label">
+                    </button>
+                </template>
+            </div>
+        </div>
+
+        {# Code output area #}
+        <div class="flex-1 overflow-y-auto px-5 py-4">
+
+            {# Error state #}
+            <div x-show="!loading && errorMsg" class="py-8 text-center">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 mx-auto text-destructive/60 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                <p class="text-sm font-medium text-destructive mb-1">Generation failed</p>
+                <p class="text-xs text-muted-foreground max-w-sm mx-auto" x-text="errorMsg"></p>
+            </div>
+
+            {# Idle state #}
+            <div x-show="!loading && !code && !errorMsg" class="py-12 text-center">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 mx-auto text-muted-foreground/30 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
+                <p class="text-sm text-muted-foreground">Select a target and click Generate</p>
+                <p class="text-xs text-muted-foreground/60 mt-1">Uses your linked ArchiMate elements as context</p>
+            </div>
+
+            {# Loading state #}
+            <div x-show="loading" class="py-12 text-center">
+                <svg class="animate-spin h-8 w-8 mx-auto text-emerald-600 mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                <p class="text-sm text-muted-foreground">Generating — this may take 15-30 seconds…</p>
+            </div>
+
+            {# Code output #}
+            <div x-show="!loading && code">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-xs font-medium text-muted-foreground" x-text="filename"></span>
+                    <button type="button" @click="copyCode()"
+                            class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border border-border text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+                        <span x-text="copied ? 'Copied!' : 'Copy'"></span>
+                    </button>
+                </div>
+                <pre class="rounded-lg bg-muted/60 border border-border p-4 text-xs font-mono overflow-x-auto whitespace-pre leading-relaxed max-h-[400px] overflow-y-auto"
+                     x-text="code"></pre>
+            </div>
+
+        </div>
+
+        {# Footer #}
+        <div class="flex items-center justify-between px-5 py-3 border-t border-border flex-shrink-0">
+            <p class="text-xs text-muted-foreground" x-show="elementCount > 0"
+               x-text="elementCount + ' element' + (elementCount === 1 ? '' : 's') + ' used as context'"></p>
+            <p class="text-xs text-muted-foreground" x-show="elementCount === 0">No elements linked — generation uses solution description only</p>
+            <div class="flex gap-2">
+                <button @click="open = false"
+                        class="px-3 py-1.5 text-xs font-medium text-foreground bg-muted hover:bg-muted/70 rounded-md transition-colors">
+                    Close
+                </button>
+                <button type="button" @click="generate()"
+                        :disabled="loading"
+                        class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-emerald-600 text-primary-foreground hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                    <svg x-show="!loading" xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                    <span x-text="loading ? 'Generating…' : 'Generate'"></span>
+                </button>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script>
+const _CODEGEN_TARGETS = {
+    'deployment_view':        [{value:'terraform', label:'Terraform (IaC)'}, {value:'helm', label:'Helm Chart'}],
+    'application_cooperation':[{value:'openapi',   label:'OpenAPI Spec'},    {value:'api_stub', label:'API Stub (Python)'}],
+    'network_communication':  [{value:'terraform', label:'Terraform (Networking)'}],
+    'work_packages':          [{value:'cicd',      label:'GitHub Actions CI/CD'}],
+    'security_viewpoint':     [{value:'security_policy', label:'Security Policy (Terraform)'}],
+    'nfr_satisfaction':       [{value:'openapi',   label:'OpenAPI Spec'}],
+};
+const _CODEGEN_LABELS = {
+    'deployment_view': 'Deployment View',
+    'application_cooperation': 'Application Cooperation',
+    'network_communication': 'Network & Communication',
+    'work_packages': 'Work Packages',
+    'security_viewpoint': 'Security Viewpoint',
+    'nfr_satisfaction': 'NFR Satisfaction',
+};
+function codegenModal() {
+    return {
+        open: false,
+        sectionId: '',
+        sectionLabel: '',
+        availableTargets: [],
+        selectedTarget: '',
+        loading: false,
+        code: '',
+        filename: '',
+        elementCount: 0,
+        copied: false,
+        errorMsg: '',
+
+        openFor(sectionId) {
+            this.sectionId = sectionId;
+            this.sectionLabel = _CODEGEN_LABELS[sectionId] || sectionId;
+            this.availableTargets = _CODEGEN_TARGETS[sectionId] || [];
+            this.selectedTarget = (this.availableTargets[0] || {}).value || '';
+            this.code = '';
+            this.filename = '';
+            this.elementCount = 0;
+            this.errorMsg = '';
+            this.open = true;
+        },
+
+        async generate() {
+            if (!this.selectedTarget || this.loading) return;
+            let self = this;
+            self.loading = true;
+            self.code = '';
+            self.errorMsg = '';
+            const sid = (window.__BLUEPRINT_CONFIG__ || {}).solutionId;
+            const csrf = (window.__BLUEPRINT_CONFIG__ || {}).csrfToken;
+            try {
+                const r = await fetch('/solutions/' + sid + '/api/blueprint/' + self.sectionId + '/codegen', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrf},
+                    body: JSON.stringify({target: self.selectedTarget})
+                });
+                const text = await r.text();
+                let data;
+                try { data = JSON.parse(text); } catch(_) {
+                    // Non-JSON response (nginx 502/503/504 HTML page)
+                    throw new Error('Server error (' + r.status + '). The LLM service may be unavailable or timed out. Check Admin \u2192 API Settings to verify an LLM API key is configured.');
+                }
+                if (!r.ok || !data.success) throw new Error(data.error || 'Generation failed (status ' + r.status + ')');
+                if (!data.code || !data.code.trim()) throw new Error('LLM returned an empty response. Please try again.');
+                self.code = data.code;
+                self.filename = data.filename;
+                self.elementCount = data.element_count || 0;
+                if (window.Platform && Platform.toast) Platform.toast.success('Code generated: ' + data.filename);
+            } catch(e) {
+                self.errorMsg = e.message || 'Generation failed';
+                if (window.Platform && Platform.toast) Platform.toast.error(self.errorMsg);
+                console.error('[codegen]', e);
+            } finally {
+                self.loading = false;
+            }
+        },
+
+        copyCode() {
+            let self = this;
+            if (!self.code) return;
+            navigator.clipboard.writeText(self.code).then(function() {
+                self.copied = true;
+                setTimeout(function(){ self.copied = false; }, 2000);
+            });
+        }
+    };
+}
+</script>
+
+{# ── Link Elements Picker ─────────────────────────────────────────────── #}
+<!-- modal-a11y-ok: uses $store.modal registry with fixed inset-0 overlay -->
+<div data-modal-key="bp-link-modal"
+     x-data="linkElementsPicker()"
+     x-init="$store.modal.register('bp-link-modal')"
+     x-show="$store.modal.isOpen('bp-link-modal')" x-cloak
+     @bp-link-open.window="openFor($event.detail.sectionId); $store.modal.open('bp-link-modal')"
+     @keydown.escape.window="open = false; $store.modal.close('bp-link-modal')"
+     class="fixed inset-0 z-50 flex items-center justify-center">
+
+    {# Backdrop #}
+    <div class="absolute inset-0 bg-background/80 backdrop-blur-sm" @click="open = false; $store.modal.close('bp-link-modal')"></div>
+
+    {# Dialog #}
+    <div class="relative w-full max-w-2xl mx-4 rounded-xl border border-border bg-card shadow-xl flex flex-col max-h-[80vh]">
+
+        {# Header #}
+        <div class="flex items-center justify-between px-5 py-4 border-b border-border flex-shrink-0">
+            <div>
+                <h3 class="text-sm font-semibold text-foreground">Link Elements</h3>
+                <p class="text-xs text-muted-foreground mt-0.5" x-text="sectionName"></p>
+            </div>
+            <button @click="open = false; $store.modal.close('bp-link-modal')" class="text-muted-foreground hover:text-foreground transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+
+        {# Type pills (expected types for this section) #}
+        <div class="px-5 pt-3 pb-0 flex-shrink-0" x-show="typesForSection.length">
+            <div class="flex flex-wrap gap-1.5">
+                <span class="text-xs text-muted-foreground mr-1 self-center">Filtering by:</span>
+                <template x-for="t in typesForSection" :key="t">
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-violet-500/10 text-violet-600 border border-violet-500/30" x-text="t"></span>
+                </template>
+            </div>
+        </div>
+
+        {# Search input #}
+        <div class="px-5 py-3 flex-shrink-0">
+            <div class="relative">
+                <svg class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                <input x-ref="searchInput"
+                       x-model="query"
+                       @input="debouncedSearch()"
+                       type="text"
+                       placeholder="Search elements by name…"
+                       class="w-full pl-9 pr-4 py-2 text-sm bg-background border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-violet-500/50 placeholder:text-muted-foreground">
+                <div x-show="loading" class="absolute right-3 top-1/2 -translate-y-1/2">
+                    <svg class="animate-spin h-4 w-4 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                </div>
+            </div>
+        </div>
+
+        {# Results list #}
+        <div class="flex-1 overflow-y-auto px-5 pb-4 space-y-1">
+
+            {# Empty state — no search yet #}
+            <div x-show="!loading && results.length === 0 && !query.trim()" class="py-8 text-center">
+                <svg class="mx-auto h-8 w-8 text-muted-foreground/40 mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                <p class="text-sm text-muted-foreground">Type to search ArchiMate elements</p>
+                <p class="text-xs text-muted-foreground/60 mt-1">Showing types relevant to this viewpoint section</p>
+            </div>
+
+            {# Empty state — searched, no results #}
+            <div x-show="!loading && results.length === 0 && query.trim()" class="py-8 text-center">
+                <p class="text-sm text-muted-foreground">No elements found for "<span x-text="query" class="font-medium"></span>"</p>
+            </div>
+
+            {# Results #}
+            <template x-for="el in results" :key="el.id">
+                <div class="group flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer"
+                     @click="toggleLink(el)">
+
+                    {# Layer indicator dot #}
+                    <div class="flex-shrink-0 w-2 h-2 rounded-full mt-0.5"
+                         :class="{
+                             'bg-amber-500': el.layer === 'business',
+                             'bg-primary': el.layer === 'application',
+                             'bg-emerald-500': el.layer === 'technology',
+                             'bg-violet-500': el.layer === 'motivation' || el.layer === 'strategy',
+                             'bg-orange-500': el.layer === 'implementation',
+                             'bg-slate-400': !el.layer || (el.layer !== 'business' && el.layer !== 'application' && el.layer !== 'technology' && el.layer !== 'motivation' && el.layer !== 'strategy' && el.layer !== 'implementation')
+                         }"></div>
+
+                    {# Element info #}
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2">
+                            <span class="text-sm font-medium text-foreground truncate" x-text="el.name"></span>
+                            <span class="flex-shrink-0 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground" x-text="el.type"></span>
+                        </div>
+                        <p x-show="el.description" class="text-xs text-muted-foreground truncate mt-0.5" x-text="el.description"></p>
+                    </div>
+
+                    {# Link/Unlink button #}
+                    <div class="flex-shrink-0">
+                        <template x-if="isLinked(el.id)">
+                            <div class="flex items-center gap-1.5 text-xs font-medium text-emerald-600">
+                                <svg class="h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                                <span>Linked</span>
+                            </div>
+                        </template>
+                        <template x-if="!isLinked(el.id)">
+                            <div class="flex items-center gap-1.5 text-xs font-medium text-muted-foreground group-hover:text-violet-600 transition-colors">
+                                <svg class="h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+                                <span>Link</span>
+                            </div>
+                        </template>
+                    </div>
+
+                </div>
+            </template>
+        </div>
+
+        {# Footer #}
+        <div class="flex items-center justify-between px-5 py-3 border-t border-border flex-shrink-0">
+            <p class="text-xs text-muted-foreground">
+                <span x-show="results.length > 0" x-text="`${results.length} result${results.length === 1 ? '' : 's'}`"></span>
+                <span x-show="linkedCount > 0" x-text="` · ${linkedCount} linked`"></span>
+            </p>
+            <button @click="open = false"
+                    class="px-3 py-1.5 text-xs font-medium text-foreground bg-muted hover:bg-muted/70 rounded-md transition-colors">
+                Done
+            </button>
+        </div>
+
+    </div>
+</div>
+
+<script>
+function linkElementsPicker() {
+    return {
+        open: false,
+        sectionId: '',
+        sectionName: '',
+        query: '',
+        results: [],
+        linked: [],   // element IDs already linked to this solution (via SolutionArchiMateElement)
+        loading: false,
+        _searchTimer: null,
+
+        get typesForSection() {
+            const defs = window.__BLUEPRINT_CONFIG__?.sectionDefinitions || {};
+            return (defs[this.sectionId] || {}).required_types || [];
+        },
+
+        get linkedCount() {
+            return this.linked.length;
+        },
+
+        openFor(sectionId) {
+            this.sectionId = sectionId;
+            const defs = window.__BLUEPRINT_CONFIG__?.sectionDefinitions || {};
+            this.sectionName = (defs[sectionId] || {}).name || sectionId;
+            this.query = '';
+            this.results = [];
+            this.open = true;
+            this.loadLinked();
+            this.$nextTick(() => {
+                if (this.$refs.searchInput) {
+                    this.$refs.searchInput.focus();
+                    // Auto-run search to show section-relevant elements immediately
+                    this.search();
+                }
+            });
+        },
+
+        async loadLinked() {
+            const sid = window.__BLUEPRINT_CONFIG__?.solutionId;
+            try {
+                const res = await fetch(`/api/solutions/${sid}/archimate-elements`);
+                const json = await res.json();
+                const all = Object.values(json.elements_by_layer || {}).flat();
+                this.linked = all.map(e => e.id);
+            } catch (err) {
+                console.error('linkElementsPicker: failed to load linked elements', err);
+            }
+        },
+
+        debouncedSearch() {
+            clearTimeout(this._searchTimer);
+            this._searchTimer = setTimeout(() => this.search(), 280);
+        },
+
+        async search() {
+            const types = this.typesForSection;
+            const params = new URLSearchParams({ limit: 25 });
+            if (this.query.trim()) params.set('q', this.query.trim());
+            if (types.length) params.set('types', types.join(','));
+            this.loading = true;
+            try {
+                const res = await fetch(`/api/solutions/archimate/search?${params}`);
+                const json = await res.json();
+                this.results = json.data || json.elements || [];
+            } catch (err) {
+                console.error('linkElementsPicker: search failed', err);
+                this.results = [];
+            } finally {
+                this.loading = false;
+            }
+        },
+
+        isLinked(elementId) {
+            return this.linked.includes(elementId);
+        },
+
+        async toggleLink(element) {
+            const sid = window.__BLUEPRINT_CONFIG__?.solutionId;
+            const csrf = window.__BLUEPRINT_CONFIG__?.csrfToken;
+            const headers = { 'X-CSRFToken': csrf };
+
+            if (this.isLinked(element.id)) {
+                try {
+                    await fetch(`/api/solutions/${sid}/archimate-elements/${element.id}`, {
+                        method: 'DELETE', headers
+                    });
+                    this.linked = this.linked.filter(id => id !== element.id);
+                } catch (err) {
+                    console.error('linkElementsPicker: unlink failed', err);
+                }
+            } else {
+                try {
+                    const res = await fetch(`/api/solutions/${sid}/archimate-elements/link`, {
+                        method: 'POST',
+                        headers: { ...headers, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ archimate_element_id: element.id })
+                    });
+                    if (res.ok || res.status === 409) {
+                        this.linked.push(element.id);
+                    }
+                } catch (err) {
+                    console.error('linkElementsPicker: link failed', err);
+                }
+            }
+            // Ask the blueprint page to reload this section's element list
+            window.dispatchEvent(new CustomEvent('bp-section-reload', {
+                detail: { sectionId: this.sectionId }
+            }));
+        },
+    };
+}
+</script>
+
+{# ── Save as Template modal ── #}
+<!-- modal-a11y-ok -->
+<div id="save-as-template-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50" role="dialog" aria-modal="true" aria-labelledby="sat-modal-title">
+  <div class="w-full max-w-md rounded-xl bg-background p-6 shadow-xl border border-border mx-4">
+    <div class="flex items-center justify-between mb-4">
+      <h2 id="sat-modal-title" class="text-base font-semibold text-foreground">Save as Template</h2>
+      <button type="button" data-dismiss-modal="save-as-template-modal" class="text-muted-foreground hover:text-foreground" aria-label="Close">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <p class="text-xs text-muted-foreground mb-4 leading-relaxed">Save this solution's drivers, goals, requirements, constraints, principles, and risks as a reusable template. Other architects can create new solutions pre-populated with this structure.</p>
+    <form id="save-as-template-form">
+      <div class="mb-4">
+        <label for="sat-name" class="block text-xs font-medium text-foreground mb-1.5">Template name</label>
+        <input id="sat-name" type="text" value="{{ solution.name }}" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" required>
+      </div>
+      <div class="mb-4">
+        <label for="sat-domain" class="block text-xs font-medium text-foreground mb-1.5">Domain <span class="text-muted-foreground font-normal">(optional)</span></label>
+        <input id="sat-domain" type="text" value="{{ solution.business_domain or '' }}" placeholder="e.g. Platform Engineering, Integration, Data &amp; Analytics" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+      </div>
+      <div class="flex justify-end gap-2 mt-5">
+        <button type="button" data-dismiss-modal="save-as-template-modal" class="rounded-md border border-input px-4 py-2 text-sm text-muted-foreground hover:text-foreground">Cancel</button>
+        <button type="submit" class="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">Save Template</button>
+      </div>
+    </form>
+    <div id="sat-status" class="hidden mt-3 text-sm"></div>
+  </div>
+</div>
+<script>
+document.getElementById('save-as-template-form')?.addEventListener('submit', async function(e) {
+  e.preventDefault();
+  const name = document.getElementById('sat-name').value.trim();
+  const domain = document.getElementById('sat-domain').value.trim();
+  const status = document.getElementById('sat-status');
+  status.textContent = 'Saving\u2026';
+  status.className = 'mt-3 text-sm text-muted-foreground';
+  status.classList.remove('hidden');
+  try {
+    const resp = await fetch('/solutions/{{ solution.id }}/save-as-template', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+      body: JSON.stringify({ name, domain })
+    });
+    const data = await resp.json();
+    if (data.success) {
+      status.textContent = 'Template saved. It is now available in \u201cNew from Template\u201d.';
+      status.className = 'mt-3 text-sm text-emerald-600';
+      setTimeout(function() { document.getElementById('save-as-template-modal').classList.add('hidden'); }, 2000);
+    } else {
+      status.textContent = 'Error: ' + (data.error || 'Unknown error');
+      status.className = 'mt-3 text-sm text-destructive';
+    }
+  } catch(err) {
+    status.textContent = 'Request failed. Please try again.';
+    status.className = 'mt-3 text-sm text-destructive';
+  }
+});
+
+// CSP-safe: dismiss modal buttons
+document.addEventListener('click', function(e) {
+  let btn = e.target.closest('[data-dismiss-modal]');
+  if (!btn) return;
+  let modal = document.getElementById(btn.dataset.dismissModal);
+  if (modal) modal.classList.add('hidden');
+});
+</script>
+
+{# ── ArchiMate Picker Modal (SOL-1) ── #}
+<div x-data="{
+    open: false,
+    query: '',
+    results: [],
+    loading: false,
+    error: '',
+    linkEndpoint: '',
+    _timer: null,
+    init() {
+        window.addEventListener('open-archimate-picker', (e) => {
+            this.linkEndpoint = e.detail.linkEndpoint || '';
+            this.query = '';
+            this.results = [];
+            this.error = '';
+            this.open = true;
+            this.$nextTick(() => { const inp = this.$el.querySelector('input[type=search]'); if (inp) inp.focus(); });
+        });
+    },
+    async search() {
+        if (this.query.length < 2) { this.results = []; return; }
+        if (this._timer) clearTimeout(this._timer);
+        this._timer = setTimeout(async () => {
+            this.loading = true;
+            this.error = '';
+            try {
+                const resp = await fetch('/archimate/api/elements/search?q=' + encodeURIComponent(this.query) + '&limit=20');
+                const json = await resp.json();
+                this.results = json.data || json.results || [];
+            } catch (e) {
+                this.error = 'Search unavailable';
+                this.results = [];
+            }
+            this.loading = false;
+        }, 300);
+    },
+    async select(element) {
+        if (!this.linkEndpoint) { this.open = false; return; }
+        const meta = document.querySelector('meta[name=csrf-token]');
+        const csrf = meta ? meta.content : '';
+        try {
+            const resp = await fetch(this.linkEndpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
+                body: JSON.stringify({ element_id: element.id, layer: element.layer || element.layer_name || '' })
+            });
+            if (resp.ok || resp.status === 409) {
+                this.open = false;
+                window.location.reload();
+            } else {
+                this.error = 'Failed to link element (' + resp.status + ')';
+            }
+        } catch (e) {
+            this.error = 'Network error';
+        }
+    }
+}"
+    x-show="open" x-cloak
+    @keydown.escape.window="open = false"
+    class="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 p-4">
+    <div class="bg-card rounded-xl border border-border shadow-2xl w-full max-w-md" @click.away="open = false">
+        <div class="flex items-center justify-between px-5 py-4 border-b border-border">
+            <h2 class="text-sm font-semibold text-foreground">Add ArchiMate Element</h2>
+            <button @click="open = false" class="text-muted-foreground hover:text-foreground" aria-label="Close">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+        <div class="p-4 space-y-3">
+            <input type="search" x-model="query" @input="search()" placeholder="Search elements…"
+                   class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"/>
+            <div x-show="error" x-text="error" class="text-xs text-destructive" x-cloak></div>
+            <div x-show="loading" x-cloak class="text-xs text-muted-foreground flex items-center gap-2">
+                <span class="animate-spin h-3 w-3 border-2 border-current border-t-transparent rounded-full inline-block"></span> Searching…
+            </div>
+            <div x-show="results.length > 0 && !loading" class="max-h-64 overflow-y-auto rounded-lg border border-border divide-y divide-border">
+                <template x-for="elem in results" :key="elem.id">
+                    <button type="button" @click="select(elem)"
+                            class="w-full flex items-start gap-3 px-4 py-2.5 hover:bg-muted/50 text-left transition-colors">
+                        <div class="flex-1 min-w-0">
+                            <p class="text-sm font-medium text-foreground truncate" x-text="elem.name"></p>
+                            <p class="text-xs text-muted-foreground" x-text="(elem.type || '') + (elem.layer ? ' · ' + elem.layer : '')"></p>
+                        </div>
+                    </button>
+                </template>
+            </div>
+            <div x-show="query.length >= 2 && results.length === 0 && !loading && !error" x-cloak
+                 class="text-xs text-muted-foreground text-center py-4">No elements found</div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{# ══════════════════════════════════════════════════════════════════════════ #}
+{# SCRIPTS                                                                    #}
+{# ══════════════════════════════════════════════════════════════════════════ #}
+{% block extra_js %}
+<script>
+    window.__BLUEPRINT_CONFIG__ = {
+        solutionId: {{ solution.id | tojson }},
+        solutionName: {{ solution.name | tojson }},
+        scores: {{ scores | tojson }},
+        sectionDefinitions: {{ section_definitions | tojson }},
+        phaseChecklist: {{ phase_checklist | tojson }},
+        nextActions: {{ next_actions | tojson }},
+        arbReady: {{ arb_ready | tojson }},
+        sadData: {{ sad_data | tojson }},
+        lifecycleData: {{ lifecycle_json | tojson }},
+        csrfToken: document.querySelector('meta[name="csrf-token"]')?.content || ''
+    };
+</script>
+<script src="{{ url_for('static', filename='js/archimate/composer_renderer.js') }}"></script> <!-- entity-picker-ok: script include, not an entity field -->
+<script src="{{ url_for('static', filename='js/solutions/component_specs.js') }}"></script>
+<script src="{{ url_for('static', filename='js/solutions/integration_contracts.js') }}"></script>
+<script src="{{ url_for('static', filename='js/solutions/deployment_specs.js') }}"></script>
+<script src="{{ url_for('static', filename='js/solutions/blueprint.js') }}"></script>
+<script>
+/**
+ * blueprintDocIngestion — Alpine.js component for the document ingestion panel.
+ * Wires the existing /architecture-journey/<id>/ upload + proposals API to the blueprint UI.
+ * No backend changes required — all three endpoints pre-existed.
+ */
+function blueprintDocIngestion(solutionId) {
+    const csrf = document.querySelector('meta[name=csrf-token]')?.content || '';
+    const base = '/architecture-journey/' + solutionId;
+
+    return {
+        open: false,
+        extracting: false,
+        accepting: false,
+        uploadError: null,
+        proposals: [],
+        allDone: false,
+
+        get pendingCount() {
+            return this.proposals.filter(function(p) { return p.status === 'proposed'; }).length;
+        },
+
+        async loadProposals() {
+            try {
+                let r = await fetch(base + '/proposals?status=proposed');
+                if (!r.ok) return;
+                let d = await r.json();
+                let items = (d.data ? d.data.proposals : null) || d.proposals || [];
+                this.proposals = items.filter(function(p) { return p.status === 'proposed'; });
+            } catch(e) { /* non-fatal */ }
+        },
+
+        async uploadDocument(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            this.extracting = true;
+            this.uploadError = null;
+            this.proposals = [];
+            this.allDone = false;
+
+            const fd = new FormData();
+            fd.append('files', file);
+
+            try {
+                let r = await fetch(base + '/upload-documents', {
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': csrf },
+                    body: fd
+                });
+                let d = await r.json();
+                if (r.ok && (d.data || d.proposals)) {
+                    let items = d.data ? d.data.proposals : d.proposals;
+                    this.proposals = (items || []).filter(function(p) { return p.status === 'proposed'; });
+                    if (this.proposals.length === 0) {
+                        this.uploadError = 'No architecture elements could be extracted. Try a more detailed document.';
+                    }
+                } else {
+                    this.uploadError = d.error || 'Extraction failed. Please try again.';
+                }
+            } catch(e) {
+                this.uploadError = 'Upload failed — please check your connection.';
+            } finally {
+                this.extracting = false;
+                event.target.value = '';
+                this.$nextTick(function() { if (window.lucide) lucide.createIcons(); });
+            }
+        },
+
+        async accept(proposalId) {
+            this.accepting = true;
+            try {
+                let r = await fetch(base + '/proposals/' + proposalId + '/accept', {
+                    method: 'POST', headers: { 'X-CSRFToken': csrf }
+                });
+                if (r.ok) {
+                    this.proposals = this.proposals.filter(function(p) { return p.id !== proposalId; });
+                    if (this.proposals.length === 0) this.allDone = true;
+                    // Refresh maturity score if available
+                    if (typeof refreshMaturityScore === 'function') refreshMaturityScore();
+                }
+            } finally { this.accepting = false; }
+        },
+
+        async reject(proposalId) {
+            this.accepting = true;
+            try {
+                let r = await fetch(base + '/proposals/' + proposalId + '/reject', {
+                    method: 'POST', headers: { 'X-CSRFToken': csrf }
+                });
+                if (r.ok) {
+                    this.proposals = this.proposals.filter(function(p) { return p.id !== proposalId; });
+                    if (this.proposals.length === 0) this.allDone = true;
+                }
+            } finally { this.accepting = false; }
+        },
+
+        async acceptAll() {
+            this.accepting = true;
+            try {
+                let ids = this.proposals.map(function(p) { return p.id; });
+                let r = await fetch(base + '/proposals/batch-accept', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
+                    body: JSON.stringify({ proposal_ids: ids })
+                });
+                if (r.ok) {
+                    this.proposals = [];
+                    this.allDone = true;
+                    if (typeof refreshMaturityScore === 'function') refreshMaturityScore();
+                }
+            } finally { this.accepting = false; }
+        },
+
+        async rejectAll() {
+            this.accepting = true;
+            try {
+                let ids = this.proposals.map(function(p) { return p.id; });
+                let r = await fetch(base + '/proposals/batch-reject', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
+                    body: JSON.stringify({ proposal_ids: ids })
+                });
+                if (r.ok) { this.proposals = []; this.allDone = true; }
+            } finally { this.accepting = false; }
+        },
+
+        resetPanel() {
+            this.proposals = [];
+            this.allDone = false;
+            this.uploadError = null;
+        }
+    };
+}
+function dismissableBanner() { return { show: true }; }
+</script>
+{% endblock %}

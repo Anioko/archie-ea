@@ -1,0 +1,289 @@
+{% extends 'layouts/admin_base.html' %}
+{% from 'components/page_header.html' import page_header %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8" x-data="ssoMappingPage()">
+
+    {{ page_header(
+        title='SSO Group-to-Role Mappings',
+        description='Manage which identity provider groups map to platform roles. Changes take effect on next SSO login.',
+        breadcrumbs=[
+            {'label': 'Admin', 'href': url_for('admin.index')},
+            {'label': 'SSO Settings'}
+        ]
+    ) }}
+
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div class="mb-6 space-y-2">
+                {% for category, message in messages %}
+                    <div class="rounded-md border p-4 {% if category == 'success' %}bg-primary/10 border-primary/20 text-foreground{% elif category == 'error' %}bg-destructive/10 border-destructive/20 text-destructive{% else %}bg-accent border-border text-foreground{% endif %}">
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+        <!-- Left column: actions -->
+        <div class="lg:col-span-1 space-y-6">
+
+            <!-- Add Mapping Card -->
+            <div data-slot="card" class="rounded-xl border-2 border-input bg-card">
+                <div class="p-4 sm:p-6 border-b">
+                    <h3 class="text-lg font-semibold">Add Mapping</h3>
+                </div>
+                <div class="p-4 sm:p-6">
+                    <form method="POST" action="{{ url_for('admin.sso_settings') }}" class="space-y-4">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                        <input type="hidden" name="action" value="add"/>
+
+                        <div>
+                            <label for="sso_group_name" class="block text-sm font-medium mb-2">
+                                IdP Group Name <span class="text-destructive">*</span>
+                            </label>
+                            <input type="text"
+                                   id="sso_group_name"
+                                   name="sso_group_name"
+                                   placeholder="e.g. EA-Architects"
+                                   class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                   required>
+                            <p class="text-xs text-muted-foreground mt-1">Exact display name from your identity provider</p>
+                        </div>
+
+                        <div>
+                            <label for="role_name" class="block text-sm font-medium mb-2">
+                                Platform Role <span class="text-destructive">*</span>
+                            </label>
+                            <select id="role_name"
+                                    name="role_name"
+                                    class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                    required>
+                                <option value="">Select a role…</option>
+                                {% for role in valid_roles %}
+                                    <option value="{{ role }}">{{ role | replace('_', ' ') | title }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div>
+                            <label for="description" class="block text-sm font-medium mb-2">
+                                Description <span class="text-muted-foreground">(optional)</span>
+                            </label>
+                            <input type="text"
+                                   id="description"
+                                   name="description"
+                                   placeholder="e.g. Enterprise Architect team"
+                                   class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                        </div>
+
+                        <button type="submit"
+                                class="w-full inline-flex items-center justify-center gap-2 rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm font-medium hover:bg-primary/90 transition-colors"
+                                aria-label="Add SSO group mapping">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                            Add Mapping
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Sync All Users Card -->
+            <div data-slot="card" class="rounded-xl border-2 border-input bg-card">
+                <div class="p-4 sm:p-6 border-b">
+                    <h3 class="text-lg font-semibold">Sync Roles</h3>
+                </div>
+                <div class="p-4 sm:p-6 space-y-3">
+                    <p class="text-sm text-muted-foreground">
+                        Refresh the in-memory role map from database. New roles apply on the next SSO login for each user.
+                    </p>
+                    <form method="POST" action="{{ url_for('admin.sso_settings') }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                        <input type="hidden" name="action" value="sync_all"/>
+                        <button type="submit"
+                                class="w-full inline-flex items-center justify-center gap-2 rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground transition-colors"
+                                aria-label="Sync all SSO user roles from database mappings">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
+                            Refresh Role Map
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Info Card -->
+            <div data-slot="card" class="rounded-xl border-2 border-input bg-card">
+                <div class="p-4 sm:p-6 border-b">
+                    <h3 class="text-lg font-semibold">Role Priority</h3>
+                </div>
+                <div class="p-4 sm:p-6">
+                    <p class="text-xs text-muted-foreground mb-3">When a user belongs to multiple mapped groups, the highest-privilege role wins:</p>
+                    <ol class="space-y-1">
+                        <li class="flex items-center gap-2 text-sm">
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive border border-destructive/30">1</span>
+                            Platform Admin
+                        </li>
+                        <li class="flex items-center gap-2 text-sm">
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30">2</span>
+                            Enterprise Architect
+                        </li>
+                        <li class="flex items-center gap-2 text-sm">
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-orange-500/10 text-orange-600 border border-orange-500/30">3</span>
+                            ARB Member
+                        </li>
+                        <li class="flex items-center gap-2 text-sm">
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-blue-500/10 text-blue-600 border border-blue-500/30">4</span> <!-- token-migration-ok -->
+                            Portfolio Manager
+                        </li>
+                        <li class="flex items-center gap-2 text-sm">
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground border border-border">5</span>
+                            Solution Architect
+                        </li>
+                    </ol>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right column: current mappings table -->
+        <div class="lg:col-span-2">
+            <div data-slot="card" class="rounded-xl border-2 border-input bg-card">
+                <div class="p-4 sm:p-6 border-b flex items-center justify-between">
+                    <div>
+                        <h3 class="text-lg font-semibold">Current Mappings</h3>
+                        <p class="text-sm text-muted-foreground mt-0.5">{{ mappings | length }} mapping{{ 's' if mappings | length != 1 else '' }} configured</p>
+                    </div>
+                    {% if not mappings %}
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground border border-border">
+                            Using defaults
+                        </span>
+                    {% endif %}
+                </div>
+
+                {% if mappings %}
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="border-b bg-muted/40">
+                                <th class="text-left px-4 py-3 font-medium text-muted-foreground">IdP Group Name</th>
+                                <th class="text-left px-4 py-3 font-medium text-muted-foreground">Platform Role</th>
+                                <th class="text-left px-4 py-3 font-medium text-muted-foreground hidden md:table-cell">Description</th>
+                                <th class="text-left px-4 py-3 font-medium text-muted-foreground">Status</th>
+                                <th class="text-right px-4 py-3 font-medium text-muted-foreground">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-border">
+                            {% for mapping in mappings %}
+                            <tr class="hover:bg-accent/30 transition-colors">
+                                <td class="px-4 py-3 font-mono text-xs">{{ mapping.sso_group_name }}</td>
+                                <td class="px-4 py-3">
+                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium
+                                        {% if mapping.role_name == 'platform_admin' %}bg-destructive/10 text-destructive border border-destructive/30
+                                        {% elif mapping.role_name == 'enterprise_architect' %}bg-primary/10 text-primary border border-primary/30
+                                        {% elif mapping.role_name == 'arb_member' %}bg-orange-500/10 text-orange-600 border border-orange-500/30
+                                        {% elif mapping.role_name == 'portfolio_manager' %}bg-blue-500/10 text-blue-600 border border-blue-500/30 <!-- token-migration-ok -->
+                                        {% else %}bg-muted text-muted-foreground border border-border{% endif %}">
+                                        {{ mapping.role_name | replace('_', ' ') | title }}
+                                    </span>
+                                </td>
+                                <td class="px-4 py-3 text-muted-foreground hidden md:table-cell">
+                                    {{ mapping.description or '—' }}
+                                </td>
+                                <td class="px-4 py-3">
+                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium
+                                        {% if mapping.is_active %}bg-primary/10 text-primary border border-primary/30{% else %}bg-muted text-muted-foreground border border-border{% endif %}">
+                                        {{ 'Active' if mapping.is_active else 'Inactive' }}
+                                    </span>
+                                </td>
+                                <td class="px-4 py-3 text-right">
+                                    <div class="inline-flex items-center gap-2">
+                                        <!-- Toggle active/inactive -->
+                                        <form method="POST" action="{{ url_for('admin.sso_settings') }}" class="inline">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                            <input type="hidden" name="action" value="toggle"/>
+                                            <input type="hidden" name="mapping_id" value="{{ mapping.id }}"/>
+                                            <button type="submit"
+                                                    class="inline-flex items-center gap-1 rounded-md border border-input bg-background px-2.5 py-1 text-xs font-medium hover:bg-accent hover:text-accent-foreground transition-colors"
+                                                    aria-label="{{ 'Disable' if mapping.is_active else 'Enable' }} mapping for {{ mapping.sso_group_name }}">
+                                                {% if mapping.is_active %}
+                                                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
+                                                    Disable
+                                                {% else %}
+                                                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                                                    Enable
+                                                {% endif %}
+                                            </button>
+                                        </form>
+
+                                        <!-- Delete -->
+                                        <form method="POST" action="{{ url_for('admin.sso_settings') }}" class="inline"
+                                              x-data="{}"
+                                              @submit.prevent="if (confirm('Delete mapping for \'{{ mapping.sso_group_name }}\'? This cannot be undone.')) $el.submit()">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                            <input type="hidden" name="action" value="delete"/>
+                                            <input type="hidden" name="mapping_id" value="{{ mapping.id }}"/>
+                                            <button type="submit"
+                                                    class="inline-flex items-center gap-1 rounded-md border border-destructive/30 bg-destructive/5 px-2.5 py-1 text-xs font-medium text-destructive hover:bg-destructive/10 transition-colors"
+                                                    aria-label="Delete mapping for {{ mapping.sso_group_name }}">
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                                                Delete
+                                            </button>
+                                        </form>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="p-8 text-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="mx-auto mb-4 text-muted-foreground" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                    <p class="text-sm font-medium text-foreground mb-1">No database mappings configured</p>
+                    <p class="text-xs text-muted-foreground">
+                        The platform is using the default hardcoded mappings from config.<br>
+                        Add a mapping above to switch to database-driven control.
+                    </p>
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Default fallback notice -->
+            {% if not mappings %}
+            <div class="mt-4 rounded-md border border-border bg-accent/40 p-4">
+                <p class="text-sm font-medium mb-2">Default mappings (from config)</p>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div class="flex items-center justify-between rounded border border-border bg-background px-3 py-2 text-xs">
+                        <span class="font-mono">EA-Architects</span>
+                        <span class="text-muted-foreground">enterprise_architect</span>
+                    </div>
+                    <div class="flex items-center justify-between rounded border border-border bg-background px-3 py-2 text-xs">
+                        <span class="font-mono">Solution-Architects</span>
+                        <span class="text-muted-foreground">solution_architect</span>
+                    </div>
+                    <div class="flex items-center justify-between rounded border border-border bg-background px-3 py-2 text-xs">
+                        <span class="font-mono">ARB-Members</span>
+                        <span class="text-muted-foreground">arb_member</span>
+                    </div>
+                    <div class="flex items-center justify-between rounded border border-border bg-background px-3 py-2 text-xs">
+                        <span class="font-mono">Portfolio-Managers</span>
+                        <span class="text-muted-foreground">portfolio_manager</span>
+                    </div>
+                    <div class="flex items-center justify-between rounded border border-border bg-background px-3 py-2 text-xs">
+                        <span class="font-mono">Platform-Admins</span>
+                        <span class="text-muted-foreground">platform_admin</span>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+function ssoMappingPage() {
+    return {};
+}
+lucide.createIcons();
+</script>
+{% endblock %}

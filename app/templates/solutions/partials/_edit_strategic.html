@@ -1,0 +1,419 @@
+{# _edit_strategic.html — Streamlined CRUD for §2 Strategic Context edit view #}
+{# Stripped: phase gate div, progress bar, guidance collapsible, phase badge #}
+<div class="space-y-6">
+
+    {# AI toolbar #}
+    <div class="flex items-center gap-2">
+        {% if llm_available %}
+        <button type="button" @click="aiSuggestElements('A')" :disabled="suggestingElements"
+                class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium text-primary hover:bg-primary/10 transition-colors disabled:opacity-50"
+                title="AI Suggest ArchiMate elements">
+            <i data-lucide="sparkles" class="w-3.5 h-3.5" aria-hidden="true"></i>
+            <span x-text="suggestingElements && aiSuggestPhase === 'A' ? 'Suggesting...' : 'AI Suggest'"></span>
+        </button>
+        <button type="button" @click="openDraftModal()" :disabled="generatingDraft"
+                class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium text-violet-600 hover:bg-violet-500/10 transition-colors disabled:opacity-50"
+                title="Generate draft architecture across all phases">
+            <i data-lucide="wand-2" class="w-3.5 h-3.5" aria-hidden="true"></i>
+            <span>Draft All Phases</span>
+        </button>
+        {% endif %}
+        <button type="button" @click="toggleComments('phase_a')" class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors" title="Comments">
+            <i data-lucide="message-square" class="w-3.5 h-3.5" aria-hidden="true"></i>
+            <span x-show="commentCount('phase_a') > 0" x-text="commentCount('phase_a')" class="text-[10px] bg-primary text-primary-foreground rounded-full px-1 min-w-[16px] text-center" x-cloak></span>
+        </button>
+    </div>
+
+    {{ comment_thread('phase_a') }}
+
+    {# AI Suggestion Cards (SDX-005) #}
+    <template x-if="aiSuggestions.length > 0 && aiSuggestPhase === 'A'">
+        <div class="p-3 rounded-md border border-primary/20 bg-primary/5">
+            <p class="text-xs font-medium text-primary mb-2">AI Suggested Elements</p>
+            <div class="space-y-2">
+                <template x-for="(s, idx) in aiSuggestions" :key="idx">
+                    <div class="flex items-center justify-between p-2 rounded-md bg-background border border-border ai-suggestion-card">
+                        <div class="flex-1 min-w-0 mr-3">
+                            <div class="flex items-center gap-2">
+                                <span class="text-sm font-medium text-foreground" x-text="s.name"></span>
+                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-violet-500/10 text-violet-600 border border-violet-500/20" x-text="s.layer"></span>
+                            </div>
+                            <p class="text-xs text-muted-foreground truncate" x-text="s.description"></p>
+                        </div>
+                        <div class="flex items-center gap-1 shrink-0">
+                            <button @click="acceptSuggestion(idx)" class="p-1 rounded-md hover:bg-primary/10 text-primary" title="Accept">
+                                <i data-lucide="check" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                            </button>
+                            <button @click="dismissSuggestion(idx)" class="p-1 rounded-md hover:bg-destructive/10 text-destructive" title="Dismiss">
+                                <i data-lucide="x" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                            </button>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </template>
+
+    {# Value Proposition #}
+    <div>
+        <h3 class="text-sm font-medium text-foreground mb-2">Value Proposition</h3>
+        <p class="text-sm text-muted-foreground">{{ solution.business_value or solution.value_proposition or 'Not specified' }}</p>
+    </div>
+
+    {# Drivers — Alpine CRUD #}
+    <div>
+        <div class="flex flex-wrap items-center justify-between gap-1 mb-2">
+            <h3 class="text-sm font-medium text-foreground">Drivers</h3>
+            <div class="flex items-center gap-1">
+                <button type="button" @click="$dispatch('open-archimate-picker', {phase: 'A', elementType: 'Driver', linkEndpoint: '/api/solutions/{{ solution.id }}/elements'})"
+                    class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium text-primary hover:bg-indigo-500/10 border border-indigo-500/30 transition-colors"
+                    title="Link an existing ArchiMate Driver element">
+                    <i data-lucide="link" class="w-3 h-3" aria-hidden="true"></i> Link ArchiMate
+                </button>
+                <button type="button" @click="openEntityModal('driver')"
+                    class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+                    <i data-lucide="plus" class="w-3 h-3" aria-hidden="true"></i> Add
+                </button>
+            </div>
+        </div>
+        <template x-if="drivers.length > 0">
+            <div class="space-y-2">
+                <template x-for="d in drivers" :key="d.id">
+                    <div class="flex items-start justify-between gap-2 text-sm group">
+                        <div class="flex items-start gap-2 min-w-0">
+                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium flex-shrink-0 mt-0.5"
+                                  :class="driverTypeClass(d.driver_type)" x-text="d.driver_type || 'internal'"></span>
+                            <div class="min-w-0">
+                                <span class="font-medium text-foreground" x-text="d.name"></span>
+                                <span x-show="d.ai_generated" x-cloak class="ml-1 inline-flex items-center gap-0.5 px-1 py-0 rounded text-[10px] font-medium bg-violet-500/10 text-violet-600 border border-violet-500/20" title="AI generated"><i data-lucide="sparkles" class="w-2.5 h-2.5"></i>AI</span>
+                                <p class="text-muted-foreground text-xs" x-show="d.description" x-cloak x-text="d.description"></p>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                            <button type="button" @click="openEntityModal('driver', d)" class="text-muted-foreground hover:text-foreground p-1 rounded-md" title="Edit">
+                                <i data-lucide="pencil" class="w-3 h-3" aria-hidden="true"></i>
+                            </button>
+                            <button type="button" @click="confirmDeleteEntity('driver', d)" class="text-muted-foreground hover:text-destructive p-1 rounded-md" title="Delete">
+                                <i data-lucide="trash-2" class="w-3 h-3" aria-hidden="true"></i>
+                            </button>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </template>
+        <template x-if="drivers.length === 0">
+            <p class="text-sm text-muted-foreground italic">No drivers documented yet.</p>
+        </template>
+    </div>
+
+    {# Goals — Alpine CRUD #}
+    <div>
+        <div class="flex flex-wrap items-center justify-between gap-1 mb-2">
+            <h3 class="text-sm font-medium text-foreground">Goals</h3>
+            <div class="flex items-center gap-1">
+                <button type="button" @click="$dispatch('open-archimate-picker', {phase: 'A', elementType: 'Goal', linkEndpoint: '/api/solutions/{{ solution.id }}/elements'})"
+                    class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium text-emerald-600 hover:bg-emerald-500/10 border border-emerald-500/30 transition-colors"
+                    title="Link an existing ArchiMate Goal element">
+                    <i data-lucide="link" class="w-3 h-3" aria-hidden="true"></i> Link ArchiMate
+                </button>
+                <button type="button" @click="openEntityModal('goal')"
+                    class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+                    <i data-lucide="plus" class="w-3 h-3" aria-hidden="true"></i> Add
+                </button>
+            </div>
+        </div>
+        <template x-if="goals.length > 0">
+            <div class="space-y-2">
+                <template x-for="g in goals" :key="g.id">
+                    <div class="flex items-start justify-between gap-2 text-sm group">
+                        <div class="flex items-start gap-2 min-w-0">
+                            <i data-lucide="target" class="w-4 h-4 text-emerald-500 flex-shrink-0 mt-0.5" aria-hidden="true"></i>
+                            <div class="min-w-0">
+                                <span class="font-medium text-foreground" x-text="g.name"></span>
+                                <span x-show="g.ai_generated" x-cloak class="ml-1 inline-flex items-center gap-0.5 px-1 py-0 rounded text-[10px] font-medium bg-violet-500/10 text-violet-600 border border-violet-500/20" title="AI generated"><i data-lucide="sparkles" class="w-2.5 h-2.5"></i>AI</span>
+                                <p class="text-muted-foreground text-xs" x-show="g.description" x-cloak x-text="g.description"></p>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                            <button type="button" @click="openEntityModal('goal', g)" class="text-muted-foreground hover:text-foreground p-1 rounded-md" title="Edit">
+                                <i data-lucide="pencil" class="w-3 h-3" aria-hidden="true"></i>
+                            </button>
+                            <button type="button" @click="confirmDeleteEntity('goal', g)" class="text-muted-foreground hover:text-destructive p-1 rounded-md" title="Delete">
+                                <i data-lucide="trash-2" class="w-3 h-3" aria-hidden="true"></i>
+                            </button>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </template>
+        <template x-if="goals.length === 0">
+            <p class="text-sm text-muted-foreground italic">No goals documented yet.</p>
+        </template>
+    </div>
+
+    {# Constraints — Alpine CRUD #}
+    <div>
+        <div class="flex flex-wrap items-center justify-between gap-1 mb-2">
+            <h3 class="text-sm font-medium text-foreground">Constraints</h3>
+            <div class="flex items-center gap-1">
+                <button type="button" @click="$dispatch('open-archimate-picker', {phase: 'A', elementType: 'Constraint', linkEndpoint: '/api/solutions/{{ solution.id }}/elements'})"
+                    class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium text-amber-600 hover:bg-amber-500/10 border border-amber-500/30 transition-colors"
+                    title="Link an existing ArchiMate Constraint element">
+                    <i data-lucide="link" class="w-3 h-3" aria-hidden="true"></i> Link ArchiMate
+                </button>
+                <button type="button" @click="openEntityModal('constraint')"
+                    class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+                    <i data-lucide="plus" class="w-3 h-3" aria-hidden="true"></i> Add
+                </button>
+            </div>
+        </div>
+        <template x-if="constraints.length > 0">
+            <div class="space-y-2">
+                <template x-for="c in constraints" :key="c.id">
+                    <div class="flex items-start justify-between gap-2 text-sm group">
+                        <div class="flex items-start gap-2 min-w-0">
+                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium flex-shrink-0 mt-0.5"
+                                  :class="constraintTypeClass(c.constraint_type)" x-text="c.constraint_type || 'general'"></span>
+                            <div class="min-w-0">
+                                <span class="font-medium text-foreground" x-text="c.name"></span>
+                                <span x-show="c.ai_generated" x-cloak class="ml-1 inline-flex items-center gap-0.5 px-1 py-0 rounded text-[10px] font-medium bg-violet-500/10 text-violet-600 border border-violet-500/20" title="AI generated"><i data-lucide="sparkles" class="w-2.5 h-2.5"></i>AI</span>
+                                <span class="text-muted-foreground" x-show="c.value" x-cloak x-text="' — ' + c.value"></span>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                            <button type="button" @click="openEntityModal('constraint', c)" class="text-muted-foreground hover:text-foreground p-1 rounded-md" title="Edit">
+                                <i data-lucide="pencil" class="w-3 h-3" aria-hidden="true"></i>
+                            </button>
+                            <button type="button" @click="confirmDeleteEntity('constraint', c)" class="text-muted-foreground hover:text-destructive p-1 rounded-md" title="Delete">
+                                <i data-lucide="trash-2" class="w-3 h-3" aria-hidden="true"></i>
+                            </button>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </template>
+        <template x-if="constraints.length === 0">
+            <p class="text-sm text-muted-foreground italic">No constraints documented yet.</p>
+        </template>
+    </div>
+
+    {# Phase A — Principles, Assessments, Stakeholders (ArchiMate 3.2) #}
+    {% include 'solutions/partials/_phase_a_elements.html' %}
+
+    {# Linked Requirements (ENT-062) #}
+    <div x-data="linkedRequirements({{ solution.id }})" x-init="fetchLinked()">
+        <div class="flex flex-wrap items-center justify-between gap-1 mb-2">
+            <h3 class="text-sm font-medium text-foreground">Linked Requirements</h3>
+            <div class="flex items-center gap-1">
+                <button type="button" @click="showBulkSelect = !showBulkSelect"
+                    x-show="linkedReqs.length > 0" x-cloak
+                    class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                    title="Toggle bulk selection">
+                    <i data-lucide="check-square" class="w-3 h-3" aria-hidden="true"></i>
+                    <span x-text="showBulkSelect ? 'Cancel' : 'Select'"></span>
+                </button>
+                <button type="button" x-show="showBulkSelect && selectedIds.length > 0" x-cloak
+                    @click="bulkUnlink()"
+                    class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium text-destructive hover:bg-destructive/10 transition-colors"
+                    title="Unlink selected requirements">
+                    <i data-lucide="unlink" class="w-3 h-3" aria-hidden="true"></i>
+                    <span x-text="'Unlink (' + selectedIds.length + ')'"></span>
+                </button>
+                <button type="button" @click="$dispatch('open-requirement-picker', {solutionId: {{ solution.id }}})"
+                    class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+                    <i data-lucide="link" class="w-3 h-3" aria-hidden="true"></i> Link Requirement
+                </button>
+            </div>
+        </div>
+
+        {# Loading state #}
+        <div x-show="loading" x-cloak class="flex items-center gap-2 text-sm text-muted-foreground py-2">
+            <i data-lucide="loader-2" class="w-4 h-4 animate-spin" aria-hidden="true"></i>
+            <span>Loading requirements...</span>
+        </div>
+
+        {# Requirements list #}
+        <template x-if="!loading && linkedReqs.length > 0">
+            <div class="space-y-2">
+                <template x-for="req in linkedReqs" :key="req.id">
+                    <div class="flex items-start justify-between gap-2 text-sm group p-2 rounded-md border border-border hover:bg-accent/50 transition-colors">
+                        <div class="flex items-start gap-2 min-w-0">
+                            {# Bulk select checkbox #}
+                            <input type="checkbox" x-show="showBulkSelect" x-cloak
+                                :value="req.id" x-model.number="selectedIds"
+                                class="mt-1 h-3.5 w-3.5 rounded border-border text-primary focus:ring-primary/20">
+                            {# Type badge #}
+                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium flex-shrink-0 mt-0.5"
+                                  :class="reqTypeBadgeClass(req.requirement_type)"
+                                  x-text="req.requirement_type"></span>
+                            <div class="min-w-0">
+                                <div class="flex items-center gap-1.5 flex-wrap">
+                                    <span class="font-medium text-foreground" x-text="req.name"></span>
+                                    <span x-show="req.is_mandatory" x-cloak
+                                        class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-destructive/10 text-destructive border border-destructive/30">Required</span>
+                                    <span x-show="req.moscow_priority" x-cloak
+                                        class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/10 text-amber-600 border border-amber-500/30"
+                                        x-text="req.moscow_priority"></span>
+                                    <span x-show="req.ai_generated" x-cloak
+                                        class="inline-flex items-center gap-0.5 px-1 py-0 rounded text-[10px] font-medium bg-violet-500/10 text-violet-600 border border-violet-500/20"
+                                        title="AI generated"><i data-lucide="sparkles" class="w-2.5 h-2.5"></i>AI</span>
+                                </div>
+                                <p class="text-muted-foreground text-xs mt-0.5" x-show="req.description" x-cloak x-text="req.description"></p>
+                                {# Traceability: capability link #}
+                                <div x-show="req.capability_name" x-cloak class="flex items-center gap-1 mt-1">
+                                    <i data-lucide="layers" class="w-3 h-3 text-muted-foreground" aria-hidden="true"></i>
+                                    <span class="text-[10px] text-muted-foreground" x-text="'Capability: ' + req.capability_name"></span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-1.5 flex-shrink-0">
+                            {# Status badge #}
+                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
+                                  :class="statusBadgeClass(req.status)"
+                                  x-text="req.status"></span>
+                            {# Priority indicator #}
+                            <span x-show="req.priority" x-cloak
+                                class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-muted text-muted-foreground"
+                                x-text="'P' + req.priority"></span>
+                            {# Unlink button #}
+                            <button type="button" @click="unlinkReq(req.id)"
+                                x-show="!showBulkSelect" x-cloak
+                                class="text-muted-foreground hover:text-destructive p-1 rounded-md opacity-0 group-hover:opacity-100 transition-opacity"
+                                title="Unlink requirement">
+                                <i data-lucide="unlink" class="w-3 h-3" aria-hidden="true"></i>
+                            </button>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </template>
+
+        {# Empty state #}
+        <template x-if="!loading && linkedReqs.length === 0">
+            <div class="text-center py-6 border border-dashed border-border rounded-lg">
+                <i data-lucide="file-check-2" class="w-8 h-8 text-muted-foreground mx-auto mb-2" aria-hidden="true"></i>
+                <p class="text-sm text-muted-foreground">No requirements linked yet.</p>
+                <p class="text-xs text-muted-foreground mt-1">Click "Link Requirement" to associate existing requirements with this solution.</p>
+            </div>
+        </template>
+    </div>
+
+    <script>
+    function linkedRequirements(solutionId) {
+        return {
+            solutionId: solutionId,
+            linkedReqs: [],
+            loading: false,
+            showBulkSelect: false,
+            selectedIds: [],
+
+            async fetchLinked() {
+                this.loading = true;
+                try {
+                    const resp = await fetch(`/solutions/${this.solutionId}/linked-requirements`);
+                    const json = await resp.json();
+                    if (json.success) {
+                        this.linkedReqs = json.data;
+                    }
+                } catch (e) {
+                    console.error('Failed to fetch linked requirements:', e);
+                } finally {
+                    this.loading = false;
+                }
+            },
+
+            async unlinkReq(reqId) {
+                try {
+                    const resp = await fetch(`/solutions/${this.solutionId}/unlink-requirement/${reqId}`, {
+                        method: 'DELETE',
+                        headers: {'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''}
+                    });
+                    const json = await resp.json();
+                    if (json.success) {
+                        this.linkedReqs = this.linkedReqs.filter(r => r.id !== reqId);
+                        this.selectedIds = this.selectedIds.filter(id => id !== reqId);
+                    }
+                } catch (e) {
+                    console.error('Failed to unlink requirement:', e);
+                }
+            },
+
+            async bulkUnlink() {
+                const ids = [...this.selectedIds];
+                for (const id of ids) {
+                    await this.unlinkReq(id);
+                }
+                this.showBulkSelect = false;
+                this.selectedIds = [];
+            },
+
+            reqTypeBadgeClass(type) {
+                const map = {
+                    'functional': 'bg-sky-500/10 text-sky-600 border border-sky-500/30',
+                    'non_functional': 'bg-amber-500/10 text-amber-600 border border-amber-500/30',
+                    'constraint': 'bg-destructive/10 text-destructive border border-destructive/30',
+                    'data': 'bg-primary/10 text-primary border border-indigo-500/30',
+                    'integration': 'bg-violet-500/10 text-violet-600 border border-violet-500/30',
+                    'compliance': 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/30',
+                    'operational': 'bg-orange-500/10 text-orange-600 border border-orange-500/30',
+                };
+                return map[type] || 'bg-muted text-muted-foreground';
+            },
+
+            statusBadgeClass(status) {
+                const map = {
+                    'open': 'bg-sky-500/10 text-sky-600',
+                    'in_progress': 'bg-amber-500/10 text-amber-600',
+                    'implemented': 'bg-emerald-500/10 text-emerald-600',
+                    'verified': 'bg-emerald-500/10 text-emerald-700',
+                    'deferred': 'bg-muted text-muted-foreground',
+                    'rejected': 'bg-destructive/10 text-destructive',
+                };
+                return map[status] || 'bg-muted text-muted-foreground';
+            },
+        }
+    }
+    </script>
+
+    {# Scope & Boundaries #}
+    <div>
+        <h3 class="text-sm font-medium text-foreground mb-2">Scope & Boundaries</h3>
+        {% if solution.scope_description %}
+        <p class="text-sm text-muted-foreground mb-2">{{ solution.scope_description }}</p>
+        {% endif %}
+        {% if solution.in_scope_applications %}
+        <div class="mb-2">
+            <span class="text-xs font-medium text-foreground">In Scope:</span>
+            <div class="flex flex-wrap gap-1 mt-1">
+                {% for item in solution.in_scope_applications %}
+                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs bg-emerald-500/10 text-emerald-600 border border-emerald-500/30">{{ item }}</span>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+        {% if solution.out_of_scope_applications %}
+        <div>
+            <span class="text-xs font-medium text-foreground">Out of Scope:</span>
+            <div class="flex flex-wrap gap-1 mt-1">
+                {% for item in solution.out_of_scope_applications %}
+                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs bg-destructive/10 text-destructive border border-destructive/30">{{ item }}</span>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+        {% if solution.affected_systems %}
+        <div class="mt-2">
+            <span class="text-xs font-medium text-foreground">Affected Systems:</span>
+            <div class="flex flex-wrap gap-1 mt-1">
+                {% for sys in solution.affected_systems.split(',') %}
+                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs bg-violet-500/10 text-violet-600 border border-violet-500/30">{{ sys.strip() }}</span>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+        {% if not solution.scope_description and not solution.in_scope_applications and not solution.out_of_scope_applications and not solution.affected_systems %}
+        <p class="text-sm text-muted-foreground italic">No scope defined yet.</p>
+        {% endif %}
+    </div>
+
+</div>

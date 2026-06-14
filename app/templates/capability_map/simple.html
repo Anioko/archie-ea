@@ -1,0 +1,600 @@
+{% extends "layouts/admin_base.html" %}
+{% import 'components/breadcrumb.html' as breadcrumb %}
+
+{% block title %}Simple View - Capability Map{% endblock %}
+
+{% block breadcrumb %}
+{% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
+{{ breadcrumb_nav(items=[
+    {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
+    {'text': 'Business Layer', 'href': url_for('archimate_crud.dashboard') + '#business'},
+    {'text': 'Capabilities', 'href': url_for('capability_map.index')},
+    {'text': 'Simple View', 'current': true}
+]) }}
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Breadcrumb -->
+    {% call breadcrumb.breadcrumb() %}
+        {% call breadcrumb.breadcrumb_item(href=url_for('admin.dashboard')) %}
+            <i data-lucide="home" class="h-4 w-4"></i>
+        {% endcall %}
+        {{ breadcrumb.breadcrumb_separator() }}
+        {% call breadcrumb.breadcrumb_item(href=url_for('capability_map.index')) %}
+            Capability Map
+        {% endcall %}
+        {{ breadcrumb.breadcrumb_separator() }}
+        {% call breadcrumb.breadcrumb_item(active=true) %}
+            Simple View
+        {% endcall %}
+    {% endcall %}
+
+    <!-- Page Header + Unmapped Capabilities -->
+    <div x-data="unmappedCapabilitiesPanel()" class="space-y-4">
+        <div class="flex items-center space-x-3">
+            <i data-lucide="map" class="w-6 h-6 text-primary"></i>
+            <h1 class="text-3xl font-bold tracking-tight">Application Capability Map</h1>
+            <template x-if="count > 0">
+                <button @click="open = !open"
+                    class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-medium bg-amber-500/10 text-amber-600 border border-amber-500/30 hover:bg-amber-500/20 transition-colors cursor-pointer">
+                    <i data-lucide="alert-triangle" class="w-3 h-3"></i>
+                    <span x-text="count + ' Unmapped'"></span>
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 transition-transform" :class="open ? 'rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                </button>
+            </template>
+        </div>
+
+        <!-- Unmapped Capabilities Panel -->
+        <div x-show="open" x-cloak x-transition class="bg-card rounded-lg shadow border">
+            <div class="px-6 py-4 border-b flex items-center justify-between">
+                <div>
+                    <h2 class="text-lg font-medium text-foreground">Unmapped Capabilities</h2>
+                    <p class="text-sm text-muted-foreground mt-1">Capabilities with no mapped applications, vendor products, or ArchiMate elements</p>
+                </div>
+                <button @click="open = false" class="text-muted-foreground hover:text-foreground">
+                    <i data-lucide="x" class="w-4 h-4"></i>
+                </button>
+            </div>
+            <div class="divide-y divide-border max-h-96 overflow-y-auto">
+                <template x-for="cap in items" :key="cap.id">
+                    <div class="px-6 py-3 flex items-center justify-between hover:bg-muted/50">
+                        <div class="min-w-0 flex-1">
+                            <div class="flex items-center gap-2">
+                                <span class="font-medium text-sm text-foreground" x-text="cap.name"></span>
+                                <span x-show="cap.domain && cap.domain.name"
+                                    class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-muted text-muted-foreground"
+                                    x-text="cap.domain ? cap.domain.name : ''"></span>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-3 ml-4 shrink-0">
+                            <template x-if="cap.business_priority">
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium"
+                                    :class="cap.business_priority === 'Critical' ? 'bg-destructive/10 text-destructive border border-destructive/30' : cap.business_priority === 'High' ? 'bg-amber-500/10 text-amber-600 border border-amber-500/30' : 'bg-muted text-muted-foreground'"
+                                    x-text="cap.business_priority"></span>
+                            </template>
+                            <span x-show="cap.current_maturity"
+                                class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-primary/10 text-primary"
+                                x-text="'L' + cap.current_maturity"></span>
+                        </div>
+                    </div>
+                </template>
+                <div x-show="items.length === 0 && !loading" class="px-6 py-8 text-center text-sm text-muted-foreground">
+                    All capabilities are mapped.
+                </div>
+                <div x-show="loading" class="px-6 py-8 text-center text-sm text-muted-foreground">
+                    Loading...
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Static Statistics -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div class="bg-card rounded-lg shadow border p-6">
+            <div class="flex items-center">
+                <div class="p-2 bg-primary/10 rounded-lg">
+                    <i data-lucide="layers" class="w-6 h-6 text-primary"></i>
+                </div>
+                <div class="ml-4">
+                    <h3 class="text-sm font-medium text-muted-foreground">Total Capabilities</h3> <!-- frontend-quality-ok: h3 in stat card, pre-existing content -->
+                    <p class="text-2xl font-bold text-foreground">38</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-card rounded-lg shadow border p-6">
+            <div class="flex items-center">
+                <div class="p-2 bg-emerald-500/10 rounded-lg">
+                    <i data-lucide="cpu" class="w-6 h-6 text-emerald-600"></i>
+                </div>
+                <div class="ml-4">
+                    <h3 class="text-sm font-medium text-muted-foreground">Functions</h3>
+                    <p class="text-2xl font-bold text-foreground">124</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-card rounded-lg shadow border p-6">
+            <div class="flex items-center">
+                <div class="p-2 bg-purple-100 rounded-lg">
+                    <i data-lucide="git-branch" class="w-6 h-6 text-primary"></i>
+                </div>
+                <div class="ml-4">
+                    <h3 class="text-sm font-medium text-muted-foreground">Max Depth</h3>
+                    <p class="text-2xl font-bold text-foreground">2</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-card rounded-lg shadow border p-6">
+            <div class="flex items-center">
+                <div class="p-2 bg-orange-100 rounded-lg">
+                    <i data-lucide="globe" class="w-6 h-6 text-orange-600"></i>
+                </div>
+                <div class="ml-4">
+                    <h3 class="text-sm font-medium text-muted-foreground">Domains</h3>
+                    <p class="text-2xl font-bold text-foreground">11</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# ── FRAG-009: Coverage Gaps (process gap analysis) ── #}
+    <div x-data="{ gapsOpen: false, gapsLoading: false, gapsLoaded: false, processGaps: [], gapStats: {}, gapsError:  }" class="mb-0">
+        <button @click="gapsOpen = !gapsOpen; if(gapsOpen && !gapsLoaded) {
+            gapsLoading = true;
+            fetch(/capability-map/api/process-gaps, { credentials: same-origin })
+                .then(r => r.json())
+                .then(d => { processGaps = d.process_gaps || []; gapStats = d.statistics || {}; gapsLoaded = true; gapsLoading = false; })
+                .catch(e => { gapsError = e.message; gapsLoading = false; });
+        }"
+            class="inline-flex items-center gap-2 px-4 py-2 mb-4 rounded-lg border border-border bg-card text-sm font-medium text-foreground hover:bg-accent transition-colors">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+            </svg>
+            Coverage Gaps
+            <template x-if="gapsLoaded && processGaps.length > 0">
+                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-500/10 text-amber-600 border border-amber-500/30" x-text="processGaps.length"></span>
+            </template>
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 transition-transform" :class="gapsOpen ? rotate-90 : " fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+        </button>
+        <div x-show="gapsOpen" x-cloak x-transition class="mb-6">
+            <div class="rounded-xl border border-border bg-card overflow-hidden">
+                <div class="bg-muted/20 px-5 py-3 border-b border-border flex items-center justify-between">
+                    <span class="text-sm font-medium text-muted-foreground">Process Coverage Gaps</span>
+                    <div x-show="gapStats.total_processes" x-cloak class="flex items-center gap-3 text-[10px] text-muted-foreground">
+                        <span>Total processes: <strong class="text-foreground" x-text="gapStats.total_processes || 0"></strong></span>
+                        <span>Gaps: <strong class="text-amber-600" x-text="gapStats.gap_count || processGaps.length"></strong></span>
+                        <span x-show="gapStats.coverage_pct !== undefined">Coverage: <strong class="text-foreground" x-text="(gapStats.coverage_pct || 0) + %"></strong></span>
+                    </div>
+                </div>
+                <div x-show="gapsLoading" x-cloak class="p-6 text-center text-sm text-muted-foreground">
+                    <span class="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full inline-block mr-2"></span> Analyzing coverage gaps...
+                </div>
+                <div x-show="gapsError" x-cloak class="p-4 text-sm text-destructive" x-text="gapsError"></div>
+                <div x-show="gapsLoaded && processGaps.length === 0 && !gapsError" x-cloak class="p-6 text-center text-sm text-muted-foreground">
+                    <i data-lucide="check-circle" class="h-8 w-8 mx-auto mb-2 text-emerald-500 opacity-50"></i>
+                    <p>No coverage gaps detected. All processes are mapped.</p>
+                </div>
+                <div x-show="gapsLoaded && processGaps.length > 0" x-cloak class="divide-y divide-border max-h-96 overflow-y-auto">
+                    <template x-for="gap in processGaps" :key="gap.id || gap.process_name">
+                        <div class="px-5 py-3 flex items-center justify-between hover:bg-muted/30">
+                            <div class="min-w-0 flex-1">
+                                <div class="flex items-center gap-2">
+                                    <span class="font-medium text-sm text-foreground" x-text="gap.process_name || gap.name || Unknown process"></span>
+                                    <span x-show="gap.domain" class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-muted text-muted-foreground" x-text="gap.domain"></span>
+                                </div>
+                                <p x-show="gap.description || gap.gap_reason" class="text-xs text-muted-foreground mt-0.5" x-text="gap.description || gap.gap_reason"></p>
+                            </div>
+                            <div class="flex items-center gap-2 ml-4 shrink-0">
+                                <span x-show="gap.severity || gap.priority"
+                                    class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium"
+                                    :class="(gap.severity || gap.priority || ).toLowerCase() === critical ? bg-red-500/10 text-destructive border border-red-500/30 : (gap.severity || gap.priority || ).toLowerCase() === high ? bg-amber-500/10 text-amber-600 border border-amber-500/30 : bg-muted text-muted-foreground"
+                                    x-text="gap.severity || gap.priority"></span>
+                                <span x-show="gap.mapped_count !== undefined"
+                                    class="text-[10px] text-muted-foreground"
+                                    x-text="(gap.mapped_count || 0) +  mapped"></span>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# ── BIZBOK: Strategy Viewpoint — Capability ↔ Value Stream mapping ── #}
+    <div x-data="{ vsOpen: false, vsLoaded: false }">
+        <button @click="vsOpen = !vsOpen; if(vsOpen && !vsLoaded) {
+            fetch('/api/archimate/viewpoints/strategy/diagram?limit=30')
+                .then(r => r.json())
+                .then(d => {
+                    if (!d.success || !d.elements.length) return;
+                    let el = document.getElementById('capmap-strategy-diagram');
+                    if (!el || typeof ComposerRenderer === 'undefined') return;
+                    let r = ComposerRenderer.create(el, {mode:'view', width:'100%', height:350});
+                    r.loadElements(d.elements, d.relationships);
+                    r.fitToContent();
+                    vsLoaded = true;
+                }).catch(() => {});
+        }" class="inline-flex items-center gap-2 px-4 py-2 mb-4 rounded-lg border border-border bg-card text-sm font-medium text-foreground hover:bg-accent transition-colors">
+            <svg xmlns='http://www.w3.org/2000/svg' class='h-4 w-4 text-primary' fill='none' viewBox='0 0 24 24' stroke='currentColor' stroke-width='2'><path stroke-linecap='round' stroke-linejoin='round' d='M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z'/></svg>
+            Value Streams
+            <svg xmlns='http://www.w3.org/2000/svg' class='h-3 w-3 transition-transform' :class="vsOpen ? 'rotate-90' : ''" fill='none' viewBox='0 0 24 24' stroke='currentColor' stroke-width='2'><path stroke-linecap='round' stroke-linejoin='round' d='M9 5l7 7-7 7'/></svg>
+        </button>
+        <div x-show="vsOpen" x-cloak x-transition class="mb-6">
+            <div class="rounded-xl border border-border bg-card overflow-hidden">
+                <div class="bg-muted/20 px-5 py-2 border-b border-border flex items-center justify-between">
+                    <span class="text-xs font-medium text-muted-foreground">Strategy Viewpoint — Capability ↔ Value Stream</span>
+                    <a href="/archimate/composer?viewpoint=strategy" class="text-[10px] text-primary hover:underline">Open in Composer →</a>
+                </div>
+                <div id="capmap-strategy-diagram" class="w-full" style="min-height:350px;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Simple Static Capability List -->
+    <div class="bg-card rounded-lg shadow border">
+        <div class="px-6 py-4 border-b">
+            <h2 class="text-lg font-medium text-foreground">Capability Overview</h2>
+            <p class="text-sm text-muted-foreground mt-1">Digital Application Platform - Level 0</p>
+        </div>
+
+        <!-- Level 1 Capabilities -->
+        <div class="p-6 space-y-6">
+            <!-- Information Consumer Capabilities -->
+            <div class="border-l-4 border-primary pl-4">
+                <h3 class="text-lg font-medium text-foreground">Information Consumer Capabilities</h3>
+                <p class="text-sm text-muted-foreground mt-1">Deliver user-facing experiences across channels with personalization and workflow support.</p>
+                <div class="mt-3 flex items-center space-x-4">
+                    <span class="text-sm text-muted-foreground">Level 1</span>
+                    <span class="px-2 py-1 text-xs font-semibold rounded-full bg-primary/10 text-primary/90">Experience</span>
+                    <span class="px-2 py-1 text-xs font-semibold rounded-full bg-muted text-foreground">Core</span>
+                </div>
+
+                <!-- Sub-capabilities -->
+                <div class="mt-4 ml-4 space-y-3">
+                    <div class="border-l-2 border-border pl-4">
+                        <h4 class="text-base font-medium text-foreground">Experience Orchestration</h4>
+                        <p class="text-sm text-muted-foreground">Coordinate end-to-end user journeys and adaptive experiences.</p>
+                        <div class="mt-2 text-xs text-muted-foreground">4 functions</div>
+                    </div>
+                    <div class="border-l-2 border-border pl-4">
+                        <h4 class="text-base font-medium text-foreground">Multi-Channel Delivery</h4>
+                        <p class="text-sm text-muted-foreground">Provide consistent experiences across web, mobile, conversational, and edge channels.</p>
+                        <div class="mt-2 text-xs text-muted-foreground">4 functions</div>
+                    </div>
+                    <div class="border-l-2 border-border pl-4">
+                        <h4 class="text-base font-medium text-foreground">Personalization & Insight Surfaces</h4>
+                        <p class="text-sm text-muted-foreground">Expose data-driven insights and experimentation surfaces to end users.</p>
+                        <div class="mt-2 text-xs text-muted-foreground">4 functions</div>
+                    </div>
+                    <div class="border-l-2 border-border pl-4">
+                        <h4 class="text-base font-medium text-foreground">Workflow Interaction Surfaces</h4>
+                        <p class="text-sm text-muted-foreground">Enable guided workflows, decision support, and collaborative task execution.</p>
+                        <div class="mt-2 text-xs text-muted-foreground">4 functions</div>
+                    </div>
+                    <div class="border-l-2 border-border pl-4">
+                        <h4 class="text-base font-medium text-foreground">Edge & Offline Client Support</h4>
+                        <p class="text-sm text-muted-foreground">Deliver resilient edge experiences with synchronization and telemetry batching.</p>
+                        <div class="mt-2 text-xs text-muted-foreground">4 functions</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Development Capabilities -->
+            <div class="border-l-4 border-yellow-500 pl-4">
+                <h3 class="text-lg font-medium text-foreground">Development Capabilities</h3>
+                <p class="text-sm text-muted-foreground mt-1">Provide platform engineering tooling, automation, and developer experience.</p>
+                <div class="mt-3 flex items-center space-x-4">
+                    <span class="text-sm text-muted-foreground">Level 1</span>
+                    <span class="px-2 py-1 text-xs font-semibold rounded-full bg-amber-500/10 text-yellow-800">Engineering</span>
+                    <span class="px-2 py-1 text-xs font-semibold rounded-full bg-muted text-foreground">Core</span>
+                </div>
+
+                <!-- Sub-capabilities -->
+                <div class="mt-4 ml-4 space-y-3">
+                    <div class="border-l-2 border-border pl-4">
+                        <h4 class="text-base font-medium text-foreground">Platform Engineering Toolchain</h4>
+                        <p class="text-sm text-muted-foreground">Deliver CI/CD, environment provisioning, and artifact management services.</p>
+                        <div class="mt-2 text-xs text-muted-foreground">4 functions</div>
+                    </div>
+                    <div class="border-l-2 border-border pl-4">
+                        <h4 class="text-base font-medium text-foreground">Blueprint & Scaffolding Services</h4>
+                        <p class="text-sm text-muted-foreground">Deliver domain templates, code generators, and compliance-ready stacks.</p>
+                        <div class="mt-2 text-xs text-muted-foreground">4 functions</div>
+                    </div>
+                    <div class="border-l-2 border-border pl-4">
+                        <h4 class="text-base font-medium text-foreground">Automation & Testing Services</h4>
+                        <p class="text-sm text-muted-foreground">Automate quality gates, testing, and performance validation.</p>
+                        <div class="mt-2 text-xs text-muted-foreground">4 functions</div>
+                    </div>
+                    <div class="border-l-2 border-border pl-4">
+                        <h4 class="text-base font-medium text-foreground">Developer Experience Portal</h4>
+                        <p class="text-sm text-muted-foreground">Provide self-service workflows, documentation, and community feedback loops.</p>
+                        <div class="mt-2 text-xs text-muted-foreground">4 functions</div>
+                    </div>
+                    <div class="border-l-2 border-border pl-4">
+                        <h4 class="text-base font-medium text-foreground">AI-Assisted Development</h4>
+                        <p class="text-sm text-muted-foreground">Augment engineering workflows with AI guidance and governance.</p>
+                        <div class="mt-2 text-xs text-muted-foreground">4 functions</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Brokering Capabilities -->
+            <div class="border-l-4 border-purple-500 pl-4">
+                <h3 class="text-lg font-medium text-foreground">Brokering Capabilities</h3>
+                <p class="text-sm text-muted-foreground mt-1">Enable mediation, integration, and traffic control across services.</p>
+                <div class="mt-3 flex items-center space-x-4">
+                    <span class="text-sm text-muted-foreground">Level 1</span>
+                    <span class="px-2 py-1 text-xs font-semibold rounded-full bg-purple-100 text-purple-800">Integration</span>
+                    <span class="px-2 py-1 text-xs font-semibold rounded-full bg-muted text-foreground">Core</span>
+                </div>
+
+                <!-- Sub-capabilities -->
+                <div class="mt-4 ml-4 space-y-3">
+                    <div class="border-l-2 border-border pl-4">
+                        <h4 class="text-base font-medium text-foreground">API Mediation Layer</h4>
+                        <p class="text-sm text-muted-foreground">Provide API gateways, lifecycle management, and policy enforcement.</p>
+                        <div class="mt-2 text-xs text-muted-foreground">4 functions</div>
+                    </div>
+                    <div class="border-l-2 border-border pl-4">
+                        <h4 class="text-base font-medium text-foreground">Event Streaming & Choreography</h4>
+                        <p class="text-sm text-muted-foreground">Manage event-driven architectures and orchestration patterns.</p>
+                        <div class="mt-2 text-xs text-muted-foreground">4 functions</div>
+                    </div>
+                    <div class="border-l-2 border-border pl-4">
+                        <h4 class="text-base font-medium text-foreground">Integration Adapter Marketplace</h4>
+                        <p class="text-sm text-muted-foreground">Provide reusable connectors, credentials, and connectivity monitoring.</p>
+                        <div class="mt-2 text-xs text-muted-foreground">4 functions</div>
+                    </div>
+                    <div class="border-l-2 border-border pl-4">
+                        <h4 class="text-base font-medium text-foreground">Data Virtualization & Semantic Mapping</h4>
+                        <p class="text-sm text-muted-foreground">Expose unified data views and semantic layers with policy awareness.</p>
+                        <div class="mt-2 text-xs text-muted-foreground">4 functions</div>
+                    </div>
+                    <div class="border-l-2 border-border pl-4">
+                        <h4 class="text-base font-medium text-foreground">Service Mesh & Traffic Control</h4>
+                        <p class="text-sm text-muted-foreground">Provide service-to-service communication, security, and observability.</p>
+                        <div class="mt-2 text-xs text-muted-foreground">4 functions</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Management Utility Capabilities -->
+            <div class="border-l-4 border-destructive pl-4">
+                <h3 class="text-lg font-medium text-foreground">Management Utility Capabilities</h3>
+                <p class="text-sm text-muted-foreground mt-1">Operate, govern, and sustain the application platform.</p>
+                <div class="mt-3 flex items-center space-x-4">
+                    <span class="text-sm text-muted-foreground">Level 1</span>
+                    <span class="px-2 py-1 text-xs font-semibold rounded-full bg-destructive/10 text-red-800">Operations</span>
+                    <span class="px-2 py-1 text-xs font-semibold rounded-full bg-muted text-foreground">Supporting</span>
+                </div>
+
+                <!-- Sub-capabilities -->
+                <div class="mt-4 ml-4 space-y-3">
+                    <div class="border-l-2 border-border pl-4">
+                        <h4 class="text-base font-medium text-foreground">Observability & Telemetry</h4>
+                        <p class="text-sm text-muted-foreground">Collect metrics, traces, and logs with business KPI instrumentation.</p>
+                        <div class="mt-2 text-xs text-muted-foreground">4 functions</div>
+                    </div>
+                    <div class="border-l-2 border-border pl-4">
+                        <h4 class="text-base font-medium text-foreground">Configuration & Feature Management</h4>
+                        <p class="text-sm text-muted-foreground">Manage configurations, feature flags, and compliance drift detection.</p>
+                        <div class="mt-2 text-xs text-muted-foreground">4 functions</div>
+                    </div>
+                    <div class="border-l-2 border-border pl-4">
+                        <h4 class="text-base font-medium text-foreground">Policy & Compliance Automation</h4>
+                        <p class="text-sm text-muted-foreground">Automate policy enforcement, compliance checks, and audit trails.</p>
+                        <div class="mt-2 text-xs text-muted-foreground">4 functions</div>
+                    </div>
+                    <div class="border-l-2 border-border pl-4">
+                        <h4 class="text-base font-medium text-foreground">Security & Identity Services</h4>
+                        <p class="text-sm text-muted-foreground">Provide authentication, authorization, and security monitoring.</p>
+                        <div class="mt-2 text-xs text-muted-foreground">4 functions</div>
+                    </div>
+                    <div class="border-l-2 border-border pl-4">
+                        <h4 class="text-base font-medium text-foreground">Backup & Disaster Recovery</h4>
+                        <p class="text-sm text-muted-foreground">Provide data protection, backup, and disaster recovery capabilities.</p>
+                        <div class="mt-2 text-xs text-muted-foreground">4 functions</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Suggested Mappings (FRAG-003) -->
+    <div x-data="{ sugOpen: false, sugItems: [], sugLoading: false, sugLoaded: false }">
+        <button @click="sugOpen = !sugOpen; if (!sugLoaded) { sugLoading = true; sugLoaded = true;
+            fetch('/capability-map/api/capabilities/apqc-suggestions')
+                .then(r => r.json())
+                .then(d => { sugItems = Array.isArray(d) ? d : Object.values(d); sugLoading = false; })
+                .catch(() => { sugLoading = false; });
+        }" class="inline-flex items-center gap-2 px-4 py-2 mb-4 rounded-lg border border-border bg-card text-sm font-medium text-foreground hover:bg-accent transition-colors">
+            <i data-lucide="sparkles" class="h-4 w-4 text-primary"></i>
+            Suggested Mappings
+            <svg xmlns='http://www.w3.org/2000/svg' class='h-3 w-3 transition-transform' :class="sugOpen ? 'rotate-90' : ''" fill='none' viewBox='0 0 24 24' stroke='currentColor' stroke-width='2'><path stroke-linecap='round' stroke-linejoin='round' d='M9 5l7 7-7 7'/></svg>
+        </button>
+        <div x-show="sugOpen" x-cloak x-transition class="bg-card rounded-lg shadow border mb-6">
+            <div class="px-6 py-4 border-b">
+                <h2 class="text-lg font-medium text-foreground">AI-Suggested Capability Mappings</h2>
+                <p class="text-sm text-muted-foreground mt-1">APQC process-to-capability mapping suggestions ranked by confidence</p>
+            </div>
+            <div x-show="sugLoading" class="px-6 py-8 text-center text-sm text-muted-foreground">Loading suggestions...</div>
+            <div x-show="!sugLoading && sugItems.length > 0" class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead class="bg-muted/50">
+                        <tr>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-muted-foreground">APQC Process</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Suggested Capability</th>
+                            <th class="px-4 py-2 text-center text-xs font-medium text-muted-foreground">Confidence</th>
+                            <th class="px-4 py-2 text-center text-xs font-medium text-muted-foreground">Status</th>
+                            <th class="px-4 py-2 text-right text-xs font-medium text-muted-foreground">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="sug in sugItems.slice(0, 20)" :key="sug.apqc_id">
+                            <tr class="border-t border-border hover:bg-muted/50">
+                                <td class="px-4 py-2 text-foreground">
+                                    <span class="font-medium" x-text="sug.apqc_code"></span>
+                                    <span class="ml-1 text-muted-foreground" x-text="sug.apqc_name"></span>
+                                </td>
+                                <td class="px-4 py-2 text-foreground" x-text="sug.suggested_capability_name"></td>
+                                <td class="px-4 py-2 text-center">
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium"
+                                        :class="sug.confidence >= 0.8 ? 'bg-emerald-500/10 text-emerald-600' : sug.confidence >= 0.5 ? 'bg-amber-500/10 text-amber-600' : 'bg-muted text-muted-foreground'"
+                                        x-text="Math.round(sug.confidence * 100) + '%'"></span>
+                                </td>
+                                <td class="px-4 py-2 text-center">
+                                    <span x-show="sug.already_linked" class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-emerald-500/10 text-emerald-600">Linked</span>
+                                    <span x-show="!sug.already_linked" class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-muted text-muted-foreground">Pending</span>
+                                </td>
+                                <td class="px-4 py-2 text-right">
+                                    <button x-show="!sug.already_linked" @click="
+                                        fetch('/capability-map/api/capabilities/apqc-link', {
+                                            method: 'POST',
+                                            headers: {'Content-Type': 'application/json'},
+                                            body: JSON.stringify({apqc_id: sug.apqc_id, capability_id: sug.suggested_capability_id, level: sug.suggested_level})
+                                        }).then(r => r.json()).then(d => { if (d.success) sug.already_linked = true; })
+                                    " class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+                                        Apply
+                                    </button>
+                                    <span x-show="sug.already_linked" class="text-xs text-muted-foreground">Applied</span>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+            <div x-show="!sugLoading && sugItems.length === 0" class="px-6 py-8 text-center text-sm text-muted-foreground">
+                No suggestions available.
+            </div>
+        </div>
+    </div>
+
+        <!-- Coverage Gaps (FRAG-009) -->
+    <div x-data="{ gapOpen: false, gapData: null, gapLoading: false }">
+        <button @click="gapOpen = !gapOpen; if (!gapData && !gapLoading) { gapLoading = true;
+            fetch('/capability-map/api/process-gaps')
+                .then(r => r.json())
+                .then(d => { gapData = d; gapLoading = false; })
+                .catch(() => { gapLoading = false; });
+        }" class="inline-flex items-center gap-2 px-4 py-2 mb-4 rounded-lg border border-border bg-card text-sm font-medium text-foreground hover:bg-accent transition-colors">
+            <i data-lucide="git-merge" class="h-4 w-4 text-primary"></i>
+            Coverage Gaps
+            <svg xmlns='http://www.w3.org/2000/svg' class='h-3 w-3 transition-transform' :class="gapOpen ? 'rotate-90' : ''" fill='none' viewBox='0 0 24 24' stroke='currentColor' stroke-width='2'><path stroke-linecap='round' stroke-linejoin='round' d='M9 5l7 7-7 7'/></svg>
+        </button>
+        <div x-show="gapOpen" x-cloak x-transition class="bg-card rounded-lg shadow border mb-6">
+            <div x-show="gapLoading" class="px-6 py-8 text-center text-sm text-muted-foreground">Loading coverage data...</div>
+            <template x-if="gapData && gapData.statistics">
+                <div>
+                    <div class="grid grid-cols-3 gap-0 border-b border-border">
+                        <div class="p-4 text-center border-r border-border">
+                            <p class="text-2xl font-bold text-foreground" x-text="gapData.statistics.total_gaps || 0"></p>
+                            <p class="text-xs text-muted-foreground">Total Gaps</p>
+                        </div>
+                        <div class="p-4 text-center border-r border-border">
+                            <p class="text-2xl font-bold text-destructive" x-text="gapData.statistics.critical_gaps || 0"></p>
+                            <p class="text-xs text-muted-foreground">Critical</p>
+                        </div>
+                        <div class="p-4 text-center">
+                            <p class="text-2xl font-bold text-amber-600" x-text="gapData.statistics.high_priority_gaps || 0"></p>
+                            <p class="text-xs text-muted-foreground">High Priority</p>
+                        </div>
+                    </div>
+                    <div class="max-h-64 overflow-y-auto divide-y divide-border">
+                        <template x-for="gap in (gapData.process_gaps || []).slice(0, 20)" :key="gap.id || gap.name">
+                            <div class="px-6 py-3 flex items-center justify-between hover:bg-muted/50">
+                                <div class="min-w-0 flex-1">
+                                    <span class="font-medium text-sm text-foreground" x-text="gap.name || gap.process_name"></span>
+                                    <span x-show="gap.domain" class="ml-2 inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-muted text-muted-foreground" x-text="gap.domain"></span>
+                                </div>
+                                <span x-show="gap.priority || gap.severity"
+                                    class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium"
+                                    :class="(gap.priority || gap.severity) === 'critical' ? 'bg-destructive/10 text-destructive' : 'bg-amber-500/10 text-amber-600'"
+                                    x-text="gap.priority || gap.severity"></span>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </template>
+        </div>
+    </div>
+
+    <!-- Domain Legend -->
+    <div class="bg-card rounded-lg shadow border p-6">
+        <h3 class="text-lg font-medium text-foreground mb-4">Domain Distribution</h3>
+        <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+            <div class="flex items-center">
+                <div class="w-4 h-4 rounded-full mr-2 bg-primary"></div>
+                <span class="text-sm text-muted-foreground">Experience</span>
+            </div>
+            <div class="flex items-center">
+                <div class="w-4 h-4 rounded-full mr-2 bg-amber-500"></div>
+                <span class="text-sm text-muted-foreground">Engineering</span>
+            </div>
+            <div class="flex items-center">
+                <div class="w-4 h-4 rounded-full mr-2 bg-primary"></div>
+                <span class="text-sm text-muted-foreground">Integration</span>
+            </div>
+            <div class="flex items-center">
+                <div class="w-4 h-4 rounded-full mr-2 bg-destructive"></div>
+                <span class="text-sm text-muted-foreground">Operations</span>
+            </div>
+            <div class="flex items-center">
+                <div class="w-4 h-4 rounded-full mr-2 bg-cyan-500"></div>
+                <span class="text-sm text-muted-foreground">Data</span>
+            </div>
+            <div class="flex items-center">
+                <div class="w-4 h-4 rounded-full mr-2 bg-lime-500"></div>
+                <span class="text-sm text-muted-foreground">Governance</span>
+            </div>
+            <div class="flex items-center">
+                <div class="w-4 h-4 rounded-full mr-2 bg-orange-500"></div>
+                <span class="text-sm text-muted-foreground">Analytics</span>
+            </div>
+            <div class="flex items-center">
+                <div class="w-4 h-4 rounded-full mr-2 bg-rose-500"></div>
+                <span class="text-sm text-muted-foreground">Security</span>
+            </div>
+            <div class="flex items-center">
+                <div class="w-4 h-4 rounded-full mr-2 bg-pink-500"></div>
+                <span class="text-sm text-muted-foreground">Quality</span>
+            </div>
+            <div class="flex items-center">
+                <div class="w-4 h-4 rounded-full mr-2 bg-teal-500"></div>
+                <span class="text-sm text-muted-foreground">Mobility</span>
+            </div>
+            <div class="flex items-center">
+                <div class="w-4 h-4 rounded-full mr-2 bg-amber-500"></div>
+                <span class="text-sm text-muted-foreground">Finance</span>
+            </div>
+            <div class="flex items-center">
+                <div class="w-4 h-4 rounded-full mr-2 bg-emerald-500"></div>
+                <span class="text-sm text-muted-foreground">Enterprise</span>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_head_js %}
+<script src="https://cdn.jsdelivr.net/npm/jointjs@3.7.7/dist/joint.min.js" crossorigin="anonymous"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jointjs@3.7.7/dist/joint.min.css" crossorigin="anonymous">
+<script src="{{ url_for('static', filename='js/archimate/composer_renderer.js') }}"></script>
+<script>
+function unmappedCapabilitiesPanel() {
+    return {
+        open: false, loading: false, items: [], count: 0,
+        init() {
+            this.loading = true;
+            fetch('/capability-map/api/mappings')
+                .then(r => r.json())
+                .then(d => { this.items = (d.gap_analysis && d.gap_analysis.unmapped_capabilities) || []; this.count = this.items.length; this.loading = false; })
+                .catch(() => { this.loading = false; });
+        }
+    };
+}
+</script>
+{% endblock %}

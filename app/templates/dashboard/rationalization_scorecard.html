@@ -1,0 +1,402 @@
+{% extends 'layouts/admin_base.html' %}
+{% from 'components/page_header.html' import page_header %}
+
+{% block title %}Executive Rationalization Scorecard{% endblock %}
+
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+  <!-- Header -->
+  {{ page_header(
+      title='Executive Rationalization Scorecard',
+      description='Portfolio-wide application rationalization insights',
+      actions=[
+          {'text': 'New Assessment', 'icon': 'clipboard-list', 'href': url_for('dashboard_pages.rationalization_assessment'), 'variant': 'default'},
+          {'text': 'Export', 'icon': 'download', 'onclick': 'exportScorecard()', 'variant': 'outline'}
+      ]
+  ) }}
+
+  <!-- Key Metrics Cards -->
+  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+    <div class="bg-card border rounded-lg p-6 transition-all duration-300 hover:scale-[1.02]">
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-sm text-muted-foreground">Total Applications</span>
+        <i data-lucide="layout-grid" class="h-4 w-4 text-primary" aria-hidden="true"></i>
+      </div>
+      <div class="text-3xl font-bold" id="total-apps">-</div>
+      <div class="text-xs text-muted-foreground mt-1">In portfolio scope</div>
+    </div>
+
+    <div class="bg-card border rounded-lg p-6 transition-all duration-300 hover:scale-[1.02]">
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-sm text-muted-foreground">Avg Health Score</span>
+        <i data-lucide="activity" class="h-4 w-4 text-success" aria-hidden="true"></i>
+      </div>
+      <div class="text-3xl font-bold" id="avg-score">-</div>
+      <div class="text-xs text-muted-foreground mt-1">Weighted composite</div>
+    </div>
+
+    <div class="bg-card border rounded-lg p-6 transition-all duration-300 hover:scale-[1.02]">
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-sm text-muted-foreground">Elimination Candidates</span>
+        <i data-lucide="trash-2" class="h-4 w-4 text-destructive" aria-hidden="true"></i>
+      </div>
+      <div class="text-3xl font-bold text-destructive" id="eliminate-count">-</div>
+      <div class="text-xs text-muted-foreground mt-1">Potential savings</div>
+    </div>
+
+    <div class="bg-card border rounded-lg p-6 transition-all duration-300 hover:scale-[1.02]">
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-sm text-muted-foreground">Investment Needed</span>
+        <i data-lucide="trending-up" class="h-4 w-4 text-warning" aria-hidden="true"></i>
+      </div>
+      <div class="text-3xl font-bold text-warning" id="invest-count">-</div>
+      <div class="text-xs text-muted-foreground mt-1">Strategic priority</div>
+    </div>
+  </div>
+
+  <!-- TIME Framework Distribution -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+    <div class="bg-card border rounded-lg p-6">
+      <h2 class="text-lg font-semibold mb-4">TIME Framework Distribution</h2>
+      <div class="h-64">
+        <canvas id="timeChart"></canvas>
+      </div>
+      <div class="grid grid-cols-2 gap-3 mt-4">
+        <div class="p-3 bg-muted rounded-lg">
+          <div class="text-sm font-medium text-muted-foreground">TOLERATE</div>
+          <div class="text-xs text-muted-foreground">Maintain as-is</div>
+          <div class="text-[10px] text-muted-foreground mt-1 font-medium">→ <span class="text-blue-600">Retain</span></div><!-- token-migration-ok -->
+        </div>
+        <div class="p-3 bg-success/5 rounded-lg">
+          <div class="text-sm font-medium text-success">INVEST</div>
+          <div class="text-xs text-success">Strategic enhancement</div>
+          <div class="text-[10px] text-muted-foreground mt-1 font-medium">→ <span class="text-amber-600">Refactor</span></div>
+        </div>
+        <div class="p-3 bg-warning/5 rounded-lg">
+          <div class="text-sm font-medium text-warning">MIGRATE</div>
+          <div class="text-xs text-warning">Platform transition</div>
+          <div class="text-[10px] text-muted-foreground mt-1 font-medium">→ <span class="text-sky-600">Rehost</span> / <span class="text-violet-600">Replatform</span> / <span class="text-orange-600">Replace</span></div>
+        </div>
+        <div class="p-3 bg-destructive/5 rounded-lg">
+          <div class="text-sm font-medium text-destructive">ELIMINATE</div>
+          <div class="text-xs text-destructive">Retire/consolidate</div>
+          <div class="text-[10px] text-muted-foreground mt-1 font-medium">→ <span class="text-purple-600">Consolidate</span> / <span class="text-red-600">Retire</span></div><!-- token-migration-ok -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Cost Tier Distribution -->
+    <div class="bg-card border rounded-lg p-6">
+      <h2 class="text-lg font-semibold mb-4">TCO Cost Tier Distribution</h2>
+      <div id="cost-tiers-container" class="space-y-4">
+        <div class="animate-pulse space-y-3">
+          <div class="h-4 bg-muted rounded w-3/4"></div>
+          <div class="h-4 bg-muted rounded w-1/2"></div>
+          <div class="h-4 bg-muted rounded w-2/3"></div>
+        </div>
+      </div>
+      <div class="mt-6 pt-4 border-t">
+        <div class="flex justify-between text-sm">
+          <span class="text-muted-foreground">Total Portfolio TCO:</span>
+          <span class="font-semibold" id="total-tco">-</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scoring Dimensions -->
+  <div class="bg-card border rounded-lg p-6 mb-8">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-lg font-semibold">Scoring Dimension Breakdown</h2>
+      <select id="config-selector" class="text-sm border rounded px-2 py-1">
+        <option value="">Default Configuration</option>
+      </select>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div class="p-4 border rounded-lg text-center">
+        <div class="text-3xl font-bold text-primary mb-1" id="tech-avg">-</div>
+        <div class="text-sm text-muted-foreground">Technical Health</div>
+        <div class="text-xs text-muted-foreground mt-1" id="tech-weight">30%</div>
+      </div>
+      <div class="p-4 border rounded-lg text-center">
+        <div class="text-3xl font-bold text-success mb-1" id="business-avg">-</div>
+        <div class="text-sm text-muted-foreground">Business Value</div>
+        <div class="text-xs text-muted-foreground mt-1" id="business-weight">35%</div>
+      </div>
+      <div class="p-4 border rounded-lg text-center">
+        <div class="text-3xl font-bold text-warning mb-1" id="cost-avg">-</div>
+        <div class="text-sm text-muted-foreground">Cost Efficiency</div>
+        <div class="text-xs text-muted-foreground mt-1" id="cost-weight">25%</div>
+      </div>
+      <div class="p-4 border rounded-lg text-center">
+        <div class="text-3xl font-bold text-primary mb-1" id="vendor-avg">-</div>
+        <div class="text-sm text-muted-foreground">Vendor Risk</div>
+        <div class="text-xs text-muted-foreground mt-1" id="vendor-weight">10%</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Top Candidates Table -->
+  <div class="bg-card border rounded-lg p-6">
+    <h2 class="text-lg font-semibold mb-4">Top Action Candidates</h2>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b">
+            <th class="text-left py-2 px-2">Application</th>
+            <th class="text-center py-2 px-2">Overall</th>
+            <th class="text-center py-2 px-2">Tech</th>
+            <th class="text-center py-2 px-2">Business</th>
+            <th class="text-center py-2 px-2">Cost</th>
+            <th class="text-center py-2 px-2">ACTION / CONFIDENCE</th>
+            <th class="text-right py-2 px-2">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="candidates-table">
+          <tr>
+            <td colspan="7" class="text-center py-8 text-muted-foreground">Loading...</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+function escapeHtml(str) {
+    if (str == null) return '';
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+let timeChart = null;
+
+async function loadScorecardData() {
+  try {
+    // Load portfolio scores
+    const portfolioRes = await fetch('/dashboard/api/rationalization/portfolio', { method: 'POST', headers: {'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''} });
+    const portfolioData = await portfolioRes.json();
+
+    if (portfolioData.success) {
+      updateMetrics(portfolioData.data);
+      updateTimeChart(portfolioData.data.time_distribution);
+    }
+
+    // Load cost tiers
+    const tiersRes = await fetch('/dashboard/api/tco/cost-tiers');
+    const tiersData = await tiersRes.json();
+    if (tiersData.success) {
+      renderCostTiers(tiersData.data);
+    }
+
+    // Load elimination candidates
+    const candidatesRes = await fetch('/dashboard/api/rationalization/elimination-candidates?limit=10');
+    const candidatesData = await candidatesRes.json();
+    if (candidatesData.success) {
+      renderCandidates(candidatesData.data);
+    }
+
+    // Load scoring configurations
+    const configsRes = await fetch('/dashboard/api/scoring-configurations');
+    const configsData = await configsRes.json();
+    if (configsData.success) {
+      populateConfigSelector(configsData.data);
+    }
+  } catch (err) {
+    console.error('Failed to load scorecard data:', err);
+  }
+}
+
+function updateMetrics(data) {
+  document.getElementById('total-apps').textContent = data.total_scored || 0;
+  document.getElementById('avg-score').textContent = data.average_overall_score?.toFixed(1) || '-';
+
+  const timeDist = data.time_distribution || {};
+  document.getElementById('eliminate-count').textContent = timeDist.ELIMINATE || 0;
+  document.getElementById('invest-count').textContent = timeDist.INVEST || 0;
+
+  // Update dimension averages
+  document.getElementById('tech-avg').textContent = data.average_technical_score?.toFixed(0) || '-';
+  document.getElementById('business-avg').textContent = data.average_business_score?.toFixed(0) || '-';
+  document.getElementById('cost-avg').textContent = data.average_cost_score?.toFixed(0) || '-';
+  document.getElementById('vendor-avg').textContent = data.average_vendor_score?.toFixed(0) || '-';
+}
+
+function updateTimeChart(distribution) {
+  const ctx = document.getElementById('timeChart').getContext('2d');
+  const labels = ['TOLERATE', 'INVEST', 'MIGRATE', 'ELIMINATE'];
+  const data = labels.map(l => distribution[l] || 0);
+  const colors = ['#6b7280', '#22c55e', '#f59e0b', '#ef4444'];
+
+  if (timeChart) {
+    timeChart.destroy();
+  }
+
+  timeChart = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels,
+      datasets: [{
+        data,
+        backgroundColor: colors,
+        borderWidth: 2
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'bottom' }
+      }
+    }
+  });
+}
+
+function renderCostTiers(tiers) {
+  const container = document.getElementById('cost-tiers-container');
+  const maxCount = Math.max(...tiers.map(t => t.application_count));
+
+  container.innerHTML = tiers.map(tier => `
+    <div class="flex items-center gap-3">
+      <div class="w-24 text-sm">${escapeHtml(tier.name)}</div>
+      <div class="flex-1 bg-muted rounded-full h-4 overflow-hidden">
+        <div class="transition-[width] duration-500 ease-out h-full bg-${tier.color}-500" style="width: ${(tier.application_count / maxCount) * 100}%"></div>  <!-- inline-style-ok -->
+      </div>
+      <div class="w-16 text-right text-sm font-medium">${tier.application_count}</div>
+      <div class="w-12 text-right text-xs text-muted-foreground">${tier.percentage}%</div>
+    </div>
+  `).join('');
+}
+
+function renderCandidates(candidates) {
+  const tbody = document.getElementById('candidates-table');
+  if (!candidates.length) {
+    tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-muted-foreground">No candidates found</td></tr>';
+    return;
+  }
+
+  // TIME → badge colour classes (scoring model label)
+  const actionColors = {
+    'ELIMINATE': 'bg-destructive/10 text-destructive border border-destructive/30',
+    'MIGRATE':   'bg-warning/10 text-warning border border-warning/30',
+    'INVEST':    'bg-success/10 text-success border border-success/30',
+    'TOLERATE':  'bg-muted text-foreground border border-border'
+  };
+
+  // Canonical disposition → badge colour classes (7R action vocabulary)
+  const dispositionColors = {
+    'retain':      'bg-blue-500/10 text-blue-600 border border-blue-500/30', // token-migration-ok
+    'rehost':      'bg-sky-500/10 text-sky-600 border border-sky-500/30',
+    'replatform':  'bg-violet-500/10 text-violet-600 border border-violet-500/30',
+    'refactor':    'bg-amber-500/10 text-amber-600 border border-amber-500/30',
+    'replace':     'bg-orange-500/10 text-orange-600 border border-orange-500/30',
+    'consolidate': 'bg-purple-500/10 text-purple-600 border border-purple-500/30', // token-migration-ok
+    'retire':      'bg-red-500/10 text-red-600 border border-red-500/30' // token-migration-ok
+  };
+
+  // Confidence level → badge colour classes and labels (RAT-105)
+  const confidenceConfig = {
+    'high':   { cls: 'bg-success/10 text-success border-success/30',              label: 'High Confidence' },
+    'medium': { cls: 'bg-amber-500/10 text-amber-700 border-amber-500/30',        label: 'Medium Confidence' },
+    'low':    { cls: 'bg-destructive/10 text-destructive border-destructive/30',   label: 'Low \u2014 Tentative' },
+    'none':   { cls: 'bg-muted text-muted-foreground border-border',               label: 'Insufficient Evidence' },
+  };
+
+  // Capitalise first letter of a disposition value for display
+  function dispositionLabel(val) {
+    if (!val) return '—';
+    return val.charAt(0).toUpperCase() + val.slice(1);
+  }
+
+  // Build confidence badge HTML; for medium/low include tooltip listing reasons
+  function confidenceBadgeHtml(conf, reasons) {
+    const cfg = confidenceConfig[conf] || { cls: 'bg-muted text-muted-foreground border-border', label: conf || '—' };
+    const reasonList = Array.isArray(reasons) && reasons.length > 0
+      ? reasons.join('; ')
+      : '';
+    const title = reasonList ? `${cfg.label}: ${reasonList}` : cfg.label;
+    return `<span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold border ${cfg.cls}"
+                  title="${escapeHtml(title)}">${escapeHtml(cfg.label)}</span>`;
+  }
+
+  tbody.innerHTML = candidates.map(c => {
+    const dispClass = dispositionColors[c.disposition_action] || 'bg-muted text-foreground border border-border';
+    const conf = c.disposition_confidence || '';
+    const reasons = Array.isArray(c.confidence_reasons) ? c.confidence_reasons : [];
+
+    // For low confidence, add a prominent tentative note below the disposition badges
+    const isTentative = conf === 'low' || conf === 'none';
+    const tentativeNote = isTentative && reasons.length > 0
+      ? `<details class="mt-1 text-left">
+           <summary class="text-xs text-muted-foreground cursor-pointer hover:text-foreground list-none">&hellip; ${reasons.length} reason${reasons.length !== 1 ? 's' : ''}</summary>
+           <ul class="mt-1 ml-2 space-y-0.5 list-disc list-inside text-xs text-muted-foreground">
+             ${reasons.map(r => `<li>${escapeHtml(r)}</li>`).join('')}
+           </ul>
+         </details>`
+      : '';
+
+    return `
+      <tr class="border-b hover:bg-accent/50">
+        <td class="py-3 px-2 font-medium">${escapeHtml(c.name)}</td>
+        <td class="py-3 px-2 text-center font-semibold">${c.overall_score?.toFixed(1) || '-'}</td>
+        <td class="py-3 px-2 text-center">${c.technical_score?.toFixed(0) || '-'}</td>
+        <td class="py-3 px-2 text-center">${c.business_score?.toFixed(0) || '-'}</td>
+        <td class="py-3 px-2 text-center">${c.cost_score?.toFixed(0) || '-'}</td>
+        <td class="py-3 px-2 text-center">
+          <div class="flex flex-col items-center gap-1">
+            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${actionColors[c.time_action] || 'bg-muted'}"
+                  title="TIME framework scoring label">${escapeHtml(c.time_action || '—')}</span>
+            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium ${dispClass}"
+                  title="Canonical disposition action (7R taxonomy)">${dispositionLabel(c.disposition_action)}</span>
+            ${conf ? confidenceBadgeHtml(conf, reasons) : ''}
+            ${tentativeNote}
+          </div>
+        </td>
+        <td class="py-3 px-2 text-right">
+          <a href="/applications/${c.id}" class="text-primary hover:underline">View</a>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function populateConfigSelector(configs) {
+  const selector = document.getElementById('config-selector');
+  configs.forEach(c => {
+    const option = document.createElement('option');
+    option.value = c.id;
+    option.textContent = `${c.name} (${c.weights.technical_health * 100}/${c.weights.business_value * 100}/${c.weights.cost_efficiency * 100}/${c.weights.vendor_risk * 100})`;
+    selector.appendChild(option);
+  });
+
+  selector.addEventListener('change', (e) => {
+    const config = configs.find(c => c.id == e.target.value);
+    if (config) {
+      document.getElementById('tech-weight').textContent = `${config.weights.technical_health * 100}%`;
+      document.getElementById('business-weight').textContent = `${config.weights.business_value * 100}%`;
+      document.getElementById('cost-weight').textContent = `${config.weights.cost_efficiency * 100}%`;
+      document.getElementById('vendor-weight').textContent = `${config.weights.vendor_risk * 100}%`;
+    } else {
+      document.getElementById('tech-weight').textContent = '30%';
+      document.getElementById('business-weight').textContent = '35%';
+      document.getElementById('cost-weight').textContent = '25%';
+      document.getElementById('vendor-weight').textContent = '10%';
+    }
+  });
+}
+
+function exportScorecard() {
+  window.print();
+}
+
+// Initialize
+document.addEventListener('DOMContentLoaded', () => {
+  loadScorecardData();
+  lucide.createIcons();
+});
+</script>
+{% endblock %}
+

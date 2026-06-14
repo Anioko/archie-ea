@@ -1,0 +1,600 @@
+{# Step 7: Code Generation — Deterministic project scaffold from blueprint #}
+<div class="space-y-4">
+
+    {# ── Main content ── #}
+    <div class="space-y-4">
+
+        {# Header #}
+        <div class="bg-card border border-border rounded-lg p-6">
+            <div class="flex items-start justify-between gap-4">
+                <div>
+                    <h2 class="text-lg font-semibold text-foreground flex items-center gap-2">
+                        <i data-lucide="code-2" class="w-5 h-5 text-primary" aria-hidden="true"></i>
+                        Step 7: Generate Implementation Code
+                    </h2>
+                    <p class="text-sm text-muted-foreground mt-1">
+                        Generate a complete, deterministic project scaffold from your approved architecture blueprint.
+                        Same spec hash always produces identical output.
+                    </p>
+                </div>
+                {# ARB submitted badge #}
+                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30 shrink-0">
+                    <span class="w-1.5 h-1.5 bg-emerald-500 rounded-full"></span>
+                    ARB Submitted
+                </span>
+            </div>
+        </div>
+
+        {# ── Generating state ── #}
+        <div x-show="codegenLoading && !codegenResult" x-cloak
+             class="bg-card border border-border rounded-lg p-6 flex items-center gap-4">
+            <span class="animate-spin h-5 w-5 border-2 border-primary border-t-transparent rounded-full shrink-0"></span>
+            <div>
+                <p class="text-sm font-medium text-foreground">Building your project…</p>
+                <p class="text-xs text-muted-foreground mt-0.5">Architecture elements → data models → routes → tests. Usually 30–60 seconds.</p>
+            </div>
+        </div>
+
+        {# ── Initial CTA when no code has been generated yet ── #}
+        <div x-show="!codegenLoading && !codegenResult" x-cloak
+             class="bg-card border border-border rounded-lg p-6 text-center space-y-4">
+            <div class="w-14 h-14 bg-primary/10 rounded-xl flex items-center justify-center mx-auto">
+                <i data-lucide="zap" class="w-7 h-7 text-primary" aria-hidden="true"></i>
+            </div>
+            <div>
+                <p class="text-base font-semibold text-foreground">Ready to generate your project</p>
+                <p class="text-sm text-muted-foreground mt-1">Click below to generate a complete, deterministic project scaffold from your approved architecture.</p>
+            </div>
+            <button @click="generateCode()"
+                    class="inline-flex items-center justify-center gap-2 px-6 py-2.5 text-sm font-medium bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors">
+                <i data-lucide="zap" class="w-4 h-4" aria-hidden="true"></i>
+                Generate Code
+            </button>
+        </div>
+
+        {# ── Language / Mode selector — collapsed when result exists, open when choosing for first time ── #}
+        <details class="bg-card border border-border rounded-lg" :open="!codegenResult">
+            <summary class="px-6 py-4 text-sm font-medium text-foreground cursor-pointer select-none list-none flex items-center justify-between">
+                <span x-text="codegenResult ? 'Change language or generation mode' : 'Select language and generation mode'"></span>
+                <i data-lucide="chevron-down" class="w-4 h-4 text-muted-foreground" aria-hidden="true"></i>
+            </summary>
+            <div class="px-6 pb-6 space-y-5 border-t border-border pt-4" :inert="codegenLoading">
+            <p class="text-sm font-medium text-foreground">Select implementation language</p>
+
+            <div class="grid grid-cols-2 gap-3">
+                {# Python / FastAPI — API only, no frontend #}
+                <button @click="codegenLanguage = 'python-fastapi'"
+                        :class="codegenLanguage === 'python-fastapi'
+                            ? 'border-primary bg-primary/5 ring-1 ring-primary'
+                            : 'border-border hover:border-primary/40 hover:bg-muted/50'"
+                        class="flex items-start gap-3 p-4 rounded-lg border text-left transition-all">
+                    <span class="inline-flex items-center justify-center w-9 h-9 rounded-md bg-muted shrink-0"><i data-lucide="code-2" class="w-4 h-4 text-muted-foreground"></i></span>
+                    <div>
+                        <p class="text-sm font-medium text-foreground">Python API <span class="text-muted-foreground font-normal">(FastAPI)</span></p>
+                        <p class="text-xs text-muted-foreground">FastAPI + SQLAlchemy + pytest — API only, no frontend</p>
+                    </div>
+                    <template x-if="codegenLanguage === 'python-fastapi'">
+                        <svg class="w-4 h-4 text-primary ml-auto shrink-0" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                    </template>
+                </button>
+
+                {# Python / Flask — API only, no frontend #}
+                <button @click="codegenLanguage = 'python-flask'"
+                        :class="codegenLanguage === 'python-flask'
+                            ? 'border-primary bg-primary/5 ring-1 ring-primary'
+                            : 'border-border hover:border-primary/40 hover:bg-muted/50'"
+                        class="flex items-start gap-3 p-4 rounded-lg border text-left transition-all">
+                    <span class="inline-flex items-center justify-center w-9 h-9 rounded-md bg-muted shrink-0"><i data-lucide="code-2" class="w-4 h-4 text-muted-foreground"></i></span>
+                    <div>
+                        <p class="text-sm font-medium text-foreground">Python API <span class="text-muted-foreground font-normal">(Flask)</span></p>
+                        <p class="text-xs text-muted-foreground">Flask + SQLAlchemy + pytest — API only, no frontend</p>
+                    </div>
+                    <template x-if="codegenLanguage === 'python-flask'">
+                        <svg class="w-4 h-4 text-primary ml-auto shrink-0" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                    </template>
+                </button>
+
+                {# Go / Chi #}
+                <button @click="codegenLanguage = 'go-chi'"
+                        :class="codegenLanguage === 'go-chi'
+                            ? 'border-primary bg-primary/5 ring-1 ring-primary'
+                            : 'border-border hover:border-primary/40 hover:bg-muted/50'"
+                        class="flex items-start gap-3 p-4 rounded-lg border text-left transition-all">
+                    <span class="inline-flex items-center justify-center w-9 h-9 rounded-md bg-muted shrink-0"><i data-lucide="zap" class="w-4 h-4 text-muted-foreground"></i></span>
+                    <div>
+                        <p class="text-sm font-medium text-foreground">Go</p>
+                        <p class="text-xs text-muted-foreground">Chi router + pgx + testify</p>
+                    </div>
+                    <template x-if="codegenLanguage === 'go-chi'">
+                        <svg class="w-4 h-4 text-primary ml-auto shrink-0" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                    </template>
+                </button>
+
+                {# Java / Spring Boot #}
+                <button @click="codegenLanguage = 'java-spring-boot'"
+                        :class="codegenLanguage === 'java-spring-boot'
+                            ? 'border-primary bg-primary/5 ring-1 ring-primary'
+                            : 'border-border hover:border-primary/40 hover:bg-muted/50'"
+                        class="flex items-start gap-3 p-4 rounded-lg border text-left transition-all">
+                    <span class="text-2xl shrink-0">☕</span>
+                    <div>
+                        <p class="text-sm font-medium text-foreground">Java</p>
+                        <p class="text-xs text-muted-foreground">Spring Boot 3 + JPA + JUnit</p>
+                    </div>
+                    <template x-if="codegenLanguage === 'java-spring-boot'">
+                        <svg class="w-4 h-4 text-primary ml-auto shrink-0" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                    </template>
+                </button>
+
+                {# Salesforce / Apex #}
+                <button @click="codegenLanguage = 'salesforce-apex'"
+                        :class="codegenLanguage === 'salesforce-apex'
+                            ? 'border-primary bg-primary/5 ring-1 ring-primary'
+                            : 'border-border hover:border-primary/40 hover:bg-muted/50'"
+                        class="flex items-start gap-3 p-4 rounded-lg border text-left transition-all">
+                    <span class="text-2xl shrink-0">☁️</span>
+                    <div>
+                        <p class="text-sm font-medium text-foreground">Salesforce</p>
+                        <p class="text-xs text-muted-foreground">Apex + LWC + Custom Objects</p>
+                    </div>
+                    <template x-if="codegenLanguage === 'salesforce-apex'">
+                        <svg class="w-4 h-4 text-primary ml-auto shrink-0" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                    </template>
+                </button>
+
+                {# Full-Stack — FastAPI backend + Next.js 14 #}
+                <button @click="codegenLanguage = 'react-shadcn'"
+                        :class="codegenLanguage === 'react-shadcn'
+                            ? 'border-primary bg-primary/5 ring-1 ring-primary'
+                            : 'border-border hover:border-primary/40 hover:bg-muted/50'"
+                        class="col-span-2 flex items-start gap-3 p-4 rounded-lg border text-left transition-all">
+                    <span class="inline-flex items-center justify-center w-9 h-9 rounded-md bg-muted shrink-0"><i data-lucide="globe" class="w-4 h-4 text-muted-foreground"></i></span>
+                    <div class="flex-1">
+                        <p class="text-sm font-medium text-foreground">Full-Stack <span class="text-muted-foreground font-normal">(FastAPI + Next.js 14)</span></p>
+                        <p class="text-xs text-muted-foreground">FastAPI backend + Next.js 14 App Router + shadcn/ui + Tailwind</p>
+                    </div>
+                    <template x-if="codegenLanguage === 'react-shadcn'">
+                        <svg class="w-4 h-4 text-primary ml-auto shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                    </template>
+                </button>
+
+                {# Full-Stack — Flask backend + Next.js 14 #}
+                <button @click="codegenLanguage = 'flask-nextjs'"
+                        :class="codegenLanguage === 'flask-nextjs'
+                            ? 'border-primary bg-primary/5 ring-1 ring-primary'
+                            : 'border-border hover:border-primary/40 hover:bg-muted/50'"
+                        class="col-span-2 flex items-start gap-3 p-4 rounded-lg border text-left transition-all">
+                    <span class="inline-flex items-center justify-center w-9 h-9 rounded-md bg-muted shrink-0"><i data-lucide="code-2" class="w-4 h-4 text-muted-foreground"></i></span>
+                    <div class="flex-1">
+                        <p class="text-sm font-medium text-foreground">Full-Stack <span class="text-muted-foreground font-normal">(Flask + Next.js 14)</span></p>
+                        <p class="text-xs text-muted-foreground">Flask Blueprints + SQLAlchemy backend + Next.js 14 App Router + shadcn/ui + Tailwind</p>
+                    </div>
+                    <template x-if="codegenLanguage === 'flask-nextjs'">
+                        <svg class="w-4 h-4 text-primary ml-auto shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                    </template>
+                </button>
+
+                {# Full-Stack — Flask backend + React SPA (Vite) #}
+                <button @click="codegenLanguage = 'flask-react'"
+                        :class="codegenLanguage === 'flask-react'
+                            ? 'border-primary bg-primary/5 ring-1 ring-primary'
+                            : 'border-border hover:border-primary/40 hover:bg-muted/50'"
+                        class="col-span-2 flex items-start gap-3 p-4 rounded-lg border text-left transition-all">
+                    <span class="text-2xl shrink-0">⚛️</span>
+                    <div class="flex-1">
+                        <p class="text-sm font-medium text-foreground">Full-Stack <span class="text-muted-foreground font-normal">(Flask + React SPA)</span></p>
+                        <p class="text-xs text-muted-foreground">Flask Blueprints + SQLAlchemy backend + React 18 (Vite) + shadcn/ui + React Router v6</p>
+                    </div>
+                    <template x-if="codegenLanguage === 'flask-react'">
+                        <svg class="w-4 h-4 text-primary ml-auto shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                    </template>
+                </button>
+            </div>
+
+            {# ── Enterprise Platforms ── #}
+            <p class="text-sm font-medium text-foreground pt-2">Enterprise Platforms</p>
+            <div class="grid grid-cols-2 gap-3">
+
+                {# SAP CAP #}
+                <button @click="codegenLanguage = 'sap-cap'"
+                        :class="codegenLanguage === 'sap-cap'
+                            ? 'border-primary bg-primary/5 ring-1 ring-primary'
+                            : 'border-border hover:border-primary/40 hover:bg-muted/50'"
+                        class="flex items-start gap-3 p-4 rounded-lg border text-left transition-all">
+                    <span class="inline-flex items-center justify-center w-9 h-9 rounded-md bg-muted shrink-0"><i data-lucide="layers" class="w-4 h-4 text-muted-foreground"></i></span>
+                    <div>
+                        <p class="text-sm font-medium text-foreground">SAP CAP</p>
+                        <p class="text-xs text-muted-foreground">Cloud Application Programming + OData V4</p>
+                    </div>
+                    <template x-if="codegenLanguage === 'sap-cap'">
+                        <svg class="w-4 h-4 text-primary ml-auto shrink-0" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                    </template>
+                </button>
+
+                {# SAP BTP Integration Suite #}
+                <button @click="codegenLanguage = 'sap-btp-integration'"
+                        :class="codegenLanguage === 'sap-btp-integration'
+                            ? 'border-primary bg-primary/5 ring-1 ring-primary'
+                            : 'border-border hover:border-primary/40 hover:bg-muted/50'"
+                        class="flex items-start gap-3 p-4 rounded-lg border text-left transition-all">
+                    <span class="inline-flex items-center justify-center w-9 h-9 rounded-md bg-muted shrink-0"><i data-lucide="link" class="w-4 h-4 text-muted-foreground"></i></span>
+                    <div>
+                        <p class="text-sm font-medium text-foreground">SAP BTP Integration</p>
+                        <p class="text-xs text-muted-foreground">iFlow artefacts + BTP services</p>
+                    </div>
+                    <template x-if="codegenLanguage === 'sap-btp-integration'">
+                        <svg class="w-4 h-4 text-primary ml-auto shrink-0" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                    </template>
+                </button>
+
+                {# Azure Bicep #}
+                <button @click="codegenLanguage = 'azure-bicep'"
+                        :class="codegenLanguage === 'azure-bicep'
+                            ? 'border-primary bg-primary/5 ring-1 ring-primary'
+                            : 'border-border hover:border-primary/40 hover:bg-muted/50'"
+                        class="flex items-start gap-3 p-4 rounded-lg border text-left transition-all">
+                    <span class="inline-flex items-center justify-center w-9 h-9 rounded-md bg-muted shrink-0"><i data-lucide="building" class="w-4 h-4 text-muted-foreground"></i></span>
+                    <div>
+                        <p class="text-sm font-medium text-foreground">Azure Bicep</p>
+                        <p class="text-xs text-muted-foreground">ARM templates + Azure Resource Manager</p>
+                    </div>
+                    <template x-if="codegenLanguage === 'azure-bicep'">
+                        <svg class="w-4 h-4 text-primary ml-auto shrink-0" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                    </template>
+                </button>
+
+                {# Azure Logic App #}
+                <button @click="codegenLanguage = 'azure-logic-app'"
+                        :class="codegenLanguage === 'azure-logic-app'
+                            ? 'border-primary bg-primary/5 ring-1 ring-primary'
+                            : 'border-border hover:border-primary/40 hover:bg-muted/50'"
+                        class="flex items-start gap-3 p-4 rounded-lg border text-left transition-all">
+                    <span class="text-2xl shrink-0">⚡</span>
+                    <div>
+                        <p class="text-sm font-medium text-foreground">Azure Logic App</p>
+                        <p class="text-xs text-muted-foreground">ARM workflow definitions + connectors</p>
+                    </div>
+                    <template x-if="codegenLanguage === 'azure-logic-app'">
+                        <svg class="w-4 h-4 text-primary ml-auto shrink-0" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                    </template>
+                </button>
+
+                {# Power Platform Solution #}
+                <button @click="codegenLanguage = 'power-platform-solution'"
+                        :class="codegenLanguage === 'power-platform-solution'
+                            ? 'border-primary bg-primary/5 ring-1 ring-primary'
+                            : 'border-border hover:border-primary/40 hover:bg-muted/50'"
+                        class="col-span-2 flex items-start gap-3 p-4 rounded-lg border text-left transition-all">
+                    <span class="inline-flex items-center justify-center w-9 h-9 rounded-md bg-muted shrink-0"><i data-lucide="box" class="w-4 h-4 text-muted-foreground"></i></span>
+                    <div class="flex-1">
+                        <p class="text-sm font-medium text-foreground">Power Platform</p>
+                        <p class="text-xs text-muted-foreground">Power Apps + Power Automate + Dataverse solution package</p>
+                    </div>
+                    <template x-if="codegenLanguage === 'power-platform-solution'">
+                        <svg class="w-4 h-4 text-primary ml-auto shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                    </template>
+                </button>
+            </div>
+
+            {# ── Generation Mode ── #}
+            <div class="space-y-2">
+                <p class="text-sm font-medium text-foreground">Generation mode</p>
+                <div class="grid grid-cols-2 gap-3">
+                    <button @click="codegenMode = 'genome'"
+                            :class="codegenMode === 'genome'
+                                ? 'border-primary bg-primary/5 ring-1 ring-primary'
+                                : 'border-border hover:border-primary/40 hover:bg-muted/50'"
+                            class="flex items-start gap-3 p-3 rounded-lg border text-left transition-all">
+                        <div>
+                            <p class="text-sm font-medium text-foreground">Genome</p>
+                            <p class="text-xs text-muted-foreground">Deterministic, $0 LLM cost, state machines, multi-tenant, telemetry, API keys, Keycloak, Prometheus</p>
+                        </div>
+                        <template x-if="codegenMode === 'genome'">
+                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-600 border border-emerald-500/30 shrink-0">Recommended</span>
+                        </template>
+                    </button>
+                    <button @click="codegenMode = 'hybrid'"
+                            :class="codegenMode === 'hybrid'
+                                ? 'border-primary bg-primary/5 ring-1 ring-primary'
+                                : 'border-border hover:border-primary/40 hover:bg-muted/50'"
+                            class="flex items-start gap-3 p-3 rounded-lg border text-left transition-all">
+                        <div>
+                            <p class="text-sm font-medium text-foreground">Hybrid</p>
+                            <p class="text-xs text-muted-foreground">Deterministic scaffold + LLM enrichment for business logic and docstrings</p>
+                        </div>
+                    </button>
+                </div>
+            </div>
+
+            {# ── Genome Options (only visible in genome mode) ── #}
+            <div x-show="codegenMode === 'genome'" x-cloak class="space-y-3 rounded-lg border border-border p-4">
+                <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Genome Configuration</p>
+                <div class="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                    <label class="flex items-center gap-2">
+                        <input type="checkbox" x-model="genomeOpts.multiTenancy" class="rounded border-border">
+                        <span class="text-foreground">Multi-tenant isolation</span>
+                    </label>
+                    <label class="flex items-center gap-2">
+                        <input type="checkbox" x-model="genomeOpts.apiKeys" class="rounded border-border">
+                        <span class="text-foreground">API key management</span>
+                    </label>
+                    <label class="flex items-center gap-2">
+                        <input type="checkbox" x-model="genomeOpts.encryptionAtRest" class="rounded border-border">
+                        <span class="text-foreground">Field-level encryption</span>
+                    </label>
+                    <label class="flex items-center gap-2">
+                        <input type="checkbox" x-model="genomeOpts.mobileApp" class="rounded border-border">
+                        <span class="text-foreground">Mobile app (Expo)</span>
+                    </label>
+                    <label class="flex items-center gap-2 col-span-2">
+                        <span class="text-foreground">MFA policy:</span>
+                        <select x-model="genomeOpts.mfa" class="text-sm border border-border rounded px-2 py-1 bg-background">
+                            <option value="none">None</option>
+                            <option value="required_for_admin">Required for admins</option>
+                            <option value="required_for_all">Required for all users</option>
+                        </select>
+                    </label>
+                </div>
+            </div>
+
+            {# Error banner #}
+            <div x-show="codegenError" x-cloak
+                 class="flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3">
+                <i data-lucide="alert-triangle" class="w-4 h-4 text-destructive shrink-0 mt-0.5" aria-hidden="true"></i>
+                <p class="text-sm text-destructive" x-text="codegenError"></p>
+            </div>
+
+            {# Generate button — all languages including full-stack #}
+            <button @click="generateCode()" :disabled="codegenLoading"
+                    class="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50">
+                <template x-if="codegenLoading">
+                    <span class="flex items-center gap-2">
+                        <span class="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full"></span>
+                        <span x-text="codegenLanguage === 'react-shadcn' ? 'Building full-stack project...' : 'Generating project...'"></span>
+                    </span>
+                </template>
+                <template x-if="!codegenLoading">
+                    <span class="flex items-center gap-2">
+                        <i data-lucide="zap" class="w-4 h-4" aria-hidden="true"></i>
+                        Regenerate with these settings
+                    </span>
+                </template>
+            </button>
+            </div>
+        </details>
+
+        {# ── Result panel ── #}
+        <div x-show="codegenResult" x-cloak class="space-y-4">
+
+            {# Success summary #}
+            <div class="bg-card border border-border rounded-lg p-6 space-y-4">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 bg-emerald-500/10 rounded-lg flex items-center justify-center">
+                            <i data-lucide="check-circle-2" class="w-5 h-5 text-emerald-600" aria-hidden="true"></i>
+                        </div>
+                        <div>
+                            <p class="text-sm font-semibold text-foreground">Project generated</p>
+                            <p class="text-xs text-muted-foreground"
+                               x-text="codegenResult ? codegenResult.file_count + ' files · ' + codegenResult.language + ' · maturity ' + Math.round((codegenResult.spec_maturity || 0) * 100) + '%' : ''"></p>
+                        </div>
+                    </div>
+                    <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-mono bg-muted text-muted-foreground"
+                          x-text="codegenResult?.spec_hash?.slice(0, 8) ?? ''"></span>
+                </div>
+
+                {# Quality Genome Score (genome mode only) #}
+                <div x-show="codegenResult && codegenResult.quality_score" x-cloak class="space-y-2">
+                    <div class="flex items-center justify-between">
+                        <p class="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Quality Genome Score</p>
+                        <span class="text-sm font-semibold"
+                              :class="{
+                                  'text-emerald-600': (codegenResult?.quality_score || 0) >= 85,
+                                  'text-amber-600': (codegenResult?.quality_score || 0) >= 65 && (codegenResult?.quality_score || 0) < 85,
+                                  'text-destructive': (codegenResult?.quality_score || 0) < 65
+                              }"
+                              x-text="(codegenResult?.quality_score || 0) + '/100'"></span>
+                    </div>
+                    <div class="w-full bg-muted rounded-full h-2">
+                        <div class="h-2 rounded-full transition-all duration-500"
+                             :class="{
+                                 'bg-emerald-500': (codegenResult?.quality_score || 0) >= 85,
+                                 'bg-amber-500': (codegenResult?.quality_score || 0) >= 65 && (codegenResult?.quality_score || 0) < 85,
+                                 'bg-destructive': (codegenResult?.quality_score || 0) < 65
+                             }"
+                             :style="'width: ' + (codegenResult?.quality_score || 0) + '%'"></div>
+                    </div>
+                    <p class="text-[10px] text-muted-foreground"
+                       x-text="(codegenResult?.quality_score || 0) >= 85 ? 'Production ready' : (codegenResult?.quality_score || 0) >= 65 ? 'Staging ready — address gaps before production' : 'MVP quality — suitable for demos'"></p>
+                </div>
+
+                {# Services list #}
+                <div x-show="codegenResult && codegenResult.services && codegenResult.services.length > 0" x-cloak>
+                    <p class="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-2">Services</p>
+                    <div class="grid grid-cols-2 gap-2">
+                        <template x-for="svc in (codegenResult ? codegenResult.services : [])" :key="svc.name">
+                            <div class="flex items-center justify-between px-3 py-2 rounded-md bg-muted/50 text-xs">
+                                <span class="font-medium text-foreground" x-text="svc.name"></span>
+                                <span class="text-muted-foreground" x-text="svc.path_count + ' routes'"></span>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                {# Run / Preview buttons #}
+                <div class="space-y-2 pt-2">
+                    {# Docker — live backend #}
+                    <button @click="runDockerPreview()"
+                            :disabled="dockerPreviewLoading"
+                            class="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50">
+                        <template x-if="dockerPreviewLoading">
+                            <span class="flex items-center gap-2">
+                                <span class="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full"></span>
+                                Building container...
+                            </span>
+                        </template>
+                        <template x-if="!dockerPreviewLoading && !dockerPreviewUrl">
+                            <span class="flex items-center gap-2">
+                                <i data-lucide="play" class="w-4 h-4" aria-hidden="true"></i>
+                                Run Live (Docker)
+                            </span>
+                        </template>
+                        <template x-if="!dockerPreviewLoading && dockerPreviewUrl">
+                            <span class="flex items-center gap-2">
+                                <i data-lucide="external-link" class="w-4 h-4" aria-hidden="true"></i>
+                                Open Live App
+                            </span>
+                        </template>
+                    </button>
+                    <p x-show="dockerPreviewError" x-cloak class="text-xs text-destructive px-1" x-text="dockerPreviewError"></p>
+
+                    {# StackBlitz — live frontend (full-stack only) #}
+                    <button x-show="codegenResult && codegenResult._fullstack" x-cloak
+                            @click="openStackBlitz()"
+                            :disabled="stackblitzLoading"
+                            class="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium border border-input bg-card text-foreground rounded-md hover:bg-accent transition-colors disabled:opacity-50">
+                        <template x-if="stackblitzLoading">
+                            <span class="flex items-center gap-2">
+                                <span class="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full"></span>
+                                Opening StackBlitz...
+                            </span>
+                        </template>
+                        <template x-if="!stackblitzLoading">
+                            <span class="flex items-center gap-2">
+                                <i data-lucide="globe" class="w-4 h-4" aria-hidden="true"></i>
+                                Preview Frontend (StackBlitz)
+                            </span>
+                        </template>
+                    </button>
+
+                    {# Download + Regenerate row #}
+                    <div class="flex items-center gap-2 pt-1">
+                        <button @click="downloadCode()"
+                                class="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium border border-input rounded-md hover:bg-accent transition-colors">
+                            <i data-lucide="download" class="w-4 h-4" aria-hidden="true"></i>
+                            Download ZIP
+                        </button>
+                        <button aria-label="Refresh" @click="codegenResult = null; codegenBundleId = null; codegenError = null; dockerPreviewUrl = null; dockerPreviewError = null"
+                                class="px-3 py-2 text-sm font-medium border border-input rounded-md hover:bg-accent transition-colors">
+                            <i data-lucide="refresh-cw" class="w-4 h-4" aria-hidden="true"></i>
+                        </button>
+                    </div>
+                </div>
+                {# IaC download #}
+                <a :href="'/solutions/' + solutionId + '/codegen/download-iac'"
+                   class="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium border border-input rounded-md hover:bg-accent transition-colors">
+                    <i data-lucide="server" class="w-4 h-4" aria-hidden="true"></i>
+                    Download Infrastructure Code (Terraform)
+                </a>
+            </div>
+
+            {# What's included #}
+            <div class="bg-card border border-border rounded-lg p-6 space-y-3">
+                <p class="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">What's included in the ZIP</p>
+                <div class="grid grid-cols-2 gap-x-6 gap-y-1.5 text-xs text-muted-foreground">
+                    <span class="flex items-center gap-2"><svg class="w-3 h-3 text-emerald-500 shrink-0" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>Route handlers per service</span>
+                    <span class="flex items-center gap-2"><svg class="w-3 h-3 text-emerald-500 shrink-0" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>Data models from field specs</span>
+                    <span class="flex items-center gap-2"><svg class="w-3 h-3 text-emerald-500 shrink-0" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>Integration clients</span>
+                    <span class="flex items-center gap-2"><svg class="w-3 h-3 text-emerald-500 shrink-0" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>Docker + docker-compose</span>
+                    <span class="flex items-center gap-2"><svg class="w-3 h-3 text-emerald-500 shrink-0" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>Kubernetes + Helm charts</span>
+                    <span class="flex items-center gap-2"><svg class="w-3 h-3 text-emerald-500 shrink-0" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>GitHub Actions CI/CD</span>
+                    <span class="flex items-center gap-2"><svg class="w-3 h-3 text-emerald-500 shrink-0" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>Terraform configs</span>
+                    <span class="flex items-center gap-2"><svg class="w-3 h-3 text-emerald-500 shrink-0" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>Contract + security tests</span>
+                </div>
+            </div>
+
+        </div>
+
+        {# ── Deploy to ARCHIE Cloud ── #}
+        <div x-show="(codegenResult && codegenResult.files) || hasGeneratedFiles" x-cloak
+             class="bg-card border border-border rounded-lg p-6 space-y-4">
+
+            {# Idle — ready to deploy #}
+            <template x-if="!deployStatus || deployStatus === 'idle'">
+                <div class="text-center space-y-3">
+                    <h3 class="text-base font-semibold text-foreground">Deploy to ARCHIE Cloud</h3>
+                    <p class="text-sm text-muted-foreground max-w-md mx-auto">
+                        Launch your application with a live URL, API documentation, and a PostgreSQL database — no setup required.
+                    </p>
+                    <button @click="deployToCloud()"
+                            class="inline-flex items-center gap-2 px-6 py-2.5 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors">
+                        <i data-lucide="rocket" class="w-4 h-4" aria-hidden="true"></i>
+                        Deploy
+                    </button>
+                    <p class="text-xs text-muted-foreground">
+                        Or download the ZIP above to deploy yourself
+                    </p>
+                </div>
+            </template>
+
+            {# Deploying — spinner #}
+            <template x-if="deployStatus === 'deploying'">
+                <div class="text-center space-y-3 py-4">
+                    <div class="w-10 h-10 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto"></div>
+                    <h3 class="text-base font-semibold text-foreground">Deploying your application...</h3>
+                    <p class="text-sm text-muted-foreground">This usually takes 1-3 minutes. Setting up your database, building your app, and configuring SSL.</p>
+                </div>
+            </template>
+
+            {# Healthy — live app links #}
+            <template x-if="deployStatus === 'healthy'">
+                <div class="space-y-4">
+                    <div class="flex items-center gap-2">
+                        <span class="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse"></span>
+                        <h3 class="text-base font-semibold text-foreground">Your app is live!</h3>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <a :href="deployUrl" target="_blank" rel="noopener"
+                           class="flex items-center gap-2 p-3 bg-muted/50 rounded-lg hover:bg-muted transition-colors">
+                            <i data-lucide="globe" class="w-4 h-4 text-primary" aria-hidden="true"></i>
+                            <div>
+                                <p class="text-xs font-medium text-foreground">Your App</p>
+                                <p class="text-xs text-muted-foreground truncate" x-text="deployUrl"></p>
+                            </div>
+                        </a>
+                        <a :href="deployUrl + '/docs'" target="_blank" rel="noopener"
+                           class="flex items-center gap-2 p-3 bg-muted/50 rounded-lg hover:bg-muted transition-colors">
+                            <i data-lucide="book-open" class="w-4 h-4 text-primary" aria-hidden="true"></i>
+                            <div>
+                                <p class="text-xs font-medium text-foreground">API Docs</p>
+                                <p class="text-xs text-muted-foreground">Interactive Swagger UI</p>
+                            </div>
+                        </a>
+                        <a :href="deployUrl ? deployUrl + '/admin' : '#'" target="_blank" rel="noopener"
+                           class="flex items-center gap-2 p-3 bg-muted/50 rounded-lg hover:bg-muted transition-colors">
+                            <i data-lucide="settings" class="w-4 h-4 text-primary" aria-hidden="true"></i>
+                            <div>
+                                <p class="text-xs font-medium text-foreground">Admin Panel</p>
+                                <p class="text-xs text-muted-foreground">Manage your data</p>
+                            </div>
+                        </a>
+                    </div>
+                    <div class="flex items-center justify-between pt-2 border-t border-border">
+                        <span class="text-xs text-muted-foreground" x-text="'Version ' + (deployVersion || 1)"></span>
+                        <button @click="destroyDeployment()"
+                                class="text-xs text-destructive underline hover:text-destructive/80">Stop deployment</button>
+                    </div>
+                </div>
+            </template>
+
+            {# Error state #}
+            <template x-if="deployStatus === 'error'">
+                <div class="text-center space-y-3 py-4">
+                    <div class="w-10 h-10 bg-destructive/10 rounded-full flex items-center justify-center mx-auto">
+                        <i data-lucide="alert-triangle" class="w-5 h-5 text-destructive" aria-hidden="true"></i>
+                    </div>
+                    <h3 class="text-base font-semibold text-foreground">Deployment failed</h3>
+                    <p class="text-sm text-muted-foreground" x-text="deployError"></p>
+                    <div class="flex gap-2 justify-center">
+                        <button @click="deployToCloud()"
+                                class="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90">
+                            <i data-lucide="refresh-cw" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                            Retry
+                        </button>
+                    </div>
+                </div>
+            </template>
+        </div>
+
+    </div>
+</div>

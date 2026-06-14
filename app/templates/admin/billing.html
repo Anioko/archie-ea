@@ -1,0 +1,241 @@
+{% extends 'layouts/admin_base.html' %}
+{% from 'components/page_header.html' import page_header %}
+
+{% block content %}
+<div class="space-y-6">
+    {{ page_header(
+        title='Billing & Subscription',
+        description='Manage your organisation plan, seats, and payment details.',
+        breadcrumbs=[
+            {'label': 'Admin', 'href': url_for('admin.index')},
+            {'label': 'Billing'}
+        ]
+    ) }}
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div class="space-y-2">
+                {% for category, message in messages %}
+                    <div class="rounded-md border p-4 {% if category == 'success' %}bg-success/5 border-success/20 text-success{% elif category == 'error' %}bg-destructive/5 border-destructive/20 text-destructive{% else %}bg-primary/5 border-primary/20 text-primary{% endif %}">
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+
+    {% if error %}
+        <div class="rounded-md border p-4 bg-destructive/5 border-destructive/20 text-destructive">
+            {{ error }}
+        </div>
+    {% endif %}
+
+    {% if subscription %}
+    <!-- Current Plan Card -->
+    <div data-slot="card" class="rounded-xl border bg-card text-card-foreground shadow-sm p-6">
+        <div class="flex items-start justify-between gap-4">
+            <div>
+                <h2 class="text-lg font-semibold leading-none tracking-tight mb-1">Current Plan</h2>
+                <p class="text-sm text-muted-foreground">Your organisation's active subscription</p>
+            </div>
+            <!-- Plan Badge -->
+            {% set plan_val = subscription.plan.value %}
+            <span class="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold
+                {% if plan_val == 'enterprise' %}bg-primary/10 text-primary border border-primary/20
+                {% elif plan_val == 'pro' %}bg-success/10 text-success border border-success/20
+                {% else %}bg-muted text-muted-foreground border border-border{% endif %}">
+                {{ plan_val | capitalize }}
+            </span>
+        </div>
+
+        <div class="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <!-- Status -->
+            <div class="rounded-lg border border-border bg-background p-4">
+                <p class="text-xs text-muted-foreground font-medium uppercase tracking-wide mb-1">Status</p>
+                {% set status_val = subscription.status.value %}
+                <p class="text-sm font-semibold
+                    {% if status_val == 'active' %}text-success
+                    {% elif status_val == 'past_due' %}text-warning
+                    {% elif status_val == 'cancelled' %}text-destructive
+                    {% else %}text-foreground{% endif %}">
+                    {{ status_val | replace('_', ' ') | title }}
+                </p>
+            </div>
+
+            <!-- Seats -->
+            <div class="rounded-lg border border-border bg-background p-4">
+                <p class="text-xs text-muted-foreground font-medium uppercase tracking-wide mb-1">Seats</p>
+                <p class="text-sm font-semibold">
+                    {{ seats_used }} / {{ subscription.seats_purchased }}
+                    <span class="text-muted-foreground font-normal">used</span>
+                </p>
+                {% if seats_used >= subscription.seats_purchased %}
+                    <p class="text-xs text-destructive mt-1">Seat limit reached — upgrade to add users</p>
+                {% endif %}
+            </div>
+
+            <!-- Renewal Date -->
+            <div class="rounded-lg border border-border bg-background p-4">
+                <p class="text-xs text-muted-foreground font-medium uppercase tracking-wide mb-1">Next Renewal</p>
+                <p class="text-sm font-semibold">
+                    {% if subscription.current_period_end %}
+                        {{ subscription.current_period_end.strftime('%d %b %Y') }}
+                    {% else %}
+                        <span class="text-muted-foreground">—</span>
+                    {% endif %}
+                </p>
+            </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="mt-6 flex flex-wrap gap-3">
+            {% if stripe_configured %}
+                <a href="{{ url_for('billing.billing_portal') }}"
+                   class="inline-flex items-center gap-2 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2 transition-colors">
+                    <i data-lucide="credit-card" class="w-4 h-4" aria-hidden="true"></i>
+                    Manage Billing
+                </a>
+            {% endif %}
+            {% if subscription.plan.value != 'enterprise' %}
+                <button type="button"
+                        id="btn-toggle-upgrade-panel"
+                        class="inline-flex items-center gap-2 rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2 transition-colors">
+                    <i data-lucide="zap" class="w-4 h-4" aria-hidden="true"></i>
+                    Upgrade Plan
+                </button>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Upgrade Panel (hidden by default) -->
+    {% if subscription.plan.value != 'enterprise' %}
+    <div id="upgrade-panel" class="hidden">
+        <div data-slot="card" class="rounded-xl border bg-card text-card-foreground shadow-sm p-6">
+            <h2 class="text-lg font-semibold leading-none tracking-tight mb-4">Upgrade Your Plan</h2>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+
+                <!-- Starter -->
+                <div class="rounded-lg border border-border bg-background p-5 flex flex-col gap-3">
+                    <div>
+                        <p class="font-semibold text-base">Starter</p>
+                        <p class="text-2xl font-bold mt-1">£24K <span class="text-sm font-normal text-muted-foreground">/ year</span></p>
+                    </div>
+                    <ul class="text-sm text-muted-foreground space-y-1">
+                        <li class="flex items-center gap-1"><i data-lucide="check" class="w-3.5 h-3.5 text-success" aria-hidden="true"></i> Up to 5 architect seats</li>
+                        <li class="flex items-center gap-1"><i data-lucide="check" class="w-3.5 h-3.5 text-success" aria-hidden="true"></i> 50 blueprints / year</li>
+                        <li class="flex items-center gap-1"><i data-lucide="check" class="w-3.5 h-3.5 text-success" aria-hidden="true"></i> Email support</li>
+                    </ul>
+                    {% if stripe_configured %}
+                    <form method="post" action="{{ url_for('billing.billing_upgrade') }}" class="mt-auto">
+                        <input type="hidden" name="plan" value="pro">
+                        <input type="hidden" name="seats" value="5">
+                        <button type="submit"
+                                class="w-full rounded-md text-sm font-medium border border-primary text-primary hover:bg-primary hover:text-primary-foreground h-9 px-3 transition-colors">
+                            Upgrade to Starter
+                        </button>
+                    </form>
+                    {% else %}
+                    <p class="text-xs text-muted-foreground mt-auto">Contact sales to upgrade</p>
+                    {% endif %}
+                </div>
+
+                <!-- Professional -->
+                <div class="rounded-lg border-2 border-primary bg-primary/5 p-5 flex flex-col gap-3">
+                    <div>
+                        <span class="inline-flex items-center rounded-full bg-primary text-primary-foreground px-2 py-0.5 text-xs font-medium mb-2">Recommended</span>
+                        <p class="font-semibold text-base">Professional</p>
+                        <p class="text-2xl font-bold mt-1">£80K <span class="text-sm font-normal text-muted-foreground">/ year</span></p>
+                    </div>
+                    <ul class="text-sm text-muted-foreground space-y-1">
+                        <li class="flex items-center gap-1"><i data-lucide="check" class="w-3.5 h-3.5 text-success" aria-hidden="true"></i> Up to 20 architect seats</li>
+                        <li class="flex items-center gap-1"><i data-lucide="check" class="w-3.5 h-3.5 text-success" aria-hidden="true"></i> Unlimited blueprints</li>
+                        <li class="flex items-center gap-1"><i data-lucide="check" class="w-3.5 h-3.5 text-success" aria-hidden="true"></i> ServiceNow connector</li>
+                        <li class="flex items-center gap-1"><i data-lucide="check" class="w-3.5 h-3.5 text-success" aria-hidden="true"></i> Priority support</li>
+                    </ul>
+                    {% if stripe_configured %}
+                    <form method="post" action="{{ url_for('billing.billing_upgrade') }}" class="mt-auto">
+                        <input type="hidden" name="plan" value="pro">
+                        <input type="hidden" name="seats" value="20">
+                        <button type="submit"
+                                class="w-full rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-3 transition-colors">
+                            Upgrade to Pro
+                        </button>
+                    </form>
+                    {% else %}
+                    <p class="text-xs text-muted-foreground mt-auto">Contact sales to upgrade</p>
+                    {% endif %}
+                </div>
+
+                <!-- Enterprise -->
+                <div class="rounded-lg border border-border bg-background p-5 flex flex-col gap-3">
+                    <div>
+                        <p class="font-semibold text-base">Enterprise</p>
+                        <p class="text-2xl font-bold mt-1">£250K+ <span class="text-sm font-normal text-muted-foreground">/ year</span></p>
+                    </div>
+                    <ul class="text-sm text-muted-foreground space-y-1">
+                        <li class="flex items-center gap-1"><i data-lucide="check" class="w-3.5 h-3.5 text-success" aria-hidden="true"></i> Unlimited seats</li>
+                        <li class="flex items-center gap-1"><i data-lucide="check" class="w-3.5 h-3.5 text-success" aria-hidden="true"></i> All connectors</li>
+                        <li class="flex items-center gap-1"><i data-lucide="check" class="w-3.5 h-3.5 text-success" aria-hidden="true"></i> Dedicated SLA support</li>
+                        <li class="flex items-center gap-1"><i data-lucide="check" class="w-3.5 h-3.5 text-success" aria-hidden="true"></i> Custom data residency</li>
+                    </ul>
+                    <a href="mailto:sales@archie.ai?subject=Enterprise%20Enquiry"
+                       class="mt-auto inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-3 transition-colors">
+                        Contact Sales
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Invoice History -->
+    <div data-slot="card" class="rounded-xl border bg-card text-card-foreground shadow-sm p-6">
+        <h2 class="text-lg font-semibold leading-none tracking-tight mb-4">Invoice History</h2>
+        <div class="rounded-md border border-border overflow-hidden">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b border-border bg-muted/40">
+                        <th class="px-4 py-3 text-left font-medium text-muted-foreground">Date</th>
+                        <th class="px-4 py-3 text-left font-medium text-muted-foreground">Amount</th>
+                        <th class="px-4 py-3 text-left font-medium text-muted-foreground">Status</th>
+                        <th class="px-4 py-3 text-left font-medium text-muted-foreground">Invoice</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {# Populated via Stripe portal — stub empty state #}
+                    <tr>
+                        <td colspan="4" class="px-4 py-8 text-center text-muted-foreground">
+                            <i data-lucide="receipt" class="w-8 h-8 mx-auto mb-2 opacity-40" aria-hidden="true"></i>
+                            <p class="text-sm">No invoices yet.</p>
+                            {% if stripe_configured %}
+                                <a href="{{ url_for('billing.billing_portal') }}"
+                                   class="text-primary hover:underline text-sm mt-1 inline-block">
+                                    View full invoice history in the billing portal →
+                                </a>
+                            {% endif %}
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    {% else %}
+    <!-- No subscription found fallback -->
+    <div data-slot="card" class="rounded-xl border bg-card text-card-foreground shadow-sm p-6">
+        <p class="text-muted-foreground text-sm">No subscription record found for your organisation.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+<script>
+(function() {
+    let upgradeBtn = document.getElementById('btn-toggle-upgrade-panel');
+    if (upgradeBtn) {
+        upgradeBtn.addEventListener('click', function() {
+            let panel = document.getElementById('upgrade-panel');
+            if (panel) panel.classList.toggle('hidden');
+        });
+    }
+})();
+</script>

@@ -1,0 +1,568 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'components/page_header.html' import page_header %}
+{% from 'components/metrics_card.html' import metrics_card %}
+
+{% block title %}Import History{% endblock %}
+
+{% block extra_css %}
+<style>
+.import-item {
+    @apply bg-card rounded-lg shadow-md p-6 mb-4 transition-all duration-200;
+}
+
+.import-item:hover {
+    @apply shadow-lg;
+}
+
+.status-completed {
+    @apply bg-success/10 text-success;
+}
+
+.status-partial {
+    @apply bg-warning/10 text-warning;
+}
+
+.status-failed {
+    @apply bg-destructive/10 text-destructive;
+}
+
+.status-pending {
+    @apply bg-primary/10 text-primary;
+}
+
+.status-running {
+    @apply bg-accent text-primary;
+}
+
+.progress-bar {
+    @apply w-full bg-muted rounded-full h-2;
+}
+
+.progress-fill {
+    @apply bg-primary h-2 rounded-full transition-all duration-300;
+}
+
+.stat-card {
+    @apply bg-card rounded-lg shadow p-4;
+}
+
+.stat-value {
+    @apply text-2xl font-bold text-foreground;
+}
+
+.stat-label {
+    @apply text-sm text-muted-foreground;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Header -->
+    {{ page_header(
+        title='Import History',
+        description='View and manage application import history and audit trail',
+        actions=[
+            {'text': 'Export CSV', 'icon': 'download', 'onclick': 'exportHistory()', 'variant': 'default'},
+            {'text': 'Refresh', 'icon': 'refresh-cw', 'onclick': 'refreshHistory()', 'variant': 'outline'}
+        ]
+    ) }}
+
+    <!-- Statistics Overview -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        {{ metrics_card(title='Total Imports', value='0', value_id='total-imports', icon='upload') }}
+        {{ metrics_card(title='Applications Created', value='0', value_id='total-created', icon='plus-circle', value_class='text-success') }}
+        {{ metrics_card(title='Applications Updated', value='0', value_id='total-updated', icon='refresh-cw', value_class='text-primary') }}
+        {{ metrics_card(title='Failed Records', value='0', value_id='total-failed', icon='x-circle', value_class='text-destructive') }}
+    </div>
+
+    <!-- Filter Controls -->
+    <div class="bg-card rounded-lg shadow-md p-4 mb-6">
+        <div class="flex flex-wrap items-center gap-4">
+            <div>
+                <label for="status-filter" class="block text-sm font-medium text-foreground/80 mb-1">Status Filter</label>
+                <select id="status-filter" class="border border-border rounded-lg px-3 py-2 focus:ring-primary focus:border-primary">
+                    <option value="">All Statuses</option>
+                    <option value="completed">Completed</option>
+                    <option value="partial">Partial</option>
+                    <option value="failed">Failed</option>
+                    <option value="pending">Pending</option>
+                    <option value="running">Running</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-foreground/80 mb-1">Date Range</label>
+                <label for="date-from" class="sr-only">Date from</label>
+                <input type="date" id="date-from" class="border border-border rounded-lg px-3 py-2 focus:ring-primary focus:border-primary">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-foreground/80 mb-1">&nbsp;</label>
+                <label for="date-to" class="sr-only">Date to</label>
+                <input type="date" id="date-to" class="border border-border rounded-lg px-3 py-2 focus:ring-primary focus:border-primary">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-foreground/80 mb-1">&nbsp;</label>
+                <button @click="applyFilters()" class="bg-primary text-primary-foreground px-4 py-2 rounded-lg hover:bg-primary transition-colors" aria-label="Apply filters to history">
+                    <i data-lucide="filter" class="inline h-4 w-4 mr-2" aria-hidden="true"></i>Apply Filters
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Import History List -->
+    <div id="import-history-list">
+        <!-- History items will be loaded here -->
+    </div>
+
+    <!-- Loading State -->
+    <div id="loading" class="text-center py-8">
+        <div class="inline-block h-10 w-10 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent"></div>
+        <p class="mt-2 text-muted-foreground">Loading import history...</p>
+    </div>
+
+    <!-- Empty State -->
+    <div id="empty-state" class="text-center py-8 hidden">
+        <i data-lucide="history" class="h-10 w-10 text-muted-foreground" aria-hidden="true"></i>
+        <p class="mt-2 text-muted-foreground">No import history found</p>
+    </div>
+</div>
+
+<!-- Import Details Modal -->
+<div id="import-details-modal" hidden class="modal-root overflow-y-auto h-full w-full fixed inset-0 bg-black/50 overflow-y-auto z-50"  role="dialog">
+    <div class="relative top-20 mx-auto p-5 border w-11/12 md:w-3/4 shadow-lg rounded-lg bg-card">
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-xl font-bold text-foreground">Import Details</h2>
+            <button @click="closeDetailsModal()" class="text-muted-foreground hover:text-foreground" aria-label="Close">
+                <i data-lucide="x" class="h-5 w-5" aria-hidden="true"></i>
+            </button>
+        </div>
+
+        <div id="import-modal-content">
+            <!-- Content will be loaded here -->
+        </div>
+    </div>
+</div>
+
+<!-- Rollback Confirmation Modal -->
+<div id="rollback-modal" hidden class="modal-root overflow-y-auto h-full w-full fixed inset-0 bg-black/50 overflow-y-auto z-50" >
+    <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-lg bg-card">
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-xl font-bold text-foreground">Confirm Rollback</h2>
+            <button @click="closeRollbackModal()" class="text-muted-foreground hover:text-foreground" aria-label="Close">
+                <i data-lucide="x" class="h-5 w-5" aria-hidden="true"></i>
+            </button>
+        </div>
+
+        <div class="space-y-4">
+            <p class="text-muted-foreground">Are you sure you want to rollback this import? This will:</p>
+            <ul class="list-disc list-inside text-muted-foreground">
+                <li>Delete all applications created by this import</li>
+                <li>Restore previous values for updated applications</li>
+                <li>Remove all AI mappings generated</li>
+                <li>This action cannot be undone</li>
+            </ul>
+
+            <div class="bg-warning/5 border border-warning/20 rounded-lg p-3">
+                <p class="text-sm text-warning">
+                    <strong>Warning:</strong> Rollback is only available within 7 days of import.
+                </p>
+            </div>
+        </div>
+
+        <div class="flex justify-end space-x-3 mt-6">
+            <button @click="closeRollbackModal()" class="bg-muted text-foreground/80 px-4 py-2 rounded-lg hover:bg-muted-foreground/40 transition-colors" aria-label="Close">
+                Cancel
+            </button>
+            <button @click="confirmRollback()" class="bg-destructive text-primary-foreground px-4 py-2 rounded-lg hover:bg-destructive transition-colors" aria-label="Confirm rollback of import">
+                <i data-lucide="rotate-ccw" class="inline h-4 w-4 mr-2" aria-hidden="true"></i>Rollback Import
+            </button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function escapeHtml(str) {
+    if (str == null) return '';
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+let importHistory = [];
+let currentImport = null;
+let rollbackImportId = null;
+
+// Load import history on page load
+document.addEventListener('DOMContentLoaded', function() {
+    loadImportHistory();
+});
+
+function loadImportHistory() {
+    fetch('/api/import-history')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                importHistory = data.jobs;
+                displayImportHistory();
+                updateStatistics();
+            } else {
+                console.error('Failed to load import history:', data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error loading import history:', error);
+        })
+        .finally(() => {
+            document.getElementById('loading').classList.add('hidden');
+        });
+}
+
+function displayImportHistory() {
+    const container = document.getElementById('import-history-list');
+    const emptyState = document.getElementById('empty-state');
+
+    if (importHistory.length === 0) {
+        container.innerHTML = '';
+        emptyState.classList.remove('hidden');
+        return;
+    }
+
+    emptyState.classList.add('hidden');
+
+    container.innerHTML = importHistory.map(item => `
+        <div class="import-item">
+            <div class="flex justify-between items-start">
+                <div class="flex-1">
+                    <div class="flex items-center space-x-3 mb-2">
+                        <h2 class="text-lg font-semibold text-foreground">${escapeHtml(item.file_name)}</h2>
+                        <span class="status-${escapeHtml(item.status)} px-2 py-1 rounded text-xs font-medium">
+                            ${escapeHtml(item.status.charAt(0).toUpperCase() + item.status.slice(1))}
+                        </span>
+                        ${item.batch_job_id ? `
+                        <span class="bg-accent text-primary px-2 py-1 rounded text-xs font-medium">
+                            <i data-lucide="list-checks" class="inline h-3.5 w-3.5 mr-1" aria-hidden="true"></i>Batch Job
+                        </span>
+                        ` : ''}
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-3">
+                        <div class="text-sm">
+                            <span class="text-muted-foreground">Imported by:</span>
+                            <span class="font-medium ml-1">${escapeHtml(item.imported_by_name)}</span>
+                        </div>
+                        <div class="text-sm">
+                            <span class="text-muted-foreground">Date:</span>
+                            <span class="font-medium ml-1">${formatDate(item.imported_at)}</span>
+                        </div>
+                        <div class="text-sm">
+                            <span class="text-muted-foreground">Source:</span>
+                            <span class="font-medium ml-1">${escapeHtml(item.import_source)}</span>
+                        </div>
+                        <div class="text-sm">
+                            <span class="text-muted-foreground">Duration:</span>
+                            <span class="font-medium ml-1">${formatDuration(item.processing_time_seconds)}</span>
+                        </div>
+                    </div>
+
+                    <!-- Progress Bar for Running Jobs -->
+                    ${item.status === 'running' ? `
+                    <div class="mb-3">
+                        <div class="flex justify-between text-sm mb-1">
+                            <span>Progress</span>
+                            <span>${item.progress || 0}%</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: ${item.progress || 0}%"></div>  <!-- inline-style-ok -->
+                        </div>
+                    </div>
+                    ` : ''}
+
+                    <!-- Statistics -->
+                    <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-3">
+                        <div class="text-center bg-success/5 rounded p-2">
+                            <div class="text-lg font-bold text-success">${item.records_created || 0}</div>
+                            <div class="text-xs text-muted-foreground">Created</div>
+                        </div>
+                        <div class="text-center bg-primary/5 rounded p-2">
+                            <div class="text-lg font-bold text-primary">${item.records_updated || 0}</div>
+                            <div class="text-xs text-muted-foreground">Updated</div>
+                        </div>
+                        <div class="text-center bg-warning/5 rounded p-2">
+                            <div class="text-lg font-bold text-warning">${item.records_skipped || 0}</div>
+                            <div class="text-xs text-muted-foreground">Skipped</div>
+                        </div>
+                        <div class="text-center bg-destructive/5 rounded p-2">
+                            <div class="text-lg font-bold text-destructive">${item.records_failed || 0}</div>
+                            <div class="text-xs text-muted-foreground">Failed</div>
+                        </div>
+                        <div class="text-center bg-muted rounded p-2">
+                            <div class="text-lg font-bold text-muted-foreground">${item.total_records || 0}</div>
+                            <div class="text-xs text-muted-foreground">Total</div>
+                        </div>
+                    </div>
+
+                    <!-- Error Details -->
+                    ${item.error_details ? `
+                    <div class="bg-destructive/5 border border-destructive/20 rounded-lg p-3 mb-3">
+                        <h3 class="text-sm font-semibold text-destructive mb-1">Error Details</h3>
+                        <div class="text-sm text-destructive">
+                            ${JSON.parse(item.error_details).slice(0, 3).map(error => `<div>• ${error}</div>`).join('')}
+                            ${JSON.parse(item.error_details).length > 3 ? `<div class="text-xs">... and ${JSON.parse(item.error_details).length - 3} more</div>` : ''}
+                        </div>
+                    </div>
+                    ` : ''}
+
+                    <!-- AI Analysis Stats -->
+                    ${item.ai_analysis_stats ? `
+                    <div class="bg-primary/5 border border-primary/20 rounded-lg p-3 mb-3">
+                        <h3 class="text-sm font-semibold text-primary mb-2">AI Analysis Results</h3>
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
+                            <div>
+                                <span class="text-muted-foreground">Capability Mappings:</span>
+                                <span class="font-medium ml-1">${item.ai_analysis_stats.capability_mappings_found || 0}</span>
+                            </div>
+                            <div>
+                                <span class="text-muted-foreground">Process Mappings:</span>
+                                <span class="font-medium ml-1">${item.ai_analysis_stats.process_mappings_found || 0}</span>
+                            </div>
+                            <div>
+                                <span class="text-muted-foreground">ArchiMate Elements:</span>
+                                <span class="font-medium ml-1">${item.ai_analysis_stats.archimate_elements_generated || 0}</span>
+                            </div>
+                            <div>
+                                <span class="text-muted-foreground">Avg Confidence:</span>
+                                <span class="font-medium ml-1">${Math.round((item.ai_analysis_stats.avg_confidence || 0) * 100)}%</span>
+                            </div>
+                        </div>
+                    </div>
+                    ` : ''}
+                </div>
+
+                <!-- Actions -->
+                <div class="flex space-x-2 ml-4">
+                    <button data-action="viewDetails" data-id="${item.id}" class="bg-primary text-primary-foreground px-3 py-1 rounded text-sm hover:bg-primary transition-colors" aria-label="View import details">
+                        <i data-lucide="eye" class="inline h-3.5 w-3.5 mr-1" aria-hidden="true"></i>View
+                    </button>
+                    ${item.status === 'running' ? `
+                    <button data-action="viewProgress" data-id="${item.batch_job_id}" class="bg-primary text-primary-foreground px-3 py-1 rounded text-sm hover:bg-primary transition-colors" aria-label="View import progress">
+                        <i data-lucide="trending-up" class="inline h-3.5 w-3.5 mr-1" aria-hidden="true"></i>Progress
+                    </button>
+                    ` : ''}
+                    ${item.can_rollback ? `
+                    <button data-action="rollbackImport" data-id="${item.id}" class="bg-warning text-primary-foreground px-3 py-1 rounded text-sm hover:bg-warning transition-colors" aria-label="Rollback import">
+                        <i data-lucide="rotate-ccw" class="inline h-3.5 w-3.5 mr-1" aria-hidden="true"></i>Rollback
+                    </button>
+                    ` : ''}
+                    ${item.status === 'partial' && item.records_failed > 0 ? `
+                    <button data-action="retryFailed" data-id="${item.id}" class="bg-warning text-primary-foreground px-3 py-1 rounded text-sm hover:bg-warning transition-colors" aria-label="Retry failed records">
+                        <i data-lucide="rotate-cw" class="inline h-3.5 w-3.5 mr-1" aria-hidden="true"></i>Retry Failed
+                    </button>
+                    ` : ''}
+                </div>
+            </div>
+        </div>
+    `).join('');
+}
+
+function updateStatistics() {
+    const totalImports = importHistory.length;
+    const totalCreated = importHistory.reduce((sum, item) => sum + (item.records_created || 0), 0);
+    const totalUpdated = importHistory.reduce((sum, item) => sum + (item.records_updated || 0), 0);
+    const totalFailed = importHistory.reduce((sum, item) => sum + (item.records_failed || 0), 0);
+
+    document.getElementById('total-imports').textContent = totalImports;
+    document.getElementById('total-created').textContent = totalCreated;
+    document.getElementById('total-updated').textContent = totalUpdated;
+    document.getElementById('total-failed').textContent = totalFailed;
+}
+
+function formatDate(dateString) {
+    const date = new Date(dateString);
+    return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+}
+
+function formatDuration(seconds) {
+    if (!seconds) return 'N/A';
+    if (seconds < 60) return `${Math.round(seconds)}s`;
+    if (seconds < 3600) return `${Math.round(seconds / 60)}m ${Math.round(seconds % 60)}s`;
+    return `${Math.round(seconds / 3600)}h ${Math.round((seconds % 3600) / 60)}m`;
+}
+
+function viewDetails(importId) {
+    currentImport = importHistory.find(item => item.id === importId);
+    if (!currentImport) return;
+
+    const modal = document.getElementById('import-details-modal');
+    const content = document.getElementById('import-modal-content');
+
+    content.innerHTML = `
+        <div class="space-y-6">
+            <!-- Basic Info -->
+            <div>
+                <h3 class="font-semibold text-foreground mb-2">Import Information</h3>
+                <div class="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                        <span class="text-muted-foreground">File Name:</span>
+                        <span class="font-medium ml-2">${currentImport.file_name}</span>
+                    </div>
+                    <div>
+                        <span class="text-muted-foreground">Import Source:</span>
+                        <span class="font-medium ml-2">${currentImport.import_source}</span>
+                    </div>
+                    <div>
+                        <span class="text-muted-foreground">Imported By:</span>
+                        <span class="font-medium ml-2">${currentImport.imported_by_name}</span>
+                    </div>
+                    <div>
+                        <span class="text-muted-foreground">Import Date:</span>
+                        <span class="font-medium ml-2">${formatDate(currentImport.imported_at)}</span>
+                    </div>
+                    <div>
+                        <span class="text-muted-foreground">Status:</span>
+                        <span class="font-medium ml-2">${currentImport.status}</span>
+                    </div>
+                    <div>
+                        <span class="text-muted-foreground">Duration:</span>
+                        <span class="font-medium ml-2">${formatDuration(currentImport.processing_time_seconds)}</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Settings -->
+            ${currentImport.import_settings ? `
+            <div>
+                <h3 class="font-semibold text-foreground mb-2">Import Settings</h3>
+                <div class="bg-muted rounded-lg p-3">
+                    <pre class="text-sm text-foreground/80">${JSON.stringify(JSON.parse(currentImport.import_settings), null, 2)}</pre>
+                </div>
+            </div>
+            ` : ''}
+
+            <!-- Linked Applications -->
+            ${currentImport.linked_applications ? `
+            <div>
+                <h3 class="font-semibold text-foreground mb-2">Linked Applications</h3>
+                <div class="grid grid-cols-3 gap-4 text-sm">
+                    <div class="bg-success/5 rounded p-3">
+                        <div class="font-medium text-success">${currentImport.linked_applications.created_ids?.length || 0}</div>
+                        <div class="text-muted-foreground">Created</div>
+                    </div>
+                    <div class="bg-primary/5 rounded p-3">
+                        <div class="font-medium text-primary">${currentImport.linked_applications.updated_ids?.length || 0}</div>
+                        <div class="text-muted-foreground">Updated</div>
+                    </div>
+                    <div class="bg-muted rounded p-3">
+                        <div class="font-medium text-foreground">${currentImport.linked_applications.total_processed || 0}</div>
+                        <div class="text-muted-foreground">Total Processed</div>
+                    </div>
+                </div>
+            </div>
+            ` : ''}
+        </div>
+    `;
+
+    modal.classList.remove('hidden');
+}
+
+function closeDetailsModal() {
+    document.getElementById('import-details-modal').classList.add('hidden');
+    currentImport = null;
+}
+
+function viewProgress(batchJobId) {
+    if (!batchJobId) return;
+    window.open(`/api/batch/jobs/${batchJobId}/progress`, '_blank');
+}
+
+function rollbackImport(importId) {
+    rollbackImportId = importId;
+    document.getElementById('rollback-modal').classList.remove('hidden');
+}
+
+function closeRollbackModal() {
+    document.getElementById('rollback-modal').classList.add('hidden');
+    rollbackImportId = null;
+}
+
+function confirmRollback() {
+    if (!rollbackImportId) return;
+
+    fetch(`/applications/rollback-import/${rollbackImportId}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            Platform.toast.info('Import rolled back successfully');
+            loadImportHistory(); // Refresh the list
+        } else {
+            Platform.toast.error('Failed to rollback import: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error rolling back import:', error);
+        Platform.toast.error('Error rolling back import');
+    })
+    .finally(() => {
+        closeRollbackModal();
+    });
+}
+
+async function retryFailed(importId) {
+    if ((await Platform.modal.confirm('Retry failed records for this import?'))) {
+        fetch(`/api/import-history/${importId}/retry-failed`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                Platform.toast.info('Retry started successfully');
+                loadImportHistory(); // Refresh the list
+            } else {
+                Platform.toast.error('Failed to start retry: ' + data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error retrying failed records:', error);
+            Platform.toast.error('Error retrying failed records');
+        });
+    }
+}
+
+function exportHistory() {
+    const status = document.getElementById('status-filter').value;
+    const dateFrom = document.getElementById('date-from').value;
+    const dateTo = document.getElementById('date-to').value;
+
+    let url = '/applications/export-import-history?';
+    const params = new URLSearchParams();
+
+    if (status) params.append('status', status);
+    if (dateFrom) params.append('date_from', dateFrom);
+    if (dateTo) params.append('date_to', dateTo);
+
+    url += params.toString();
+
+    window.open(url, '_blank');
+}
+
+function refreshHistory() {
+    loadImportHistory();
+}
+
+function applyFilters() {
+    // This would filter the displayed history
+    // For now, we'll just reload all data
+    loadImportHistory();
+}
+</script>
+
+<!-- Include Import History JavaScript -->
+<script src="{{ url_for('static', filename='js/import_history.js') }}"></script>
+{% endblock %}

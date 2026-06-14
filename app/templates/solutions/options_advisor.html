@@ -1,0 +1,161 @@
+{% extends "layouts/admin_base.html" %}
+{% from "components/page_header.html" import page_header %}
+
+{% block title %}Options & Decision — {{ solution.name }}{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 sm:px-6 lg:px-8 py-6 max-w-5xl"
+     x-data="optionsAdvisor({{ solution.id }}, {{ (adr.id if adr else 'null') }})">
+    {{ page_header(
+        title='Options & Decision',
+        description='The AI Solution Architect evaluates 2-3 architecture options with trade-offs and proposes a decision record — grounded in this solution\'s drivers, constraints and requirements. You decide; the ARB disposes.',
+        breadcrumbs=[
+            {'label': 'Dashboard', 'href': url_for('main.index')},
+            {'label': 'Solutions', 'href': url_for('solution_design.list_solutions')},
+            {'label': solution.name, 'href': '/solutions/' ~ solution.id},
+            {'label': 'Options & Decision'}
+        ]
+    ) }}
+
+    <div class="flex items-center justify-between mt-4 mb-6">
+        <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30">
+            <i data-lucide="shield-check" class="h-3.5 w-3.5"></i> AI Solution Architect · grounded in solution context
+        </span>
+        <button type="button" @click="generate()" :disabled="busy"
+                class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+            <i data-lucide="sparkles" class="h-4 w-4" :class="busy && 'animate-pulse'"></i>
+            <span x-text="busy ? 'Generating…' : (hasAdr ? 'Regenerate' : 'Generate options & decision')"></span>
+        </button>
+    </div>
+
+    <div x-cloak x-show="error" class="mb-6 rounded-md border border-destructive/30 bg-destructive/10 text-destructive p-3 text-sm" x-text="error"></div>
+    <div x-cloak x-show="busy" class="mb-6 rounded-md border border-border bg-muted/30 p-4 text-sm text-muted-foreground flex items-center gap-2">
+        <i data-lucide="loader" class="h-4 w-4 animate-spin"></i> The Solution Architect is weighing the options — this takes a few seconds.
+    </div>
+
+    {% if not adr %}
+    <div x-show="!busy" class="border border-border rounded-xl bg-card p-10 text-center">
+        <span class="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary mb-3"><i data-lucide="puzzle" class="h-6 w-6"></i></span>
+        <p class="text-sm font-medium text-foreground">No options analysis yet</p>
+        <p class="text-xs text-muted-foreground mt-1 mb-4 max-w-md mx-auto">Generate a structured options paper — 2-3 approaches with cost/risk/timeline trade-offs and a recommended decision record the ARB can review.</p>
+        <button type="button" @click="generate()" :disabled="busy"
+                class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+            <span x-text="busy ? 'Generating…' : 'Generate options & decision'"></span>
+        </button>
+    </div>
+    {% else %}
+
+    {# ── Options ───────────────────────────────────────────────────── #}
+    <h2 class="text-sm font-semibold text-foreground mb-3">Options evaluated</h2>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+        {% for opt in adr.options %}
+        <div class="border rounded-xl p-4 flex flex-col {% if opt.recommended %}border-primary ring-1 ring-primary/30 bg-primary/[0.03]{% else %}border-border bg-card{% endif %}">
+            <div class="flex items-center justify-between mb-2">
+                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase tracking-wide bg-muted text-muted-foreground">{{ opt.approach }}</span>
+                {% if opt.recommended %}<span class="inline-flex items-center gap-1 text-[10px] font-bold text-primary"><i data-lucide="star" class="h-3 w-3"></i> RECOMMENDED</span>{% endif %}
+            </div>
+            <h3 class="text-sm font-semibold text-foreground">{{ opt.name }}</h3>
+            <p class="text-xs text-muted-foreground mt-1 mb-3">{{ opt.summary }}</p>
+            <div class="flex items-center gap-3 text-[11px] text-muted-foreground mb-3">
+                <span class="inline-flex items-center gap-1"><i data-lucide="banknote" class="h-3 w-3"></i> {{ opt.cost_band|title }} cost</span>
+                <span class="inline-flex items-center gap-1"><i data-lucide="clock" class="h-3 w-3"></i> {{ opt.timeline_months }} mo</span>
+                <span class="inline-flex items-center gap-1">
+                    <i data-lucide="shield-alert" class="h-3 w-3"></i>
+                    <span class="{% if opt.risk == 'high' %}text-destructive{% elif opt.risk == 'medium' %}text-amber-600{% else %}text-emerald-600{% endif %}">{{ opt.risk|title }} risk</span>
+                </span>
+            </div>
+            {% if opt.pros %}<p class="text-[11px] font-semibold text-emerald-700 mb-0.5">Pros</p><ul class="text-[11px] text-muted-foreground space-y-0.5 mb-2">{% for p in opt.pros[:4] %}<li class="flex gap-1"><i data-lucide="plus" class="h-3 w-3 text-emerald-500 shrink-0 mt-0.5"></i>{{ p }}</li>{% endfor %}</ul>{% endif %}
+            {% if opt.cons %}<p class="text-[11px] font-semibold text-amber-700 mb-0.5">Trade-offs</p><ul class="text-[11px] text-muted-foreground space-y-0.5">{% for c in opt.cons[:4] %}<li class="flex gap-1"><i data-lucide="minus" class="h-3 w-3 text-amber-500 shrink-0 mt-0.5"></i>{{ c }}</li>{% endfor %}</ul>{% endif %}
+        </div>
+        {% endfor %}
+    </div>
+
+    {# ── ADR (Nygard) ──────────────────────────────────────────────── #}
+    <div class="border border-border rounded-xl bg-card overflow-hidden">
+        <div class="px-5 py-3 border-b border-border flex items-center justify-between bg-muted/20">
+            <div class="flex items-center gap-2">
+                <span class="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">ADR-{{ '%03d' % adr.adr_number }}</span>
+                <h2 class="text-sm font-semibold text-foreground">{{ adr.title }}</h2>
+            </div>
+            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold uppercase
+                {% if adr.status == 'accepted' %}bg-emerald-500/10 text-emerald-600 border border-emerald-500/30
+                {% elif adr.status == 'rejected' %}bg-destructive/10 text-destructive border border-destructive/30
+                {% else %}bg-amber-500/10 text-amber-600 border border-amber-500/30{% endif %}"
+                x-text="status"></span>
+        </div>
+        <div class="p-5 space-y-4">
+            {% for label, field, icon in [
+                ('Context', adr.context, 'help-circle'),
+                ('Decision', adr.decision, 'check-circle'),
+                ('Rationale', adr.rationale, 'lightbulb'),
+                ('Consequences', adr.consequences, 'git-branch')
+            ] %}
+            <div>
+                <p class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5"><i data-lucide="{{ icon }}" class="h-3.5 w-3.5"></i> {{ label }}</p>
+                <p class="text-sm text-foreground mt-1 leading-relaxed">{{ field }}</p>
+            </div>
+            {% endfor %}
+            <div class="flex items-center gap-4 pt-1 text-xs text-muted-foreground">
+                {% if adr.estimated_effort %}<span>Effort: <strong class="text-foreground">{{ adr.estimated_effort }}</strong></span>{% endif %}
+                {% if adr.business_value %}<span>Business value: <strong class="text-foreground">{{ adr.business_value }}</strong></span>{% endif %}
+            </div>
+        </div>
+        <div class="px-5 py-3 border-t border-border bg-muted/10 flex items-center justify-between">
+            <p class="text-[11px] text-muted-foreground">Proposed by the AI Solution Architect · you decide, the ARB disposes</p>
+            <div class="flex items-center gap-2">
+                <button type="button" @click="setStatus('rejected')" :disabled="busy"
+                        class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border border-input bg-background hover:bg-accent">
+                    <i data-lucide="x" class="h-3.5 w-3.5"></i> Reject
+                </button>
+                <button type="button" @click="setStatus('accepted')" :disabled="busy"
+                        class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90">
+                    <i data-lucide="check" class="h-3.5 w-3.5"></i> Accept decision
+                </button>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_head_js %}
+<script>
+    function optionsAdvisor(solutionId, adrId) {
+        return {
+            solutionId: solutionId,
+            adrId: adrId,
+            hasAdr: !!adrId,
+            status: {{ (adr.status if adr else "''") | tojson }},
+            busy: false,
+            error: '',
+            _csrf() { return document.querySelector('meta[name=csrf-token]')?.content || ''; },
+            async generate() {
+                this.busy = true; this.error = '';
+                try {
+                    const r = await fetch('/solutions/' + this.solutionId + '/options-advisor/generate', {
+                        method: 'POST', headers: { 'X-CSRFToken': this._csrf() },
+                    });
+                    const d = await r.json();
+                    if (!r.ok || !d.success) { this.error = d.error || 'Generation failed.'; return; }
+                    window.location.reload();
+                } catch (e) { this.error = 'Network error during generation.'; }
+                finally { this.busy = false; }
+            },
+            async setStatus(status) {
+                if (!this.adrId) return;
+                this.busy = true;
+                try {
+                    const r = await fetch('/solutions/options-advisor/' + this.adrId + '/status', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this._csrf() },
+                        body: JSON.stringify({ status }),
+                    });
+                    const d = await r.json();
+                    if (r.ok && d.success) { this.status = status; }
+                    else { this.error = d.error || 'Could not update status.'; }
+                } finally { this.busy = false; }
+            },
+        };
+    }
+</script>
+{% endblock %}

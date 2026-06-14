@@ -1,0 +1,23 @@
+{# Disposition badge with tooltip — reusable across all rationalization pages.
+   Usage: {% from 'applications/rationalization/_disposition_tooltip.html' import disposition_badge %}
+          {{ disposition_badge('retire') }}
+          {{ disposition_badge('retain', classes='text-base') }}
+#}
+
+{% macro disposition_badge(action, classes='') %}
+{%- set definitions = {
+    'retain': {'label': 'Retain', 'desc': 'Keep as-is, no action needed', 'color': 'emerald'},
+    'rehost': {'label': 'Rehost', 'desc': 'Move to new infrastructure without code changes', 'color': 'blue'},
+    'replatform': {'label': 'Replatform', 'desc': 'Move with minor optimizations', 'color': 'sky'},
+    'refactor': {'label': 'Refactor', 'desc': 'Re-architect for cloud-native or modernization', 'color': 'violet'},
+    'replace': {'label': 'Replace', 'desc': 'Substitute with a different product or service', 'color': 'amber'},
+    'consolidate': {'label': 'Consolidate', 'desc': 'Merge functionality into another application', 'color': 'orange'},
+    'retire': {'label': 'Retire', 'desc': 'Decommission and remove from portfolio', 'color': 'red'},
+    'insufficient_evidence': {'label': 'Insufficient Evidence', 'desc': 'Not enough data for a recommendation', 'color': 'gray'}
+} -%}
+{%- set d = definitions.get(action|lower, {'label': action|capitalize, 'desc': '', 'color': 'gray'}) -%}
+<span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-{{ d.color }}-500/10 text-{{ d.color }}-600 border border-{{ d.color }}-500/30 {{ classes }}"
+      title="{{ d.desc }}">
+    {{ d.label }}
+</span>
+{%- endmacro %}

@@ -1,0 +1,132 @@
+{% extends 'layouts/sidebar.html' %}
+
+{% set active_sidebar = 'application-components' %}
+
+{% block breadcrumb %}
+{% set page_breadcrumbs = [
+    {'label': 'Home', 'href': url_for('main.index')},
+    {'label': 'Application Management', 'href': url_for('unified_applications.dashboard')},
+    {'label': 'Applications', 'href': url_for('unified_applications.application_list')},
+    {'label': 'Create' if mode == 'create' else 'Edit', 'current': True}
+] %}
+{{ super() }}
+{% endblock %}
+
+{% block content %}
+<div class="flex flex-1 flex-col gap-6 p-4 md:gap-10 md:p-8 max-w-4xl">
+  <div>
+    <h1 class="text-3xl font-bold tracking-tight">{% if mode == 'create' %}Create Application Component{% else %}Edit Application Component{% endif %}</h1>
+    <p class="text-muted-foreground">{% if mode == 'create' %}Add a new application to your portfolio{% else %}Update application details{% endif %}</p>
+  </div>
+
+  <div class="card p-6">
+    <form method="POST" novalidate>
+      {{ form.hidden_tag() }}
+
+      <div class="space-y-6">
+        <!-- Name -->
+        <div>
+          {{ form.name.label(class="block text-sm font-medium mb-2") }}
+          {{ form.name(class="w-full px-3 py-2 border rounded" + (" border-red-500" if form.name.errors else "")) }}
+          {% if form.name.errors %}
+            <p class="text-sm text-red-500 mt-1">{{ form.name.errors[0] }}</p>
+          {% endif %}
+        </div>
+
+        <!-- Description -->
+        <div>
+          {{ form.description.label(class="block text-sm font-medium mb-2") }}
+          {{ form.description(class="w-full px-3 py-2 border rounded") }}
+        </div>
+
+        <!-- Component Type -->
+        <div>
+          {{ form.component_type.label(class="block text-sm font-medium mb-2") }}
+          {{ form.component_type(class="w-full px-3 py-2 border rounded" + (" border-red-500" if form.component_type.errors else "")) }}
+          {% if form.component_type.errors %}
+            <p class="text-sm text-red-500 mt-1">{{ form.component_type.errors[0] }}</p>
+          {% endif %}
+        </div>
+
+        <!-- Application Category -->
+        <div>
+          {{ form.application_category.label(class="block text-sm font-medium mb-2") }}
+          {{ form.application_category(class="w-full px-3 py-2 border rounded") }}
+        </div>
+
+        <!-- Technology Stack -->
+        <div>
+          {{ form.technology_stack.label(class="block text-sm font-medium mb-2") }}
+          {{ form.technology_stack(class="w-full px-3 py-2 border rounded") }}
+        </div>
+
+        <!-- Version and Status Row -->
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            {{ form.version.label(class="block text-sm font-medium mb-2") }}
+            {{ form.version(class="w-full px-3 py-2 border rounded") }}
+          </div>
+          <div>
+            {{ form.deployment_status.label(class="block text-sm font-medium mb-2") }}
+            {{ form.deployment_status(class="w-full px-3 py-2 border rounded") }}
+          </div>
+        </div>
+
+        <!-- Business Domain and Owner Row -->
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            {{ form.business_domain.label(class="block text-sm font-medium mb-2") }}
+            {{ form.business_domain(class="w-full px-3 py-2 border rounded") }}
+          </div>
+          <div>
+            {{ form.business_owner.label(class="block text-sm font-medium mb-2") }}
+            {{ form.business_owner(class="w-full px-3 py-2 border rounded") }}
+          </div>
+        </div>
+
+        <!-- Development Team and User Count Row -->
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            {{ form.development_team.label(class="block text-sm font-medium mb-2") }}
+            {{ form.development_team(class="w-full px-3 py-2 border rounded") }}
+          </div>
+          <div>
+            {{ form.user_count.label(class="block text-sm font-medium mb-2") }}
+            {{ form.user_count(class="w-full px-3 py-2 border rounded", type="number") }}
+          </div>
+        </div>
+
+        <!-- Business Criticality -->
+        <div>
+          {{ form.business_criticality.label(class="block text-sm font-medium mb-2") }}
+          {{ form.business_criticality(class="w-full px-3 py-2 border rounded") }}
+        </div>
+
+        <!-- Vendor Products -->
+        <div>
+          {{ form.vendor_products.label(class="block text-sm font-medium mb-2") }}
+          {{ form.vendor_products(class="w-full px-3 py-2 border rounded h-40", multiple=True, disabled=(not form.vendor_products.choices)) }}
+          <p id="vendor-products-hint" class="mt-2 text-xs text-muted-foreground">Hold Ctrl (Windows) or Cmd (macOS) to select multiple vendor products. Production applications must have at least one vendor product.</p>
+          {% if not form.vendor_products.choices %}
+          <p class="text-xs text-destructive mt-1">No vendor products available. Add vendor catalog entries before marking applications as production.</p>
+          {% endif %}
+          {% if form.vendor_products.errors %}
+          <p class="text-sm text-red-500 mt-1">{{ form.vendor_products.errors[0] }}</p>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Form Actions -->
+      <div class="flex gap-3 mt-8 pt-6 border-t">
+        <button type="submit" class="btn-primary">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+          {% if mode == 'create' %}Create Application{% else %}Save Changes{% endif %}
+        </button>
+        <a href="{% if mode == 'edit' %}{{ url_for('applications.application_detail', id=app.id) }}{% else %}{{ url_for('applications.application_list') }}{% endif %}" class="btn-ghost">
+          Cancel
+        </a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

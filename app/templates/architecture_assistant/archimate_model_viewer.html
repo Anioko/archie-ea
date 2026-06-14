@@ -1,0 +1,480 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'components/page_header.html' import page_header %}
+{% from 'components/metrics_card.html' import metrics_card %}
+
+{% block page_title %}ArchiMate Model Viewer{% endblock %}
+
+{% block extra_css %}
+<style>
+    .model-element {
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+    .model-element:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+    .layer-business { border-left: 4px solid hsl(var(--primary)); }
+    .layer-application { border-left: 4px solid hsl(var(--success)); }
+    .layer-technology { border-left: 4px solid hsl(var(--warning)); }
+    .layer-motivation { border-left: 4px solid hsl(var(--destructive)); }
+    .layer-strategy { border-left: 4px solid #8b5cf6; }
+    .relationship-line {
+        stroke: hsl(var(--muted-foreground));
+        stroke-width: 2;
+        marker-end: url(#arrowhead);
+    }
+    .viewpoint-card {
+        background: linear-gradient(135deg, hsl(var(--muted)) 0%, hsl(var(--border)) 100%);
+        border: 1px solid hsl(var(--border));
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Header -->
+    <div class="flex items-center justify-between">
+        <div>
+            <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-foreground" id="model-title">ArchiMate Model Viewer</h1>
+            <p class="mt-1 text-sm text-muted-foreground" id="model-description">Loading model...</p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2 shrink-0">
+            <button type="button" id="btn-export-xml" class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium h-10 px-4 py-2 ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 bg-primary text-primary-foreground hover:bg-primary/90" aria-label="Export model as XML">
+                <i data-lucide="download" class="h-4 w-4 mr-2" aria-hidden="true"></i>
+                Export XML
+            </button>
+            <button type="button" id="btn-open-composer" class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium h-10 px-4 py-2 ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 bg-secondary text-secondary-foreground hover:bg-secondary/80" aria-label="Back to Architecture Assistant">
+                <i data-lucide="edit" class="h-4 w-4 mr-2" aria-hidden="true"></i>
+                Back to Assistant
+            </button>
+        </div>
+    </div>
+
+    <!-- Model Statistics -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6" id="model-stats">
+        {{ metrics_card(title='Elements', value='-', value_id='elements-count', icon='box', value_class='text-primary') }}
+        {{ metrics_card(title='Relationships', value='-', value_id='relationships-count', icon='git-branch', value_class='text-primary') }}
+        {{ metrics_card(title='Viewpoints', value='-', value_id='viewpoints-count', icon='eye', value_class='text-primary') }}
+        {{ metrics_card(title='Layers', value='5', value_id='layers-count', icon='layers', value_class='text-primary') }}
+    </div>
+
+    <!-- Layer Navigation -->
+    <div class="bg-card border border-border rounded-lg p-4 mb-6">
+        <h2 class="text-lg font-semibold mb-3">ArchiMate 3.2 Layers</h2>
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-3">
+            <button type="button" class="layer-nav-btn active px-3 py-2 rounded-md text-sm font-medium bg-primary/10 text-primary border border-primary/20" data-layer="business" aria-label="Filter Business Layer elements">
+                Business Layer
+            </button>
+            <button type="button" class="layer-nav-btn px-3 py-2 rounded-md text-sm font-medium bg-muted text-foreground border border-border" data-layer="application" aria-label="Filter Application Layer elements">
+                Application Layer
+            </button>
+            <button type="button" class="layer-nav-btn px-3 py-2 rounded-md text-sm font-medium bg-muted text-foreground border border-border" data-layer="technology" aria-label="Filter Technology Layer elements">
+                Technology Layer
+            </button>
+            <button type="button" class="layer-nav-btn px-3 py-2 rounded-md text-sm font-medium bg-muted text-foreground border border-border" data-layer="motivation" aria-label="Filter Motivation Layer elements">
+                Motivation Layer
+            </button>
+            <button type="button" class="layer-nav-btn px-3 py-2 rounded-md text-sm font-medium bg-muted text-foreground border border-border" data-layer="strategy" aria-label="Filter Strategy Layer elements">
+                Strategy Layer
+            </button>
+        </div>
+    </div>
+
+    <!-- Model Content -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Elements List -->
+        <div class="lg:col-span-2">
+            <div class="bg-card border border-border rounded-lg p-4">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-lg font-semibold">Model Elements</h2>
+                    <div class="flex gap-2">
+                        <button type="button" id="btn-show-all" class="px-3 py-1 text-xs bg-secondary text-secondary-foreground rounded" aria-label="Show all model elements">Show All</button>
+                        <button type="button" id="btn-show-connected" class="px-3 py-1 text-xs bg-primary text-primary-foreground rounded" aria-label="Show connected model elements">Show Connected</button>
+                    </div>
+                </div>
+                <!-- Viewpoint filter (ARCH-016) -->
+                <div class="flex items-center gap-2 mb-3">
+                    <label class="text-xs font-medium text-muted-foreground whitespace-nowrap" for="viewer-viewpoint-select">Viewpoint:</label>
+                    <select id="viewer-viewpoint-select"
+                            class="h-8 rounded-md border border-input bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                        <option value="basic">All Elements</option>
+                    </select>
+                    <span id="viewer-viewpoint-roles" class="text-xs text-muted-foreground hidden"></span>
+                </div>
+                <div id="elements-container" class="space-y-3 max-h-96 overflow-y-auto">
+                    <!-- Elements will be loaded here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Viewpoints & Relationships -->
+        <div class="space-y-6">
+            <!-- Viewpoints -->
+            <div class="bg-card border border-border rounded-lg p-4">
+                <h2 class="text-lg font-semibold mb-3">Generated Viewpoints</h2>
+                <div id="viewpoints-container" class="space-y-3">
+                    <!-- Viewpoints will be loaded here -->
+                </div>
+            </div>
+
+            <!-- Relationships -->
+            <div class="bg-card border border-border rounded-lg p-4">
+                <h2 class="text-lg font-semibold mb-3">Relationships</h2>
+                <div id="relationships-container" class="space-y-2 max-h-64 overflow-y-auto">
+                    <!-- Relationships will be loaded here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Element Detail Modal -->
+    <div id="element-modal" class="modal-root fixed inset-0 bg-black/50 overflow-y-auto z-50 hidden">
+        <div class="flex items-center justify-center min-h-screen p-4">
+            <div class="bg-card rounded-lg shadow-xl max-w-md w-full">
+                <div class="p-6">
+                    <div class="flex justify-between items-start mb-4">
+                        <h3 class="text-lg font-semibold" id="modal-element-name">Element Name</h3>
+                        <button type="button" id="btn-close-modal" class="text-muted-foreground hover:text-muted-foreground" aria-label="Close element details modal">
+                            <i data-lucide="x" class="h-5 w-5" aria-hidden="true"></i>
+                        </button>
+                    </div>
+                    <div id="modal-element-details" class="space-y-3">
+                        <!-- Element details will be loaded here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    let currentModel = null;
+    let currentLayer = 'business';
+    let viewerViewpointTypes = [];
+    const MODEL_CACHE_KEY = 'archimate_generated_models'; // secrets-safety-ok
+
+    // ARCH-016: Load viewpoints and wire up selector
+    (function initViewpointSelector() {
+        const sel = document.getElementById('viewer-viewpoint-select');
+        const rolesEl = document.getElementById('viewer-viewpoint-roles');
+        if (!sel) return;
+        fetch('/api/archimate/viewpoints', { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function(r) { return r.json(); })
+            .then(function(vps) {
+                Object.keys(vps).forEach(function(key) {
+                    if (key === 'basic') return;
+                    const opt = document.createElement('option');
+                    opt.value = key;
+                    opt.textContent = vps[key].name;
+                    sel.appendChild(opt);
+                });
+                sel.addEventListener('change', function() {
+                    const vp = vps[sel.value];
+                    viewerViewpointTypes = (vp && vp.element_types && vp.element_types.length) ? vp.element_types : [];
+                    if (vp && vp.roles && vp.roles.length && sel.value !== 'basic') {
+                        rolesEl.textContent = 'For: ' + vp.roles.join(', ') + ' Architect';
+                        rolesEl.classList.remove('hidden');
+                    } else {
+                        rolesEl.classList.add('hidden');
+                    }
+                    if (currentModel) renderElements(currentModel);
+                });
+            })
+            .catch(function(e) { console.warn('Could not load viewpoints', e); });
+    })();
+
+    function getModelCache() {
+        try {
+            return JSON.parse(localStorage.getItem(MODEL_CACHE_KEY) || '{}');
+        } catch (e) {
+            console.warn('Failed to read model cache', e);
+            return {};
+        }
+    }
+
+    function saveModelToCache(model) {
+        if (!model || !model.id) return;
+        const cache = getModelCache();
+        cache[model.id] = Object.assign({}, model, { cached_at: new Date().toISOString() });
+        localStorage.setItem(MODEL_CACHE_KEY, JSON.stringify(cache));
+    }
+
+    // Initialize Lucide icons
+    lucide.createIcons();
+
+    // Load model from URL parameter or generate new one
+    const urlParams = new URLSearchParams(window.location.search);
+    const modelId = urlParams.get('model_id');
+
+    if (modelId) {
+        loadExistingModel(modelId);
+    } else {
+        // Generate model from architecture assistant data
+        generateModelFromAssistant();
+    }
+
+    // Layer navigation
+    document.querySelectorAll('.layer-nav-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            document.querySelectorAll('.layer-nav-btn').forEach(b => b.classList.remove('active', 'bg-primary/10', 'text-primary', 'border-primary/20'));
+            document.querySelectorAll('.layer-nav-btn').forEach(b => b.classList.add('bg-muted', 'text-foreground', 'border-border'));
+
+            this.classList.add('active', 'bg-primary/10', 'text-primary', 'border-primary/20');
+            this.classList.remove('bg-muted', 'text-foreground', 'border-border');
+
+            currentLayer = this.dataset.layer;
+            renderElements();
+        });
+    });
+
+    // Show all elements
+    document.getElementById('btn-show-all').addEventListener('click', function() {
+        renderElements();
+    });
+
+    // Show connected elements only
+    document.getElementById('btn-show-connected').addEventListener('click', function() {
+        renderElements(true);
+    });
+
+    // Export XML
+    document.getElementById('btn-export-xml').addEventListener('click', function() {
+        if (currentModel) {
+            exportModelAsXML();
+        }
+    });
+
+    // Open in Composer
+    document.getElementById('btn-open-composer').addEventListener('click', function() {
+        if (currentModel) {
+            openInComposer();
+        }
+    });
+
+    // Close modal
+    document.getElementById('btn-close-modal').addEventListener('click', function() {
+        document.getElementById('element-modal').classList.add('hidden');
+    });
+
+    async function generateModelFromAssistant() {
+        try {
+            // Get data from architecture assistant (this would be passed from the assistant)
+            const assistantData = JSON.parse(localStorage.getItem('architecture_assistant_data') || '{}');
+
+            if (!assistantData.capability_id || !assistantData.solution_options) {
+                showError('No architecture assistant data found. Please run the assistant first.');
+                return;
+            }
+
+            const response = await fetch('/api/architecture-assistant/generate-archimate-model', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    capability_id: assistantData.capability_id,
+                    solution_options: assistantData.solution_options,
+                    gap_analysis: assistantData.gap_analysis || {}
+                })
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                currentModel = result.model;
+                saveModelToCache(currentModel);
+                renderModel();
+            } else {
+                showError(result.error || 'Failed to generate model');
+            }
+        } catch (error) {
+            console.error('Error generating model:', error);
+            showError('Failed to generate ArchiMate model');
+        }
+    }
+
+    async function loadExistingModel(modelId) {
+        const cache = getModelCache();
+        if (!cache[modelId]) {
+            showError('Model not found. Generate a model from Architecture Assistant first.');
+            return;
+        }
+        currentModel = cache[modelId];
+        renderModel();
+    }
+
+    function escapeHtml(str) {
+        if (str == null) return '';
+        return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+    }
+
+    function renderModel() {
+        if (!currentModel) return;
+
+        // Update header
+        document.getElementById('model-title').textContent = currentModel.name || 'ArchiMate Model';
+        document.getElementById('model-description').textContent = currentModel.description || 'Generated architecture model';
+
+        // Update statistics
+        document.getElementById('elements-count').textContent = currentModel.elements?.length || 0;
+        document.getElementById('relationships-count').textContent = currentModel.relationships?.length || 0;
+        document.getElementById('viewpoints-count').textContent = currentModel.viewpoints?.length || 0;
+
+        // Render elements
+        renderElements();
+
+        // Render viewpoints
+        renderViewpoints();
+
+        // Render relationships
+        renderRelationships();
+    }
+
+    function renderElements(showConnectedOnly = false) {
+        const container = document.getElementById('elements-container');
+        if (!currentModel?.elements) {
+            container.innerHTML = '<p class="text-muted-foreground">No elements found</p>';
+            return;
+        }
+
+        let elements = currentModel.elements.filter(el => el.layer === currentLayer);
+
+        if (showConnectedOnly) {
+            const connectedIds = new Set();
+            currentModel.relationships?.forEach(rel => {
+                connectedIds.add(rel.source);
+                connectedIds.add(rel.target);
+            });
+            elements = elements.filter(el => connectedIds.has(el.id));
+        }
+
+        // ARCH-016: apply viewpoint type filter
+        if (viewerViewpointTypes.length > 0) {
+            elements = elements.filter(el => viewerViewpointTypes.includes(el.type));
+        }
+
+        if (elements.length === 0) {
+            container.innerHTML = `<p class="text-muted-foreground">No ${escapeHtml(currentLayer)} layer elements found</p>`;
+            return;
+        }
+
+        container.innerHTML = elements.map(element => `
+            <div class="model-element layer-${escapeHtml(element.layer)} bg-card border border-border rounded-lg p-3" data-action="showElementDetails" data-id="${escapeHtml(element.id)}">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <h4 class="font-medium text-sm">${escapeHtml(element.name)}</h4>
+                        <p class="text-xs text-muted-foreground mt-1">${escapeHtml(element.type)}</p>
+                    </div>
+                    <span class="text-xs bg-secondary text-secondary-foreground px-2 py-1 rounded">${escapeHtml(element.layer)}</span>
+                </div>
+                ${element.description ? `<p class="text-xs text-muted-foreground mt-2">${escapeHtml(element.description)}</p>` : ''}
+            </div>
+        `).join('');
+    }
+
+    function renderViewpoints() {
+        const container = document.getElementById('viewpoints-container');
+        if (!currentModel?.viewpoints || currentModel.viewpoints.length === 0) {
+            container.innerHTML = '<p class="text-muted-foreground">No viewpoints generated</p>';
+            return;
+        }
+
+        container.innerHTML = currentModel.viewpoints.map(viewpoint => `
+            <div class="viewpoint-card rounded-lg p-3">
+                <h4 class="font-medium text-sm mb-2">${escapeHtml(viewpoint.name)}</h4>
+                <p class="text-xs text-muted-foreground mb-2">${escapeHtml(viewpoint.description)}</p>
+                <div class="flex justify-between text-xs">
+                    <span>${viewpoint.elements?.length || 0} elements</span>
+                    <span>${viewpoint.relationships?.length || 0} relationships</span>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    function renderRelationships() {
+        const container = document.getElementById('relationships-container');
+        if (!currentModel?.relationships || currentModel.relationships.length === 0) {
+            container.innerHTML = '<p class="text-muted-foreground">No relationships found</p>';
+            return;
+        }
+
+        container.innerHTML = currentModel.relationships.slice(0, 10).map(rel => `
+            <div class="text-xs border border-border rounded p-2">
+                <div class="font-medium">${escapeHtml(rel.type)}</div>
+                <div class="text-muted-foreground">${escapeHtml(getElementName(rel.source))} → ${escapeHtml(getElementName(rel.target))}</div>
+            </div>
+        `).join('');
+
+        if (currentModel.relationships.length > 10) {
+            container.innerHTML += `<p class="text-xs text-muted-foreground mt-2">... and ${currentModel.relationships.length - 10} more</p>`;
+        }
+    }
+
+    function getElementName(elementId) {
+        const element = currentModel.elements?.find(el => el.id === elementId);
+        return element ? element.name : elementId;
+    }
+
+    function showElementDetails(elementId) {
+        const element = currentModel.elements?.find(el => el.id === elementId);
+        if (!element) return;
+
+        document.getElementById('modal-element-name').textContent = element.name;
+
+        const detailsContainer = document.getElementById('modal-element-details');
+        detailsContainer.innerHTML = `
+            <div class="space-y-2">
+                <div><strong>Type:</strong> ${escapeHtml(element.type)}</div>
+                <div><strong>Layer:</strong> ${escapeHtml(element.layer)}</div>
+                ${element.description ? `<div><strong>Description:</strong> ${escapeHtml(element.description)}</div>` : ''}
+                ${element.properties ? Object.entries(element.properties).map(([key, value]) =>
+                    `<div><strong>${escapeHtml(key)}:</strong> ${escapeHtml(value)}</div>`
+                ).join('') : ''}
+            </div>
+        `;
+
+        document.getElementById('element-modal').classList.remove('hidden');
+    }
+
+    async function exportModelAsXML() {
+        try {
+            const response = await fetch(`/api/architecture-assistant/export-archimate-model/${currentModel.id}`);
+            if (response.ok) {
+                const xml = await response.text();
+                const blob = new Blob([xml], { type: 'application/xml' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${currentModel.name || 'archimate-model'}.xml`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            } else {
+                showError('Failed to export model');
+            }
+        } catch (error) {
+            console.error('Error exporting model:', error);
+            showError('Failed to export model');
+        }
+    }
+
+    function openInComposer() {
+        if (currentModel) {
+            saveModelToCache(currentModel);
+        }
+        window.location.href = '/architecture-assistant/';
+    }
+
+    function showError(message) {
+        // Simple error display - in production, use a proper toast system
+        Platform.toast.info(message);
+    }
+
+    // Make showElementDetails globally available
+    window.showElementDetails = showElementDetails;
+});
+</script>
+{% endblock %}

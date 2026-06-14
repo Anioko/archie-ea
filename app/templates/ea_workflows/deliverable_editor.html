@@ -1,0 +1,196 @@
+{% extends "layouts/admin_base.html" %}
+{% from "components/page_header.html" import page_header %}
+
+{% block title %}{{ deliverable_title }}{% endblock %}
+
+{% block content %}
+{% set sections = template_content.sections %}
+{{ page_header(
+    title=deliverable_title,
+    description="Section-based TOGAF deliverable authoring for Phase A Architecture Vision.",
+    breadcrumbs=[
+        {"label": "Dashboard", "href": url_for("main.index")},
+        {"label": "EA Workflows", "href": url_for("main.ea_workflows_dashboard")},
+        {"label": definition.workflow_name, "href": url_for("main.ea_workflow_definition_detail", workflow_code=definition.workflow_code)},
+        {"label": "Deliverable Editor"}
+    ],
+    actions=[
+        {"text": "Back to Workflow", "icon": "arrow-left", "href": url_for("main.ea_workflow_definition_detail", workflow_code=definition.workflow_code), "variant": "outline"}
+    ]
+) }}
+
+<div class="space-y-6" data-testid="deliverable-editor-page">
+    <div class="rounded-xl border-2 border-input bg-background p-6">
+        <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+            <div class="space-y-3">
+                <div class="flex flex-wrap items-center gap-2">
+                    <span class="inline-flex items-center rounded-full px-3 py-1 text-xs font-medium bg-primary/10 text-primary">
+                        <i data-lucide="landmark" class="h-3.5 w-3.5 mr-1" aria-hidden="true"></i>
+                        {{ template_content.template_name }}
+                    </span>
+                    <span class="inline-flex items-center rounded-full px-3 py-1 text-xs font-medium bg-muted">
+                        Version {{ template_content.schema_version }}
+                    </span>
+                    <span class="inline-flex items-center rounded-full px-3 py-1 text-xs font-medium {{ 'bg-success/10 text-success' if readiness_summary.can_submit_for_review else 'bg-warning/10 text-warning' }}">
+                        {{ 'Ready for review' if readiness_summary.can_submit_for_review else 'Draft shell' }}
+                    </span>
+                </div>
+                <p class="text-sm text-muted-foreground max-w-3xl">
+                    This editor uses the shared TOGAF section schema, canonical prefills, visible traceability, readiness gating, and downstream ADM handoff guidance.
+                </p>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                    <div class="rounded-lg border border-input bg-muted/30 p-3">
+                        <p class="text-xs text-muted-foreground uppercase tracking-wide">Workflow</p>
+                        <p class="font-medium mt-1">{{ definition.workflow_name }}</p>
+                    </div>
+                    <div class="rounded-lg border border-input bg-muted/30 p-3">
+                        <p class="text-xs text-muted-foreground uppercase tracking-wide">Initiative</p>
+                        <p class="font-medium mt-1">{{ project_name or "Not yet named" }}</p>
+                    </div>
+                    <div class="rounded-lg border border-input bg-muted/30 p-3">
+                        <p class="text-xs text-muted-foreground uppercase tracking-wide">Application context</p>
+                        <p class="font-medium mt-1">{{ selected_application.name if selected_application else "Workflow definition only" }}</p>
+                    </div>
+                </div>
+            </div>
+            <div class="flex flex-wrap items-center gap-2 shrink-0">
+                <button type="button" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-input bg-background text-sm font-medium text-muted-foreground cursor-not-allowed opacity-60" disabled title="Save Draft — coming soon">
+                    <i data-lucide="save" class="h-4 w-4" aria-hidden="true"></i>
+                    Save Draft
+                </button>
+                <button type="button" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-input bg-background text-sm font-medium text-muted-foreground cursor-not-allowed opacity-60" disabled title="Submit for Review — coming soon" data-testid="submit-for-review-button">
+                    <i data-lucide="badge-check" class="h-4 w-4" aria-hidden="true"></i>
+                    Submit for Review
+                </button>
+                <button type="button" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-input bg-background text-sm font-medium text-muted-foreground cursor-not-allowed opacity-60" disabled title="Export — coming soon" data-testid="deliverable-export-button">
+                    <i data-lucide="download" class="h-4 w-4" aria-hidden="true"></i>
+                    Export
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        <div class="xl:col-span-2 space-y-4">
+            {% for section in sections %}
+            <section class="rounded-xl border-2 border-input bg-background p-6" data-testid="deliverable-section-{{ section.key }}">
+                <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                    <div>
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <h2 class="text-lg font-semibold">{{ loop.index }}. {{ section.title }}</h2>
+                            <span class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium bg-muted text-foreground/80">
+                                {{ section.status|replace("_", " ")|title }}
+                            </span>
+                            {% if section.required %}
+                            <span class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium bg-destructive/10 text-destructive">Required</span>
+                            {% endif %}
+                        </div>
+                        <p class="text-sm text-muted-foreground mt-2">{{ section.description }}</p>
+                    </div>
+                    <div class="text-xs text-muted-foreground">{{ section.source_types|length }} source type{{ '' if section.source_types|length == 1 else 's' }}</div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-5">
+                    <div class="rounded-lg border border-input bg-muted/20 p-4">
+                        <h3 class="text-sm font-semibold mb-3">Structured fields</h3>
+                        <div class="space-y-3">
+                            {% for field_key, field_value in section.fields.items() %}
+                            <div>
+                                <label class="block text-xs font-medium text-muted-foreground mb-1">{{ field_key|replace("_", " ")|title }}</label>
+                                <input type="text" value="{{ field_value or '' }}" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" disabled>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <div class="space-y-4">
+                        <div class="rounded-lg border border-input bg-muted/20 p-4">
+                            <h3 class="text-sm font-semibold mb-2">Narrative guidance</h3>
+                            <p class="text-sm text-muted-foreground">{{ section.generated_narrative or "Narrative will be generated from canonical context." }}</p>
+                        </div>
+                        <div class="rounded-lg border border-input bg-muted/20 p-4" data-testid="section-traceability-{{ section.key }}">
+                            <h3 class="text-sm font-semibold mb-2">Traceability</h3>
+                            {% set section_trace = traceability_view.sections|selectattr('key', 'equalto', section.key)|list|first %}
+                            {% if section_trace and section_trace.refs %}
+                            <ul class="space-y-2 text-sm">
+                                {% for ref in section_trace.refs %}
+                                <li class="rounded-md border border-input bg-background px-3 py-2">
+                                    <p class="font-medium">{{ ref.label }}</p>
+                                    <p class="text-xs text-muted-foreground mt-1">{{ ref.source_type_label }}</p>
+                                    {% if ref.url %}
+                                    <a href="{{ ref.url }}" class="mt-2 inline-flex items-center gap-1 text-xs text-primary hover:underline">Open source</a>
+                                    {% endif %}
+                                </li>
+                                {% endfor %}
+                            </ul>
+                            {% else %}
+                            <p class="text-sm text-muted-foreground">No source links captured for this section yet.</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </section>
+            {% endfor %}
+        </div>
+
+        <aside class="space-y-4">
+            <div class="rounded-xl border-2 border-input bg-background p-5" data-testid="deliverable-readiness-panel">
+                <h2 class="text-lg font-semibold mb-3">Readiness Summary</h2>
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="rounded-lg bg-muted/40 p-3 text-center"><p class="text-2xl font-bold">{{ readiness_summary.total_sections }}</p><p class="text-xs text-muted-foreground mt-1">Total sections</p></div>
+                    <div class="rounded-lg bg-muted/40 p-3 text-center"><p class="text-2xl font-bold">{{ readiness_summary.required_sections }}</p><p class="text-xs text-muted-foreground mt-1">Required</p></div>
+                    <div class="rounded-lg bg-muted/40 p-3 text-center"><p class="text-2xl font-bold text-warning">{{ readiness_summary.remaining_sections }}</p><p class="text-xs text-muted-foreground mt-1">Missing content</p></div>
+                    <div class="rounded-lg bg-muted/40 p-3 text-center"><p class="text-2xl font-bold">{{ readiness_summary.missing_evidence_sections }}</p><p class="text-xs text-muted-foreground mt-1">Missing evidence</p></div>
+                </div>
+                <div class="mt-4 space-y-3" data-testid="deliverable-readiness-blockers">
+                    {% if readiness_summary.gating_blockers %}
+                    <div class="rounded-lg border border-destructive/30 bg-destructive/5 p-4">
+                        <p class="text-sm font-semibold text-destructive">Finalization blocked</p>
+                        <ul class="mt-2 space-y-1 text-sm text-destructive">
+                            {% for blocker in readiness_summary.gating_blockers %}
+                            <li>- {{ blocker }}</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                    {% else %}
+                    <div class="rounded-lg border border-success/30 bg-success/5 p-4">
+                        <p class="text-sm font-semibold text-success">Ready for review and export</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="rounded-xl border-2 border-input bg-background p-5" data-testid="deliverable-traceability-panel">
+                <h2 class="text-lg font-semibold mb-3">Traceability Panel</h2>
+                <p class="text-sm text-muted-foreground">{{ traceability_view.total_refs }} source reference{{ '' if traceability_view.total_refs == 1 else 's' }} captured across the deliverable.</p>
+                <div class="mt-4 space-y-3">
+                    {% for section_trace in traceability_view.sections %}
+                    <div class="rounded-lg border border-input p-3 text-sm" data-testid="traceability-section-{{ section_trace.key }}">
+                        <div class="flex items-center justify-between gap-3">
+                            <span class="font-medium">{{ section_trace.title }}</span>
+                            <span class="text-muted-foreground">{{ section_trace.refs|length }} source{{ '' if section_trace.refs|length == 1 else 's' }}</span>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <div class="rounded-xl border-2 border-input bg-background p-5" data-testid="deliverable-handoff-panel">
+                <h2 class="text-lg font-semibold mb-3">ADM Phase Handoffs</h2>
+                <p class="text-sm text-muted-foreground">{{ handoff_view.ready_targets }} downstream deliverable{{ '' if handoff_view.ready_targets == 1 else 's' }} currently ready to inherit Vision outputs.</p>
+                <div class="mt-4 space-y-3">
+                    {% for handoff in handoff_view.deliverables %}
+                    <div class="rounded-lg border border-input p-3 text-sm" data-testid="handoff-target-{{ handoff.target_template_id }}">
+                        <div class="flex items-center justify-between gap-3">
+                            <span class="font-medium">{{ handoff.target_title }}</span>
+                            <span class="{{ 'text-success' if handoff.ready_for_handoff else 'text-warning' }}">Phase {{ handoff.phase }}</span>
+                        </div>
+                        <p class="mt-2 text-xs text-muted-foreground">{{ handoff.carried_sections|join(", ") }}</p>
+                        <p class="mt-1 text-xs text-muted-foreground">{{ handoff.inherited_source_ref_count }} inherited source refs</p>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </aside>
+    </div>
+</div>
+{% endblock %}

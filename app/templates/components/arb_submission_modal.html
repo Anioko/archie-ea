@@ -1,0 +1,201 @@
+{% from 'components/modal.html' import modal %}
+{% macro arb_submission_modal(capability={}) %}
+<!-- ARB Submission Modal — uses shared modal.html component -->
+<div x-data="{
+    loading: false,
+    capability: {{ capability | tojson }},
+    formData: {
+        justification: '',
+        priority_override: '',
+        estimated_timeline: ''
+    },
+
+    resetForm() {
+        this.formData.justification = '';
+        this.formData.priority_override = '';
+        this.formData.estimated_timeline = '';
+    },
+
+    async submitToARB() {
+        this.loading = true;
+        try {
+            const response = await fetch(`/strategic/api/arb/submit-capability/${this.capability.id}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': document.querySelector('meta[name=&quot;csrf-token&quot;]')?.content ?? ''
+                },
+                body: JSON.stringify({
+                    justification: this.formData.justification,
+                    priority_override: this.formData.priority_override || null,
+                    estimated_timeline: this.formData.estimated_timeline || null,
+                    additional_context: {
+                        source_dashboard: 'investment_matrix',
+                        submitted_via: 'one_click_submission'
+                    }
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                Platform.toast.success(`ARB submission created: ${data.review_number}`);
+                Platform.modal.close('arb-submission');
+                setTimeout(() => {
+                    window.location.href = data.review_url;
+                }, 1500);
+            } else {
+                Platform.toast.error(data.error || 'Submission failed');
+            }
+        } catch (error) {
+            console.error('ARB submission error:', error);
+            Platform.toast.error('Failed to submit to ARB');
+        } finally {
+            this.loading = false;
+        }
+    }
+}"
+@open-arb-submission-modal.window="capability = $event.detail; resetForm(); Platform.modal.open('arb-submission')"
+x-effect="document.getElementById('arb-submission') && document.getElementById('arb-submission').setAttribute('aria-busy', loading ? 'true' : 'false')"
+>
+{% call modal(id='arb-submission', labelledby='modal-arb-submission-title', size='lg') %}
+    <!-- Modal Header (aria-labelledby → modal-arb-submission-title) -->
+    <div class="flex items-center gap-3 mb-6">
+        <div class="p-2 bg-primary/10 rounded-lg">
+            <i data-lucide="shield-check" class="h-6 w-6 text-primary"></i>
+        </div>
+        <div>
+            <h3 id="modal-arb-submission-title" class="text-xl font-semibold">Submit to Architecture Review Board</h3>
+            <p class="text-sm text-muted-foreground mt-1" x-text="`Capability: ${capability.name || 'Unknown'}`"></p>
+        </div>
+    </div>
+
+    <div class="space-y-6">
+        <!-- Pre-populated Business Case Summary -->
+        <div class="bg-muted/50 border border-border rounded-lg p-4 space-y-3">
+            <h4 class="font-medium text-sm flex items-center gap-2">
+                <i data-lucide="file-text" class="h-4 w-4"></i>
+                Auto-Generated Business Case
+            </h4>
+            <div class="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                    <span class="text-muted-foreground">Priority:</span>
+                    <span class="ml-2 font-medium" x-text="capability.priority_level || 'Medium'"></span>
+                </div>
+                <div>
+                    <span class="text-muted-foreground">Strategic Score:</span>
+                    <span class="ml-2 font-medium" x-text="`${capability.strategic_score || 'N/A'}/25`"></span>
+                </div>
+                <div>
+                    <span class="text-muted-foreground">Coverage:</span>
+                    <span class="ml-2 font-medium" x-text="`${capability.coverage_count || 0} applications`"></span>
+                </div>
+                <div>
+                    <span class="text-muted-foreground">Est. Investment:</span>
+                    <span class="ml-2 font-medium" x-text="`$${capability.estimated_investment || 0}M`"></span>
+                </div>
+            </div>
+            <div class="pt-2 border-t border-border">
+                <span class="text-muted-foreground text-xs">Recommendation:</span>
+                <p class="text-sm mt-1" x-text="capability.recommendation || 'Investment required for strategic capability enhancement.'"></p>
+            </div>
+        </div>
+
+        <!-- Additional Justification -->
+        <div class="space-y-2">
+            <label class="text-sm font-medium flex items-center gap-2">
+                <i data-lucide="align-left" class="h-4 w-4"></i>
+                Additional Justification
+                <span class="text-muted-foreground font-normal">(optional)</span>
+            </label>
+            <textarea
+                x-model="formData.justification"
+                rows="4"
+                class="w-full rounded-lg border border-input bg-background px-4 py-2 text-sm resize-none focus:ring-2 focus:ring-primary"
+                placeholder="Add any additional context or justification for this ARB submission..."
+            ></textarea>
+            <p class="text-xs text-muted-foreground">
+                This will be appended to the auto-generated business case.
+            </p>
+        </div>
+
+        <!-- Priority Override & Timeline -->
+        <div class="grid grid-cols-2 gap-4">
+            <div class="space-y-2">
+                <label class="text-sm font-medium flex items-center gap-2">
+                    <i data-lucide="alert-circle" class="h-4 w-4"></i>
+                    Override Priority
+                    <span class="text-muted-foreground font-normal">(optional)</span>
+                </label>
+                <select
+                    x-model="formData.priority_override"
+                    class="w-full rounded-lg border border-input bg-background px-4 py-2 text-sm"
+                >
+                    <option value="">Use capability priority</option>
+                    <option value="critical">Critical</option>
+                    <option value="high">High</option>
+                    <option value="medium">Medium</option>
+                    <option value="low">Low</option>
+                </select>
+            </div>
+
+            <div class="space-y-2">
+                <label class="text-sm font-medium flex items-center gap-2">
+                    <i data-lucide="calendar" class="h-4 w-4"></i>
+                    Estimated Timeline
+                    <span class="text-muted-foreground font-normal">(optional)</span>
+                </label>
+                <input
+                    type="text"
+                    x-model="formData.estimated_timeline"
+                    class="w-full rounded-lg border border-input bg-background px-4 py-2 text-sm"
+                    placeholder="e.g., 12-18 months"
+                 aria-label="e.g., 12-18 months"/>
+            </div>
+        </div>
+
+        <!-- Info Banner -->
+        <div class="flex items-start gap-3 p-3 bg-primary/10 border border-primary/30 rounded-lg">
+            <i data-lucide="info" class="h-5 w-5 text-primary flex-shrink-0 mt-0.5"></i>
+            <div class="text-sm text-foreground">
+                <p class="font-medium">What happens next?</p>
+                <ul class="mt-2 space-y-1 text-muted-foreground">
+                    <li>ARB review item will be created with pre-populated business case</li>
+                    <li>You'll be redirected to the review page to attach supporting documents</li>
+                    <li>ARB board will be notified for review assignment</li>
+                    <li>Decision will automatically sync back to this capability</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="flex items-center justify-end gap-3 mt-6 pt-6 border-t border-border">
+        <button
+            @click="Platform.modal.close('arb-submission')"
+            :disabled="loading"
+            class="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground border border-input rounded-lg hover:bg-accent transition-colors disabled:opacity-50"
+         aria-label="Close">
+            Cancel
+        </button>
+        <button
+            @click="submitToARB()"
+            :disabled="loading"
+            class="px-6 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center gap-2"
+         aria-label="Submit">
+            <span x-show="!loading" x-cloak>
+                <i data-lucide="send" class="h-4 w-4 inline"></i>
+                Submit to ARB
+            </span>
+            <span x-show="loading" x-cloak class="flex items-center gap-2">
+                <svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Submitting...
+            </span>
+        </button>
+    </div>
+{% endcall %}
+</div>
+{% endmacro %}

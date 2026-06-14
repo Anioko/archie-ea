@@ -1,0 +1,65 @@
+{# nextjs_shadcn/components/data-table.tsx.j2 — Reusable data table component #}
+"use client"
+
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+
+interface DataTableProps<T extends Record<string, unknown>> {
+  columns: { key: keyof T; label: string }[]
+  data: T[]
+  onRowClick?: (row: T) => void
+  emptyMessage?: string
+}
+
+export function DataTable<T extends Record<string, unknown>>({
+  columns,
+  data,
+  onRowClick,
+  emptyMessage = "No records yet.",
+}: DataTableProps<T>) {
+  return (
+    <div className="rounded-md border border-border">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            {columns.map((col) => (
+              <TableHead key={String(col.key)}>{col.label}</TableHead>
+            ))}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {data.length === 0 ? (
+            <TableRow>
+              <TableCell
+                colSpan={columns.length}
+                className="text-center text-muted-foreground py-8"
+              >
+                {emptyMessage}
+              </TableCell>
+            </TableRow>
+          ) : (
+            data.map((row, i) => (
+              <TableRow
+                key={i}
+                className={onRowClick ? "cursor-pointer hover:bg-muted/50" : ""}
+                onClick={() => onRowClick?.(row)}
+              >
+                {columns.map((col) => (
+                  <TableCell key={String(col.key)}>
+                    {String(row[col.key] ?? "—")}
+                  </TableCell>
+                ))}
+              </TableRow>
+            ))
+          )}
+        </TableBody>
+      </Table>
+    </div>
+  )
+}

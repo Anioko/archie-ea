@@ -1,0 +1,220 @@
+{% extends "layouts/admin_base.html" %}
+
+{% block page_title %}Unmapped Capabilities Analysis{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Header -->
+    <div class="mb-6">
+        <h1 class="text-3xl font-bold text-foreground mb-2">Unmapped Capabilities Analysis</h1>
+        <p class="text-muted-foreground">Identify capabilities that need application mapping to improve coverage</p>
+    </div>
+
+    <!-- Summary Statistics -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <div class="p-4 bg-card border border-border rounded-lg">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm text-muted-foreground">Total Capabilities</p>
+                    <p class="text-2xl font-semibold text-foreground">{{ total_capabilities }}</p>
+                </div>
+                <i data-lucide="layers" class="h-8 w-8 text-primary" aria-hidden="true"></i>
+            </div>
+        </div>
+        
+        <div class="p-4 bg-card border border-border rounded-lg">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm text-muted-foreground">Mapped Capabilities</p>
+                    <p class="text-2xl font-semibold text-foreground">{{ mapped_capabilities }}</p>
+                </div>
+                <i data-lucide="link" class="h-8 w-8 text-success" aria-hidden="true"></i>
+            </div>
+        </div>
+        
+        <div class="p-4 bg-card border border-border rounded-lg">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm text-muted-foreground">Unmapped Capabilities</p>
+                    <p class="text-2xl font-semibold text-foreground">{{ unmapped_count }}</p>
+                </div>
+                <i data-lucide="alert-triangle" class="h-8 w-8 text-warning" aria-hidden="true"></i>
+            </div>
+        </div>
+        
+        <div class="p-4 bg-card border border-border rounded-lg">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm text-muted-foreground">Coverage</p>
+                    <p class="text-2xl font-semibold text-foreground">{{ mapping_coverage }}%</p>
+                </div>
+                <div class="flex items-center gap-1">
+                    <i data-lucide="pie-chart" class="h-8 w-8 {% if mapping_coverage >= 80 %}text-success{% elif mapping_coverage >= 60 %}text-warning{% else %}text-destructive{% endif %}" aria-hidden="true"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Priority Breakdown -->
+    {% if priority_breakdown %}
+    <div class="bg-card border border-border rounded-lg p-4 mb-6">
+        <h3 class="text-lg font-semibold text-foreground mb-4">Priority Breakdown</h3>
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+            {% for priority in priority_breakdown %}
+            <div class="text-center p-3 border border-border rounded-lg">
+                <div class="text-2xl font-bold
+                    {% if priority.strategic_importance == 'critical' %}text-destructive
+                    {% elif priority.strategic_importance == 'high' %}text-warning
+                    {% elif priority.strategic_importance == 'medium' %}text-warning
+                    {% else %}text-muted-foreground
+                    {% endif %}">
+                    {{ priority.count }}
+                </div>
+                <div class="text-sm text-muted-foreground capitalize">{{ priority.strategic_importance }}</div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Domain Statistics -->
+    {% if domain_stats %}
+    <div class="bg-card border border-border rounded-lg p-4 mb-6">
+        <h3 class="text-lg font-semibold text-foreground mb-4">Coverage by Domain</h3>
+        <div class="space-y-3">
+            {% for domain in domain_stats %}
+            {% if domain.total_capabilities > 0 %}
+            {% set domain_coverage = (domain.mapped_capabilities / domain.total_capabilities * 100)|round(1) %}
+            <div class="flex items-center justify-between p-3 border border-border rounded-lg">
+                <div class="flex-1">
+                    <div class="flex items-center justify-between mb-2">
+                        <h4 class="font-medium text-foreground">{{ domain.domain_name }}</h4>
+                        <span class="text-sm text-muted-foreground">{{ domain.mapped_capabilities }}/{{ domain.total_capabilities }} mapped</span>
+                    </div>
+                    <div class="w-full bg-muted rounded-full h-2">
+                        <div class="h-2 rounded-full {% if domain_coverage >= 80 %}bg-success{% elif domain_coverage >= 60 %}bg-warning{% else %}bg-destructive{% endif %}" 
+                             style="width: {{ domain_coverage }}%"></div>
+                    </div>
+                </div>
+                <div class="ml-4 text-right">
+                    <div class="text-lg font-semibold {% if domain_coverage >= 80 %}text-success{% elif domain_coverage >= 60 %}text-warning{% else %}text-destructive{% endif %}">
+                        {{ domain_coverage }}%
+                    </div>
+                    {% if domain.unmapped_capabilities > 0 %}
+                    <div class="text-xs text-destructive">{{ domain.unmapped_capabilities }} gaps</div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Unmapped Capabilities List -->
+    <div class="bg-card border border-border rounded-lg">
+        <div class="p-4 border-b border-border">
+            <div class="flex items-center justify-between">
+                <h3 class="text-lg font-semibold text-foreground">Unmapped Capabilities</h3>
+                <div class="flex gap-2">
+                    <button @click="exportCapabilities()"
+                            class="px-3 py-2 bg-primary text-primary-foreground rounded-md text-sm hover:bg-primary transition-colors" aria-label="Export">
+                        <i data-lucide="download" class="h-4 w-4 inline mr-1" aria-hidden="true"></i>
+                        Export
+                    </button>
+                    <button @click="window.print()"
+                            class="px-3 py-2 bg-muted-foreground text-primary-foreground rounded-md text-sm hover:bg-foreground/80 transition-colors" aria-label="Action">
+                        <i data-lucide="printer" class="h-4 w-4 inline mr-1" aria-hidden="true"></i>
+                        Print
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="p-4">
+            {% if unmapped_capabilities %}
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {% for capability in unmapped_capabilities %}
+                <div class="border border-border rounded-lg p-4 hover:shadow-md transition-shadow">
+                    <div class="flex items-start justify-between mb-3">
+                        <h4 class="font-medium text-foreground">{{ capability.name }}</h4>
+                        <span class="px-2 py-1 text-xs rounded-full
+                            {% if capability.strategic_importance == 'critical' %}bg-destructive/10 text-destructive
+                            {% elif capability.strategic_importance == 'high' %}bg-warning/10 text-warning
+                            {% elif capability.strategic_importance == 'medium' %}bg-warning/10 text-warning
+                            {% else %}bg-muted text-foreground
+                            {% endif %}">
+                            {{ capability.strategic_importance|title }}
+                        </span>
+                    </div>
+                    
+                    <div class="space-y-2 text-sm">
+                        <div class="flex justify-between">
+                            <span class="text-muted-foreground">Domain:</span>
+                            <span class="font-medium">{{ capability.domain_name }}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-muted-foreground">Maturity:</span>
+                            <span class="font-medium">L{{ capability.current_maturity_level }} → L{{ capability.target_maturity_level }}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-muted-foreground">Status:</span>
+                            <span class="font-medium">{{ capability.status|title }}</span>
+                        </div>
+                    </div>
+                    
+                    {% if capability.description %}
+                    <div class="mt-3 pt-3 border-t border-border">
+                        <p class="text-sm text-muted-foreground line-clamp-2">{{ capability.description }}</p>
+                    </div>
+                    {% endif %}
+                    
+                    <div class="mt-4 flex gap-2">
+                        <button type="button" class="px-3 py-1 bg-primary/5 text-primary rounded text-xs hover:bg-primary/10 transition-colors" aria-label="Action">
+                            <i data-lucide="link" class="h-3 w-3 inline mr-1" aria-hidden="true"></i>
+                            Map Application
+                        </button>
+                        <button type="button" class="px-3 py-1 bg-muted text-foreground/80 rounded text-xs hover:bg-muted transition-colors" aria-label="Action">
+                            <i data-lucide="eye" class="h-3 w-3 inline mr-1" aria-hidden="true"></i>
+                            View Details
+                        </button>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="text-center py-8">
+                <i data-lucide="check-circle" class="h-12 w-12 text-success mx-auto mb-4" aria-hidden="true"></i>
+                <h3 class="text-lg font-semibold text-foreground mb-2">All Capabilities Mapped!</h3>
+                <p class="text-muted-foreground">Every capability has at least one application mapped to it.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+function exportCapabilities() {
+    fetch('/api/capability-analysis/unmapped/export')
+        .then(response => response.json())
+        .then(data => {
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `unmapped_capabilities_${new Date().toISOString().split('T')[0]}.json`;
+            a.click();
+            window.URL.revokeObjectURL(url);
+        })
+        .catch(error => {
+            console.error('Export failed:', error);
+            Platform.toast.error('Export failed. Please try again.');
+        });
+}
+
+// Initialize Lucide icons
+document.addEventListener('DOMContentLoaded', function() {
+    lucide.createIcons();
+});
+</script>
+{% endblock %}

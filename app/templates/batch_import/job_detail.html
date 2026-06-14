@@ -1,0 +1,977 @@
+{% extends 'layouts/admin_base.html' %}
+{% import 'components/card.html' as card %}
+{% import 'components/badge.html' as badge %}
+{% import 'components/tabs.html' as tabs %}
+{% import 'components/progress.html' as progress %}
+{% import 'components/breadcrumb.html' as breadcrumb %}
+{% from 'components/metrics_card.html' import metrics_card %}
+{% from 'components/detail_meta.html' import detail_meta_item %}
+{% from 'components/skeleton.html' import skeleton_table %}
+
+{% block title %}Import Job: {{ job.name if job else 'Loading...' }}{% endblock %}
+
+{% block content %}
+<div class="space-y-6" x-data="jobDetail({{ job.id if job else 0 }})">
+    <!-- Breadcrumb -->
+    {% call breadcrumb.breadcrumb() %}
+        {% call breadcrumb.breadcrumb_item(href=url_for('admin.dashboard')) %}
+            <i data-lucide="home" class="h-4 w-4" aria-hidden="true"></i>
+        {% endcall %}
+        {{ breadcrumb.breadcrumb_separator() }}
+        {% call breadcrumb.breadcrumb_item(href=url_for('batch_import_view.dashboard')) %}
+            Batch Import
+        {% endcall %}
+        {{ breadcrumb.breadcrumb_separator() }}
+        {% call breadcrumb.breadcrumb_item(active=true) %}
+            <span x-text="job?.name || 'Loading...'"></span>
+        {% endcall %}
+    {% endcall %}
+
+    <!-- Job Header -->
+    {% call card.card() %}
+        <div class="p-6">
+            <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                <div class="flex items-start gap-4">
+                    <div class="flex h-12 w-12 items-center justify-center rounded-lg" :class="getStatusIconBackground(job?.status)">
+                        <i :data-lucide="getStatusIcon(job?.status)" class="h-6 w-6 text-primary-foreground"></i>
+                    </div>
+                    <div>
+                        <div class="flex items-center gap-3">
+                            <h1 class="text-2xl font-bold tracking-tight" x-text="job?.name"></h1>
+                            <span
+                                :class="getStatusBadgeClass(job?.status)"
+                                class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold"
+                                x-text="job?.status"
+                            ></span>
+                        </div>
+                        <div class="flex flex-wrap items-center gap-4 mt-2 text-sm text-muted-foreground">
+                            {{ detail_meta_item(icon='layers', value_alpine="job?.mode + ' Mode'") }}
+                            {{ detail_meta_item(icon='calendar', label='Created', value_alpine='formatDate(job?.created_at)') }}
+                            {{ detail_meta_item(icon='play', label='Started', value_alpine='formatDate(job?.started_at)', show_alpine='job?.started_at') }}
+                            {{ detail_meta_item(icon='check-circle', label='Completed', value_alpine='formatDate(job?.completed_at)', show_alpine='job?.completed_at') }}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="flex items-center gap-2">
+                    <button
+                        @click="refreshJob()"
+                        class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2 transition-colors"
+                     aria-label="Refresh">
+                        <i data-lucide="refresh-cw" class="mr-2 h-4 w-4" :class="{ 'animate-spin': refreshing }"></i>
+                        Refresh
+                    </button>
+
+                    <!-- Start Button -->
+                    <button
+                        x-show="_normStatus(job?.status) === 'pending'"
+                        @click="startJob()"
+                        class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-success text-primary-foreground hover:bg-success h-10 px-4 py-2 transition-colors"
+                     aria-label="Start processing import job">
+                        <i data-lucide="play" class="mr-2 h-4 w-4" aria-hidden="true"></i>
+                        Start Processing
+                    </button>
+
+                    <!-- Pause Button -->
+                    <button
+                        x-show="_normStatus(job?.status) === 'processing'"
+                        @click="pauseJob()"
+                        class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-warning text-primary-foreground hover:bg-warning h-10 px-4 py-2 transition-colors"
+                     aria-label="Pause import job">
+                        <i data-lucide="pause" class="mr-2 h-4 w-4" aria-hidden="true"></i>
+                        Pause
+                    </button>
+
+                    <!-- Resume Button -->
+                    <button
+                        x-show="_normStatus(job?.status) === 'paused'"
+                        @click="resumeJob()"
+                        class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-success text-primary-foreground hover:bg-success h-10 px-4 py-2 transition-colors"
+                     aria-label="Resume import job">
+                        <i data-lucide="play" class="mr-2 h-4 w-4" aria-hidden="true"></i>
+                        Resume
+                    </button>
+
+                    <!-- Cancel Button -->
+                    <button
+                        x-show="['pending', 'processing', 'paused'].includes(_normStatus(job?.status))"
+                        @click="showCancelModal = true"
+                        class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-destructive text-destructive-foreground hover:bg-destructive/90 h-10 px-4 py-2 transition-colors"
+                     aria-label="Cancel">
+                        <i data-lucide="x-circle" class="mr-2 h-4 w-4" aria-hidden="true"></i>
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+    {% endcall %}
+
+    <!-- Stats Cards Row -->
+    <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        {{ metrics_card(
+            title='Applications',
+            value_alpine='(job?.applications_count || 0).toLocaleString()',
+            value='0',
+            icon='package',
+            description='Source applications to process'
+        ) }}
+
+        {{ metrics_card(
+            title='Elements Generated',
+            value_alpine='(job?.elements_generated || 0).toLocaleString()',
+            value='0',
+            icon='boxes',
+            value_class='text-success',
+            description='ArchiMate elements created'
+        ) }}
+
+        {{ metrics_card(
+            title='LLM Calls',
+            value_alpine='(job?.llm_calls || 0).toLocaleString()',
+            value='0',
+            icon='cpu',
+            description='0 tokens used',
+            description_alpine="(job?.tokens_used || 0).toLocaleString() + ' tokens used'"
+        ) }}
+
+        <!-- Cost Card -->
+        {% call card.card() %}
+            <div class="p-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm font-medium text-muted-foreground">Total Cost</p>
+                        <p class="text-2xl font-bold" x-text="'$' + (job?.actual_cost || 0).toFixed(2)"></p>
+                    </div>
+                    <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/10 dark:bg-warning/30">
+                        <i data-lucide="dollar-sign" class="h-5 w-5 text-warning" aria-hidden="true"></i>
+                    </div>
+                </div>
+                <div class="text-xs text-muted-foreground mt-2">
+                    <span x-show="job?.budget_limit" x-cloak>
+                        Budget: $<span x-text="job?.budget_limit?.toFixed(2)"></span>
+                        <span x-show="job?.actual_cost > job?.budget_limit" x-cloak class="text-destructive font-medium ml-1">(Over budget!)</span>
+                    </span>
+                    <span x-show="!job?.budget_limit" x-cloak>No budget limit set</span>
+                </div>
+            </div>
+        {% endcall %}
+    </div>
+
+    <!-- Import Preview & Conflict Resolution (shown when awaiting confirmation) -->
+    {% if show_preview %}
+    <div id="preview-section" class="space-y-4">
+        {% include 'batch_import/partials/_import_preview.html' %}
+        {% include 'batch_import/partials/_conflict_resolution.html' %}
+    </div>
+    {% endif %}
+
+    <!-- Real-time Processing Panel (shown during streaming) -->
+    <div x-show="streaming" x-cloak x-transition class="mt-4">
+        {% call card.card() %}
+            <div class="p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="flex items-center gap-3">
+                        <div class="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 dark:bg-primary/30">
+                            <i data-lucide="activity" class="h-5 w-5 text-primary animate-pulse" aria-hidden="true"></i>
+                        </div>
+                        <div>
+                            <h2 class="text-lg font-semibold">Processing in Progress</h2>
+                            <p class="text-sm text-muted-foreground">
+                                <span x-show="currentBatch" x-cloak>Batch <span x-text="currentBatch"></span></span>
+                                <span x-show="currentApp" x-cloak> - <span x-text="currentApp"></span></span>
+                            </p>
+                        </div>
+                    </div>
+                    <button
+                        @click="pauseJob()"
+                        class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-warning text-primary-foreground hover:bg-warning h-9 px-4 transition-colors"
+                     aria-label="Pause import job">
+                        <i data-lucide="pause" class="mr-2 h-4 w-4" aria-hidden="true"></i>
+                        Pause
+                    </button>
+                </div>
+
+                <!-- Current batch progress bar -->
+                <div x-show="currentBatch" x-cloak class="mb-4">
+                    <div class="flex justify-between text-sm text-muted-foreground mb-1">
+                        <span>Batch Progress</span>
+                        <span x-text="batchProgress + '%'"></span>
+                    </div>
+                    <div class="w-full bg-secondary rounded-full h-2">
+                        <div class="bg-primary h-2 rounded-full transition-all duration-300" :style="'width: ' + batchProgress + '%'"></div>
+                    </div>
+                </div>
+
+                <!-- Stream messages log -->
+                <div class="border rounded-lg bg-muted/30 max-h-48 overflow-y-auto">
+                    <div class="p-3 space-y-1 font-mono text-xs">
+                        <template x-for="msg in streamMessages" :key="msg.timestamp + msg.message">
+                            <div class="flex gap-2" :class="{
+                                'text-success': msg.type === 'success',
+                                'text-destructive': msg.type === 'error',
+                                'text-warning': msg.type === 'warning',
+                                'text-muted-foreground': msg.type === 'info'
+                            }">
+                                <span class="text-muted-foreground/60" x-text="msg.timestamp"></span>
+                                <span x-text="msg.message"></span>
+                            </div>
+                        </template>
+                        <div x-show="streamMessages.length === 0" x-cloak class="text-muted-foreground">
+                            Waiting for progress updates...
+                        </div>
+                    </div>
+                </div>
+            </div>
+        {% endcall %}
+    </div>
+
+    <!-- Progress and Cost Details -->
+    <div class="grid gap-4 lg:grid-cols-2">
+        <!-- Progress Card -->
+        {% call card.card() %}
+            <div class="p-6">
+                <h3 class="text-lg font-semibold mb-4">Processing Progress</h3>
+                <div class="space-y-4">
+                    <div>
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-sm font-medium">Overall Progress</span>
+                            <span class="text-sm font-bold" x-text="job?.progress + '%'"></span>
+                        </div>
+                        <div class="h-4 w-full overflow-hidden rounded-full bg-secondary">
+                            <div
+                                class="h-full bg-primary transition-all duration-500"
+                                :style="'width: ' + (job?.progress || 0) + '%'"
+                            ></div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-3 gap-4 pt-4 border-t">
+                        <div class="text-center">
+                            <p class="text-2xl font-bold text-muted-foreground" x-text="job?.total_batches || 0"></p>
+                            <p class="text-xs text-muted-foreground">Total Batches</p>
+                        </div>
+                        <div class="text-center">
+                            <p class="text-2xl font-bold text-success" x-text="job?.processed_batches || 0"></p>
+                            <p class="text-xs text-muted-foreground">Completed</p>
+                        </div>
+                        <div class="text-center">
+                            <p class="text-2xl font-bold text-warning" x-text="(job?.total_batches || 0) - (job?.processed_batches || 0)"></p>
+                            <p class="text-xs text-muted-foreground">Remaining</p>
+                        </div>
+                    </div>
+
+                    <div class="pt-4 border-t" x-show="_normStatus(job?.status) === 'processing'">
+                        <div class="flex items-center gap-2 text-sm text-muted-foreground">
+                            <i data-lucide="clock" class="h-4 w-4" aria-hidden="true"></i>
+                            <span>Estimated time remaining: </span>
+                            <span class="font-medium text-foreground" x-text="estimatedTimeRemaining"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        {% endcall %}
+
+        <!-- Cost Summary Card -->
+        {% call card.card() %}
+            <div class="p-6">
+                <h3 class="text-lg font-semibold mb-4">Cost Summary</h3>
+                <div class="space-y-4">
+                    <div class="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                        <div class="flex items-center gap-2">
+                            <i data-lucide="calculator" class="h-4 w-4 text-muted-foreground" aria-hidden="true"></i>
+                            <span class="text-sm">Estimated Cost</span>
+                        </div>
+                        <span class="font-semibold" x-text="'$' + (job?.estimated_cost || 0).toFixed(2)"></span>
+                    </div>
+
+                    <div class="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                        <div class="flex items-center gap-2">
+                            <i data-lucide="receipt" class="h-4 w-4 text-muted-foreground" aria-hidden="true"></i>
+                            <span class="text-sm">Actual Cost</span>
+                        </div>
+                        <span class="font-semibold" :class="costVarianceClass" x-text="'$' + (job?.actual_cost || 0).toFixed(2)"></span>
+                    </div>
+
+                    <div class="flex items-center justify-between p-3 rounded-lg" :class="costVarianceBackgroundClass">
+                        <div class="flex items-center gap-2">
+                            <i data-lucide="trending-up" class="h-4 w-4" :class="costVarianceIconClass"></i>
+                            <span class="text-sm">Variance</span>
+                        </div>
+                        <span class="font-semibold" :class="costVarianceClass" x-text="costVarianceText"></span>
+                    </div>
+
+                    <div class="pt-4 border-t space-y-2">
+                        <div class="flex items-center justify-between text-sm">
+                            <span class="text-muted-foreground">Input Tokens</span>
+                            <span x-text="(job?.input_tokens || 0).toLocaleString()"></span>
+                        </div>
+                        <div class="flex items-center justify-between text-sm">
+                            <span class="text-muted-foreground">Output Tokens</span>
+                            <span x-text="(job?.output_tokens || 0).toLocaleString()"></span>
+                        </div>
+                        <div class="flex items-center justify-between text-sm">
+                            <span class="text-muted-foreground">Total Tokens</span>
+                            <span class="font-medium" x-text="(job?.tokens_used || 0).toLocaleString()"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        {% endcall %}
+    </div>
+
+    <!-- Batches Section -->
+    {% call card.card() %}
+        <div class="p-6">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-semibold">Batches</h3>
+                <div class="flex items-center gap-2">
+                    <span class="text-sm text-muted-foreground">
+                        <span x-text="batches.length"></span> batches total
+                    </span>
+                </div>
+            </div>
+
+            <div class="overflow-x-auto rounded-md border">
+                <table class="w-full caption-bottom text-sm">
+                    <thead class="[&_tr]:border-b">
+                        <tr class="border-b transition-colors hover:bg-muted/50">
+                            <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Batch #</th>
+                            <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Status</th>
+                            <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Applications</th>
+                            <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Elements</th>
+                            <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Cost</th>
+                            <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Processed</th>
+                            <th class="h-12 px-4 text-right align-middle font-medium text-muted-foreground">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody class="[&_tr:last-child]:border-0">
+                        <template x-if="loadingBatches">
+                            <tr>
+                                <td colspan="7" class="p-8 text-center">
+                                    {{ skeleton_table(rows=4, columns=7, class='border-0 rounded-none') }}
+                                </td>
+                            </tr>
+                        </template>
+                        <template x-if="!loadingBatches && batches.length === 0">
+                            <tr>
+                                <td colspan="7" class="p-8 text-center">
+                                    <div class="flex flex-col items-center gap-2">
+                                        <i data-lucide="layers" class="h-12 w-12 text-muted-foreground" aria-hidden="true"></i>
+                                        <p class="text-muted-foreground">No batches created yet</p>
+                                    </div>
+                                </td>
+                            </tr>
+                        </template>
+                        <template x-for="batch in batches" :key="batch.id">
+                            <tr class="border-b transition-colors hover:bg-muted/50">
+                                <td class="p-4 align-middle">
+                                    <span class="font-medium">#<span x-text="batch.batch_number"></span></span>
+                                </td>
+                                <td class="p-4 align-middle">
+                                    <span
+                                        :class="getBatchStatusBadgeClass(batch.status)"
+                                        class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold"
+                                        x-text="batch.status"
+                                    ></span>
+                                </td>
+                                <td class="p-4 align-middle">
+                                    <span x-text="batch.applications_count"></span>
+                                </td>
+                                <td class="p-4 align-middle">
+                                    <div class="flex flex-col">
+                                        <span x-text="batch.total_elements_generated ?? batch.elements_count ?? 0"></span>
+                                        <span class="text-xs text-muted-foreground" x-show="(batch.pending_review || 0) > 0" x-cloak>
+                                            <span x-text="batch.pending_review || 0"></span> pending review
+                                        </span>
+                                    </div>
+                                </td>
+                                <td class="p-4 align-middle">
+                                    <span x-text="'$' + ((batch.batch_cost_usd ?? batch.cost ?? 0)).toFixed(2)"></span>
+                                </td>
+                                <td class="p-4 align-middle">
+                                    <span class="text-sm text-muted-foreground" x-text="(batch.completed_at || batch.processed_at) ? formatDate(batch.completed_at || batch.processed_at) : '-'"></span>
+                                </td>
+                                <td class="p-4 align-middle text-right">
+                                    <a
+                                        :href="'/batch-import/batches/' + batch.id + '/review'"
+                                        class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-8 px-3 transition-colors"
+                                        x-show="['ready_for_review', 'approved'].includes(_normStatus(batch.status))"
+                                    >
+                                        <i data-lucide="eye" class="mr-2 h-4 w-4" aria-hidden="true"></i>
+                                        Review
+                                    </a>
+                                    <span x-show="_normStatus(batch.status) === 'queued'" class="text-sm text-muted-foreground">Waiting...</span>
+                                    <span x-show="_normStatus(batch.status) === 'processing'" class="text-sm text-primary">
+                                        <i data-lucide="loader-2" class="h-4 w-4 animate-spin inline mr-1" aria-hidden="true"></i>
+                                        Processing
+                                    </span>
+                                    <span
+                                        x-show="batch.status === 'Committed'"
+                                        class="inline-flex items-center gap-1 text-sm text-success"
+                                    >
+                                        <i data-lucide="check-circle" class="h-4 w-4" aria-hidden="true"></i>
+                                        Committed
+                                    </span>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    {% endcall %}
+
+    <!-- Error Log (if any) -->
+    <template x-if="job?.error_log && job.error_log.length > 0">
+        {% call card.card() %}
+            <div class="p-6">
+                <div class="flex items-center gap-2 mb-4">
+                    <i data-lucide="alert-triangle" class="h-5 w-5 text-destructive" aria-hidden="true"></i>
+                    <h3 class="text-lg font-semibold text-destructive">Error Log</h3>
+                </div>
+                <div class="rounded-lg bg-destructive/10 p-4 max-h-64 overflow-y-auto">
+                    <template x-for="(error, index) in job.error_log" :key="index">
+                        <div class="flex items-start gap-2 py-2 border-b border-destructive/20 last:border-0">
+                            <span class="text-xs text-muted-foreground" x-text="error.timestamp"></span>
+                            <span class="text-sm text-destructive" x-text="error.message"></span>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        {% endcall %}
+    </template>
+
+    <!-- Cancel Confirmation Modal -->
+    <div
+        x-show="showCancelModal" x-cloak
+        @keydown.escape.window="showCancelModal = false"
+        x-transition
+        class="modal-root fixed inset-0 z-50 flex items-center justify-center"
+        x-cloak
+     role="dialog">
+        <div class="modal-root bg-background/80 fixed inset-0" @click="showCancelModal = false"></div>
+        <div class="relative z-50 w-full max-w-md rounded-lg border bg-background p-6 shadow-lg" role="alertdialog" aria-modal="true" tabindex="-1">
+            <button @click="showCancelModal = false" class="absolute right-4 top-4 rounded-sm opacity-70 hover:opacity-100" aria-label="Cancel">
+                <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
+            </button>
+            <div class="flex items-center gap-4 mb-4">
+                <div class="flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10">
+                    <i data-lucide="alert-triangle" class="h-6 w-6 text-destructive" aria-hidden="true"></i>
+                </div>
+                <div>
+                    <h2 class="text-lg font-semibold">Cancel Import Job</h2>
+                    <p class="text-sm text-muted-foreground">This action cannot be undone</p>
+                </div>
+            </div>
+            <p class="text-sm text-muted-foreground mb-4">
+                Are you sure you want to cancel this job? Any unprocessed batches will be discarded,
+                but already processed elements can still be reviewed and committed.
+            </p>
+            <div class="flex justify-end gap-2">
+                <button
+                    @click="showCancelModal = false"
+                    class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent h-10 px-4 py-2"
+                 aria-label="Cancel">
+                    Keep Job
+                </button>
+                <button
+                    @click="cancelJob()"
+                    class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-destructive text-destructive-foreground hover:bg-destructive/90 h-10 px-4 py-2"
+                 aria-label="Cancel">
+                    Cancel Job
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+const CURRENCY_SYMBOL = '{{ currency_symbol }}';
+
+function jobDetail(jobId) {
+    return {
+        jobId: jobId,
+        job: null,
+        batches: [],
+        loading: true,
+        loadingBatches: true,
+        refreshing: false,
+        showCancelModal: false,
+        // Import preview state
+        previewData: null,
+        previewLoading: false,
+        conflicts: [],
+        resolutions: {},
+        // SSE streaming state
+        streaming: false,
+        eventSource: null,
+        streamMessages: [],
+        currentBatch: null,
+        currentApp: null,
+        batchProgress: 0,
+
+        init() {
+            this.loadJob();
+            this.loadBatches();
+
+            // Cleanup on page unload
+            window.addEventListener('beforeunload', () => {
+                this.stopStream();
+            });
+        },
+
+        get estimatedTimeRemaining() {
+            if (!this.job || this.job.processed_batches === 0) return 'Calculating...';
+
+            const avgTimePerBatch = this.job.processing_time_ms / this.job.processed_batches;
+            const remainingBatches = this.job.total_batches - this.job.processed_batches;
+            const remainingMs = avgTimePerBatch * remainingBatches;
+
+            if (remainingMs < 60000) return 'Less than a minute';
+            if (remainingMs < 3600000) return Math.ceil(remainingMs / 60000) + ' minutes';
+            return Math.ceil(remainingMs / 3600000) + ' hours';
+        },
+
+        get costVariance() {
+            if (!this.job) return 0;
+            return this.job.actual_cost - this.job.estimated_cost;
+        },
+
+        get costVarianceText() {
+            const variance = this.costVariance;
+            if (Math.abs(variance) < 0.01) return CURRENCY_SYMBOL + '0.00';
+            return (variance > 0 ? '+' : '') + CURRENCY_SYMBOL + variance.toFixed(2);
+        },
+
+        get costVarianceClass() {
+            if (this.costVariance > 0) return 'text-destructive';
+            if (this.costVariance < 0) return 'text-success';
+            return '';
+        },
+
+        get costVarianceIconClass() {
+            if (this.costVariance > 0) return 'text-destructive';
+            if (this.costVariance < 0) return 'text-success';
+            return 'text-muted-foreground';
+        },
+
+        get costVarianceBackgroundClass() {
+            if (this.costVariance > 0) return 'bg-destructive/10';
+            if (this.costVariance < 0) return 'bg-success/10 dark:bg-success/30';
+            return 'bg-muted/50';
+        },
+
+        getStatusIcon(status) {
+            status = this._normStatus(status);
+            const icons = {
+                'pending': 'clock',
+                'processing': 'loader-2',
+                'paused': 'pause',
+                'completed': 'check-circle',
+                'failed': 'x-circle',
+                'cancelled': 'x-circle'
+            };
+            return icons[status] || 'help-circle';
+        },
+
+        getStatusIconBackground(status) {
+            status = this._normStatus(status);
+            const backgrounds = {
+                'pending': 'bg-muted-foreground',
+                'processing': 'bg-primary',
+                'paused': 'bg-warning',
+                'completed': 'bg-success',
+                'failed': 'bg-destructive',
+                'cancelled': 'bg-muted-foreground'
+            };
+            return backgrounds[status] || 'bg-muted-foreground';
+        },
+
+        getStatusBadgeClass(status) {
+            status = this._normStatus(status);
+            const classes = {
+                'pending': 'border-transparent bg-muted text-muted-foreground dark:bg-foreground dark:text-muted-foreground',
+                'processing': 'border-transparent bg-primary/10 text-primary dark:bg-primary/30 dark:text-primary/80',
+                'paused': 'border-transparent bg-warning/10 text-warning dark:bg-warning/30 dark:text-warning',
+                'completed': 'border-transparent bg-success/10 text-success dark:bg-success/30 dark:text-success/80',
+                'failed': 'border-transparent bg-destructive/10 text-destructive dark:bg-destructive/30 dark:text-destructive/80',
+                'cancelled': 'border-transparent bg-muted text-muted-foreground dark:bg-muted dark:text-muted-foreground'
+            };
+            return classes[status] || classes['pending'];
+        },
+
+        getBatchStatusBadgeClass(status) {
+            status = this._normStatus(status);
+            const classes = {
+                'queued': 'border-transparent bg-muted text-muted-foreground dark:bg-foreground dark:text-muted-foreground',
+                'processing': 'border-transparent bg-primary/10 text-primary dark:bg-primary/30 dark:text-primary/80',
+                'ready_for_review': 'border-transparent bg-accent text-primary dark:bg-primary/30 dark:text-primary',
+                'approved': 'border-transparent bg-warning/10 text-warning dark:bg-warning/30 dark:text-warning',
+                'committed': 'border-transparent bg-success/10 text-success dark:bg-success/30 dark:text-success/80',
+                'failed': 'border-transparent bg-destructive/10 text-destructive dark:bg-destructive/30 dark:text-destructive/80',
+                'rejected': 'border-transparent bg-destructive/10 text-destructive dark:bg-destructive/30 dark:text-destructive/80',
+                'skipped': 'border-transparent bg-muted text-muted-foreground dark:bg-muted dark:text-muted-foreground'
+            };
+            return classes[status] || classes['queued'];
+        },
+
+        _normStatus(status) {
+            return String(status || '').toLowerCase();
+        },
+
+        formatDate(dateStr) {
+            if (!dateStr) return '';
+            const date = new Date(dateStr);
+            return date.toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        },
+
+        async loadJob(silent = false) {
+            if (!silent) this.loading = true;
+            this.refreshing = !silent;
+
+            try {
+                const response = await fetch(`/api/batch-import/jobs/${this.jobId}`);
+                const data = await response.json();
+
+                if (data.success) {
+                    this.job = data.job || data.data || null;
+                    this.$nextTick(() => {
+                        if (typeof lucide !== 'undefined') {
+                            lucide.createIcons();
+                        }
+                    });
+                }
+            } catch (error) {
+                console.error('Failed to load job:', error);
+                if (!silent) {
+                    this.showToast('Failed to load job details', 'error');
+                }
+            } finally {
+                this.loading = false;
+                this.refreshing = false;
+            }
+        },
+
+        async loadBatches(silent = false) {
+            if (!silent) this.loadingBatches = true;
+
+            try {
+                const response = await fetch(`/api/batch-import/jobs/${this.jobId}/batches`);
+                const data = await response.json();
+
+                if (data.success) {
+                    this.batches = data.batches || data.data || [];
+                }
+            } catch (error) {
+                console.error('Failed to load batches:', error);
+            } finally {
+                this.loadingBatches = false;
+            }
+        },
+
+        refreshJob() {
+            this.loadJob();
+            this.loadBatches();
+        },
+
+        async startJob() {
+            try {
+                // First, mark the job as started
+                const response = await fetch(`/api/batch-import/jobs/${this.jobId}/start`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    this.showToast('Job started - connecting to progress stream...', 'success');
+                    this.loadJob(true);
+                    // Connect to SSE stream for real-time progress
+                    this.connectProgressStream();
+                } else {
+                    this.showToast(data.message || data.error || 'Failed to start job', 'error');
+                }
+            } catch (error) {
+                console.error('Failed to start job:', error);
+                this.showToast('Failed to start job', 'error');
+            }
+        },
+
+        connectProgressStream() {
+            // Close existing connection if any
+            if (this.eventSource) {
+                this.eventSource.close();
+            }
+
+            this.streaming = true;
+            this.streamMessages = [];
+            this.eventSource = new EventSource(`/api/batch-import/jobs/${this.jobId}/stream`);
+
+            this.eventSource.addEventListener('job_started', (e) => {
+                const data = JSON.parse(e.data);
+                this.addStreamMessage('info', `Job started: ${data.total_batches} batches, ${data.total_applications} applications`);
+                this.loadJob(true);
+            });
+
+            this.eventSource.addEventListener('batch_started', (e) => {
+                const data = JSON.parse(e.data);
+                this.currentBatch = data.batch_number;
+                this.addStreamMessage('info', `Processing batch ${data.batch_number}...`);
+                this.loadBatches(true);
+            });
+
+            this.eventSource.addEventListener('app_processing', (e) => {
+                const data = JSON.parse(e.data);
+                this.currentApp = data.app_name;
+                this.batchProgress = Math.round((data.progress / data.total) * 100);
+            });
+
+            this.eventSource.addEventListener('app_completed', (e) => {
+                const data = JSON.parse(e.data);
+                this.addStreamMessage('success', `✓ ${data.app_name}: ${data.elements_generated} elements (${data.processing_time}s)`);
+                this.batchProgress = Math.round((data.progress / data.total) * 100);
+            });
+
+            this.eventSource.addEventListener('app_failed', (e) => {
+                const data = JSON.parse(e.data);
+                this.addStreamMessage('error', `✗ ${data.app_name}: ${data.error}`);
+            });
+
+            this.eventSource.addEventListener('batch_completed', (e) => {
+                const data = JSON.parse(e.data);
+                this.addStreamMessage('success', `Batch ${data.batch_number} completed: ${data.elements_generated} elements generated`);
+                this.loadJob(true);
+                this.loadBatches(true);
+            });
+
+            this.eventSource.addEventListener('batch_failed', (e) => {
+                const data = JSON.parse(e.data);
+                this.addStreamMessage('error', `Batch ${data.batch_number} failed: ${data.error}`);
+                this.loadBatches(true);
+            });
+
+            this.eventSource.addEventListener('job_paused', (e) => {
+                const data = JSON.parse(e.data);
+                this.addStreamMessage('warning', `Job paused: ${data.message}`);
+                this.stopStream();
+                this.loadJob(true);
+            });
+
+            this.eventSource.addEventListener('job_ready_for_review', (e) => {
+                const data = JSON.parse(e.data);
+                this.addStreamMessage('success', `All batches processed! ${data.batches_ready} batches ready for review.`);
+                this.showToast('Processing complete! Review batches to commit.', 'success');
+                this.stopStream();
+                this.loadJob(true);
+                this.loadBatches(true);
+            });
+
+            this.eventSource.addEventListener('job_completed', (e) => {
+                const data = JSON.parse(e.data);
+                this.addStreamMessage('success', `Job completed! ${data.total_elements} elements, $${data.total_cost.toFixed(4)} total cost`);
+                this.showToast('Job completed successfully!', 'success');
+                this.stopStream();
+                this.loadJob(true);
+            });
+
+            this.eventSource.addEventListener('error', (e) => {
+                if (e.data) {
+                    const data = JSON.parse(e.data);
+                    this.addStreamMessage('error', `Error: ${data.message}`);
+                }
+                this.stopStream();
+                this.loadJob(true);
+            });
+
+            this.eventSource.onerror = (error) => {
+                console.error('SSE connection error:', error);
+                this.stopStream();
+                this.loadJob(true);
+            };
+        },
+
+        stopStream() {
+            if (this.eventSource) {
+                this.eventSource.close();
+                this.eventSource = null;
+            }
+            this.streaming = false;
+            this.currentBatch = null;
+            this.currentApp = null;
+            this.batchProgress = 0;
+        },
+
+        addStreamMessage(type, message) {
+            const timestamp = new Date().toLocaleTimeString();
+            this.streamMessages.unshift({ type, message, timestamp });
+            // Keep only last 50 messages
+            if (this.streamMessages.length > 50) {
+                this.streamMessages.pop();
+            }
+        },
+
+        async pauseJob() {
+            try {
+                const response = await fetch(`/api/batch-import/jobs/${this.jobId}/pause`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    this.showToast('Job paused', 'success');
+                    this.stopStream();
+                    this.loadJob(true);
+                } else {
+                    this.showToast(data.message || data.error || 'Failed to pause job', 'error');
+                }
+            } catch (error) {
+                console.error('Failed to pause job:', error);
+                this.showToast('Failed to pause job', 'error');
+            }
+        },
+
+        async resumeJob() {
+            try {
+                const response = await fetch(`/api/batch-import/jobs/${this.jobId}/resume`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    this.showToast('Job resumed - connecting to progress stream...', 'success');
+                    this.loadJob(true);
+                    // Connect to SSE stream for real-time progress
+                    this.connectProgressStream();
+                } else {
+                    this.showToast(data.message || data.error || 'Failed to resume job', 'error');
+                }
+            } catch (error) {
+                console.error('Failed to resume job:', error);
+                this.showToast('Failed to resume job', 'error');
+            }
+        },
+
+        async cancelJob() {
+            try {
+                const response = await fetch(`/api/batch-import/jobs/${this.jobId}/cancel`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    this.showToast('Job cancelled', 'success');
+                    this.loadJob(true);
+                } else {
+                    this.showToast(data.message || data.error || 'Failed to cancel job', 'error');
+                }
+            } catch (error) {
+                console.error('Failed to cancel job:', error);
+                this.showToast('Failed to cancel job', 'error');
+            } finally {
+                this.showCancelModal = false;
+            }
+        },
+
+        // === Import Preview Methods ===
+
+        async loadPreview() {
+            this.previewLoading = true;
+            this.previewData = null;
+            try {
+                const response = await fetch(`/api/batch-import/jobs/${this.jobId}/preview`, {
+                    headers: {
+                        'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || ''
+                    }
+                });
+                const data = await response.json();
+                if (data.success) {
+                    this.previewData = data.data;
+                    this.conflicts = data.data.duplicates || [];
+                    // Initialize resolutions for each conflict
+                    this.resolutions = {};
+                    this.conflicts.forEach(c => {
+                        this.resolutions[c.import_row] = {
+                            import_row: c.import_row,
+                            action: 'create_new',
+                            target_app_id: null
+                        };
+                    });
+                } else {
+                    this.showToast(data.error || 'Failed to generate preview', 'error');
+                }
+            } catch (error) {
+                console.error('Failed to load preview:', error);
+                this.showToast('Failed to load import preview', 'error');
+            } finally {
+                this.previewLoading = false;
+                this.$nextTick(() => {
+                    if (typeof lucide !== 'undefined') lucide.createIcons();
+                });
+            }
+        },
+
+        resolveAllAsNew() {
+            if (!this.conflicts) return;
+            this.conflicts.forEach(c => {
+                this.resolutions[c.import_row] = {
+                    import_row: c.import_row,
+                    action: 'create_new',
+                    target_app_id: null
+                };
+            });
+            this.showToast(`Set all ${this.conflicts.length} conflicts to "Create New"`, 'info');
+        },
+
+        async saveResolutions() {
+            const resolutionsList = Object.values(this.resolutions);
+            if (resolutionsList.length === 0) {
+                this.showToast('No resolutions to save', 'warning');
+                return;
+            }
+            try {
+                const response = await fetch(`/api/batch-import/jobs/${this.jobId}/resolve-conflicts`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || ''
+                    },
+                    body: JSON.stringify({ resolutions: resolutionsList })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    this.showToast(data.message || 'Resolutions saved', 'success');
+                } else {
+                    this.showToast(data.error || 'Failed to save resolutions', 'error');
+                }
+            } catch (error) {
+                console.error('Failed to save resolutions:', error);
+                this.showToast('Failed to save conflict resolutions', 'error');
+            }
+        },
+
+        showToast(message, type = 'info') {
+            if (window.showToast) {
+                window.showToast(message, type);
+            } else {
+            }
+        }
+    };
+}
+</script>
+
+<script>
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,83 @@
+{% extends "layouts/admin_base.html" %}
+{% from "components/filter_bar.html" import filter_bar %}
+{% from 'components/page_header.html' import page_header %}
+{% from 'components/metrics_card.html' import metrics_card %}
+
+{% block title %}Test Artifacts - Playwright Traces & Screenshots{% endblock %}
+
+{% block extra_css %}
+<style>
+.artifact-card {
+    @apply border rounded-lg p-4 bg-card hover:bg-accent/50 transition-colors;
+}
+.artifact-preview {
+    @apply relative aspect-video bg-muted rounded overflow-hidden;
+}
+.trace-badge {
+    @apply inline-flex items-center px-2 py-1 text-xs font-medium bg-primary/10 text-primary rounded;
+}
+.screenshot-badge {
+    @apply inline-flex items-center px-2 py-1 text-xs font-medium bg-success/10 text-success rounded;
+}
+.video-badge {
+    @apply inline-flex items-center px-2 py-1 text-xs font-medium bg-accent text-primary rounded;
+}
+.status-passed {
+    @apply inline-flex items-center px-2 py-1 text-xs font-medium bg-success/10 text-success rounded;
+}
+.status-failed {
+    @apply inline-flex items-center px-2 py-1 text-xs font-medium bg-destructive/10 text-destructive rounded;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Header -->
+    {{ page_header(
+        title='Test Artifacts',
+        description='Playwright traces, screenshots, and test recordings',
+        actions=[
+            {'text': 'Refresh', 'icon': 'refresh-cw', 'onclick': 'refreshArtifacts()', 'variant': 'outline'},
+            {'text': 'Dashboard', 'icon': 'layout-dashboard', 'href': '/testing/dashboard', 'variant': 'outline'}
+        ]
+    ) }}
+
+    <!-- Filters -->
+    <div data-slot="card" class="rounded-xl border bg-card shadow-sm mb-6">
+        {{ filter_bar(
+            search_id='search-filter',
+            search_placeholder='Search test name...',
+            filters=[
+                {'id': 'type-filter', 'label': 'Type', 'options': [
+                    {'value': 'trace', 'label': 'Traces'},
+                    {'value': 'screenshot', 'label': 'Screenshots'},
+                    {'value': 'video', 'label': 'Videos'}
+                ]},
+                {'id': 'status-filter', 'label': 'Status', 'options': [
+                    {'value': 'passed', 'label': 'Passed'},
+                    {'value': 'failed', 'label': 'Failed'}
+                ]}
+            ]
+        ) }}
+    </div>
+
+    <!-- Stats -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        {{ metrics_card(title='Total Artifacts', value='-', value_id='total-artifacts', icon='files') }}
+        {{ metrics_card(title='Failed Tests', value='-', value_id='failed-count', icon='x-circle') }}
+        {{ metrics_card(title='Traces', value='-', value_id='trace-count', icon='route') }}
+        {{ metrics_card(title='Screenshots', value='-', value_id='screenshot-count', icon='camera') }}
+    </div>
+
+    <!-- Artifacts Grid -->
+    <div id="artifacts-grid" class="space-y-4">
+        <div class="text-center py-12 text-muted-foreground">
+            <i data-lucide="loader" class="h-8 w-8 mx-auto mb-4 animate-spin" aria-hidden="true"></i>
+            <p>Loading artifacts...</p>
+        </div>
+    </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/testing/artifact_viewer.js') }}"></script>
+{% endblock %}

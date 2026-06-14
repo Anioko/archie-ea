@@ -1,0 +1,91 @@
+{# Step 7: Execution Tracking #}
+<div class="space-y-6">
+  <div class="flex items-center justify-between">
+    <div>
+      <h2 class="text-lg font-semibold">Execution Tracking</h2>
+      <p class="text-sm text-muted-foreground">Track work package progress post-ARB approval</p>
+    </div>
+    <button @click="addExecutionItem()"
+      class="inline-flex items-center gap-2 h-9 px-3 rounded-md text-sm font-medium border border-input bg-background hover:bg-accent">
+      <i data-lucide="plus" class="h-4 w-4"></i> Add Work Package
+    </button>
+  </div>
+
+  <template x-if="executionItems.length === 0">
+    <div class="rounded-md border border-dashed border-border p-8 text-center text-muted-foreground">
+      <i data-lucide="activity" class="h-8 w-8 mx-auto mb-2"></i>
+      <p>No execution items yet. Add work packages to track progress.</p>
+    </div>
+  </template>
+
+  <template x-if="executionItems.length > 0">
+    <div class="rounded-md border border-border overflow-hidden">
+      <table class="w-full text-sm">
+        <thead class="bg-muted/50">
+          <tr>
+            <th class="text-left p-3 font-medium">Work Package</th>
+            <th class="text-center p-3 font-medium w-32">Status</th>
+            <th class="text-center p-3 font-medium w-32">Progress</th>
+            <th class="text-center p-3 font-medium w-16">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="(item, idx) in executionItems" :key="idx">
+            <tr class="border-t border-border">
+              <td class="p-3">
+                <input type="text" x-model="item.work_package_name"
+                  class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm"
+                  placeholder="Work package name">
+              </td>
+              <td class="p-3 text-center">
+                <select x-model="item.status"
+                  class="rounded-md border border-input bg-background px-2 py-1.5 text-sm">
+                  <option value="planned">Planned</option>
+                  <option value="in_progress">In Progress</option>
+                  <option value="completed">Completed</option>
+                  <option value="blocked">Blocked</option>
+                </select>
+              </td>
+              <td class="p-3 text-center">
+                <div class="flex items-center gap-2">
+                  <input type="range" min="0" max="100" x-model.number="item.percent_complete"
+                    class="flex-1" :aria-label="item.work_package_name + ' progress'">
+                  <span class="text-xs w-8 text-right" x-text="item.percent_complete + '%'"></span>
+                </div>
+              </td>
+              <td class="p-3 text-center">
+                <button @click="executionItems.splice(idx, 1)"
+                  class="text-destructive hover:text-destructive/80" aria-label="Remove work package">
+                  <i data-lucide="trash-2" class="h-4 w-4"></i>
+                </button>
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+  </template>
+
+  {# Embedded ArchiMate Composer #}
+  <div class="mt-8">
+    <div class="flex items-center justify-between mb-3">
+      <div>
+        <h3 class="text-sm font-semibold text-foreground">Architecture Model</h3>
+        <p class="text-xs text-muted-foreground">Edit the ArchiMate model for this solution</p>
+      </div>
+      <a x-show="solutionId" x-cloak
+         :href="'/archimate/composer?solution_id=' + solutionId"
+         class="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+         target="_blank">
+        <i data-lucide="maximize-2" class="w-3 h-3"></i>
+        Full Composer
+      </a>
+    </div>
+    <div id="wizard-composer-canvas"
+         class="rounded-md border border-border bg-background"
+         style="height:400px; overflow:hidden;"></div>
+    <div class="flex items-center gap-3 mt-2">
+      <span class="text-xs text-muted-foreground" x-text="composerStatus || 'No elements loaded'"></span>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Solution Architecture Document — {{ solution.name }}</title>
+<style>
+    @page {
+        size: A4;
+        margin: 22mm 18mm 20mm 18mm;
+        @bottom-center { content: "Confidential — Architecture Review Board"; font-size: 7pt; color: #9ca3af; }
+        @bottom-right  { content: "Page " counter(page) " of " counter(pages); font-size: 7pt; color: #9ca3af; }
+    }
+    @page :first { margin: 0; @bottom-center { content: ""; } @bottom-right { content: ""; } }
+
+    * { box-sizing: border-box; }
+    body { font-family: "Helvetica Neue", Arial, sans-serif; color: #1f2937; font-size: 10pt; line-height: 1.5; margin: 0; }
+
+    /* Cover */
+    .cover { height: 297mm; padding: 0; page-break-after: always; position: relative; color: #fff;
+             background: linear-gradient(160deg, #0f172a 0%, #1e3a8a 70%, #1d4ed8 100%); }
+    .cover-inner { padding: 45mm 22mm; }
+    .cover .kicker { font-size: 10pt; letter-spacing: 0.35em; text-transform: uppercase; color: #93c5fd; margin-bottom: 14mm; }
+    .cover h1 { font-size: 30pt; font-weight: 800; line-height: 1.15; margin: 0 0 6mm 0; }
+    .cover .subtitle { font-size: 12pt; color: #cbd5e1; max-width: 150mm; }
+    .cover .cover-meta { position: absolute; bottom: 30mm; left: 22mm; right: 22mm;
+                         border-top: 1px solid rgba(255,255,255,0.25); padding-top: 8mm;
+                         display: flex; justify-content: space-between; font-size: 9pt; color: #cbd5e1; }
+    .cover .cover-meta strong { display: block; color: #fff; font-size: 11pt; margin-top: 2px; }
+    .cover .brand { position: absolute; top: 22mm; left: 22mm; font-weight: 800; letter-spacing: 0.2em; font-size: 11pt; }
+
+    h2.section { font-size: 15pt; color: #0f172a; border-bottom: 2.5px solid #1d4ed8;
+                 padding-bottom: 4px; margin: 26pt 0 10pt 0; page-break-after: avoid; }
+    h2.section .num { color: #1d4ed8; }
+    h3 { font-size: 11.5pt; color: #1e293b; margin: 16pt 0 6pt 0; page-break-after: avoid; }
+    p { margin: 0 0 8pt 0; }
+    .lead { font-size: 10.5pt; color: #334155; }
+
+    table { width: 100%; border-collapse: collapse; margin: 8pt 0 14pt 0; font-size: 8.6pt; }
+    th { background: #1e293b; color: #fff; text-align: left; padding: 5pt 7pt; font-weight: 600;
+         font-size: 7.6pt; text-transform: uppercase; letter-spacing: 0.04em; }
+    td { padding: 5pt 7pt; border-bottom: 1px solid #e5e7eb; vertical-align: top; }
+    tr:nth-child(even) td { background: #f8fafc; }
+
+    .badge { display: inline-block; padding: 1px 7px; border-radius: 4px; font-size: 7.6pt; font-weight: 600; }
+    .b-green { background: #dcfce7; color: #15803d; }
+    .b-amber { background: #fef3c7; color: #b45309; }
+    .b-red   { background: #fee2e2; color: #b91c1c; }
+    .b-blue  { background: #dbeafe; color: #1d4ed8; }
+    .b-grey  { background: #f1f5f9; color: #475569; }
+
+    .meta-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0; border: 1px solid #e5e7eb; border-radius: 6px; overflow: hidden; margin: 10pt 0 16pt 0; }
+    .meta-grid div { padding: 8pt 10pt; border-right: 1px solid #e5e7eb; border-bottom: 1px solid #e5e7eb; }
+    .meta-grid label { font-size: 7pt; text-transform: uppercase; letter-spacing: 0.06em; color: #6b7280; display: block; }
+    .meta-grid span { font-size: 9.5pt; font-weight: 600; color: #0f172a; }
+
+    .kpi-row { display: flex; gap: 10pt; margin: 12pt 0 16pt 0; }
+    .kpi { flex: 1; border: 1px solid #e5e7eb; border-radius: 6px; padding: 9pt 11pt; text-align: center; }
+    .kpi .v { font-size: 20pt; font-weight: 800; color: #1d4ed8; line-height: 1; }
+    .kpi .l { font-size: 7.4pt; text-transform: uppercase; letter-spacing: 0.05em; color: #6b7280; margin-top: 4px; }
+
+    .empty { color: #94a3b8; font-style: italic; font-size: 9pt; }
+    .toc-row { display: flex; justify-content: space-between; border-bottom: 1px dotted #cbd5e1; padding: 4pt 0; font-size: 9.5pt; }
+    .toc-row .t { color: #1e293b; } .toc-row .n { color: #94a3b8; }
+    ul.tight { margin: 4pt 0 12pt 0; padding-left: 16pt; } ul.tight li { margin-bottom: 3pt; }
+    .phase-tag { font-size: 7.5pt; color: #1d4ed8; font-weight: 700; letter-spacing: 0.06em; }
+    .page-break { page-break-before: always; }
+    .note { background: #f8fafc; border-left: 3px solid #1d4ed8; padding: 7pt 10pt; font-size: 8.8pt; color: #475569; margin: 8pt 0; }
+</style>
+</head>
+<body>
+
+{# ───────────────────────── COVER ───────────────────────── #}
+<div class="cover">
+    <div class="brand">A.R.C.H.I.E.</div>
+    <div class="cover-inner">
+        <div class="kicker">Solution Architecture Document</div>
+        <h1>{{ solution.name }}</h1>
+        {% if solution.description %}<div class="subtitle">{{ solution.description|truncate(260) }}</div>{% endif %}
+    </div>
+    <div class="cover-meta">
+        <div>Solution Owner<strong>{{ solution.solution_owner or '—' }}</strong></div>
+        <div>ADM Phase<strong>Phase {{ solution.adm_phase or 'A' }}</strong></div>
+        <div>Maturity<strong>{{ maturity }}%</strong></div>
+        <div>Generated<strong>{{ generated_at.strftime('%d %b %Y') }}</strong></div>
+    </div>
+</div>
+
+{# ───────────────────── DOCUMENT CONTROL ───────────────────── #}
+<h2 class="section"><span class="num">0.</span> Document Control</h2>
+<div class="meta-grid">
+    <div><label>Document Version</label><span>{{ doc_version }}</span></div>
+    <div><label>Status</label><span>{{ solution.status|default('Draft')|title }}</span></div>
+    <div><label>Governance</label><span>{{ governance.status|replace('_',' ')|title }}</span></div>
+    <div><label>Solution Type</label><span>{{ solution.solution_type or '—' }}</span></div>
+    <div><label>Business Domain</label><span>{{ solution.business_domain or '—' }}</span></div>
+    <div><label>Technical Lead</label><span>{{ solution.technical_lead or '—' }}</span></div>
+    <div><label>Business Sponsor</label><span>{{ solution.business_sponsor or '—' }}</span></div>
+    <div><label>Maturity Score</label><span>{{ maturity }}%</span></div>
+    <div><label>Linked Artifacts</label><span>{{ section_counts.total }}</span></div>
+</div>
+<div class="note">
+    This document is generated from live A.R.C.H.I.E. architecture data. Every table reflects the
+    solution's current modelled state; empty sections indicate architecture work not yet captured,
+    not omitted detail. The completeness score below the contents reflects coverage across TOGAF ADM phases.
+</div>
+
+{# ───────────────────────── CONTENTS ───────────────────────── #}
+<h2 class="section">Contents</h2>
+{% set toc = [
+    ('1', 'Executive Summary'),
+    ('2', 'Architecture Vision (Phase A)'),
+    ('3', 'Business Architecture (Phase B)'),
+    ('4', 'Information Systems Architecture (Phase C)'),
+    ('5', 'Technology Architecture (Phase D)'),
+    ('6', 'Opportunities & Solutions (Phase E)'),
+    ('7', 'Migration Planning (Phase F)'),
+    ('8', 'Implementation Governance (Phase G)'),
+    ('9', 'Architecture Change Management (Phase H)'),
+    ('10','Risk Register'),
+    ('A', 'Appendix — Architecture Element Catalogue'),
+] %}
+{% for n, t in toc %}<div class="toc-row"><span class="t">{{ n }}. {{ t }}</span><span class="n">§{{ n }}</span></div>{% endfor %}
+
+{# ──────────────────── 1. EXECUTIVE SUMMARY ──────────────────── #}
+<div class="page-break"></div>
+<h2 class="section"><span class="num">1.</span> Executive Summary</h2>
+<p class="lead">
+    {{ solution.business_value or solution.description or solution.name }}
+</p>
+<div class="kpi-row">
+    <div class="kpi"><div class="v">{{ maturity }}%</div><div class="l">Solution Maturity</div></div>
+    <div class="kpi"><div class="v">{{ section_counts.requirements }}</div><div class="l">Requirements</div></div>
+    <div class="kpi"><div class="v">{{ section_counts.risks }}</div><div class="l">Risks Tracked</div></div>
+    <div class="kpi"><div class="v">{{ section_counts.elements }}</div><div class="l">ArchiMate Elements</div></div>
+    <div class="kpi"><div class="v">{{ section_counts.applications }}</div><div class="l">Applications</div></div>
+</div>
+<h3>Governance Position</h3>
+<p>
+    This solution is at ADM <strong>Phase {{ solution.adm_phase or 'A' }}</strong> with governance status
+    <span class="badge {% if governance.status == 'approved' %}b-green{% elif governance.status in ['arb_review','under_review'] %}b-amber{% else %}b-grey{% endif %}">{{ governance.status|replace('_',' ')|title }}</span>.
+    {% if section_counts.options %}{{ section_counts.options }} solution option(s) were evaluated{% if options|selectattr('is_recommended')|list %}, with a recommended option selected{% endif %}.{% endif %}
+    {% if section_counts.drivers or section_counts.goals %}The solution responds to {{ section_counts.drivers }} business driver(s) and {{ section_counts.goals }} strategic goal(s).{% endif %}
+</p>
+
+{# ──────────────────── 2. PHASE A — VISION ──────────────────── #}
+<h2 class="section"><span class="num">2.</span> Architecture Vision <span class="phase-tag">PHASE A</span></h2>
+
+<h3>2.1 Stakeholders</h3>
+{% if stakeholders %}
+<table><thead><tr><th>Stakeholder</th><th>Role</th><th>Key Concerns</th><th>Influence</th></tr></thead><tbody>
+{% for s in stakeholders %}<tr><td>{{ s.name }}</td><td>{{ s.role }}</td><td>{{ s.concerns }}</td><td>{{ s.influence }}</td></tr>{% endfor %}
+</tbody></table>
+{% else %}<p class="empty">No stakeholders documented.</p>{% endif %}
+
+<h3>2.2 Business Drivers</h3>
+{% if drivers %}
+<table><thead><tr><th>Driver</th><th>Type</th><th>Description</th><th>Impact</th><th>Urgency</th></tr></thead><tbody>
+{% for d in drivers %}<tr><td>{{ d.name }}</td><td>{{ d.type|title }}</td><td>{{ d.description }}</td><td>{{ d.impact or '—' }}</td><td>{{ d.urgency or '—' }}</td></tr>{% endfor %}
+</tbody></table>
+{% else %}<p class="empty">No drivers documented.</p>{% endif %}
+
+<h3>2.3 Goals & Objectives</h3>
+{% if goals %}
+<table><thead><tr><th>Goal</th><th>Description</th><th>Success Measure</th><th>Target</th></tr></thead><tbody>
+{% for g in goals %}<tr><td>{{ g.name }}</td><td>{{ g.description }}</td><td>{{ g.measurement or '—' }}</td><td>{{ g.target_date or '—' }}</td></tr>{% endfor %}
+</tbody></table>
+{% else %}<p class="empty">No goals documented.</p>{% endif %}
+
+<h3>2.4 Constraints</h3>
+{% if constraints %}
+<table><thead><tr><th>Constraint</th><th>Type</th><th>Value/Limit</th><th>Severity</th></tr></thead><tbody>
+{% for c in constraints %}<tr><td>{{ c.name }}</td><td>{{ c.type|title }}</td><td>{{ c.value or '—' }}</td><td>{{ c.severity or '—' }}</td></tr>{% endfor %}
+</tbody></table>
+{% else %}<p class="empty">No constraints documented.</p>{% endif %}
+
+{% if principles %}
+<h3>2.5 Architecture Principles</h3>
+<table><thead><tr><th>Principle</th><th>Statement</th><th>Implications</th></tr></thead><tbody>
+{% for p in principles %}<tr><td>{{ p.name }}</td><td>{{ p.statement }}</td><td>{{ p.implications }}</td></tr>{% endfor %}
+</tbody></table>
+{% endif %}
+
+{# ──────────────────── 3. PHASE B — BUSINESS ──────────────────── #}
+<h2 class="section"><span class="num">3.</span> Business Architecture <span class="phase-tag">PHASE B</span></h2>
+<h3>3.1 Capability Mappings</h3>
+{% if capabilities %}
+<table><thead><tr><th>Business Capability</th><th>Support Level</th></tr></thead><tbody>
+{% for c in capabilities %}<tr><td>{{ c.name }}</td><td><span class="badge b-blue">{{ c.support_level|default('mapped')|title }}</span></td></tr>{% endfor %}
+</tbody></table>
+{% else %}<p class="empty">No capability mappings documented.</p>{% endif %}
+
+{% if elements_by_layer.get('Business') %}
+<h3>3.2 Business Layer Elements</h3>
+<table><thead><tr><th>Element</th><th>Type</th></tr></thead><tbody>
+{% for e in elements_by_layer['Business'] %}<tr><td>{{ e.name }}</td><td>{{ e.type }}</td></tr>{% endfor %}
+</tbody></table>
+{% endif %}
+
+{# ──────────────────── 4. PHASE C — IS ARCHITECTURE ──────────────────── #}
+<h2 class="section"><span class="num">4.</span> Information Systems Architecture <span class="phase-tag">PHASE C</span></h2>
+<h3>4.1 Application Landscape</h3>
+{% if applications %}
+<table><thead><tr><th>Application</th><th>Lifecycle</th><th>Vendor</th><th>Owner</th></tr></thead><tbody>
+{% for a in applications %}<tr><td>{{ a.name }}</td>
+<td><span class="badge {% if a.lifecycle == 'operational' %}b-green{% elif a.lifecycle in ['retired','deprecated'] %}b-red{% else %}b-grey{% endif %}">{{ a.lifecycle|default('—')|title }}</span></td>
+<td>{{ a.vendor or '—' }}</td><td>{{ a.owner or '—' }}</td></tr>{% endfor %}
+</tbody></table>
+{% else %}<p class="empty">No applications linked.</p>{% endif %}
+
+<h3>4.2 Requirements</h3>
+{% if requirements %}
+<table><thead><tr><th>Requirement</th><th>Type</th><th>Priority</th><th>Mandatory</th><th>Acceptance Criteria</th></tr></thead><tbody>
+{% for r in requirements %}<tr><td><strong>{{ r.name }}</strong><br><span style="color:#64748b">{{ r.description|truncate(140) }}</span></td>
+<td>{{ r.type|replace('_',' ')|title }}</td><td>{{ r.priority or '—' }}</td>
+<td>{% if r.mandatory %}<span class="badge b-red">Yes</span>{% else %}No{% endif %}</td>
+<td>{{ r.acceptance_criteria|truncate(120) or '—' }}</td></tr>{% endfor %}
+</tbody></table>
+{% else %}<p class="empty">No requirements documented.</p>{% endif %}
+
+{% if elements_by_layer.get('Application') %}
+<h3>4.3 Application Layer Elements</h3>
+<table><thead><tr><th>Element</th><th>Type</th></tr></thead><tbody>
+{% for e in elements_by_layer['Application'] %}<tr><td>{{ e.name }}</td><td>{{ e.type }}</td></tr>{% endfor %}
+</tbody></table>
+{% endif %}
+
+{# ──────────────────── 5. PHASE D — TECHNOLOGY ──────────────────── #}
+<h2 class="section"><span class="num">5.</span> Technology Architecture <span class="phase-tag">PHASE D</span></h2>
+{% if elements_by_layer.get('Technology') %}
+<table><thead><tr><th>Technology Element</th><th>Type</th></tr></thead><tbody>
+{% for e in elements_by_layer['Technology'] %}<tr><td>{{ e.name }}</td><td>{{ e.type }}</td></tr>{% endfor %}
+</tbody></table>
+{% else %}<p class="empty">No technology-layer elements documented.</p>{% endif %}
+
+{# ──────────────────── 6. PHASE E — OPTIONS ──────────────────── #}
+<h2 class="section"><span class="num">6.</span> Opportunities &amp; Solutions <span class="phase-tag">PHASE E</span></h2>
+<h3>6.1 Options Analysis</h3>
+{% if options %}
+<table><thead><tr><th>Option</th><th>Approach</th><th>Score</th><th>Indicative Cost</th><th>Timeline</th><th>Recommended</th></tr></thead><tbody>
+{% for o in options %}<tr>
+<td><strong>{{ o.name }}</strong></td><td>{{ o.type|title }}</td>
+<td>{{ '%.0f'|format(o.score) if o.score is not none else '—' }}</td>
+<td>{% if o.cost_min is not none %}{{ o.currency }} {{ '{:,.0f}'.format(o.cost_min) }}{% if o.cost_max %}–{{ '{:,.0f}'.format(o.cost_max) }}{% endif %}{% else %}—{% endif %}</td>
+<td>{{ o.timeline_months ~ ' mo' if o.timeline_months else '—' }}</td>
+<td>{% if o.is_recommended %}<span class="badge b-green">Recommended</span>{% else %}—{% endif %}</td>
+</tr>{% endfor %}
+</tbody></table>
+{% for o in options if o.is_recommended and (o.pros or o.cons or o.justification) %}
+<h3>6.2 Recommended Option — {{ o.name }}</h3>
+{% if o.justification %}<p>{{ o.justification }}</p>{% endif %}
+{% if o.pros %}<p><strong>Advantages:</strong></p><ul class="tight">{% for pro in o.pros %}<li>{{ pro }}</li>{% endfor %}</ul>{% endif %}
+{% if o.cons %}<p><strong>Trade-offs:</strong></p><ul class="tight">{% for con in o.cons %}<li>{{ con }}</li>{% endfor %}</ul>{% endif %}
+{% endfor %}
+{% else %}<p class="empty">No options evaluated.</p>{% endif %}
+
+{% if vendor_products %}
+<h3>6.3 Vendor Products Considered</h3>
+<table><thead><tr><th>Product</th><th>Category</th></tr></thead><tbody>
+{% for v in vendor_products %}<tr><td>{{ v.name }}</td><td>{{ v.category or '—' }}</td></tr>{% endfor %}
+</tbody></table>
+{% endif %}
+
+{% if fit_gap %}
+<h3>6.4 Fit-Gap Analysis</h3>
+<table><thead><tr><th>Business Process</th><th>Module</th><th>Fit Type</th><th>Status</th></tr></thead><tbody>
+{% for f in fit_gap %}<tr><td>{{ f.process }}</td><td>{{ f.module or '—' }}</td>
+<td><span class="badge {% if f.fit_type in ['standard','configuration'] %}b-green{% elif f.fit_type in ['extension','isv_solution'] %}b-amber{% else %}b-red{% endif %}">{{ f.fit_type|replace('_',' ')|title }}</span></td>
+<td>{{ f.status|title }}</td></tr>{% endfor %}
+</tbody></table>
+{% endif %}
+
+{# ──────────────────── 7. PHASE F — MIGRATION ──────────────────── #}
+<h2 class="section"><span class="num">7.</span> Migration Planning <span class="phase-tag">PHASE F</span></h2>
+<h3>7.1 Transition Plateaus</h3>
+{% if plateaus %}
+<table><thead><tr><th>#</th><th>Plateau</th><th>Description</th><th>Target Date</th></tr></thead><tbody>
+{% for p in plateaus %}<tr><td>{{ loop.index }}</td><td><strong>{{ p.name }}</strong></td><td>{{ p.description }}</td><td>{{ p.target_date or '—' }}</td></tr>{% endfor %}
+</tbody></table>
+{% else %}<p class="empty">No transition plateaus documented.</p>{% endif %}
+{% if elements_by_layer.get('Implementation') %}
+<h3>7.2 Work Packages &amp; Deliverables</h3>
+<table><thead><tr><th>Element</th><th>Type</th></tr></thead><tbody>
+{% for e in elements_by_layer['Implementation'] %}<tr><td>{{ e.name }}</td><td>{{ e.type }}</td></tr>{% endfor %}
+</tbody></table>
+{% endif %}
+
+{# ──────────────────── 8. PHASE G — GOVERNANCE ──────────────────── #}
+<h2 class="section"><span class="num">8.</span> Implementation Governance <span class="phase-tag">PHASE G</span></h2>
+<p>
+    Governance status:
+    <span class="badge {% if governance.status == 'approved' %}b-green{% elif governance.status in ['arb_review','under_review'] %}b-amber{% else %}b-grey{% endif %}">{{ governance.status|replace('_',' ')|title }}</span>
+    {% if governance.arb_item_id %} · ARB Review Item #{{ governance.arb_item_id }}{% if governance.arb_status %} ({{ governance.arb_status|title }}){% endif %}{% endif %}
+</p>
+{% if governance.status == 'draft' %}
+<div class="note">This solution has not yet been submitted to the Architecture Review Board. Submission requires the ARB readiness criteria to be satisfied (owner, sponsor, technical lead, capability mappings, a recommended option, identified risks, and architecture scope).</div>
+{% endif %}
+
+{# ──────────────────── 9. PHASE H — CHANGE MGMT ──────────────────── #}
+<h2 class="section"><span class="num">9.</span> Architecture Change Management <span class="phase-tag">PHASE H</span></h2>
+<h3>9.1 Success Metrics</h3>
+{% if metrics %}
+<table><thead><tr><th>Metric</th><th>Target</th><th>Current</th><th>Status</th></tr></thead><tbody>
+{% for m in metrics %}<tr><td>{{ m.name }}</td><td>{{ m.target or '—' }}</td><td>{{ m.current or '—' }}</td><td>{{ m.status or '—' }}</td></tr>{% endfor %}
+</tbody></table>
+{% else %}<p class="empty">No success metrics defined.</p>{% endif %}
+
+{# ──────────────────── 10. RISK REGISTER ──────────────────── #}
+<h2 class="section"><span class="num">10.</span> Risk Register</h2>
+{% if risks %}
+<table><thead><tr><th>Risk</th><th>Impact</th><th>Probability</th><th>Mitigation</th><th>Status</th></tr></thead><tbody>
+{% for r in risks %}<tr><td>{{ r.description }}</td>
+<td><span class="badge {% if r.impact in ['critical','high'] %}b-red{% elif r.impact == 'medium' %}b-amber{% else %}b-grey{% endif %}">{{ r.impact|default('—')|title }}</span></td>
+<td>{{ r.probability|default('—')|title }}</td><td>{{ r.mitigation or '—' }}</td><td>{{ r.status|title }}</td></tr>{% endfor %}
+</tbody></table>
+{% else %}<p class="empty">No risks documented.</p>{% endif %}
+
+{# ──────────────────── APPENDIX A ──────────────────── #}
+<div class="page-break"></div>
+<h2 class="section"><span class="num">A.</span> Appendix — Architecture Element Catalogue</h2>
+{% if elements_by_layer %}
+{% for layer, elems in elements_by_layer.items() %}
+<h3>{{ layer }} Layer ({{ elems|length }})</h3>
+<table><thead><tr><th>Element</th><th>Type</th></tr></thead><tbody>
+{% for e in elems %}<tr><td>{{ e.name }}</td><td>{{ e.type }}</td></tr>{% endfor %}
+</tbody></table>
+{% endfor %}
+{% else %}<p class="empty">No ArchiMate elements linked to this solution.</p>{% endif %}
+
+</body>
+</html>

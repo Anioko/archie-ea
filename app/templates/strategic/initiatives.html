@@ -1,0 +1,249 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'components/page_header.html' import page_header %}
+{% from 'components/badge.html' import badge %}
+
+{% block title %}Strategic Initiatives{% endblock %}
+
+{% block breadcrumb %}
+{% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
+{{ breadcrumb_nav(items=[
+    {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
+    {'text': 'Strategy Layer', 'href': url_for('archimate_crud.dashboard') + '#strategy'},
+    {'text': 'Strategic Planning', 'current': true}
+]) }}
+{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    {{ page_header(
+        title='Strategic Initiatives',
+        description='Active initiatives, health status, budget, and milestone progress'
+    ) }}
+
+    <!-- Summary Metric Cards -->
+    {% set total = initiatives | length %}
+    {% set in_progress_count = initiatives | selectattr('status', 'equalto', 'in_progress') | list | length %}
+    {% set completed_count = initiatives | selectattr('status', 'equalto', 'completed') | list | length %}
+    {% set at_risk_count = initiatives | selectattr('risk_level', 'equalto', 'high') | list | length %}
+
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <div data-slot="card" class="rounded-xl border bg-card shadow-sm p-4">
+            <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Total</p>
+            <p class="text-3xl font-bold text-foreground">{{ total }}</p>
+        </div>
+        <div data-slot="card" class="rounded-xl border bg-card shadow-sm p-4">
+            <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">In Progress</p>
+            <p class="text-3xl font-bold text-warning">{{ in_progress_count }}</p>
+        </div>
+        <div data-slot="card" class="rounded-xl border bg-card shadow-sm p-4">
+            <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Completed</p>
+            <p class="text-3xl font-bold text-success">{{ completed_count }}</p>
+        </div>
+        <div data-slot="card" class="rounded-xl border bg-card shadow-sm p-4">
+            <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">At Risk</p>
+            <p class="text-3xl font-bold text-destructive">{{ at_risk_count }}</p>
+        </div>
+    </div>
+
+    <!-- Status Filter Bar -->
+    <div class="flex flex-wrap gap-2 mb-6">
+        {% set statuses = [
+            ('', 'All'),
+            ('draft', 'Draft'),
+            ('planning', 'Planning'),
+            ('in_progress', 'In Progress'),
+            ('completed', 'Completed'),
+            ('cancelled', 'Cancelled')
+        ] %}
+        {% for value, label in statuses %}
+        <a href="{{ url_for('unified_low_priority.strategic_initiatives', status=value) if value else url_for('unified_low_priority.strategic_initiatives') }}"
+           class="inline-flex items-center px-4 py-1.5 rounded-full text-sm font-medium border transition-colors
+                  {% if (status_filter or '') == value %}bg-primary text-primary-foreground border-primary{% else %}bg-background text-foreground border-input hover:bg-accent{% endif %}">
+            {{ label }}
+        </a>
+        {% endfor %}
+    </div>
+
+    <!-- Build health score lookup dict keyed by initiative id -->
+    {% set health_lookup = {} %}
+    {% for hs in health_scores %}
+        {% if hs.initiative_id %}
+            {% if health_lookup.update({hs.initiative_id: hs.overall_score}) %}{% endif %}
+        {% endif %}
+    {% endfor %}
+
+    <!-- Initiative Cards Grid -->
+    {% if initiatives %}
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {% for init in initiatives %}
+        {% set milestone_total = init.milestone_count | default(0) %}
+        {% set milestone_done = init.completed_milestones | default(0) %}
+        {% set progress_pct = ((milestone_done / milestone_total * 100) | round(0) | int) if milestone_total > 0 else 0 %}
+        {% set budget_util = init.budget_utilization_percentage | default(0) %}
+        {% set budget_colour = 'text-success' if budget_util <= 100 else ('text-warning' if budget_util <= 120 else 'text-destructive') %}
+        {% set h_score = health_lookup.get(init.id) %}
+        {% set h_colour = 'text-success' if h_score and h_score >= 80 else ('text-warning' if h_score and h_score >= 50 else 'text-destructive') %}
+
+        {% set status_variant = {
+            'draft': 'neutral',
+            'planning': 'info',
+            'in_progress': 'warning',
+            'completed': 'success',
+            'cancelled': 'destructive'
+        }.get(init.status, 'neutral') %}
+
+        {% set priority_variant = {
+            'critical': 'destructive',
+            'high': 'warning',
+            'medium': 'info',
+            'low': 'neutral'
+        }.get(init.priority, 'neutral') %}
+
+        {% set risk_variant = {
+            'low': 'success',
+            'medium': 'info',
+            'high': 'warning',
+            'critical': 'destructive'
+        }.get(init.risk_level, 'neutral') %}
+
+        <div data-slot="card" class="rounded-xl border bg-card shadow-sm p-5 flex flex-col gap-4 hover:bg-muted/30 transition-colors">
+            <!-- Header: Name + Status/Priority badges -->
+            <div class="flex items-start justify-between gap-3">
+                <h3 class="font-semibold text-foreground leading-tight">
+                    {{ init.name | default('Unnamed Initiative') }}
+                </h3>
+                <div class="flex gap-1.5 shrink-0 flex-wrap justify-end">
+                    {% call badge(variant=status_variant) %}{{ init.status | replace('_', ' ') | title }}{% endcall %}
+                    {% if init.priority %}
+                    {% call badge(variant=priority_variant) %}{{ init.priority | title }}{% endcall %}
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Description -->
+            {% if init.description %}
+            <p class="text-sm text-muted-foreground leading-relaxed">
+                {{ init.description | truncate(200) }}
+            </p>
+            {% endif %}
+
+            <!-- Milestone Progress Bar -->
+            <div>
+                <div class="flex justify-between text-xs text-muted-foreground mb-1">
+                    <span>Milestones</span>
+                    <span>{{ milestone_done }} / {{ milestone_total }}</span>
+                </div>
+                <div class="w-full bg-muted rounded-full h-2">
+                    <div class="h-2 rounded-full bg-primary transition-all"
+                         style="width: {{ progress_pct }}%"></div>
+                </div>
+                <div class="text-xs text-muted-foreground mt-1">{{ progress_pct }}% complete</div>
+            </div>
+
+            <!-- Budget Row -->
+            <div class="flex items-center justify-between text-sm border-t pt-3">
+                <div>
+                    <span class="text-muted-foreground text-xs">Budget Allocated</span>
+                    <p class="font-medium text-foreground">
+                        {% if init.budget_allocated %}
+                            ${{ "{:,.0f}".format(init.budget_allocated) }}
+                        {% else %}
+                            Not set
+                        {% endif %}
+                    </p>
+                </div>
+                <div class="text-right">
+                    <span class="text-muted-foreground text-xs">Utilization</span>
+                    <p class="font-semibold {{ budget_colour }}">{{ budget_util }}%</p>
+                </div>
+            </div>
+
+            <!-- Dates Row -->
+            <div class="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                    <span class="text-xs text-muted-foreground block">Start Date</span>
+                    <span class="text-foreground">
+                        {{ init.start_date if init.start_date else 'TBD' }}
+                    </span>
+                </div>
+                <div>
+                    <span class="text-xs text-muted-foreground block">Target Completion</span>
+                    <span class="text-foreground {% if init.is_overdue %}text-destructive font-medium{% endif %}">
+                        {{ init.target_completion_date if init.target_completion_date else 'TBD' }}
+                        {% if init.is_overdue %}
+                        <span class="text-xs ml-1">(Overdue)</span>
+                        {% endif %}
+                    </span>
+                </div>
+            </div>
+
+            <!-- Business Value + Risk + Health Row -->
+            <div class="flex items-center flex-wrap gap-3 border-t pt-3 text-sm">
+                <!-- Business Value Score -->
+                {% if init.business_value_score %}
+                <div class="flex items-center gap-1">
+                    <span class="text-muted-foreground text-xs">Value:</span>
+                    <span class="font-medium text-foreground">{{ init.business_value_score }}/10</span>
+                    <span class="text-warning" title="Business value score">
+                        {% for i in range(init.business_value_score | default(0) | int) %}&#9733;{% endfor %}{% for i in range(10 - (init.business_value_score | default(0) | int)) %}&#9734;{% endfor %}
+                    </span>
+                </div>
+                {% endif %}
+
+                <!-- Risk Level -->
+                {% if init.risk_level %}
+                {% call badge(variant=risk_variant) %}Risk: {{ init.risk_level | title }}{% endcall %}
+                {% endif %}
+
+                <!-- Health Score -->
+                {% if h_score is not none %}
+                <div class="flex items-center gap-1">
+                    <span class="text-muted-foreground text-xs">Health:</span>
+                    <span class="font-semibold {{ h_colour }}">{{ h_score }}%</span>
+                </div>
+                {% else %}
+                <span class="text-xs text-muted-foreground">Health: N/A</span>
+                {% endif %}
+            </div>
+
+            <!-- Strategic Alignment Tags -->
+            {% if init.strategic_alignment %}
+            <div class="flex flex-wrap gap-1.5 border-t pt-3">
+                <span class="text-xs text-muted-foreground mr-1">Aligned to:</span>
+                {% for goal in (init.strategic_alignment if init.strategic_alignment is iterable and init.strategic_alignment is not string else [init.strategic_alignment]) %}
+                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs bg-muted text-muted-foreground border">
+                    {{ goal }}
+                </span>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+
+    {% else %}
+    <!-- Empty State -->
+    <div class="text-center py-16 border rounded-lg bg-muted/30">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 mx-auto mb-4 opacity-40 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                  d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+        </svg>
+        {% if status_filter %}
+        <h3 class="text-lg font-medium text-foreground mb-2">No initiatives found for this status</h3>
+        <p class="text-muted-foreground mb-4">
+            No initiatives with status <strong>{{ status_filter | replace('_', ' ') | title }}</strong>.
+        </p>
+        <a href="{{ url_for('unified_low_priority.strategic_initiatives') }}"
+           class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent h-9 px-4">
+            Clear Filter
+        </a>
+        {% else %}
+        <h3 class="text-lg font-medium text-foreground mb-2">No strategic initiatives created yet</h3>
+        <p class="text-muted-foreground max-w-md mx-auto">
+            Use the API to create strategic initiatives and track them here.
+        </p>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

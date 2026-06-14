@@ -1,0 +1,70 @@
+{# middleware.ts — Auth guard: redirect to /login if no token cookie/header.
+   With basePath set in next.config.js, request.nextUrl.pathname includes the
+   basePath prefix, so PUBLIC_PATHS must be checked against the stripped path. #}
+{# Context: app_name, base_path (optional, e.g. "/apps/4769") #}
+import { NextResponse } from "next/server"
+import type { NextRequest } from "next/server"
+
+// BASE_PATH: overridable at runtime via BASE_PATH env var.
+// Standalone deployment: set BASE_PATH="" in .env.local before starting the server.
+// Default falls back to the subpath baked in at generation time (ARCHIE preview).
+const BASE_PATH = process.env.BASE_PATH ?? "{{ base_path }}"
+const PUBLIC_PATHS = ["/login", "/register", "/api/", "/auth/"]
+
+function stripBasePath(pathname: string): string {
+  if (BASE_PATH && pathname.startsWith(BASE_PATH)) {
+    return pathname.slice(BASE_PATH.length) || "/"
+  }
+  return pathname
+}
+
+export function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl
+  const localPath = stripBasePath(pathname)
+
+  // Allow public paths and static assets
+  if (
+    PUBLIC_PATHS.some((p) => localPath.startsWith(p)) ||
+    localPath.startsWith("/_next") ||
+    localPath.includes(".")
+  ) {
+    return NextResponse.next()
+  }
+
+  // Read JWT from httpOnly cookie
+  const token = request.cookies.get("token")?.value
+
+  if (!token) {
+    const loginUrl = new URL(BASE_PATH + "/login", request.url)
+    loginUrl.searchParams.set("from", pathname)
+    return NextResponse.redirect(loginUrl)
+  }
+
+  // Decode JWT to check expiry (without full verification — that's the API's job)
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1]))
+    const now = Math.floor(Date.now() / 1000)
+    if (payload.exp && payload.exp < now) {
+      const response = NextResponse.redirect(new URL(BASE_PATH + "/login", request.url))
+      response.cookies.delete("token")
+      return response
+    }
+
+    const requestHeaders = new Headers(request.headers)
+    requestHeaders.set("x-user-id", payload.sub || "")
+    requestHeaders.set("x-user-email", payload.email || "")
+    if (payload.organization_id) {
+      requestHeaders.set("x-organization-id", payload.organization_id)
+    }
+
+    return NextResponse.next({ request: { headers: requestHeaders } })
+  } catch {
+    const response = NextResponse.redirect(new URL(BASE_PATH + "/login", request.url))
+    response.cookies.delete("token")
+    return response
+  }
+}
+
+export const config = {
+  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+}

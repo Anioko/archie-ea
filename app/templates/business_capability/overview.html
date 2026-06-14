@@ -1,0 +1,290 @@
+{% extends "layouts/admin_base.html" %}
+
+{% block title %}Business Capabilities{% endblock %}
+
+{% block breadcrumb %}
+{% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
+{{ breadcrumb_nav(items=[
+    {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
+    {'text': 'Business Layer', 'href': url_for('archimate_crud.dashboard') + '#business'},
+    {'text': 'Capability Overview', 'current': true}
+]) }}
+{% endblock %}
+
+{% block content %}
+{# Safe color mapping for dynamic grouping colors #}
+{% set color_map = {
+    'blue':   {'icon_bg': 'bg-primary/10',    'icon_text': 'text-primary',          'badge': 'bg-primary/10 text-primary'},
+    'green':  {'icon_bg': 'bg-primary/10',    'icon_text': 'text-primary',          'badge': 'bg-primary/10 text-primary'},
+    'purple': {'icon_bg': 'bg-secondary/50',  'icon_text': 'text-foreground',       'badge': 'bg-secondary/50 text-foreground'},
+    'orange': {'icon_bg': 'bg-muted',         'icon_text': 'text-muted-foreground', 'badge': 'bg-muted text-foreground'},
+    'red':    {'icon_bg': 'bg-destructive/10','icon_text': 'text-destructive',      'badge': 'bg-destructive/10 text-destructive'},
+    'yellow': {'icon_bg': 'bg-warning/10', 'icon_text': 'text-warning',       'badge': 'bg-warning/10 text-warning'},
+    'teal':   {'icon_bg': 'bg-primary/10',    'icon_text': 'text-primary',          'badge': 'bg-primary/10 text-primary'},
+    'gray':   {'icon_bg': 'bg-muted',         'icon_text': 'text-muted-foreground', 'badge': 'bg-muted text-foreground'}
+} %}
+
+<div class="mx-auto px-4 py-6">
+    <!-- Header -->
+    <div class="mb-8">
+        <div class="flex items-center justify-between">
+            <div>
+                <h1 class="text-3xl font-bold text-foreground mb-2">Business Capabilities</h1>
+                <p class="text-muted-foreground">Manage and organize business capability taxonomy</p>
+            </div>
+            <div class="flex space-x-3">
+                <a href="{{ url_for('capability_map.simple_view') }}"
+                   class="inline-flex items-center px-4 py-2 border border-input text-sm font-medium rounded-md text-foreground bg-background hover:bg-accent hover:text-accent-foreground transition-colors">
+                    <i data-lucide="layers" class="w-4 h-4 mr-2" aria-hidden="true"></i>
+                    View Groupings
+                </a>
+                <a href="{{ url_for('capability_map.simple_view') }}"
+                   class="inline-flex items-center px-4 py-2 border border-input text-sm font-medium rounded-md text-foreground bg-background hover:bg-accent hover:text-accent-foreground transition-colors">
+                    <i data-lucide="clipboard" class="w-4 h-4 mr-2" aria-hidden="true"></i>
+                    Taxonomy
+                </a>
+                <a href="{{ url_for('capability_map.simple_view') }}"
+                   class="inline-flex items-center px-4 py-2 border border-input text-sm font-medium rounded-md text-foreground bg-background hover:bg-accent hover:text-accent-foreground transition-colors">
+                    <i data-lucide="bar-chart-2" class="w-4 h-4 mr-2" aria-hidden="true"></i>
+                    Analytics
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        <a href="{{ url_for('capability_map.simple_view') }}"
+           class="bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg p-6 transition-colors">
+            <div class="flex items-center">
+                <i data-lucide="search" class="w-8 h-8 mr-3 flex-shrink-0" aria-hidden="true"></i>
+                <div>
+                    <h2 class="text-lg font-semibold">Search Capabilities</h2>
+                    <p class="text-primary-foreground/80 text-sm">Find and explore capabilities</p>
+                </div>
+            </div>
+        </a>
+
+        <a href="{{ url_for('capability_map.simple_view') }}"
+           class="bg-primary/80 hover:bg-primary/70 text-primary-foreground rounded-lg p-6 transition-colors">
+            <div class="flex items-center">
+                <i data-lucide="layers" class="w-8 h-8 mr-3 flex-shrink-0" aria-hidden="true"></i>
+                <div>
+                    <h3 class="text-lg font-semibold">Business Groupings</h3>
+                    <p class="text-primary-foreground/80 text-sm">View by business area</p>
+                </div>
+            </div>
+        </a>
+
+        <a href="{{ url_for('capability_map.simple_view') }}"
+           class="bg-secondary hover:bg-secondary/80 text-secondary-foreground rounded-lg p-6 transition-colors">
+            <div class="flex items-center">
+                <i data-lucide="clipboard" class="w-8 h-8 mr-3 flex-shrink-0" aria-hidden="true"></i>
+                <div>
+                    <h3 class="text-lg font-semibold">Capability Taxonomy</h3>
+                    <p class="text-secondary-foreground/80 text-sm">View hierarchy and types</p>
+                </div>
+            </div>
+        </a>
+
+        <a href="{{ url_for('maturity_management.frameworks_overview') }}"
+           class="bg-muted hover:bg-muted/80 text-foreground rounded-lg p-6 transition-colors border border-border">
+            <div class="flex items-center">
+                <i data-lucide="zap" class="w-8 h-8 mr-3 flex-shrink-0" aria-hidden="true"></i>
+                <div>
+                    <h3 class="text-lg font-semibold">Maturity Management</h3>
+                    <p class="text-muted-foreground text-sm">Track capability maturity</p>
+                </div>
+            </div>
+        </a>
+    </div>
+
+    <!-- Statistics Overview -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        <div class="bg-card rounded-lg shadow border border-border p-6">
+            <div class="flex items-center">
+                <div class="flex-shrink-0 bg-primary/10 rounded-lg p-3">
+                    <i data-lucide="clipboard" class="w-6 h-6 text-primary" aria-hidden="true"></i>
+                </div>
+                <div class="ml-4">
+                    <p class="text-sm font-medium text-muted-foreground">Total Capabilities</p>
+                    <p class="text-2xl font-semibold text-foreground">{{ total_capabilities or 0 }}</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-card rounded-lg shadow border border-border p-6">
+            <div class="flex items-center">
+                <div class="flex-shrink-0 bg-primary/10 rounded-lg p-3">
+                    <i data-lucide="layers" class="w-6 h-6 text-primary" aria-hidden="true"></i>
+                </div>
+                <div class="ml-4">
+                    <p class="text-sm font-medium text-muted-foreground">Business Groupings</p>
+                    <p class="text-2xl font-semibold text-foreground">{{ classified_capabilities|length }}</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-card rounded-lg shadow border border-border p-6">
+            <div class="flex items-center">
+                <div class="flex-shrink-0 bg-secondary/50 rounded-lg p-3">
+                    <i data-lucide="tag" class="w-6 h-6 text-foreground" aria-hidden="true"></i>
+                </div>
+                <div class="ml-4">
+                    <p class="text-sm font-medium text-muted-foreground">Classified</p>
+                    <p class="text-2xl font-semibold text-foreground">{{ classified_count or 0 }}</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-card rounded-lg shadow border border-border p-6">
+            <div class="flex items-center">
+                <div class="flex-shrink-0 bg-muted rounded-lg p-3">
+                    <i data-lucide="trending-up" class="w-6 h-6 text-muted-foreground" aria-hidden="true"></i>
+                </div>
+                <div class="ml-4">
+                    <p class="text-sm font-medium text-muted-foreground">Coverage</p>
+                    <p class="text-2xl font-semibold text-foreground">{{ "%.1f"|format((classified_count or 0) / (total_capabilities or 1) * 100) }}%</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Business Groupings Grid -->
+    {% if classified_capabilities %}
+    <div class="bg-card rounded-lg shadow border border-border mb-8">
+        <div class="px-6 py-4 border-b border-border">
+            <h2 class="text-lg font-semibold text-foreground">Business Groupings</h2>
+            <p class="text-sm text-muted-foreground">Capabilities organized by business area</p>
+        </div>
+        <div class="p-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {% for grouping_key, grouping_data in classified_capabilities.items() %}
+                {% set gc = color_map.get(grouping_data.info.color, color_map['blue']) %}
+                <a href="#"
+                   class="block">
+                    <div class="border border-border rounded-lg p-6 hover:shadow-lg transition-shadow duration-200 hover:bg-accent/20">
+                        <div class="flex items-center mb-4">
+                            <div class="flex-shrink-0 w-10 h-10 rounded-lg {{ gc.icon_bg }} flex items-center justify-center">
+                                <i data-lucide="{{ grouping_data.info.icon }}" class="w-5 h-5 {{ gc.icon_text }}" aria-hidden="true"></i>
+                            </div>
+                            <div class="ml-3">
+                                <h3 class="text-lg font-semibold text-foreground">{{ grouping_data.info.name }}</h3>
+                                <p class="text-sm text-muted-foreground">{{ grouping_data.info.description }}</p>
+                            </div>
+                        </div>
+
+                        <div class="mb-4">
+                            <p class="text-2xl font-bold text-foreground">{{ grouping_data.capabilities|length }}</p>
+                            <p class="text-xs text-muted-foreground">Capabilities</p>
+                        </div>
+
+                        <!-- Subcategories -->
+                        <div class="mb-4">
+                            <p class="text-xs text-muted-foreground mb-2">{{ grouping_data.info.subcategory_count }} Subcategories</p>
+                            <div class="flex flex-wrap gap-1">
+                                {% for subcat_key, subcat_data in grouping_data.info.subcategories.items() %}
+                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium {{ gc.badge }}">
+                                    {{ subcat_data.name }}
+                                </span>
+                                {% endfor %}
+                            </div>
+                        </div>
+
+                        <!-- Sample Capabilities -->
+                        <div class="border-t border-border pt-3">
+                            <p class="text-xs text-muted-foreground mb-2">Sample Capabilities:</p>
+                            <div class="space-y-1">
+                                {% for cap_data in grouping_data.capabilities[:3] %}
+                                <div class="text-xs text-muted-foreground truncate">{{ cap_data.capability.name }}</div>
+                                {% endfor %}
+                                {% if grouping_data.capabilities|length > 3 %}
+                                <div class="text-xs text-muted-foreground/60">+{{ grouping_data.capabilities|length - 3 }} more</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </a>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Recent Capabilities -->
+    <div class="bg-card rounded-lg shadow border border-border">
+        <div class="px-6 py-4 border-b border-border">
+            <h2 class="text-lg font-semibold text-foreground">Recent Capabilities</h2>
+            <p class="text-sm text-muted-foreground">Recently added or updated capabilities</p>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-border">
+                <thead class="bg-muted/50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Capability</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Domain</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Business Grouping</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Priority</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Owner</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-card divide-y divide-border">
+                    {% for grouping_key, grouping_data in classified_capabilities.items() %}
+                        {% set gc = color_map.get(grouping_data.info.color, color_map['blue']) %}
+                        {% for cap_data in grouping_data.capabilities[:5] %}
+                        <tr class="hover:bg-accent/50">
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <div class="text-sm font-medium text-foreground">{{ cap_data.capability.name }}</div>
+                                {% if cap_data.capability.description %}
+                                <div class="text-sm text-muted-foreground truncate max-w-xs">{{ cap_data.capability.description[:100] }}{% if cap_data.capability.description|length > 100 %}...{% endif %}</div>
+                                {% endif %}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <div class="text-sm text-muted-foreground">{{ cap_data.capability.domain or 'Unknown' }}</div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {{ gc.badge }}">
+                                    {{ cap_data.classification.subcategory_name }}
+                                </span>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+                                    {% if cap_data.capability.strategic_importance == 'critical' %}bg-destructive/10 text-destructive
+                                    {% elif cap_data.capability.strategic_importance == 'high' %}bg-warning/10 text-warning
+                                    {% elif cap_data.capability.strategic_importance == 'medium' %}bg-primary/10 text-primary
+                                    {% else %}bg-muted text-foreground{% endif %}">
+                                    {{ cap_data.capability.strategic_importance or 'Not Set' }}
+                                </span>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <div class="text-sm text-muted-foreground">{{ cap_data.capability.business_owner or 'Unassigned' }}</div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                <a href="#"
+                                   class="text-primary hover:text-primary/80 transition-colors">View</a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="px-6 py-4 bg-muted/50 border-t border-border">
+            <a href="{{ url_for('capability_map.simple_view') }}"
+               class="text-primary hover:text-primary/80 font-medium transition-colors">View All Capabilities →</a>
+        </div>
+    </div>
+
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="mt-4 p-4 rounded-lg {% if category == 'error' %}bg-destructive/10 border border-destructive/20 text-destructive{% else %}bg-primary/10 border border-primary/20 text-foreground{% endif %}">
+                    {{ message }}
+                </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+</div>
+{% endblock %}

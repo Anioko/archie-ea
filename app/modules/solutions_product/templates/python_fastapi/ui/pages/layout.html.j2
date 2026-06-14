@@ -1,0 +1,201 @@
+{# layout.html.j2 — Base layout for server-rendered pages in generated FastAPI apps.
+   ARCHIE renders this once per generation; the output is a Jinja2 base template
+   that the generated app extends at runtime.
+   Context (from ARCHIE): solution_name, solution_id, entities, identity_provider, roles, product #}
+{% set product_name = product.name if product and product.name else solution_name %}
+{% set product_tagline = product.tagline if product and product.tagline else '' %}
+{% set product_logo = product.logo_url if product and product.logo_url else '' %}
+{% set product_favicon = product.favicon_url if product and product.favicon_url else '' %}
+{% set primary_color = product.primary_color if product and product.primary_color else '#2563eb' %}
+{% set accent_color = product.accent_color if product and product.accent_color else '#10b981' %}
+{% raw %}<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}{% endblock %} — {% endraw %}{{ product_name }}{% raw %}</title>
+{% endraw %}
+{% if product_favicon %}
+    <link rel="icon" href="{{ product_favicon }}" type="image/x-icon">
+{% endif %}
+{% raw %}
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: { extend: { colors: {
+                border: 'hsl(214.3 31.8% 91.4%)',
+                input: 'hsl(214.3 31.8% 91.4%)',
+                ring: 'hsl(222.2 84% 4.9%)',
+                background: 'hsl(0 0% 100%)',
+                foreground: 'hsl(222.2 84% 4.9%)',
+                primary: { DEFAULT: '{% endraw %}{{ primary_color }}{% raw %}', foreground: 'hsl(210 40% 98%)' },
+                secondary: { DEFAULT: 'hsl(210 40% 96.1%)', foreground: 'hsl(222.2 47.4% 11.2%)' },
+                muted: { DEFAULT: 'hsl(210 40% 96.1%)', foreground: 'hsl(215.4 16.3% 46.9%)' },
+                accent: { DEFAULT: '{% endraw %}{{ accent_color }}{% raw %}', foreground: 'hsl(222.2 47.4% 11.2%)' },
+                destructive: { DEFAULT: 'hsl(0 84.2% 60.2%)', foreground: 'hsl(210 40% 98%)' },
+            }}}
+        };
+    </script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <link rel="stylesheet" href="/static/css/app.css">
+    <style>
+        [x-cloak] { display: none !important; }
+    </style>
+</head>
+<body class="h-full bg-zinc-50 text-foreground antialiased" x-data="{ sidebarOpen: true, darkMode: false }" :class="darkMode ? 'dark' : ''">
+
+<div class="flex h-full">
+    {# ── Sidebar ── #}
+    <aside :class="sidebarOpen ? 'w-64' : 'w-0 -ml-64'"
+           class="fixed inset-y-0 left-0 z-30 flex flex-col bg-white border-r border-zinc-200 transition-all duration-200 lg:relative lg:ml-0 overflow-hidden">
+        <div class="flex items-center justify-between px-4 py-4 border-b border-zinc-100">
+            <a href="/" class="flex items-center gap-2 truncate">
+{% endraw %}
+{% if product_logo %}
+                <img src="{{ product_logo }}" alt="{{ product_name }}" class="h-7 w-7 rounded">
+{% endif %}
+{% raw %}
+                <div>
+                    <h1 class="text-sm font-semibold text-zinc-900">{% endraw %}{{ product_name }}{% raw %}</h1>
+{% endraw %}
+{% if product_tagline %}
+                    <p class="text-xs text-zinc-500">{{ product_tagline }}</p>
+{% else %}
+                    <p class="text-xs text-zinc-500">Solution #{{ solution_id }}</p>
+{% endif %}
+{% raw %}
+                </div>
+            </a>
+            <button @click="sidebarOpen = false" class="lg:hidden text-zinc-400 hover:text-zinc-600">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+
+        <nav class="flex-1 py-3 px-2 space-y-0.5 overflow-y-auto">
+            <a href="/" class="flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg transition-colors {{ 'bg-blue-50 text-blue-700' if nav_active == 'dashboard' else 'text-zinc-700 hover:bg-zinc-100' }}">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+                Dashboard
+            </a>
+{% endraw %}
+{% for entity in entities %}
+            <a href="/{{ entity.name_snake }}s"
+               class="flex items-center justify-between px-3 py-2 text-sm font-medium rounded-lg transition-colors {% raw %}{{ 'bg-blue-50 text-blue-700' if nav_active == '{% endraw %}{{ entity.name_snake }}{% raw %}' else 'text-zinc-700 hover:bg-zinc-100' }}{% endraw %}">
+                <span class="truncate">{{ entity.name_display }}</span>
+            </a>
+{% endfor %}
+{% raw %}
+        </nav>
+
+        <div class="px-4 py-3 border-t border-zinc-100 space-y-1">
+            <a href="/docs" target="_blank" class="block text-xs text-zinc-500 hover:text-zinc-900 transition-colors">API Documentation</a>
+            <a href="/health" target="_blank" class="block text-xs text-zinc-500 hover:text-zinc-900 transition-colors">Health Check</a>
+        </div>
+    </aside>
+
+    {# ── Main area ── #}
+    <div class="flex-1 flex flex-col min-w-0">
+        {# Top bar #}
+        <header class="sticky top-0 z-20 h-14 border-b border-zinc-200 bg-white flex items-center justify-between px-4 lg:px-6">
+            <div class="flex items-center gap-3">
+                <button @click="sidebarOpen = !sidebarOpen" class="text-zinc-500 hover:text-zinc-700">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+                </button>
+                {% block breadcrumb %}{% endblock %}
+            </div>
+            <div class="flex items-center gap-3">
+                {# Global search #}
+                <div x-data="globalSearch()" class="relative hidden sm:block">
+                    <svg class="w-4 h-4 text-zinc-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                    <input type="text" x-model="q" @input.debounce.300ms="search()" @focus="open = q.length > 0" @click.away="open = false"
+                           placeholder="Search everything... (Ctrl+K)" @keydown.ctrl.k.window.prevent="$el.focus()"
+                           class="w-64 pl-9 pr-3 py-1.5 text-sm border border-zinc-200 rounded-lg bg-zinc-50 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+                    <div x-show="open && results.length" x-cloak
+                         class="absolute right-0 mt-1 w-80 bg-white border border-zinc-200 rounded-lg shadow-xl max-h-80 overflow-y-auto z-50">
+                        <template x-for="(items, type) in groupedResults()" :key="type">
+                        <div>
+                            <div class="px-3 py-1.5 text-xs font-medium text-zinc-500 uppercase bg-zinc-50 border-b border-zinc-100" x-text="type"></div>
+                            <template x-for="item in items" :key="item.id">
+                                <a :href="item.url" class="block px-3 py-2 text-sm hover:bg-zinc-50 transition-colors">
+                                    <span class="font-medium text-zinc-900" x-text="item.name || item.title || item.id"></span>
+                                </a>
+                            </template>
+                        </div>
+                        </template>
+                        <div x-show="!results.length && searched" class="px-3 py-4 text-sm text-zinc-500 text-center">No results found</div>
+                    </div>
+                </div>
+{% endraw %}
+{% if identity_provider and identity_provider.get('roles') %}
+{% raw %}
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-blue-500/10 text-blue-600 border border-blue-500/30">
+                    {{ current_user.role if current_user else 'user' }}
+                </span>
+{% endraw %}
+{% endif %}
+{% raw %}
+                {# Notification bell #}
+                <div x-data="notificationBell()" x-init="init()" class="relative">
+                    <button @click="open = !open" @click.away="open = false" class="relative text-zinc-400 hover:text-zinc-600">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+                        <span x-show="unread > 0" x-cloak
+                              class="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center"
+                              x-text="unread > 9 ? '9+' : unread"></span>
+                    </button>
+                    <div x-show="open" x-cloak x-transition
+                         class="absolute right-0 mt-2 w-80 bg-white border border-zinc-200 rounded-xl shadow-xl max-h-96 overflow-y-auto z-50">
+                        <div class="flex items-center justify-between px-4 py-3 border-b border-zinc-100">
+                            <h3 class="text-sm font-semibold text-zinc-900">Notifications</h3>
+                            <button @click="markAllRead()" class="text-xs text-blue-600 hover:underline">Mark all read</button>
+                        </div>
+                        <template x-for="n in notifications" :key="n.id">
+                            <a :href="n.entity_type ? '/' + n.entity_type + 's/' + n.entity_id : '#'"
+                               class="block px-4 py-3 hover:bg-zinc-50 transition-colors border-b border-zinc-50"
+                               :class="!n.read ? 'bg-blue-50/50' : ''">
+                                <div class="flex items-start gap-2">
+                                    <div class="w-2 h-2 rounded-full mt-1.5 shrink-0"
+                                         :class="n.type === 'error' ? 'bg-red-500' : n.type === 'warning' ? 'bg-amber-500' : n.type === 'success' ? 'bg-emerald-500' : 'bg-blue-500'"></div>
+                                    <div>
+                                        <p class="text-sm font-medium text-zinc-900" x-text="n.title"></p>
+                                        <p class="text-xs text-zinc-500 mt-0.5" x-text="n.body"></p>
+                                        <p class="text-xs text-zinc-400 mt-1" x-text="formatDateTime(n.created_at)"></p>
+                                    </div>
+                                </div>
+                            </a>
+                        </template>
+                        <div x-show="!notifications.length" class="px-4 py-8 text-center text-sm text-zinc-500">
+                            No notifications yet
+                        </div>
+                    </div>
+                </div>
+
+                <button @click="darkMode = !darkMode" class="text-zinc-400 hover:text-zinc-600">
+                    <svg x-show="!darkMode" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/></svg>
+                    <svg x-show="darkMode" x-cloak class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+                </button>
+            </div>
+        </header>
+
+        {# Page content #}
+        <main class="flex-1 overflow-auto">
+            <div class="max-w-7xl mx-auto px-4 lg:px-6 py-6">
+                {% block content %}{% endblock %}
+            </div>
+        </main>
+    </div>
+</div>
+
+{# ── Toast notifications ── #}
+<div id="toast" x-data="{ toasts: [] }" @notify.window="toasts.push({message: $event.detail.message, type: $event.detail.type || 'success'}); setTimeout(() => toasts.shift(), 3000)"
+     class="fixed bottom-4 right-4 z-[60] space-y-2">
+    <template x-for="(t, i) in toasts" :key="i">
+        <div x-transition class="px-4 py-2 rounded-lg text-sm font-medium shadow-lg"
+             :class="t.type === 'error' ? 'bg-red-600 text-white' : 'bg-emerald-600 text-white'"
+             x-text="t.message"></div>
+    </template>
+</div>
+
+<script src="/static/js/app.js"></script>
+{% endraw %}
+</body>
+</html>

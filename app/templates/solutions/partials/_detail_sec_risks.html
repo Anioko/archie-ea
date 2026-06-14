@@ -1,0 +1,185 @@
+{# WARNING: THIS FILE IS NOT REGISTERED #}
+{# Risks & Decisions — Cross-cutting content (sec-8)
+   Included via {% call section_shell(...) %} — content only, no shell.
+   Prototype: Governance tab → Risk Register data table (severity/likelihood/status columns). #}
+
+                        
+                        {# FRAG-005: Strategic Risk Analysis + FRAG-023: Risk Heatmap #}
+                        <div x-data="{ riskAnalysis: null }" x-init="
+                            fetch('/strategic/api/risk-analysis')
+                                .then(r => r.json())
+                                .then(d => { riskAnalysis = d; })
+                                .catch(() => {})
+                        ">
+                            <template x-if="riskAnalysis">
+                                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+                                    <div class="rounded-lg border border-border bg-background p-3">
+                                        <p class="text-xs text-muted-foreground">Total Risks</p>
+                                        <p class="text-2xl font-bold text-foreground" x-text="riskAnalysis.total_risks || 0"></p>
+                                    </div>
+                                    <div class="rounded-lg border border-border bg-background p-3">
+                                        <p class="text-xs text-muted-foreground">Critical</p>
+                                        <p class="text-2xl font-bold text-destructive" x-text="riskAnalysis.critical_risks || 0"></p>
+                                    </div>
+                                    <div class="rounded-lg border border-border bg-background p-3">
+                                        <p class="text-xs text-muted-foreground">High</p>
+                                        <p class="text-2xl font-bold text-amber-600" x-text="riskAnalysis.high_risks || 0"></p>
+                                    </div>
+                                    <div class="rounded-lg border border-border bg-background p-3">
+                                        <p class="text-xs text-muted-foreground">Overall Level</p>
+                                        <p class="text-lg font-bold capitalize"
+                                           :class="riskAnalysis.overall_risk_level === 'critical' ? 'text-destructive' : riskAnalysis.overall_risk_level === 'high' ? 'text-amber-600' : 'text-foreground'"
+                                           x-text="riskAnalysis.overall_risk_level || 'N/A'"></p>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+
+                        {% if solution and solution.id %}
+                        <div class="mb-4">
+                            <a href="/solutions/{{ solution.id }}/risks/heatmap"
+                               class="inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium text-primary border border-primary/20 bg-primary/5 hover:bg-primary/10 transition-colors">
+                                <i data-lucide="grid-3x3" class="h-3.5 w-3.5"></i>
+                                Risk Heatmap
+                            </a>
+                        </div>
+                        {% endif %}
+
+                        <p x-show="risks.length === 0" class="text-sm text-muted-foreground py-4">No risks recorded.</p>
+
+                        <div :class="{'hidden': risks.length === 0}">
+                        <div class="rounded-xl border border-border bg-card overflow-hidden">
+                        <table class="w-full text-sm">
+                            <thead><tr class="border-b border-border bg-muted/30">
+                                <th class="text-left px-5 py-2 text-xs font-medium text-muted-foreground">Risk</th>
+                                <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground w-[80px]">Severity</th>
+                                <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground w-[80px]">Likelihood</th>
+                                <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground w-[80px]">Status</th>
+                                <th class="text-right px-3 py-2 text-xs font-medium text-muted-foreground w-[70px]">Actions</th>
+                            </tr></thead>
+                            <tbody class="divide-y divide-border">
+                                <template x-for="risk in risks" :key="risk.id">
+                                    <tr class="hover:bg-muted/20">
+                                        <td class="px-5 py-2.5">
+                                            <span class="font-medium text-foreground" x-text="risk.risk_name || risk.risk_description || 'Unnamed risk'"></span>
+                                            <p class="text-xs text-muted-foreground mt-0.5 line-clamp-2" x-text="risk.risk_description" x-show="risk.risk_description && risk.risk_name"></p>
+                                        </td>
+                                        <td class="px-3 py-2.5">
+                                            <span class="inline-flex items-center gap-1">
+                                                <span class="w-1.5 h-1.5 rounded-full"
+                                                      :class="risk.impact === 'high' || risk.impact === 'critical' ? 'bg-red-400' : risk.impact === 'medium' ? 'bg-amber-400' : 'bg-muted-foreground'"></span>
+                                                <span class="text-xs capitalize"
+                                                      :class="risk.impact === 'high' || risk.impact === 'critical' ? 'text-red-400' : risk.impact === 'medium' ? 'text-amber-400' : ''"
+                                                      x-text="risk.impact || '\u2014'"></span>
+                                            </span>
+                                        </td>
+                                        <td class="px-3 py-2.5 text-xs text-muted-foreground capitalize" x-text="risk.probability || '\u2014'"></td>
+                                        <td class="px-3 py-2.5">
+                                            <span class="text-[10px] font-medium px-1.5 py-0.5 rounded capitalize"
+                                                  :class="risk.status === 'mitigated' || risk.status === 'closed' ? 'text-emerald-400 bg-emerald-500/10' : risk.status === 'open' ? 'text-red-400 bg-red-500/10' : risk.status === 'mitigating' ? 'text-amber-400 bg-amber-500/10' : 'text-muted-foreground bg-muted'"
+                                                  x-text="risk.status || 'open'"></span>
+                                        </td>
+                                        <td class="px-3 py-2.5 text-right">
+                                            <div class="flex items-center justify-end gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <button type="button" @click="openEntityModal('risk', risk)" class="text-muted-foreground hover:text-foreground p-1 rounded-md" title="Edit">
+                                                    <i data-lucide="pencil" class="w-3 h-3" aria-hidden="true"></i>
+                                                </button>
+                                                <button type="button" @click="confirmDeleteEntity('risk', risk)" class="text-muted-foreground hover:text-destructive p-1 rounded-md" title="Delete">
+                                                    <i data-lucide="trash-2" class="w-3 h-3" aria-hidden="true"></i>
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                        </div>
+                        </div>
+
+                        {# FRAG-023: Risk Heatmap Link #}
+                        <div class="mt-5 mb-5">
+                            <a x-bind:href="'/solutions/' + (window.__SOLUTION_CONFIG__ && window.__SOLUTION_CONFIG__.solutionId || '') + '/risks/heatmap'"
+                               class="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-border bg-card text-sm font-medium text-foreground hover:bg-accent transition-colors"
+                               target="_blank">
+                                <i data-lucide="flame" class="w-4 h-4 text-orange-500" aria-hidden="true"></i>
+                                Risk Heatmap
+                                <i data-lucide="external-link" class="w-3 h-3 text-muted-foreground" aria-hidden="true"></i>
+                            </a>
+                        </div>
+
+                        {# Risk Snapshots (inlined from _risk_trending.html) #}
+                        <div class="mt-7">
+                            <div class="flex items-center gap-3 mb-4">
+                                <div class="w-1 h-5 rounded-full bg-amber-500"></div>
+                                <p class="text-sm font-semibold text-foreground">Risk Snapshots</p>
+                                <span class="text-xs text-muted-foreground" x-text="'(' + sadRiskSnapshots.length + ')'"></span>
+                                <button @click="openEntityModal('risk_snapshot')" class="ml-auto text-[11px] text-primary/70 hover:text-primary font-medium">+ Add</button>
+                            </div>
+                            <template x-if="sadRiskSnapshots.length > 0">
+                                <div class="rounded-xl border border-border bg-card overflow-hidden">
+                                <table class="w-full text-sm">
+                                    <thead><tr class="border-b border-border bg-muted/30">
+                                        <th class="text-left px-5 py-2 text-xs font-medium text-muted-foreground">Risk</th>
+                                        <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground">Category</th>
+                                        <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground">Phase</th>
+                                        <th class="text-center px-3 py-2 text-xs font-medium text-muted-foreground w-[60px]">Score</th>
+                                        <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground">Trend</th>
+                                        <th class="text-left px-3 py-2 text-xs font-medium text-muted-foreground">Mitigation</th>
+                                        <th class="text-right px-3 py-2 text-xs font-medium text-muted-foreground w-[70px]">Actions</th>
+                                    </tr></thead>
+                                    <tbody class="divide-y divide-border">
+                                        <template x-for="item in sadRiskSnapshots" :key="item.id">
+                                            <tr class="hover:bg-muted/20 group">
+                                                <td class="px-5 py-2.5 font-medium text-foreground" x-text="item.risk_name"></td>
+                                                <td class="px-3 py-2.5">
+                                                    <span class="text-[10px] font-medium text-amber-400 px-1.5 py-0.5 rounded bg-amber-500/10" x-text="item.risk_category"></span>
+                                                </td>
+                                                <td class="px-3 py-2.5 text-xs text-muted-foreground" x-text="item.adm_phase || '\u2014'"></td>
+                                                <td class="px-3 py-2.5 text-center">
+                                                    <span class="font-mono font-semibold"
+                                                          :class="{'text-destructive': item.risk_score >= 12, 'text-orange-600': item.risk_score >= 6, 'text-emerald-600': item.risk_score < 6}"
+                                                          x-text="item.risk_score"></span>
+                                                </td>
+                                                <td class="px-3 py-2.5">
+                                                    <span class="text-xs capitalize"
+                                                          :class="{'text-destructive': item.trend === 'increasing', 'text-emerald-600': item.trend === 'decreasing', 'text-muted-foreground': item.trend === 'stable'}"
+                                                          x-text="item.trend"></span>
+                                                </td>
+                                                <td class="px-3 py-2.5 text-xs text-muted-foreground" x-text="item.mitigation_status"></td>
+                                                <td class="px-3 py-2.5 text-right">
+                                                    <div class="flex items-center justify-end gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <button type="button" @click="openEntityModal('risk_snapshot', item)" class="text-muted-foreground hover:text-foreground p-1 rounded-md" title="Edit">
+                                                            <i data-lucide="pencil" class="w-3 h-3" aria-hidden="true"></i>
+                                                        </button>
+                                                        <button type="button" @click="confirmDeleteEntity('risk_snapshot', item)" class="text-muted-foreground hover:text-destructive p-1 rounded-md" title="Delete">
+                                                            <i data-lucide="trash-2" class="w-3 h-3" aria-hidden="true"></i>
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        </template>
+                                    </tbody>
+                                </table>
+                                </div>
+                            </template>
+                            <p x-show="sadRiskSnapshots.length === 0" class="text-sm text-muted-foreground py-4">No risk snapshots recorded.</p>
+                        </div>
+
+                        {# SAD-06: AI Risk Scenario Analysis (data from loadAIInsights) #}
+                        <div x-show="aiInsightsData && aiInsightsData.risks && aiInsightsData.risks.suggestions && aiInsightsData.risks.suggestions.length > 0" x-cloak class="mt-6">
+                            <div class="flex items-center gap-3 mb-4">
+                                <div class="w-1 h-5 rounded-full bg-violet-500"></div>
+                                <p class="text-sm font-semibold text-foreground flex items-center gap-2">
+                                    AI Risk Scenario Analysis
+                                    <span class="inline-flex items-center gap-1 text-[10px] text-violet-600 font-medium"><i data-lucide="sparkles" class="h-3 w-3"></i>AI-Assisted</span>
+                                </p>
+                            </div>
+                            <div class="rounded-xl border border-border bg-card divide-y divide-border overflow-hidden">
+                                <template x-for="(risk, idx) in (aiInsightsData.risks.suggestions || []).slice(0, 5)" :key="'ai-risk-' + idx">
+                                    <div class="flex items-center justify-between px-5 py-2.5 hover:bg-muted/20 text-sm">
+                                        <span x-text="risk.name || risk.description || risk.risk || 'Identified risk'" class="text-foreground truncate mr-2"></span>
+                                        <span x-text="risk.severity || risk.level || risk.impact || ''" class="text-[10px] text-muted-foreground px-1.5 py-0.5 rounded bg-muted shrink-0"></span>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>

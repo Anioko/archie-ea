@@ -1,0 +1,377 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'components/page_header.html' import page_header %}
+
+{% from 'components/button.html' import button %}
+{% from 'components/card.html' import card, card_header, card_title, card_content %}
+{% from 'components/badge.html' import badge %}
+{% from 'components/input.html' import input, label %}
+
+{% block title %}Capability Framework Dashboard{% endblock %}
+
+{% block breadcrumb %}
+{% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
+{{ breadcrumb_nav(items=[
+    {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
+    {'text': 'Business Layer', 'href': url_for('archimate_crud.dashboard') + '#business'},
+    {'text': 'Capabilities', 'href': url_for('capability_map.index')},
+    {'text': 'Capability Framework', 'current': true}
+]) }}
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    .capability-card {
+        transition: all 0.3s ease;
+        cursor: pointer;
+    }
+    .capability-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    .level-indicator {
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        font-size: 0.8rem;
+    }
+    .level-1 { background-color: hsl(var(--destructive)); color: hsl(var(--background)); }
+    .level-2 { background-color: hsl(var(--warning)); color: hsl(var(--background)); }
+    .level-3 { background-color: hsl(var(--warning)); color: hsl(var(--foreground)); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    {{ page_header(
+        title='Capability Framework Dashboard',
+        description='Unified capability management with manufacturing focus'
+    ) }}
+
+    <!-- Statistics Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {% call card(class='bg-primary text-primary-foreground') %}
+            {% call card_content() %}
+                <div class="text-center">
+                    <h3 id="total-domains" class="text-3xl font-bold mb-2">-</h3>
+                    <p class="text-sm opacity-90">Business Domains</p>
+                </div>
+            {% endcall %}
+        {% endcall %}
+        
+        {% call card(class='bg-primary text-primary-foreground') %}
+            {% call card_content() %}
+                <div class="text-center">
+                    <h3 id="total-capabilities" class="text-3xl font-bold mb-2">-</h3>
+                    <p class="text-sm opacity-90">Total Capabilities</p>
+                </div>
+            {% endcall %}
+        {% endcall %}
+
+        {% call card(class='bg-primary text-primary-foreground') %}
+            {% call card_content() %}
+                <div class="text-center">
+                    <h3 id="manufacturing-capabilities" class="text-3xl font-bold mb-2">-</h3>
+                    <p class="text-sm opacity-90">Manufacturing Critical</p>
+                </div>
+            {% endcall %}
+        {% endcall %}
+        
+        {% call card(class='bg-primary text-primary-foreground') %}
+            {% call card_content() %}
+                <div class="text-center">
+                    <h3 id="total-mappings" class="text-3xl font-bold mb-2">-</h3>
+                    <p class="text-sm opacity-90">Application Mappings</p>
+                </div>
+            {% endcall %}
+        {% endcall %}
+    </div>
+
+    <!-- Gap Analysis Overview -->
+    {% call card() %}
+        {% call card_header() %}
+            {% call card_title() %}Gap Analysis Overview{% endcall %}
+        {% endcall %}
+        {% call card_content() %}
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 text-center">
+                <div>
+                    <h4 id="fully-covered" class="text-3xl font-bold text-success mb-2">-</h4>
+                    <p class="text-sm text-muted-foreground">Fully Covered</p>
+                </div>
+                <div>
+                    <h4 id="partially-covered" class="text-3xl font-bold text-warning mb-2">-</h4>
+                    <p class="text-sm text-muted-foreground">Partially Covered</p>
+                </div>
+                <div>
+                    <h4 id="gap" class="text-3xl font-bold text-destructive mb-2">-</h4>
+                    <p class="text-sm text-muted-foreground">Gap Identified</p>
+                </div>
+            </div>
+        {% endcall %}
+    {% endcall %}
+
+    <!-- Business Domains -->
+    {% call card() %}
+        {% call card_header() %}
+            <div class="flex justify-between items-center w-full">
+                {% call card_title() %}Business Domains{% endcall %}
+                {{ button('Refresh', variant='outline', size='sm', type='button', on_click='loadDomains()') }}
+            </div>
+        {% endcall %}
+        {% call card_content() %}
+            <div id="domains-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <!-- Domains will be loaded here -->
+            </div>
+        {% endcall %}
+    {% endcall %}
+
+    <!-- Capabilities Grid -->
+    {% call card() %}
+        {% call card_header() %}
+            <div class="flex justify-between items-center w-full flex-wrap gap-4">
+                {% call card_title() %}Capabilities{% endcall %}
+                <div class="flex items-center gap-2">
+                    <select id="domain-filter" class="flex h-9 w-auto rounded-md border border-input bg-background px-3 py-1 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+                        <option value="">All Domains</option>
+                    </select>
+                    <select id="level-filter" class="flex h-9 w-auto rounded-md border border-input bg-background px-3 py-1 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+                        <option value="">All Levels</option>
+                        <option value="1">Level 1</option>
+                        <option value="2">Level 2</option>
+                        <option value="3">Level 3</option>
+                    </select>
+                    {{ button('Filter', variant='default', size='sm', type='button', on_click='loadCapabilities()') }}
+                </div>
+            </div>
+        {% endcall %}
+        {% call card_content() %}
+            <div id="capabilities-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <!-- Capabilities will be loaded here -->
+            </div>
+        {% endcall %}
+    {% endcall %}
+</div>
+
+<!-- Capability Detail Modal -->
+<div id="capabilityModal" class="hidden fixed inset-0 w-full h-full bg-black/50 z-[9999] flex items-center justify-center" role="dialog">
+    <div class="w-[90%] max-w-4xl p-8 rounded-lg bg-card border shadow-lg max-h-[90vh] overflow-y-auto">
+        <div class="flex justify-between items-center mb-4">
+            <h3 class="text-xl font-semibold" id="modalCapabilityName">Capability Details</h3>
+            <button @click="closeCapabilityModal()" class="text-muted-foreground hover:text-foreground" aria-label="Close capability details dialog">
+                <i data-lucide="x" class="h-5 w-5" aria-hidden="true"></i>
+            </button>
+        </div>
+        <div id="capability-details">
+            <!-- Capability details will be loaded here -->
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let currentCapabilities = [];
+
+function loadStatistics() {
+    fetch('/capability-framework/api/statistics')
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById('total-domains').textContent = data.total_domains;
+            document.getElementById('total-capabilities').textContent = data.total_capabilities;
+            document.getElementById('manufacturing-capabilities').textContent = data.manufacturing_capabilities;
+            document.getElementById('total-mappings').textContent = data.total_mappings;
+            
+            document.getElementById('fully-covered').textContent = data.gap_analysis.fully_covered;
+            document.getElementById('partially-covered').textContent = data.gap_analysis.partially_covered;
+            document.getElementById('gap').textContent = data.gap_analysis.gap;
+        });
+}
+
+function loadDomains() {
+    fetch('/capability-framework/api/domains')
+        .then(response => response.json())
+        .then(domains => {
+            const container = document.getElementById('domains-container');
+            const domainFilter = document.getElementById('domain-filter');
+            
+            container.innerHTML = '';
+            domainFilter.innerHTML = '<option value="">All Domains</option>';
+            
+            domains.forEach(domain => {
+                // Add to filter dropdown
+                const option = document.createElement('option');
+                option.value = domain.id;
+                option.textContent = domain.name;
+                domainFilter.appendChild(option);
+                
+                // Create domain card
+                const card = document.createElement('div');
+                card.className = 'p-4 rounded-md border hover:bg-accent transition-colors cursor-pointer';
+                card.onclick = () => filterByDomain(domain.id);
+                card.innerHTML = `
+                    <h4 class="font-semibold mb-2">${domain.name}</h4>
+                    <p class="text-sm text-muted-foreground mb-3">${domain.description || ''}</p>
+                    <div class="flex justify-between items-center">
+                        <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium bg-primary text-primary-foreground">${domain.code}</span>
+                        <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium bg-muted text-foreground">${domain.capability_count} capabilities</span>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        });
+}
+
+function loadCapabilities() {
+    const domainId = document.getElementById('domain-filter').value;
+    const level = document.getElementById('level-filter').value;
+    
+    let url = '/capability-framework/api/capabilities?';
+    if (domainId) url += `domain_id=${domainId}&`;
+    if (level) url += `level=${level}`;
+    
+    fetch(url)
+        .then(response => response.json())
+        .then(capabilities => {
+            currentCapabilities = capabilities;
+            renderCapabilities(capabilities);
+        });
+}
+
+function renderCapabilities(capabilities) {
+    const container = document.getElementById('capabilities-container');
+    container.innerHTML = '';
+    
+    capabilities.forEach(cap => {
+        const levelClass = `level-${cap.level}`;
+        const criticalClass = cap.business_criticality === 'mission_critical' ? 'border-destructive' : '';
+        
+        const card = document.createElement('div');
+        card.className = `p-4 rounded-md border hover:bg-accent transition-colors cursor-pointer capability-card ${criticalClass}`;
+        card.onclick = () => showCapabilityDetail(cap.id);
+        card.innerHTML = `
+            <div class="flex justify-between items-start mb-2">
+                <h4 class="font-semibold">${cap.name}</h4>
+                <div class="level-indicator ${levelClass}">${cap.level}</div>
+            </div>
+            <p class="text-sm text-muted-foreground mb-3">${cap.description || ''}</p>
+            <div class="flex justify-between items-center mb-2">
+                <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium bg-muted text-foreground">${cap.code}</span>
+                ${cap.manufacturing_critical ? '<span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium bg-warning text-primary-foreground">Manufacturing</span>' : ''}
+            </div>
+            <div class="mt-2">
+                <small class="text-xs text-muted-foreground">Domain: ${cap.domain_name}</small>
+            </div>
+        `;
+        container.appendChild(card);
+    });
+}
+
+function filterByDomain(domainId) {
+    document.getElementById('domain-filter').value = domainId;
+    loadCapabilities();
+}
+
+function showCapabilityDetail(capabilityId) {
+    const capability = currentCapabilities.find(c => c.id === capabilityId);
+    if (!capability) return;
+    
+    document.getElementById('modalCapabilityName').textContent = capability.name;
+    const modal = document.getElementById('capabilityModal');
+    modal.classList.remove('hidden');
+    
+    // Load capability details
+    fetch(`/capability-framework/api/capability/${capabilityId}/applications`)
+        .then(response => response.json())
+        .then(applications => {
+            const detailsContainer = document.getElementById('capability-details');
+            
+            let applicationsHtml = '';
+            if (applications.length > 0) {
+                applicationsHtml = `
+                    <h4 class="font-semibold mb-3">Application Mappings (${applications.length})</h4>
+                    <div class="space-y-2">
+                        ${applications.map(app => `
+                            <div class="p-3 rounded-md border">
+                                <div class="flex justify-between items-center">
+                                    <div>
+                                        <h4 class="font-medium mb-1">${app.application_name}</h4>
+                                        <p class="text-sm text-muted-foreground">${app.application_description || ''}</p>
+                                    </div>
+                                    <div class="flex gap-2">
+                                        <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium bg-muted text-foreground">${app.support_level}</span>
+                                        <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium bg-primary text-primary-foreground">${app.coverage_percentage}%</span>
+                                    </div>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            } else {
+                applicationsHtml = '<p class="text-sm text-muted-foreground">No application mappings found</p>';
+            }
+            
+            detailsContainer.innerHTML = `
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                    <div>
+                        <h4 class="font-semibold mb-3">Capability Information</h4>
+                        <div class="space-y-2 text-sm">
+                            <p><strong>Code:</strong> ${capability.code}</p>
+                            <p><strong>Level:</strong> ${capability.level}</p>
+                            <p><strong>Type:</strong> ${capability.capability_type || 'N/A'}</p>
+                            <p><strong>Category:</strong> ${capability.category || 'N/A'}</p>
+                            <p><strong>Domain:</strong> ${capability.domain_name}</p>
+                            <p><strong>Strategic Importance:</strong> ${capability.strategic_importance || 'N/A'}</p>
+                            <p><strong>Business Criticality:</strong> ${capability.business_criticality || 'N/A'}</p>
+                            ${capability.manufacturing_critical ? '<p><strong>Manufacturing Critical:</strong> <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium bg-warning text-primary-foreground">Yes</span></p>' : ''}
+                        </div>
+                    </div>
+                    <div>
+                        <h4 class="font-semibold mb-3">Maturity Assessment</h4>
+                        <div class="space-y-2 text-sm">
+                            <p><strong>Current Maturity:</strong> ${capability.current_maturity_level || 0}/5</p>
+                            <p><strong>Target Maturity:</strong> ${capability.target_maturity_level || 0}/5</p>
+                            <p><strong>Industry Domain:</strong> ${capability.industry_domain || 'N/A'}</p>
+                        </div>
+                    </div>
+                </div>
+                <hr class="my-4">
+                ${applicationsHtml}
+            `;
+            
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons();
+            }
+        });
+}
+
+function closeCapabilityModal() {
+    document.getElementById('capabilityModal').classList.add('hidden');
+}
+
+// Close modal when clicking outside
+document.getElementById('capabilityModal')?.addEventListener('click', function(e) {
+    if (e.target === this) {
+        closeCapabilityModal();
+    }
+});
+
+// Initialize dashboard
+document.addEventListener('DOMContentLoaded', function() {
+    loadStatistics();
+    loadDomains();
+    loadCapabilities();
+    
+    // Set up filter listeners
+    document.getElementById('domain-filter').addEventListener('change', loadCapabilities);
+    document.getElementById('level-filter').addEventListener('change', loadCapabilities);
+    
+    // Initialize Lucide icons
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
+});
+</script>
+{% endblock %}

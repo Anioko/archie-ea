@@ -1,0 +1,875 @@
+{# Architecture Document Analyzer Component #}
+{# Purpose-built UI for uploading and analyzing architecture documents #}
+
+{% macro document_analyzer_upload(entity_type='application', entity_id=none, entity_name='') %}
+<div x-data="documentAnalyzer('{{ entity_type }}', {{ entity_id or 'null' }})" class="w-full">
+    {# Upload Section #}
+    <div class="rounded-lg border bg-card p-6">
+        <div class="flex items-center justify-between mb-4">
+            <div>
+                <h3 class="text-lg font-semibold">Analyze Architecture Document</h3>
+                <p class="text-sm text-muted-foreground mt-1">
+                    Upload PDF, Word, PowerPoint, or images to extract ArchiMate 3.2 elements
+                </p>
+            </div>
+        </div>
+
+        {# File Upload Area #}
+        <div 
+            @drop.prevent="handleDrop($event)"
+            @dragover.prevent="dragover = true"
+            @dragleave.prevent="dragover = false"
+            :class="{'border-primary bg-primary/5': dragover}"
+            class="border-2 border-dashed rounded-lg p-8 text-center transition-colors"
+        >
+            <label for="document-file-input" class="sr-only">Upload document</label>
+    <input 
+                type="file" 
+                id="document-file-input"
+                @change="handleFileSelect($event)"
+                accept=".pdf,.doc,.docx,.ppt,.pptx,.png,.jpg,.jpeg,.gif,.svg"
+                multiple
+                class="hidden"
+            >
+            
+            <div x-show="!uploading && !analysisResults" x-cloak>
+                <i data-lucide="upload-cloud" class="h-12 w-12 mx-auto mb-4 text-muted-foreground"></i>
+                <p class="text-sm font-medium mb-2">
+                    Drag and drop your document here, or
+                    <button 
+                        @click="$refs.fileInput.click()"
+                        class="text-primary hover:underline"
+                     aria-label="Browse files">
+                        browse
+                    </button>
+                </p>
+                <p class="text-xs text-muted-foreground">
+                    Supported: PDF, DOC, DOCX, PPT, PPTX, PNG, JPG, GIF, SVG (Max 50MB per file)
+                </p>
+                <p class="text-xs text-muted-foreground mt-1">
+                    You can select multiple files to analyze them sequentially
+                </p>
+            </div>
+
+            {# Selected Files List #}
+            <div x-show="selectedFiles.length > 0 && !uploading && !analysisResults" x-cloak class="mt-4 space-y-3">
+                <div class="flex items-center justify-between mb-2">
+                    <h4 class="text-sm font-semibold" x-text="selectedFiles.length + ' file(s) selected'"></h4>
+                    <button 
+                        @click="clearFiles()"
+                        class="text-xs text-muted-foreground hover:text-foreground"
+                     aria-label="Clear all files">
+                        Clear all
+                    </button>
+                </div>
+                
+                <div class="space-y-2 max-h-64 overflow-y-auto">
+                    <template x-for="(file, index) in selectedFiles" :key="index">
+                        <div class="flex items-center justify-between bg-muted rounded-lg p-3">
+                            <div class="flex items-center gap-3 flex-1 min-w-0">
+                                <i data-lucide="file" class="h-5 w-5 text-muted-foreground flex-shrink-0"></i>
+                                <div class="flex-1 min-w-0">
+                                    <p class="text-sm font-medium truncate" x-text="file.name"></p>
+                                    <p class="text-xs text-muted-foreground" x-text="formatFileSize(file.size)"></p>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-2 flex-shrink-0">
+                                <button 
+                                    @click="previewFile(file)"
+                                    class="text-sm text-primary hover:underline"
+                                    title="Preview file"
+                                >
+                                    <i data-lucide="eye" class="h-4 w-4"></i>
+                                </button>
+                                <button 
+                                    @click="removeFile(index)"
+                                    class="text-muted-foreground hover:text-foreground"
+                                 aria-label="Remove">
+                                    <i data-lucide="x" class="h-4 w-4"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+                
+                {# File Preview #}
+                <div x-show="filePreview" x-cloak class="rounded-lg border bg-muted/50 p-4 max-h-64 overflow-auto">
+                    <div class="flex items-center justify-between mb-2">
+                        <h5 class="text-sm font-semibold">File Preview</h5>
+                        <button @click="filePreview = null" class="text-muted-foreground hover:text-foreground" aria-label="Close file preview">
+                            <i data-lucide="x" class="h-4 w-4"></i>
+                        </button>
+                    </div>
+                    <div class="text-xs text-muted-foreground" x-html="DOMPurify.sanitize(filePreview)"></div>
+                </div>
+            </div>
+
+            {# LLM Provider Selection #}
+            <div x-show="selectedFiles.length > 0 && !uploading && !analysisResults" x-cloak class="mt-4">
+                <label class="text-sm font-medium mb-2 block">AI Provider</label>
+                <select 
+                    x-model="provider"
+                    class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                >
+                    <option value="claude">Claude (Anthropic) - Recommended</option>
+                    <option value="openai">OpenAI (GPT-4)</option>
+                    <option value="gemini">Gemini (Google)</option>
+                </select>
+            </div>
+
+            {# Analyze Button #}
+            <div x-show="selectedFiles.length > 0 && !uploading && !analysisResults" x-cloak class="mt-4">
+                <button 
+                    @click="analyzeDocument()"
+                    class="w-full inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2"
+                 aria-label="Analyze document">
+                    <i data-lucide="sparkles" class="mr-2 h-4 w-4"></i>
+                    <span x-text="selectedFiles.length > 1 ? 'Analyze ' + selectedFiles.length + ' Documents' : 'Analyze Document'"></span>
+                </button>
+            </div>
+
+            {# Uploading/Processing with Progress #}
+            <div x-show="uploading" x-cloak class="mt-4 space-y-3">
+                <div class="flex items-center gap-3 bg-muted rounded-lg p-4">
+                    <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-primary"></div>
+                    <div class="flex-1">
+                        <p class="text-sm font-medium" x-text="uploadStatus"></p>
+                        <p x-show="batchProgress.total > 1" x-cloak class="text-xs text-muted-foreground mt-1">
+                            Processing file <span x-text="batchProgress.current"></span> of <span x-text="batchProgress.total"></span>
+                        </p>
+                    </div>
+                </div>
+                
+                {# Batch Progress Bar #}
+                <div x-show="batchProgress.total > 1" x-cloak class="space-y-2">
+                    <div class="flex items-center justify-between text-xs text-muted-foreground">
+                        <span>Overall Progress</span>
+                        <span x-text="Math.round((batchProgress.current / batchProgress.total) * 100) + '%'"></span>
+                    </div>
+                    <div class="w-full bg-muted rounded-full h-2">
+                        <div 
+                            class="bg-primary h-2 rounded-full transition-all duration-300"
+                            :style="'width: ' + ((batchProgress.current / batchProgress.total) * 100) + '%'"
+                        ></div>
+                    </div>
+                </div>
+                
+                {# Individual File Progress #}
+                <div x-show="fileProgress.length > 0" x-cloak class="space-y-2">
+                    <template x-for="(progress, index) in fileProgress" :key="index">
+                        <div class="bg-background/50 rounded-lg p-3 border">
+                            <div class="flex items-center justify-between mb-1">
+                                <span class="text-xs font-medium truncate flex-1" x-text="progress.fileName"></span>
+                                <span class="text-xs ml-2" 
+                                      :class="{
+                                          'text-destructive': progress.status === 'error',
+                                          'text-success': progress.status === 'completed',
+                                          'text-primary': progress.status === 'processing' || progress.status === 'uploading' || progress.status === 'analyzing',
+                                          'text-muted-foreground': progress.status === 'pending'
+                                      }"
+                                      x-text="progress.status.charAt(0).toUpperCase() + progress.status.slice(1)"></span>
+                            </div>
+                            <div class="w-full bg-muted rounded-full h-1.5 mt-1">
+                                <div 
+                                    class="h-1.5 rounded-full transition-all duration-300"
+                                    :class="{
+                                        'bg-destructive': progress.status === 'error',
+                                        'bg-success': progress.status === 'completed',
+                                        'bg-primary': progress.status !== 'error' && progress.status !== 'completed'
+                                    }"
+                                    :style="'width: ' + progress.percent + '%'"
+                                ></div>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# Analysis Results #}
+    <div x-show="analysisResults" x-cloak class="mt-6 space-y-6">
+        {# Results Header #}
+        <div class="rounded-lg border bg-card p-6">
+            <div class="flex items-center justify-between mb-4">
+                <div>
+                    <h3 class="text-lg font-semibold">Analysis Results</h3>
+                    <p class="text-sm text-muted-foreground mt-1">
+                        Review extracted data before applying
+                    </p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span 
+                        :class="{
+                            'bg-success/10 text-success': analysisResults.confidence === 'high',
+                            'bg-warning/10 text-warning': analysisResults.confidence === 'medium',
+                            'bg-destructive/10 text-destructive': analysisResults.confidence === 'low'
+                        }"
+                        class="px-2 py-1 rounded text-xs font-medium"
+                        x-text="'Confidence: ' + (analysisResults.confidence || 'medium').toUpperCase()"
+                    ></span>
+                    <button 
+                        @click="reanalyzeWithDifferentProvider()"
+                        class="text-sm text-primary hover:underline"
+                        title="Re-analyze with different provider"
+                    >
+                        <i data-lucide="refresh-cw" class="h-4 w-4"></i>
+                    </button>
+                    <button 
+                        @click="resetAnalyzer()"
+                        class="text-sm text-muted-foreground hover:text-foreground"
+                     aria-label="Reset">
+                        <i data-lucide="x" class="h-4 w-4"></i>
+                    </button>
+                </div>
+            </div>
+
+            {# Edit Mode Toggle #}
+            <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center gap-2">
+                    <button 
+                        @click="editMode = !editMode"
+                        class="text-sm text-primary hover:underline"
+                     aria-label="Edit">
+                        <i :data-lucide="editMode ? 'check' : 'edit'" class="h-4 w-4 mr-1"></i>
+                        <span x-text="editMode ? 'Done Editing' : 'Edit Data'"></span>
+                    </button>
+                </div>
+            </div>
+
+            {# Extracted Data Preview (Editable) #}
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                {% if entity_type == 'application' %}
+                <div class="rounded-lg border bg-muted/50 p-4">
+                    <h4 class="text-sm font-semibold mb-2">Application Details</h4>
+                    <div class="space-y-2 text-sm">
+                        <div x-show="analysisResults.application_data?.name" x-cloak>
+                            <span class="text-muted-foreground">Name:</span>
+                            <input 
+                                x-show="editMode" x-cloak
+                                x-model="analysisResults.application_data.name"
+                                class="ml-2 px-2 py-1 rounded border border-input bg-background text-sm w-full"
+                             aria-label="Text field">
+                            <span x-show="!editMode" x-cloak class="ml-2 font-medium" x-text="analysisResults.application_data?.name"></span>
+                        </div>
+                        <div x-show="analysisResults.application_data?.component_type" x-cloak>
+                            <span class="text-muted-foreground">Type:</span>
+                            <input 
+                                x-show="editMode" x-cloak
+                                x-model="analysisResults.application_data.component_type"
+                                class="ml-2 px-2 py-1 rounded border border-input bg-background text-sm w-full"
+                             aria-label="Text field">
+                            <span x-show="!editMode" x-cloak class="ml-2" x-text="analysisResults.application_data?.component_type"></span>
+                        </div>
+                        <div x-show="analysisResults.application_data?.technology_stack" x-cloak>
+                            <span class="text-muted-foreground">Tech Stack:</span>
+                            <textarea 
+                                x-show="editMode" x-cloak
+                                x-model="analysisResults.application_data.technology_stack"
+                                class="ml-2 px-2 py-1 rounded border border-input bg-background text-sm w-full"
+                                rows="2"
+                            ></textarea>
+                            <span x-show="!editMode" x-cloak class="ml-2" x-text="analysisResults.application_data?.technology_stack"></span>
+                        </div>
+                        <div x-show="analysisResults.application_data?.deployment_model" x-cloak>
+                            <span class="text-muted-foreground">Deployment:</span>
+                            <input 
+                                x-show="editMode" x-cloak
+                                x-model="analysisResults.application_data.deployment_model"
+                                class="ml-2 px-2 py-1 rounded border border-input bg-background text-sm w-full"
+                             aria-label="Text field">
+                            <span x-show="!editMode" x-cloak class="ml-2" x-text="analysisResults.application_data?.deployment_model"></span>
+                        </div>
+                    </div>
+                </div>
+                {% else %}
+                <div class="rounded-lg border bg-muted/50 p-4">
+                    <h4 class="text-sm font-semibold mb-2">Vendor Details</h4>
+                    <div class="space-y-2 text-sm">
+                        <div x-show="analysisResults.vendor_data?.name" x-cloak>
+                            <span class="text-muted-foreground">Name:</span>
+                            <span class="ml-2 font-medium" x-text="analysisResults.vendor_data?.name"></span>
+                        </div>
+                        <div x-show="analysisResults.vendor_data?.vendor_type" x-cloak>
+                            <span class="text-muted-foreground">Type:</span>
+                            <span class="ml-2" x-text="analysisResults.vendor_data?.vendor_type"></span>
+                        </div>
+                        <div x-show="analysisResults.vendor_data?.strategic_tier" x-cloak>
+                            <span class="text-muted-foreground">Strategic Tier:</span>
+                            <span class="ml-2" x-text="analysisResults.vendor_data?.strategic_tier"></span>
+                        </div>
+                        <div x-show="analysisResults.vendor_data?.enterprise_readiness_score" x-cloak>
+                            <span class="text-muted-foreground">Readiness Score:</span>
+                            <span class="ml-2" x-text="analysisResults.vendor_data?.enterprise_readiness_score + '/100'"></span>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+
+                <div class="rounded-lg border bg-muted/50 p-4">
+                    <h4 class="text-sm font-semibold mb-2">ArchiMate Elements</h4>
+                    <div class="space-y-2 text-sm">
+                        <div>
+                            <span class="text-muted-foreground">Elements Found:</span>
+                            <span class="ml-2 font-medium" x-text="analysisResults.archimate_elements?.length || 0"></span>
+                        </div>
+                        <div>
+                            <span class="text-muted-foreground">Relationships:</span>
+                            <span class="ml-2 font-medium" x-text="analysisResults.relationships?.length || 0"></span>
+                        </div>
+                        <div x-show="analysisResults.validation_results?.errors?.length > 0" x-cloak class="text-destructive">
+                            <span class="text-muted-foreground">Validation Errors:</span>
+                            <span class="ml-2 font-medium" x-text="analysisResults.validation_results?.errors?.length || 0"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {# ArchiMate Elements List (Editable) #}
+            <div class="mb-6">
+                <div class="flex items-center justify-between mb-3">
+                    <h4 class="text-sm font-semibold">Extracted ArchiMate Elements</h4>
+                    <button 
+                        x-show="editMode" x-cloak
+                        @click="addNewElement()"
+                        class="text-xs text-primary hover:underline"
+                     aria-label="Add">
+                        <i data-lucide="plus" class="h-3 w-3 mr-1"></i>
+                        Add Element
+                    </button>
+                </div>
+                <div class="rounded-lg border divide-y max-h-64 overflow-y-auto">
+                    <template x-for="(element, index) in analysisResults.archimate_elements" :key="index">
+                        <div class="p-3 hover:bg-muted/50">
+                            <div class="flex items-start justify-between gap-2">
+                                <div class="flex-1 space-y-2">
+                                    <div class="flex items-center gap-2 flex-wrap">
+                                        <input 
+                                            x-show="editMode" x-cloak
+                                            x-model="element.name"
+                                            class="px-2 py-1 rounded border border-input bg-background text-sm font-medium flex-1 min-w-[200px]"
+                                            placeholder="Element name"
+                                         aria-label="Element name">
+                                        <span x-show="!editMode" x-cloak class="text-sm font-medium" x-text="element.name"></span>
+                                        
+                                        <select 
+                                            x-show="editMode" x-cloak
+                                            x-model="element.type"
+                                            class="px-2 py-1 rounded border border-input bg-background text-xs"
+                                        >
+                                            <option value="ApplicationComponent">ApplicationComponent</option>
+                                            <option value="ApplicationInterface">ApplicationInterface</option>
+                                            <option value="ApplicationService">ApplicationService</option>
+                                            <option value="ApplicationFunction">ApplicationFunction</option>
+                                            <option value="ApplicationEvent">ApplicationEvent</option>
+                                            <option value="DataObject">DataObject</option>
+                                        </select>
+                                        <span 
+                                            x-show="!editMode" x-cloak
+                                            class="px-2 py-0.5 rounded text-xs bg-primary/10 text-primary"
+                                            x-text="element.type"
+                                        ></span>
+                                        
+                                        <span 
+                                            class="px-2 py-0.5 rounded text-xs bg-muted"
+                                            x-text="element.layer"
+                                        ></span>
+                                    </div>
+                                    <textarea 
+                                        x-show="editMode" x-cloak
+                                        x-model="element.description"
+                                        class="w-full px-2 py-1 rounded border border-input bg-background text-xs"
+                                        rows="2"
+                                        placeholder="Description"
+                                    ></textarea>
+                                    <p 
+                                        x-show="!editMode && element.description" x-cloak
+                                        class="text-xs text-muted-foreground"
+                                        x-text="element.description"
+                                    ></p>
+                                </div>
+                                <button 
+                                    x-show="editMode" x-cloak
+                                    @click="removeElement(index)"
+                                    class="text-destructive hover:text-destructive/80"
+                                 aria-label="Remove">
+                                    <i data-lucide="trash-2" class="h-4 w-4"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </template>
+                    <div x-show="!analysisResults.archimate_elements?.length" x-cloak class="p-4 text-center text-sm text-muted-foreground">
+                        No ArchiMate elements extracted
+                    </div>
+                </div>
+            </div>
+
+            {# Validation Errors and Warnings #}
+            <div x-show="(analysisResults.validation_results?.errors?.length > 0) || (analysisResults.validation_results?.warnings?.length > 0) || (analysisResults.validation_results?.element_errors?.length > 0) || (analysisResults.validation_results?.relationship_errors?.length > 0)" x-cloak class="mb-6 space-y-4">
+                {# Element Validation Errors #}
+                <div x-show="analysisResults.validation_results?.element_errors?.length > 0" x-cloak class="rounded-lg border border-destructive/50 bg-destructive/5 p-4">
+                    <div class="flex items-center gap-2 mb-3">
+                        <i data-lucide="alert-circle" class="h-5 w-5 text-destructive"></i>
+                        <h4 class="text-sm font-semibold text-destructive">Element Validation Errors</h4>
+                        <span class="ml-auto text-xs text-destructive" x-text="analysisResults.validation_results.element_errors.length + ' error(s)'"></span>
+                    </div>
+                    <div class="space-y-2 text-sm">
+                        <template x-for="(error, index) in analysisResults.validation_results.element_errors" :key="index">
+                            <div class="bg-background/50 rounded p-2 border border-destructive/20">
+                                <div class="font-medium text-destructive" x-text="error.element"></div>
+                                <div class="text-xs text-muted-foreground mt-1" x-text="error.error"></div>
+                                <div class="text-xs text-muted-foreground mt-1">
+                                    Type: <span x-text="error.type"></span> | Layer: <span x-text="error.layer"></span>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                {# Relationship Validation Errors #}
+                <div x-show="analysisResults.validation_results?.relationship_errors?.length > 0" x-cloak class="rounded-lg border border-destructive/50 bg-destructive/5 p-4">
+                    <div class="flex items-center gap-2 mb-3">
+                        <i data-lucide="link-2" class="h-5 w-5 text-destructive"></i>
+                        <h4 class="text-sm font-semibold text-destructive">Relationship Validation Errors</h4>
+                        <span class="ml-auto text-xs text-destructive" x-text="analysisResults.validation_results.relationship_errors.length + ' error(s)'"></span>
+                    </div>
+                    <div class="space-y-2 text-sm">
+                        <template x-for="(error, index) in analysisResults.validation_results.relationship_errors" :key="index">
+                            <div class="bg-background/50 rounded p-2 border border-destructive/20">
+                                <div class="font-medium text-destructive">
+                                    <span x-text="error.source"></span> 
+                                    <span class="text-muted-foreground mx-1">→</span>
+                                    <span x-text="error.target"></span>
+                                </div>
+                                <div class="text-xs text-muted-foreground mt-1" x-text="error.error"></div>
+                                <div class="text-xs text-muted-foreground mt-1">
+                                    Relationship: <span class="font-medium" x-text="error.relationship_type"></span>
+                                </div>
+                                <div class="text-xs text-muted-foreground mt-1">
+                                    Source: <span x-text="error.source_type"></span> | Target: <span x-text="error.target_type"></span>
+                                </div>
+                                <div x-show="error.allowed_types?.length > 0" x-cloak class="mt-2 text-xs">
+                                    <span class="text-muted-foreground">Allowed relationship types:</span>
+                                    <div class="flex flex-wrap gap-1 mt-1">
+                                        <template x-for="(allowedType, idx) in error.allowed_types" :key="idx">
+                                            <span class="px-2 py-0.5 rounded bg-primary/10 text-primary text-xs" x-text="allowedType"></span>
+                                        </template>
+                                    </div>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                {# General Validation Errors #}
+                <div x-show="analysisResults.validation_results?.errors?.length > 0 && (!analysisResults.validation_results?.element_errors || analysisResults.validation_results.element_errors.length === 0) && (!analysisResults.validation_results?.relationship_errors || analysisResults.validation_results.relationship_errors.length === 0)" x-cloak class="rounded-lg border border-destructive/50 bg-destructive/10 p-4">
+                    <div class="flex items-center gap-2 mb-2">
+                        <i data-lucide="alert-triangle" class="h-4 w-4 text-destructive"></i>
+                        <h4 class="text-sm font-semibold text-destructive">Validation Errors</h4>
+                    </div>
+                    <ul class="text-sm text-destructive space-y-1">
+                        <template x-for="(error, index) in analysisResults.validation_results.errors" :key="index">
+                            <li>
+                                <span x-text="(error.element || error.relationship || 'Unknown') + ': ' + (error.error || error)"></span>
+                            </li>
+                        </template>
+                    </ul>
+                </div>
+
+                {# Validation Warnings #}
+                <div x-show="analysisResults.validation_results?.warnings?.length > 0" x-cloak class="rounded-lg border border-warning/50 bg-warning/5 p-4">
+                    <div class="flex items-center gap-2 mb-3">
+                        <i data-lucide="alert-triangle" class="h-5 w-5 text-warning"></i>
+                        <h4 class="text-sm font-semibold text-warning">Validation Warnings</h4>
+                        <span class="ml-auto text-xs text-warning" x-text="analysisResults.validation_results.warnings.length + ' warning(s)'"></span>
+                    </div>
+                    <div class="space-y-2 text-sm">
+                        <template x-for="(warning, index) in analysisResults.validation_results.warnings" :key="index">
+                            <div class="bg-background/50 rounded p-2 border border-warning/20">
+                                <div class="font-medium text-warning" x-text="warning.element || warning.relationship || 'Unknown'"></div>
+                                <div class="text-xs text-muted-foreground mt-1" x-text="warning.error || warning"></div>
+                                <div x-show="warning.alternatives?.length > 0" x-cloak class="mt-2 text-xs">
+                                    <span class="text-muted-foreground">Alternative relationship types:</span>
+                                    <div class="flex flex-wrap gap-1 mt-1">
+                                        <template x-for="(alt, idx) in warning.alternatives" :key="idx">
+                                            <span class="px-2 py-0.5 rounded bg-warning/10 text-warning text-xs" x-text="alt"></span>
+                                        </template>
+                                    </div>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </div>
+
+            {# Diff Preview Before Applying #}
+            <div x-show="showDiffPreview" x-cloak class="mb-6">
+                <div class="rounded-lg border border-primary/50 bg-primary/5 p-4">
+                    <div class="flex items-center justify-between mb-3">
+                        <h4 class="text-sm font-semibold">Changes Preview</h4>
+                        <button @click="showDiffPreview = false" class="text-muted-foreground hover:text-foreground" aria-label="Close changes preview">
+                            <i data-lucide="x" class="h-4 w-4"></i>
+                        </button>
+                    </div>
+                    <div class="text-sm space-y-2">
+                        <div>
+                            <span class="text-muted-foreground">Will create/update:</span>
+                            <ul class="list-disc list-inside ml-2 mt-1 space-y-1">
+                                <li x-text="analysisResults.archimate_elements?.length || 0 + ' ArchiMate elements'"></li>
+                                <li x-text="analysisResults.relationships?.length || 0 + ' relationships'"></li>
+                                <li>Application/Vendor details will be updated</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {# Action Buttons #}
+            <div class="flex items-center justify-end gap-3">
+                <button 
+                    @click="resetAnalyzer()"
+                    class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2"
+                 aria-label="Reset">
+                    Cancel
+                </button>
+                <button 
+                    @click="showDiffPreview = true"
+                    x-show="!showDiffPreview" x-cloak
+                    class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2"
+                 aria-label="Preview changes">
+                    <i data-lucide="eye" class="mr-2 h-4 w-4"></i>
+                    Preview Changes
+                </button>
+                <button 
+                    @click="applyAnalysis()"
+                    :disabled="applying || editMode"
+                    class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2 disabled:opacity-50"
+                 aria-label="Apply analysis">
+                    <span x-show="!applying" x-cloak>Apply Analysis</span>
+                    <span x-show="applying" x-cloak class="flex items-center gap-2">
+                        <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                        Applying...
+                    </span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function documentAnalyzer(entityType, entityId) {
+    return {
+        entityType: entityType,
+        entityId: entityId,
+        selectedFiles: [],
+        dragover: false,
+        uploading: false,
+        uploadStatus: 'Uploading...',
+        provider: 'claude',
+        analysisResults: null,
+        applying: false,
+        editMode: false,
+        filePreview: null,
+        showDiffPreview: false,
+        analysisHistory: [],
+        analysisId: null,
+        batchProgress: { current: 0, total: 0 },
+        fileProgress: [],
+        batchResults: [],
+
+        handleDrop(event) {
+            this.dragover = false;
+            const files = Array.from(event.dataTransfer.files);
+            this.addFiles(files);
+        },
+
+        handleFileSelect(event) {
+            const files = Array.from(event.target.files);
+            this.addFiles(files);
+        },
+
+        addFiles(files) {
+            const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+            const allowedExtensions = ['.pdf', '.doc', '.docx', '.ppt', '.pptx', '.png', '.jpg', '.jpeg', '.gif', '.svg'];
+            
+            files.forEach(file => {
+                // Check file size
+                if (file.size > MAX_FILE_SIZE) {
+                    alert(`File "${file.name}" is too large. Maximum size is 50MB.`);
+                    return;
+                }
+                
+                // Check file extension
+                const ext = '.' + file.name.split('.').pop().toLowerCase();
+                if (!allowedExtensions.includes(ext)) {
+                    alert(`File "${file.name}" has unsupported format. Allowed: ${allowedExtensions.join(', ')}`);
+                    return;
+                }
+                
+                // Check if file already exists
+                if (!this.selectedFiles.find(f => f.name === file.name && f.size === file.size)) {
+                    this.selectedFiles.push(file);
+                }
+            });
+        },
+
+        removeFile(index) {
+            this.selectedFiles.splice(index, 1);
+        },
+
+        clearFiles() {
+            this.selectedFiles = [];
+            const fileInput = document.getElementById('document-file-input');
+            if (fileInput) fileInput.value = '';
+        },
+
+        formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+        },
+
+        async analyzeDocument() {
+            if (this.selectedFiles.length === 0) return;
+
+            this.uploading = true;
+            this.batchProgress = { current: 0, total: this.selectedFiles.length };
+            this.fileProgress = [];
+            this.batchResults = [];
+            
+            // Initialize progress for all files
+            this.selectedFiles.forEach((file, index) => {
+                this.fileProgress.push({
+                    fileName: file.name,
+                    status: 'pending',
+                    percent: 0
+                });
+            });
+
+            const url = this.entityType === 'application' 
+                ? `/api/applications/${this.entityId}/analyze-document`
+                : `/api/vendors/${this.entityId}/analyze-document`;
+
+            // Process files sequentially
+            for (let i = 0; i < this.selectedFiles.length; i++) {
+                const file = this.selectedFiles[i];
+                this.batchProgress.current = i + 1;
+                this.uploadStatus = `Processing ${file.name} (${i + 1}/${this.selectedFiles.length})...`;
+                
+                // Update file progress
+                this.fileProgress[i].status = 'processing';
+                this.fileProgress[i].percent = 10;
+
+                try {
+                    const formData = new FormData();
+                    formData.append('file', file);
+                    formData.append('provider', this.provider);
+
+                    this.fileProgress[i].percent = 30;
+                    this.fileProgress[i].status = 'uploading';
+
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        body: formData,
+                        headers: {
+                            'X-CSRFToken': document.querySelector('[name=csrf_token]')?.value || ''
+                        }
+                    });
+
+                    this.fileProgress[i].percent = 60;
+                    this.fileProgress[i].status = 'analyzing';
+
+                    if (!response.ok) {
+                        const error = await response.json();
+                        throw new Error(error.error || 'Analysis failed');
+                    }
+
+                    const data = await response.json();
+                    this.fileProgress[i].percent = 100;
+                    this.fileProgress[i].status = 'completed';
+                    
+                    // Store result
+                    this.batchResults.push({
+                        fileName: file.name,
+                        analysis: data.analysis,
+                        analysisId: data.analysis_id,
+                        success: true
+                    });
+
+                    // If this is the first file, set it as the main result
+                    if (i === 0) {
+                        this.analysisResults = data.analysis;
+                        this.analysisId = data.analysis_id;
+                    }
+
+                } catch (error) {
+                    this.fileProgress[i].status = 'error';
+                    this.fileProgress[i].percent = 100;
+                    
+                    // Better error handling
+                    let errorMessage = error.message;
+                    if (error.message.includes('timeout') || error.message.includes('network')) {
+                        errorMessage = 'Analysis timed out';
+                    } else if (error.message.includes('file type') || error.message.includes('not allowed')) {
+                        errorMessage = 'Unsupported file type';
+                    } else if (error.message.includes('size') || error.message.includes('too large')) {
+                        errorMessage = 'File too large (max 50MB)';
+                    }
+                    
+                    this.batchResults.push({
+                        fileName: file.name,
+                        error: errorMessage,
+                        success: false
+                    });
+                }
+            }
+
+            // Show summary
+            const successCount = this.batchResults.filter(r => r.success).length;
+            const errorCount = this.batchResults.filter(r => !r.success).length;
+            
+            this.uploadStatus = `Completed: ${successCount} succeeded, ${errorCount} failed`;
+            this.uploading = false;
+
+            // Show summary notification
+            if (errorCount > 0) {
+                const errorDiv = document.createElement('div');
+                errorDiv.className = 'fixed top-4 right-4 bg-warning text-primary-foreground p-4 rounded-lg shadow-lg z-50 max-w-md';
+                errorDiv.innerHTML = `
+                    <div class="flex items-center gap-2 mb-2">
+                        <i data-lucide="alert-triangle" class="h-5 w-5"></i>
+                        <h4 class="font-semibold">Batch Analysis Complete</h4>
+                    </div>
+                    <p class="text-sm">${successCount} file(s) analyzed successfully, ${errorCount} file(s) failed.</p>
+                    <button class="mt-2 text-xs underline dismiss-btn" aria-label="Dismiss notification">Dismiss</button>
+                `;
+                errorDiv.querySelector('.dismiss-btn').addEventListener('click', () => errorDiv.remove());
+                document.body.appendChild(errorDiv);
+                setTimeout(() => errorDiv.remove(), 10000);
+            }
+        },
+
+        async applyAnalysis() {
+            if (!this.analysisResults) return;
+
+            this.applying = true;
+
+            try {
+                const url = this.entityType === 'application'
+                    ? `/api/applications/${this.entityId}/apply-analysis`
+                    : `/api/vendors/${this.entityId}/apply-analysis`;
+
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': document.querySelector('[name=csrf_token]')?.value || ''
+                    },
+                    body: JSON.stringify({
+                        analysis: this.analysisResults,
+                        analysis_id: this.analysisId
+                    })
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || 'Failed to apply analysis');
+                }
+
+                const data = await response.json();
+                
+                // Show success message with details
+                const message = `Analysis applied successfully!\n\n` +
+                    `- ${data.archimate_elements_created} ArchiMate elements created\n` +
+                    `- Application/Vendor details updated`;
+                
+                if (confirm(message + '\n\nReload page to see changes?')) {
+                    window.location.reload();
+                }
+            } catch (error) {
+                this.applying = false;
+                alert('Error applying analysis: ' + error.message);
+            }
+        },
+
+        async previewFile(file) {
+            const fileToPreview = file || this.selectedFiles[0];
+            if (!fileToPreview) return;
+            
+            // For images, show preview
+            if (fileToPreview.type.startsWith('image/')) {
+                const reader = new FileReader();
+                reader.@load= (e) => {
+                    this.filePreview = `<img src="${e.target.result}" class="max-w-full h-auto rounded" alt="Preview">`;
+                };
+                reader.readAsDataURL(fileToPreview);
+            } else {
+                // For text-based files, show first 1000 chars
+                const reader = new FileReader();
+                reader.@load= (e) => {
+                    const text = e.target.result.substring(0, 1000);
+                    this.filePreview = `<pre class="whitespace-pre-wrap text-xs">${this.escapeHtml(text)}</pre>`;
+                };
+                reader.readAsText(fileToPreview);
+            }
+        },
+
+        escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        },
+
+        reanalyzeWithDifferentProvider() {
+            if (this.selectedFiles.length === 0) return;
+            
+            // Cycle through providers
+            const providers = ['claude', 'openai', 'gemini'];
+            const currentIndex = providers.indexOf(this.provider);
+            this.provider = providers[(currentIndex + 1) % providers.length];
+            
+            // Re-analyze
+            this.analysisResults = null;
+            this.batchResults = [];
+            this.analyzeDocument();
+        },
+
+        addNewElement() {
+            if (!this.analysisResults.archimate_elements) {
+                this.analysisResults.archimate_elements = [];
+            }
+            this.analysisResults.archimate_elements.push({
+                name: '',
+                type: 'ApplicationComponent',
+                layer: 'application',
+                description: ''
+            });
+        },
+
+        removeElement(index) {
+            if (this.analysisResults.archimate_elements) {
+                this.analysisResults.archimate_elements.splice(index, 1);
+            }
+        },
+
+        resetAnalyzer() {
+            this.selectedFiles = [];
+            this.analysisResults = null;
+            this.uploading = false;
+            this.applying = false;
+            this.editMode = false;
+            this.filePreview = null;
+            this.showDiffPreview = false;
+            this.batchProgress = { current: 0, total: 0 };
+            this.fileProgress = [];
+            this.batchResults = [];
+            const fileInput = document.getElementById('document-file-input');
+            if (fileInput) fileInput.value = '';
+        }
+    }
+}
+</script>
+{% endmacro %}
+

@@ -1,0 +1,78 @@
+<div class="bg-background rounded-lg shadow-sm border border-border p-4">
+    <h3 class="text-lg font-semibold text-foreground mb-4">Configuration</h3>
+
+    <!-- Language Selection -->
+    <div class="mb-4">
+        <label for="languageSelect" class="block text-sm font-medium text-foreground/80 mb-2">
+            Programming Language *
+        </label>
+        <select id="languageSelect" class="w-full px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-primary">
+            <option value="">Select language...</option>
+            <option value="python">Python</option>
+            <option value="java">Java</option>
+            <option value="typescript">TypeScript</option>
+            <option value="javascript">JavaScript</option>
+            <option value="salesforce">Salesforce</option>
+        </select>
+    </div>
+
+    <!-- Framework Selection -->
+    <div class="mb-4">
+        <label for="frameworkSelect" class="block text-sm font-medium text-foreground/80 mb-2">
+            Framework
+        </label>
+        <select id="frameworkSelect" class="w-full px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-primary">
+            <option value="">Auto-detect</option>
+            <option value="Flask">Flask</option>
+            <option value="FastAPI">FastAPI</option>
+            <option value="Spring Boot">Spring Boot</option>
+            <option value="NestJS">NestJS</option>
+            <option value="Express">Express</option>
+            <option value="Apex">Apex</option>
+        </select>
+    </div>
+
+    <!-- Database Selection -->
+    <div class="mb-4">
+        <label for="databaseSelect" class="block text-sm font-medium text-foreground/80 mb-2">
+            Database
+        </label>
+        <select id="databaseSelect" class="w-full px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-primary">
+            <option value="postgresql">PostgreSQL</option>
+            <option value="mysql">MySQL</option>
+            <option value="sqlite">SQLite</option>
+            <option value="mongodb">MongoDB</option>
+            <option value="oracle">Oracle</option>
+        </select>
+    </div>
+
+    <!-- Generation Options -->
+    <div class="mb-4">
+        <label class="flex items-center">
+            <label for="includeTests">Field</label>
+    <input type="checkbox" id="includeTests" class="rounded border-border text-primary focus:ring-primary">
+            <span class="ml-2 text-sm text-foreground/80">Include unit tests</span>
+        </label>
+    </div>
+
+    <div class="mb-4">
+        <label class="flex items-center">
+            <label for="includeValidation">Field</label>
+    <input type="checkbox" id="includeValidation" class="rounded border-border text-primary focus:ring-primary" checked>
+            <span class="ml-2 text-sm text-foreground/80">Include validation</span>
+        </label>
+    </div>
+
+    <div class="mb-4">
+        <label class="flex items-center">
+            <label for="includeDocstrings">Field</label>
+    <input type="checkbox" id="includeDocstrings" class="rounded border-border text-primary focus:ring-primary" checked>
+            <span class="ml-2 text-sm text-foreground/80">Include documentation</span>
+        </label>
+    </div>
+
+    <!-- Generate Button -->
+    <button id="generateBtn" @click="generateCode()" class="w-full px-4 py-2 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary transition-colors" aria-label="Action">
+        Generate Code
+    </button>
+</div>

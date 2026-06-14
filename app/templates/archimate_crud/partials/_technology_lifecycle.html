@@ -1,0 +1,43 @@
+<!-- Technology lifecycle columns — groups by lifecycle phase from properties JSON -->
+<div class="space-y-4">
+    <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
+        <template x-for="phase in [
+            {key: 'current',      label: 'Current',      bg: 'bg-emerald-500/10', text: 'text-emerald-700',       border: 'border-emerald-200'},
+            {key: 'transitional', label: 'Transitional', bg: 'bg-amber-500/10',   text: 'text-amber-700',         border: 'border-amber-200'},
+            {key: 'target',       label: 'Target',       bg: 'bg-primary/10',     text: 'text-primary',           border: 'border-primary/20'},
+            {key: 'retire',       label: 'Retire',       bg: 'bg-destructive/10', text: 'text-destructive',       border: 'border-destructive/20'},
+            {key: 'unset',        label: 'Unassigned',   bg: 'bg-muted',          text: 'text-muted-foreground',  border: 'border-border'}
+        ]" :key="phase.key">
+            <div class="flex flex-col gap-2">
+                <div class="flex items-center justify-between px-1 mb-1">
+                    <span class="text-sm font-semibold" :class="phase.text" x-text="phase.label"></span>
+                    <span class="text-xs rounded-full px-2 py-0.5" :class="phase.bg + ' ' + phase.text + ' border ' + phase.border"
+                          x-text="elements.filter(e => getLifecyclePhase(e) === phase.key && (!searchQuery || e.name.toLowerCase().indexOf(searchQuery.toLowerCase()) >= 0)).length"></span>
+                </div>
+                <template x-for="el in elements.filter(e => getLifecyclePhase(e) === phase.key && (!searchQuery || e.name.toLowerCase().indexOf(searchQuery.toLowerCase()) >= 0))" :key="el.id + ':' + el.element_type">
+                    <div class="rounded-md border p-3 space-y-2" :class="phase.border + ' ' + phase.bg">
+                        <a :href="detailUrl(el)" class="font-medium text-sm leading-tight hover:text-primary transition-colors block" x-text="el.name"></a>
+                        <p class="text-xs text-muted-foreground" x-text="formatTypeName(el.element_type)"></p>
+                        <select class="text-xs border rounded px-2 py-1 bg-background"
+                                :value="getLifecyclePhase(el)"
+                                @change="
+                                    fetch('/api/archimate/elements/' + el.id + '/lifecycle', {
+                                        method: 'PATCH',
+                                        headers: {'Content-Type': 'application/json'},
+                                        body: JSON.stringify({lifecycle: $event.target.value})
+                                    }).then(() => loadElements())
+                                " aria-label="Set lifecycle phase">
+                            <option value="current">Current</option>
+                            <option value="transitional">Transitional</option>
+                            <option value="target">Target</option>
+                            <option value="retire">Retire</option>
+                            <option value="unset">Unassigned</option>
+                        </select>
+                    </div>
+                </template>
+                <p x-show="elements.filter(e => getLifecyclePhase(e) === phase.key).length === 0"
+                   class="text-sm text-muted-foreground italic px-1">None</p>
+            </div>
+        </template>
+    </div>
+</div>

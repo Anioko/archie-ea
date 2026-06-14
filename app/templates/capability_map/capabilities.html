@@ -1,0 +1,84 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'components/page_header.html' import page_header %}
+{% from 'components/metrics_card.html' import metrics_card %}
+
+{% block title %}Business Capabilities{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    {{ page_header(title='Business Capabilities', description='Capability taxonomy and hierarchy') }}
+
+    {% set total = capabilities|length %}
+    {% set level1 = capabilities|selectattr('level', 'equalto', 1)|list|length %}
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+        {{ metrics_card(title='Total Capabilities', value=total, icon='layers') }}
+        {{ metrics_card(title='Level 1', value=level1, icon='chevrons-up', value_class='text-primary') }}
+        {{ metrics_card(title='Level 2+', value=total - level1, icon='chevrons-down', value_class='text-primary') }}
+    </div>
+
+    <!-- Level filter -->
+    <div class="mb-4 flex flex-wrap gap-2 items-center">
+        <span class="text-sm text-muted-foreground">Filter by level:</span>
+        <button @click="filterLevel(0)" id="btn-all"
+            class="px-3 py-1 rounded-md text-xs font-medium border border-border bg-primary text-primary-foreground" aria-label="Action">All</button>
+        {% for lvl in [1,2,3,4,5] %}
+        <button @click="filterLevel({{ lvl }})" id="btn-{{ lvl }}"
+            class="px-3 py-1 rounded-md text-xs font-medium border border-border bg-background text-foreground hover:bg-muted" aria-label="Action">Level {{ lvl }}</button>
+        {% endfor %}
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="cap-grid">
+        {% for cap in capabilities %}
+        {% set current_mat = cap.current_maturity_level|default(0)|int %}
+        {% set mat_pct = ((current_mat / 5) * 100)|int if current_mat else 0 %}
+        <div data-slot="card" class="rounded-xl border bg-card shadow-sm p-5 hover:bg-muted/30 cap-card"
+             data-level="{{ cap.level|default(1) }}">
+            <div class="flex justify-between items-start mb-2">
+                <h3 class="font-medium text-foreground leading-snug">{{ cap.name }}</h3>
+                <span class="ml-2 shrink-0 inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30">
+                    L{{ cap.level|default(1) }}
+                </span>
+            </div>
+            <p class="text-sm text-muted-foreground mb-3">{{ cap.description|default('No description')|truncate(100) }}</p>
+            {% if cap.parent_capability_id %}
+            <p class="text-xs text-muted-foreground mb-2">Sub-capability</p>
+            {% endif %}
+            <!-- Maturity progress bar -->
+            <div class="mt-2">
+                <div class="flex justify-between text-xs text-muted-foreground mb-1">
+                    <span>Maturity</span>
+                    <span>{{ current_mat }}/5</span>
+                </div>
+                <div class="w-full h-1.5 rounded-full bg-muted overflow-hidden">
+                    <div class="h-full rounded-full {% if mat_pct >= 80 %}bg-success{% elif mat_pct >= 40 %}bg-warning{% else %}bg-destructive/40{% endif %}"
+                         style="width: {{ mat_pct }}%"></div>
+                </div>
+            </div>
+            <div class="mt-3">
+                <a href="{{ url_for('unified_low_priority.capability_map_mapping') }}"
+                   class="text-xs text-primary dark:text-primary/80 hover:underline">View mapping &rarr;</a>
+            </div>
+        </div>
+        {% else %}
+        <div data-slot="card" class="col-span-full rounded-xl border bg-card shadow-sm p-10 text-center text-muted-foreground">
+            No capabilities found.
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<script>
+function filterLevel(lvl) {
+    document.querySelectorAll('.cap-card').forEach(function(c) {
+        c.style.display = (lvl === 0 || parseInt(c.dataset.level) === lvl) ? '' : 'none';
+    });
+    ['btn-all','btn-1','btn-2','btn-3','btn-4','btn-5'].forEach(function(id) {
+        const b = document.getElementById(id);
+        if (!b) return;
+        const active = (id === (lvl === 0 ? 'btn-all' : 'btn-'+lvl));
+        b.className = 'px-3 py-1 rounded-md text-xs font-medium border border-border ' +
+            (active ? 'bg-primary text-primary-foreground' : 'bg-background text-foreground hover:bg-muted');
+    });
+}
+</script>
+{% endblock %}

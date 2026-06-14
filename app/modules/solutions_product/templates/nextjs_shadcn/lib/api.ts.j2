@@ -1,0 +1,128 @@
+{# lib/api.ts — Typed API client for the FastAPI backend #}
+{# Context: solution_name, auth (jwt-local or oidc) #}
+
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL || ""
+// NEXT_PUBLIC_BASE_PATH controls the subpath prefix for API calls and redirects.
+// Standalone deployment: set NEXT_PUBLIC_BASE_PATH="" in .env.local before npm run build.
+// Default falls back to the subpath baked in at generation time (ARCHIE preview).
+const _BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? "{{ base_path }}"
+
+// Prevent concurrent token refresh races
+let _isRefreshing = false
+
+export class ApiError extends Error {
+  status: number
+  detail: string
+  /** Pydantic / FastAPI validation errors (422 responses) */
+  fieldErrors?: Array<{ loc: string[]; msg: string; type: string }>
+
+  constructor(
+    status: number,
+    detail: string,
+    fieldErrors?: Array<{ loc: string[]; msg: string; type: string }>,
+  ) {
+    super(`API ${status}: ${detail}`)
+    this.status = status
+    this.detail = detail
+    this.fieldErrors = fieldErrors
+  }
+}
+
+async function request<T>(
+  method: string,
+  path: string,
+  body?: unknown,
+  params?: Record<string, string | undefined>,
+): Promise<T> {
+  // Prepend basePath so API calls route through nginx → Next.js rewrite → FastAPI
+  const resolvedPath = BASE_URL ? path : _BASE_PATH + path
+  const url = new URL(resolvedPath, BASE_URL || window.location.origin)
+  if (params) {
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== "") url.searchParams.set(key, value)
+    })
+  }
+
+  const headers: Record<string, string> = { "Content-Type": "application/json" }
+
+  // Include auth token if stored
+  const token = typeof window !== "undefined" ? localStorage.getItem("token") : null
+  if (token) headers.Authorization = `Bearer ${token}`
+
+  const res = await fetch(url.toString(), {
+    method,
+    headers,
+    body: body ? JSON.stringify(body) : undefined,
+  })
+
+  if (!res.ok) {
+    let detail = res.statusText
+    let fieldErrors: Array<{ loc: string[]; msg: string; type: string }> | undefined
+    try {
+      const body = await res.json()
+      if (Array.isArray(body.detail)) {
+        // FastAPI / Pydantic 422 validation errors
+        fieldErrors = body.detail
+        detail = body.detail
+          .map((e: any) => `${e.loc?.slice(-1)?.[0] ?? "field"}: ${e.msg}`)
+          .join("; ")
+      } else {
+        detail = body.detail || body.error || body.message || detail
+      }
+    } catch {}
+{% if auth == "jwt-local" %}
+    if (res.status === 401) {
+      const refreshToken = localStorage.getItem("refresh_token")
+      if (refreshToken && !_isRefreshing) {
+        _isRefreshing = true
+        try {
+          const rRes = await fetch(
+            (BASE_URL || "") + _BASE_PATH + "/auth/refresh",
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ refresh_token: refreshToken }),
+            },
+          )
+          if (rRes.ok) {
+            const rData = await rRes.json()
+            localStorage.setItem("token", rData.access_token)
+            document.cookie = `token=${rData.access_token}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`
+            if (rData.refresh_token) localStorage.setItem("refresh_token", rData.refresh_token)
+            _isRefreshing = false
+            // Retry original request with refreshed token
+            const retryHeaders: Record<string, string> = { "Content-Type": "application/json", Authorization: `Bearer ${rData.access_token}` }
+            const retryRes = await fetch(url.toString(), {
+              method,
+              headers: retryHeaders,
+              body: body ? JSON.stringify(body) : undefined,
+            })
+            if (retryRes.status === 204) return undefined as T
+            if (retryRes.ok) return retryRes.json()
+          }
+        } catch {
+          // Network error during refresh — fall through to redirect
+        }
+        _isRefreshing = false
+      }
+      localStorage.removeItem("token")
+      localStorage.removeItem("refresh_token")
+      document.cookie = "token=; max-age=0; path=/"
+      window.location.href = _BASE_PATH + "/login"
+    }
+{% endif %}
+    throw new ApiError(res.status, detail, fieldErrors)
+  }
+
+  if (res.status === 204) return undefined as T
+  return res.json()
+}
+
+export const api = {
+  get: <T>(path: string, params?: Record<string, string | undefined>) =>
+    request<T>("GET", path, undefined, params),
+  post: <T>(path: string, body: unknown) => request<T>("POST", path, body),
+  put: <T>(path: string, body: unknown) => request<T>("PUT", path, body),
+  patch: <T>(path: string, body: unknown) => request<T>("PATCH", path, body),
+  delete: <T>(path: string) => request<T>("DELETE", path),
+}

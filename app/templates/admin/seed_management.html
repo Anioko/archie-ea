@@ -1,0 +1,177 @@
+{% extends 'layouts/admin_base.html' %}
+{% from 'components/page_header.html' import page_header %}
+{% from 'components/metrics_card.html' import metrics_card %}
+
+{% block title %}Seed Management{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto" x-data="seedManager()">
+    <!-- Breadcrumb -->
+    <nav class="flex items-center gap-2 text-sm text-muted-foreground mb-4">
+        <a href="{{ url_for('admin.index') }}" class="hover:text-foreground transition-colors">Dashboard</a>
+        <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
+        <span class="text-foreground font-medium">Seed Management</span>
+    </nav>
+
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-6">
+        {{ page_header(
+        title='Seed Management',
+        description='View seed data status and trigger seeding operations'
+    ) }}
+        <button @click="seedAll()"
+                :disabled="seeding"
+                class="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors" aria-label="Action">
+            <i data-lucide="database" class="h-4 w-4" x-show="!seeding" x-cloak></i>
+            <i data-lucide="loader-2" class="h-4 w-4 animate-spin" x-show="seeding" x-cloak></i>
+            <span x-text="seeding ? 'Seeding...' : 'Seed All'"></span>
+        </button>
+    </div>
+
+    <!-- Summary Stats -->
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+        {{ metrics_card(title='Total Categories', value=categories|length, value_alpine='categories.length', icon='layers') }}
+        {{ metrics_card(title='Seeded', value=categories|selectattr("status", "equalto", "seeded")|list|length, value_alpine='seededCount', icon='check-circle-2') }}
+        {{ metrics_card(title='Empty', value=categories|selectattr("status", "equalto", "empty")|list|length, value_alpine='emptyCount', icon='circle-off') }}
+    </div>
+
+    <!-- Status Message -->
+    <template x-if="message">
+        <div class="mb-4 rounded-lg border px-4 py-3 text-sm"
+             :class="messageType === 'success' ? 'bg-success/10 text-success border-success/30' : 'bg-destructive/10 text-destructive border-destructive/30'">
+            <span x-text="message"></span>
+        </div>
+    </template>
+
+    <!-- Category Cards -->
+    <div class="space-y-3">
+        <template x-for="cat in categories" :key="cat.key">
+            <div data-slot="card" class="rounded-xl border bg-card shadow-sm p-5 hover:bg-muted/30 transition-colors">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-4 flex-1 min-w-0">
+                        <!-- Icon -->
+                        <div class="p-2.5 rounded-lg bg-primary/10 shrink-0">
+                            <i :data-lucide="cat.icon" class="h-5 w-5 text-primary"></i>
+                        </div>
+                        <!-- Info -->
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center gap-3 flex-wrap">
+                                <h3 class="font-semibold text-foreground" x-text="cat.name"></h3>
+                                <!-- Status badge -->
+                                <span x-show="cat.status === 'seeded'" x-cloak
+                                      class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-success/10 text-success border border-success/30">
+                                    Seeded
+                                </span>
+                                <span x-show="cat.status === 'empty'" x-cloak
+                                      class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive border border-destructive/30">
+                                    Empty
+                                </span>
+                                <span x-show="cat.status === 'error'" x-cloak
+                                      class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-warning/10 text-warning border border-warning/30">
+                                    Error
+                                </span>
+                            </div>
+                            <p class="text-sm text-muted-foreground mt-0.5" x-text="cat.description"></p>
+                            <div class="flex items-center gap-4 mt-1.5">
+                                <span class="text-xs text-muted-foreground">
+                                    <span x-text="cat.record_count.toLocaleString()"></span> records
+                                </span>
+                                <template x-if="cat.dependencies && cat.dependencies.length > 0">
+                                    <span class="text-xs text-muted-foreground">
+                                        Depends on: <span x-text="cat.dependencies.join(', ')"></span>
+                                    </span>
+                                </template>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Seed button -->
+                    <button @click="seedCategory(cat.key)"
+                            :disabled="seedingKey === cat.key"
+                            class="inline-flex items-center gap-2 rounded-md border border-input bg-background px-3 py-1.5 text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0 ml-4" aria-label="Action">
+                        <i data-lucide="play" class="h-3.5 w-3.5" x-show="seedingKey !== cat.key" x-cloak></i>
+                        <i data-lucide="loader-2" class="h-3.5 w-3.5 animate-spin" x-show="seedingKey === cat.key" x-cloak></i>
+                        <span x-text="seedingKey === cat.key ? 'Seeding...' : 'Seed'"></span>
+                    </button>
+                </div>
+            </div>
+        </template>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function seedManager() {
+    return {
+        categories: {{ categories | tojson | safe }},
+        seeding: false,
+        seedingKey: null,
+        message: null,
+        messageType: 'success',
+
+        get seededCount() {
+            return this.categories.filter(c => c.status === 'seeded').length;
+        },
+
+        get emptyCount() {
+            return this.categories.filter(c => c.status === 'empty').length;
+        },
+
+        async refreshStatus() {
+            try {
+                const resp = await fetch('{{ url_for("admin.seed_status") }}');
+                const data = await resp.json();
+                if (data.success) {
+                    this.categories = data.categories;
+                }
+            } catch (e) {
+                console.error('Failed to refresh seed status:', e);
+            }
+            this.$nextTick(() => lucide.createIcons());
+        },
+
+        async seedCategory(key) {
+            this.seedingKey = key;
+            this.message = null;
+            try {
+                const resp = await fetch(`{{ url_for("admin.seed", key="__KEY__") }}`.replace('__KEY__', key), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await resp.json();
+                this.message = data.message || (data.success ? 'Seeding complete' : 'Seeding failed');
+                this.messageType = data.success ? 'success' : 'error';
+                await this.refreshStatus();
+            } catch (e) {
+                this.message = 'Network error: ' + e.message;
+                this.messageType = 'error';
+            }
+            this.seedingKey = null;
+        },
+
+        async seedAll() {
+            this.seeding = true;
+            this.message = null;
+            try {
+                const resp = await fetch('{{ url_for("admin.seed_all") }}', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await resp.json();
+                this.message = data.message || (data.success ? 'All seeders completed' : 'Some seeders had errors');
+                this.messageType = data.success ? 'success' : 'error';
+                await this.refreshStatus();
+            } catch (e) {
+                this.message = 'Network error: ' + e.message;
+                this.messageType = 'error';
+            }
+            this.seeding = false;
+        },
+
+        init() {
+            this.$nextTick(() => lucide.createIcons());
+        }
+    };
+}
+</script>
+{% endblock %}

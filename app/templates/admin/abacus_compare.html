@@ -1,0 +1,296 @@
+{% extends "layouts/admin_base.html" %}
+
+{% block title %}Compare Capabilities{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <!-- Header -->
+    <div class="mb-6">
+        <a href="{{ url_for('abacus_consolidation.index') }}" class="text-primary hover:text-primary mb-2 inline-block">
+            ← Back to Consolidation
+        </a>
+        <h1 class="text-3xl font-bold text-foreground">Compare Capabilities</h1>
+    </div>
+
+    <!-- Side-by-Side Comparison -->
+    <div class="grid grid-cols-2 gap-6 mb-8">
+        <!-- Abacus Capability -->
+        <div class="bg-primary/5 rounded-lg shadow-lg p-6">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-xl font-bold text-primary">Abacus Capability</h2>
+                <span class="px-3 py-1 text-xs font-semibold text-primary bg-primary/20 rounded-full">
+                    SOURCE
+                </span>
+            </div>
+
+            <div class="space-y-4">
+                <div>
+                    <label class="text-sm font-medium text-foreground/80">Name</label>
+                    <div class="text-lg font-semibold text-foreground">{{ abacus_cap.name }}</div>
+                </div>
+
+                <div>
+                    <label class="text-sm font-medium text-foreground/80">Code</label>
+                    <div class="text-sm text-muted-foreground">{{ abacus_cap.code or 'None' }}</div>
+                </div>
+
+                <div>
+                    <label class="text-sm font-medium text-foreground/80">Description</label>
+                    <div class="text-sm text-muted-foreground">{{ abacus_cap.description or 'None' }}</div>
+                </div>
+
+                <div>
+                    <label class="text-sm font-medium text-foreground/80">Level</label>
+                    <div class="text-sm text-muted-foreground">
+                        Level {{ abacus_cap.level }}
+                        {% if abacus_cap.level == 1 %}(Strategic)
+                        {% elif abacus_cap.level == 2 %}(Tactical)
+                        {% else %}(Operational){% endif %}
+                    </div>
+                </div>
+
+                <div>
+                    <label class="text-sm font-medium text-foreground/80">Business Domain</label>
+                    <div class="text-sm text-muted-foreground">{{ abacus_cap.business_domain or 'None' }}</div>
+                </div>
+
+                <div>
+                    <label class="text-sm font-medium text-foreground/80">Child Capabilities</label>
+                    <div class="text-sm text-muted-foreground">{{ abacus_children|length }} children</div>
+                    {% if abacus_children %}
+                    <ul class="mt-2 space-y-1">
+                        {% for child in abacus_children[:5] %}
+                        <li class="text-xs text-muted-foreground">• {{ child.name }}</li>
+                        {% endfor %}
+                        {% if abacus_children|length > 5 %}
+                        <li class="text-xs text-muted-foreground">... and {{ abacus_children|length - 5 }} more</li>
+                        {% endif %}
+                    </ul>
+                    {% endif %}
+                </div>
+
+                <div>
+                    <label class="text-sm font-medium text-foreground/80">APQC Mappings</label>
+                    <div class="text-sm text-muted-foreground">{{ abacus_apqc|length }} mappings</div>
+                </div>
+
+                <div>
+                    <label class="text-sm font-medium text-foreground/80">Related Applications</label>
+                    <div class="text-sm text-muted-foreground">{{ abacus_apps|length }} applications</div>
+                    {% if abacus_apps %}
+                    <ul class="mt-2 space-y-1">
+                        {% for app in abacus_apps[:5] %}
+                        <li class="text-xs text-muted-foreground">• {{ app.name }}</li>
+                        {% endfor %}
+                    </ul>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Manual Capability -->
+        <div class="bg-success/5 rounded-lg shadow-lg p-6">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-xl font-bold text-success">Manual Capability</h2>
+                <span class="px-3 py-1 text-xs font-semibold text-success bg-success/20 rounded-full">
+                    TARGET
+                </span>
+            </div>
+
+            <div class="space-y-4">
+                <div>
+                    <label class="text-sm font-medium text-foreground/80">Name</label>
+                    <div class="text-lg font-semibold text-foreground">{{ manual_cap.name }}</div>
+                </div>
+
+                <div>
+                    <label class="text-sm font-medium text-foreground/80">Code</label>
+                    <div class="text-sm text-muted-foreground">{{ manual_cap.code or 'None' }}</div>
+                </div>
+
+                <div>
+                    <label class="text-sm font-medium text-foreground/80">Description</label>
+                    <div class="text-sm text-muted-foreground">{{ manual_cap.description or 'None' }}</div>
+                </div>
+
+                <div>
+                    <label class="text-sm font-medium text-foreground/80">Level</label>
+                    <div class="text-sm text-muted-foreground">
+                        Level {{ manual_cap.level }}
+                        {% if manual_cap.level == 1 %}(Strategic)
+                        {% elif manual_cap.level == 2 %}(Tactical)
+                        {% else %}(Operational){% endif %}
+                    </div>
+                </div>
+
+                <div>
+                    <label class="text-sm font-medium text-foreground/80">Business Domain</label>
+                    <div class="text-sm text-muted-foreground">{{ manual_cap.business_domain or 'None' }}</div>
+                </div>
+
+                <div>
+                    <label class="text-sm font-medium text-foreground/80">Child Capabilities</label>
+                    <div class="text-sm text-muted-foreground">{{ manual_children|length }} children</div>
+                    {% if manual_children %}
+                    <ul class="mt-2 space-y-1">
+                        {% for child in manual_children[:5] %}
+                        <li class="text-xs text-muted-foreground">• {{ child.name }}</li>
+                        {% endfor %}
+                        {% if manual_children|length > 5 %}
+                        <li class="text-xs text-muted-foreground">... and {{ manual_children|length - 5 }} more</li>
+                        {% endif %}
+                    </ul>
+                    {% endif %}
+                </div>
+
+                <div>
+                    <label class="text-sm font-medium text-foreground/80">APQC Mappings</label>
+                    <div class="text-sm text-muted-foreground">{{ manual_apqc|length }} mappings</div>
+                </div>
+
+                <div>
+                    <label class="text-sm font-medium text-foreground/80">Related Applications</label>
+                    <div class="text-sm text-muted-foreground">{{ manual_apps|length }} applications</div>
+                    {% if manual_apps %}
+                    <ul class="mt-2 space-y-1">
+                        {% for app in manual_apps[:5] %}
+                        <li class="text-xs text-muted-foreground">• {{ app.name }}</li>
+                        {% endfor %}
+                    </ul>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Merge Decision Panel -->
+    <div class="bg-background rounded-lg shadow-lg p-6" x-data="{
+        strategy: 'keep_target',
+        fieldRules: {}
+    }">
+        <h2 class="text-xl font-bold text-foreground mb-4">Merge Decision</h2>
+
+        <!-- Strategy Selection -->
+        <div class="mb-6">
+            <label class="block text-sm font-medium text-foreground/80 mb-2">Merge Strategy</label>
+            <div class="space-y-2">
+                <label class="flex items-center">
+                    <input type="radio" x-model="strategy" value="keep_target" class="mr-2" aria-label="Radio field">
+                    <span class="text-sm">
+                        <strong>Keep Manual</strong> - Migrate Abacus data into manual capability (recommended)
+                    </span>
+                </label>
+                <label class="flex items-center">
+                    <input type="radio" x-model="strategy" value="keep_source" class="mr-2" aria-label="Radio field">
+                    <span class="text-sm">
+                        <strong>Keep Abacus</strong> - Replace manual capability with Abacus data
+                    </span>
+                </label>
+                <label class="flex items-center">
+                    <input type="radio" x-model="strategy" value="merge_fields" class="mr-2" aria-label="Radio field">
+                    <span class="text-sm">
+                        <strong>Smart Merge</strong> - Field-level conflict resolution (advanced)
+                    </span>
+                </label>
+            </div>
+        </div>
+
+        <!-- Field-Level Rules (shown for smart merge) -->
+        <div x-show="strategy === 'merge_fields'" x-cloak class="mb-6">
+            <h3 class="text-sm font-medium text-foreground/80 mb-3">Field Resolution Rules</h3>
+            <div class="space-y-3">
+                <div class="flex items-center justify-between">
+                    <span class="text-sm text-muted-foreground">Description</span>
+                    <select class="px-3 py-1 border border-border rounded text-sm">
+                        <option value="keep_target">Keep Manual</option>
+                        <option value="keep_source">Keep Abacus</option>
+                        <option value="concat">Concatenate Both</option>
+                    </select>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span class="text-sm text-muted-foreground">Business Domain</span>
+                    <select class="px-3 py-1 border border-border rounded text-sm">
+                        <option value="keep_target">Keep Manual</option>
+                        <option value="keep_source">Keep Abacus</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- Preview -->
+        <div class="mb-6 p-4 bg-muted rounded-lg">
+            <h3 class="text-sm font-medium text-foreground/80 mb-2">What will happen:</h3>
+            <ul class="text-sm text-muted-foreground space-y-1">
+                <template x-if="strategy === 'keep_target'">
+                    <div>
+                        <li>✓ Manual capability ({{ manual_cap.name }}) will be kept</li>
+                        <li>✓ Abacus capability ({{ abacus_cap.name }}) will be deleted</li>
+                        <li>✓ {{ abacus_children|length }} child capabilities will be migrated</li>
+                        <li>✓ {{ abacus_apqc|length }} APQC mappings will be migrated (no duplicates)</li>
+                        <li>✓ {{ abacus_apps|length }} applications will be reassigned</li>
+                    </div>
+                </template>
+                <template x-if="strategy === 'keep_source'">
+                    <div>
+                        <li>✓ Abacus capability ({{ abacus_cap.name }}) will be kept</li>
+                        <li>✓ Manual capability ({{ manual_cap.name }}) will be deleted</li>
+                        <li>✓ {{ manual_children|length }} child capabilities will be migrated</li>
+                        <li>✓ {{ manual_apqc|length }} APQC mappings will be migrated</li>
+                        <li>✓ {{ manual_apps|length }} applications will be reassigned</li>
+                    </div>
+                </template>
+                <template x-if="strategy === 'merge_fields'">
+                    <div>
+                        <li>✓ Manual capability will be kept with merged fields</li>
+                        <li>✓ Fields will be merged based on rules above</li>
+                        <li>✓ All relationships will be migrated to manual capability</li>
+                    </div>
+                </template>
+            </ul>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="flex gap-3">
+            <button
+                @click="if ((await Platform.modal.confirm('Are you sure? This cannot be undone.'))) {
+                    fetch('{{ url_for("abacus_consolidation.merge_capabilities") }}', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''},
+                        body: JSON.stringify({
+                            source_id: {{ abacus_cap.id }},
+                            target_id: {{ manual_cap.id }},
+                            strategy: strategy,
+                            field_rules: fieldRules
+                        })
+                    })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.success) {
+                            window.location.href = '{{ url_for('abacus_consolidation.index') }}';
+                        } else {
+                            Platform.toast.error('Merge failed: ' + data.error);
+                        }
+                    });
+                }"
+                class="px-6 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary font-medium"
+             aria-label="Confirm">
+                Execute Merge
+            </button>
+
+            <a
+                href="{{ url_for('abacus_consolidation.index') }}"
+                class="px-6 py-2 bg-muted text-foreground/80 rounded-md hover:bg-muted font-medium"
+            >
+                Cancel
+            </a>
+
+            <button
+                @click="(function(){ const tmpl = '{{ url_for("abacus_consolidation.reject_merge", abacus_id=0, manual_id=0) }}'; fetch(tmpl.replace('/0/0','/{{ abacus_cap.id }}/{{ manual_cap.id }}'), { method:'POST', headers:{'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''} }).then(()=> window.location.href='{{ url_for("abacus_consolidation.index") }}'); })()"
+                class="ml-auto px-6 py-2 bg-destructive/10 text-destructive rounded-md hover:bg-destructive/20 font-medium"
+             aria-label="Action">
+                Mark as Not Duplicate
+            </button>
+        </div>
+    </div>
+</div>
+{% endblock %}

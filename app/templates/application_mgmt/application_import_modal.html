@@ -1,0 +1,313 @@
+<!-- Application Import Modal with Tabs -->
+<div id="application-import-modal"
+     data-modal-id="application-import-modal"
+     class="modal-root fixed inset-0 items-center justify-center p-4"
+     style="background:rgba(0,0,0,.5);backdrop-filter:blur(4px);z-index:1000;"
+     hidden
+     role="dialog"
+     aria-modal="true"
+     aria-labelledby="import-modal-title">
+  <div class="bg-card rounded-lg shadow-xl w-full max-w-6xl max-h-[90vh] flex flex-col">
+      <!-- Modal Header -->
+      <div class="flex items-center justify-between p-6 border-b">
+        <h2 id="import-modal-title" class="text-2xl font-semibold">Import Applications</h2>
+        <button data-modal-close="application-import-modal" class="text-muted-foreground hover:text-muted-foreground" aria-label="Close">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Tabs -->
+      <div class="border-b">
+        <div class="flex space-x-1 px-6">
+          <button @click="switchImportTab('excel')" id="tab-excel" class="tab-button active px-4 py-3 font-medium text-sm border-b-2 border-primary text-primary" aria-label="Upload Excel file tab">
+            Upload Excel
+          </button>
+          <button @click="switchImportTab('manual')" id="tab-manual" class="tab-button px-4 py-3 font-medium text-sm border-b-2 border-transparent text-muted-foreground hover:text-muted-foreground" aria-label="Manual entry tab">
+            Manual Entry
+          </button>
+          <button @click="switchImportTab('history')" id="tab-history" class="tab-button px-4 py-3 font-medium text-sm border-b-2 border-transparent text-muted-foreground hover:text-muted-foreground" aria-label="Import history tab">
+            Import History
+          </button>
+        </div>
+      </div>
+
+      <!-- Tab Content -->
+      <div class="flex-1 overflow-y-auto p-6">
+        <!-- Excel Upload Tab -->
+        <div id="tab-content-excel" class="tab-content">
+          <div class="space-y-4">
+            <div>
+              <label class="block text-sm font-medium text-muted-foreground mb-2">
+                Upload File (Excel, CSV, or JSON)
+              </label>
+              <div id="drop-zone" class="border-2 border-dashed border-input rounded-lg p-8 text-center transition-colors hover:border-primary"
+                   ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event)">
+                <label for="excel-file-input">Field</label>
+    <input type="file" id="excel-file-input" accept=".xlsx,.xls,.csv,.json" class="hidden" @change="handleExcelFileSelect(event)">
+                <button @click="document.getElementById('excel-file-input').click()" class="inline-flex items-center px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary" aria-label="Choose file to upload">
+                  <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                  </svg>
+                  Choose File
+                </button>
+                <p class="mt-2 text-sm text-muted-foreground" id="excel-file-name">No file selected</p>
+                <p class="mt-1 text-xs text-muted-foreground">Drag & drop or click to select. Supports: .xlsx, .xls, .csv, .json</p>
+              </div>
+            </div>
+
+            <div class="flex items-center justify-between">
+              <a href="/applications/download-template" class="text-sm text-primary hover:text-primary">
+                Download Template with Current Data
+              </a>
+              <div class="flex items-center gap-4">
+                <!-- AI Import Analysis Options -->
+                <div class="flex items-center gap-2">
+                  <input type="checkbox" id="auto-map-after-import" class="w-4 h-4 text-primary border-input rounded focus:ring-primary" @change="toggleAutoMapOptions()">
+                  <label for="auto-map-after-import" class="text-sm font-medium text-primary cursor-pointer">
+                    AI-Powered Import (Analyze & Map During Import)
+                  </label>
+                </div>
+                <span class="text-muted-foreground/50">|</span>
+                <label class="text-sm text-muted-foreground">Duplicate Mode:</label>
+                <select id="duplicate-mode" class="border border-input rounded-md px-3 py-1 text-sm">
+                  <option value="update">Merge (Update existing)</option>
+                  <option value="skip">Skip (Keep existing)</option>
+                  <option value="duplicate">Duplicate (Create new)</option>
+                </select>
+              </div>
+
+              <!-- AI Analysis Options (hidden by default) -->
+              <div id="auto-map-options" class="hidden ml-6 mt-2 p-3 bg-accent border border-primary/20 rounded space-y-1">
+                <p class="text-xs text-primary font-semibold mb-2">AI will analyze and map these during import:</p>
+                <div class="flex items-center">
+                  <input type="checkbox" id="import-map-capabilities" class="mr-2" checked>
+                  <label for="import-map-capabilities" class="text-sm text-muted-foreground">Map Business Capabilities (AI analyzes descriptions)</label>
+                </div>
+                <div class="flex items-center">
+                  <input type="checkbox" id="import-map-processes" class="mr-2" checked>
+                  <label for="import-map-processes" class="text-sm text-muted-foreground">Map APQC PCF Processes (AI classifies from data)</label>
+                </div>
+                <div class="flex items-center">
+                  <input type="checkbox" id="import-generate-archimate" class="mr-2" checked @change="toggleArchimateMode()">
+                  <label for="import-generate-archimate" class="text-sm text-muted-foreground">Generate ArchiMate 3.2 Elements (AI creates architecture)</label>
+                </div>
+
+                <!-- ArchiMate Generation Mode (shown when checkbox is checked) -->
+                <div id="archimate-mode-options" class="ml-6 mt-2 p-3 bg-primary/5 border border-primary/20 rounded space-y-2">
+                  <label class="text-xs text-primary font-semibold">Generation Detail Level:</label>
+                  <div class="space-y-2">
+                    <label class="flex items-start cursor-pointer hover:bg-primary/10 p-2 rounded">
+                      <input type="radio" name="archimate-mode" value="quick" class="mt-1 mr-3" aria-label="Quick generation mode">
+                      <span class="text-sm">
+                        <strong class="text-foreground">Quick</strong> <span class="text-muted-foreground">(50-100 elements, 5-10s)</span>
+                        <span class="text-xs text-muted-foreground block mt-0.5">Initial assessment, portfolio overview</span>
+                      </span>
+                    </label>
+                    <label class="flex items-start cursor-pointer hover:bg-primary/10 p-2 rounded bg-primary/5">
+                      <input type="radio" name="archimate-mode" value="standard" class="mt-1 mr-3" checked aria-label="Standard generation mode">
+                      <span class="text-sm">
+                        <strong class="text-foreground">Standard</strong> <span class="text-muted-foreground">(100-200 elements, 15-30s)</span>
+                        <span class="text-xs text-muted-foreground block mt-0.5">Detailed architecture, enterprise use - Recommended</span>
+                      </span>
+                    </label>
+                    <label class="flex items-start cursor-pointer hover:bg-primary/10 p-2 rounded">
+                      <input type="radio" name="archimate-mode" value="comprehensive" class="mt-1 mr-3" aria-label="Comprehensive generation mode">
+                      <span class="text-sm">
+                        <strong class="text-foreground">Comprehensive</strong> <span class="text-muted-foreground">(200-300 elements, 30-60s)</span>
+                        <span class="text-xs text-muted-foreground block mt-0.5">Complex systems, full documentation</span>
+                      </span>
+                    </label>
+                  </div>
+                </div>
+
+                <div class="flex items-center">
+                  <input type="checkbox" id="import-clone-vendor" class="mr-2">
+                  <label for="import-clone-vendor" class="text-sm text-muted-foreground">Clone Vendor ArchiMate Templates (AI matches vendors)</label>
+                </div>
+              </div>
+            </div>
+
+            <!-- Preview Table (shown after file selection) -->
+            <div id="excel-preview" class="hidden">
+              <h3 class="text-lg font-medium mb-4">Preview (First 10 rows)</h3>
+              <div class="overflow-x-auto border rounded">
+                <table class="min-w-full divide-y divide-border" id="excel-preview-table">
+                  <thead class="bg-muted/50">
+                    <!-- Headers will be populated by JavaScript -->
+                  </thead>
+                  <tbody class="bg-card divide-y divide-border">
+                    <!-- Rows will be populated by JavaScript -->
+                  </tbody>
+                </table>
+              </div>
+              <div class="mt-4">
+                <!-- Analysis Options -->
+                <div class="mb-4 p-3 bg-primary/5 border border-primary/20 rounded-lg">
+                  <p class="text-sm text-primary font-medium mb-2">Choose Analysis Type:</p>
+                  <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
+                    <button @click="analyzeImportFile('streaming')" class="px-3 py-2 bg-success text-primary-foreground rounded-md text-sm font-medium hover:bg-success flex items-center justify-center gap-2" aria-label="Run streaming analysis">
+                      <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+                      <div class="text-left">
+                        <div class="font-medium">Streaming Analysis</div>
+                        <div class="text-xs opacity-90">Real-time progress</div>
+                      </div>
+                    </button>
+                    <button @click="analyzeImportFile('standard')" class="px-3 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary flex items-center justify-center gap-2" aria-label="Run standard analysis">
+                      <i data-lucide="bar-chart-3" class="w-4 h-4"></i>
+                      <div class="text-left">
+                        <div class="font-medium">Standard Analysis</div>
+                        <div class="text-xs opacity-90">Simple & reliable</div>
+                      </div>
+                    </button>
+                    <button @click="analyzeImportFile('direct')" class="px-3 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary flex items-center justify-center gap-2" aria-label="Run direct import">
+                      <span>⚡</span>
+                      <div class="text-left">
+                        <div class="font-medium">Direct Import</div>
+                        <div class="text-xs opacity-90">Skip analysis</div>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="flex justify-between items-center gap-2">
+                  <div class="flex gap-2">
+                    <button @click="closeApplicationImportModal()" class="px-4 py-2 border border-input rounded-md text-sm font-medium text-muted-foreground hover:bg-accent" aria-label="Cancel import">
+                      Cancel
+                    </button>
+                  </div>
+                  <button id="import-applications-btn" @click="processExcelImport()" class="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary hidden" aria-label="Import applications">
+                    Import Applications
+                  </button>
+                </div>
+              </div>
+
+              <!-- Import Analysis Results -->
+              <div id="import-analysis" class="hidden mt-4 p-4 bg-muted/50 border rounded-lg">
+                <h4 class="font-medium text-foreground mb-3">Import Analysis Results</h4>
+                <div id="analysis-content" class="space-y-2 text-sm">
+                  <!-- Analysis results will be populated here -->
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Manual Entry Tab -->
+        <div id="tab-content-manual" class="tab-content hidden">
+          <div class="space-y-4">
+            <div class="flex justify-between items-center">
+              <p class="text-sm text-muted-foreground">Add applications manually. You can copy/paste from Excel.</p>
+              <div class="flex items-center gap-4">
+                <!-- Post-Import Auto-Mapping Options (Manual) -->
+                <div class="flex items-center gap-2">
+                  <input type="checkbox" id="auto-map-after-import-manual" class="w-4 h-4 text-primary border-input rounded focus:ring-primary" @change="toggleAutoMapOptionsManual()">
+                  <label for="auto-map-after-import-manual" class="text-sm font-medium text-primary cursor-pointer">
+                    Auto-map after import (Capabilities, Processes, ArchiMate)
+                  </label>
+                </div>
+                <span class="text-muted-foreground/50">|</span>
+                <label class="text-sm text-muted-foreground">Duplicate Mode:</label>
+                <select id="duplicate-mode-manual" class="border border-input rounded-md px-3 py-1 text-sm">
+                  <option value="update">Merge (Update existing)</option>
+                  <option value="skip">Skip (Keep existing)</option>
+                  <option value="duplicate">Duplicate (Create new)</option>
+                </select>
+                <button @click="addManualEntryRow()" class="px-4 py-2 bg-success text-primary-foreground rounded-md text-sm font-medium hover:bg-success" aria-label="Add manual entry row">
+                  Add Row
+                </button>
+              </div>
+
+              <!-- Auto-Mapping Options (Manual - hidden by default) -->
+              <div id="auto-map-options-manual" class="hidden ml-6 mt-2 p-3 bg-accent border border-primary/20 rounded space-y-1">
+                <div class="flex items-center">
+                  <input type="checkbox" id="import-map-capabilities-manual" class="mr-2" checked>
+                  <label for="import-map-capabilities-manual" class="text-sm text-muted-foreground">Business Capabilities (AI-powered)</label>
+                </div>
+                <div class="flex items-center">
+                  <input type="checkbox" id="import-map-processes-manual" class="mr-2" checked>
+                  <label for="import-map-processes-manual" class="text-sm text-muted-foreground">APQC PCF Processes (from imported codes)</label>
+                </div>
+                <div class="flex items-center">
+                  <input type="checkbox" id="import-generate-archimate-manual" class="mr-2">
+                  <label for="import-generate-archimate-manual" class="text-sm text-muted-foreground">Generate ArchiMate Elements</label>
+                </div>
+                <div class="flex items-center">
+                  <input type="checkbox" id="import-clone-vendor-manual" class="mr-2">
+                  <label for="import-clone-vendor-manual" class="text-sm text-muted-foreground">Clone Vendor ArchiMate Templates</label>
+                </div>
+              </div>
+            </div>
+
+            <div class="overflow-x-auto border rounded">
+              <table class="min-w-full divide-y divide-border" id="manual-entry-table">
+                <thead class="bg-muted/50">
+                  <tr>
+                    <th class="px-3 py-3 text-left text-xs font-medium text-muted-foreground uppercase">APP ID</th>
+                    <th class="px-3 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Name *</th>
+                    <th class="px-3 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Type</th>
+                    <th class="px-3 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Status</th>
+                    <th class="px-3 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Actions</th>
+                  </tr>
+                </thead>
+                <tbody class="bg-card divide-y divide-border" id="manual-entry-tbody">
+                  <!-- Rows will be added dynamically -->
+                </tbody>
+              </table>
+            </div>
+
+            <div class="flex justify-end gap-2">
+              <button @click="closeApplicationImportModal()" class="px-4 py-2 border border-input rounded-md text-sm font-medium text-muted-foreground hover:bg-accent" aria-label="Cancel manual entry">
+                Cancel
+              </button>
+              <button @click="processManualImport()" class="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary" aria-label="Import manual entries">
+                Import Applications
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Import History Tab -->
+        <div id="tab-content-history" class="tab-content hidden">
+          <div class="space-y-4">
+            <h3 class="text-lg font-medium">Import History</h3>
+            <div class="overflow-x-auto border rounded">
+              <table class="min-w-full divide-y divide-border">
+                <thead class="bg-muted/50">
+                  <tr>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Date</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Imported By</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Source</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">File</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Created</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Updated</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Failed</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Status</th>
+                  </tr>
+                </thead>
+                <tbody class="bg-card divide-y divide-border" id="import-history-tbody">
+                  <!-- Will be populated by JavaScript -->
+                </tbody>
+              </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Include APQC Tree Browser Component -->
+{% include 'components/apqc_tree_browser.html' %}
+
+<!-- Include Review Queue Panel Component -->
+{% include 'components/review_queue_panel.html' %}
+
+<script>
+  window.__APP_CONFIG__ = window.__APP_CONFIG__ || {};
+  Object.assign(window.__APP_CONFIG__, {
+    csrfToken: '{{ csrf_token() }}',
+  });
+</script>
+<script src="{{ url_for('static', filename='js/application_mgmt/application_import.js') }}"></script>

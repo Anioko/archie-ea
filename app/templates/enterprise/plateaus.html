@@ -1,0 +1,62 @@
+{% extends 'layouts/admin_base.html' %}
+{% from 'components/page_header.html' import page_header %}
+
+{% block title %}Implementation Plateaus{% endblock %}
+
+{% block breadcrumb %}
+{% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
+{{ breadcrumb_nav(items=[
+    {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
+    {'text': 'Enterprise Architecture'},
+    {'text': 'Enterprise', 'current': true}
+]) }}
+{% endblock %}
+
+{% block content %}
+<div class="flex flex-col space-y-8 animate-in fade-in duration-500">
+    <!-- Header -->
+    <div class="flex items-center justify-between">
+        {{ page_header(
+        title='Implementation Plateaus',
+        description='Define architecture plateaus representing stable states in the transition.'
+    ) }}
+        <button class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2" aria-label="Action">
+            <i data-lucide="plus" class="h-4 w-4 mr-2" aria-hidden="true"></i>
+            New Plateau
+        </button>
+    </div>
+
+    <!-- Plateaus Grid -->
+    <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {% for plateau in plateaus|default([]) %}
+        <div data-slot="card" class="rounded-xl border bg-card p-6 hover:shadow-md transition-shadow">
+            <div class="flex items-start justify-between mb-4">
+                <div class="p-2 rounded-lg bg-primary/10">
+                    <i data-lucide="layers" class="h-5 w-5 text-primary" aria-hidden="true"></i>
+                </div>
+                <span class="px-2 py-1 text-xs rounded-full
+                    {% if plateau.status == 'Active' %}bg-success/20 text-success
+                    {% elif plateau.status == 'Planned' %}bg-primary/20 text-primary
+                    {% else %}bg-muted text-muted-foreground{% endif %}">
+                    {{ plateau.status|default('Draft') }}
+                </span>
+            </div>
+            <h3 class="font-semibold mb-2">{{ plateau.name|default('Unnamed Plateau') }}</h3>
+            <p class="text-sm text-muted-foreground mb-4">{{ plateau.description|default('No description')|truncate(100) }}</p>
+            <div class="flex items-center justify-between text-sm">
+                <span class="text-muted-foreground">Target: {{ plateau.target_date|default('TBD') }}</span>
+                <button class="p-1 hover:bg-muted rounded" aria-label="Action">
+                    <i data-lucide="arrow-right" class="h-4 w-4" aria-hidden="true"></i>
+                </button>
+            </div>
+        </div>
+        {% else %}
+        <div data-slot="card" class="col-span-full p-12 text-center text-muted-foreground rounded-xl border bg-card">
+            <i data-lucide="layers" class="h-12 w-12 mx-auto mb-4 opacity-50" aria-hidden="true"></i>
+            <p>No plateaus defined yet</p>
+            <p class="text-sm">Create your first plateau to start planning transitions</p>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

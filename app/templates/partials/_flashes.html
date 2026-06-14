@@ -1,0 +1,69 @@
+{# Flash messages with shadcn Alert component styling #}
+
+{% macro render_flashes(category) %}
+    {% with msgs = get_flashed_messages(category_filter=[category]) %}
+        {% for msg in msgs %}
+            {% if category == 'error' %}
+                {% set alert_class = 'border-destructive/50 text-destructive dark:border-destructive [&>svg]:text-destructive' %}
+                {% set bg_class = 'bg-destructive/10' %}
+                {% set icon_name = 'alert-circle' %}
+            {% elif category == 'warning' %}
+                {% set alert_class = 'border-warning/50 text-warning dark:border-warning [&>svg]:text-warning' %}
+                {% set bg_class = 'bg-warning/5 dark:bg-warning/20' %}
+                {% set icon_name = 'alert-triangle' %}
+            {% elif category == 'success' %}
+                {% set alert_class = 'border-success/50 text-success dark:border-success [&>svg]:text-success' %}
+                {% set bg_class = 'bg-success/5 dark:bg-success/20' %}
+                {% set icon_name = 'check-circle' %}
+            {% else %}
+                {% set alert_class = 'border-primary/50 text-primary dark:border-primary [&>svg]:text-primary' %}
+                {% set bg_class = 'bg-primary/5 dark:bg-primary/20' %}
+                {% set icon_name = 'info' %}
+            {% endif %}
+            
+            <div 
+                x-data="{ flashVisible: true, timeout: null }" 
+                x-init="timeout = setTimeout(() => { flashVisible = false }, 5000)"
+                x-show="flashVisible" x-cloak
+                x-transition:enter="transition ease-out duration-200"
+                x-transition:enter-start="opacity-0 transform scale-95"
+                x-transition:enter-end="opacity-100 transform scale-100"
+                x-transition:leave="transition ease-in duration-150"
+                x-transition:leave-start="opacity-100 transform scale-100"
+                x-transition:leave-end="opacity-0 transform scale-95"
+                class="relative w-full rounded-lg border {{ alert_class }} {{ bg_class }} p-4 mb-4 shadow-sm"
+                role="alert"
+            >
+                <div class="flex items-start gap-3">
+                    <i data-lucide="{{ icon_name }}" class="flex-shrink-0 w-5 h-5"></i>
+                    <div class="flex-1 text-sm leading-relaxed [&_p]:leading-relaxed">
+                        {{ msg }}
+                    </div>
+                    <button 
+                        @click="clearTimeout(timeout); flashVisible = false"
+                        class="flex-shrink-0 rounded-md p-1 hover:bg-black/5 dark:hover:bg-background/10 transition-colors"
+                        aria-label="Close alert"
+                    >
+                        <i data-lucide="x" class="w-4 h-4"></i>
+                    </button>
+                </div>
+            </div>
+        {% endfor %}
+    {% endwith %}
+{% endmacro %}
+
+<div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="flashes mt-6">
+        {{ render_flashes('error') }}
+        {{ render_flashes('warning') }}
+        {{ render_flashes('info') }}
+        {{ render_flashes('success') }}
+    </div>
+</div>
+
+<script>
+  // Initialize Lucide icons for flash messages
+  if (typeof lucide !== 'undefined') {
+    lucide.createIcons();
+  }
+</script>

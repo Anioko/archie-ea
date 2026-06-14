@@ -1,0 +1,163 @@
+{# Step 4: Solution Options (TOGAF Phase E) #}
+<div class="space-y-6 px-4">
+  <div class="flex items-center justify-between">
+    <div>
+      <h2 class="text-lg font-semibold text-foreground">Solution Options</h2>
+      <p class="text-sm text-muted-foreground mt-1">TOGAF Phase E — Generate and compare solution alternatives with MCDA scoring.</p>
+    </div>
+    <div class="flex items-center gap-2">
+      <button @click="addManualOption()" type="button"
+        class="inline-flex items-center gap-2 h-9 px-4 rounded-md text-sm font-medium border border-input bg-background hover:bg-accent">
+        <i data-lucide="plus" class="h-4 w-4"></i> Add Option
+      </button>
+      <button @click="generateOptions()" type="button"
+        :disabled="gaps.length === 0 || optionsLoading"
+        class="inline-flex items-center gap-2 h-9 px-4 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:pointer-events-none">
+        <i data-lucide="sparkles" class="h-4 w-4" x-show="!optionsLoading" x-cloak></i>
+        <i data-lucide="loader-2" class="h-4 w-4 animate-spin" x-show="optionsLoading" x-cloak></i>
+        <span x-text="optionsLoading ? 'Generating...' : 'Generate Options'"></span>
+      </button>
+    </div>
+  </div>
+
+  {# Loading state #}
+  <div x-show="optionsLoading" x-cloak class="text-center py-8">
+    <i data-lucide="loader-2" class="h-8 w-8 animate-spin text-muted-foreground mx-auto"></i>
+    <p class="text-sm text-muted-foreground mt-2">Generating solution options...</p>
+  </div>
+
+  {# ENH-011: Options grid with lazy-load for large lists #}
+  <div x-show="options.length > 0 && !optionsLoading" x-cloak x-data="{ optionsVisible: 10 }">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <template x-for="(opt, optIdx) in options" :key="opt.id || opt.name">
+        <div x-show="optIdx < optionsVisible" x-cloak>
+        <div class="option-card rounded-lg border border-border p-4"
+          tabindex="0" role="button"
+          :class="{'selected': selectedOptionId === (opt.id || opt.name)}"
+          @click="selectOption(opt.id || opt.name)"
+          @keydown.enter.prevent="selectOption(opt.id || opt.name)"
+          @keydown.space.prevent="selectOption(opt.id || opt.name)"
+          :aria-pressed="selectedOptionId === (opt.id || opt.name) ? 'true' : 'false'">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="font-medium text-foreground" x-text="opt.name"></h3>
+            <div class="flex items-center gap-1">
+              <span x-show="opt.from_catalog" x-cloak
+                class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30">
+                From catalog
+              </span>
+              {# ENH-006: AI Generated vs human-entered indicator #}
+              <span x-show="opt.ai_generated" x-cloak
+                class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-500/10 text-primary border border-purple-500/30">
+                <i data-lucide="sparkles" class="h-3 w-3 mr-0.5"></i> AI Generated
+              </span>
+              <span x-show="!opt.ai_generated && !opt.from_catalog" x-cloak
+                class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-500/10 text-slate-600 border border-slate-500/30">
+                Manual
+              </span>
+            </div>
+          </div>
+
+          <p class="text-sm text-muted-foreground mb-3" x-text="opt.description"></p>
+
+          {# ENH-007: Vendor reference with validation #}
+          <div class="mb-3" x-show="opt.vendor_name || !opt.ai_generated" x-cloak>
+            <div class="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
+              <i data-lucide="building-2" class="h-3 w-3"></i>
+              <span x-show="opt.vendor_name" x-cloak x-text="opt.vendor_name" class="font-medium"></span>
+              <span x-show="!opt.vendor_name && !opt.ai_generated" x-cloak class="italic">No vendor specified</span>
+              <span x-show="opt.vendor_validated" x-cloak
+                class="inline-flex items-center px-1 py-0.5 rounded text-[10px] font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30">
+                <i data-lucide="check" class="h-2.5 w-2.5 mr-0.5"></i> Verified
+              </span>
+              <span x-show="opt.vendor_name && !opt.vendor_validated" x-cloak
+                class="inline-flex items-center px-1 py-0.5 rounded text-[10px] font-medium bg-amber-500/10 text-amber-600 border border-amber-500/30">
+                <i data-lucide="alert-triangle" class="h-2.5 w-2.5 mr-0.5"></i> Unverified
+              </span>
+            </div>
+          </div>
+
+          {# Score bars #}
+          <div class="space-y-2 mb-3">
+            <template x-for="score in [
+              {label: 'Strategic Fit', value: opt.strategic_fit, color: 'bg-primary'},
+              {label: 'Risk Score', value: opt.risk_score, color: 'bg-amber-500'},
+              {label: 'Coverage', value: opt.coverage, color: 'bg-emerald-500'}
+            ]" :key="score.label">
+              <div>
+                <div class="flex justify-between text-xs mb-1">
+                  <span class="text-muted-foreground" x-text="score.label"></span>
+                  <span class="font-medium" x-text="score.value + '%'"></span>
+                </div>
+                <div class="score-bar">
+                  <div class="score-fill" :class="score.color" :style="'width:' + score.value + '%'"></div>
+                </div>
+              </div>
+            </template>
+          </div>
+
+          {# Cost + timeline #}
+          <div class="flex gap-4 text-xs text-muted-foreground mb-3">
+            <span><i data-lucide="dollar-sign" class="h-3 w-3 inline"></i> <span x-text="opt.total_cost || 'TBD'"></span></span>
+            <span><i data-lucide="clock" class="h-3 w-3 inline"></i> <span x-text="opt.timeline || 'TBD'"></span></span>
+          </div>
+
+          {# Pros/Cons #}
+          <div class="space-y-1" x-show="(opt.pros && opt.pros.length) || (opt.cons && opt.cons.length)" x-cloak>
+            <template x-for="pro in (opt.pros || [])" :key="pro">
+              <div class="pro-item text-xs px-2 py-1 rounded">+ <span x-text="pro"></span></div>
+            </template>
+            <template x-for="con in (opt.cons || [])" :key="con">
+              <div class="con-item text-xs px-2 py-1 rounded">- <span x-text="con"></span></div>
+            </template>
+          </div>
+
+          {# Select indicator #}
+          <div class="mt-3 text-center">
+            <span x-show="selectedOptionId === (opt.id || opt.name)" x-cloak
+              class="inline-flex items-center gap-1 text-xs font-medium text-primary">
+              <i data-lucide="check-circle-2" class="h-4 w-4"></i> Selected
+            </span>
+          </div>
+        </div>
+        </div>{# /ENH-011 visibility wrapper #}
+      </template>
+    </div>
+
+    {# ENH-011: Show More / Show Less button for large option lists #}
+    <div x-show="options.length > 10" x-cloak class="flex justify-center mt-4">
+      <button @click="optionsVisible = optionsVisible >= options.length ? 10 : options.length" type="button"
+        class="inline-flex items-center gap-2 h-9 px-4 rounded-md text-sm font-medium border border-input bg-background hover:bg-accent">
+        <i data-lucide="chevrons-down" class="h-4 w-4" x-show="optionsVisible < options.length" x-cloak></i>
+        <i data-lucide="chevrons-up" class="h-4 w-4" x-show="optionsVisible >= options.length" x-cloak></i>
+        <span x-text="optionsVisible < options.length ? 'Show All (' + options.length + ')' : 'Show Less'"></span>
+      </button>
+    </div>
+
+    {# ENH-007: Vendor validation warning #}
+    <div x-show="optionVendorWarning" x-cloak class="mt-3 p-3 rounded-md border border-amber-500/30 bg-amber-500/5 text-sm text-amber-700 flex items-start gap-2">
+      <i data-lucide="alert-triangle" class="h-4 w-4 shrink-0 mt-0.5"></i>
+      <span x-text="optionVendorWarning"></span>
+    </div>
+
+    {# Compare button #}
+    <div class="flex justify-center mt-4" x-show="options.length >= 2" x-cloak>
+      <button @click="compareOptions()" type="button"
+        :disabled="options.length < 2"
+        data-testid="compare-options-btn"
+        class="inline-flex items-center gap-2 h-9 px-4 rounded-md text-sm font-medium border border-input bg-background hover:bg-accent disabled:opacity-50 disabled:pointer-events-none">
+        <i data-lucide="columns" class="h-4 w-4"></i> Compare
+      </button>
+    </div>
+  </div>
+
+  {# Empty state #}
+  <div x-show="options.length === 0 && !optionsLoading" x-cloak
+    class="rounded-md border border-dashed border-border p-8 text-center">
+    <i data-lucide="lightbulb" class="h-8 w-8 text-muted-foreground mx-auto mb-2"></i>
+    <p class="text-sm text-muted-foreground">No solution options yet.</p>
+    <p class="text-xs text-muted-foreground mt-1">Complete gap analysis in Step 3, then generate options or add manually.</p>
+  </div>
+
+  {# Compare Options Modal #}
+  {% include 'architecture_assistant/partials/_compare_modal.html' %}
+</div>

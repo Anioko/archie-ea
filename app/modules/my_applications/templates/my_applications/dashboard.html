@@ -1,0 +1,163 @@
+{% extends 'layouts/admin_base.html' %}
+{% block title %}My Applications{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-6">
+    <div class="flex items-center justify-between mb-6">
+        <div>
+            <h1 class="text-2xl font-bold">My Applications Dashboard</h1>
+            <p class="text-muted-foreground">Overview of applications you own and manage</p>
+        </div>
+        <a href="{{ url_for('my_applications.app_list') }}"
+           class="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors">
+            <i data-lucide="list" class="w-4 h-4"></i>
+            View All
+        </a>
+    </div>
+
+    <!-- Summary Cards -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <div class="bg-card border border-border rounded-lg p-4">
+            <div class="flex items-center gap-3 mb-2">
+                <div class="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
+                    <i data-lucide="package" class="w-5 h-5 text-primary"></i>
+                </div>
+                <div class="text-sm text-muted-foreground">Total Apps</div>
+            </div>
+            <div class="text-3xl font-bold">{{ ownership_summary.total }}</div>
+        </div>
+        <div class="bg-card border border-green-500/50 rounded-lg p-4">
+            <div class="flex items-center gap-3 mb-2">
+                <div class="w-10 h-10 bg-green-500/10 rounded-lg flex items-center justify-center">
+                    <i data-lucide="check-circle" class="w-5 h-5 text-green-600"></i>
+                </div>
+                <div class="text-sm text-muted-foreground">Healthy</div>
+            </div>
+            <div class="text-3xl font-bold text-green-600">{{ health_summary.healthy }}</div>
+        </div>
+        <div class="bg-card border border-amber-500/50 rounded-lg p-4">
+            <div class="flex items-center gap-3 mb-2">
+                <div class="w-10 h-10 bg-amber-500/10 rounded-lg flex items-center justify-center">
+                    <i data-lucide="alert-triangle" class="w-5 h-5 text-amber-600"></i>
+                </div>
+                <div class="text-sm text-muted-foreground">At Risk</div>
+            </div>
+            <div class="text-3xl font-bold text-amber-600">{{ health_summary.at_risk }}</div>
+        </div>
+        <div class="bg-card border border-red-500/50 rounded-lg p-4">
+            <div class="flex items-center gap-3 mb-2">
+                <div class="w-10 h-10 bg-red-500/10 rounded-lg flex items-center justify-center">
+                    <i data-lucide="alert-circle" class="w-5 h-5 text-red-600"></i>
+                </div>
+                <div class="text-sm text-muted-foreground">Critical</div>
+            </div>
+            <div class="text-3xl font-bold text-red-600">{{ health_summary.critical }}</div>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- My Applications -->
+        <div class="bg-card border border-border rounded-lg p-6">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-lg font-semibold">My Applications</h2>
+                <a href="{{ url_for('my_applications.app_list') }}" class="text-sm text-primary hover:underline">View all</a>
+            </div>
+            {% if recent_apps %}
+            <div class="space-y-3">
+                {% for item in recent_apps %}
+                <div class="flex items-center justify-between p-3 bg-muted/30 rounded-lg hover:bg-muted/50 transition-colors">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
+                            <i data-lucide="package" class="w-5 h-5 text-primary"></i>
+                        </div>
+                        <div>
+                            <div class="font-medium">{{ item.application.name }}</div>
+                            <div class="text-sm text-muted-foreground">{{ item.ownership_type or 'Owner' }}</div>
+                        </div>
+                    </div>
+                    <a href="{{ url_for('my_applications.app_detail', app_id=item.application.id) }}"
+                       class="text-primary hover:underline text-sm">View</a>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="text-center py-8">
+                <div class="w-12 h-12 mx-auto mb-3 bg-muted rounded-full flex items-center justify-center">
+                    <i data-lucide="package" class="w-6 h-6 text-muted-foreground"></i>
+                </div>
+                <p class="text-muted-foreground">No applications assigned yet</p>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Roadmap Impact -->
+        <div class="bg-card border border-border rounded-lg p-6">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-lg font-semibold">Roadmap Impacts</h2>
+                <a href="{{ url_for('my_applications.roadmap_impact') }}" class="text-sm text-primary hover:underline">View all</a>
+            </div>
+            {% if roadmap_impacts %}
+            <div class="space-y-3">
+                {% for impact in roadmap_impacts %}
+                <div class="flex items-start gap-3 p-3 bg-muted/30 rounded-lg">
+                    <div class="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0
+                        {% if impact.impact_type == 'sunset' %}bg-amber-100 text-amber-600
+                        {% else %}bg-blue-100 text-blue-600{% endif %}">
+                        <i data-lucide="{% if impact.impact_type == 'sunset' %}sunset{% else %}calendar{% endif %}" class="w-4 h-4"></i>
+                    </div>
+                    <div>
+                        <div class="font-medium">{{ impact.application.name }}</div>
+                        <div class="text-sm text-muted-foreground">{{ impact.description }}</div>
+                        {% if impact.date %}
+                        <div class="text-xs text-muted-foreground mt-1">{{ impact.date.strftime('%d %b %Y') }}</div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="text-center py-8">
+                <div class="w-12 h-12 mx-auto mb-3 bg-green-100 rounded-full flex items-center justify-center">
+                    <i data-lucide="check-circle" class="w-6 h-6 text-green-600"></i>
+                </div>
+                <p class="text-muted-foreground">No upcoming roadmap impacts</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
+        <a href="{{ url_for('my_applications.app_list') }}"
+           class="bg-card border border-border rounded-lg p-4 hover:border-primary/50 transition-colors group">
+            <div class="flex items-center gap-3">
+                <i data-lucide="list" class="w-5 h-5 text-muted-foreground group-hover:text-primary"></i>
+                <span class="font-medium">My Portfolio</span>
+            </div>
+        </a>
+        <a href="{{ url_for('my_applications.health_overview') }}"
+           class="bg-card border border-border rounded-lg p-4 hover:border-primary/50 transition-colors group">
+            <div class="flex items-center gap-3">
+                <i data-lucide="heart-pulse" class="w-5 h-5 text-muted-foreground group-hover:text-primary"></i>
+                <span class="font-medium">Health Overview</span>
+            </div>
+        </a>
+        <a href="{{ url_for('my_applications.roadmap_impact') }}"
+           class="bg-card border border-border rounded-lg p-4 hover:border-primary/50 transition-colors group">
+            <div class="flex items-center gap-3">
+                <i data-lucide="map" class="w-5 h-5 text-muted-foreground group-hover:text-primary"></i>
+                <span class="font-medium">Roadmap Impact</span>
+            </div>
+        </a>
+        <a href="{{ url_for('unified_applications.application_list') }}"
+           class="bg-card border border-border rounded-lg p-4 hover:border-primary/50 transition-colors group">
+            <div class="flex items-center gap-3">
+                <i data-lucide="layers" class="w-5 h-5 text-muted-foreground group-hover:text-primary"></i>
+                <span class="font-medium">All Applications</span>
+            </div>
+        </a>
+    </div>
+</div>
+
+<script>if (typeof lucide !== 'undefined') lucide.createIcons();</script>
+{% endblock %}

@@ -1,0 +1,52 @@
+{# Form field group macro for application details #}
+
+{% macro form_field_group(fields, columns=2, mode='view') %}
+<div class="form-field-group grid gap-4 mb-4" style="grid-template-columns: repeat({{ columns }}, 1fr);">
+    {% for field in fields %}
+    <div class="field-group-item">
+        {% if mode == 'view' or (mode == 'edit' and field.get('readonly', false)) %}
+        <div class="field-view">
+            <label class="block text-sm font-medium text-muted-foreground mb-1">
+                {{ field.label }}
+            </label>
+            <div class="p-2 bg-muted border border-border rounded-md text-foreground">
+                {% if field.type == 'select' %}
+                    {% set options = field.get('options', []) %}
+                    {% for opt_val, opt_label in options %}
+                        {% if opt_val == field.value %}{{ opt_label }}{% endif %}
+                    {% endfor %}
+                {% elif field.type == 'textarea' %}
+                    <pre class="m-0 whitespace-pre-wrap font-sans">{{ field.value or '-' }}</pre>
+                {% else %}
+                    {{ field.value or '-' }}
+                {% endif %}
+            </div>
+        </div>
+        {% else %}
+        <div class="field-edit">
+            <label for="{{ field.id }}" class="block text-sm font-medium text-muted-foreground mb-1">
+                {{ field.label }}
+            </label>
+            {% if field.type == 'select' %}
+            <select id="{{ field.id }}" name="{{ field.name }}"
+                class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                {% for opt_val, opt_label in field.get('options', []) %}
+                <option value="{{ opt_val }}" {% if opt_val == field.value %}selected{% endif %}>{{ opt_label }}</option>
+                {% endfor %}
+            </select>
+            {% elif field.type == 'textarea' %}
+            <textarea id="{{ field.id }}" name="{{ field.name }}" rows="{{ field.get('rows', 3) }}"
+                class="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-vertical focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{{ field.value or '' }}</textarea>
+            {% elif field.type == 'number' %}
+            <input type="number" id="{{ field.id }}" name="{{ field.name }}" value="{{ field.value or '' }}"
+                class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            {% else %}
+            <input type="text" id="{{ field.id }}" name="{{ field.name }}" value="{{ field.value or '' }}"
+                class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+{% endmacro %}

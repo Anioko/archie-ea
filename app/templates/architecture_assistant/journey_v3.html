@@ -1,0 +1,567 @@
+{# journey_v3.html — shadcn onboarding-flow skin for Architecture Journey
+   Visual redesign of journey_v2.html matching https://shadcnexamples.com/onboarding-flow
+   Same Alpine.js component (journeyV2Flow), same API endpoints, same step partials.
+
+   Changes from v2:
+   - Centered card layout with stepper inside the card header
+   - Copilot panel moves from sidebar to collapsible right panel (lg+ screens)
+   - Wider max-w-7xl to accommodate property editors
+   - Landing page: deliverables + tips restored
+   - Uses stepper.html macro (single source of truth)
+#}
+{% extends "layouts/admin_base.html" %}
+
+{% block title %}{% if solution is defined and solution %}Architecture Journey — {{ solution.name }}{% else %}Architecture Journey{% endif %}{% endblock %}
+
+{% block extra_css %}
+<style>
+[x-cloak] { display: none !important; }
+</style>
+{% endblock %}
+
+{% block guided_mode_steps %}
+<script id="guided-mode-steps-data" type="application/json">
+[
+  {"title": "Step 1 — Start Here", "text": "Click 'New Journey' to open the wizard. Enter your business problem statement in plain language."},
+  {"title": "Step 2 — TOGAF Phases", "text": "The wizard walks you through ADM phases A→H. Complete each phase to unlock the next."},
+  {"title": "Step 3 — AI Assistance", "text": "Use the Copilot panel on the right to generate ArchiMate elements and fill gaps automatically."},
+  {"title": "Step 4 — Submit to ARB", "text": "Once all phases are complete, click 'Submit for Review' to send your blueprint to the ARB queue."}
+]
+</script>
+{% endblock %}
+
+{% from 'components/inline_hint.html' import inline_hint %}
+{% block page_hint %}
+{{ inline_hint(
+    hint_id='architecture_journey',
+    text='The Architecture Journey wizard turns your business problem into an ARB-ready blueprint in 7 guided steps.',
+    action_text='Start a new journey',
+    action_href='/architecture-journey/'
+) }}
+{% endblock %}
+
+{% block content %}
+{% if not solution_id %}
+{# ══════════════════════════════════════════════════════════════════
+   LANDING PAGE — Start or Resume
+   ══════════════════════════════════════════════════════════════════ #}
+<div class="max-w-4xl mx-auto py-12 px-4" x-data="{ starting: false }">
+
+    {# ── Hero ── #}
+    <div class="text-center mb-10">
+        <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/10 text-primary text-xs font-semibold mb-4">
+            <i data-lucide="sparkles" class="w-3.5 h-3.5" aria-hidden="true"></i>
+            AI-Guided TOGAF ADM Workflow
+        </div>
+        <h1 class="text-4xl font-bold tracking-tight text-foreground mb-3">Architecture Journey</h1>
+        <p class="text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed">
+            Execute professional-grade enterprise architecture designs with high-fidelity outputs.
+            This guided workflow ensures every artifact complies with TOGAF 9.2 and ArchiMate 3.2 standards.
+        </p>
+        <div class="flex items-center justify-center gap-1 mt-3 text-sm text-muted-foreground">
+            <i data-lucide="clock" class="w-4 h-4" aria-hidden="true"></i>
+            <span>Total commitment: <strong class="text-primary">15-20 mins</strong> — pause &amp; resume at any step</span>
+        </div>
+    </div>
+
+    {# ── Step Preview Cards ── #}
+    <div class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-3">
+        {% set journey_steps = [
+            ('1', 'Clarify Problem', 'message-circle', 'Define scope, constraints, and business goals through AI-guided dialogue.', '~2 min'),
+            ('2', 'Map Landscape', 'layers', 'Identify dependencies, applications, and current-state architecture.', '~3 min'),
+            ('3', 'Design Architecture', 'boxes', 'Draft conceptual and logical ArchiMate models across all layers.', '~5 min'),
+            ('4', 'Evaluate Options', 'scale', 'Compare alternatives with cost, risk, and trade-off analysis.', '~3 min'),
+            ('5', 'Plan Migration', 'calendar', 'Define phased roadmaps, work packages, and resource dependencies.', '~4 min'),
+            ('6', 'ARB Submission', 'check-circle', 'Package governance artifacts for Architecture Review Board approval.', '~2 min'),
+        ] %}
+        {% for num, title, icon, desc, time in journey_steps %}
+        <div class="group rounded-xl border border-border bg-card p-5 hover:border-primary/30 hover:shadow-md transition-all">
+            <div class="flex items-center gap-3 mb-3">
+                <div class="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-primary text-sm font-bold flex-shrink-0 group-hover:bg-primary group-hover:text-primary-foreground transition-colors">{{ num }}</div>
+                <div>
+                    <p class="text-sm font-semibold text-foreground">{{ title }}</p>
+                    <p class="text-[10px] text-muted-foreground flex items-center gap-1"><i data-lucide="clock" class="w-3 h-3" aria-hidden="true"></i> {{ time }}</p>
+                </div>
+            </div>
+            <p class="text-xs text-muted-foreground leading-relaxed">{{ desc }}</p>
+        </div>
+        {% endfor %}
+    </div>
+    {# Step 7 — full-width card to emphasise it as the deliverable #}
+    <div class="group rounded-xl border border-primary/20 bg-primary/5 p-5 hover:border-primary/40 hover:shadow-md transition-all mb-10">
+        <div class="flex items-center gap-4">
+            <div class="flex h-9 w-9 items-center justify-center rounded-full bg-primary/20 text-primary text-sm font-bold flex-shrink-0 group-hover:bg-primary group-hover:text-primary-foreground transition-colors">7</div>
+            <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 flex-wrap">
+                    <p class="text-sm font-semibold text-foreground">Generate Code</p>
+                    <p class="text-[10px] text-muted-foreground flex items-center gap-1"><i data-lucide="clock" class="w-3 h-3" aria-hidden="true"></i> ~2 min</p>
+                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-primary/10 text-primary border border-primary/20">Final Output</span>
+                </div>
+                <p class="text-xs text-muted-foreground leading-relaxed mt-1">Generate production-ready code (Python, Go, Java, Full-Stack) from your approved architecture — deterministic, spec-driven, downloadable as ZIP.</p>
+            </div>
+            <i data-lucide="code-2" class="w-5 h-5 text-primary/50 flex-shrink-0" aria-hidden="true"></i>
+        </div>
+    </div>
+
+    {# ── Deliverables + Start ── #}
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center mb-10">
+        <div class="lg:col-span-7 bg-muted/30 p-6 rounded-xl">
+            <h3 class="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground mb-4">Generated Deliverables</h3>  <!-- frontend-quality-ok -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {% for icon, title, sub in [
+                    ('file-text', 'Solution Architecture Document', 'TOGAF ADM Phases A-H compliant'),
+                    ('git-branch', 'ArchiMate Elements', 'Standard 3.2 modeling output'),
+                    ('shield-check', 'Governance Artifacts', 'Risk register & compliance checklists'),
+                    ('gantt-chart', 'Migration Roadmap', 'Phased execution plan'),
+                ] %}
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 bg-card rounded-lg flex items-center justify-center text-primary shadow-sm border border-border flex-shrink-0">
+                        <i data-lucide="{{ icon }}" class="w-4 h-4" aria-hidden="true"></i>
+                    </div>
+                    <div>
+                        <p class="text-sm font-semibold text-foreground">{{ title }}</p>
+                        <p class="text-[10px] text-muted-foreground">{{ sub }}</p>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        <div class="lg:col-span-5 flex flex-col items-center lg:items-end gap-3">
+            <button type="button" @click.prevent.stop="
+                starting = true;
+                fetch('/architecture-journey/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || '' },
+                    credentials: 'same-origin'
+                }).then(r => r.json()).then(d => {
+                    var url = (d.data && d.data.redirect) ? d.data.redirect : '';
+                    if (url) window.location.href = url;
+                    else starting = false;
+                }).catch(() => { starting = false; });
+            " :disabled="starting"
+                class="w-full max-w-xs py-3 rounded-lg bg-primary text-primary-foreground font-semibold text-sm flex items-center justify-center gap-2 hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20 disabled:opacity-50">
+                <span x-text="starting ? 'Creating workspace...' : 'Start New Journey'"></span>
+                <i data-lucide="arrow-right" class="w-4 h-4" aria-hidden="true"></i>
+            </button>
+            <p class="text-xs text-muted-foreground">Auto-saves to your workspace. Resume anytime.</p>
+        </div>
+    </div>
+
+    {# ── Resume In-Progress ── #}
+    {% if solutions %}
+    <div class="border-t border-border pt-8 mb-10">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-bold text-foreground">Resume In-Progress</h3>
+            <a href="{{ url_for('solution_design.list_solutions') }}" class="text-xs text-primary font-medium hover:underline">View All Drafts</a>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {% set GOV_LABELS = {'draft': 'Draft', 'proposed': 'Submitted', 'in_progress': 'In Progress', 'arb_review': 'In Review', 'approved': 'Approved'} %}
+            {% set GOV_COLORS = {'draft': 'amber', 'proposed': 'blue', 'in_progress': 'blue', 'arb_review': 'amber', 'approved': 'emerald'} %}
+            {% for sol in solutions %}
+            {% set status = sol.governance_status or 'draft' %}
+            {% set color = GOV_COLORS.get(status, 'blue') %}
+            <a href="{{ url_for('architecture_journey.journey_page', solution_id=sol.id) }}"
+               class="group flex items-center justify-between p-4 bg-card border border-border rounded-xl hover:border-primary/30 hover:shadow-md transition-all">
+                <div class="flex items-center gap-3 min-w-0">
+                    <div class="w-10 h-10 bg-muted rounded-lg flex items-center justify-center text-muted-foreground group-hover:text-primary transition-colors flex-shrink-0">
+                        <i data-lucide="layers" class="w-5 h-5" aria-hidden="true"></i>
+                    </div>
+                    <div class="min-w-0">
+                        <h4 class="font-semibold text-foreground truncate">{{ sol.name }}</h4>
+                        <p class="text-xs text-muted-foreground mt-0.5">{{ sol.updated_at.strftime('%d %b %Y, %H:%M') if sol.updated_at else 'recently' }}</p>
+                        <span class="inline-flex items-center gap-1 px-2 py-0.5 mt-1 rounded text-[10px] font-medium bg-{{ color }}-500/10 text-{{ color }}-600 border border-{{ color }}-500/20">
+                            <span class="w-1.5 h-1.5 bg-{{ color }}-500 rounded-full"></span>
+                            {{ GOV_LABELS.get(status, status|replace('_',' ')|title) }}
+                        </span>
+                    </div>
+                </div>
+                <i data-lucide="play-circle" class="w-5 h-5 text-muted-foreground/30 group-hover:text-primary transition-colors flex-shrink-0" aria-hidden="true"></i>
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    {# ── Tips ── #}
+    <div class="bg-card p-8 rounded-xl border border-border">
+        <div class="flex items-center gap-2 mb-6">
+            <i data-lucide="lightbulb" class="w-5 h-5 text-primary" aria-hidden="true"></i>
+            <h3 class="text-lg font-bold text-foreground">Tips for Best Results</h3>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div>
+                <h4 class="text-[10px] font-bold uppercase tracking-[0.2em] text-primary mb-4">Recommended Practices</h4>
+                <ul class="space-y-3">
+                    <li class="flex gap-2 text-sm text-muted-foreground"><i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-500 flex-shrink-0 mt-0.5" aria-hidden="true"></i> Provide specific technical constraints early to ensure AI alignment with your infrastructure.</li>
+                    <li class="flex gap-2 text-sm text-muted-foreground"><i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-500 flex-shrink-0 mt-0.5" aria-hidden="true"></i> Mention affected applications and business units so the AI can map dependencies automatically.</li>
+                    <li class="flex gap-2 text-sm text-muted-foreground"><i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-500 flex-shrink-0 mt-0.5" aria-hidden="true"></i> Answer every clarifying question thoroughly — each response sharpens the architecture.</li>
+                </ul>
+            </div>
+            <div>
+                <h4 class="text-[10px] font-bold uppercase tracking-[0.2em] text-destructive mb-4">Common Pitfalls</h4>
+                <ul class="space-y-3">
+                    <li class="flex gap-2 text-sm text-muted-foreground"><i data-lucide="x-circle" class="w-4 h-4 text-destructive flex-shrink-0 mt-0.5" aria-hidden="true"></i> Don't use generic titles like "New Project." Use intent-based names for better AI context.</li>
+                    <li class="flex gap-2 text-sm text-muted-foreground"><i data-lucide="x-circle" class="w-4 h-4 text-destructive flex-shrink-0 mt-0.5" aria-hidden="true"></i> Avoid skipping "Map Landscape" — accurate current-state maps are critical for trade-offs.</li>
+                    <li class="flex gap-2 text-sm text-muted-foreground"><i data-lucide="x-circle" class="w-4 h-4 text-destructive flex-shrink-0 mt-0.5" aria-hidden="true"></i> Do not bypass ARB Submission for production deployments — governance maintains audit compliance.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% else %}
+{# ══════════════════════════════════════════════════════════════════
+   WIZARD — Wide layout with copilot panel restored
+   ══════════════════════════════════════════════════════════════════ #}
+<input type="hidden" id="journey-v2-solution-description" value="{{ solution.description|default('', true)|e if solution is defined and solution else '' }}">
+<input type="hidden" id="journey-v2-solution-name" value="{{ solution.name|default('', true)|e if solution is defined and solution else '' }}">
+<input type="hidden" id="journey-v2-state" value="{{ journey_state_json|default('null', true)|e }}">
+<input type="hidden" id="journey-v2-governance-status" value="{{ (solution.governance_status or 'draft')|e if solution is defined and solution else 'draft' }}">
+
+<div x-data="journeyV2Flow({{ solution_id or 0 }})" x-init="init()" class="space-y-4">
+
+    {# ── Stepper — uses shared macro ── #}
+    {% from 'components/stepper.html' import stepper %}
+    {% if has_acm_domains %}
+    {% set wizard_steps = [
+        {'num': 1, 'label': 'Clarify', 'icon': 'message-circle', 'desc': 'Define scope & goals'},
+        {'num': 2, 'label': 'Domains', 'icon': 'layers', 'desc': 'Enterprise capabilities'},
+        {'num': 3, 'label': 'Architecture', 'icon': 'boxes', 'desc': 'ArchiMate elements'},
+        {'num': 4, 'label': 'Decisions', 'icon': 'scale', 'desc': 'Trade-off analysis'},
+        {'num': 5, 'label': 'Roadmap', 'icon': 'calendar', 'desc': 'Migration plan'},
+        {'num': 6, 'label': 'ARB Review', 'icon': 'check-circle', 'desc': 'Governance submission'},
+        {'num': 7, 'label': 'Generate', 'icon': 'code-2', 'desc': 'Implementation code'},
+        {'num': 8, 'label': 'Load Data', 'icon': 'database', 'desc': 'Import spreadsheets'},
+    ] %}
+    {% else %}
+    {% set wizard_steps = [
+        {'num': 1, 'label': 'Clarify', 'icon': 'message-circle', 'desc': 'Define scope & goals'},
+        {'num': 2, 'label': 'Capabilities', 'icon': 'layers', 'desc': 'Enterprise capabilities'},
+        {'num': 3, 'label': 'Architecture', 'icon': 'boxes', 'desc': 'ArchiMate elements'},
+        {'num': 4, 'label': 'Options', 'icon': 'scale', 'desc': 'Trade-off analysis'},
+        {'num': 5, 'label': 'Migration', 'icon': 'calendar', 'desc': 'Migration plan'},
+        {'num': 6, 'label': 'Review', 'icon': 'check-circle', 'desc': 'Governance submission'},
+        {'num': 7, 'label': 'Generate', 'icon': 'code-2', 'desc': 'Implementation code'},
+        {'num': 8, 'label': 'Load Data', 'icon': 'database', 'desc': 'Import spreadsheets'},
+    ] %}
+    {% endif %}
+    <div class="bg-card border border-border rounded-lg px-4 sm:px-6 py-4">
+        {{ stepper(
+            steps=wizard_steps,
+            current_step_expr='currentStep',
+            completed_expr='completedSteps',
+            on_click='goToStep',
+            locked_steps_expr='(codegenUnlocked() ? [] : [7, 8])'
+        ) }}
+    </div>
+
+    {# ── Co-Pilot Banner (full-width, inline) — hidden on locked codegen/deploy steps ── #}
+    <div x-show="currentStep <= 6" x-cloak class="rounded-xl border-l-4 border-l-primary border border-border bg-card px-5 py-3.5 flex items-start gap-3">
+        <span class="flex items-center justify-center w-7 h-7 rounded-full bg-primary/10 text-primary shrink-0 mt-0.5">
+            <i data-lucide="sparkles" class="w-3.5 h-3.5" aria-hidden="true"></i>
+        </span>
+        <div class="flex-1 min-w-0">
+            <p class="text-sm text-foreground/90 leading-relaxed" x-text="copilotMessage"></p>
+            <div x-show="loading" x-cloak class="flex items-center gap-2 text-xs text-primary mt-1.5">
+                <span class="animate-spin h-3 w-3 border-2 border-primary border-t-transparent rounded-full"></span>
+                <span>Processing...</span>
+            </div>
+            {# Inline entity counts — compact row #}
+            <div x-show="capabilities.length > 0 || (architectureResult && architectureResult.total)" x-cloak
+                 class="flex items-center gap-4 mt-2 text-[11px] text-muted-foreground">
+                <template x-if="domainsPopulated">
+                    <div class="flex items-center gap-4">
+                        <span><span class="font-semibold text-foreground" x-text="domainCoverage"></span>/7 domains</span>
+                        <span><span class="font-semibold text-foreground" x-text="architectureResult ? (architectureResult.total || Object.values(architectureResult.elements_by_layer || {}).reduce((s, a) => s + a.length, 0)) : 0"></span> elements</span>
+                        <span x-show="domainBlockers.length > 0" x-cloak class="text-amber-600 font-medium"><span x-text="domainBlockers.length"></span> blockers</span>
+                    </div>
+                </template>
+                <template x-if="!domainsPopulated">
+                    <div class="flex items-center gap-4">
+                        <span><span class="font-semibold text-foreground" x-text="capabilities.length"></span> capabilities</span>
+                        <span><span class="font-semibold text-foreground" x-text="acceptedCapabilities.length"></span> accepted</span>
+                        <span><span class="font-semibold text-foreground" x-text="architectureResult ? Object.values(architectureResult.elements_by_layer || {}).reduce((s, a) => s + a.length, 0) : 0"></span> elements</span>
+                    </div>
+                </template>
+            </div>
+        </div>
+        {# Save indicator #}
+        <div x-show="_propSaveIndicator" x-cloak
+             x-transition:enter="transition ease-out duration-200"
+             x-transition:leave="transition ease-in duration-150"
+             class="flex items-center gap-1 text-[10px] text-emerald-600 shrink-0">
+            <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+            Saved
+        </div>
+        {# Ask A.R.C.H.I.E. button — opens the chat panel #}
+        <button type="button" @click="$dispatch('blueprint-chat-toggle')"
+                class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20 transition-colors shrink-0"
+                title="Ask A.R.C.H.I.E. to add drivers, goals, elements, or run inference">
+            <i data-lucide="message-square" class="w-3.5 h-3.5" aria-hidden="true"></i>
+            Ask A.R.C.H.I.E.
+        </button>
+    </div>
+
+    {# ── Error Banner ── #}
+    <div x-show="error" x-cloak class="rounded-xl border border-destructive/30 bg-destructive/5 px-5 py-3 flex items-center justify-between">
+        <p class="text-sm text-destructive" x-text="error"></p>
+        <button type="button" @click="error = null" class="text-xs text-destructive/70 hover:text-destructive font-medium ml-4 shrink-0">Dismiss</button>
+    </div>
+
+    {# ── Blocker warnings — only shown on Step 2 where user can action them ── #}
+    <template x-if="currentStep === 2 && domainBlockers.filter(b => b.type === 'domain_not_confirmed').length > 0">
+        <div class="rounded-xl border border-destructive/30 bg-destructive/5 px-5 py-3 space-y-1">
+            <p class="text-xs font-medium text-destructive">Cannot proceed:</p>
+            <template x-for="b in domainBlockers.filter(b => b.type === 'domain_not_confirmed').slice(0, 4)" :key="b.domain + b.type">
+                <p class="text-xs text-destructive/70 pl-2" x-text="'— ' + b.reason"></p>
+            </template>
+        </div>
+    </template>
+
+    {# ── Step Content (full-width) ── #}
+    <div class="min-h-[400px]">
+        <div x-show="currentStep === 1" x-cloak>
+            {% include 'architecture_assistant/journey_v2_steps/_step1_clarify.html' %}
+        </div>
+        <div x-show="currentStep === 2" x-cloak>
+            {% if has_acm_domains %}
+            {% include 'architecture_assistant/journey_v2_steps/_step2_domains.html' %}
+            {% else %}
+            {% include 'architecture_assistant/journey_v2_steps/_step2_capabilities.html' %}
+            {% endif %}
+        </div>
+        <div x-show="currentStep === 3" x-cloak>
+            {% include 'architecture_assistant/journey_v2_steps/_step3_architecture.html' %}
+        </div>
+        <div x-show="currentStep === 4" x-cloak>
+            {% include 'architecture_assistant/journey_v2_steps/_step4_options.html' %}
+        </div>
+        <div x-show="currentStep === 5" x-cloak>
+            {% include 'architecture_assistant/journey_v2_steps/_step5_migration.html' %}
+        </div>
+        <div x-show="currentStep === 6" x-cloak>
+            {% include 'architecture_assistant/journey_v2_steps/_step6_review.html' %}
+        </div>
+        <div x-show="currentStep === 7" x-cloak>
+            {% include 'architecture_assistant/journey_v2_steps/_step7_codegen.html' %}
+        </div>
+        <div x-show="currentStep === 8" x-cloak>
+            {% include 'architecture_assistant/journey_v2_steps/_step8a_data.html' %}
+        </div>
+    </div>
+
+    {# ── Navigation Buttons ── #}
+    <div class="flex items-center justify-between bg-card border border-border rounded-lg px-6 py-3">
+        <button type="button" @click="prevStep()" x-show="currentStep > 1" x-cloak
+                class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium border border-input rounded-md hover:bg-accent transition-colors">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
+            Previous
+        </button>
+        <div x-show="currentStep <= 1" x-cloak></div>
+
+        <div class="flex items-center gap-2">
+            <a :href="'/solutions/' + solutionId" class="inline-flex items-center gap-1 px-3 py-2 text-xs text-muted-foreground hover:text-foreground transition-colors">
+                Open Solution Detail
+            </a>
+            <template x-if="currentStep === 6 && !codegenUnlocked()">
+                <span class="text-xs text-amber-600 font-medium">Submit to ARB above to unlock code generation</span>
+            </template>
+            <button type="button" @click="nextStep()" x-show="currentStep < 8" x-cloak
+                    :disabled="!canProceed()"
+                    class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50">
+                Next Step
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+            </button>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block modals %}
+{% if solution_id %}
+{# ── A.R.C.H.I.E. Chat panel — reuses blueprint_chat component ── #}
+<div
+    x-data="blueprintChat()"
+    data-solution-id="{{ solution_id }}"
+    data-solution-name="{{ solution.name | e if solution is defined and solution else '' }}"
+    data-phase="{{ (solution.adm_phase or 'A') | e if solution is defined and solution else 'A' }}"
+    @blueprint-chat-toggle.window="toggle()"
+    x-cloak>
+
+    {# Backdrop #}
+    <div
+        x-show="open"
+        x-transition:enter="transition ease-out duration-200"
+        x-transition:enter-start="opacity-0"
+        x-transition:enter-end="opacity-100"
+        x-transition:leave="transition ease-in duration-150"
+        x-transition:leave-start="opacity-100"
+        x-transition:leave-end="opacity-0"
+        @click="toggle()"
+        class="fixed inset-0 bg-black/20 z-40"
+        style="display:none">
+    </div>
+
+    {# Slide-out panel #}
+    <aside
+        x-show="open"
+        x-transition:enter="transition ease-out duration-300"
+        x-transition:enter-start="translate-x-full"
+        x-transition:enter-end="translate-x-0"
+        x-transition:leave="transition ease-in duration-200"
+        x-transition:leave-start="translate-x-0"
+        x-transition:leave-end="translate-x-full"
+        class="fixed inset-y-0 right-0 w-full sm:w-[420px] bg-card border-l border-border shadow-2xl z-50 flex flex-col"
+        style="display:none"
+        aria-label="A.R.C.H.I.E. Architecture Assistant">
+
+        {# Header #}
+        <div class="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
+            <div class="flex items-center gap-2.5">
+                <span class="flex items-center justify-center w-7 h-7 rounded-full bg-primary/10 text-primary">
+                    <i data-lucide="sparkles" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                </span>
+                <div>
+                    <p class="text-sm font-semibold text-foreground leading-none">A.R.C.H.I.E.</p>
+                    <p class="text-[10px] text-muted-foreground mt-0.5" x-text="solutionName || 'Architecture Assistant'"></p>
+                </div>
+            </div>
+            <button type="button" @click="toggle()" class="text-muted-foreground hover:text-foreground transition-colors p-1 rounded" aria-label="Close chat">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+
+        {# Starter prompts — shown until first message #}
+        <div x-show="messages.length === 0" x-cloak class="px-4 pt-4 pb-2 space-y-2">
+            <p class="text-xs text-muted-foreground font-medium uppercase tracking-wide mb-3">Try asking:</p>
+            <template x-for="prompt in [
+                'We need to migrate our ERP because of cost pressure and end-of-life risk',
+                'Our goal is 30% cost reduction and zero unplanned downtime',
+                'Add a constraint: £500k budget cap, 12-month deadline',
+                'Run the inference engine to fill missing architecture layers'
+            ]" :key="prompt">
+                <button type="button" @click="inputText = prompt; sendMessage()"
+                        class="w-full text-left px-3 py-2.5 rounded-lg border border-border bg-muted/30 hover:bg-muted/60 text-xs text-foreground/80 transition-colors leading-relaxed">
+                    <span x-text="'→ ' + prompt"></span>
+                </button>
+            </template>
+        </div>
+
+        {# Message thread #}
+        <div x-ref="chatThread" class="flex-1 overflow-y-auto p-4 space-y-3 text-sm">
+            <template x-for="(msg, idx) in messages" :key="idx">
+                <div>
+                    {# User message #}
+                    <template x-if="msg.role === 'user'">
+                        <div class="flex justify-end">
+                            <div class="max-w-[85%] px-3.5 py-2.5 rounded-2xl rounded-br-sm bg-primary text-primary-foreground text-xs leading-relaxed" x-text="msg.text"></div>
+                        </div>
+                    </template>
+                    {# Assistant message #}
+                    <template x-if="msg.role === 'assistant'">
+                        <div class="flex items-start gap-2">
+                            <span class="w-6 h-6 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0 mt-0.5">
+                                <i data-lucide="sparkles" class="w-3 h-3" aria-hidden="true"></i>
+                            </span>
+                            <div class="max-w-[85%] px-3.5 py-2.5 rounded-2xl rounded-tl-sm bg-muted text-foreground text-xs leading-relaxed">
+                                <span x-text="msg.text"></span>
+                                <span x-show="msg.streaming" x-cloak class="inline-block w-1.5 h-3.5 bg-primary/50 rounded-sm ml-0.5 animate-pulse"></span>
+                            </div>
+                        </div>
+                    </template>
+                    {# Tool thinking card #}
+                    <template x-if="msg.role === 'tool_thinking'">
+                        <div class="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/5 border border-primary/20 text-xs text-primary">
+                            <span class="animate-spin h-3 w-3 border-2 border-primary border-t-transparent rounded-full shrink-0"></span>
+                            <span x-text="'Calling ' + msg.tool + '...'"></span>
+                        </div>
+                    </template>
+                    {# Action confirmation card #}
+                    <template x-if="msg.role === 'actions'">
+                        <template x-for="action in msg.actions" :key="action.tool + action.result?.id">
+                            <div class="px-3 py-2.5 rounded-lg border text-xs"
+                                 :class="action.undone ? 'border-border bg-muted/30 opacity-50' : 'border-emerald-500/30 bg-emerald-500/5'">
+                                <div class="flex items-start justify-between gap-2">
+                                    <div class="flex items-center gap-1.5 text-emerald-600 font-medium">
+                                        <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                                        <span x-text="action.undone ? 'Undone' : action.message"></span>
+                                    </div>
+                                    <button type="button" x-show="!action.undone && !action.undoExpired" @click="undoAction(action)"
+                                            class="text-muted-foreground hover:text-destructive text-[10px] shrink-0 transition-colors">
+                                        Undo
+                                    </button>
+                                </div>
+                            </div>
+                        </template>
+                    </template>
+                    {# Approval pending card #}
+                    <template x-if="msg.role === 'approvals'">
+                        <template x-for="approval in msg.approvals.filter(a => !a.dismissed)" :key="approval.approval_id">
+                            <div class="px-3 py-2.5 rounded-lg border border-amber-500/30 bg-amber-500/5 text-xs space-y-2">
+                                <p class="font-medium text-amber-700">Confirm action:</p>
+                                <p class="text-foreground/80" x-text="approval.summary || approval.tool"></p>
+                                <div class="flex gap-2 pt-1">
+                                    <button type="button" @click="approveAction(approval)"
+                                            class="px-2.5 py-1 rounded bg-primary text-primary-foreground text-[11px] font-medium hover:bg-primary/90 transition-colors">
+                                        Approve
+                                    </button>
+                                    <button type="button" @click="approval.dismissed = true"
+                                            class="px-2.5 py-1 rounded border border-input text-[11px] font-medium hover:bg-accent transition-colors">
+                                        Dismiss
+                                    </button>
+                                </div>
+                            </div>
+                        </template>
+                    </template>
+                    {# Error card #}
+                    <template x-if="msg.role === 'error'">
+                        <div class="px-3 py-2 rounded-lg border border-destructive/30 bg-destructive/5 text-xs text-destructive" x-text="msg.text"></div>
+                    </template>
+                </div>
+            </template>
+
+            {# Loading spinner when sending #}
+            <div x-show="loading" x-cloak class="flex items-center gap-2 text-xs text-primary px-1">
+                <span class="animate-spin h-3 w-3 border-2 border-primary border-t-transparent rounded-full"></span>
+                <span>Thinking...</span>
+            </div>
+        </div>
+
+        {# Input area #}
+        <div class="border-t border-border p-3 shrink-0">
+            <div class="flex gap-2 items-end">
+                <textarea
+                    x-ref="chatInput"
+                    x-model="inputText"
+                    @keydown.enter.prevent="if (!$event.shiftKey) sendMessage()"
+                    rows="2"
+                    placeholder="Describe your problem, goals, constraints… or ask anything."
+                    class="flex-1 text-xs rounded-lg border border-input bg-background px-3 py-2.5 resize-none focus:outline-none focus:ring-1 focus:ring-ring text-foreground placeholder:text-muted-foreground leading-relaxed"
+                ></textarea>
+                <button type="button" @click="sendMessage()"
+                        :disabled="loading || !inputText.trim()"
+                        class="p-2.5 rounded-lg bg-primary text-primary-foreground disabled:opacity-40 hover:bg-primary/90 transition-colors shrink-0">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
+                </button>
+            </div>
+            <p class="text-[10px] text-muted-foreground mt-1.5 px-1">Enter to send · Shift+Enter for new line</p>
+        </div>
+    </aside>
+</div>
+<script src="{{ url_for('static', filename='js/blueprint_chat.js') }}?v=2"></script>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+{% if solution_id %}
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/lodash@4.17.21/lodash.min.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/backbone@1.4.1/backbone-min.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/jointjs@3.7.7/dist/joint.min.js" crossorigin="anonymous"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jointjs@3.7.7/dist/joint.min.css" crossorigin="anonymous">
+<script src="{{ url_for('static', filename='js/archimate/composer_renderer.js') }}"></script> <!-- entity-picker-ok -->
+<script src="{{ url_for('static', filename='js/solutions/vendor_suggestions.js') }}?v=1"></script> <!-- entity-picker-ok -->
+<script src="{{ url_for('static', filename='js/architecture_assistant/architecture_journey.js') }}?v=13"></script>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,3 @@
+"""
+Routes package initialization
+"""

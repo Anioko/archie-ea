@@ -1,0 +1,129 @@
+{% extends 'layouts/admin_base.html' %}
+{% from 'components/page_header.html' import page_header %}
+{% from 'components/metrics_card.html' import metrics_card %}
+
+{% block title %}Integration Dashboard{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    {{ page_header(
+        title='Integration Workflows',
+        description='Manage and monitor enterprise architecture automation workflows.',
+        actions=[
+            {'text': 'Browse Catalog', 'icon': 'book-open', 'href': url_for('integration.list_workflows'), 'variant': 'default'}
+        ]
+    ) }}
+
+    <!-- Stats Cards -->
+    <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        {{ metrics_card(title='Active Instances', value=stats.active, description='Currently running workflows', icon='activity') }}
+        {{ metrics_card(title='Total Definitions', value=stats.total_definitions, description='Available workflow types', icon='file-text') }}
+        {{ metrics_card(title='Completed', value=stats.completed, description='Successfully finished', icon='check') }}
+        {{ metrics_card(title='Failed', value=stats.failed, description='Failed executions', icon='alert-circle') }}
+    </div>
+
+    <!-- Active Instances -->
+    <div data-slot="card" class="rounded-xl border bg-card text-card-foreground shadow-sm">
+        <div class="flex flex-col space-y-1.5 p-6">
+            <div class="flex items-center justify-between">
+                <h3 class="font-semibold leading-none tracking-tight">Active Workflows</h3>
+                <a href="{{ url_for('integration.list_instances') }}" class="text-sm text-primary hover:underline">View All</a>
+            </div>
+        </div>
+        <div class="p-6 pt-0">
+            <div class="relative w-full overflow-auto">
+                <table class="w-full caption-bottom text-sm">
+                    <thead class="[&_tr]:border-b">
+                        <tr class="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted">
+                            <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Instance ID</th>
+                            <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Workflow</th>
+                            <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Status</th>
+                            <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Step</th>
+                            <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Started</th>
+                            <th class="h-12 px-4 text-right align-middle font-medium text-muted-foreground">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody class="[&_tr:last-child]:border-0">
+                        {% if active_instances %}
+                            {% for instance in active_instances %}
+                            <tr class="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted">
+                                <td class="p-4 align-middle font-medium">
+                                    <a href="{{ url_for('integration.instance_detail', instance_id=instance.id) }}" class="hover:underline">
+                                        {{ instance.instance_code[:12] }}...
+                                    </a>
+                                </td>
+                                <td class="p-4 align-middle">
+                                    <div class="font-medium">{{ instance.workflow_definition.workflow_name }}</div>
+                                    <div class="text-xs text-muted-foreground">{{ instance.workflow_code }}</div>
+                                </td>
+                                <td class="p-4 align-middle">
+                                    <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2
+                                        {% if instance.status == 'running' %}border-transparent bg-primary/10 text-primary hover:bg-primary/20
+                                        {% elif instance.status == 'completed' %}border-transparent bg-success/10 text-success hover:bg-success/20
+                                        {% elif instance.status == 'failed' %}border-transparent bg-destructive/10 text-destructive hover:bg-destructive/20
+                                        {% elif instance.status == 'waiting_approval' %}border-transparent bg-warning/10 text-warning hover:bg-warning/20
+                                        {% else %}border-transparent bg-muted text-foreground hover:bg-muted{% endif %}">
+                                        {{ instance.status|replace('_', ' ')|title }}
+                                    </span>
+                                </td>
+                                <td class="p-4 align-middle">
+                                    <div class="flex flex-col gap-1">
+                                        <span class="text-sm">{{ instance.current_step_index + 1 }} / {{ instance.total_steps }}</span>
+                                        <div class="h-1.5 w-full bg-secondary rounded-full overflow-hidden">
+                                            <div class="h-full bg-primary transition-all duration-300" style="width: {{ instance.progress_percent }}%"></div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td class="p-4 align-middle text-muted-foreground">
+                                    {{ instance.started_at.strftime('%Y-%m-%d %H:%M') if instance.started_at else '-' }}
+                                </td>
+                                <td class="p-4 align-middle text-right">
+                                    <a href="{{ url_for('integration.instance_detail', instance_id=instance.id) }}" class="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-8 px-3">
+                                        View
+                                    </a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        {% else %}
+                            <tr>
+                                <td colspan="6" class="p-8 text-center text-muted-foreground">
+                                    No active workflow instances found.
+                                </td>
+                            </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Available Definitions Grid -->
+    <div>
+        <h3 class="text-lg font-semibold mb-4">Available Workflows</h3>
+        <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {% for def in definitions %}
+            <div data-slot="card" class="rounded-xl border bg-card text-card-foreground shadow-sm hover:shadow-md transition-shadow">
+                <div class="flex flex-col space-y-1.5 p-6">
+                    <div class="flex items-center justify-between">
+                        <div class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80">
+                            {{ def.workflow_category|replace('_', ' ')|title }}
+                        </div>
+                        <span class="text-xs text-muted-foreground">{{ def.workflow_type|title }}</span>
+                    </div>
+                    <h3 class="font-semibold leading-none tracking-tight mt-2">{{ def.workflow_name }}</h3>
+                    <p class="text-sm text-muted-foreground line-clamp-2 mt-1">{{ def.workflow_description }}</p>
+                </div>
+                <div class="p-6 pt-0 flex items-center justify-between">
+                    <div class="text-xs text-muted-foreground">
+                        {{ def.execution_count }} runs
+                    </div>
+                    <a href="{{ url_for('integration.workflow_detail', workflow_code=def.workflow_code) }}" class="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 py-2">
+                        Details
+                    </a>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}

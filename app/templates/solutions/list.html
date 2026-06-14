@@ -1,0 +1,691 @@
+{% extends "layouts/admin_base.html" %}
+{% from "components/page_header.html" import page_header %}
+{% from "components/filter_bar.html" import filter_bar %}
+{% from 'components/status_badge.html' import status_badge, status_badge_auto %}
+{% from "components/sol_confirm_modal.html" import sol_confirm_modal %}
+{% from 'components/modal.html' import modal %}
+
+
+{% block title %}All Solutions{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 sm:px-6 lg:px-8 py-6 max-w-7xl" x-data="solutionListCompare()">
+    {{ page_header(
+        title='All Solutions',
+        description='Resume solution design work, surface blockers, and launch architect workflows quickly.',
+        breadcrumbs=[
+            {'label': 'Dashboard', 'href': url_for('main.index')},
+            {'label': 'Solutions Management'},
+            {'label': 'All Solutions'}
+        ],
+        actions=[
+            {'text': 'New Programme', 'icon': 'layers', 'href': url_for('solution_design.new_programme'), 'variant': 'default'},
+            {'text': 'New from Template', 'icon': 'layout-template', 'onclick': "openTemplateModal()", 'variant': 'outline'},
+            {'text': 'New Solution', 'icon': 'zap', 'href': url_for('architecture_journey.index'), 'variant': 'outline', 'aria_label': 'Create new solution using the guided architecture journey'}
+        ]
+    ) }}
+
+    {# ════════════════════════════════════════════════════════════════════════ #}
+    {# EXECUTIVE METRICS                                                        #}
+    {# ════════════════════════════════════════════════════════════════════════ #}
+    {% if solutions %}
+    {% set metric_cards = [
+        {'icon': 'sparkles', 'icon_gradient': 'bg-primary', 'label': 'Needs Setup', 'value': (workspace_stats or {}).get('needs_setup', 0), 'sublabel': 'Still missing core problem or capability framing', 'status_param': 'needs_setup'},
+        {'icon': 'drafting-compass', 'icon_gradient': 'bg-sky-600', 'label': 'In Design', 'value': (workspace_stats or {}).get('in_design', 0), 'sublabel': 'Ready for architect iteration and modelling', 'status_param': 'in_design'},
+        {'icon': 'triangle-alert', 'icon_gradient': 'bg-amber-500', 'label': 'Needs Attention', 'value': (workspace_stats or {}).get('needs_attention', 0), 'sublabel': 'Risks, ADRs, or governance gaps need action', 'status_param': 'needs_attention'},
+        {'icon': 'badge-check', 'icon_gradient': 'bg-emerald-500', 'label': 'Ready for Review', 'value': (workspace_stats or {}).get('ready_for_review', 0), 'sublabel': 'Strong candidates for ARB or stakeholder review', 'status_param': 'ready_for_review'}
+    ] %}
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-6">
+      {% for metric in metric_cards %}
+      <a href="?status={{ metric.status_param }}"
+         class="rounded-xl border-2 {% if selected_workspace == metric.status_param %}border-primary ring-2 ring-primary/20 bg-primary/5{% else %}border-input bg-background hover:border-primary/50{% endif %} cursor-pointer hover:shadow-md transition-all duration-200 p-5 block no-underline text-inherit"
+         {% if selected_workspace == metric.status_param %}aria-current="true"{% endif %}>
+        <div class="flex items-start gap-4">
+          <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg {{ metric.icon_gradient }}">
+            <i data-lucide="{{ metric.icon }}" class="h-5 w-5 text-primary-foreground"></i>
+          </div>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-medium text-muted-foreground">{{ metric.label }}</p>
+            <p class="text-2xl font-bold tracking-tight mt-1">{{ metric.value }}</p>
+            {% if metric.sublabel %}
+            <p class="text-xs text-muted-foreground mt-1">{{ metric.sublabel }}</p>
+            {% endif %}
+          </div>
+        </div>
+      </a>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+
+
+    {% if solutions %}
+    {# Solutions Table Card #}
+    <div data-slot="card" class="rounded-xl border bg-card shadow-sm">
+        {# Filter Section #}
+        {% set status_options = [] %}
+        {% for status in statuses or [] %}
+            {% set _ = status_options.append({'value': status, 'label': status|title, 'selected': status == selected_status}) %}
+        {% endfor %}
+        {% set domain_options = [] %}
+        {% for domain in domains or [] %}
+            {% set _ = domain_options.append({'value': domain, 'label': domain, 'selected': domain == selected_domain}) %}
+        {% endfor %}
+        {% set type_options = [] %}
+        {% for solution_type in solution_types or [] %}
+            {% set _ = type_options.append({'value': solution_type, 'label': solution_type|replace('_', ' ')|title, 'selected': solution_type == selected_type}) %}
+        {% endfor %}
+        {{ filter_bar(
+            search_id='searchInput',
+            search_placeholder='Search by solution, domain, or next action...',
+            search_value=search|default(''),
+            filters=[
+                {'id': 'statusFilter', 'label': 'Status', 'options': status_options},
+                {'id': 'domainFilter', 'label': 'Domain', 'options': domain_options},
+                {'id': 'typeFilter', 'label': 'Type', 'options': type_options}
+            ]
+        ) }}
+        {# Date range filter #}
+        <div class="px-4 sm:px-6 py-3 border-b bg-muted/20 flex flex-wrap items-center gap-3">
+          <span class="text-xs font-medium text-muted-foreground uppercase tracking-wider shrink-0">Created:</span>
+          <div class="flex items-center gap-2">
+            <label for="createdAfterFilter" class="text-xs text-muted-foreground">From</label>
+            <input type="date" id="createdAfterFilter" value="{{ created_after|default('') }}"
+                   class="h-8 rounded-md border border-input bg-background px-2 py-1 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          </div>
+          <div class="flex items-center gap-2">
+            <label for="createdBeforeFilter" class="text-xs text-muted-foreground">To</label>
+            <input type="date" id="createdBeforeFilter" value="{{ created_before|default('') }}"
+                   class="h-8 rounded-md border border-input bg-background px-2 py-1 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          </div>
+          {% if created_after or created_before %}
+          <a href="{{ request.path }}?search={{ search|default('') }}&status={{ selected_status|default('') }}&domain={{ selected_domain|default('') }}&type={{ selected_type|default('') }}"
+             class="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 ml-1">Clear dates</a>
+          {% endif %}
+          <span class="ml-auto text-xs text-muted-foreground">
+            Showing {{ pagination.total }} solution{{ 's' if pagination.total != 1 else '' }}
+            · Page {{ pagination.page }} of {{ pagination.pages }}
+          </span>
+        </div>
+
+        {# PLT-019: BU scope indicator #}
+        {% if bu_filter_active and not show_all_override %}
+        <div class="flex items-center gap-2 px-4 py-2 border-b bg-primary/5" data-testid="bu-scope-indicator" role="status" aria-live="polite">
+            <i data-lucide="filter" class="h-3.5 w-3.5 text-primary shrink-0" aria-hidden="true"></i>
+            <span class="text-xs text-primary font-medium">Showing: {{ bu_name }} ({{ total_count }} solution{{ 's' if total_count != 1 else '' }})</span>
+            <a href="{{ request.path }}?bu=all" class="ml-auto text-xs text-muted-foreground hover:text-foreground underline underline-offset-2" aria-label="Show all solutions across all business units">Show all</a>
+        </div>
+        {% elif show_all_override %}
+        <div class="flex items-center gap-2 px-4 py-2 border-b bg-muted/30" data-testid="bu-scope-indicator-all" role="status">
+            <i data-lucide="globe" class="h-3.5 w-3.5 text-muted-foreground shrink-0" aria-hidden="true"></i>
+            <span class="text-xs text-muted-foreground">Showing: All ({{ total_count }} solution{{ 's' if total_count != 1 else '' }})</span>
+        </div>
+        {% endif %}
+
+        {# Worklist filter indicator #}
+        {% if selected_workspace %}
+        {% set _ws_labels = {'needs_setup': 'Needs Setup', 'in_design': 'In Design', 'needs_attention': 'Needs Attention', 'ready_for_review': 'Ready for Review'} %}
+        <div class="flex items-center gap-2 px-4 py-2 border-b bg-amber-50/60 dark:bg-amber-950/20" data-testid="worklist-filter-indicator" role="status" aria-live="polite">
+            <i data-lucide="list-filter" class="h-3.5 w-3.5 text-amber-600 shrink-0" aria-hidden="true"></i>
+            <span class="text-xs text-amber-700 dark:text-amber-400 font-medium">Filtered by worklist: {{ _ws_labels.get(selected_workspace, selected_workspace) }} ({{ total_count }} solution{{ 's' if total_count != 1 else '' }})</span>
+            <a href="{{ request.path }}" class="ml-auto text-xs text-muted-foreground hover:text-foreground underline underline-offset-2" aria-label="Clear worklist filter">Clear filter</a>
+        </div>
+        {% endif %}
+
+        {# Bulk Actions Bar #}
+        <div data-bulk-actions="solution-table" class="hidden sticky top-0 z-20 px-5 py-3 border-b border-border/50 bg-primary/5 flex items-center gap-3">
+          <span class="text-sm font-medium text-foreground" data-selected-count="solution-table"></span>
+          {# Select-all-pages banner — shown when user checks the header checkbox on a filtered/paginated view #}
+          {% if total_count is defined %}
+          <span id="sol-select-all-pages-banner" class="hidden text-xs text-primary font-medium">
+            <button type="button" id="sol-select-all-pages-btn" class="underline underline-offset-2 hover:text-primary/80 transition-colors">
+              Select all {{ total_count }} solution{{ 's' if total_count != 1 else '' }} matching this filter
+            </button>
+            <span id="sol-all-pages-active-label" class="hidden ml-1 text-muted-foreground">(all selected — delete will affect all {{ total_count }})</span>
+          </span>
+          {% endif %}
+          <div class="flex items-center gap-2 ml-auto">
+              <button type="button" id="compareSolutionsBtn" @click="openSolutionCompare()" class="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-medium border border-border/50 bg-card hover:bg-accent transition-colors" aria-label="Compare selected" title="Select 2 or 3 solutions to compare">
+                <i data-lucide="git-compare" class="h-3.5 w-3.5" aria-hidden="true"></i>Compare
+              </button>
+              <button type="button" data-action="bulk-export-solutions"
+                      class="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-medium border border-border/50 bg-card hover:bg-accent transition-colors" aria-label="Export selected">
+                <i data-lucide="download" class="h-3.5 w-3.5" aria-hidden="true"></i>Export
+              </button>
+              <button type="button" data-action="bulk-delete-solutions"
+                      class="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-medium border border-destructive/30 bg-card hover:bg-destructive/10 text-destructive transition-colors" aria-label="Delete selected">
+                <i data-lucide="trash-2" class="h-3.5 w-3.5" aria-hidden="true"></i>Delete
+              </button>
+          </div>
+        </div>
+
+        {# Table #}
+        <div class="overflow-x-auto">
+            <table class="min-w-full">
+                <thead>
+                    <tr class="border-b border-border/50 bg-muted/30">
+                        <th class="px-5 py-3.5 w-10"><input type="checkbox" data-select-all="solution-table" class="h-4 w-4 rounded border-input" aria-label="Select all solutions"></th>
+                        <th class="px-5 py-3.5 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Solution</th>
+                        <th class="px-5 py-3.5 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Phase & Status</th>
+                        <th class="px-5 py-3.5 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Design Maturity</th>
+                        <th class="px-5 py-3.5 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Architecture Scope</th>
+                        <th class="px-5 py-3.5 text-center text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Arch. Score</th>
+                        <th class="px-5 py-3.5 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Next Action</th>
+                        <th class="px-5 py-3.5 text-right text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-border/50">
+                    {% for solution in solutions %}
+                        {% set ws = (workspace_summaries or {}).get(solution.id, {}) %}
+                        <tr class="hover:bg-muted/30 transition-colors group"
+                            data-name="{{ solution.name|lower }}"
+                            data-domain="{{ (solution.business_domain or '')|lower }}"
+                            data-status="{{ (solution.status or solution.governance_status or '')|lower }}"
+                            data-type="{{ (solution.solution_type or '')|lower }}"
+                            data-owner="{{ (ws.owner_display or '')|lower }}"
+                            data-next-action="{{ (ws.next_action or '')|lower }}">
+                            <td class="px-5 py-4 w-10">
+                                <input type="checkbox" data-select-row="solution-table" value="{{ solution.id }}" class="h-4 w-4 rounded border-input" aria-label="Select {{ solution.name }}">
+                            </td>
+                            <td class="px-5 py-4 min-w-[18rem]">
+                                <div class="space-y-1.5">
+                                    <a href="{{ url_for('solution_design.view_solution', solution_id=solution.id) }}" class="text-sm font-semibold text-foreground hover:text-primary transition-colors">{{ solution.name }}</a>
+                                    <p class="text-xs text-muted-foreground leading-relaxed">{{ solution.description[:90] if solution.description else 'No summary yet.' }}{% if solution.description and solution.description|length > 90 %}...{% endif %}</p>
+                                    <div class="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+                                        <span class="px-2 py-0.5 rounded bg-muted/50">{{ solution.business_domain or 'No domain' }}</span>
+                                        <span class="px-2 py-0.5 rounded bg-muted/50">{{ solution.solution_type|replace('_', ' ')|title if solution.solution_type else 'Type not set' }}</span>
+                                        <span class="text-muted-foreground/60">Lead: {{ ws.owner_display or 'Unassigned' }}</span>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="px-5 py-4 whitespace-nowrap">
+                                <div class="space-y-2">
+                                    <div class="flex flex-wrap items-center gap-1.5">
+                                        <span class="inline-flex items-center rounded-lg bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">{{ ws.phase_label or ('Phase ' ~ (solution.adm_phase or 'A')) }}</span>
+                                        {{ status_badge_auto(solution.status or 'planned') }}
+                                    </div>
+                                    {% set GOV_LABELS = {'draft': 'Draft', 'arb_review': 'In Review', 'under_review': 'Under Review', 'approved': 'Approved', 'rejected': 'Rejected', 'in_progress': 'In Progress', 'proposed': 'Submitted'} %}
+                                    {% set _gov = ws.governance_status or 'draft' %}
+                                    {% set _gov_label = GOV_LABELS.get(_gov, _gov|replace('_',' ')|title) %}
+                                    {% if _gov == 'approved' %}
+                                        {% set _gov_cls = 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20' %}
+                                    {% elif _gov in ('arb_review', 'under_review') %}
+                                        {% set _gov_cls = 'bg-amber-500/10 text-amber-600 border border-amber-500/20' %}
+                                    {% elif _gov == 'rejected' %}
+                                        {% set _gov_cls = 'bg-red-500/10 text-destructive border border-red-500/20' %}
+                                    {% else %}
+                                        {% set _gov_cls = 'bg-muted text-muted-foreground border border-border/50' %}
+                                    {% endif %}
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold {{ _gov_cls }}">{{ _gov_label }}</span>
+                                </div>
+                            </td>
+                            <td class="px-5 py-4 whitespace-nowrap">
+                                <div class="space-y-2">
+                                    <div class="flex items-baseline gap-2">
+                                        <span class="text-2xl font-bold tracking-tight
+                                            {% if (ws.readiness_pct or 0) >= 80 %}text-emerald-600
+                                            {% elif (ws.readiness_pct or 0) >= 40 %}text-amber-500
+                                            {% else %}text-foreground{% endif %}">{{ ws.readiness_pct or 0 }}%</span>
+                                    </div>
+                                    <div class="h-1.5 w-32 rounded-full bg-muted/50 overflow-hidden">
+                                        <div class="h-full rounded-full transition-all
+                                            {% if (ws.readiness_pct or 0) >= 80 %}bg-emerald-500
+                                            {% elif (ws.readiness_pct or 0) >= 40 %}bg-amber-500
+                                            {% else %}bg-primary{% endif %}"
+                                             style="width: {{ ws.readiness_pct or 0 }}%"></div>
+                                    </div>
+                                    <p class="text-[10px] text-muted-foreground">{{ ws.readiness_passed or 0 }}/{{ ws.readiness_total or 0 }} TOGAF checks</p>
+                                </div>
+                            </td>
+                            <td class="px-5 py-4">
+                                <div class="flex flex-wrap gap-1.5 max-w-xs">
+                                    <span class="rounded-md bg-muted/50 px-2 py-1 text-[10px] font-medium text-muted-foreground">{{ ws.capability_count or 0 }} capabilities</span>
+                                    <span class="rounded-md bg-muted/50 px-2 py-1 text-[10px] font-medium text-muted-foreground">{{ ws.application_count or 0 }} apps</span>
+                                    <span class="rounded-md bg-muted/50 px-2 py-1 text-[10px] font-medium text-muted-foreground">{{ ws.archimate_count or 0 }} ArchiMate</span>
+                                    <span class="rounded-md bg-muted/50 px-2 py-1 text-[10px] font-medium text-muted-foreground">{{ ws.risk_count or 0 }} risks</span>
+                                </div>
+                            </td>
+                            {# PLT-002: Architecture completeness score ring #}
+                            {% set _cs = (completeness_scores or {}).get(solution.id, {}) %}
+                            {% set _score = _cs.get('score', 0) %}
+                            <td class="px-5 py-4 whitespace-nowrap">
+                              <div class="flex flex-col items-center gap-1">
+                                <div class="relative flex items-center justify-center w-11 h-11">
+                                  <svg class="w-11 h-11 -rotate-90" viewBox="0 0 36 36">
+                                    <circle cx="18" cy="18" r="15.9" fill="none" stroke="currentColor" stroke-width="3" class="text-muted/40"/>
+                                    <circle cx="18" cy="18" r="15.9" fill="none" stroke="currentColor" stroke-width="3"
+                                            stroke-dasharray="{{ _score }}, 100"
+                                            class="{{ 'text-emerald-500' if _score >= 80 else ('text-amber-500' if _score >= 40 else 'text-red-400') }}"/>
+                                  </svg>
+                                  <span class="absolute text-[11px] font-bold leading-none">{{ _score }}%</span>
+                                </div>
+                                <span class="text-[10px] text-muted-foreground">{{ _cs.get('filled_count', 0) }}/{{ _cs.get('total', 14) }}</span>
+                              </div>
+                            </td>
+                            {% set _disconnected = (ws.capability_count or 0) == 0 and (ws.application_count or 0) == 0 and (ws.archimate_count or 0) == 0 %}
+                            <td class="px-5 py-4">
+                                <div class="space-y-1 max-w-[200px]">
+                                    <p class="text-xs font-medium leading-relaxed {{ 'text-amber-600' if _disconnected else 'text-foreground' }}">{{ ws.next_action or 'Continue modelling' }}</p>
+                                    <p class="text-[10px] text-muted-foreground">{{ solution.created_at | format_date }}</p>
+                                </div>
+                            </td>
+                            <td class="px-5 py-4 whitespace-nowrap text-right">
+                                <div class="flex flex-col items-end gap-2">
+                                    <div class="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <a href="{{ url_for('solution_design.view_solution', solution_id=solution.id) }}"
+                                           class="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-border/50 bg-card hover:bg-primary hover:text-primary-foreground hover:border-primary transition-all"
+                                           title="Open Workspace">
+                                            <i data-lucide="layout-dashboard" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                                        </a>
+                                        <a href="/solutions/{{ solution.id }}/traceability"
+                                           class="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-border/50 bg-card hover:bg-accent transition-colors"
+                                           title="Traceability">
+                                            <i data-lucide="git-branch" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                                        </a>
+                                        <a href="/solutions/{{ solution.id }}/risks/heatmap"
+                                           class="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-border/50 bg-card hover:bg-accent transition-colors"
+                                           title="Risk Heatmap">
+                                            <i data-lucide="flame" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                                        </a>
+                                        <a href="{{ url_for('solution_design.edit_solution', solution_id=solution.id) }}"
+                                           class="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-border/50 bg-card hover:bg-accent transition-colors"
+                                           title="Edit">
+                                            <i data-lucide="pencil" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                                        </a>
+                                    </div>
+                                    <div class="flex items-center gap-1.5">
+                                        <button type="button" @click="toggleCompare({{ solution.id }})"
+                                                :class="isInCompare({{ solution.id }}) ? 'text-primary border-primary bg-primary/10' : 'text-muted-foreground border-border/50'"
+                                                class="text-[10px] px-2 py-1 rounded-md border font-medium transition-colors"
+                                                x-text="isInCompare({{ solution.id }}) ? '✓ Compare' : '+ Compare'"></button>
+                                        <button type="button" @click="window.deleteSolution({{ solution.id }}, '{{ solution.name|e }}')"
+                                                class="text-[10px] px-2 py-1 rounded-md border border-destructive/20 text-destructive/70 hover:bg-destructive/10 hover:text-destructive transition-colors" aria-label="Delete">Delete</button>
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- ENT-010: Comparison panel (2-3 solutions) -->
+        <div id="solutionComparePanel" class="hidden border-t border-border/50 p-4 bg-muted/20">
+                <div class="flex items-center justify-between mb-3">
+                    <h3 class="text-sm font-semibold text-foreground">Solution comparison</h3>
+                    <button id="btn-close-compare" type="button" class="text-muted-foreground hover:text-foreground p-1 rounded" aria-label="Close comparison">
+                        <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
+                    </button>
+                </div>
+                <div id="solutionCompareTableWrap" class="overflow-x-auto">
+                    <table class="w-full border-collapse text-sm" id="solutionCompareTable">
+                        <thead>
+                            <tr class="border-b border-border">
+                                <th class="text-left py-2 px-3 text-xs font-medium text-muted-foreground">Attribute</th>
+                                <th id="compareCol1" class="text-left py-2 px-3 text-xs font-medium text-muted-foreground"></th>
+                                <th id="compareCol2" class="text-left py-2 px-3 text-xs font-medium text-muted-foreground"></th>
+                                <th id="compareCol3" class="text-left py-2 px-3 text-xs font-medium text-muted-foreground hidden"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="solutionCompareBody"></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="flex items-center gap-2">
+              <div class="flex items-center gap-2 mr-4">
+                <label class="text-xs text-muted-foreground">Per page:</label>
+                <select @change="changeSolPerPage($event.target.value)" class="h-8 w-16 rounded-lg border border-border/50 bg-card px-2 py-1 text-xs font-medium">
+                  {% for size in [10, 20, 50, 100] %}
+                  <option value="{{ size }}" {{ 'selected' if (per_page|default(20)) == size else '' }}>{{ size }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              {% if pagination.has_prev %}
+              <a href="?page={{ pagination.prev_num }}&per_page={{ per_page|default(20) }}&search={{ search|default('') }}&status={{ selected_status|default('') }}&domain={{ selected_domain|default('') }}&type={{ selected_type|default('') }}&created_after={{ created_after|default('') }}&created_before={{ created_before|default('') }}"
+                 class="inline-flex items-center justify-center h-8 px-3 rounded-lg border border-border/50 bg-card hover:bg-muted text-xs font-medium transition-colors">
+                <i data-lucide="chevron-left" class="h-3.5 w-3.5 mr-1"></i>Prev
+              </a>
+              {% endif %}
+              <div class="flex items-center gap-1">
+                {% for page_num in pagination.iter_pages(left_edge=1, left_current=1, right_current=2, right_edge=1) %}
+                  {% if page_num %}
+                    {% if page_num == pagination.page %}
+                    <span class="inline-flex items-center justify-center h-8 w-8 rounded-lg bg-primary text-primary-foreground text-xs font-semibold">{{ page_num }}</span>
+                    {% else %}
+                     <a href="?page={{ page_num }}&per_page={{ per_page|default(20) }}&search={{ search|default('') }}&status={{ selected_status|default('') }}&domain={{ selected_domain|default('') }}&type={{ selected_type|default('') }}&created_after={{ created_after|default('') }}&created_before={{ created_before|default('') }}"
+                       class="inline-flex items-center justify-center h-8 w-8 rounded-lg border border-border/50 bg-card hover:bg-muted text-xs font-medium transition-colors">{{ page_num }}</a>
+                    {% endif %}
+                  {% else %}
+                    <span class="inline-flex items-center justify-center h-8 w-8 text-muted-foreground">...</span>
+                  {% endif %}
+                {% endfor %}
+                  {% if pagination.has_next %}
+                  <a href="?page={{ pagination.next_num }}&per_page={{ per_page|default(20) }}&search={{ search|default('') }}&status={{ selected_status|default('') }}&domain={{ selected_domain|default('') }}&type={{ selected_type|default('') }}&created_after={{ created_after|default('') }}&created_before={{ created_before|default('') }}"
+                     class="inline-flex items-center justify-center h-8 px-3 rounded-md border border-input bg-background hover:bg-muted text-sm font-medium transition-colors">
+                    Next<i data-lucide="chevron-right" class="h-4 w-4 ml-1"></i>
+                  </a>
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+    </div>
+    {% else %}
+    {# D1: Enhanced empty state — metrics, filter bar, and table hidden #}
+    <div data-slot="card" class="rounded-xl border bg-card shadow-sm">
+        <div class="text-center py-16 px-4">
+            <div class="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-muted">
+                <i data-lucide="puzzle" class="h-8 w-8 text-muted-foreground" aria-hidden="true"></i>
+            </div>
+            <h2 class="mt-4 text-lg font-medium">No solutions found</h2>
+            <p class="mt-2 text-sm text-muted-foreground max-w-md mx-auto">Get started by creating your first solution</p>
+            <div class="mt-6 flex flex-wrap items-center justify-center gap-3">
+                <a href="{{ url_for('architecture_journey.index') }}" class="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium" aria-label="Create new solution using the guided architecture journey">
+                    <i data-lucide="zap" class="h-4 w-4" aria-hidden="true"></i>
+                    New Solution
+                </a>
+                <button type="button" @click="openTemplateModal()" class="inline-flex items-center justify-center gap-2 h-11 px-5 rounded-lg border border-border/50 bg-card hover:bg-accent transition-colors text-sm font-medium" aria-label="Create from template">
+                    <i data-lucide="layout-template" class="h-4 w-4" aria-hidden="true"></i>
+                    New from Template
+                </button>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+  {# ENT-010: Sticky comparison bar #}
+  <div :class="($data.compareIds || []).length > 1 ? '' : 'hidden'"
+       class="fixed bottom-0 left-0 right-0 bg-background border-t border-border shadow-lg p-4 z-40">
+    <div class="max-w-7xl mx-auto flex items-center gap-4">
+      <span class="text-sm font-medium text-foreground" x-text="`Comparing ${($data.compareIds || []).length} solutions`"></span>
+      <div class="flex gap-2 flex-1">
+        <template x-for="cid in ($data.compareIds || [])" :key="cid">
+          <span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-muted text-xs font-medium">
+            <span x-text="cid"></span>
+            <button type="button" @click="toggleCompare(cid)" class="hover:text-destructive transition-colors">×</button>
+          </span>
+        </template>
+      </div>
+      <button type="button" @click="if($data.compareIds !== undefined){ compareIds=[]; compareMode=false; }" class="text-xs text-muted-foreground hover:text-foreground transition-colors">Clear All</button>
+    </div>
+  </div>
+</div>
+{# sol-bulk-delete-scope removed — bulkDeleteSolutions() now uses window.confirm directly #}
+
+
+{% endblock %}
+
+{% block extra_head_js %}
+<script>
+  window.__SOLUTION_LIST_CONFIG__ = {
+    createSolutionUrl: '/architecture-journey/',
+    listSolutionsUrl: '{{ url_for("solution_design.list_solutions") }}',
+    templatesUrl: '{{ url_for("solution_design.list_solution_templates") }}',
+    createFromTemplateUrl: '{{ url_for("solution_design.create_solution_from_template") }}',
+    currentUserEmail: '{{ current_user.email|default("", true) }}'
+  };
+</script>
+<script src="{{ url_for('static', filename='js/capabilities-loader.js') }}"></script>
+<script src="{{ url_for('static', filename='js/solutions/list.js') }}"></script>
+<script>
+  let _solSelectAllPages = false;
+  let _solAllFilteredIds = {{ (all_filtered_ids or []) | tojson | safe }};
+
+  document.addEventListener('DOMContentLoaded', function() {
+    if (window.Platform && Platform.selection) {
+      Platform.selection.create({
+        id: 'solution-table',
+        onChange: function(selectedIds) {
+          _updateSelectAllPagesBanner(selectedIds);
+        }
+      });
+    }
+    let allPagesBtn = document.getElementById('sol-select-all-pages-btn');
+    if (allPagesBtn) {
+      allPagesBtn.addEventListener('click', function() {
+        _solSelectAllPages = true;
+        let btn = document.getElementById('sol-select-all-pages-btn');
+        let label = document.getElementById('sol-all-pages-active-label');
+        if (btn) btn.classList.add('hidden');
+        if (label) label.classList.remove('hidden');
+      });
+    }
+  });
+
+  function _updateSelectAllPagesBanner(selectedIds) {
+    let banner = document.getElementById('sol-select-all-pages-banner');
+    if (!banner) return;
+    let totalCount = {{ total_count|default(0) }};
+    let pageSize = document.querySelectorAll('[data-select-row="solution-table"]').length;
+    let sel = Platform.selection && Platform.selection.get('solution-table');
+    let count = sel ? sel.count() : 0;
+    // Show banner only when all rows on this page are selected AND there are more pages
+    if (count > 0 && count === pageSize && totalCount > pageSize) {
+      banner.classList.remove('hidden');
+    } else {
+      banner.classList.add('hidden');
+      _solSelectAllPages = false;
+      let btn = document.getElementById('sol-select-all-pages-btn');
+      let label = document.getElementById('sol-all-pages-active-label');
+      if (btn) btn.classList.remove('hidden');
+      if (label) label.classList.add('hidden');
+    }
+  }
+
+  function changeSolPerPage(value) {
+    let url = new URL(window.location.href);
+    url.searchParams.set('per_page', value);
+    url.searchParams.set('page', '1');
+    window.location.href = url.toString();
+  }
+
+  // Stores pending bulk-delete IDs while the confirm modal is open
+  let _bulkDeletePendingIds = [];
+
+  function bulkDeleteSolutions() {
+    let sel = Platform.selection.get('solution-table');
+    if (!sel || sel.count() === 0) return;
+    let pageIds = sel.getSelected().map(Number);
+    let deleteAll = _solSelectAllPages && _solAllFilteredIds.length > 0;
+    let ids = deleteAll ? _solAllFilteredIds : pageIds;
+    if (ids.length === 0) return;
+
+    // Populate and open the Platform modal (no window.confirm — works in all envs)
+    _bulkDeletePendingIds = ids;
+    let msgEl = document.getElementById('sol-bulk-delete-msg');
+    if (msgEl) {
+      msgEl.textContent = 'You are about to permanently delete ' + ids.length +
+        ' solution' + (ids.length === 1 ? '' : 's') + '. This action cannot be undone.';
+    }
+    if (window.Platform && Platform.modal) {
+      Platform.modal.open('sol-bulk-delete-confirm');
+    }
+  }
+
+  function _executeBulkDelete() {
+    let ids = _bulkDeletePendingIds;
+    if (!ids || ids.length === 0) return;
+    if (window.Platform && Platform.modal) Platform.modal.close('sol-bulk-delete-confirm');
+
+    let deleteBtn = document.getElementById('sol-bulk-delete-btn');
+    if (deleteBtn) {
+      deleteBtn.disabled = true;
+      deleteBtn.innerHTML = '<svg class="animate-spin h-3.5 w-3.5 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path></svg>Deleting...';
+    }
+    if (window.Platform && Platform.toast) Platform.toast.success('Deleting ' + ids.length + ' solution(s)...');
+
+    fetch('{{ url_for("solution_design.bulk_delete_solutions") }}', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || ''
+      },
+      body: JSON.stringify({ solution_ids: ids })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.success) {
+        Platform.toast.success('Deleted ' + data.deleted_count + ' solution(s)');
+        setTimeout(function() { window.location.reload(); }, 600);
+      } else {
+        if (deleteBtn) { deleteBtn.disabled = false; deleteBtn.innerHTML = '<i data-lucide="trash-2" class="h-3.5 w-3.5"></i>Delete'; }
+        Platform.toast.error(data.error || 'Failed to delete solutions');
+      }
+    })
+    .catch(function() {
+      if (deleteBtn) { deleteBtn.disabled = false; deleteBtn.innerHTML = '<i data-lucide="trash-2" class="h-3.5 w-3.5"></i>Delete'; }
+      Platform.toast.error('Network error');
+    })
+    .finally(function() { _bulkDeletePendingIds = []; });
+  }
+
+  function openTemplateModal() {
+    if (window.Platform && Platform.modal) Platform.modal.open('template-picker');
+    let list = document.getElementById('template-list');
+    // Event delegation — avoids inline onclick which is blocked by strict-dynamic CSP in production
+    if (list && !list._delegated) {
+      list.addEventListener('click', function(e) {
+        let btn = e.target.closest('button[data-tid]');
+        if (btn) createFromTemplate(parseInt(btn.getAttribute('data-tid'), 10));
+      });
+      list._delegated = true;
+    }
+    let cfg = window.__SOLUTION_LIST_CONFIG__ || {};
+    fetch(cfg.templatesUrl || '/solutions/templates', { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (!list) return;
+        let templates = (data && data.templates) || [];
+        list.innerHTML = templates.length === 0
+          ? '<p class="text-sm text-muted-foreground py-4 text-center">No templates yet. Save a solution as a template from its detail page.</p>'
+          : templates.map(function(t) {
+              return '<div class="flex items-center justify-between gap-4 rounded-lg border border-border bg-card p-4">' +
+                '<div class="min-w-0"><p class="font-medium text-foreground">' + (t.name || 'Unnamed') + '</p>' +
+                '<p class="text-xs text-muted-foreground mt-0.5">' + (t.description || '').slice(0, 120) + (t.description && t.description.length > 120 ? '…' : '') + '</p>' +
+                '<span class="inline-flex items-center mt-1 px-2 py-0.5 rounded text-[10px] bg-muted text-muted-foreground">' + (t.domain || 'General') + '</span>' +
+                ' <span class="text-[10px] text-muted-foreground">· used ' + (t.usage_count || 0) + '×</span></div>' +
+                '<button type="button" data-tid="' + t.id + '" class="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90">Use Template</button></div>';
+            }).join('');
+      })
+      .catch(function() {
+        if (list) list.innerHTML = '<p class="text-sm text-muted-foreground py-4 text-center">Failed to load templates.</p>';
+      });
+  }
+  function createFromTemplate(templateId) {
+    fetch('/architecture-journey/start-from-template', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({ template_id: templateId })
+    })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.success && data.redirect) {
+          if (window.Platform && Platform.modal) Platform.modal.close('template-picker');
+          window.location.href = data.redirect;
+        } else {
+          Platform.toast.error(data.error || 'Failed to create solution');
+        }
+      })
+      .catch(function() { Platform.toast.error('Network error'); });
+  }
+  function openSolutionCompare() {
+    let sel = Platform.selection ? Platform.selection.get('solution-table') : null;
+    let ids = sel ? sel.getSelected().map(Number) : [];
+    if (ids.length < 2) { Platform.toast.error('Select at least 2 solutions to compare'); return; }
+    let rows = document.querySelectorAll('tbody tr');
+    let headers = ['Attribute'];
+    let bodyRows = {domain: ['Domain'], status: ['Status'], type: ['Type'], readiness: ['Readiness'], capabilities: ['Capabilities'], created: ['Created']};
+    rows.forEach(function(tr) {
+      let cb = tr.querySelector('[data-select-row="solution-table"]');
+      if (!cb || ids.indexOf(Number(cb.value)) === -1) return;
+      let cells = tr.querySelectorAll('td');
+      headers.push((cells[1] && cells[1].querySelector('.font-medium')?.textContent?.trim()) || 'Solution');
+      bodyRows.domain.push(tr.dataset.domain || '—');
+      bodyRows.status.push(tr.dataset.status || '—');
+      bodyRows.type.push(tr.dataset.type || '—');
+      bodyRows.readiness.push((cells[3] && cells[3].querySelector('.text-2xl')?.textContent?.trim()) || '—');
+      bodyRows.capabilities.push((cells[4] && cells[4].textContent?.trim()) || '—');
+      bodyRows.created.push((cells[5] && cells[5].querySelector('.text-xs')?.textContent?.trim()) || '—');
+    });
+    let headTr = document.querySelector('#solutionCompareTable thead tr');
+    if (headTr) headTr.innerHTML = headers.map(function(h) { return '<th class="text-left py-2 px-3 text-xs font-medium text-muted-foreground">' + h + '</th>'; }).join('');
+    let tbody = document.getElementById('solutionCompareBody');
+    if (tbody) tbody.innerHTML = Object.values(bodyRows).map(function(row) { return '<tr class="border-b border-border">' + row.map(function(c, i) { return i === 0 ? '<td class="py-2 px-3 text-xs font-medium text-muted-foreground">' + c + '</td>' : '<td class="py-2 px-3 text-sm text-foreground">' + c + '</td>'; }).join('') + '</tr>'; }).join('');
+    document.getElementById('solutionComparePanel').classList.remove('hidden');
+  }
+  function closeSolutionCompare() {
+    document.getElementById('solutionComparePanel').classList.add('hidden');
+  }
+
+  function bulkExportSolutions() {
+    let sel = Platform.selection.get('solution-table');
+    if (!sel || sel.count() === 0) return;
+    let ids = sel.getSelected();
+
+    let rows = [['ID','Name','Domain','Status','Type','Created']];
+    document.querySelectorAll('tbody tr').forEach(function(tr) {
+      let cb = tr.querySelector('[data-select-row="solution-table"]');
+      if (!cb || ids.indexOf(cb.value) === -1) return;
+      let cells = tr.querySelectorAll('td');
+      rows.push([
+        cb.value,
+        (cells[1] && cells[1].querySelector('.font-medium')?.textContent?.trim()) || '',
+        tr.dataset.domain || '',
+        tr.dataset.status || '',
+        tr.dataset.type || '',
+        (cells[5] && cells[5].querySelector('.text-xs')?.textContent?.trim()) || ''
+      ]);
+    });
+
+    let csv = rows.map(function(r) { return r.map(function(c) { return '"' + String(c).replace(/"/g, '""') + '"'; }).join(','); }).join('\n');
+    let blob = new Blob([csv], { type: 'text/csv' });
+    let a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'solutions_export_' + new Date().toISOString().slice(0,10) + '.csv';
+    a.click();
+    Platform.toast.success('Exported ' + ids.length + ' solution(s)');
+  }
+
+  // CSP-safe event delegation — onclick attributes are blocked by strict-dynamic CSP.
+  // All bulk-action buttons use data-action attributes and are handled here instead.
+  document.addEventListener('click', function(e) {
+    let t = e.target.closest('[data-action]');
+    if (!t) return;
+    let action = t.getAttribute('data-action');
+    if (action === 'bulk-delete-solutions')      { bulkDeleteSolutions(); }
+    else if (action === 'bulk-export-solutions') { bulkExportSolutions(); }
+    else if (action === 'execute-bulk-delete')   { _executeBulkDelete(); }
+    else if (action === 'close-compare')         { closeSolutionCompare(); }
+  });
+
+  let _closeCmpBtn = document.getElementById('btn-close-compare');
+  if (_closeCmpBtn) _closeCmpBtn.addEventListener('click', closeSolutionCompare);
+</script>
+{% endblock %}
+
+{% block modals %}
+{% call modal(id='sol-bulk-delete-confirm', title='Delete Solutions', size='sm') %}
+<div class="space-y-4">
+  <p id="sol-bulk-delete-msg" class="text-sm text-muted-foreground">You are about to permanently delete the selected solutions. This action cannot be undone.</p>
+  <div class="flex justify-end gap-2">
+    <button type="button" data-modal-close="sol-bulk-delete-confirm"
+            class="inline-flex items-center justify-center h-9 px-4 rounded-lg border border-border bg-background text-sm font-medium hover:bg-accent transition-colors" aria-label="Cancel">
+      Cancel
+    </button>
+    <button type="button" data-action="execute-bulk-delete" id="sol-bulk-delete-btn"
+            class="inline-flex items-center justify-center h-9 px-4 rounded-lg bg-destructive text-destructive-foreground text-sm font-medium hover:bg-destructive/90 transition-colors" aria-label="Confirm delete">
+      Delete
+    </button>
+  </div>
+</div>
+{% endcall %}
+
+{% call modal(id='template-picker', title='New from Template', description='Pick a pattern to pre-seed the Architecture Journey — the wizard runs in full, with LLM inference and ArchiMate wiring, starting from the template context', size='lg') %}
+<div class="space-y-3 max-h-[60vh] overflow-y-auto">
+  <div id="template-list" class="space-y-2">
+    <p class="text-sm text-muted-foreground py-4 text-center">Loading templates…</p>
+  </div>
+</div>
+{% endcall %}
+
+{% endblock %}

@@ -1,0 +1,88 @@
+#!/usr/bin/env python3
+"""
+create-placeholders.py — Generate placeholder icon and splash PNGs for {{ solution_name }}.
+
+Run once before your first EAS build to satisfy Expo's asset requirements.
+Replace the generated files with your real branded assets before publishing.
+
+Usage:
+    cd mobile
+    python assets/create-placeholders.py
+
+No external dependencies required — uses only Python stdlib (struct, zlib).
+"""
+import os
+import struct
+import zlib
+
+
+def _png(width: int, height: int, r: int, g: int, b: int, a: int = 255) -> bytes:
+    """Generate a solid-colour PNG using only stdlib. Supports RGBA."""
+    use_alpha = a < 255
+    color_type = 6 if use_alpha else 2  # 6=RGBA, 2=RGB
+    channels = 4 if use_alpha else 3
+    pixel = bytes([r, g, b, a] if use_alpha else [r, g, b])
+
+    def chunk(name: bytes, data: bytes) -> bytes:
+        c = name + data
+        return struct.pack(">I", len(data)) + c + struct.pack(">I", zlib.crc32(c) & 0xFFFFFFFF)
+
+    sig = b"\x89PNG\r\n\x1a\n"
+    ihdr = chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, color_type, 0, 0, 0))
+
+    # One row: filter byte (0 = None) + pixels
+    row = b"\x00" + pixel * width
+    raw = row * height
+    idat = chunk(b"IDAT", zlib.compress(raw, level=9))
+    iend = chunk(b"IEND", b"")
+
+    return sig + ihdr + idat + iend
+
+
+# ── Brand colours ────────────────────────────────────────────────────────────
+# Indigo-600 (#6366f1) — matches the app's primary colour token
+ICON_BG = (99, 102, 241)    # indigo-600
+ICON_FG = (255, 255, 255)   # white
+SPLASH_BG = (255, 255, 255)  # white
+
+assets_dir = os.path.dirname(os.path.abspath(__file__))
+
+
+def write(path: str, data: bytes) -> None:
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "wb") as f:
+        f.write(data)
+    kb = len(data) / 1024
+    print(f"  ✓  {os.path.relpath(path)}  ({kb:.1f} KB)")
+
+
+print(f"\nGenerating placeholder assets for {{ solution_name }}…\n")
+
+# icon.png — 1024×1024 solid indigo (App Store, iOS)
+write(os.path.join(assets_dir, "icon.png"),
+      _png(1024, 1024, *ICON_BG))
+
+# adaptive-icon.png — 1024×1024 for Android adaptive icon foreground
+write(os.path.join(assets_dir, "adaptive-icon.png"),
+      _png(1024, 1024, *ICON_BG))
+
+# splash.png — 2048×2048 white (Expo splash screen)
+write(os.path.join(assets_dir, "splash.png"),
+      _png(2048, 2048, *SPLASH_BG))
+
+# favicon.png — 48×48 for Expo web
+write(os.path.join(assets_dir, "favicon.png"),
+      _png(48, 48, *ICON_BG))
+
+print(f"""
+Done. Placeholder assets written to mobile/assets/
+
+⚠️  These are solid-colour placeholders — replace them before publishing:
+    • icon.png         — 1024×1024 PNG, no transparency (App Store requirement)
+    • adaptive-icon.png — 1024×1024 PNG (Android, may have transparency)
+    • splash.png       — 2048×2048 PNG, centred logo on white background
+    • favicon.png      — 48×48 PNG (Expo Web only)
+
+Alternatively, run `bash assets/generate-assets.sh` with your source image
+(requires ImageMagick: brew install imagemagick).
+""")

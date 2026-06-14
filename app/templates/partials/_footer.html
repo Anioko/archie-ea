@@ -1,0 +1,7 @@
+{# Shared footer partial — T-109: extracted common footer content #}
+<footer class="border-t border-border mt-auto py-4 px-6 text-sm text-muted-foreground">
+  <div class="container mx-auto flex items-center justify-between">
+    <span>&copy; {{ now.year if now is defined else 2026 }} {{ config.APP_NAME }}</span>
+    <span class="text-xs">Enterprise Architecture Platform</span>
+  </div>
+</footer>

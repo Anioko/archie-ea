@@ -1,0 +1,56 @@
+# Mapping Policies Configuration
+# Default behaviors for different mapping flows
+
+auto_map_default:
+  map_capabilities: true
+  map_processes: true
+  generate_archimate: true
+  archimate_mode: "standard"
+  match_vendor_products: true
+  clone_vendor_archimate: true
+  use_confidence_review: true
+  confidence_threshold: 0.7
+
+import_default:
+  map_capabilities: true
+  map_processes: true
+  generate_archimate: true
+  archimate_mode: "comprehensive"
+  match_vendor_products: true
+  clone_vendor_archimate: true
+  use_confidence_review: false
+  confidence_threshold: 0.6
+
+# Transaction mode policies
+atomic_mode:
+  commit_on_success: true
+  rollback_on_error: true
+  allow_partial: false
+
+preview_mode:
+  commit_on_success: false
+  rollback_on_error: true
+  allow_partial: true
+
+# Vendor matching thresholds
+vendor_matching:
+  high_confidence_threshold: 0.8
+  medium_confidence_threshold: 0.6
+  low_confidence_threshold: 0.4
+  enable_archimate_cloning: true
+  min_elements_to_clone: 5
+
+# ArchiMate generation modes
+archimate_modes:
+  quick:
+    max_elements: 5
+    include_relationships: false
+    depth: "shallow"
+  standard:
+    max_elements: 15
+    include_relationships: true
+    depth: "medium"
+  comprehensive:
+    max_elements: 50
+    include_relationships: true
+    depth: "deep"

@@ -1,0 +1,267 @@
+{% extends "layouts/admin_base.html" %}
+{% import 'components/breadcrumb.html' as breadcrumb %}
+
+{% block title %}Network View - Capability Map{% endblock %}
+
+{% block breadcrumb %}
+{% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
+{{ breadcrumb_nav(items=[
+    {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
+    {'text': 'Business Layer', 'href': url_for('archimate_crud.dashboard') + '#business'},
+    {'text': 'Capabilities', 'href': url_for('capability_map.index')},
+    {'text': 'Network View', 'current': true}
+]) }}
+{% endblock %}
+
+{% block extra_css %}
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<style>
+    .node circle {
+        cursor: pointer;
+        stroke: #fff;
+        stroke-width: 2px;
+    }
+    .node text {
+        font: 10px sans-serif;
+        pointer-events: none;
+    }
+    .link {
+        fill: none;
+        stroke: #ccc;
+        stroke-width: 2px;
+    }
+    .domain-cust { fill: #3b82f6; }        /* Customer Management */
+    .domain-prod { fill: #10b981; }        /* Product Management */
+    .domain-oper { fill: #f59e0b; }        /* Operations */
+    .domain-fin { fill: #8b5cf6; }         /* Financial Management */
+    .domain-risk { fill: #ef4444; }        /* Risk & Compliance */
+    .domain-data { fill: #06b6d4; }        /* Data & Analytics */
+    .domain-part { fill: #84cc16; }        /* Partner & Supplier */
+    .domain-work { fill: #f97316; }        /* Workforce Management */
+    .domain-tech { fill: #a855f7; }        /* Technology Enablement */
+    /* Legacy domain mappings for compatibility */
+    .domain-enterprise { fill: #3b82f6; }
+    .domain-experience { fill: #10b981; }
+    .domain-engineering { fill: #f59e0b; }
+    .domain-integration { fill: #8b5cf6; }
+    .domain-operations { fill: #ef4444; }
+    .domain-governance { fill: #84cc16; }
+    .domain-analytics { fill: #f97316; }
+    .domain-security { fill: #dc2626; }
+    .domain-quality { fill: #a855f7; }
+    .domain-mobility { fill: #14b8a6; }
+    .domain-finance { fill: #eab308; }
+    .function-node { fill: #6b7280; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6" x-data="networkView()">
+    <!-- Breadcrumb -->
+    {% call breadcrumb.breadcrumb() %}
+        {% call breadcrumb.breadcrumb_item(href=url_for('admin.dashboard')) %}
+            <i data-lucide="home" class="h-4 w-4"></i>
+        {% endcall %}
+        {{ breadcrumb.breadcrumb_separator() }}
+        {% call breadcrumb.breadcrumb_item(href=url_for('capability_map.index')) %}
+            Capability Map
+        {% endcall %}
+        {{ breadcrumb.breadcrumb_separator() }}
+        {% call breadcrumb.breadcrumb_item(active=true) %}
+            Network View
+        {% endcall %}
+    {% endcall %}
+
+    <!-- Page Header -->
+    <div class="flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+            <i data-lucide="share-2" class="w-6 h-6 text-primary"></i>
+            <h1 class="text-3xl font-bold tracking-tight">Network View</h1>
+        </div>
+        <div class="flex items-center space-x-4">
+            <button @click="resetZoom()" class="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                <i data-lucide="maximize-2" class="w-4 h-4 inline mr-1"></i>
+                Reset Zoom
+            </button>
+        </div>
+    </div>
+
+    <!-- Controls -->
+    <div class="bg-card rounded-lg shadow border p-4">
+        <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-4">
+                <label class="flex items-center">
+                    <input type="checkbox" x-model="showFunctions" class="mr-2">
+                    <span class="text-sm text-muted-foreground">Show Functions</span>
+                </label>
+                <label class="flex items-center">
+                    <input type="checkbox" x-model="showLabels" class="mr-2">
+                    <span class="text-sm text-muted-foreground">Show Labels</span>
+                </label>
+            </div>
+            <div class="text-sm text-muted-foreground">
+                <span x-text="nodeCount"></span> nodes, <span x-text="linkCount"></span> links
+            </div>
+        </div>
+    </div>
+
+    <!-- Network Graph -->
+    <div class="bg-card rounded-lg shadow border">
+        <div id="network-graph" class="w-full h-96 lg:h-[600px]"></div>
+    </div>
+
+    <!-- Legend -->
+    <div class="bg-card rounded-lg shadow border p-6">
+        <h3 class="text-lg font-medium text-foreground mb-4">Domain Legend</h3> <!-- frontend-quality-ok: h3 in legend card, pre-existing content -->
+        <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+            <template x-for="domain in domains" :key="domain.id || domain.name || domain">
+                <div class="flex items-center">
+                    <div class="w-4 h-4 rounded-full mr-2" :class="getDomainClass(domain.name || domain)"></div>
+                    <span class="text-sm text-muted-foreground" x-text="domain.name || domain"></span>
+                </div>
+            </template>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function networkView() {
+        return {
+            capabilities: null,
+            showFunctions: true,
+            showLabels: true,
+            nodeCount: 0,
+            linkCount: 0,
+            domains: [],
+
+            init() {
+                this.loadData();
+                if (typeof lucide !== 'undefined') {
+                    lucide.createIcons();
+                }
+            },
+
+            async loadData() {
+                try {
+                    const response = await fetch('/capability-map/api/capabilities');
+                    const data = await response.json();
+                    this.capabilities = data;
+                    this.domains = data.statistics.domains;
+                    this.renderNetwork();
+                } catch (error) {
+                    console.error('Error loading capabilities:', error);
+                }
+            },
+
+            renderNetwork() {
+                if (!this.capabilities) return;
+
+                const container = d3.select('#network-graph');
+                container.selectAll('*').remove();
+
+                const width = container.node().getBoundingClientRect().width;
+                const height = container.node().getBoundingClientRect().height;
+
+                const svg = container.append('svg')
+                    .attr('width', width)
+                    .attr('height', height);
+
+                // Filter nodes based on showFunctions
+                const nodes = this.showFunctions ?
+                    this.capabilities.nodes :
+                    this.capabilities.nodes.filter(n => n.category !== 'function');
+
+                this.nodeCount = nodes.length;
+                this.linkCount = this.capabilities.edges.length;
+
+                const simulation = d3.forceSimulation(nodes)
+                    .force('link', d3.forceLink(this.capabilities.edges).id(d => d.id).distance(100))
+                    .force('charge', d3.forceManyBody().strength(-300))
+                    .force('center', d3.forceCenter(width / 2, height / 2))
+                    .force('collision', d3.forceCollide().radius(30));
+
+                const link = svg.append('g')
+                    .selectAll('line')
+                    .data(this.capabilities.edges)
+                    .enter().append('line')
+                    .attr('class', 'link')
+                    .style('stroke', '#e5e7eb')
+                    .style('stroke-width', 2);
+
+                const node = svg.append('g')
+                    .selectAll('g')
+                    .data(nodes)
+                    .enter().append('g')
+                    .attr('class', 'capability-node')
+                    .call(d3.drag()
+                        .on('start', this.dragstarted)
+                        .on('drag', this.dragged)
+                        .on('end', this.dragended));
+
+                node.append('circle')
+                    .attr('r', d => d.category === 'function' ? 6 : 10)
+                    .attr('class', d => this.getDomainClass(d.group))
+                    .on('mouseover', function(event, d) {
+                        d3.select(this).attr('r', d => d.category === 'function' ? 8 : 12);
+                    })
+                    .on('mouseout', function(event, d) {
+                        d3.select(this).attr('r', d => d.category === 'function' ? 6 : 10);
+                    });
+
+                if (this.showLabels) {
+                    node.append('text')
+                        .text(d => d.name.length > 12 ? d.name.substring(0, 12) + '...' : d.name)
+                        .attr('x', 0)
+                        .attr('y', d => d.category === 'function' ? -12 : -15)
+                        .attr('text-anchor', 'middle')
+                        .style('font-size', '9px')
+                        .style('fill', '#374151');
+                }
+
+                simulation.on('tick', () => {
+                    link
+                        .attr('x1', d => d.source.x)
+                        .attr('y1', d => d.source.y)
+                        .attr('x2', d => d.target.x)
+                        .attr('y2', d => d.target.y);
+
+                    node
+                        .attr('transform', d => `translate(${d.x},${d.y})`);
+                });
+
+                this.simulation = simulation;
+            },
+
+            dragstarted(event, d) {
+                if (!event.active) this.simulation.alphaTarget(0.3).restart();
+                d.fx = d.x;
+                d.fy = d.y;
+            },
+
+            dragged(event, d) {
+                d.fx = event.x;
+                d.fy = event.y;
+            },
+
+            dragended(event, d) {
+                if (!event.active) this.simulation.alphaTarget(0);
+                d.fx = null;
+                d.fy = null;
+            },
+
+            resetZoom() {
+                if (this.simulation) {
+                    this.simulation.alpha(1).restart();
+                }
+            },
+
+            getDomainClass(domain) {
+                const normalized = domain.toLowerCase().replace(/\s+/g, '-');
+                return `domain-${normalized}`;
+            }
+        }
+    }
+</script>
+{% endblock %}

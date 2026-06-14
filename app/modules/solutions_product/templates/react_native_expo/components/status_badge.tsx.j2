@@ -1,0 +1,64 @@
+{# Shared StatusBadge and PriorityBadge — NativeWind, consistent with list/detail screens #}
+import { Text, View } from "react-native"
+
+// Dynamic style helper — avoids Jinja2/JSX double-brace conflict
+const _bg = (c: string) => ({ backgroundColor: c })
+const _fg = (c: string) => ({ color: c })
+
+const STATUS_COLORS: Record<string, { bg: string; text: string; dot: string }> = {
+  draft:       { bg: "#f1f5f9", text: "#475569", dot: "#94a3b8" },
+  pending:     { bg: "#fef9c3", text: "#854d0e", dot: "#eab308" },
+  active:      { bg: "#dbeafe", text: "#1e40af", dot: "#3b82f6" },
+  in_progress: { bg: "#dbeafe", text: "#1e40af", dot: "#3b82f6" },
+  assigned:    { bg: "#e0e7ff", text: "#3730a3", dot: "#6366f1" },
+  open:        { bg: "#e0e7ff", text: "#3730a3", dot: "#6366f1" },
+  completed:   { bg: "#dcfce7", text: "#166534", dot: "#22c55e" },
+  done:        { bg: "#dcfce7", text: "#166534", dot: "#22c55e" },
+  approved:    { bg: "#dcfce7", text: "#166534", dot: "#22c55e" },
+  closed:      { bg: "#dcfce7", text: "#166534", dot: "#22c55e" },
+  cancelled:   { bg: "#fee2e2", text: "#991b1b", dot: "#ef4444" },
+  rejected:    { bg: "#fee2e2", text: "#991b1b", dot: "#ef4444" },
+  failed:      { bg: "#fee2e2", text: "#991b1b", dot: "#ef4444" },
+  archived:    { bg: "#f3f4f6", text: "#6b7280", dot: "#9ca3af" },
+  inactive:    { bg: "#f3f4f6", text: "#6b7280", dot: "#9ca3af" },
+  {% if state_machine %}
+  {% for state in state_machine.states %}
+  {# State machine states get auto-mapped; override specific ones above #}
+  {% endfor %}
+  {% endif %}
+}
+
+const PRIORITY_COLORS: Record<string, { bg: string; text: string }> = {
+  low:      { bg: "#f1f5f9", text: "#475569" },
+  medium:   { bg: "#fef9c3", text: "#854d0e" },
+  high:     { bg: "#fed7aa", text: "#9a3412" },
+  critical: { bg: "#fee2e2", text: "#991b1b" },
+  urgent:   { bg: "#fee2e2", text: "#991b1b" },
+}
+
+export function StatusBadge({ value }: { value: string | null | undefined }) {
+  if (value == null || value === "") return null
+  const key = String(value).toLowerCase().replace(/[\s-]+/g, "_")
+  const style = STATUS_COLORS[key] ?? { bg: "#f1f5f9", text: "#475569", dot: "#94a3b8" }
+  return (
+    <View className="flex-row items-center rounded-full px-2.5 py-1" style={_bg(style.bg)}>
+      <View className="w-1.5 h-1.5 rounded-full mr-1.5" style={_bg(style.dot)} />
+      <Text className="text-xs font-medium capitalize" style={_fg(style.text)}>
+        {String(value).replace(/_/g, " ")}
+      </Text>
+    </View>
+  )
+}
+
+export function PriorityBadge({ value }: { value: string | null | undefined }) {
+  if (value == null || value === "") return null
+  const key = String(value).toLowerCase()
+  const style = PRIORITY_COLORS[key] ?? { bg: "#f1f5f9", text: "#475569" }
+  return (
+    <View className="rounded-md px-2 py-0.5" style={_bg(style.bg)}>
+      <Text className="text-xs font-semibold uppercase" style={_fg(style.text)}>
+        {String(value)}
+      </Text>
+    </View>
+  )
+}

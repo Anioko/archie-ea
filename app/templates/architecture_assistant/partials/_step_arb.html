@@ -1,0 +1,209 @@
+{# Step 6: ARB Submission (TOGAF Phase G) #}
+<div class="space-y-6 px-4">
+  <div class="flex items-center justify-between">
+    <div>
+      <h2 class="text-lg font-semibold text-foreground">ARB Submission</h2>
+      <p class="text-sm text-muted-foreground mt-1">TOGAF Phase G — Review and submit architecture for ARB approval.</p>
+    </div>
+    <div class="flex items-center gap-2">
+      <button @click="saveArbDraftEdits()" type="button"
+        x-show="arbDraft && hasArbDraftEdits()" x-cloak
+        :disabled="arbDraftSaving"
+        class="inline-flex items-center gap-2 h-9 px-4 rounded-md text-sm font-medium border border-primary/50 bg-primary/5 text-primary hover:bg-primary/10 disabled:opacity-50 disabled:pointer-events-none">
+        <i data-lucide="save" class="h-4 w-4" x-show="!arbDraftSaving" x-cloak></i>
+        <i data-lucide="loader-2" class="h-4 w-4 animate-spin" x-show="arbDraftSaving" x-cloak></i>
+        <span x-text="arbDraftSaving ? 'Saving...' : 'Save Edits'"></span>
+      </button>
+      <button @click="downloadDraft()" type="button"
+        class="inline-flex items-center gap-2 h-9 px-4 rounded-md text-sm font-medium border border-input bg-background hover:bg-accent">
+        <i data-lucide="download" class="h-4 w-4"></i> Download PDF
+      </button>
+      <button @click="generateARBDraft()" type="button"
+        :disabled="arbLoading"
+        class="inline-flex items-center gap-2 h-9 px-4 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:pointer-events-none">
+        <i data-lucide="sparkles" class="h-4 w-4" x-show="!arbLoading" x-cloak></i>
+        <i data-lucide="loader-2" class="h-4 w-4 animate-spin" x-show="arbLoading" x-cloak></i>
+        <span x-text="arbLoading ? 'Generating...' : 'Generate Draft'"></span>
+      </button>
+    </div>
+  </div>
+
+  {# Loading state #}
+  <div x-show="arbLoading" x-cloak class="text-center py-8">
+    <i data-lucide="loader-2" class="h-8 w-8 animate-spin text-muted-foreground mx-auto"></i>
+    <p class="text-sm text-muted-foreground mt-2">Compiling ARB submission draft...</p>
+  </div>
+
+  {# ENH-005: Approval banner — shown when AI-generated draft needs approval before submission #}
+  <div x-show="arbDraft && arbDraft.ai_generated && arbDraft.approval_status === 'pending_review' && !arbLoading" x-cloak
+    class="rounded-md border border-amber-500/30 bg-amber-500/5 p-3">
+    <div class="flex items-start gap-2">
+      <i data-lucide="shield-alert" class="h-4 w-4 text-amber-600 mt-0.5 shrink-0"></i>
+      <div class="flex-1">
+        <p class="text-sm font-medium text-amber-700">AI-generated draft requires approval before ARB submission</p>
+        <p class="text-xs text-amber-600 mt-1">Review all sections below. Edit if needed, then approve the draft to enable submission.</p>
+      </div>
+      <button @click="approveARBDraft()" type="button"
+        class="inline-flex items-center gap-1 h-8 px-3 rounded-md text-xs font-medium bg-emerald-600 text-primary-foreground hover:bg-emerald-700 shrink-0">
+        <i data-lucide="check-circle-2" class="h-3.5 w-3.5"></i>
+        Approve Draft
+      </button>
+    </div>
+  </div>
+
+  {# ENH-005: Approved badge #}
+  <div x-show="arbDraft && arbDraft.approval_status === 'approved' && arbDraft.ai_generated && !arbLoading" x-cloak
+    class="rounded-md border border-emerald-500/30 bg-emerald-500/5 p-3">
+    <div class="flex items-center gap-2">
+      <i data-lucide="check-circle-2" class="h-4 w-4 text-emerald-600"></i>
+      <p class="text-sm font-medium text-emerald-700">Draft approved — ready for ARB submission</p>
+    </div>
+  </div>
+
+  {# ARB sections — use x-if to prevent x-model from binding when arbDraft is null #}
+  <template x-if="arbDraft && !arbLoading">
+  <div class="space-y-4">
+
+    {# Business Justification #}
+    <div class="rounded-md border border-border p-4">
+      <div class="flex items-center justify-between mb-2">
+        <h3 class="text-sm font-medium text-foreground">Business Justification</h3>
+        <div class="flex items-center gap-1.5">
+          <span x-show="isArbSectionEdited('business_justification')" x-cloak
+            class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-primary border border-blue-500/30">
+            <i data-lucide="pencil" class="h-3 w-3 mr-0.5"></i> Edited
+          </span>
+          {# ENH-006: AI Generated badge with contextual label #}
+          <span x-show="arbDraft && arbDraft.ai_generated" x-cloak
+            class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-500/10 text-primary border border-purple-500/30">
+            <i data-lucide="sparkles" class="h-3 w-3 mr-0.5"></i> AI Generated
+          </span>
+        </div>
+      </div>
+      <textarea x-model="arbDraft.business_justification" rows="4"
+        class="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        placeholder="Business justification for this solution..."></textarea>
+    </div>
+
+    {# Technical Assessment #}
+    <div class="rounded-md border border-border p-4">
+      <div class="flex items-center justify-between mb-2">
+        <h3 class="text-sm font-medium text-foreground">Technical Assessment</h3>
+        <div class="flex items-center gap-1.5">
+          <span x-show="isArbSectionEdited('technical_assessment')" x-cloak
+            class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-primary border border-blue-500/30">
+            <i data-lucide="pencil" class="h-3 w-3 mr-0.5"></i> Edited
+          </span>
+          <span x-show="arbDraft && arbDraft.ai_generated" x-cloak
+            class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-500/10 text-primary border border-purple-500/30">
+            <i data-lucide="sparkles" class="h-3 w-3 mr-0.5"></i> AI Generated
+          </span>
+        </div>
+      </div>
+      <textarea x-model="arbDraft.technical_assessment" rows="4"
+        class="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        placeholder="Technical architecture assessment..."></textarea>
+    </div>
+
+    {# Risk Analysis #}
+    <div class="rounded-md border border-border p-4">
+      <div class="flex items-center justify-between mb-2">
+        <h3 class="text-sm font-medium text-foreground">Risk Analysis</h3>
+        <div class="flex items-center gap-1.5">
+          <span x-show="isArbSectionEdited('risk_analysis')" x-cloak
+            class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-primary border border-blue-500/30">
+            <i data-lucide="pencil" class="h-3 w-3 mr-0.5"></i> Edited
+          </span>
+          <span x-show="arbDraft && arbDraft.ai_generated" x-cloak
+            class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-500/10 text-primary border border-purple-500/30">
+            <i data-lucide="sparkles" class="h-3 w-3 mr-0.5"></i> AI Generated
+          </span>
+        </div>
+      </div>
+      <textarea x-model="arbDraft.risk_analysis" rows="3"
+        class="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        placeholder="Risk factors and mitigation strategies..."></textarea>
+    </div>
+
+    {# Implementation Approach #}
+    <div class="rounded-md border border-border p-4">
+      <div class="flex items-center justify-between mb-2">
+        <h3 class="text-sm font-medium text-foreground">Implementation Approach</h3>
+        <div class="flex items-center gap-1.5">
+          <span x-show="isArbSectionEdited('implementation_approach')" x-cloak
+            class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-primary border border-blue-500/30">
+            <i data-lucide="pencil" class="h-3 w-3 mr-0.5"></i> Edited
+          </span>
+          <span x-show="arbDraft && arbDraft.ai_generated" x-cloak
+            class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-500/10 text-primary border border-purple-500/30">
+            <i data-lucide="sparkles" class="h-3 w-3 mr-0.5"></i> AI Generated
+          </span>
+        </div>
+      </div>
+      <textarea x-model="arbDraft.implementation_approach" rows="3"
+        class="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        placeholder="Implementation strategy, phases, and deployment approach..."></textarea>
+    </div>
+
+    {# Cost Summary #}
+    <div class="rounded-md border border-border p-4">
+      <div class="flex items-center justify-between mb-2">
+        <h3 class="text-sm font-medium text-foreground">Cost Summary</h3>
+        <div class="flex items-center gap-1.5">
+          <span x-show="isArbSectionEdited('cost_summary')" x-cloak
+            class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-primary border border-blue-500/30">
+            <i data-lucide="pencil" class="h-3 w-3 mr-0.5"></i> Edited
+          </span>
+          <span x-show="arbDraft && arbDraft.ai_generated" x-cloak
+            class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-500/10 text-primary border border-purple-500/30">
+            <i data-lucide="sparkles" class="h-3 w-3 mr-0.5"></i> AI Generated
+          </span>
+        </div>
+      </div>
+      <textarea x-model="arbDraft.cost_summary" rows="2"
+        class="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        placeholder="Total cost of ownership summary..."></textarea>
+    </div>
+
+    {# Capability Impact #}
+    <div class="rounded-md border border-border p-4" x-show="gaps.length > 0" x-cloak>
+      <h3 class="text-sm font-medium text-foreground mb-2">Capability Impact</h3>
+      <div class="space-y-2">
+        <template x-for="gap in gaps" :key="gap.capability_id">
+          <div class="flex items-center gap-3">
+            <span class="text-sm w-1/3" x-text="gap.capability_name"></span>
+            <div class="flex-1 flex items-center gap-2">
+              <span class="text-xs text-muted-foreground w-4" x-text="gap.maturity_current"></span>
+              <div class="flex-1 h-2 rounded-full bg-muted relative">
+                <div class="absolute h-2 rounded-full bg-amber-500" :style="'width:' + (gap.maturity_current * 20) + '%'"></div>
+                <div class="absolute h-2 rounded-full bg-emerald-500 opacity-50" :style="'width:' + (gap.maturity_target * 20) + '%'"></div>
+              </div>
+              <span class="text-xs font-medium w-4" x-text="gap.maturity_target"></span>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+
+    {# ArchiMate Footprint #}
+    <div class="rounded-md border border-border p-4">
+      <div class="flex items-center justify-between mb-2">
+        <h3 class="text-sm font-medium text-foreground">ArchiMate Footprint</h3>
+      </div>
+      <div class="flex flex-wrap gap-4 text-sm text-muted-foreground">
+        <span><span x-text="(arbDraft && arbDraft.archimate_count) || 0" class="font-medium text-foreground"></span> elements</span>
+        <span><span x-text="(arbDraft && arbDraft.relationship_count) || 0" class="font-medium text-foreground"></span> relationships</span>
+        <span><span x-text="affectedLayers.length" class="font-medium text-foreground"></span> layers</span>
+      </div>
+    </div>
+  </div>
+  </template>
+
+  {# Empty state — before draft generation #}
+  <div x-show="!arbDraft && !arbLoading" x-cloak
+    class="rounded-md border border-dashed border-border p-8 text-center">
+    <i data-lucide="file-text" class="h-8 w-8 text-muted-foreground mx-auto mb-2"></i>
+    <p class="text-sm text-muted-foreground">No ARB draft generated yet.</p>
+    <p class="text-xs text-muted-foreground mt-1">Click "Generate Draft" to compile Steps 1-5 into a submission.</p>
+  </div>
+</div>

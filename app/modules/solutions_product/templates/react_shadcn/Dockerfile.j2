@@ -1,0 +1,30 @@
+FROM node:20-alpine AS deps
+WORKDIR /app
+COPY package.json ./
+# npm install works without a pre-existing lock file (generates one)
+RUN npm install
+
+FROM node:20-alpine AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+ENV NEXT_TELEMETRY_DISABLED=1
+# Ensure public dir exists so the COPY in runner stage never fails
+RUN mkdir -p public && npm run build
+
+FROM node:20-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
+# standalone output bundles server.js + required node_modules
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+# static assets served by the standalone server
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+# public assets (may be empty but always exists thanks to mkdir above)
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
+USER nextjs
+EXPOSE 3000
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
+CMD ["node", "server.js"]

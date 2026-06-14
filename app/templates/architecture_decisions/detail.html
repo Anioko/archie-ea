@@ -1,0 +1,136 @@
+{% extends "layouts/admin_base.html" %}
+{% from "components/page_header.html" import page_header %}
+
+{% block title %}{{ decision.decision_id }}: {{ decision.title }}{% endblock %}
+
+{% macro status_badge(status) %}
+  {% if status == 'proposed' %}
+  <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20">Proposed</span>
+  {% elif status == 'accepted' %}
+  <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20">Accepted</span>
+  {% elif status == 'deprecated' %}
+  <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-muted text-muted-foreground border border-border">Deprecated</span>
+  {% elif status == 'superseded' %}
+  <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-destructive/10 text-destructive border border-destructive/20">Superseded</span>
+  {% else %}
+  <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-muted text-muted-foreground">{{ status|title }}</span>
+  {% endif %}
+{% endmacro %}
+
+{% set adm_labels = {
+    'A': 'Phase A: Architecture Vision',
+    'B': 'Phase B: Business Architecture',
+    'C': 'Phase C: Information Systems Architecture',
+    'D': 'Phase D: Technology Architecture',
+    'E': 'Phase E: Opportunities and Solutions',
+    'F': 'Phase F: Migration Planning',
+    'G': 'Phase G: Implementation Governance',
+    'H': 'Phase H: Architecture Change Management'
+} %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    {{ page_header(
+        title=decision.decision_id ~ ': ' ~ decision.title,
+        breadcrumbs=[
+            {'label': 'Dashboard', 'href': url_for('main.index')},
+            {'label': 'Governance'},
+            {'label': 'Architecture Decisions', 'href': url_for('arch_decisions.list_decisions')},
+            {'label': decision.decision_id}
+        ],
+        actions=[
+            {'text': 'Edit', 'icon': 'pencil', 'href': url_for('arch_decisions.edit_decision', decision_id=decision.id), 'variant': 'outline'}
+        ]
+    ) }}
+
+    <!-- Status & Phase row -->
+    <div class="flex flex-wrap items-center gap-3 mb-8">
+        {{ status_badge(decision.status) }}
+        {% if decision.adm_phase %}
+        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-secondary text-secondary-foreground">
+            <i data-lucide="layers" class="h-3 w-3 mr-1.5"></i>
+            {{ adm_labels.get(decision.adm_phase, 'Phase ' ~ decision.adm_phase) }}
+        </span>
+        {% endif %}
+        {% if decision.created_at %}
+        <span class="text-xs text-muted-foreground">
+            Created {{ decision.created_at.strftime('%B %d, %Y') }}
+            {% if decision.created_by %}by {{ decision.created_by.username or decision.created_by.email }}{% endif %}
+        </span>
+        {% endif %}
+    </div>
+
+    <!-- Decision sections -->
+    <div class="space-y-6">
+
+        {% if decision.context %}
+        <div class="bg-card border border-border rounded-lg p-6">
+            <h2 class="text-base font-semibold text-foreground mb-3 flex items-center gap-2">
+                <i data-lucide="info" class="h-4 w-4 text-muted-foreground"></i>
+                Context
+            </h2>
+            <div class="prose prose-sm dark:prose-invert max-w-none text-muted-foreground whitespace-pre-wrap">{{ decision.context }}</div>
+        </div>
+        {% endif %}
+
+        {% if decision.decision %}
+        <div class="bg-primary/5 border border-primary/20 rounded-lg p-6">
+            <h2 class="text-base font-semibold text-foreground mb-3 flex items-center gap-2">
+                <i data-lucide="check-circle" class="h-4 w-4 text-primary"></i>
+                Decision
+            </h2>
+            <div class="prose prose-sm dark:prose-invert max-w-none whitespace-pre-wrap font-medium">{{ decision.decision }}</div>
+        </div>
+        {% endif %}
+
+        {% if decision.consequences %}
+        <div class="bg-card border border-border rounded-lg p-6">
+            <h2 class="text-base font-semibold text-foreground mb-3 flex items-center gap-2">
+                <i data-lucide="arrow-right" class="h-4 w-4 text-muted-foreground"></i>
+                Consequences
+            </h2>
+            <div class="prose prose-sm dark:prose-invert max-w-none text-muted-foreground whitespace-pre-wrap">{{ decision.consequences }}</div>
+        </div>
+        {% endif %}
+
+        {% if decision.alternatives %}
+        <div class="bg-card border border-border rounded-lg p-6">
+            <h2 class="text-base font-semibold text-foreground mb-3 flex items-center gap-2">
+                <i data-lucide="git-branch" class="h-4 w-4 text-muted-foreground"></i>
+                Alternatives Considered
+            </h2>
+            <div class="prose prose-sm dark:prose-invert max-w-none text-muted-foreground whitespace-pre-wrap">{{ decision.alternatives }}</div>
+        </div>
+        {% endif %}
+
+        <!-- Impacted ArchiMate Elements -->
+        <div class="bg-card border border-border rounded-lg p-6">
+            <h2 class="text-base font-semibold text-foreground mb-3 flex items-center gap-2">
+                <i data-lucide="share-2" class="h-4 w-4 text-muted-foreground"></i>
+                Impacted ArchiMate Elements
+                <span class="ml-auto text-xs font-normal text-muted-foreground">{{ elements|length }} linked</span>
+            </h2>
+            {% if elements %}
+            <div class="space-y-2">
+                {% for el in elements %}
+                <div class="flex items-center gap-3 p-2.5 rounded-md bg-muted/40 hover:bg-muted transition-colors">
+                    <div class="flex-1 min-w-0">
+                        <span class="font-medium text-sm text-foreground">{{ el.name }}</span>
+                    </div>
+                    {% if el.layer %}
+                    <span class="text-xs px-2 py-0.5 rounded bg-secondary text-secondary-foreground">{{ el.layer }}</span>
+                    {% endif %}
+                    {% if el.element_type %}
+                    <span class="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground">{{ el.element_type }}</span>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="text-sm text-muted-foreground">No ArchiMate elements linked to this decision.</p>
+            {% endif %}
+        </div>
+
+    </div>
+</div>
+{% endblock %}

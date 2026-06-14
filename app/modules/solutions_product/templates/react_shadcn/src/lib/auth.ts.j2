@@ -1,0 +1,85 @@
+{# react_shadcn/src/lib/auth.ts.j2 — only generated when auth == "jwt-local" #}
+"use client"
+
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react"
+import { useRouter, usePathname } from "next/navigation"
+
+interface AuthUser {
+  id: number | string
+  email: string
+  full_name?: string
+}
+
+interface AuthContextValue {
+  user: AuthUser | null
+  isAuthenticated: boolean
+  isLoading: boolean
+  signIn: (token: string, user: AuthUser) => void
+  signOut: () => void
+}
+
+const AuthContext = createContext<AuthContextValue | null>(null)
+
+const TOKEN_KEY = "token"
+const USER_KEY = "auth_user"
+
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [user, setUser] = useState<AuthUser | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const router = useRouter()
+  const pathname = usePathname()
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(USER_KEY)
+      const token = localStorage.getItem(TOKEN_KEY)
+      if (stored && token) {
+        setUser(JSON.parse(stored))
+      }
+    } catch {
+      // ignore parse errors
+    } finally {
+      setIsLoading(false)
+    }
+  }, [])
+
+  // Redirect unauthenticated users away from protected routes
+  useEffect(() => {
+    if (isLoading) return
+    const isPublic = pathname === "/login" || pathname === "/register"
+    if (!user && !isPublic) {
+      router.replace(`/login?next=${encodeURIComponent(pathname)}`)
+    }
+  }, [user, isLoading, pathname, router])
+
+  function signIn(token: string, userData: AuthUser) {
+    localStorage.setItem(TOKEN_KEY, token)
+    localStorage.setItem(USER_KEY, JSON.stringify(userData))
+    document.cookie = `token=${token}; path=/; max-age=${60 * 60 * 24}; SameSite=Lax`
+    setUser(userData)
+  }
+
+  function signOut() {
+    localStorage.removeItem(TOKEN_KEY)
+    localStorage.removeItem(USER_KEY)
+    document.cookie = "token=; path=/; max-age=0"
+    setUser(null)
+    router.replace("/login")
+  }
+
+  const ctxValue: AuthContextValue = {
+    user,
+    isAuthenticated: !!user,
+    isLoading,
+    signIn,
+    signOut,
+  }
+
+  return <AuthContext.Provider value={ctxValue}>{children}</AuthContext.Provider>
+}
+
+export function useAuth(): AuthContextValue {
+  const ctx = useContext(AuthContext)
+  if (!ctx) throw new Error("useAuth must be used inside <AuthProvider>")
+  return ctx
+}

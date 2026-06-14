@@ -1,0 +1,125 @@
+"use client"
+
+import { useRouter } from "next/navigation"
+import { useForm, Controller } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { {{ name | lower }}Api } from "@/lib/api"
+import { {{ name }}Schema, type {{ name }}Input } from "@/lib/schemas"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Textarea } from "@/components/ui/textarea"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { toast } from "@/components/ui/use-toast"
+
+export default function New{{ name }}Page() {
+  const router = useRouter()
+  const queryClient = useQueryClient()
+
+  const { register, handleSubmit, control, formState: { errors } } = useForm<{{ name }}Input>({
+    resolver: zodResolver({{ name }}Schema),
+  })
+
+  const mutation = useMutation({
+    mutationFn: (data: {{ name }}Input) => {{ name | lower }}Api.create(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["{{ table_name }}"] })
+      toast({ title: "Created", description: "{{ name }} saved successfully." })
+      router.push("/{{ table_name }}")
+    },
+    onError: (e: unknown) => {
+      const msg = e instanceof Error ? e.message : "An unexpected error occurred"
+      toast({ title: "Error", description: msg, variant: "destructive" })
+    },
+  })
+
+  return (
+    <div className="max-w-xl">
+      <h1 className="text-2xl font-bold mb-6">New {{ name }}</h1>
+      <form onSubmit={handleSubmit((data) => mutation.mutate(data))} className="space-y-4">
+        {% for field in fields %}{% if not field.primary_key %}
+        {% set fl = field.name | lower %}
+        {% set is_bool = field.type == "bool" %}
+        {% set is_num = field.type in ["int", "float", "Decimal"] %}
+        {% set is_dt = field.type == "datetime" %}
+        {% set is_email = "email" in fl %}
+        {% set is_secret = "password" in fl or "secret" in fl or "passwd" in fl %}
+        {% set is_multiline = ("description" in fl or "notes" in fl or "body" in fl or "content" in fl or "summary" in fl or "detail" in fl or "comment" in fl) and field.type == "str" %}
+        {% set enum_vals = [] %}
+        {%- for v in validations %}
+          {%- if v.field == field.name and v.rule == "enum" and v.value %}
+            {%- set _ = enum_vals.extend(v.value if v.value is iterable and v.value is not string else [v.value]) %}
+          {%- endif %}
+        {%- endfor %}
+        {% if is_bool %}
+        <Controller
+          name="{{ field.name }}"
+          control={control}
+          render={({ field: f }) => (
+            <div className="flex items-center gap-2 py-1">
+              <Checkbox id="{{ field.name }}" checked={!!f.value} onCheckedChange={f.onChange} />
+              <Label htmlFor="{{ field.name }}">{{ field.name | replace("_", " ") | title }}</Label>
+            </div>
+          )}
+        />
+        {% elif enum_vals %}
+        <div className="space-y-1">
+          <Label>{{ field.name | replace("_", " ") | title }}{% if not field.nullable %} *{% endif %}</Label>
+          <Controller
+            name="{{ field.name }}"
+            control={control}
+            render={({ field: f }) => (
+              <Select onValueChange={f.onChange} value={f.value ?? ""}>
+                <SelectTrigger className={errors.{{ field.name }} ? "border-destructive" : ""}>
+                  <SelectValue placeholder="Select {{ field.name | replace('_', ' ') | lower }}..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {% for val in enum_vals %}
+                  <SelectItem value="{{ val }}">{{ val | replace("_", " ") | title }}</SelectItem>
+                  {% endfor %}
+                </SelectContent>
+              </Select>
+            )}
+          />
+          {errors.{{ field.name }} && <p className="text-xs text-destructive">{errors.{{ field.name }}?.message}</p>}
+        </div>
+        {% else %}
+        <div className="space-y-1">
+          <Label htmlFor="{{ field.name }}">{{ field.name | replace("_", " ") | title }}{% if not field.nullable %} *{% endif %}</Label>
+          {% if is_multiline %}
+          <Textarea
+            id="{{ field.name }}"
+            rows={4}
+            placeholder="Enter {{ field.name | replace('_', ' ') | lower }}..."
+            {...register("{{ field.name }}")}
+            className={errors.{{ field.name }} ? "border-destructive" : ""}
+          />
+          {% else %}
+          <Input
+            id="{{ field.name }}"
+            type="{{ "number" if is_num else "datetime-local" if is_dt else "email" if is_email else "password" if is_secret else "text" }}"
+            placeholder="{{ field.name | replace('_', ' ') | title }}"
+            {...register("{{ field.name }}"{% if is_num %}, { valueAsNumber: true }{% endif %})}
+            className={errors.{{ field.name }} ? "border-destructive" : ""}
+          />
+          {% endif %}
+          {errors.{{ field.name }} && (
+            <p className="text-xs text-destructive">{errors.{{ field.name }}?.message}</p>
+          )}
+        </div>
+        {% endif %}
+        {% endif %}{% endfor %}
+        <div className="flex gap-3 pt-2">
+          <Button type="submit" disabled={mutation.isPending}>
+            {mutation.isPending ? "Saving..." : "Create {{ name }}"}
+          </Button>
+          <Button type="button" variant="outline" onClick={() => router.back()}>
+            Cancel
+          </Button>
+        </div>
+      </form>
+    </div>
+  )
+}

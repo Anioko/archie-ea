@@ -1,0 +1,54 @@
+{% extends "layouts/admin_base.html" %}
+{% import 'components/breadcrumb.html' as breadcrumb %}
+
+{% block title %}Error - Capability Map{% endblock %}
+
+{% block breadcrumb %}
+{% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
+{{ breadcrumb_nav(items=[
+    {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
+    {'text': 'Business Layer', 'href': url_for('archimate_crud.dashboard') + '#business'},
+    {'text': 'Capabilities', 'href': url_for('capability_map.index')},
+    {'text': 'Error', 'current': true}
+]) }}
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Breadcrumb -->
+    {% call breadcrumb.breadcrumb() %}
+        {% call breadcrumb.breadcrumb_item(href=url_for('admin.dashboard')) %}
+            <i data-lucide="home" class="h-4 w-4"></i>
+        {% endcall %}
+        {{ breadcrumb.breadcrumb_separator() }}
+        {% call breadcrumb.breadcrumb_item(href=url_for('capability_map.index')) %}
+            Capability Map
+        {% endcall %}
+        {{ breadcrumb.breadcrumb_separator() }}
+        {% call breadcrumb.breadcrumb_item(active=true) %}
+            Error
+        {% endcall %}
+    {% endcall %}
+
+    <!-- Page Header -->
+    <div class="flex items-center space-x-3">
+        <i data-lucide="alert-triangle" class="w-6 h-6 text-destructive"></i>
+        <h1 class="text-3xl font-bold tracking-tight">Error Loading Capability Map</h1>
+    </div>
+
+    <!-- Error Detail -->
+    <div class="rounded-lg border border-destructive/50 bg-destructive/10 p-4">
+        <p class="text-destructive">
+            <strong>Error:</strong> {{ error }}
+        </p>
+    </div>
+
+    <!-- Back Link -->
+    <div>
+        <a href="{{ url_for('capability_map.index') }}" class="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+            <i data-lucide="arrow-left" class="w-4 h-4"></i>
+            Back to Capability Map
+        </a>
+    </div>
+</div>
+{% endblock %}

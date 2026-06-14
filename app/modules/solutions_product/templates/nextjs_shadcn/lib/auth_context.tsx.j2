@@ -1,0 +1,175 @@
+{# lib/auth-context.tsx — AuthProvider + useAuth hook.
+   Context: solution_name, auth (jwt-local or oidc), base_path
+   Uses Bearer token in localStorage. All fetch calls use _BASE_PATH prefix
+   so they route through the Next.js rewrite proxy correctly when basePath is set. #}
+"use client"
+
+import { createContext, useCallback, useContext, useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
+
+// Prefix all fetch calls with basePath so they hit the Next.js rewrite proxy
+const _BASE_PATH = "{{ base_path | default('') }}"
+
+type User = {
+  id: string
+  email: string
+  name: string | null
+  organization_id: string | null
+  organization_name: string | null
+  roles: string[]
+}
+
+type AuthContextType = {
+  user: User | null
+  isAuthenticated: boolean
+  isLoading: boolean
+  login: (email: string, password: string) => Promise<void>
+  logout: () => void
+  /** Wrap any authenticated fetch call — auto-redirects to /login on 401 */
+  authFetch: (input: RequestInfo, init?: RequestInit) => Promise<Response>
+}
+
+const AuthContext = createContext<AuthContextType | undefined>(undefined)
+
+function getToken(): string | null {
+  if (typeof window === "undefined") return null
+  return localStorage.getItem("token")
+}
+
+function setToken(token: string | null) {
+  if (typeof window === "undefined") return
+  if (token) {
+    localStorage.setItem("token", token)
+  } else {
+    localStorage.removeItem("token")
+    localStorage.removeItem("refresh_token")
+  }
+}
+
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const [user, setUser] = useState<User | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const router = useRouter()
+
+  const fetchMe = useCallback(async () => {
+    const token = getToken()
+    if (!token) {
+      setUser(null)
+      setIsLoading(false)
+      return
+    }
+    try {
+      const res = await fetch(_BASE_PATH + "/auth/me", {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (res.ok) {
+        const data = await res.json()
+        // Normalize: backend may return role (string) or roles (array)
+        setUser({
+          ...data,
+          name: data.name ?? data.full_name ?? null,
+          roles: Array.isArray(data.roles) ? data.roles : data.role ? [data.role] : [],
+        })
+      } else {
+        setToken(null)
+        setUser(null)
+      }
+    } catch {
+      setUser(null)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchMe()
+  }, [fetchMe])
+
+  const login = useCallback(async (email: string, password: string) => {
+    const res = await fetch(_BASE_PATH + "/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: "Login failed" }))
+      throw new Error(err.detail || "Login failed")
+    }
+    const data = await res.json()
+    setToken(data.access_token)
+    if (data.refresh_token) localStorage.setItem("refresh_token", data.refresh_token)
+    await fetchMe()
+    router.push("/dashboard")
+  }, [fetchMe, router])
+
+  const logout = useCallback(async () => {
+    setToken(null)
+    setUser(null)
+    router.push("/login")
+  }, [router])
+
+  /**
+   * Session-expiry-aware fetch. On 401, attempts token refresh before
+   * redirecting to /login?from=<current-path> so the user returns after
+   * re-authenticating. Callers can await the Response as normal.
+   */
+  const authFetch = useCallback(async (
+    input: RequestInfo,
+    init?: RequestInit,
+  ): Promise<Response> => {
+    const token = getToken()
+    const headers = new Headers(init?.headers)
+    if (token) headers.set("Authorization", `Bearer ${token}`)
+    const res = await fetch(input, { ...init, headers })
+    if (res.status === 401) {
+      // Try refresh before giving up
+      const refreshToken = localStorage.getItem("refresh_token")
+      if (refreshToken) {
+        try {
+          const refreshRes = await fetch(_BASE_PATH + "/auth/refresh", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ refresh_token: refreshToken }),
+          })
+          if (refreshRes.ok) {
+            const rData = await refreshRes.json()
+            setToken(rData.access_token)
+            if (rData.refresh_token) localStorage.setItem("refresh_token", rData.refresh_token)
+            // Retry the original request with the new token
+            const retryHeaders = new Headers(init?.headers)
+            retryHeaders.set("Authorization", `Bearer ${rData.access_token}`)
+            return fetch(input, { ...init, headers: retryHeaders })
+          }
+        } catch {
+          // Refresh network error — fall through to redirect
+        }
+      }
+      setToken(null)
+      setUser(null)
+      const from = encodeURIComponent(window.location.pathname + window.location.search)
+      router.push(`/login?from=${from}`)
+    }
+    return res
+  }, [router])
+
+  return (
+    <AuthContext.Provider value={{ '{{' }}
+      user,
+      isAuthenticated: !!user,
+      isLoading,
+      login,
+      logout,
+      authFetch,
+    {{ '}}' }}>
+      {children}
+    </AuthContext.Provider>
+  )
+}
+
+export function useAuth(): AuthContextType {
+  const ctx = useContext(AuthContext)
+  if (ctx === undefined) {
+    throw new Error("useAuth must be used within an AuthProvider")
+  }
+  return ctx
+}

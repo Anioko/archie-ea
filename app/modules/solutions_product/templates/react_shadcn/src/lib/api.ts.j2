@@ -1,0 +1,104 @@
+/**
+ * Auto-generated typed API client.
+ * Base URL is controlled by NEXT_PUBLIC_API_URL env var.
+{% if auth == "jwt-local" %}
+ * Auth: JWT — token stored in localStorage under key "token".
+ * On 401 the user is redirected to /login.
+{% endif %}
+ */
+{% for cls in classes %}
+import type { {{ cls.name }}, {{ cls.name }}Input } from "./schemas"
+{% endfor %}
+
+const BASE = process.env.NEXT_PUBLIC_API_URL ?? ""
+
+{% if auth == "jwt-local" %}
+function _getToken(): string | null {
+  if (typeof window === "undefined") return null
+  return localStorage.getItem("token")
+}
+
+function _authHeaders(): Record<string, string> {
+  const token = _getToken()
+  return token ? { Authorization: `Bearer ${token}` } : {}
+}
+{% endif %}
+
+async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    headers: {
+      "Content-Type": "application/json",
+      ...init?.headers,
+{% if auth == "jwt-local" %}
+      ..._authHeaders(),
+{% endif %}
+    },
+    ...init,
+  })
+{% if auth == "jwt-local" %}
+  if (res.status === 401) {
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("token")
+      window.location.href = "/login"
+    }
+    throw new Error("Unauthorized")
+  }
+{% endif %}
+  if (!res.ok) throw new Error(`API ${res.status}: ${await res.text()}`)
+  return res.json() as Promise<T>
+}
+
+{% if auth == "jwt-local" %}
+export const authApi = {
+  register: (email: string, password: string, fullName?: string) =>
+    apiFetch<{ access_token: string; token_type: string }>("/auth/register", {
+      method: "POST",
+      body: JSON.stringify({ email, password, full_name: fullName }),
+    }),
+  login: (email: string, password: string) =>
+    apiFetch<{ access_token: string; token_type: string }>("/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    }),
+}
+{% endif %}
+
+export type PaginatedResponse<T> = {
+  items: T[]
+  total: number
+  page: number
+  per_page: number
+  pages: number
+  has_next: boolean
+  has_prev: boolean
+}
+
+{% for cls in classes %}
+{% set slug = cls.table_name | replace('_', '-') %}
+export const {{ cls.name | lower }}Api = {
+  list: (params?: Record<string, string | number>) => {
+    const qs = params ? "?" + new URLSearchParams(Object.fromEntries(Object.entries(params).map(([k, v]) => [k, String(v)]))).toString() : ""
+    return apiFetch<PaginatedResponse<{{ cls.name }}>>(`/api/{{ slug }}${qs}`)
+      .then((r) => ({ ...r, items: r.items ?? (r as unknown as {{ cls.name }}[]) }))
+  },
+  get: (id: number | string) =>
+    apiFetch<{{ cls.name }}>(`/api/{{ slug }}/${id}`),
+  create: (body: {{ cls.name }}Input) =>
+    apiFetch<{{ cls.name }}>(`/api/{{ slug }}`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  update: (id: number | string, body: Partial<{{ cls.name }}Input>) =>
+    apiFetch<{{ cls.name }}>(`/api/{{ slug }}/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  remove: (id: number | string) =>
+    apiFetch<void>(`/api/{{ slug }}/${id}`, { method: "DELETE" }),
+  availableActions: (id: number | string) =>
+    apiFetch<{ available_triggers: string[] }>(`/api/{{ slug }}/${id}/available-actions`),
+  transition: (id: number | string, trigger: string) =>
+    apiFetch<{{ cls.name }}>(`/api/{{ slug }}/${id}/${trigger}`, { method: "POST" }),
+}
+
+{% endfor %}

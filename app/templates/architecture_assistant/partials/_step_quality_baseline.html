@@ -1,0 +1,616 @@
+{# Step 1B: Quality Baseline — Operational Capability Boilerplate (TOGAF Phase A5) #}
+<div class="space-y-6 px-4">
+
+  {# Header #}
+  <div>
+    <div class="flex items-center gap-3">
+      <h2 class="text-lg font-semibold text-foreground">Quality Baseline</h2>
+      <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-500/10 text-primary border border-blue-500/30">TOGAF Phase A</span>
+    </div>
+    <p class="text-sm text-muted-foreground mt-1">
+      Define the operational capabilities your solution must satisfy. Mandatory domains (1–6) are required to proceed to ARB. Recommended domains (7–12) improve solution completeness.
+    </p>
+  </div>
+
+  {# Completeness meter #}
+  <div class="rounded-lg border border-border bg-card p-4">
+    <div class="flex items-center justify-between mb-2">
+      <div class="flex items-center gap-2">
+        <span class="text-sm font-medium text-foreground">Baseline Completeness</span>
+        <span x-show="qbMandatoryComplete" x-cloak
+          class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30">
+          <i data-lucide="check-circle-2" class="h-3 w-3 mr-0.5"></i> Mandatory Complete
+        </span>
+      </div>
+      <span class="text-sm font-medium text-foreground" x-text="qbCompleteness + '%'"></span>
+    </div>
+    <div class="h-2 w-full rounded-full bg-muted overflow-hidden">
+      <div class="h-full rounded-full transition-all duration-300"
+        :class="qbCompleteness >= 50 ? 'bg-emerald-500' : 'bg-amber-500'"
+        :style="'width: ' + qbCompleteness + '%'"></div>
+    </div>
+    <div x-show="!qbMandatoryComplete" x-cloak class="mt-2 text-xs text-amber-600 flex items-center gap-1">
+      <i data-lucide="alert-triangle" class="h-3 w-3 shrink-0"></i>
+      Complete mandatory domains 1–6 before ARB submission. You may proceed to the next step now.
+    </div>
+  </div>
+
+  {# Contradiction warnings #}
+  <div x-show="qualityBaselineWarnings.length > 0" x-cloak class="space-y-2">
+    <template x-for="w in qualityBaselineWarnings" :key="w.message">
+      <div class="flex items-start gap-2 rounded-md border px-3 py-2 text-sm"
+        :class="w.severity === 'error' ? 'border-destructive/40 bg-destructive/5 text-destructive' : 'border-amber-500/30 bg-amber-500/5 text-amber-700'">
+        <i :data-lucide="w.severity === 'error' ? 'x-circle' : 'alert-triangle'" class="h-4 w-4 shrink-0 mt-0.5"></i>
+        <span x-text="w.message"></span>
+      </div>
+    </template>
+  </div>
+  <div x-show="qbValidating" x-cloak class="text-xs text-muted-foreground flex items-center gap-1">
+    <i data-lucide="loader-2" class="h-3 w-3 animate-spin"></i> Checking for contradictions...
+  </div>
+
+  {# Domain accordion #}
+  <div class="space-y-2">
+
+    {# ── 1. Identity & Access (MANDATORY) ── #}
+    <div class="rounded-lg border border-border overflow-hidden">
+      <button type="button" @click="toggleQbDomain('identity_access')"
+        class="w-full flex items-center justify-between px-4 py-3 text-sm font-medium bg-card hover:bg-accent transition-colors">
+        <div class="flex items-center gap-2">
+          <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold"
+            :class="qbDomainComplete('identity_access') ? 'bg-emerald-500 text-primary-foreground' : 'bg-destructive/20 text-destructive'">1</span>
+          <span>Identity &amp; Access</span>
+          <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-destructive/10 text-destructive border border-destructive/20">Required</span>
+        </div>
+        <i :data-lucide="qbOpenDomain === 'identity_access' ? 'chevron-up' : 'chevron-down'" class="h-4 w-4 text-muted-foreground"></i>
+      </button>
+      <div x-show="qbOpenDomain === 'identity_access'" x-cloak class="px-4 pb-4 pt-2 bg-card border-t border-border space-y-3">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-medium text-foreground mb-1">Auth Provider <span class="text-destructive">*</span></label>
+            <input type="text" x-model="qualityBaseline.identity_access.auth_provider"
+              class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              placeholder="e.g. Azure AD, Okta, Keycloak">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-foreground mb-1">Authorization Model</label>
+            <select x-model="qualityBaseline.identity_access.authz_model"
+              class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+              <option value="RBAC">RBAC (Role-Based)</option>
+              <option value="ABAC">ABAC (Attribute-Based)</option>
+              <option value="PBAC">PBAC (Policy-Based)</option>
+              <option value="ACL">ACL</option>
+            </select>
+          </div>
+        </div>
+        <div class="flex items-center gap-6">
+          <label class="flex items-center gap-2 text-sm cursor-pointer">
+            <input type="checkbox" x-model="qualityBaseline.identity_access.mfa_required"
+              class="h-4 w-4 rounded border border-input text-primary focus:ring-ring">
+            MFA Required
+          </label>
+          <label class="flex items-center gap-2 text-sm cursor-pointer">
+            <input type="checkbox" x-model="qualityBaseline.identity_access.sso_required"
+              class="h-4 w-4 rounded border border-input text-primary focus:ring-ring">
+            SSO Required
+          </label>
+        </div>
+      </div>
+    </div>
+
+    {# ── 2. Data Management (MANDATORY) ── #}
+    <div class="rounded-lg border border-border overflow-hidden">
+      <button type="button" @click="toggleQbDomain('data_management')"
+        class="w-full flex items-center justify-between px-4 py-3 text-sm font-medium bg-card hover:bg-accent transition-colors">
+        <div class="flex items-center gap-2">
+          <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold"
+            :class="qbDomainComplete('data_management') ? 'bg-emerald-500 text-primary-foreground' : 'bg-destructive/20 text-destructive'">2</span>
+          <span>Data Management</span>
+          <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-destructive/10 text-destructive border border-destructive/20">Required</span>
+        </div>
+        <i :data-lucide="qbOpenDomain === 'data_management' ? 'chevron-up' : 'chevron-down'" class="h-4 w-4 text-muted-foreground"></i>
+      </button>
+      <div x-show="qbOpenDomain === 'data_management'" x-cloak class="px-4 pb-4 pt-2 bg-card border-t border-border space-y-3">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-medium text-foreground mb-1">Primary Database <span class="text-destructive">*</span></label>
+            <input type="text" x-model="qualityBaseline.data_management.primary_db"
+              class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              placeholder="e.g. PostgreSQL, Oracle, Cosmos DB">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-foreground mb-1">Backup Frequency</label>
+            <select x-model="qualityBaseline.data_management.backup_frequency"
+              class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+              <option value="continuous">Continuous (WAL)</option>
+              <option value="hourly">Hourly</option>
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-foreground mb-1">RTO (hours)</label>
+            <input type="number" min="0" x-model="qualityBaseline.data_management.rto_hours"
+              class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              placeholder="4">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-foreground mb-1">RPO (hours)</label>
+            <input type="number" min="0" x-model="qualityBaseline.data_management.rpo_hours"
+              class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              placeholder="1">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-foreground mb-1">Data Retention (years)</label>
+            <input type="number" min="1" x-model="qualityBaseline.data_management.data_retention_years"
+              class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              placeholder="7">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {# ── 3. Security Controls (MANDATORY) ── #}
+    <div class="rounded-lg border border-border overflow-hidden">
+      <button type="button" @click="toggleQbDomain('security_controls')"
+        class="w-full flex items-center justify-between px-4 py-3 text-sm font-medium bg-card hover:bg-accent transition-colors">
+        <div class="flex items-center gap-2">
+          <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold"
+            :class="qbDomainComplete('security_controls') ? 'bg-emerald-500 text-primary-foreground' : 'bg-destructive/20 text-destructive'">3</span>
+          <span>Security Controls</span>
+          <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-destructive/10 text-destructive border border-destructive/20">Required</span>
+        </div>
+        <i :data-lucide="qbOpenDomain === 'security_controls' ? 'chevron-up' : 'chevron-down'" class="h-4 w-4 text-muted-foreground"></i>
+      </button>
+      <div x-show="qbOpenDomain === 'security_controls'" x-cloak class="px-4 pb-4 pt-2 bg-card border-t border-border space-y-3">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-medium text-foreground mb-1">Data Classification <span class="text-destructive">*</span></label>
+            <select x-model="qualityBaseline.security_controls.data_classification"
+              class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+              <option value="">Select...</option>
+              <option value="public">Public</option>
+              <option value="internal">Internal</option>
+              <option value="confidential">Confidential</option>
+              <option value="restricted">Restricted</option>
+              <option value="secret">Secret</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-foreground mb-1">Secret Management</label>
+            <input type="text" x-model="qualityBaseline.security_controls.secret_management"
+              class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              placeholder="e.g. HashiCorp Vault, AWS Secrets Manager">
+          </div>
+        </div>
+        <div class="flex flex-wrap items-center gap-6">
+          <label class="flex items-center gap-2 text-sm cursor-pointer">
+            <input type="checkbox" x-model="qualityBaseline.security_controls.encryption_at_rest"
+              class="h-4 w-4 rounded border border-input text-primary focus:ring-ring">
+            Encryption at Rest
+          </label>
+          <label class="flex items-center gap-2 text-sm cursor-pointer">
+            <input type="checkbox" x-model="qualityBaseline.security_controls.encryption_in_transit"
+              class="h-4 w-4 rounded border border-input text-primary focus:ring-ring">
+            Encryption in Transit (TLS)
+          </label>
+          <label class="flex items-center gap-2 text-sm cursor-pointer">
+            <input type="checkbox" x-model="qualityBaseline.security_controls.vulnerability_scanning"
+              class="h-4 w-4 rounded border border-input text-primary focus:ring-ring">
+            Vulnerability Scanning
+          </label>
+        </div>
+      </div>
+    </div>
+
+    {# ── 4. Integration (MANDATORY) ── #}
+    <div class="rounded-lg border border-border overflow-hidden">
+      <button type="button" @click="toggleQbDomain('integration')"
+        class="w-full flex items-center justify-between px-4 py-3 text-sm font-medium bg-card hover:bg-accent transition-colors">
+        <div class="flex items-center gap-2">
+          <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold"
+            :class="qbDomainComplete('integration') ? 'bg-emerald-500 text-primary-foreground' : 'bg-destructive/20 text-destructive'">4</span>
+          <span>Integration</span>
+          <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-destructive/10 text-destructive border border-destructive/20">Required</span>
+        </div>
+        <i :data-lucide="qbOpenDomain === 'integration' ? 'chevron-up' : 'chevron-down'" class="h-4 w-4 text-muted-foreground"></i>
+      </button>
+      <div x-show="qbOpenDomain === 'integration'" x-cloak class="px-4 pb-4 pt-2 bg-card border-t border-border space-y-3">
+        <div>
+          <label class="block text-xs font-medium text-foreground mb-2">API Style <span class="text-destructive">*</span> <span class="text-muted-foreground font-normal">(select all that apply)</span></label>
+          <div class="flex flex-wrap gap-2">
+            <template x-for="style in ['REST','GraphQL','gRPC','SOAP','AsyncAPI','WebSocket','Event-Driven']">
+              <button type="button" @click="toggleApiStyle(style)"
+                :class="qualityBaseline.integration.api_style.indexOf(style) !== -1 ? 'bg-primary text-primary-foreground border-primary' : 'bg-transparent text-foreground border-input hover:bg-accent'"
+                class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium border transition-colors">
+                <span x-text="style"></span>
+              </button>
+            </template>
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-foreground mb-1">API Gateway</label>
+          <input type="text" x-model="qualityBaseline.integration.api_gateway"
+            class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            placeholder="e.g. Kong, AWS API Gateway, Azure APIM">
+        </div>
+        <div class="flex flex-wrap items-center gap-6">
+          <label class="flex items-center gap-2 text-sm cursor-pointer">
+            <input type="checkbox" x-model="qualityBaseline.integration.rate_limiting"
+              class="h-4 w-4 rounded border border-input text-primary focus:ring-ring">
+            Rate Limiting Required
+          </label>
+          <label class="flex items-center gap-2 text-sm cursor-pointer">
+            <input type="checkbox" x-model="qualityBaseline.integration.event_streaming"
+              class="h-4 w-4 rounded border border-input text-primary focus:ring-ring">
+            Event Streaming (Kafka / SNS)
+          </label>
+        </div>
+      </div>
+    </div>
+
+    {# ── 5. Observability (MANDATORY) ── #}
+    <div class="rounded-lg border border-border overflow-hidden">
+      <button type="button" @click="toggleQbDomain('observability')"
+        class="w-full flex items-center justify-between px-4 py-3 text-sm font-medium bg-card hover:bg-accent transition-colors">
+        <div class="flex items-center gap-2">
+          <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold"
+            :class="qbDomainComplete('observability') ? 'bg-emerald-500 text-primary-foreground' : 'bg-destructive/20 text-destructive'">5</span>
+          <span>Observability</span>
+          <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-destructive/10 text-destructive border border-destructive/20">Required</span>
+        </div>
+        <i :data-lucide="qbOpenDomain === 'observability' ? 'chevron-up' : 'chevron-down'" class="h-4 w-4 text-muted-foreground"></i>
+      </button>
+      <div x-show="qbOpenDomain === 'observability'" x-cloak class="px-4 pb-4 pt-2 bg-card border-t border-border space-y-3">
+        <div>
+          <label class="block text-xs font-medium text-foreground mb-1">Logging Platform <span class="text-destructive">*</span></label>
+          <input type="text" x-model="qualityBaseline.observability.logging_platform"
+            class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            placeholder="e.g. ELK Stack, Datadog, Splunk, Azure Monitor">
+        </div>
+        <div class="flex flex-wrap items-center gap-6">
+          <label class="flex items-center gap-2 text-sm cursor-pointer">
+            <input type="checkbox" x-model="qualityBaseline.observability.metrics_enabled"
+              class="h-4 w-4 rounded border border-input text-primary focus:ring-ring">
+            Metrics Collection
+          </label>
+          <label class="flex items-center gap-2 text-sm cursor-pointer">
+            <input type="checkbox" x-model="qualityBaseline.observability.distributed_tracing"
+              class="h-4 w-4 rounded border border-input text-primary focus:ring-ring">
+            Distributed Tracing
+          </label>
+          <label class="flex items-center gap-2 text-sm cursor-pointer">
+            <input type="checkbox" x-model="qualityBaseline.observability.alerting_required"
+              class="h-4 w-4 rounded border border-input text-primary focus:ring-ring">
+            Alerting Required
+          </label>
+        </div>
+      </div>
+    </div>
+
+    {# ── 6. Reliability (MANDATORY) ── #}
+    <div class="rounded-lg border border-border overflow-hidden">
+      <button type="button" @click="toggleQbDomain('reliability')"
+        class="w-full flex items-center justify-between px-4 py-3 text-sm font-medium bg-card hover:bg-accent transition-colors">
+        <div class="flex items-center gap-2">
+          <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold"
+            :class="qbDomainComplete('reliability') ? 'bg-emerald-500 text-primary-foreground' : 'bg-destructive/20 text-destructive'">6</span>
+          <span>Reliability</span>
+          <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-destructive/10 text-destructive border border-destructive/20">Required</span>
+        </div>
+        <i :data-lucide="qbOpenDomain === 'reliability' ? 'chevron-up' : 'chevron-down'" class="h-4 w-4 text-muted-foreground"></i>
+      </button>
+      <div x-show="qbOpenDomain === 'reliability'" x-cloak class="px-4 pb-4 pt-2 bg-card border-t border-border space-y-3">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-medium text-foreground mb-1">Availability Target <span class="text-destructive">*</span></label>
+            <select x-model="qualityBaseline.reliability.availability_target"
+              class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+              <option value="">Select...</option>
+              <option value="99.0">99.0% (2 nines — ~87h downtime/yr)</option>
+              <option value="99.5">99.5% (~44h/yr)</option>
+              <option value="99.9">99.9% (3 nines — ~8.7h/yr)</option>
+              <option value="99.95">99.95% (~4.4h/yr)</option>
+              <option value="99.99">99.99% (4 nines — ~52m/yr)</option>
+              <option value="99.999">99.999% (5 nines — ~5m/yr)</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-foreground mb-1">Redundancy Model</label>
+            <select x-model="qualityBaseline.reliability.redundancy_model"
+              class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+              <option value="">Select...</option>
+              <option value="active-passive">Active-Passive</option>
+              <option value="active-active">Active-Active</option>
+              <option value="multi-region">Multi-Region</option>
+              <option value="single">Single Instance (dev/test)</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-foreground mb-1">DR Strategy</label>
+            <select x-model="qualityBaseline.reliability.dr_strategy"
+              class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+              <option value="">Select...</option>
+              <option value="backup-restore">Backup &amp; Restore</option>
+              <option value="pilot-light">Pilot Light</option>
+              <option value="warm-standby">Warm Standby</option>
+              <option value="multi-site">Multi-Site Active/Active</option>
+            </select>
+          </div>
+        </div>
+        <label class="flex items-center gap-2 text-sm cursor-pointer">
+          <input type="checkbox" x-model="qualityBaseline.reliability.auto_scaling"
+            class="h-4 w-4 rounded border border-input text-primary focus:ring-ring">
+          Auto-Scaling Required
+        </label>
+      </div>
+    </div>
+
+    {# Recommended domains separator #}
+    <div class="flex items-center gap-2 pt-2">
+      <div class="flex-1 h-px bg-border"></div>
+      <span class="text-xs text-muted-foreground px-2">Recommended domains</span>
+      <div class="flex-1 h-px bg-border"></div>
+    </div>
+
+    {# ── 7. Performance (RECOMMENDED) ── #}
+    <div class="rounded-lg border border-border overflow-hidden">
+      <button type="button" @click="toggleQbDomain('performance')"
+        class="w-full flex items-center justify-between px-4 py-3 text-sm font-medium bg-card hover:bg-accent transition-colors">
+        <div class="flex items-center gap-2">
+          <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold"
+            :class="qbDomainComplete('performance') ? 'bg-emerald-500 text-primary-foreground' : 'bg-muted-foreground/30 text-muted-foreground'">7</span>
+          <span>Performance</span>
+          <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-primary border border-blue-500/20">Recommended</span>
+        </div>
+        <i :data-lucide="qbOpenDomain === 'performance' ? 'chevron-up' : 'chevron-down'" class="h-4 w-4 text-muted-foreground"></i>
+      </button>
+      <div x-show="qbOpenDomain === 'performance'" x-cloak class="px-4 pb-4 pt-2 bg-card border-t border-border space-y-3">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div>
+            <label class="block text-xs font-medium text-foreground mb-1">P99 Latency (ms)</label>
+            <input type="number" min="0" x-model="qualityBaseline.performance.p99_latency_ms"
+              class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              placeholder="200">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-foreground mb-1">Peak RPS</label>
+            <input type="number" min="0" x-model="qualityBaseline.performance.peak_rps"
+              class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              placeholder="1000">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-foreground mb-1">Caching Strategy</label>
+            <select x-model="qualityBaseline.performance.caching_strategy"
+              class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+              <option value="">None</option>
+              <option value="in-memory">In-Memory (Redis)</option>
+              <option value="cdn">CDN</option>
+              <option value="db-query">DB Query Cache</option>
+              <option value="multi-layer">Multi-Layer</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {# ── 8. Deployment & Release (RECOMMENDED) ── #}
+    <div class="rounded-lg border border-border overflow-hidden">
+      <button type="button" @click="toggleQbDomain('deployment_release')"
+        class="w-full flex items-center justify-between px-4 py-3 text-sm font-medium bg-card hover:bg-accent transition-colors">
+        <div class="flex items-center gap-2">
+          <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold"
+            :class="qbDomainComplete('deployment_release') ? 'bg-emerald-500 text-primary-foreground' : 'bg-muted-foreground/30 text-muted-foreground'">8</span>
+          <span>Deployment &amp; Release</span>
+          <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-primary border border-blue-500/20">Recommended</span>
+        </div>
+        <i :data-lucide="qbOpenDomain === 'deployment_release' ? 'chevron-up' : 'chevron-down'" class="h-4 w-4 text-muted-foreground"></i>
+      </button>
+      <div x-show="qbOpenDomain === 'deployment_release'" x-cloak class="px-4 pb-4 pt-2 bg-card border-t border-border space-y-3">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-medium text-foreground mb-1">Hosting</label>
+            <select x-model="qualityBaseline.deployment_release.hosting"
+              class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+              <option value="">Select...</option>
+              <option value="aws">AWS</option>
+              <option value="azure">Azure</option>
+              <option value="gcp">GCP</option>
+              <option value="on-prem">On-Premises</option>
+              <option value="hybrid">Hybrid</option>
+              <option value="multi-cloud">Multi-Cloud</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-foreground mb-1">Deployment Pattern</label>
+            <select x-model="qualityBaseline.deployment_release.deployment_pattern"
+              class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+              <option value="">Select...</option>
+              <option value="blue-green">Blue-Green</option>
+              <option value="canary">Canary</option>
+              <option value="rolling">Rolling Update</option>
+              <option value="recreate">Recreate</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-foreground mb-1">CI/CD Platform</label>
+            <input type="text" x-model="qualityBaseline.deployment_release.ci_cd_platform"
+              class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              placeholder="e.g. GitHub Actions, Azure DevOps, Jenkins">
+          </div>
+        </div>
+        <label class="flex items-center gap-2 text-sm cursor-pointer">
+          <input type="checkbox" x-model="qualityBaseline.deployment_release.containerized"
+            class="h-4 w-4 rounded border border-input text-primary focus:ring-ring">
+          Containerized (Docker / Kubernetes)
+        </label>
+      </div>
+    </div>
+
+    {# ── 9. Compliance & Audit (RECOMMENDED) ── #}
+    <div class="rounded-lg border border-border overflow-hidden">
+      <button type="button" @click="toggleQbDomain('compliance_audit')"
+        class="w-full flex items-center justify-between px-4 py-3 text-sm font-medium bg-card hover:bg-accent transition-colors">
+        <div class="flex items-center gap-2">
+          <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold"
+            :class="qbDomainComplete('compliance_audit') ? 'bg-emerald-500 text-primary-foreground' : 'bg-muted-foreground/30 text-muted-foreground'">9</span>
+          <span>Compliance &amp; Audit</span>
+          <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-primary border border-blue-500/20">Recommended</span>
+        </div>
+        <i :data-lucide="qbOpenDomain === 'compliance_audit' ? 'chevron-up' : 'chevron-down'" class="h-4 w-4 text-muted-foreground"></i>
+      </button>
+      <div x-show="qbOpenDomain === 'compliance_audit'" x-cloak class="px-4 pb-4 pt-2 bg-card border-t border-border space-y-3">
+        <div>
+          <label class="block text-xs font-medium text-foreground mb-2">Regulatory Frameworks <span class="text-muted-foreground font-normal">(select all that apply)</span></label>
+          <div class="flex flex-wrap gap-2">
+            <template x-for="fw in ['GDPR','HIPAA','SOC 2','PCI DSS','ISO 27001','NIST','FedRAMP','APRA CPS 234']">
+              <button type="button" @click="toggleRegulatoryFramework(fw)"
+                :class="qualityBaseline.compliance_audit.regulatory_frameworks.indexOf(fw) !== -1 ? 'bg-primary text-primary-foreground border-primary' : 'bg-transparent text-foreground border-input hover:bg-accent'"
+                class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium border transition-colors">
+                <span x-text="fw"></span>
+              </button>
+            </template>
+          </div>
+        </div>
+        <div class="flex flex-wrap items-center gap-6">
+          <label class="flex items-center gap-2 text-sm cursor-pointer">
+            <input type="checkbox" x-model="qualityBaseline.compliance_audit.audit_logging"
+              class="h-4 w-4 rounded border border-input text-primary focus:ring-ring">
+            Audit Logging Required
+          </label>
+          <label class="flex items-center gap-2 text-sm cursor-pointer">
+            <input type="checkbox" x-model="qualityBaseline.compliance_audit.data_sovereignty_required"
+              class="h-4 w-4 rounded border border-input text-primary focus:ring-ring">
+            Data Sovereignty Required
+          </label>
+        </div>
+      </div>
+    </div>
+
+    {# ── 10. Operational Support (RECOMMENDED) ── #}
+    <div class="rounded-lg border border-border overflow-hidden">
+      <button type="button" @click="toggleQbDomain('operational_support')"
+        class="w-full flex items-center justify-between px-4 py-3 text-sm font-medium bg-card hover:bg-accent transition-colors">
+        <div class="flex items-center gap-2">
+          <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold"
+            :class="qbDomainComplete('operational_support') ? 'bg-emerald-500 text-primary-foreground' : 'bg-muted-foreground/30 text-muted-foreground'">10</span>
+          <span>Operational Support</span>
+          <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-primary border border-blue-500/20">Recommended</span>
+        </div>
+        <i :data-lucide="qbOpenDomain === 'operational_support' ? 'chevron-up' : 'chevron-down'" class="h-4 w-4 text-muted-foreground"></i>
+      </button>
+      <div x-show="qbOpenDomain === 'operational_support'" x-cloak class="px-4 pb-4 pt-2 bg-card border-t border-border space-y-3">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-medium text-foreground mb-1">Support Tier</label>
+            <select x-model="qualityBaseline.operational_support.support_tier"
+              class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+              <option value="">Select...</option>
+              <option value="business-hours">Business Hours</option>
+              <option value="extended">Extended (16x5)</option>
+              <option value="24x7">24x7</option>
+              <option value="24x7-noc">24x7 with NOC</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-foreground mb-1">Incident Response SLA (minutes)</label>
+            <input type="number" min="1" x-model="qualityBaseline.operational_support.incident_response_sla_minutes"
+              class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              placeholder="15">
+          </div>
+        </div>
+        <label class="flex items-center gap-2 text-sm cursor-pointer">
+          <input type="checkbox" x-model="qualityBaseline.operational_support.runbooks_required"
+            class="h-4 w-4 rounded border border-input text-primary focus:ring-ring">
+          Runbooks Required
+        </label>
+      </div>
+    </div>
+
+    {# ── 11. Testing & Quality (RECOMMENDED) ── #}
+    <div class="rounded-lg border border-border overflow-hidden">
+      <button type="button" @click="toggleQbDomain('testing_quality')"
+        class="w-full flex items-center justify-between px-4 py-3 text-sm font-medium bg-card hover:bg-accent transition-colors">
+        <div class="flex items-center gap-2">
+          <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold"
+            :class="qbDomainComplete('testing_quality') ? 'bg-emerald-500 text-primary-foreground' : 'bg-muted-foreground/30 text-muted-foreground'">11</span>
+          <span>Testing &amp; Quality</span>
+          <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-primary border border-blue-500/20">Recommended</span>
+        </div>
+        <i :data-lucide="qbOpenDomain === 'testing_quality' ? 'chevron-up' : 'chevron-down'" class="h-4 w-4 text-muted-foreground"></i>
+      </button>
+      <div x-show="qbOpenDomain === 'testing_quality'" x-cloak class="px-4 pb-4 pt-2 bg-card border-t border-border space-y-3">
+        <div>
+          <label class="block text-xs font-medium text-foreground mb-1">Unit Coverage Target (%)</label>
+          <input type="number" min="0" max="100" x-model="qualityBaseline.testing_quality.unit_coverage_target_pct"
+            class="flex h-9 w-48 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            placeholder="80">
+        </div>
+        <div class="flex flex-wrap items-center gap-6">
+          <label class="flex items-center gap-2 text-sm cursor-pointer">
+            <input type="checkbox" x-model="qualityBaseline.testing_quality.e2e_tests_required"
+              class="h-4 w-4 rounded border border-input text-primary focus:ring-ring">
+            E2E Tests Required
+          </label>
+          <label class="flex items-center gap-2 text-sm cursor-pointer">
+            <input type="checkbox" x-model="qualityBaseline.testing_quality.performance_tests_required"
+              class="h-4 w-4 rounded border border-input text-primary focus:ring-ring">
+            Performance Tests Required
+          </label>
+          <label class="flex items-center gap-2 text-sm cursor-pointer">
+            <input type="checkbox" x-model="qualityBaseline.testing_quality.security_tests_required"
+              class="h-4 w-4 rounded border border-input text-primary focus:ring-ring">
+            Security / DAST Required
+          </label>
+        </div>
+      </div>
+    </div>
+
+    {# ── 12. Cost & Sustainability (RECOMMENDED) ── #}
+    <div class="rounded-lg border border-border overflow-hidden">
+      <button type="button" @click="toggleQbDomain('cost_sustainability')"
+        class="w-full flex items-center justify-between px-4 py-3 text-sm font-medium bg-card hover:bg-accent transition-colors">
+        <div class="flex items-center gap-2">
+          <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold"
+            :class="qbDomainComplete('cost_sustainability') ? 'bg-emerald-500 text-primary-foreground' : 'bg-muted-foreground/30 text-muted-foreground'">12</span>
+          <span>Cost &amp; Sustainability</span>
+          <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-primary border border-blue-500/20">Recommended</span>
+        </div>
+        <i :data-lucide="qbOpenDomain === 'cost_sustainability' ? 'chevron-up' : 'chevron-down'" class="h-4 w-4 text-muted-foreground"></i>
+      </button>
+      <div x-show="qbOpenDomain === 'cost_sustainability'" x-cloak class="px-4 pb-4 pt-2 bg-card border-t border-border space-y-3">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div>
+            <label class="block text-xs font-medium text-foreground mb-1">Budget Model</label>
+            <select x-model="qualityBaseline.cost_sustainability.budget_model"
+              class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+              <option value="">Select...</option>
+              <option value="capex">CapEx</option>
+              <option value="opex">OpEx</option>
+              <option value="hybrid">Hybrid</option>
+              <option value="subscription">Subscription / SaaS</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-foreground mb-1">Monthly Budget (USD)</label>
+            <input type="number" min="0" x-model="qualityBaseline.cost_sustainability.monthly_budget_usd"
+              class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              placeholder="50000">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-foreground mb-1">Cost Review Frequency</label>
+            <select x-model="qualityBaseline.cost_sustainability.cost_review_frequency"
+              class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+              <option value="">Select...</option>
+              <option value="monthly">Monthly</option>
+              <option value="quarterly">Quarterly</option>
+              <option value="annually">Annually</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>{# end domain accordion #}
+
+</div>

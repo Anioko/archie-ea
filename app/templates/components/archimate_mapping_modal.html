@@ -1,0 +1,471 @@
+{# ArchiMate Element Mapping Modal Component
+   Allows mapping business capabilities to ArchiMate 3.2 elements
+   Features:
+   - ArchiMate layer selector (Business, Application, Technology, etc.)
+   - Element type filtering based on layer
+   - Visual element browser with search
+   - Relationship type selection
+   - Save mappings with metadata
+   - Client-side pagination (20 per page)
+#}
+{% from 'components/pagination_controls.html' import pagination_controls %}
+
+<div id="archimate-mapping-modal"
+     hidden
+     x-data="archimateMappingModal()"
+     aria-hidden="true"
+     :aria-busy="loading"
+     class="modal-root fixed inset-0 bg-black/80 overflow-y-auto z-50"
+     role="dialog"
+     aria-modal="true"
+     aria-labelledby="archimate-modal-title"
+     aria-describedby="archimate-modal-desc">
+    
+    <div class="relative top-10 mx-auto p-6 border w-11/12 max-w-5xl shadow-lg rounded-lg bg-background">
+        
+        <!-- Header -->
+        <div class="flex justify-between items-center mb-6 pb-4 border-b">
+            <div>
+                <h3 id="archimate-modal-title" class="text-xl font-bold text-foreground flex items-center">
+                    <i data-lucide="layers" class="w-5 h-5 mr-2 text-primary" aria-hidden="true"></i>
+                    Map to ArchiMate Elements
+                </h3>
+                <p id="archimate-modal-desc" class="text-sm text-muted-foreground mt-1" x-show="capabilityName" x-cloak>
+                    Capability: <span class="font-semibold text-primary" x-text="capabilityName"></span>
+                </p>
+            </div>
+             <button @click="closeMappingModal()" class="text-muted-foreground hover:text-muted-foreground transition-colors" type="button" aria-label="Close ArchiMate mapping dialog">
+                <i data-lucide="x" class="w-6 h-6" aria-hidden="true"></i>
+            </button>
+        </div>
+
+        <!-- Layer and Type Selection -->
+        <div class="mb-6 space-y-3">
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-foreground/80 mb-2">ArchiMate Layer</label>
+                    <select x-model="selectedLayer" @change="onLayerChange()" 
+                            class="w-full px-4 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-ring">
+                        <option value="">Select a layer...</option>
+                        <option value="strategy">Strategy</option>
+                        <option value="business">Business</option>
+                        <option value="application">Application</option>
+                        <option value="technology">Technology</option>
+                        <option value="motivation">Motivation</option>
+                        <option value="implementation">Implementation & Migration</option>
+                    </select>
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-foreground/80 mb-2">Element Type</label>
+                    <select x-model="selectedElementType" @change="loadElements()" 
+                            :disabled="!selectedLayer"
+                            class="w-full px-4 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-ring disabled:bg-muted">
+                        <option value="">All Types</option>
+                        <template x-for="type in elementTypes" :key="type">
+                            <option :value="type" x-text="type"></option>
+                        </template>
+                    </select>
+                </div>
+            </div>
+
+            <div class="relative">
+                <input
+                    x-model="searchQuery"
+                    @input="filterElements()"
+                    type="text"
+                    placeholder="Search elements by name or description..."
+                    class="w-full px-4 py-2 pl-10 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+                 aria-label="Search elements by name or description..."/>
+                <i data-lucide="search" class="absolute left-3 top-3 w-4 h-4 text-muted-foreground"></i>
+            </div>
+        </div>
+
+        <!-- Layer Info Badge -->
+        <div x-show="selectedLayer" x-cloak class="mb-4">
+            <div class="inline-flex items-center px-3 py-1 text-xs font-medium rounded-full"
+                 :class="{
+                     'bg-warning/10 text-warning': selectedLayer === 'strategy',
+                     'bg-warning/10 text-warning': selectedLayer === 'business',
+                     'bg-primary/10 text-primary': selectedLayer === 'application',
+                     'bg-success/10 text-success': selectedLayer === 'technology',
+                     'bg-destructive/10 text-destructive': selectedLayer === 'motivation',
+                     'bg-accent text-primary': selectedLayer === 'implementation'
+                 }">
+                <i data-lucide="layers" class="w-3 h-3 mr-1"></i>
+                <span x-text="selectedLayer ? selectedLayer.charAt(0).toUpperCase() + selectedLayer.slice(1) + ' Layer' : ''"></span>
+            </div>
+        </div>
+
+        <!-- Loading State -->
+        <div x-show="loading" x-cloak class="text-center py-8" role="status" aria-label="Loading ArchiMate elements">
+            <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary" aria-hidden="true"></div>
+            <p class="text-muted-foreground mt-2">Loading ArchiMate elements...</p>
+        </div>
+
+        <!-- Elements Grid -->
+        <div x-show="!loading && selectedLayer" x-cloak class="mb-6">
+            <div class="bg-muted rounded-lg border border-border p-4 max-h-96 overflow-y-auto">
+                <template x-if="filteredElements.length === 0 && !loading">
+                    <div class="text-center py-8 text-muted-foreground">
+                        <i data-lucide="inbox" class="w-12 h-12 mx-auto mb-2 text-muted-foreground"></i>
+                        <p>No elements found. Try adjusting your filters or selecting a different layer.</p>
+                    </div>
+                </template>
+
+                <template x-if="filteredElements.length > 0">
+                    <div class="space-y-2">
+                        <template x-for="element in paginatedElements" :key="element.id">
+                            <div class="flex items-start hover:bg-background rounded-lg px-3 py-3 transition-colors cursor-pointer border"
+                                 :class="{ 'bg-accent border-primary/30': selectedElementIds.includes(element.id), 'border-transparent': !selectedElementIds.includes(element.id) }"
+                                 @click="toggleElementSelection(element)">
+                                
+                                <!-- Checkbox -->
+                                <input type="checkbox" 
+                                       :checked="selectedElementIds.includes(element.id)"
+                                       @click.stop="toggleElementSelection(element)"
+                                       class="mt-0.5 mr-3 rounded border-border text-primary focus:ring-ring"  aria-label="Checkbox field"/>
+
+                                <!-- Element Info -->
+                                <div class="flex-1 min-w-0">
+                                    <div class="flex items-center flex-wrap gap-2">
+                                        <span class="font-medium text-foreground" x-text="element.name"></span>
+                                        <span class="text-xs px-2 py-0.5 rounded-full bg-muted text-foreground/80"
+                                              x-text="element.type"></span>
+                                        <template x-if="element.layer">
+                                            <span class="text-xs px-2 py-0.5 rounded-full"
+                                                  :class="{
+                                                      'bg-warning/20 text-warning': element.layer === 'strategy' || element.layer === 'business',
+                                                      'bg-primary/20 text-primary': element.layer === 'application',
+                                                      'bg-success/20 text-success': element.layer === 'technology',
+                                                      'bg-destructive/20 text-destructive': element.layer === 'motivation',
+                                                      'bg-accent text-primary': element.layer === 'implementation'
+                                                  }"
+                                                  x-text="element.layer"></span>
+                                        </template>
+                                    </div>
+                                    <p x-show="element.description" x-cloak 
+                                       class="text-xs text-muted-foreground mt-1 line-clamp-2" 
+                                       x-text="element.description"></p>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+            </div>
+
+            <!-- Pagination Controls -->
+            <template x-if="mappingTotalPages > 1">
+                {{ pagination_controls(
+                    current_page_model='mappingPage',
+                    total_pages_model='mappingTotalPages',
+                    total_items_model='filteredElements.length',
+                    page_size_model='mappingPageSize'
+                ) }}
+            </template>
+
+            <!-- Selected Elements Summary -->
+            <div x-show="selectedElements.length > 0" x-cloak class="mt-4">
+                <p class="text-sm font-medium text-foreground/80 mb-2">
+                    Selected Elements (<span x-text="selectedElements.length"></span>):
+                </p>
+                <div class="flex flex-wrap gap-2">
+                    <template x-for="element in selectedElements" :key="element.id">
+                        <div class="inline-flex items-center bg-accent text-primary text-xs px-3 py-1 rounded-full">
+                            <span x-text="element.name + ' (' + element.type + ')'" class="max-w-xs truncate"></span>
+                            <button @click="toggleElementSelection(element)" class="ml-2 hover:text-primary" aria-label="Toggle">
+                                <i data-lucide="x" class="w-3 h-3"></i>
+                            </button>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+
+        <!-- Mapping Configuration (shown when elements are selected) -->
+        <div x-show="selectedElements.length > 0 && !loading" x-cloak class="mb-6 p-4 bg-muted rounded-lg border border-border">
+            <h4 class="text-sm font-semibold text-foreground/80 mb-3">Mapping Configuration</h4>
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-xs font-medium text-foreground/80 mb-1">Relationship Type</label>
+                    <select x-model="relationshipType" 
+                            class="w-full px-3 py-2 text-sm border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-ring">
+                        <option value="realization">Realization</option>
+                        <option value="assignment">Assignment</option>
+                        <option value="serving">Serving</option>
+                        <option value="composition">Composition</option>
+                        <option value="aggregation">Aggregation</option>
+                        <option value="association">Association</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-foreground/80 mb-1">Mapping Confidence</label>
+                    <select x-model="confidence" 
+                            class="w-full px-3 py-2 text-sm border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-ring">
+                        <option value="1.0">High (100%)</option>
+                        <option value="0.8">Good (80%)</option>
+                        <option value="0.6">Medium (60%)</option>
+                        <option value="0.4">Low (40%)</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- Info Message -->
+        <div x-show="!selectedLayer" x-cloak class="mb-6 p-4 bg-primary/5 border border-primary/20 rounded-lg">
+            <div class="flex items-start">
+                <i data-lucide="info" class="w-5 h-5 text-primary mr-2 mt-0.5"></i>
+                <div>
+                    <p class="text-sm text-primary font-medium">Select an ArchiMate Layer to begin</p>
+                    <p class="text-xs text-primary mt-1">Choose a layer to view and map ArchiMate elements to this capability.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer Actions -->
+        <div class="flex justify-between items-center pt-4 border-t">
+            <button @click="closeMappingModal()" 
+                    class="px-4 py-2 text-sm text-foreground/80 bg-background border border-border rounded-md hover:bg-muted transition-colors" aria-label="Close">
+                Cancel
+            </button>
+            <button @click="saveMappings()" 
+                    :disabled="selectedElements.length === 0 || saving"
+                    :class="selectedElements.length === 0 || saving ? 'opacity-50 cursor-not-allowed' : 'hover:bg-primary'"
+                    class="px-6 py-2 text-sm text-primary-foreground bg-primary rounded-md transition-colors flex items-center" aria-label="Save">
+                <i data-lucide="save" class="w-4 h-4 mr-2"></i>
+                <span x-text="saving ? 'Saving...' : 'Save Mappings'"></span>
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+function archimateMappingModal() {
+    return {
+        open: false,
+        loading: false,
+        saving: false,
+        capabilityId: null,
+        capabilityName: '',
+        
+        // Element data
+        allElements: [],
+        filteredElements: [],
+        
+        // Selection state
+        selectedElementIds: [],
+        selectedElements: [],
+        
+        // Pagination
+        mappingPage: 1,
+        mappingPageSize: 20,
+
+        // Filters
+        searchQuery: '',
+        selectedLayer: '',
+        selectedElementType: '',
+        
+        // Element types by layer
+        elementTypes: [],
+        elementTypesByLayer: {
+            'strategy': ['Resource', 'Capability', 'ValueStream', 'CourseOfAction'],
+            'business': ['BusinessActor', 'BusinessRole', 'BusinessCollaboration', 'BusinessInterface', 
+                        'BusinessProcess', 'BusinessFunction', 'BusinessInteraction', 'BusinessEvent', 
+                        'BusinessService', 'BusinessObject', 'Contract', 'Representation', 'Product'],
+            'application': ['ApplicationComponent', 'ApplicationInterface', 'ApplicationService', 
+                          'ApplicationFunction', 'ApplicationProcess', 'ApplicationInteraction', 
+                          'ApplicationEvent', 'ApplicationCollaboration', 'DataObject'],
+            'technology': ['Node', 'Device', 'SystemSoftware', 'TechnologyService', 'TechnologyInterface', 
+                         'Path', 'CommunicationNetwork', 'TechnologyEvent', 'Artifact'],
+            'motivation': ['Stakeholder', 'Driver', 'Assessment', 'Goal', 'Outcome', 'Principle', 
+                         'Requirement', 'Constraint', 'Meaning', 'Value'],
+            'implementation': ['WorkPackage', 'Deliverable', 'ImplementationEvent', 'Plateau', 'Gap']
+        },
+        
+        // Mapping configuration
+        relationshipType: 'realization',
+        confidence: '0.8',
+        
+        init() {
+            // Listen for Platform.modal open event to trigger icon reinit
+            if (window.Platform && window.Platform.modal) {
+                window.Platform.modal.on('modal:open', (e) => {
+                    if (e && e.id === 'archimate-mapping-modal') {
+                        setTimeout(() => {
+                            if (typeof lucide !== 'undefined') {
+                                lucide.createIcons();
+                            }
+                        }, 100);
+                    }
+                });
+            }
+        },
+
+        get mappingTotalPages() {
+            return Math.max(1, Math.ceil(this.filteredElements.length / this.mappingPageSize));
+        },
+
+        get paginatedElements() {
+            const start = (this.mappingPage - 1) * this.mappingPageSize;
+            return this.filteredElements.slice(start, start + this.mappingPageSize);
+        },
+        
+        openMappingModal(capabilityId, capabilityName) {
+            this.capabilityId = capabilityId;
+            this.capabilityName = capabilityName;
+            this.selectedElementIds = [];
+            this.selectedElements = [];
+            this.searchQuery = '';
+            this.selectedLayer = '';
+            this.selectedElementType = '';
+            this.allElements = [];
+            this.filteredElements = [];
+            this.mappingPage = 1;
+            Platform.modal.open('archimate-mapping-modal');
+        },
+        
+        closeMappingModal() {
+            Platform.modal.close('archimate-mapping-modal');
+            this.searchQuery = '';
+            this.selectedLayer = '';
+            this.selectedElementType = '';
+            this.selectedElementIds = [];
+            this.selectedElements = [];
+            this.allElements = [];
+            this.filteredElements = [];
+            this.mappingPage = 1;
+            this.capabilityId = null;
+            this.capabilityName = '';
+            this.error = null;
+        },
+        
+        onLayerChange() {
+            this.selectedElementType = '';
+            this.elementTypes = this.elementTypesByLayer[this.selectedLayer] || [];
+            this.loadElements();
+        },
+        
+        async loadElements() {
+            if (!this.selectedLayer) return;
+            
+            this.loading = true;
+            try {
+                const params = new URLSearchParams({
+                    layer: this.selectedLayer
+                });
+                
+                if (this.selectedElementType) {
+                    params.append('element_type', this.selectedElementType);
+                }
+                
+                const response = await fetch(`/capability-map/api/archimate/elements?${params}`);
+                if (!response.ok) throw new Error('Failed to load ArchiMate elements');
+                
+                const data = await response.json();
+                this.allElements = data.elements || [];
+                this.filterElements();
+            } catch (error) {
+                console.error('Error loading ArchiMate elements:', error);
+                if (typeof toast !== 'undefined') {
+                    toast.error('Failed to load ArchiMate elements', {
+                        description: error.message
+                    });
+                }
+            } finally {
+                this.loading = false;
+            }
+        },
+        
+        filterElements() {
+            let filtered = [...this.allElements];
+            
+            // Apply search filter
+            if (this.searchQuery) {
+                const query = this.searchQuery.toLowerCase();
+                filtered = filtered.filter(e => 
+                    e.name.toLowerCase().includes(query) ||
+                    (e.description && e.description.toLowerCase().includes(query)) ||
+                    (e.type && e.type.toLowerCase().includes(query))
+                );
+            }
+            
+            this.filteredElements = filtered.sort((a, b) => {
+                return a.name.localeCompare(b.name);
+            });
+
+            // Reset to first page when filters change
+            this.mappingPage = 1;
+
+            // Reinitialize Lucide icons after filtering
+            this.$nextTick(() => {
+                if (typeof lucide !== 'undefined') {
+                    lucide.createIcons();
+                }
+            });
+        },
+        
+        toggleElementSelection(element) {
+            const index = this.selectedElementIds.indexOf(element.id);
+            if (index > -1) {
+                this.selectedElementIds = this.selectedElementIds.filter((_, i) => i !== index);
+                this.selectedElements = this.selectedElements.filter(e => e.id !== element.id);
+            } else {
+                this.selectedElementIds = [...this.selectedElementIds, element.id];
+                this.selectedElements = [...this.selectedElements, element];
+            }
+        },
+        
+        async saveMappings() {
+            if (this.selectedElements.length === 0) return;
+            
+            this.saving = true;
+            try {
+                const mappings = this.selectedElements.map(element => ({
+                    capability_id: this.capabilityId,
+                    archimate_element_id: element.id,
+                    relationship_type: this.relationshipType,
+                    confidence_score: parseFloat(this.confidence),
+                    archimate_layer: element.layer,
+                    archimate_element_type: element.type
+                }));
+                
+                const response = await fetch('/capability-map/api/save-archimate-mappings', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
+                    },
+                    body: JSON.stringify({ mappings })
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || 'Failed to save mappings');
+                }
+                
+                const result = await response.json();
+                
+                if (typeof toast !== 'undefined') {
+                    toast.success('ArchiMate Mappings Saved', {
+                        description: `Successfully mapped ${result.created || this.selectedElements.length} elements to ${this.capabilityName}`
+                    });
+                }
+                
+                this.closeMappingModal();
+                
+                // Reload the page after a short delay
+                setTimeout(() => location.reload(), 1500);
+            } catch (error) {
+                console.error('Error saving mappings:', error);
+                if (typeof toast !== 'undefined') {
+                    toast.error('Failed to save mappings', {
+                        description: error.message
+                    });
+                }
+            } finally {
+                this.saving = false;
+            }
+        }
+    };
+}
+</script>

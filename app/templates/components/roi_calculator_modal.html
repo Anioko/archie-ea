@@ -1,0 +1,336 @@
+{% from 'components/modal.html' import modal %}
+{% macro roi_calculator_modal() %}
+<!-- ROI Calculator Modal — uses shared modal.html component -->
+<div
+    x-data="{
+        capability: null,
+        investment: 0,
+        timeline: 12,
+        annualBenefit: 0,
+        discountRate: 10,
+        roi: null,
+        paybackPeriod: null,
+        npv: null,
+        breakEvenDate: null,
+        chart: null,
+
+        initModal(cap) {
+            this.capability = cap;
+            this.investment = cap.estimated_cost || 0;
+            this.timeline = cap.timeframe || 12;
+            this.annualBenefit = (cap.estimated_cost || 0) * 0.3;
+            this.discountRate = 10;
+
+            const saved = loadScenario(cap.id);
+            if (saved) {
+                this.investment = saved.investment || this.investment;
+                this.timeline = saved.timeline || this.timeline;
+                this.annualBenefit = saved.annualBenefit || this.annualBenefit;
+                this.discountRate = saved.discountRate || this.discountRate;
+            }
+
+            this.calculateMetrics();
+            Platform.modal.open('roi-calculator');
+
+            this.$nextTick(() => this.renderChart());
+        },
+
+        cleanupChart() {
+            if (this.chart) {
+                this.chart.destroy();
+                this.chart = null;
+            }
+        },
+
+        calculateMetrics() {
+            const result = calculateROI(
+                parseFloat(this.investment),
+                parseFloat(this.annualBenefit),
+                parseFloat(this.timeline),
+                parseFloat(this.discountRate)
+            );
+
+            this.roi = result.roi;
+            this.paybackPeriod = result.paybackPeriod;
+            this.npv = result.npv;
+            this.breakEvenDate = result.breakEvenDate;
+
+            if (this.chart) {
+                this.updateChart();
+            }
+        },
+
+        renderChart() {
+            const ctx = document.getElementById('roiChart');
+            if (!ctx) return;
+
+            const years = Math.ceil(this.timeline / 12);
+            const labels = [];
+            const costData = [];
+            const benefitData = [];
+
+            let cumulativeCost = parseFloat(this.investment);
+            let cumulativeBenefit = 0;
+
+            for (let year = 0; year <= years; year++) {
+                labels.push(`Year ${year}`);
+                costData.push(year === 0 ? cumulativeCost : cumulativeCost);
+
+                if (year > 0) {
+                    cumulativeBenefit += parseFloat(this.annualBenefit);
+                }
+                benefitData.push(cumulativeBenefit);
+            }
+
+            this.chart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Cumulative Cost',
+                            data: costData,
+                            backgroundColor: 'rgba(239, 68, 68, 0.7)',
+                            borderColor: 'rgb(239, 68, 68)',
+                            borderWidth: 1
+                        },
+                        {
+                            label: 'Cumulative Benefit',
+                            data: benefitData,
+                            backgroundColor: 'rgba(34, 197, 94, 0.7)',
+                            borderColor: 'rgb(34, 197, 94)',
+                            borderWidth: 1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return '$' + (value / 1000).toFixed(0) + 'K';
+                                }
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top'
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return context.dataset.label + ': ' + formatCurrency(context.parsed.y);
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        },
+
+        updateChart() {
+            if (!this.chart) return;
+
+            const years = Math.ceil(this.timeline / 12);
+            const labels = [];
+            const costData = [];
+            const benefitData = [];
+
+            let cumulativeCost = parseFloat(this.investment);
+            let cumulativeBenefit = 0;
+
+            for (let year = 0; year <= years; year++) {
+                labels.push(`Year ${year}`);
+                costData.push(year === 0 ? cumulativeCost : cumulativeCost);
+
+                if (year > 0) {
+                    cumulativeBenefit += parseFloat(this.annualBenefit);
+                }
+                benefitData.push(cumulativeBenefit);
+            }
+
+            this.chart.data.labels = labels;
+            this.chart.data.datasets[0].data = costData;
+            this.chart.data.datasets[1].data = benefitData;
+            this.chart.update();
+        },
+
+        saveCurrentScenario() {
+            if (!this.capability) return;
+
+            saveScenario(this.capability.id, {
+                investment: this.investment,
+                timeline: this.timeline,
+                annualBenefit: this.annualBenefit,
+                discountRate: this.discountRate
+            });
+
+            window.toast && window.toast.success('Scenario saved successfully');
+        }
+    }"
+    @open-roi-calculator.window="initModal($event.detail)"
+    @modal:close.document="$event.detail && $event.detail.id === 'roi-calculator' && cleanupChart()"
+>
+{% call modal(id='roi-calculator', labelledby='modal-roi-calculator-title', size='xl') %}
+    <!-- Custom Header (aria-labelledby → modal-roi-calculator-title) -->
+    <div class="flex items-center gap-3 mb-6">
+        <div class="p-2 bg-success/10 rounded-lg">
+            <i data-lucide="calculator" class="h-5 w-5 text-success"></i>
+        </div>
+        <div>
+            <h3 id="modal-roi-calculator-title" class="text-lg font-semibold">ROI Calculator</h3>
+            <p class="text-sm text-muted-foreground" x-text="capability ? capability.name : ''"></p>
+        </div>
+    </div>
+
+    <div class="space-y-6">
+        <!-- Input Section -->
+        <div class="grid grid-cols-2 gap-6">
+            <div>
+                <label class="block text-sm font-medium mb-2">
+                    <i data-lucide="dollar-sign" class="inline h-4 w-4"></i>
+                    Initial Investment
+                </label>
+                <input
+                    type="number"
+                    x-model="investment"
+                    @input="calculateMetrics()"
+                    class="w-full px-3 py-2 border border-input rounded-lg bg-background focus:ring-2 focus:ring-ring focus:border-transparent"
+                    placeholder="Enter investment amount"
+                    min="0"
+                    step="1000"
+                 aria-label="Enter investment amount">
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium mb-2">
+                    <i data-lucide="calendar" class="inline h-4 w-4"></i>
+                    Implementation Timeline (months)
+                </label>
+                <input
+                    type="number"
+                    x-model="timeline"
+                    @input="calculateMetrics()"
+                    class="w-full px-3 py-2 border border-input rounded-lg bg-background focus:ring-2 focus:ring-ring focus:border-transparent"
+                    placeholder="Enter timeline"
+                    min="1"
+                    step="1"
+                 aria-label="Enter timeline">
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium mb-2">
+                    <i data-lucide="trending-up" class="inline h-4 w-4"></i>
+                    Annual Benefit
+                </label>
+                <input
+                    type="number"
+                    x-model="annualBenefit"
+                    @input="calculateMetrics()"
+                    class="w-full px-3 py-2 border border-input rounded-lg bg-background focus:ring-2 focus:ring-ring focus:border-transparent"
+                    placeholder="Expected annual benefit"
+                    min="0"
+                    step="1000"
+                 aria-label="Expected annual benefit">
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium mb-2">
+                    <i data-lucide="percent" class="inline h-4 w-4"></i>
+                    Discount Rate (%)
+                </label>
+                <input
+                    type="number"
+                    x-model="discountRate"
+                    @input="calculateMetrics()"
+                    class="w-full px-3 py-2 border border-input rounded-lg bg-background focus:ring-2 focus:ring-ring focus:border-transparent"
+                    placeholder="Discount rate"
+                    min="0"
+                    max="100"
+                    step="0.5"
+                 aria-label="Discount rate">
+            </div>
+        </div>
+
+        <!-- Output Section -->
+        <div class="bg-muted/50 rounded-lg p-6">
+            <h4 class="text-sm font-semibold mb-4">Calculated Metrics</h4>
+
+            <div class="grid grid-cols-4 gap-4">
+                <div class="text-center">
+                    <div class="text-sm text-muted-foreground mb-1">ROI</div>
+                    <div class="flex items-center justify-center gap-2">
+                        <span
+                            class="text-2xl font-bold"
+                            :class="{
+                                'text-destructive': roi !== null && roi < 0,
+                                'text-warning': roi !== null && roi >= 0 && roi < 20,
+                                'text-success': roi !== null && roi >= 20
+                            }"
+                            x-text="roi !== null ? formatPercentage(roi) : 'N/A'"
+                        ></span>
+                        <span
+                            class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium"
+                            :class="{
+                                'bg-destructive/10 text-destructive border border-destructive/30': roi !== null && roi < 0,
+                                'bg-warning/10 text-warning border border-warning/30': roi !== null && roi >= 0 && roi < 20,
+                                'bg-success/10 text-success border border-success/30': roi !== null && roi >= 20
+                            }"
+                            x-text="roi !== null ? (roi < 0 ? 'Loss' : roi < 20 ? 'Low' : 'High') : ''"
+                        ></span>
+                    </div>
+                </div>
+
+                <div class="text-center">
+                    <div class="text-sm text-muted-foreground mb-1">Payback Period</div>
+                    <div class="text-2xl font-bold text-foreground" x-text="paybackPeriod !== null ? formatDuration(paybackPeriod) : 'N/A'"></div>
+                </div>
+
+                <div class="text-center">
+                    <div class="text-sm text-muted-foreground mb-1">NPV</div>
+                    <div
+                        class="text-2xl font-bold"
+                        :class="npv !== null && npv >= 0 ? 'text-success' : 'text-destructive'"
+                        x-text="npv !== null ? formatCurrency(npv) : 'N/A'"
+                    ></div>
+                </div>
+
+                <div class="text-center">
+                    <div class="text-sm text-muted-foreground mb-1">Break-even Date</div>
+                    <div class="text-lg font-semibold text-foreground" x-text="breakEvenDate ? formatDate(breakEvenDate) : 'N/A'"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Visualization -->
+        <div>
+            <h4 class="text-sm font-semibold mb-3">Cost vs Benefit Over Time</h4>
+            <div class="border border-border rounded-lg p-4 bg-background">
+                <canvas id="roiChart" height="200"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="flex items-center justify-end gap-3 mt-6 pt-6 border-t border-border">
+        <button
+            @click="saveCurrentScenario()"
+            class="inline-flex items-center gap-2 px-4 py-2 border border-input text-foreground font-medium rounded-lg hover:bg-accent transition-colors"
+         aria-label="Save">
+            <i data-lucide="save" class="h-4 w-4"></i>
+            Save as Scenario
+        </button>
+        <button
+            @click="Platform.modal.close('roi-calculator')"
+            class="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground font-medium rounded-lg hover:bg-primary/90 transition-colors"
+         aria-label="Close">
+            Close
+        </button>
+    </div>
+{% endcall %}
+</div>
+{% endmacro %}

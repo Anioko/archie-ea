@@ -1,0 +1,270 @@
+{% extends "layouts/admin_base.html" %}
+{% import 'components/breadcrumb.html' as breadcrumb %}
+
+{% block title %}Flow Analytics — Throughput &amp; Cycle Time{% endblock %}
+
+{% block content %}
+<!-- modal-a11y-ok -->
+<div class="space-y-6"
+     x-data="flowAnalytics({{ selected_board_id or 'null' }})"
+     x-init="init()">
+
+    <!-- Breadcrumb -->
+    {% call breadcrumb.breadcrumb() %}
+        {% call breadcrumb.breadcrumb_item(href=url_for('admin.dashboard')) %}
+            <i data-lucide="home" class="h-4 w-4"></i>
+        {% endcall %}
+        {{ breadcrumb.breadcrumb_separator() }}
+        {% call breadcrumb.breadcrumb_item(active=true) %}
+            Flow Analytics
+        {% endcall %}
+    {% endcall %}
+
+    <!-- Page Header + Board Selector -->
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+            <h1 class="text-3xl font-bold tracking-tight">Flow Analytics</h1>
+            <p class="text-muted-foreground mt-1">Throughput, cycle time, and WIP metrics from Kanban card flow.</p>
+        </div>
+        <div>
+            {% if boards %}
+            <label for="board-selector" class="sr-only">Select Board</label>
+            <select id="board-selector"
+                    class="border rounded-md px-3 py-2 text-sm bg-background"
+                    x-model="boardId"
+                    @change="loadAll()">
+                {% for board in boards %}
+                <option value="{{ board.id }}"
+                        {% if board.id == selected_board_id %}selected{% endif %}>
+                    {{ board.name }}
+                </option>
+                {% endfor %}
+            </select>
+            {% else %}
+            <span class="text-sm text-muted-foreground">No boards found</span>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Metric Summary Cards -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <!-- Avg Cycle Time -->
+        <div class="bg-background rounded-lg border shadow-sm p-5">
+            <p class="text-sm text-muted-foreground">Avg Cycle Time</p>
+            <p class="text-3xl font-bold text-primary mt-1"
+               x-text="cycleData ? cycleData.average_cycle_time_days + 'd' : '—'"></p>
+            <p class="text-xs text-muted-foreground mt-1">P85:
+                <span x-text="cycleData ? cycleData.percentile_85 + 'd' : '—'"></span>
+            </p>
+        </div>
+
+        <!-- Avg Throughput -->
+        <div class="bg-background rounded-lg border shadow-sm p-5">
+            <p class="text-sm text-muted-foreground">Avg Throughput / Week</p>
+            <p class="text-3xl font-bold text-emerald-600 mt-1"
+               x-text="throughputData ? throughputData.average_throughput : '—'"></p>
+            <p class="text-xs text-muted-foreground mt-1">cards / period</p>
+        </div>
+
+        <!-- Avg Lead Time -->
+        <div class="bg-background rounded-lg border shadow-sm p-5">
+            <p class="text-sm text-muted-foreground">Avg Lead Time</p>
+            <p class="text-3xl font-bold text-amber-600 mt-1"
+               x-text="leadData ? leadData.average_lead_time_days + 'd' : '—'"></p>
+            <p class="text-xs text-muted-foreground mt-1">creation → done</p>
+        </div>
+
+        <!-- Flow Efficiency -->
+        <div class="bg-background rounded-lg border shadow-sm p-5">
+            <p class="text-sm text-muted-foreground">Flow Efficiency</p>
+            <p class="text-3xl font-bold text-primary mt-1"
+               x-text="flowEfficiency !== null ? flowEfficiency + '%' : '—'"></p>
+            <p class="text-xs text-muted-foreground mt-1">active / total lead time</p>
+        </div>
+    </div>
+
+    <!-- Empty State -->
+    <template x-if="!loading && noData">
+        <div class="rounded-lg border border-dashed p-12 text-center">
+            <i data-lucide="bar-chart-2" class="h-12 w-12 mx-auto text-muted-foreground mb-4"></i>
+            <h2 class="text-lg font-semibold">No flow data yet</h2>
+            <p class="text-muted-foreground mt-1 text-sm">
+                Move cards through <em>In Progress → Done</em> to start tracking metrics.
+            </p>
+        </div>
+    </template>
+
+    <!-- Charts Row -->
+    <template x-if="!noData">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+            <!-- Cycle Time Chart -->
+            <div class="bg-background rounded-lg border shadow-sm p-5">
+                <h2 class="text-lg font-semibold mb-3">Cycle Time Distribution</h2>
+                <div class="relative h-[260px]">
+                    <canvas id="cycleTimeChart"></canvas>
+                </div>
+                <template x-if="cycleData && cycleData.data_points.length === 0">
+                    <p class="text-sm text-muted-foreground mt-2">No completed cards in range.</p>
+                </template>
+            </div>
+
+            <!-- Throughput Chart -->
+            <div class="bg-background rounded-lg border shadow-sm p-5">
+                <h2 class="text-lg font-semibold mb-3">Throughput per Period</h2>
+                <div class="relative h-[260px]">
+                    <canvas id="throughputChart"></canvas>
+                </div>
+                <template x-if="throughputData && throughputData.periods.length === 0">
+                    <p class="text-sm text-muted-foreground mt-2">No completed cards to chart.</p>
+                </template>
+            </div>
+        </div>
+    </template>
+
+    <!-- WIP Table -->
+    <template x-if="wipData && wipData.columns && wipData.columns.length > 0">
+        <div class="bg-background rounded-lg border shadow-sm p-5">
+            <h2 class="text-lg font-semibold mb-3">WIP Snapshot
+                <span class="text-sm font-normal text-muted-foreground ml-2">
+                    (total: <span x-text="wipData.total_wip"></span>)
+                </span>
+            </h2>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="border-b">
+                            <th class="text-left py-2 pr-4 font-medium text-muted-foreground">Column</th>
+                            <th class="text-right py-2 font-medium text-muted-foreground">Cards</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="col in wipData.columns" :key="col.column">
+                            <tr class="border-b last:border-0">
+                                <td class="py-2 pr-4 capitalize" x-text="col.column.replace('_',' ')"></td>
+                                <td class="py-2 text-right font-semibold" x-text="col.card_count"></td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </template>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script>
+function flowAnalytics(initialBoardId) {
+    return {
+        boardId: initialBoardId ? String(initialBoardId) : null,
+        cycleData: null,
+        throughputData: null,
+        leadData: null,
+        wipData: null,
+        loading: false,
+        get noData() {
+            return (
+                !this.loading &&
+                this.boardId &&
+                this.cycleData !== null &&
+                this.cycleData.data_points.length === 0 &&
+                this.throughputData !== null &&
+                this.throughputData.periods.length === 0
+            );
+        },
+        get flowEfficiency() {
+            if (!this.cycleData || !this.leadData) return null;
+            const cycle = this.cycleData.average_cycle_time_days;
+            const lead = this.leadData.average_lead_time_days;
+            if (!lead) return 0;
+            return Math.round((cycle / lead) * 100 * 10) / 10;
+        },
+        _cycleChart: null,
+        _throughputChart: null,
+
+        async init() {
+            if (this.boardId) await this.loadAll();
+        },
+
+        async loadAll() {
+            if (!this.boardId) return;
+            this.loading = true;
+            try {
+                const [cycle, throughput, lead, wip] = await Promise.all([
+                    fetch(`/api/analytics/cycle-time?board_id=${this.boardId}&days=90`).then(r => r.json()),
+                    fetch(`/api/analytics/throughput?board_id=${this.boardId}&granularity=week`).then(r => r.json()),
+                    fetch(`/api/analytics/lead-time?board_id=${this.boardId}&days=90`).then(r => r.json()),
+                    fetch(`/api/analytics/wip?board_id=${this.boardId}`).then(r => r.json()),
+                ]);
+                this.cycleData = cycle.error ? { average_cycle_time_days: 0, percentile_85: 0, data_points: [] } : cycle;
+                this.throughputData = throughput.error ? { periods: [], average_throughput: 0 } : throughput;
+                this.leadData = lead.error ? { average_lead_time_days: 0, data_points: [] } : lead;
+                this.wipData = wip.error ? { columns: [], total_wip: 0 } : wip;
+                await this.$nextTick();
+                this._renderCharts();
+            } finally {
+                this.loading = false;
+            }
+        },
+
+        _renderCharts() {
+            this._renderCycleChart();
+            this._renderThroughputChart();
+        },
+
+        _renderCycleChart() {
+            const ctx = document.getElementById('cycleTimeChart');
+            if (!ctx || !this.cycleData) return;
+            if (this._cycleChart) this._cycleChart.destroy();
+            const labels = this.cycleData.data_points.map(d => d.card_title.substring(0, 20));
+            const values = this.cycleData.data_points.map(d => d.cycle_days);
+            this._cycleChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels,
+                    datasets: [{
+                        label: 'Cycle Days',
+                        data: values,
+                        backgroundColor: 'rgba(99,102,241,0.7)',
+                        borderRadius: 4,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: { y: { beginAtZero: true, title: { display: true, text: 'Days' } } },
+                }
+            });
+        },
+
+        _renderThroughputChart() {
+            const ctx = document.getElementById('throughputChart');
+            if (!ctx || !this.throughputData) return;
+            if (this._throughputChart) this._throughputChart.destroy();
+            const labels = this.throughputData.periods.map(p => p.label);
+            const values = this.throughputData.periods.map(p => p.completed);
+            this._throughputChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels,
+                    datasets: [{
+                        label: 'Cards Completed',
+                        data: values,
+                        backgroundColor: 'rgba(16,185,129,0.7)',
+                        borderRadius: 4,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } },
+                }
+            });
+        },
+    };
+}
+</script>
+{% endblock %}

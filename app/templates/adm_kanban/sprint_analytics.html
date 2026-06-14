@@ -1,0 +1,279 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'components/page_header.html' import page_header %}
+
+{% block title %}Sprint Analytics — {{ sprint.name }}{% endblock %}
+
+{% block content %}
+<!-- modal-a11y-ok -->
+<div class="space-y-6 max-w-6xl mx-auto"
+     x-data="sprintAnalytics({{ sprint.id }})"
+     x-init="init()"
+     x-cloak>
+
+    {{ page_header(
+        title='Sprint Analytics: ' ~ sprint.name,
+        description='Throughput, cycle time, and cumulative flow diagram for this sprint.'
+    ) }}
+
+    <!-- Loading / error state -->
+    <template x-if="loading">
+        <div class="flex items-center justify-center py-16 text-muted-foreground gap-2">
+            <i data-lucide="loader-2" class="h-5 w-5 animate-spin" aria-hidden="true"></i>
+            Loading analytics…
+        </div>
+    </template>
+    <template x-if="error">
+        <div class="rounded-xl border border-destructive/40 bg-destructive/5 px-5 py-4 text-destructive text-sm"
+             x-text="error"></div>
+    </template>
+
+    <!-- Summary cards -->
+    <template x-if="!loading && analytics">
+        <div class="grid gap-4 md:grid-cols-3">
+            <!-- Throughput -->
+            <div data-slot="card" class="rounded-xl border bg-card p-5">
+                <p class="text-xs font-medium text-muted-foreground mb-1">Throughput</p>
+                <p class="text-3xl font-bold" x-text="analytics.throughput"></p>
+                <p class="text-xs text-muted-foreground mt-1">cards completed in sprint</p>
+            </div>
+            <!-- Cycle Time -->
+            <div data-slot="card" class="rounded-xl border bg-card p-5">
+                <p class="text-xs font-medium text-muted-foreground mb-1">Avg Cycle Time</p>
+                <p class="text-3xl font-bold" x-text="analytics.cycle_time?.average_days?.toFixed(1) + ' days'"></p>
+                <p class="text-xs text-muted-foreground mt-1">started → done (mean)</p>
+            </div>
+            <!-- Sprint -->
+            <div data-slot="card" class="rounded-xl border bg-card p-5">
+                <p class="text-xs font-medium text-muted-foreground mb-1">Sprint Window</p>
+                <p class="text-sm font-semibold" x-text="analytics.start_date + ' → ' + analytics.end_date"></p>
+                <p class="text-xs text-muted-foreground mt-1" x-text="analytics.sprint_name"></p>
+            </div>
+        </div>
+    </template>
+
+    <!-- Throughput Chart -->
+    <template x-if="!loading && analytics">
+        <div data-slot="card" class="rounded-xl border bg-card p-5">
+            <h2 class="text-sm font-semibold mb-4 flex items-center gap-2">
+                <i data-lucide="bar-chart-2" class="h-4 w-4 text-primary" aria-hidden="true"></i>
+                Throughput — Cards Completed per Day
+            </h2>
+            <div class="relative" style="height: 220px;">
+                <canvas id="throughput-chart" aria-label="Throughput chart"></canvas>
+            </div>
+            <p x-show="!analytics.cfd || analytics.cfd.length === 0" x-cloak
+               x-cloak
+               class="text-sm text-muted-foreground text-center py-4">
+                No CFD data available for this sprint.
+            </p>
+        </div>
+    </template>
+
+    <!-- Cycle Time Chart -->
+    <template x-if="!loading && analytics && analytics.cycle_time?.data_points?.length > 0">
+        <div data-slot="card" class="rounded-xl border bg-card p-5">
+            <h2 class="text-sm font-semibold mb-4 flex items-center gap-2">
+                <i data-lucide="clock" class="h-4 w-4 text-primary" aria-hidden="true"></i>
+                Cycle Time — Days per Card
+            </h2>
+            <div class="relative" style="height: 220px;">
+                <canvas id="cycle-time-chart" aria-label="Cycle time chart"></canvas>
+            </div>
+        </div>
+    </template>
+
+    <!-- Cumulative Flow Diagram -->
+    <template x-if="!loading && analytics && analytics.cfd?.length > 0">
+        <div data-slot="card" class="rounded-xl border bg-card p-5">
+            <h2 class="text-sm font-semibold mb-4 flex items-center gap-2">
+                <i data-lucide="layers" class="h-4 w-4 text-primary" aria-hidden="true"></i>
+                Cumulative Flow Diagram
+            </h2>
+            <div class="relative" style="height: 260px;">
+                <canvas id="cfd-chart" aria-label="Cumulative flow diagram"></canvas>
+            </div>
+        </div>
+    </template>
+
+    <!-- Cycle time detail table -->
+    <template x-if="!loading && analytics && analytics.cycle_time?.data_points?.length > 0">
+        <div data-slot="card" class="rounded-xl border bg-card overflow-hidden">
+            <div class="px-5 py-4 border-b">
+                <h2 class="text-sm font-semibold">Cycle Time Detail</h2>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="border-b bg-muted/50 text-muted-foreground">
+                            <th class="px-4 py-3 text-left font-medium text-xs">Card</th>
+                            <th class="px-4 py-3 text-left font-medium text-xs">Cycle Days</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="pt in analytics.cycle_time.data_points" :key="pt.card_id">
+                            <tr class="border-b hover:bg-muted/30">
+                                <td class="px-4 py-2 text-xs" x-text="pt.title"></td>
+                                <td class="px-4 py-2 text-xs font-mono" x-text="pt.cycle_days + 'd'"></td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </template>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"
+        integrity="sha384-eSAy1CNbEqo36QVKWe3yV2yHVQXMJzpPrm4iMZ4K4A/IaM5LOKMzXHfMBbFG02k"
+        crossorigin="anonymous"></script>
+<script>
+function sprintAnalytics(sprintId) {
+    return {
+        sprintId,
+        loading: true,
+        error: null,
+        analytics: null,
+        throughputChart: null,
+        cycleTimeChart: null,
+        cfdChart: null,
+
+        async init() {
+            await this.loadAnalytics();
+            lucide.createIcons();
+        },
+
+        async loadAnalytics() {
+            this.loading = true;
+            this.error = null;
+            try {
+                const r = await fetch(`/api/sprints/${this.sprintId}/analytics`, {
+                    credentials: 'same-origin',
+                    headers: { 'Accept': 'application/json' },
+                });
+                if (!r.ok) {
+                    this.error = `Failed to load analytics (HTTP ${r.status})`;
+                    this.loading = false;
+                    return;
+                }
+                this.analytics = await r.json();
+                this.$nextTick(() => {
+                    this.renderThroughputChart();
+                    this.renderCycleTimeChart();
+                    this.renderCfdChart();
+                    lucide.createIcons();
+                });
+            } catch (e) {
+                this.error = 'Network error: ' + e.message;
+            } finally {
+                this.loading = false;
+            }
+        },
+
+        renderThroughputChart() {
+            const canvas = document.getElementById('throughput-chart');
+            if (!canvas || !this.analytics?.cfd?.length) return;
+            if (this.throughputChart) this.throughputChart.destroy();
+
+            // Build daily throughput from CFD done column delta
+            const cfd = this.analytics.cfd;
+            const labels = cfd.map(d => d.date);
+            const doneCounts = cfd.map(d => d.done || 0);
+            const dailyThroughput = doneCounts.map((v, i) => i === 0 ? v : Math.max(0, v - doneCounts[i - 1]));
+
+            this.throughputChart = new Chart(canvas, {
+                type: 'bar',
+                data: {
+                    labels,
+                    datasets: [{
+                        label: 'Cards Completed',
+                        data: dailyThroughput,
+                        backgroundColor: 'rgba(99, 102, 241, 0.7)',
+                        borderColor: 'rgba(99, 102, 241, 1)',
+                        borderWidth: 1,
+                    }],
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } },
+                },
+            });
+        },
+
+        renderCycleTimeChart() {
+            const canvas = document.getElementById('cycle-time-chart');
+            const pts = this.analytics?.cycle_time?.data_points;
+            if (!canvas || !pts?.length) return;
+            if (this.cycleTimeChart) this.cycleTimeChart.destroy();
+
+            this.cycleTimeChart = new Chart(canvas, {
+                type: 'bar',
+                data: {
+                    labels: pts.map(p => p.title),
+                    datasets: [{
+                        label: 'Cycle Days',
+                        data: pts.map(p => p.cycle_days),
+                        backgroundColor: 'rgba(16, 185, 129, 0.7)',
+                        borderColor: 'rgba(16, 185, 129, 1)',
+                        borderWidth: 1,
+                    }],
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    indexAxis: 'y',
+                    plugins: { legend: { display: false } },
+                    scales: { x: { beginAtZero: true } },
+                },
+            });
+        },
+
+        renderCfdChart() {
+            const canvas = document.getElementById('cfd-chart');
+            if (!canvas || !this.analytics?.cfd?.length) return;
+            if (this.cfdChart) this.cfdChart.destroy();
+
+            const cfd = this.analytics.cfd;
+            const labels = cfd.map(d => d.date);
+            const columns = ['backlog', 'todo', 'in_progress', 'review', 'done'];
+            const colors = [
+                'rgba(148,163,184,0.7)',
+                'rgba(99,102,241,0.7)',
+                'rgba(245,158,11,0.7)',
+                'rgba(59,130,246,0.7)',
+                'rgba(16,185,129,0.7)',
+            ];
+
+            this.cfdChart = new Chart(canvas, {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: columns.map((col, i) => ({
+                        label: col.replace('_', ' '),
+                        data: cfd.map(d => d[col] || 0),
+                        fill: true,
+                        backgroundColor: colors[i],
+                        borderColor: colors[i].replace('0.7', '1'),
+                        tension: 0.3,
+                        pointRadius: 2,
+                    })),
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'top' } },
+                    scales: {
+                        y: { beginAtZero: true, stacked: true },
+                        x: { stacked: true },
+                    },
+                },
+            });
+        },
+    };
+}
+</script>
+{% endblock %}

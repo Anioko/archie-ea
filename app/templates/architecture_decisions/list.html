@@ -1,0 +1,121 @@
+{% extends "layouts/admin_base.html" %}
+{% from "components/page_header.html" import page_header %}
+
+{% block title %}Architecture Decisions{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    {{ page_header(
+        title='Architecture Decisions',
+        description='Enterprise architecture decisions linked to ArchiMate elements and ARB sessions',
+        breadcrumbs=[
+            {'label': 'Dashboard', 'href': url_for('main.index')},
+            {'label': 'Governance'},
+            {'label': 'Architecture Decisions'}
+        ],
+        actions=[
+            {'text': 'New Decision', 'icon': 'plus', 'href': url_for('arch_decisions.create_decision'), 'variant': 'default'}
+        ]
+    ) }}
+
+    <!-- Status Filter Pills -->
+    <div class="flex flex-wrap gap-2 mb-6">
+        <a href="{{ url_for('arch_decisions.list_decisions') }}"
+           class="inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium transition-colors
+                  {% if not status_filter %}bg-primary text-primary-foreground{% else %}bg-muted text-muted-foreground hover:bg-accent{% endif %}">
+            All
+        </a>
+        {% for s, label in [('proposed','Proposed'),('accepted','Accepted'),('deprecated','Deprecated'),('superseded','Superseded')] %}
+        <a href="{{ url_for('arch_decisions.list_decisions', status=s, phase=phase_filter) }}"
+           class="inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium transition-colors
+                  {% if status_filter == s %}bg-primary text-primary-foreground{% else %}bg-muted text-muted-foreground hover:bg-accent{% endif %}">
+            {{ label }}
+        </a>
+        {% endfor %}
+        {% if phase_filter %}
+        <span class="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-sm font-medium bg-secondary text-secondary-foreground">
+            Phase {{ phase_filter }}
+            <a href="{{ url_for('arch_decisions.list_decisions', status=status_filter) }}" class="ml-1 hover:text-destructive">
+                <i data-lucide="x" class="h-3 w-3"></i>
+            </a>
+        </span>
+        {% endif %}
+    </div>
+
+    <!-- Decisions Table -->
+    <div class="bg-card border border-border rounded-lg overflow-hidden">
+        {% if decisions %}
+        <table class="w-full text-sm">
+            <thead class="bg-muted/50 border-b border-border">
+                <tr>
+                    <th class="text-left px-4 py-3 font-medium text-muted-foreground">Decision ID</th>
+                    <th class="text-left px-4 py-3 font-medium text-muted-foreground">Title</th>
+                    <th class="text-left px-4 py-3 font-medium text-muted-foreground">Status</th>
+                    <th class="text-left px-4 py-3 font-medium text-muted-foreground">ADM Phase</th>
+                    <th class="text-left px-4 py-3 font-medium text-muted-foreground">Elements</th>
+                    <th class="text-left px-4 py-3 font-medium text-muted-foreground">Created</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-border">
+                {% for d in decisions %}
+                <tr class="hover:bg-muted/30 transition-colors">
+                    <td class="px-4 py-3">
+                        <a href="{{ url_for('arch_decisions.view_decision', decision_id=d.id) }}"
+                           class="font-mono text-primary hover:underline text-sm font-semibold">
+                            {{ d.decision_id }}
+                        </a>
+                    </td>
+                    <td class="px-4 py-3">
+                        <a href="{{ url_for('arch_decisions.view_decision', decision_id=d.id) }}"
+                           class="text-foreground hover:text-primary font-medium">
+                            {{ d.title }}
+                        </a>
+                    </td>
+                    <td class="px-4 py-3">
+                        {% if d.status == 'proposed' %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20">Proposed</span>
+                        {% elif d.status == 'accepted' %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20">Accepted</span>
+                        {% elif d.status == 'deprecated' %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground border border-border">Deprecated</span>
+                        {% elif d.status == 'superseded' %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-destructive/10 text-destructive border border-destructive/20">Superseded</span>
+                        {% else %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground">{{ d.status|title }}</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-4 py-3">
+                        {% if d.adm_phase %}
+                        <a href="{{ url_for('arch_decisions.list_decisions', status=status_filter, phase=d.adm_phase) }}"
+                           class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80">
+                            Phase {{ d.adm_phase }}
+                        </a>
+                        {% else %}
+                        <span class="text-muted-foreground">—</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-4 py-3 text-muted-foreground">
+                        {{ (d.archimate_element_ids or [])|length }}
+                    </td>
+                    <td class="px-4 py-3 text-muted-foreground text-xs">
+                        {{ d.created_at.strftime('%Y-%m-%d') if d.created_at else '—' }}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="flex flex-col items-center justify-center py-16 text-center">
+            <i data-lucide="file-text" class="h-12 w-12 text-muted-foreground/40 mb-4"></i>
+            <h3 class="text-lg font-semibold text-foreground mb-1">No Architecture Decisions</h3>
+            <p class="text-sm text-muted-foreground mb-4">Record your first enterprise architecture decision.</p>
+            <a href="{{ url_for('arch_decisions.create_decision') }}"
+               class="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors">
+                <i data-lucide="plus" class="h-4 w-4"></i>
+                New Decision
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

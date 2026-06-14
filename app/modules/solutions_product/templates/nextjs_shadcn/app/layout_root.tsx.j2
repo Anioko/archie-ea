@@ -1,0 +1,28 @@
+{# app/layout.tsx — Root layout with AuthProvider, QueryClientProvider, fonts, metadata.
+   Context: solution_name, solution_slug, product_branding ({primary_color, font}) #}
+import type { Metadata } from "next"
+import { Inter } from "next/font/google"
+import "./globals.css"
+import { AuthProvider } from "@/lib/auth-context"
+import { Providers } from "./providers"
+
+const inter = Inter({ subsets: ["latin"] })
+
+export const metadata: Metadata = {
+  title: "{{ solution_name | default('Application') }}",
+  description: "{{ solution_name | default('Application') }} — powered by ARCHIE",
+}
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en" suppressHydrationWarning>
+      <body className={inter.className}>
+        <AuthProvider>
+          <Providers>
+            {children}
+          </Providers>
+        </AuthProvider>
+      </body>
+    </html>
+  )
+}

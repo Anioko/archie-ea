@@ -1,0 +1,44 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="max-w-3xl mx-auto py-8">
+  <h1 class="text-2xl font-bold mb-4">Security Dashboard</h1>
+  <div class="bg-background shadow rounded p-6 mb-6">
+    <h2 class="text-lg font-semibold mb-2">Security Headers</h2>
+    <table class="min-w-full text-sm">
+      <thead><tr><th class="text-left">Header</th><th class="text-left">Value</th></tr></thead>
+      <tbody>
+        {% for k, v in headers.items() %}
+        <tr><td class="font-mono">{{ k }}</td><td class="font-mono">{{ v }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="bg-background shadow rounded p-6 mb-6">
+    <h2 class="text-lg font-semibold mb-2">Rate Limit Stats</h2>
+    <table class="min-w-full text-sm">
+      <thead><tr><th class="text-left">Key</th><th class="text-left">Count, Timestamp</th></tr></thead>
+      <tbody>
+        {% for key, val in rate_limit_stats %}
+        <tr><td class="font-mono">{{ key }}</td><td class="font-mono">{{ val }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="bg-background shadow rounded p-6">
+    <h2 class="text-lg font-semibold mb-2">Secret Rotation</h2>
+    <form id="rotate-secret-form" method="post" action="/api/admin/security/rotate-secret">
+      <button type="submit" class="bg-primary text-primary-foreground px-4 py-2 rounded">Rotate SECRET_KEY</button>
+    </form>
+    <div id="rotate-result" class="mt-4 text-emerald-700 font-mono"></div>
+  </div>
+</div>
+<script>
+document.getElementById('rotate-secret-form').onsubmit = async function(e) {
+  e.preventDefault();
+  const resp = await fetch('/api/admin/security/rotate-secret', {method: 'POST'});
+  const data = await resp.json();
+  document.getElementById('rotate-result').textContent =
+    'New SECRET_KEY stub: ' + data.new_secret_stub + '\n' + data.instructions;
+};
+</script>
+{% endblock %}

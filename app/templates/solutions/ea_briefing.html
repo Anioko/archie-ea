@@ -1,0 +1,147 @@
+{% extends "layouts/admin_base.html" %}
+{% from "components/page_header.html" import page_header %}
+{% from "components/arb_escalate_button.html" import arb_escalate %}
+
+{% block title %}Enterprise Architecture Briefing{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 sm:px-6 lg:px-8 py-6 max-w-6xl" x-data="eaBriefing()">
+    {{ page_header(
+        title='Enterprise Architecture Briefing',
+        description='What changed across the estate — drift, rationalization pressure, capability gaps and governance, read live from the platform. Every finding links to where it can be actioned.',
+        breadcrumbs=[
+            {'label': 'Dashboard', 'href': url_for('main.index')},
+            {'label': 'Briefing'}
+        ]
+    ) }}
+
+    <div class="flex items-center justify-between mt-4 mb-6">
+        <div class="flex items-center gap-2">
+            <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30">
+                <i data-lucide="shield-check" class="h-3.5 w-3.5"></i> Evidence-grounded · live data
+            </span>
+            {% if latest %}
+            <span class="text-xs text-muted-foreground">Generated {{ latest.generated_at[:16]|replace('T',' ') }} · {{ latest.source }}</span>
+            {% endif %}
+        </div>
+        <button type="button" @click="generate()" :disabled="busy"
+                class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+            <i data-lucide="refresh-cw" class="h-4 w-4" :class="busy && 'animate-spin'"></i>
+            <span x-text="busy ? 'Generating…' : 'Generate briefing'"></span>
+        </button>
+    </div>
+
+    {% if not latest %}
+    <div class="border border-border rounded-xl bg-card p-10 text-center">
+        <span class="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary mb-3">
+            <i data-lucide="newspaper" class="h-6 w-6"></i>
+        </span>
+        <p class="text-sm font-medium text-foreground">No briefing yet</p>
+        <p class="text-xs text-muted-foreground mt-1 mb-4">Generate the first Enterprise Architecture briefing to see what needs attention across the estate.</p>
+        <button type="button" @click="generate()" :disabled="busy"
+                class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+            <span x-text="busy ? 'Generating…' : 'Generate first briefing'"></span>
+        </button>
+    </div>
+    {% else %}
+
+    {# ── Executive summary ─────────────────────────────────────────── #}
+    <div class="border border-border rounded-xl bg-card p-6 mb-6">
+        <div class="flex items-start gap-3">
+            <span class="shrink-0 inline-flex h-10 w-10 items-center justify-center rounded-lg
+                {% if latest.flagged_count %}bg-amber-500/10 text-amber-600{% else %}bg-emerald-500/10 text-emerald-600{% endif %}">
+                <i data-lucide="{{ 'alert-triangle' if latest.flagged_count else 'check-circle' }}" class="h-5 w-5"></i>
+            </span>
+            <div class="min-w-0">
+                <h2 class="text-lg font-semibold text-foreground">{{ latest.headline }}</h2>
+                <p class="text-sm text-muted-foreground mt-1">{{ latest.summary }}</p>
+                <div class="flex items-center gap-4 mt-3 text-xs">
+                    <span class="text-foreground"><strong>{{ latest.finding_count }}</strong> finding{{ '' if latest.finding_count == 1 else 's' }}</span>
+                    <span class="{% if latest.flagged_count %}text-amber-600{% else %}text-muted-foreground{% endif %}"><strong>{{ latest.flagged_count }}</strong> need attention</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# ── Findings ──────────────────────────────────────────────────── #}
+    <div class="space-y-3 mb-8">
+        {% for f in latest.findings %}
+        <div class="border border-border rounded-xl bg-card p-4 flex items-start gap-3">
+            <span class="shrink-0 mt-0.5 inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide
+                {% if f.severity == 'critical' %}bg-destructive/10 text-destructive border border-destructive/30
+                {% elif f.severity == 'high' %}bg-amber-500/10 text-amber-600 border border-amber-500/30
+                {% else %}bg-muted text-muted-foreground border border-border{% endif %}">{{ f.severity }}</span>
+            <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-2">
+                    <span class="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">{{ f.category }}</span>
+                </div>
+                <h3 class="text-sm font-semibold text-foreground mt-0.5">{{ f.title }}</h3>
+                <p class="text-xs text-muted-foreground mt-1">{{ f.detail }}</p>
+                <div class="flex items-center justify-between mt-2 gap-2">
+                    <span class="text-[11px] text-muted-foreground/80 inline-flex items-center gap-1 min-w-0">
+                        <i data-lucide="database" class="h-3 w-3 shrink-0"></i> {{ f.evidence }}
+                    </span>
+                    <div class="flex items-center gap-2 shrink-0">
+                        {{ arb_escalate(f) }}
+                        {% if f.action_url %}
+                        <a href="{{ f.action_url }}" class="text-xs font-medium text-primary hover:underline inline-flex items-center gap-1">
+                            {{ f.action_label }} <i data-lucide="arrow-right" class="h-3 w-3"></i>
+                        </a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {# ── History ───────────────────────────────────────────────────── #}
+    {% if history and history|length > 1 %}
+    <div class="border border-border rounded-xl bg-card overflow-hidden">
+        <div class="px-5 py-3 border-b border-border"><h2 class="text-sm font-semibold text-foreground">Past Briefings</h2></div>
+        <table class="min-w-full divide-y divide-border text-sm">
+            <thead class="bg-muted/30">
+                <tr>
+                    <th class="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase">Generated</th>
+                    <th class="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase">Source</th>
+                    <th class="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase">Findings</th>
+                    <th class="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase">Flagged</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-border">
+                {% for b in history %}
+                <tr class="hover:bg-accent/40">
+                    <td class="px-4 py-2"><a href="/solutions/briefings/{{ b.id }}" class="text-primary hover:underline">{{ b.generated_at[:16]|replace('T',' ') }}</a></td>
+                    <td class="px-4 py-2 text-muted-foreground">{{ b.source }}</td>
+                    <td class="px-4 py-2 text-foreground">{{ b.finding_count }}</td>
+                    <td class="px-4 py-2 {% if b.flagged_count %}text-amber-600{% else %}text-muted-foreground{% endif %}">{{ b.flagged_count }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_head_js %}
+<script>
+    function eaBriefing() {
+        return {
+            busy: false,
+            _csrf() { return document.querySelector('meta[name=csrf-token]')?.content || ''; },
+            async generate() {
+                this.busy = true;
+                try {
+                    const r = await fetch('/solutions/briefings/api/generate', {
+                        method: 'POST',
+                        headers: { 'X-CSRFToken': this._csrf() },
+                    });
+                    if (r.ok) { window.location.href = '/solutions/briefings'; }
+                } finally { this.busy = false; }
+            },
+        };
+    }
+</script>
+{% endblock %}

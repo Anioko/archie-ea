@@ -1,0 +1,273 @@
+{# shadcn/ui File Upload Component
+   
+   Drag-and-drop file upload component with progress tracking and validation.
+   Supports single and multiple file uploads with preview.
+   
+   Usage Examples:
+   
+   1. Basic File Upload:
+   {% from 'components/file_upload.html' import file_upload %}
+   {{ file_upload(
+       id='document-upload',
+       name='document',
+       label='Upload Document'
+   ) }}
+   
+   2. Multiple Files with Accept Filter:
+   {{ file_upload(
+       id='images-upload',
+       name='images',
+       label='Upload Images',
+       accept='image/*',
+       multiple=true,
+       max_size='5MB'
+   ) }}
+   
+   3. Drag & Drop CSV Upload:
+   {{ file_upload(
+       id='csv-upload',
+       name='csv_file',
+       label='Import CSV File',
+       accept='.csv',
+       description='Drop your CSV file here or click to browse',
+       show_preview=true
+   ) }}
+   
+   4. With Progress Bar:
+   {{ file_upload(
+       id='bulk-upload',
+       name='files',
+       multiple=true,
+       show_progress=true,
+       max_files=10
+   ) }}
+   
+   JavaScript Events:
+   - fileSelected(files) - Triggered when files are selected
+   - uploadProgress(percent) - Triggered during upload
+   - uploadComplete(response) - Triggered on successful upload
+   - uploadError(error) - Triggered on upload failure
+#}
+
+{% macro file_upload(
+    id='file-upload',
+    name='file',
+    label='',
+    description='',
+    accept='',
+    multiple=false,
+    required=false,
+    max_size='10MB',
+    max_files=5,
+    show_preview=true,
+    show_progress=false,
+    disabled=false,
+    class='',
+    error=''
+) %}
+<div 
+    id="{{ id }}-container" 
+    class="w-full {{ class }}"
+    x-data="{
+        files: [],
+        dragging: false,
+        uploading: false,
+        progress: 0,
+        error: '{{ error }}',
+        maxSize: {{ max_size.replace('MB', '') | default('10') }} * 1024 * 1024,
+        maxFiles: {{ max_files }},
+        
+        addFiles(newFiles) {
+            const fileArray = Array.from(newFiles);
+            
+            // Validate file count
+            if ({{ 'this.files.length + fileArray.length > this.maxFiles' if multiple else 'fileArray.length > 1' }}) {
+                this.error = 'Maximum {{ max_files if multiple else '1' }} file(s) allowed';
+                return;
+            }
+            
+            // Validate file sizes
+            for (const file of fileArray) {
+                if (file.size > this.maxSize) {
+                    this.error = `File ${file.name} exceeds maximum size of {{ max_size }}`;
+                    return;
+                }
+            }
+            
+            this.error = '';
+            {{ 'this.files.push(...fileArray)' if multiple else 'this.files = fileArray' }};
+            
+            // Trigger custom event
+            this.$dispatch('file-selected', { files: this.files });
+        },
+        
+        removeFile(index) {
+            this.files.splice(index, 1);
+        },
+        
+        clearFiles() {
+            this.files = [];
+            this.error = '';
+            this.progress = 0;
+        },
+        
+        formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+        }
+    }"
+>
+    {% if label %}
+    <label class="block text-sm font-medium mb-2">
+        {{ label }}{% if required %}<span class="text-destructive ml-1">*</span>{% endif %}
+    </label>
+    {% endif %}
+    
+    {% if description %}
+    <p class="text-sm text-muted-foreground mb-3">{{ description }}</p>
+    {% endif %}
+    
+    <!-- Drop Zone -->
+    <div 
+        @drop.prevent="dragging = false; addFiles($event.dataTransfer.files)"
+        @dragover.prevent="dragging = true"
+        @dragenter.prevent="dragging = true"
+        @dragleave.prevent="dragging = false"
+        @click="$refs.fileInput.click()"
+        :class="{ 
+            'border-primary bg-primary/5': dragging,
+            'border-destructive': error,
+            'opacity-50 cursor-not-allowed': {{ 'true' if disabled else 'false' }}
+        }"
+        class="border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-all hover:border-primary hover:bg-accent/50"
+    >
+        <input 
+            type="file"
+            id="{{ id }}"
+            name="{{ name }}"
+            x-ref="fileInput"
+            @change="addFiles($event.target.files)"
+            {% if accept %}accept="{{ accept }}"{% endif %}
+            {% if multiple %}multiple{% endif %}
+            {% if required %}required{% endif %}
+            {% if disabled %}disabled{% endif %}
+            class="hidden"
+        />
+        
+        <div class="flex flex-col items-center gap-2">
+            <div class="rounded-full bg-primary/10 p-3">
+                <i data-lucide="upload" class="h-6 w-6 text-primary"></i>
+            </div>
+            
+            <div class="space-y-1">
+                <p class="text-sm font-medium">
+                    <span class="text-primary">Click to upload</span> or drag and drop
+                </p>
+                <p class="text-xs text-muted-foreground">
+                    {% if accept %}{{ accept }} files, {% endif %}up to {{ max_size }}{% if multiple %}, max {{ max_files }} files{% endif %}
+                </p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Error Message -->
+    <div x-show="error" x-cloak class="mt-2 text-sm text-destructive" role="alert">
+        <i data-lucide="alert-circle" class="inline h-4 w-4 mr-1"></i>
+        <span x-text="error"></span>
+    </div>
+    
+    <!-- File Preview List -->
+    {% if show_preview %}
+    <div x-show="files.length > 0" x-cloak class="mt-4 space-y-2">
+        <template x-for="(file, index) in files" :key="index">
+            <div class="flex items-center gap-3 p-3 border rounded-lg bg-card hover:bg-accent/50 transition-colors">
+                <!-- File Icon -->
+                <div class="flex-shrink-0">
+                    <div class="rounded bg-primary/10 p-2">
+                        <i data-lucide="file" class="h-4 w-4 text-primary"></i>
+                    </div>
+                </div>
+                
+                <!-- File Info -->
+                <div class="flex-1 min-w-0">
+                    <p class="text-sm font-medium truncate" x-text="file.name"></p>
+                    <p class="text-xs text-muted-foreground" x-text="formatFileSize(file.size)"></p>
+                </div>
+                
+                <!-- Progress Bar (if uploading) -->
+                {% if show_progress %}
+                <div x-show="uploading" x-cloak class="flex-1">
+                    <div class="h-2 bg-muted rounded-full overflow-hidden">
+                        <div 
+                            class="h-full bg-primary transition-all duration-300"
+                            :style="`width: ${progress}%`"
+                        ></div>
+                    </div>
+                    <p class="text-xs text-muted-foreground text-center mt-1" x-text="`${progress}%`"></p>
+                </div>
+                {% endif %}
+                
+                <!-- Remove Button -->
+                <button
+                    type="button"
+                    @click.stop="removeFile(index)"
+                    class="flex-shrink-0 text-muted-foreground hover:text-destructive transition-colors p-1 rounded-md hover:bg-destructive/10"
+                    :disabled="uploading"
+                 aria-label="Remove file">
+                    <i data-lucide="x" class="h-4 w-4"></i>
+                </button>
+            </div>
+        </template>
+        
+        <!-- Clear All Button -->
+        <button
+            type="button"
+            @click="clearFiles()"
+            x-show="files.length > 1" x-cloak
+            class="text-sm text-muted-foreground hover:text-foreground transition-colors"
+         aria-label="Clear all files">
+            <i data-lucide="trash-2" class="inline h-3 w-3 mr-1"></i>
+            Clear all files
+        </button>
+    </div>
+    {% endif %}
+</div>
+
+<style>
+[x-cloak] { display: none !important; }
+</style>
+
+<script>
+// Helper function to trigger file upload programmatically
+window.openFileUpload = function(uploadId) {
+    const input = document.getElementById(uploadId);
+    if (input) {
+        input.click();
+    }
+};
+
+// Helper function to get selected files
+window.getUploadedFiles = function(containerId) {
+    const container = document.getElementById(containerId + '-container');
+    if (container) {
+        const alpineData = Alpine.$data(container);
+        return alpineData ? alpineData.files : [];
+    }
+    return [];
+};
+
+// Helper function to clear uploads
+window.clearFileUpload = function(containerId) {
+    const container = document.getElementById(containerId + '-container');
+    if (container) {
+        const alpineData = Alpine.$data(container);
+        if (alpineData) {
+            alpineData.clearFiles();
+        }
+    }
+};
+</script>
+{% endmacro %}

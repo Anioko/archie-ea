@@ -1,0 +1,1105 @@
+{% extends 'layouts/admin_base.html' %}
+{% from 'components/page_header.html' import page_header %}
+{% import 'components/card.html' as card %}
+{% import 'components/badge.html' as badge %}
+{% import 'components/tabs.html' as tabs %}
+{% import 'components/breadcrumb.html' as breadcrumb %}
+
+{% block title %}Review Batch #{{ batch.batch_number if batch else '' }}{% endblock %}
+
+{% block content %}
+<div class="space-y-6" x-data="batchReview({{ job.id if job else 0 }}, {{ batch.id if batch else 0 }})">
+    <!-- Breadcrumb -->
+    {% call breadcrumb.breadcrumb() %}
+        {% call breadcrumb.breadcrumb_item(href=url_for('admin.dashboard')) %}
+            <i data-lucide="home" class="h-4 w-4" aria-hidden="true"></i>
+        {% endcall %}
+        {{ breadcrumb.breadcrumb_separator() }}
+        {% call breadcrumb.breadcrumb_item(href=url_for('batch_import_view.dashboard')) %}
+            Batch Import
+        {% endcall %}
+        {{ breadcrumb.breadcrumb_separator() }}
+        {% call breadcrumb.breadcrumb_item(href=url_for('batch_import_view.job_detail', job_id=job.id) if job else '#') %}
+            <span x-text="job?.name || 'Job'"></span>
+        {% endcall %}
+        {{ breadcrumb.breadcrumb_separator() }}
+        {% call breadcrumb.breadcrumb_item(active=true) %}
+            Batch #<span x-text="batch?.batch_number || ''"></span>
+        {% endcall %}
+    {% endcall %}
+
+    <!-- Batch Header -->
+    {% call card.card() %}
+        <div class="p-6">
+            <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                <div class="flex items-start gap-4">
+                    <div class="flex h-12 w-12 items-center justify-center rounded-lg bg-primary">
+                        <i data-lucide="layers" class="h-6 w-6 text-primary-foreground" aria-hidden="true"></i>
+                    </div>
+                    <div>
+                        {{ page_header(title='Review Batch #') }}
+                        <div class="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
+                            <span class="flex items-center gap-1">
+                                <i data-lucide="folder" class="h-4 w-4" aria-hidden="true"></i>
+                                Job: <span x-text="job?.name" class="font-medium text-foreground"></span>
+                            </span>
+                            <span class="flex items-center gap-1">
+                                <i data-lucide="package" class="h-4 w-4" aria-hidden="true"></i>
+                                <span x-text="batch?.applications_count"></span> applications
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Commit Button -->
+                <div class="flex items-center gap-2">
+                    <button
+                        @click="refreshElements()"
+                        class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2 transition-colors"
+                     aria-label="Refresh">
+                        <i data-lucide="refresh-cw" class="mr-2 h-4 w-4" :class="{ 'animate-spin': refreshing }"></i>
+                        Refresh
+                    </button>
+                    <button
+                        @click="commitBatch()"
+                        :disabled="!canCommit"
+                        class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-success text-primary-foreground hover:bg-success disabled:opacity-50 disabled:pointer-events-none h-10 px-4 py-2 transition-colors"
+                     aria-label="Commit batch to repository">
+                        <i data-lucide="check-circle" class="mr-2 h-4 w-4" aria-hidden="true"></i>
+                        Commit to Repository
+                    </button>
+                </div>
+            </div>
+        </div>
+    {% endcall %}
+
+    <!-- Summary Cards -->
+    <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <!-- Total Elements -->
+        {% call card.card() %}
+            <div class="p-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm font-medium text-muted-foreground">Total Elements</p>
+                        <p class="text-2xl font-bold" x-text="summary.total"></p>
+                    </div>
+                    <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+                        <i data-lucide="boxes" class="h-5 w-5 text-primary" aria-hidden="true"></i>
+                    </div>
+                </div>
+            </div>
+        {% endcall %}
+
+        <!-- Approved -->
+        {% call card.card() %}
+            <div class="p-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm font-medium text-muted-foreground">Approved</p>
+                        <p class="text-2xl font-bold text-success" x-text="summary.approved"></p>
+                    </div>
+                    <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10 dark:bg-success/30">
+                        <i data-lucide="check" class="h-5 w-5 text-success" aria-hidden="true"></i>
+                    </div>
+                </div>
+            </div>
+        {% endcall %}
+
+        <!-- Pending -->
+        {% call card.card() %}
+            <div class="p-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm font-medium text-muted-foreground">Pending Review</p>
+                        <p class="text-2xl font-bold text-warning" x-text="summary.pending"></p>
+                    </div>
+                    <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/10 dark:bg-warning/30">
+                        <i data-lucide="clock" class="h-5 w-5 text-warning" aria-hidden="true"></i>
+                    </div>
+                </div>
+            </div>
+        {% endcall %}
+
+        <!-- Rejected -->
+        {% call card.card() %}
+            <div class="p-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm font-medium text-muted-foreground">Rejected</p>
+                        <p class="text-2xl font-bold text-destructive" x-text="summary.rejected"></p>
+                    </div>
+                    <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-destructive/10 dark:bg-destructive/30">
+                        <i data-lucide="x" class="h-5 w-5 text-destructive" aria-hidden="true"></i>
+                    </div>
+                </div>
+            </div>
+        {% endcall %}
+    </div>
+
+    <!-- Layer Breakdown -->
+    {% call card.card() %}
+        <div class="p-6">
+            <h3 class="text-lg font-semibold mb-4">Elements by ArchiMate Layer</h3>
+            <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                <template x-for="layer in layers" :key="layer.name">
+                    <div class="flex flex-col items-center p-4 rounded-lg border" :class="layer.bgClass">
+                        <span class="text-2xl font-bold" :class="layer.textClass" x-text="layer.count"></span>
+                        <span class="text-xs text-muted-foreground mt-1" x-text="layer.name"></span>
+                    </div>
+                </template>
+            </div>
+        </div>
+    {% endcall %}
+
+    <!-- Filters and Bulk Actions -->
+    {% call card.card() %}
+        <div class="p-4">
+            <div class="flex flex-wrap items-center gap-4">
+                <!-- Search -->
+                <div class="relative">
+                    <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden="true"></i>
+                    <input
+                        type="text"
+                        x-model="searchQuery"
+                        placeholder="Search elements..."
+                        class="flex h-10 w-64 rounded-md border border-input bg-background pl-10 pr-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                     aria-label="Search elements..."/>
+                </div>
+
+                <!-- Layer Filter -->
+                <div x-data="{ dropOpen: false }" class="relative">
+                    <button
+                        @click="dropOpen = !dropOpen"
+                        class="flex h-10 items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                     aria-label="Open">
+                        <span x-text="filterLayer || 'All Layers'"></span>
+                        <i data-lucide="chevron-down" class="ml-2 h-4 w-4 opacity-50" aria-hidden="true"></i>
+                    </button>
+                    <div
+                        x-show="dropOpen" x-cloak @keydown.escape.window="dropOpen = false" role="dialog" aria-modal="true"
+                        @click.away="dropOpen = false"
+                        x-transition
+                        class="absolute z-50 mt-1 w-48 rounded-md border bg-popover text-popover-foreground shadow-md hidden" >
+                        <div class="p-1">
+                            <button
+                                @click="filterLayer = ''; dropOpen = false"
+                                class="relative flex w-full items-center rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+                             aria-label="Open">
+                                All Layers
+                            </button>
+                            <template x-for="layer in layerOptions" :key="layer">
+                                <button
+                                    @click="filterLayer = layer; dropOpen = false"
+                                    class="relative flex w-full items-center rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+                                    x-text="layer"
+                                 aria-label="Open"></button>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Status Filter -->
+                <div x-data="{ dropOpen: false }" class="relative">
+                    <button
+                        @click="dropOpen = !dropOpen"
+                        class="flex h-10 items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                     aria-label="Open">
+                        <span x-text="filterStatus || 'All Status'"></span>
+                        <i data-lucide="chevron-down" class="ml-2 h-4 w-4 opacity-50" aria-hidden="true"></i>
+                    </button>
+                    <div
+                        x-show="dropOpen" x-cloak @keydown.escape.window="dropOpen = false" role="dialog" aria-modal="true"
+                        @click.away="dropOpen = false"
+                        x-transition
+                        class="absolute z-50 mt-1 w-40 rounded-md border bg-popover text-popover-foreground shadow-md hidden" >
+                        <div class="p-1">
+                            <button @click="filterStatus = ''; dropOpen = false" class="relative flex w-full items-center rounded-sm px-2 py-1.5 text-sm hover:bg-accent" aria-label="Open">All Status</button>
+                            <button @click="filterStatus = 'pending'; dropOpen = false" class="relative flex w-full items-center rounded-sm px-2 py-1.5 text-sm hover:bg-accent" aria-label="Open">Pending</button>
+                            <button @click="filterStatus = 'approved'; dropOpen = false" class="relative flex w-full items-center rounded-sm px-2 py-1.5 text-sm hover:bg-accent" aria-label="Open">Approved</button>
+                            <button @click="filterStatus = 'rejected'; dropOpen = false" class="relative flex w-full items-center rounded-sm px-2 py-1.5 text-sm hover:bg-accent" aria-label="Open">Rejected</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex-1"></div>
+
+                <!-- Bulk Actions -->
+                <div class="flex items-center gap-2" x-show="selectedElements.length > 0" x-cloak>
+                    <span class="text-sm text-muted-foreground">
+                        <span x-text="selectedElements.length"></span> selected
+                    </span>
+                    <button
+                        @click="bulkApprove()"
+                        class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-success text-primary-foreground hover:bg-success h-9 px-3 transition-colors"
+                     aria-label="Approve selected elements">
+                        <i data-lucide="check" class="mr-2 h-4 w-4" aria-hidden="true"></i>
+                        Approve
+                    </button>
+                    <button
+                        @click="bulkReject()"
+                        class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-destructive text-destructive-foreground hover:bg-destructive/90 h-9 px-3 transition-colors"
+                     aria-label="Reject">
+                        <i data-lucide="x" class="mr-2 h-4 w-4" aria-hidden="true"></i>
+                        Reject
+                    </button>
+                </div>
+
+                <!-- Auto-approve High Confidence -->
+                <button
+                    @click="autoApproveHighConfidence()"
+                    x-show="summary.pending > 0" x-cloak
+                    class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2 transition-colors"
+                 aria-label="Approve">
+                    <i data-lucide="sparkles" class="mr-2 h-4 w-4" aria-hidden="true"></i>
+                    Auto-approve High Confidence
+                </button>
+            </div>
+        </div>
+    {% endcall %}
+
+    <!-- Elements Table -->
+    {% call card.card() %}
+        <div class="p-6">
+            <div class="rounded-md border">
+                <table class="w-full caption-bottom text-sm">
+                    <thead class="[&_tr]:border-b">
+                        <tr class="border-b transition-colors hover:bg-muted/50">
+                            <th class="h-12 w-12 px-4 align-middle">
+                                <input
+                                    type="checkbox"
+                                    @change="toggleSelectAll($event)"
+                                    :checked="allSelected"
+                                    class="h-4 w-4 rounded border-primary"
+                                 aria-label="Select all elements"/>
+                            </th>
+                            <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
+                                <button @click="sortBy('name')" class="inline-flex items-center gap-2 hover:text-foreground" aria-label="Sort">
+                                    Element Name
+                                    <i data-lucide="arrow-up-down" class="h-4 w-4" aria-hidden="true"></i>
+                                </button>
+                            </th>
+                            <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Type</th>
+                            <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Layer</th>
+                            <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground">
+                                <button @click="sortBy('confidence')" class="inline-flex items-center gap-2 hover:text-foreground" aria-label="Sort">
+                                    Confidence
+                                    <i data-lucide="arrow-up-down" class="h-4 w-4" aria-hidden="true"></i>
+                                </button>
+                            </th>
+                            <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Status</th>
+                            <th class="h-12 px-4 text-right align-middle font-medium text-muted-foreground">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody class="[&_tr:last-child]:border-0">
+                        <template x-if="loading">
+                            <tr>
+                                <td colspan="7" class="p-8 text-center">
+                                    <div class="flex items-center justify-center gap-2">
+                                        <i data-lucide="loader-2" class="h-5 w-5 animate-spin text-muted-foreground" aria-hidden="true"></i>
+                                        <span class="text-muted-foreground">Loading elements...</span>
+                                    </div>
+                                </td>
+                            </tr>
+                        </template>
+                        <template x-if="!loading && paginatedElements.length === 0">
+                            <tr>
+                                <td colspan="7" class="p-8 text-center">
+                                    <div class="flex flex-col items-center gap-2">
+                                        <i data-lucide="inbox" class="h-12 w-12 text-muted-foreground" aria-hidden="true"></i>
+                                        <p class="text-muted-foreground">No elements found</p>
+                                    </div>
+                                </td>
+                            </tr>
+                        </template>
+                        <template x-for="element in paginatedElements" :key="element.id">
+                            <tr class="border-b transition-colors hover:bg-muted/50" :class="{ 'bg-muted/30': isSelected(element.id) }">
+                                <td class="p-4 align-middle">
+                                    <input
+                                        type="checkbox"
+                                        :checked="isSelected(element.id)"
+                                        @change="toggleSelect(element.id)"
+                                        class="h-4 w-4 rounded border-primary"
+                                     aria-label="Select element"/>
+                                </td>
+                                <td class="p-4 align-middle">
+                                    <div class="flex flex-col">
+                                        <button
+                                            @click="showElementDetail(element)"
+                                            class="font-medium hover:underline text-left"
+                                            x-text="element.name"
+                                         aria-label="View element details"></button>
+                                        <span class="text-xs text-muted-foreground truncate max-w-xs" x-text="element.source_application"></span>
+                                    </div>
+                                </td>
+                                <td class="p-4 align-middle">
+                                    <span class="text-sm" x-text="element.element_type"></span>
+                                </td>
+                                <td class="p-4 align-middle">
+                                    <span
+                                        :class="getLayerBadgeClass(element.layer)"
+                                        class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold"
+                                        x-text="element.layer"
+                                    ></span>
+                                </td>
+                                <td class="p-4 align-middle">
+                                    <div class="flex items-center gap-2">
+                                        <div class="w-16 h-2 rounded-full bg-secondary overflow-hidden">
+                                            <div
+                                                class="h-full transition-all"
+                                                :class="getConfidenceBarClass(element.confidence)"
+                                                :style="'width: ' + element.confidence + '%'"
+                                            ></div>
+                                        </div>
+                                        <span class="text-xs font-medium" :class="getConfidenceTextClass(element.confidence)" x-text="element.confidence + '%'"></span>
+                                    </div>
+                                </td>
+                                <td class="p-4 align-middle">
+                                    <span
+                                        :class="getApprovalStatusBadgeClass(element.approval_status)"
+                                        class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold"
+                                        x-text="element.approval_status"
+                                    ></span>
+                                </td>
+                                <td class="p-4 align-middle text-right">
+                                    <div class="flex items-center justify-end gap-1">
+                                        <button
+                                            @click="approveElement(element.id)"
+                                            x-show="_normApproval(element.approval_status) !== 'approved'" x-cloak
+                                            class="inline-flex items-center justify-center rounded-md text-sm font-medium hover:bg-success/10 dark:hover:bg-success/30 text-success h-8 w-8 transition-colors"
+                                            title="Approve"
+                                        >
+                                            <i data-lucide="check" class="h-4 w-4" aria-hidden="true"></i>
+                                        </button>
+                                        <button
+                                            @click="rejectElement(element.id)"
+                                            x-show="_normApproval(element.approval_status) !== 'rejected'" x-cloak
+                                            class="inline-flex items-center justify-center rounded-md text-sm font-medium hover:bg-destructive/10 text-destructive h-8 w-8 transition-colors"
+                                            title="Reject"
+                                        >
+                                            <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
+                                        </button>
+                                        <button
+                                            @click="showElementDetail(element)"
+                                            class="inline-flex items-center justify-center rounded-md text-sm font-medium hover:bg-accent hover:text-accent-foreground h-8 w-8 transition-colors"
+                                            title="View Details"
+                                        >
+                                            <i data-lucide="eye" class="h-4 w-4" aria-hidden="true"></i>
+                                        </button>
+                                        <button
+                                            @click="editElement(element)"
+                                            class="inline-flex items-center justify-center rounded-md text-sm font-medium hover:bg-accent hover:text-accent-foreground h-8 w-8 transition-colors"
+                                            title="Edit"
+                                        >
+                                            <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Pagination -->
+            <div class="flex items-center justify-between px-2 py-4" x-show="filteredElements.length > 0" x-cloak>
+                <div class="text-sm text-muted-foreground">
+                    Showing <span x-text="startIndex + 1"></span> to <span x-text="Math.min(endIndex, filteredElements.length)"></span> of <span x-text="filteredElements.length"></span> elements
+                </div>
+                <div class="flex items-center space-x-2">
+                    <button
+                        @click="currentPage--"
+                        :disabled="currentPage === 1"
+                        class="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent h-9 px-3"
+                     aria-label="Go to previous page">
+                        Previous
+                    </button>
+                    <span class="text-sm text-muted-foreground">
+                        Page <span x-text="currentPage"></span> of <span x-text="totalPages"></span>
+                    </span>
+                    <button
+                        @click="currentPage++"
+                        :disabled="currentPage >= totalPages"
+                        class="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent h-9 px-3"
+                     aria-label="Go to next page">
+                        Next
+                    </button>
+                </div>
+            </div>
+        </div>
+    {% endcall %}
+
+    <!-- Element Detail Modal -->
+    <div
+        x-show="showDetailModal" x-cloak
+        @keydown.escape.window="showDetailModal = false"
+        x-transition
+        class="modal-root fixed inset-0 z-50 flex items-center justify-center"
+    >
+        <div class="modal-root fixed inset-0 bg-background/80" @click="showDetailModal = false"></div>
+        <div class="relative z-50 w-full max-w-2xl rounded-lg border bg-background p-6 shadow-lg max-h-[80vh] overflow-y-auto" role="dialog" aria-modal="true" tabindex="-1">
+            <button @click="showDetailModal = false" class="absolute right-4 top-4 rounded-sm opacity-70 hover:opacity-100" aria-label="Close element detail dialog">
+                <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
+            </button>
+
+            <div class="mb-6" x-show="selectedElement" x-cloak>
+                <div class="flex items-start gap-4">
+                    <div class="flex h-12 w-12 items-center justify-center rounded-lg" :class="getLayerIconBackground(selectedElement?.layer)">
+                        <i data-lucide="box" class="h-6 w-6 text-primary-foreground" aria-hidden="true"></i>
+                    </div>
+                    <div class="flex-1">
+                        <h2 class="text-xl font-semibold" x-text="selectedElement?.name"></h2>
+                        <div class="flex items-center gap-2 mt-1">
+                            <span
+                                :class="getLayerBadgeClass(selectedElement?.layer)"
+                                class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold"
+                                x-text="selectedElement?.layer"
+                            ></span>
+                            <span class="text-sm text-muted-foreground" x-text="selectedElement?.element_type"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="space-y-4" x-show="selectedElement" x-cloak>
+                <!-- Source Info -->
+                <div class="rounded-lg bg-muted/50 p-4">
+                    <h3 class="text-sm font-medium mb-2">Source Application</h3>
+                    <p class="text-sm" x-text="selectedElement?.source_application"></p>
+                </div>
+
+                <!-- Description -->
+                <div>
+                    <h3 class="text-sm font-medium mb-2">Description</h3>
+                    <p class="text-sm text-muted-foreground" x-text="selectedElement?.description || 'No description provided'"></p>
+                </div>
+
+                <!-- Properties -->
+                <div x-show="selectedElement?.properties && Object.keys(selectedElement.properties).length > 0" x-cloak>
+                    <h3 class="text-sm font-medium mb-2">Properties</h3>
+                    <div class="rounded-lg border p-4 space-y-2">
+                        <template x-for="(value, key) in selectedElement?.properties || {}" :key="key">
+                            <div class="flex items-center justify-between text-sm">
+                                <span class="text-muted-foreground" x-text="key"></span>
+                                <span x-text="value"></span>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- Relationships -->
+                <div x-show="selectedElement?.relationships && selectedElement.relationships.length > 0" x-cloak>
+                    <h3 class="text-sm font-medium mb-2">Relationships</h3>
+                    <div class="space-y-2">
+                        <template x-for="rel in selectedElement?.relationships || []" :key="rel.id">
+                            <div class="flex items-center gap-2 p-2 rounded-lg border text-sm">
+                                <i data-lucide="arrow-right" class="h-4 w-4 text-muted-foreground" aria-hidden="true"></i>
+                                <span class="text-muted-foreground" x-text="rel.type"></span>
+                                <span x-text="rel.target_name"></span>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- AI Generation Info -->
+                <div class="rounded-lg bg-accent dark:bg-primary/20 p-4">
+                    <h3 class="text-sm font-medium mb-2 text-primary dark:text-primary">AI Generation Details</h3>
+                    <div class="grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                            <span class="text-muted-foreground">Confidence Score</span>
+                            <div class="flex items-center gap-2 mt-1">
+                                <div class="w-20 h-2 rounded-full bg-secondary overflow-hidden">
+                                    <div
+                                        class="h-full"
+                                        :class="getConfidenceBarClass(selectedElement?.confidence)"
+                                        :style="'width: ' + (selectedElement?.confidence || 0) + '%'"
+                                    ></div>
+                                </div>
+                                <span class="font-medium" x-text="(selectedElement?.confidence || 0) + '%'"></span>
+                            </div>
+                        </div>
+                        <div>
+                            <span class="text-muted-foreground">Model Used</span>
+                            <p class="font-medium mt-1" x-text="selectedElement?.ai_model || 'GPT-4'"></p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Actions -->
+                <div class="flex justify-end gap-2 pt-4 border-t">
+                    <button
+                        @click="rejectElement(selectedElement?.id); showDetailModal = false"
+                        x-show="_normApproval(selectedElement?.approval_status) !== 'rejected'" x-cloak
+                        class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-destructive text-destructive hover:bg-destructive/10 h-10 px-4 py-2 transition-colors"
+                     aria-label="Reject">
+                        <i data-lucide="x" class="mr-2 h-4 w-4" aria-hidden="true"></i>
+                        Reject
+                    </button>
+                    <button
+                        @click="editElement(selectedElement); showDetailModal = false"
+                        class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent h-10 px-4 py-2 transition-colors"
+                     aria-label="Edit">
+                        <i data-lucide="pencil" class="mr-2 h-4 w-4" aria-hidden="true"></i>
+                        Edit
+                    </button>
+                    <button
+                        @click="approveElement(selectedElement?.id); showDetailModal = false"
+                        x-show="_normApproval(selectedElement?.approval_status) !== 'approved'" x-cloak
+                        class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-success text-primary-foreground hover:bg-success h-10 px-4 py-2 transition-colors"
+                     aria-label="Approve element">
+                        <i data-lucide="check" class="mr-2 h-4 w-4" aria-hidden="true"></i>
+                        Approve
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Element Modal -->
+    <div
+        x-show="showEditModal" x-cloak
+        @keydown.escape.window="showEditModal = false"
+        x-transition
+        class="modal-root fixed inset-0 z-50 flex items-center justify-center"
+    >
+        <div class="modal-root fixed inset-0 bg-background/80" @click="showEditModal = false"></div>
+        <div class="relative z-50 w-full max-w-lg rounded-lg border bg-background p-6 shadow-lg" role="dialog" aria-modal="true" tabindex="-1">
+            <button @click="showEditModal = false" class="absolute right-4 top-4 rounded-sm opacity-70 hover:opacity-100" aria-label="Edit">
+                <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
+            </button>
+
+            <h2 class="text-lg font-semibold mb-4">Edit Element</h2>
+
+            <form @submit.prevent="saveElement()" class="space-y-4">
+                <div>
+                    <label class="text-sm font-medium">Name</label>
+                    <input
+                        type="text"
+                        x-model="editingElement.name"
+                        class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring mt-1"
+                     aria-label="Element name"/>
+                </div>
+
+                <div>
+                    <label class="text-sm font-medium">Type</label>
+                    <input
+                        type="text"
+                        x-model="editingElement.element_type"
+                        class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring mt-1"
+                     aria-label="Element type"/>
+                </div>
+
+                <div>
+                    <label class="text-sm font-medium">Description</label>
+                    <textarea
+                        x-model="editingElement.description"
+                        rows="3"
+                        class="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring mt-1"
+                    ></textarea>
+                </div>
+
+                <div class="flex justify-end gap-2 pt-4">
+                    <button
+                        type="button"
+                        @click="showEditModal = false"
+                        class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent h-10 px-4 py-2"
+                     aria-label="Edit">
+                        Cancel
+                    </button>
+                    <button
+                        type="submit"
+                        class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2"
+                     aria-label="Submit">
+                        Save Changes
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Commit Confirmation Modal -->
+    <div
+        x-show="showCommitModal" x-cloak
+        @keydown.escape.window="showCommitModal = false"
+        x-transition
+        class="modal-root fixed inset-0 z-50 flex items-center justify-center"
+    >
+        <div class="modal-root fixed inset-0 bg-background/80" @click="showCommitModal = false"></div>
+        <div class="relative z-50 w-full max-w-md rounded-lg border bg-background p-6 shadow-lg" role="alertdialog" aria-modal="true" tabindex="-1">
+            <button @click="showCommitModal = false" class="absolute right-4 top-4 rounded-sm opacity-70 hover:opacity-100" aria-label="Close commit confirmation dialog">
+                <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
+            </button>
+
+            <div class="flex items-center gap-4 mb-4">
+                <div class="flex h-12 w-12 items-center justify-center rounded-full bg-success/10 dark:bg-success/30">
+                    <i data-lucide="check-circle" class="h-6 w-6 text-success" aria-hidden="true"></i>
+                </div>
+                <div>
+                    <h2 class="text-lg font-semibold">Commit Elements</h2>
+                    <p class="text-sm text-muted-foreground">This will add elements to the repository</p>
+                </div>
+            </div>
+
+            <div class="rounded-lg bg-muted/50 p-4 mb-4">
+                <div class="flex justify-between text-sm mb-2">
+                    <span class="text-muted-foreground">Elements to commit:</span>
+                    <span class="font-medium" x-text="summary.approved"></span>
+                </div>
+                <div class="flex justify-between text-sm">
+                    <span class="text-muted-foreground">Elements skipped (rejected):</span>
+                    <span class="font-medium" x-text="summary.rejected"></span>
+                </div>
+            </div>
+
+            <template x-if="summary.pending > 0">
+                <div class="rounded-lg bg-warning/5 dark:bg-warning/20 border border-warning/20 dark:border-warning p-4 mb-4">
+                    <div class="flex items-start gap-2">
+                        <i data-lucide="alert-triangle" class="h-5 w-5 text-warning mt-0.5" aria-hidden="true"></i>
+                        <div>
+                            <p class="text-sm font-medium text-warning dark:text-warning">Pending elements will be skipped</p>
+                            <p class="text-xs text-warning dark:text-warning mt-1">
+                                <span x-text="summary.pending"></span> elements still pending review. Only approved elements will be committed.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </template>
+
+            <div class="flex justify-end gap-2">
+                <button
+                    @click="showCommitModal = false"
+                    class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent h-10 px-4 py-2"
+                 aria-label="Cancel commit">
+                    Cancel
+                </button>
+                <button
+                    @click="confirmCommit()"
+                    class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-success text-primary-foreground hover:bg-success h-10 px-4 py-2"
+                 aria-label="Confirm">
+                    <i data-lucide="check-circle" class="mr-2 h-4 w-4" aria-hidden="true"></i>
+                    Commit <span x-text="summary.approved"></span> Elements
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function batchReview(jobId, batchId) {
+    return {
+        jobId: jobId,
+        batchId: batchId,
+        job: null,
+        batch: null,
+        elements: [],
+        loading: true,
+        refreshing: false,
+        selectedElements: [],
+        searchQuery: '',
+        filterLayer: '',
+        filterStatus: '',
+        sortKey: 'name',
+        sortOrder: 'asc',
+        currentPage: 1,
+        perPage: 20,
+        showDetailModal: false,
+        showEditModal: false,
+        showCommitModal: false,
+        selectedElement: null,
+        editingElement: {},
+
+        layerOptions: ['Business', 'Application', 'Technology', 'Motivation', 'Strategy', 'Implementation'],
+
+        get summary() {
+            return {
+                total: this.elements.length,
+                approved: this.elements.filter(e => this._normApproval(e.approval_status) === 'approved').length,
+                pending: this.elements.filter(e => this._normApproval(e.approval_status) === 'pending').length,
+                rejected: this.elements.filter(e => this._normApproval(e.approval_status) === 'rejected').length
+            };
+        },
+
+        get layers() {
+            const layerCounts = {};
+            this.elements.forEach(e => {
+                layerCounts[e.layer] = (layerCounts[e.layer] || 0) + 1;
+            });
+
+            const layerConfig = {
+                'Business': { bgClass: 'bg-warning/5 dark:bg-warning/20 border-warning/20', textClass: 'text-warning' },
+                'Application': { bgClass: 'bg-primary/5 dark:bg-primary/20 border-primary/20', textClass: 'text-primary' },
+                'Technology': { bgClass: 'bg-success/5 dark:bg-success/20 border-success/20', textClass: 'text-success' },
+                'Motivation': { bgClass: 'bg-accent dark:bg-primary/20 border-primary/20', textClass: 'text-primary' },
+                'Strategy': { bgClass: 'bg-destructive/5 dark:bg-destructive/20 border-destructive/20', textClass: 'text-destructive' },
+                'Implementation': { bgClass: 'bg-info/5 dark:bg-info/20 border-info/20', textClass: 'text-info' }
+            };
+
+            return Object.entries(layerCounts).map(([name, count]) => ({
+                name,
+                count,
+                ...(layerConfig[name] || { bgClass: 'bg-muted/50 border-border', textClass: 'text-muted-foreground' })
+            }));
+        },
+
+        get canCommit() {
+            return this.summary.approved > 0 && this._normStatus(this.batch?.status) !== 'committed';
+        },
+
+        get filteredElements() {
+            let filtered = this.elements;
+
+            if (this.searchQuery) {
+                const query = this.searchQuery.toLowerCase();
+                filtered = filtered.filter(e =>
+                    e.name.toLowerCase().includes(query) ||
+                    e.element_type.toLowerCase().includes(query) ||
+                    (e.description && e.description.toLowerCase().includes(query))
+                );
+            }
+
+            if (this.filterLayer) {
+                filtered = filtered.filter(e => e.layer === this.filterLayer);
+            }
+
+            if (this.filterStatus) {
+                filtered = filtered.filter(e => this._normApproval(e.approval_status) === this.filterStatus);
+            }
+
+            // Sort
+            filtered = [...filtered].sort((a, b) => {
+                let aVal = a[this.sortKey];
+                let bVal = b[this.sortKey];
+
+                if (typeof aVal === 'string') {
+                    aVal = aVal.toLowerCase();
+                    bVal = bVal.toLowerCase();
+                }
+
+                if (this.sortOrder === 'asc') {
+                    return aVal > bVal ? 1 : -1;
+                }
+                return aVal < bVal ? 1 : -1;
+            });
+
+            return filtered;
+        },
+
+        get totalPages() {
+            return Math.ceil(this.filteredElements.length / this.perPage);
+        },
+
+        get startIndex() {
+            return (this.currentPage - 1) * this.perPage;
+        },
+
+        get endIndex() {
+            return this.startIndex + this.perPage;
+        },
+
+        get paginatedElements() {
+            return this.filteredElements.slice(this.startIndex, this.endIndex);
+        },
+
+        get allSelected() {
+            return this.paginatedElements.length > 0 &&
+                   this.paginatedElements.every(e => this.selectedElements.includes(e.id));
+        },
+
+        init() {
+            this.loadData();
+        },
+
+        async loadData() {
+            this.loading = true;
+            try {
+                const [jobRes, batchRes, elementsRes] = await Promise.all([
+                    fetch(`/api/batch-import/jobs/${this.jobId}`),
+                    fetch(`/api/batch-import/batches/${this.batchId}`),
+                    fetch(`/api/batch-import/batches/${this.batchId}/elements`)
+                ]);
+
+                const jobData = await jobRes.json();
+                const batchData = await batchRes.json();
+                const elementsData = await elementsRes.json();
+
+                if (jobData.success) this.job = jobData.job || jobData.data || this.job;
+                if (batchData.success) this.batch = batchData.batch || batchData.data || this.batch;
+                if (elementsData.success) this.elements = elementsData.elements || elementsData.data || [];
+
+                this.$nextTick(() => {
+                    if (typeof lucide !== 'undefined') {
+                        lucide.createIcons();
+                    }
+                });
+            } catch (error) {
+                console.error('Failed to load data:', error);
+                this.showToast('Failed to load batch data', 'error');
+            } finally {
+                this.loading = false;
+            }
+        },
+
+        refreshElements() {
+            this.refreshing = true;
+            this.loadData().finally(() => {
+                this.refreshing = false;
+            });
+        },
+
+        sortBy(key) {
+            if (this.sortKey === key) {
+                this.sortOrder = this.sortOrder === 'asc' ? 'desc' : 'asc';
+            } else {
+                this.sortKey = key;
+                this.sortOrder = 'asc';
+            }
+        },
+
+        isSelected(id) {
+            return this.selectedElements.includes(id);
+        },
+
+        toggleSelect(id) {
+            const idx = this.selectedElements.indexOf(id);
+            if (idx > -1) {
+                this.selectedElements.splice(idx, 1);
+            } else {
+                this.selectedElements.push(id);
+            }
+        },
+
+        toggleSelectAll(event) {
+            if (event.target.checked) {
+                this.selectedElements = [...new Set([
+                    ...this.selectedElements,
+                    ...this.paginatedElements.map(e => e.id)
+                ])];
+            } else {
+                const pageIds = this.paginatedElements.map(e => e.id);
+                this.selectedElements = this.selectedElements.filter(id => !pageIds.includes(id));
+            }
+        },
+
+        getStatusBadgeClass(status) {
+            const classes = {
+                'Pending': 'border-transparent bg-muted text-muted-foreground dark:bg-foreground dark:text-muted-foreground',
+                'Processing': 'border-transparent bg-primary/10 text-primary dark:bg-primary/30 dark:text-primary/80',
+                'Processed': 'border-transparent bg-accent text-primary dark:bg-primary/30 dark:text-primary',
+                'Reviewing': 'border-transparent bg-warning/10 text-warning dark:bg-warning/30 dark:text-warning',
+                'Committed': 'border-transparent bg-success/10 text-success dark:bg-success/30 dark:text-success/80'
+            };
+            return classes[status] || classes['Pending'];
+        },
+
+        getLayerBadgeClass(layer) {
+            const classes = {
+                'Business': 'border-transparent bg-warning/10 text-warning dark:bg-warning/30 dark:text-warning',
+                'Application': 'border-transparent bg-primary/10 text-primary dark:bg-primary/30 dark:text-primary/80',
+                'Technology': 'border-transparent bg-success/10 text-success dark:bg-success/30 dark:text-success/80',
+                'Motivation': 'border-transparent bg-accent text-primary dark:bg-primary/30 dark:text-primary',
+                'Strategy': 'border-transparent bg-destructive/10 text-destructive dark:bg-destructive/30 dark:text-destructive/80',
+                'Implementation': 'border-transparent bg-info/10 text-info dark:bg-info/30 dark:text-info'
+            };
+            return classes[layer] || 'border-transparent bg-muted text-muted-foreground';
+        },
+
+        getLayerIconBackground(layer) {
+            const backgrounds = {
+                'Business': 'bg-warning',
+                'Application': 'bg-primary',
+                'Technology': 'bg-success',
+                'Motivation': 'bg-primary',
+                'Strategy': 'bg-destructive',
+                'Implementation': 'bg-info'
+            };
+            return backgrounds[layer] || 'bg-muted-foreground';
+        },
+
+        getApprovalStatusBadgeClass(status) {
+            status = this._normApproval(status);
+            const classes = {
+                'pending': 'border-transparent bg-warning/10 text-warning dark:bg-warning/30 dark:text-warning',
+                'approved': 'border-transparent bg-success/10 text-success dark:bg-success/30 dark:text-success/80',
+                'rejected': 'border-transparent bg-destructive/10 text-destructive dark:bg-destructive/30 dark:text-destructive/80'
+            };
+            return classes[status] || classes['pending'];
+        },
+
+        getConfidenceBarClass(confidence) {
+            if (confidence >= 80) return 'bg-success';
+            if (confidence >= 60) return 'bg-warning';
+            return 'bg-destructive';
+        },
+
+        getConfidenceTextClass(confidence) {
+            if (confidence >= 80) return 'text-success';
+            if (confidence >= 60) return 'text-warning';
+            return 'text-destructive';
+        },
+
+        showElementDetail(element) {
+            this.selectedElement = element;
+            this.showDetailModal = true;
+            this.$nextTick(() => {
+                if (typeof lucide !== 'undefined') {
+                    lucide.createIcons();
+                }
+            });
+        },
+
+        editElement(element) {
+            this.editingElement = { ...element };
+            this.showEditModal = true;
+        },
+
+        async saveElement() {
+            try {
+                const response = await fetch(
+                    `/api/batch-import/elements/${this.editingElement.id}`,
+                    {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(this.editingElement)
+                    }
+                );
+                const data = await response.json();
+
+                if (data.success) {
+                    const idx = this.elements.findIndex(e => e.id === this.editingElement.id);
+                    if (idx > -1) {
+                        this.elements[idx] = { ...this.elements[idx], ...this.editingElement };
+                    }
+                    this.showToast('Element updated', 'success');
+                    this.showEditModal = false;
+                } else {
+                    this.showToast(data.message || data.error || 'Failed to update element', 'error');
+                }
+            } catch (error) {
+                console.error('Failed to save element:', error);
+                this.showToast('Failed to save element', 'error');
+            }
+        },
+
+        async approveElement(elementId) {
+            await this.updateElementStatus(elementId, 'approved');
+        },
+
+        async rejectElement(elementId) {
+            await this.updateElementStatus(elementId, 'rejected');
+        },
+
+        async updateElementStatus(elementId, status) {
+            try {
+                let endpoint = null;
+                if (status === 'approved') endpoint = `/api/batch-import/elements/${elementId}/approve`;
+                if (status === 'rejected') endpoint = `/api/batch-import/elements/${elementId}/reject`;
+                if (!endpoint) {
+                    this.showToast('Unsupported status update', 'error');
+                    return;
+                }
+
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    const idx = this.elements.findIndex(e => e.id === elementId);
+                    if (idx > -1) {
+                        this.elements[idx].approval_status = status;
+                    }
+                    this.showToast(`Element ${status}`, 'success');
+                } else {
+                    this.showToast(data.message || data.error || 'Failed to update status', 'error');
+                }
+            } catch (error) {
+                console.error('Failed to update element status:', error);
+                this.showToast('Failed to update status', 'error');
+            }
+        },
+
+        async bulkApprove() {
+            for (const id of this.selectedElements) {
+                await this.updateElementStatus(id, 'Approved');
+            }
+            this.selectedElements = [];
+        },
+
+        async bulkReject() {
+            for (const id of this.selectedElements) {
+                await this.updateElementStatus(id, 'Rejected');
+            }
+            this.selectedElements = [];
+        },
+
+        async autoApproveHighConfidence() {
+            const highConfidenceIds = this.elements
+                .filter(e => this._normApproval(e.approval_status) === 'pending' && e.confidence >= 80)
+                .map(e => e.id);
+
+            if (highConfidenceIds.length === 0) {
+                this.showToast('No high-confidence pending elements found', 'info');
+                return;
+            }
+
+            for (const id of highConfidenceIds) {
+                await this.updateElementStatus(id, 'Approved');
+            }
+
+            this.showToast(`Auto-approved ${highConfidenceIds.length} elements`, 'success');
+        },
+
+        commitBatch() {
+            this.showCommitModal = true;
+        },
+
+        async confirmCommit() {
+            try {
+                const response = await fetch(
+                    `/api/batch-import/batches/${this.batchId}/commit`,
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' }
+                    }
+                );
+                const data = await response.json();
+
+                if (data.success) {
+                    const committedCount = data.committed_count || (data.batch && data.batch.elements_approved) || (data.data && data.data.elements_approved) || 0;
+                    this.showToast(`Committed ${committedCount} elements to repository`, 'success');
+                    this.batch.status = 'Committed';
+                    this.showCommitModal = false;
+                } else {
+                    this.showToast(data.message || data.error || 'Failed to commit batch', 'error');
+                }
+            } catch (error) {
+                console.error('Failed to commit batch:', error);
+                this.showToast('Failed to commit batch', 'error');
+            }
+        },
+
+        showToast(message, type = 'info') {
+            if (window.showToast) {
+                window.showToast(message, type);
+            } else {
+            }
+        },
+
+        _normStatus(status) {
+            return String(status || '').toLowerCase();
+        },
+
+        _normApproval(status) {
+            return String(status || '').toLowerCase();
+        }
+    };
+}
+</script>
+
+<script>
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
+</script>
+{% endblock %}

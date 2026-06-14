@@ -1,0 +1,45 @@
+{# Reusable "Escalate to ARB" button for an AI architect finding (AI-6).
+   Usage: {% from 'components/arb_escalate_button.html' import arb_escalate %}
+          {{ arb_escalate(f, solution_id) }}
+   `f` is a finding dict with title/detail/category/severity. solution_id
+   is optional. The finding fields ride on data-* attributes (HTML-escaped
+   by Jinja) and are read in go() via $root.dataset — embedding tojson
+   inside the x-data="" attribute breaks it (nested double quotes). #}
+{% macro arb_escalate(f, solution_id='') %}
+<span x-data="{
+        done: false, busy: false, num: '',
+        async go() {
+            this.busy = true;
+            try {
+                const ds = this.$root.dataset;
+                const csrf = document.querySelector('meta[name=csrf-token]')?.content || '';
+                const r = await fetch('/solutions/arb/escalate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
+                    body: JSON.stringify({
+                        title: ds.title, detail: ds.detail,
+                        category: ds.category, severity: ds.severity,
+                        solution_id: ds.solution || null,
+                    }),
+                });
+                const d = await r.json();
+                if (r.ok && d.success) { this.done = true; this.num = d.review_number; }
+            } finally { this.busy = false; }
+        }
+     }"
+     data-title="{{ f.title }}"
+     data-detail="{{ f.detail }}"
+     data-category="{{ f.category }}"
+     data-severity="{{ f.severity }}"
+     data-solution="{{ solution_id }}"
+     class="shrink-0">
+    <button type="button" x-show="!done" @click="go()" :disabled="busy"
+            class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium border border-input bg-background hover:bg-accent transition-colors disabled:opacity-50">
+        <i data-lucide="gavel" class="h-3 w-3"></i>
+        <span x-text="busy ? 'Escalating…' : 'Escalate to ARB'"></span>
+    </button>
+    <span x-show="done" x-cloak class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30">
+        <i data-lucide="check" class="h-3 w-3"></i> Escalated · <span x-text="num"></span>
+    </span>
+</span>
+{% endmacro %}

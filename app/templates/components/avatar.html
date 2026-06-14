@@ -1,0 +1,24 @@
+{# shadcn/ui Avatar Component #}
+{% macro avatar(
+    src='',
+    alt='',
+    fallback='',
+    size='default',
+    class=''
+) %}
+{% set sizes = {
+    'sm': 'h-8 w-8 text-xs',
+    'default': 'h-10 w-10 text-sm',
+    'lg': 'h-12 w-12 text-base',
+    'xl': 'h-16 w-16 text-lg'
+} %}
+<span class="relative flex shrink-0 overflow-hidden rounded-full {{ sizes[size] }} {{ class }}">
+    {% if src %}
+    <img class="aspect-square h-full w-full" src="{{ src }}" alt="{{ alt }}" />
+    {% else %}
+    <span class="flex h-full w-full items-center justify-center rounded-full bg-muted font-medium">
+        {{ fallback }}{{ caller() if caller }}
+    </span>
+    {% endif %}
+</span>
+{% endmacro %}

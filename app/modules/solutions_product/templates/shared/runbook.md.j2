@@ -1,0 +1,167 @@
+{# app/modules/solutions_product/templates/shared/runbook.md.j2 #}
+{# Operations runbook generated from architecture spec. #}
+{# Context: service_name, solution_id, bundle_id, service_description, #}
+{#          owner_team, architecture_style, criticality, integrations, #}
+{#          slas, endpoints, entities, primary_sla_ms #}
+# {{ service_name }} — Operations Runbook
+
+Generated from A.R.C.H.I.E. Solution #{{ solution_id }} | Bundle: {{ bundle_id }}
+
+> **This runbook is auto-generated from the solution architecture. Regenerate after architecture changes.**
+
+## Service Overview
+
+{{ service_description | default('Service generated from A.R.C.H.I.E. solution blueprint.') }}
+
+| Property | Value |
+|----------|-------|
+| **Owner** | {{ owner_team | default('Architecture Team') }} |
+| **Architecture Style** | {{ architecture_style | default('microservices') }} |
+| **Criticality** | {{ criticality | default('standard') }} |
+| **Solution ID** | {{ solution_id }} |
+| **Spec Hash** | `{{ spec_hash | default('N/A') }}` |
+
+## Health Checks
+
+| Check | Endpoint | Expected | Action if Failed |
+|-------|----------|----------|-----------------|
+| Application | `GET /health` | 200 + `{"status": "ok"}` | Check logs, restart pod |
+| Readiness | `GET /health` | 200 | Check dependencies below |
+{% for integration in integrations %}
+| {{ integration.name }} | `{{ integration.health_check | default('N/A') }}` | 200 | Check {{ integration.name }} status page |
+{% endfor %}
+
+## API Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+{% for ep in endpoints %}
+| {{ ep.method }} | `{{ ep.path }}` | {{ ep.summary | default('') }} |
+{% endfor %}
+
+## Dependencies
+
+{% if integrations %}
+{% for dep in integrations %}
+### {{ dep.name }}
+
+| Property | Value |
+|----------|-------|
+| **Type** | {{ dep.protocol | default('REST') }} |
+| **Auth** | {{ dep.auth_method | default('none') }} |
+{% if dep.sla_latency_ms %}| **SLA** | {{ dep.sla_latency_ms }}ms p99 |
+{% endif %}
+{% if dep.fallback_behavior %}| **If down** | {{ dep.fallback_behavior }} |
+{% endif %}
+{% if dep.documentation_url %}| **Status page** | {{ dep.documentation_url }} |
+{% endif %}
+
+{% endfor %}
+{% else %}
+No external dependencies configured.
+{% endif %}
+
+## SLA Targets
+
+{% if slas %}
+| SLA | Target | Metric |
+|-----|--------|--------|
+{% for sla in slas %}
+| {{ sla.name }} | {{ sla.value_ms }}ms p99 | `histogram_quantile(0.99, rate(http_server_request_duration_seconds_bucket{service="{{ service_name }}"}[5m]))` |
+{% endfor %}
+{% else %}
+No SLA targets defined. Consider adding SLAs in the solution architecture.
+{% endif %}
+
+## Common Incidents
+
+### High Latency (p99 > {{ primary_sla_ms | default(500) }}ms)
+
+1. Check Grafana dashboard for {{ service_name }}
+2. Identify slow endpoints from the Latency Distribution panel
+3. Check database query times:
+   ```bash
+   kubectl exec -it $(kubectl get pod -l app={{ service_name }} -o jsonpath='{.items[0].metadata.name}') -- curl -s localhost:{{ port | default('8000') }}/metrics | grep db_query
+   ```
+4. Check integration latency:
+   ```bash
+   kubectl exec -it $(kubectl get pod -l app={{ service_name }} -o jsonpath='{.items[0].metadata.name}') -- curl -s localhost:{{ port | default('8000') }}/metrics | grep client_request
+   ```
+5. If database: check RDS metrics in AWS console
+{% for dep in integrations %}
+6. If {{ dep.name }}: check {{ dep.name }} status page{% if dep.documentation_url %} ({{ dep.documentation_url }}){% endif %}
+
+{% endfor %}
+
+### High Error Rate (> 1%)
+
+1. Check error logs:
+   ```bash
+   kubectl logs -l app={{ service_name }} --tail=100 | jq 'select(.level=="error")'
+   ```
+2. Identify error type from structured logs
+3. If 500 + database error: check RDS connectivity
+4. If 500 + integration timeout: check downstream service
+5. If 422: client sending invalid data — check recent deployments of calling services
+
+### Service Unreachable
+
+1. Check pod status:
+   ```bash
+   kubectl get pods -l app={{ service_name }}
+   ```
+2. If CrashLoopBackOff:
+   ```bash
+   kubectl logs $(kubectl get pod -l app={{ service_name }} -o jsonpath='{.items[0].metadata.name}') --previous
+   ```
+3. If Pending: check node resources:
+   ```bash
+   kubectl describe pod $(kubectl get pod -l app={{ service_name }} -o jsonpath='{.items[0].metadata.name}')
+   ```
+4. If OOMKilled: increase memory limit in `k8s/deployment.yaml`
+
+### Database Connection Failure
+
+1. Check RDS status in AWS console
+2. Check security group allows pod IPs
+3. Check connection pool:
+   ```bash
+   kubectl exec -it $(kubectl get pod -l app={{ service_name }} -o jsonpath='{.items[0].metadata.name}') -- curl -s localhost:{{ port | default('8000') }}/metrics | grep pool
+   ```
+4. If pool exhausted: increase max connections in config
+
+## Escalation
+
+| Level | Contact | When |
+|-------|---------|------|
+| L1 | On-call engineer | First response |
+| L2 | {{ owner_team | default('Architecture Team') }} | If not resolved in 30min |
+| L3 | Architecture team | If architectural change needed |
+
+## Rollback
+
+```bash
+# Get previous deployment revision
+kubectl rollout history deployment/{{ service_name }}
+
+# Rollback to previous version
+kubectl rollout undo deployment/{{ service_name }}
+
+# Verify
+kubectl rollout status deployment/{{ service_name }}
+```
+
+## Key Metrics to Monitor
+
+| Metric | Description | Alert Threshold |
+|--------|-------------|-----------------|
+| `http_server_request_duration_seconds` | Request latency histogram | p99 > {{ primary_sla_ms | default(500) }}ms |
+| `http_server_request_duration_seconds_count` (5xx) | Error rate | > 1% |
+{% for dep in integrations %}
+| `up{dependency="{{ dep.name }}"}` | {{ dep.name }} reachability | == 0 for 2m |
+{% endfor %}
+| `container_memory_working_set_bytes` | Memory usage | > 85% of limit |
+| `kube_pod_container_status_restarts_total` | Pod restarts | > 3/hour |
+{% for entity in entities %}
+| `{{ service_name | replace('-', '_') }}_{{ entity.name_snake }}_total` | {{ entity.name }} count | N/A (business metric) |
+{% endfor %}

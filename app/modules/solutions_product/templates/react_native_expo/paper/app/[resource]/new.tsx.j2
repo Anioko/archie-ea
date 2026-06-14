@@ -1,0 +1,443 @@
+import { useState } from "react"
+import {
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  View,
+  FlatList,
+} from "react-native"
+import DateTimePicker from "@react-native-community/datetimepicker"
+import { useRouter } from "expo-router"
+import { useForm, Controller } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query"
+import Toast from "react-native-toast-message"
+import {
+  ActivityIndicator,
+  Button,
+  Divider,
+  HelperText,
+  List,
+  SegmentedButtons,
+  Surface,
+  Switch,
+  Text,
+  TextInput,
+  TouchableRipple,
+} from "react-native-paper"
+import { MaterialCommunityIcons } from "@expo/vector-icons"
+import { {{ name | lower }}Api } from "@/lib/api"
+import { {{ name }}Schema, type {{ name }}Input } from "@/lib/schemas"
+{% for rel in relationships %}
+import { {{ rel.target | lower }}Api } from "@/lib/api"
+{% endfor %}
+
+// Style constants — no inline object literals to avoid Jinja2/JSX double-brace collision
+const S = StyleSheet.create({
+  flex: { flex: 1 },
+  container: { flex: 1, backgroundColor: "#f8fafc" },
+  scroll: { padding: 16, paddingBottom: 48 },
+  header: { marginBottom: 20 },
+  headerTitle: { color: "#0f172a" },
+  headerSub: { color: "#64748b", marginTop: 4 },
+  formCard: { borderRadius: 16, marginBottom: 16, overflow: "hidden" },
+  fieldRow: { paddingHorizontal: 16, paddingVertical: 10 },
+  boolRow: { paddingHorizontal: 16, paddingVertical: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  segRow: { paddingHorizontal: 16, paddingVertical: 10 },
+  submitBtn: { marginBottom: 8, borderRadius: 12, paddingVertical: 4 },
+  cancelBtn: { marginTop: 4, borderRadius: 12 },
+  modalContainer: { flex: 1, backgroundColor: "#ffffff" },
+  modalHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: "#f1f5f9" },
+  modalTitle: { color: "#0f172a" },
+  searchInput: { margin: 12 },
+  listItem: { paddingHorizontal: 20 },
+  emptyText: { textAlign: "center", padding: 24, color: "#94a3b8" },
+  labelSmall: { color: "#64748b", marginBottom: 6 },
+  fieldLabel: { color: "#374151" },
+  submitContent: { paddingVertical: 6 },
+})
+
+// ── Enum picker — shows SegmentedButtons for ≤4 options, modal for more ──
+function EnumField({
+  label,
+  value,
+  options,
+  onChange,
+  error,
+}: {
+  label: string
+  value: string | undefined
+  options: string[]
+  onChange: (v: string) => void
+  error?: string
+}) {
+  const [open, setOpen] = useState(false)
+  const useSegmented = options.length <= 4
+
+  if (useSegmented) {
+    const segButtons = options.map((o) => ({ value: o, label: o.replace(/_/g, " ") }))
+    return (
+      <View style={S.segRow}>
+        <Text variant="labelSmall" style={S.labelSmall}>{label}</Text>
+        <SegmentedButtons
+          value={value ?? ""}
+          onValueChange={onChange}
+          buttons={segButtons}
+          accessibilityLabel={label}
+        />
+        {error ? <HelperText type="error" visible>{error}</HelperText> : null}
+      </View>
+    )
+  }
+
+  return (
+    <>
+      <TouchableRipple onPress={() => setOpen(true)} accessibilityLabel={`Select ${label}`}>
+        <View style={S.fieldRow}>
+          <TextInput
+            label={label}
+            value={value ? value.replace(/_/g, " ") : ""}
+            mode="outlined"
+            editable={false}
+            right={<TextInput.Icon icon="chevron-down" />}
+            error={!!error}
+            pointerEvents="none"
+          />
+          {error ? <HelperText type="error" visible>{error}</HelperText> : null}
+        </View>
+      </TouchableRipple>
+      <Modal visible={open} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setOpen(false)}>
+        <View style={S.modalContainer}>
+          <View style={S.modalHeader}>
+            <Text variant="titleMedium" style={S.modalTitle}>{label}</Text>
+            <MaterialCommunityIcons name="close" size={22} color="#64748b" onPress={() => setOpen(false)} accessibilityLabel="Close" />
+          </View>
+          <FlatList
+            data={options}
+            keyExtractor={(o) => o}
+            renderItem={({ item }) => (
+              <List.Item
+                title={item.replace(/_/g, " ")}
+                style={S.listItem}
+                onPress={() => { onChange(item); setOpen(false) }}
+                right={() => value === item ? <MaterialCommunityIcons name="check" size={18} color="#4f46e5" /> : null}
+                accessibilityLabel={item}
+              />
+            )}
+            ItemSeparatorComponent={Divider}
+          />
+        </View>
+      </Modal>
+    </>
+  )
+}
+
+// ── Date picker ──
+function DateField({
+  label,
+  value,
+  onChange,
+  error,
+  required,
+}: {
+  label: string
+  value: string | undefined
+  onChange: (v: string) => void
+  error?: string
+  required?: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const date = value ? new Date(value) : new Date()
+  return (
+    <View style={S.fieldRow}>
+      <TouchableRipple onPress={() => setOpen(true)} accessibilityLabel={`Select ${label}`}>
+        <TextInput
+          label={`${label}${required ? " *" : ""}`}
+          value={value ? new Date(value).toLocaleDateString() : ""}
+          mode="outlined"
+          editable={false}
+          right={<TextInput.Icon icon="calendar" />}
+          error={!!error}
+          pointerEvents="none"
+        />
+      </TouchableRipple>
+      {error ? <HelperText type="error" visible>{error}</HelperText> : null}
+      {open && (
+        <DateTimePicker
+          value={date}
+          mode="date"
+          display={Platform.OS === "ios" ? "spinner" : "default"}
+          onChange={(_e, d) => {
+            setOpen(Platform.OS === "ios")
+            if (d) onChange(d.toISOString())
+          }}
+        />
+      )}
+    </View>
+  )
+}
+
+// ── Relation picker modal ──
+function RelationField({
+  label,
+  value,
+  fetchFn,
+  displayField,
+  onChange,
+  error,
+  required,
+}: {
+  label: string
+  value: string | number | undefined
+  fetchFn: (params?: Record<string, string | number>) => Promise<unknown[]>
+  displayField: string
+  onChange: (id: string | number, label: string) => void
+  error?: string
+  required?: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState("")
+  const [displayLabel, setDisplayLabel] = useState<string>(value != null ? String(value) : "")
+
+  const { data: options = [], isLoading } = useQuery({
+    queryKey: ["relation-picker", label, search],
+    queryFn: () => fetchFn({ search, per_page: 30 }),
+    enabled: open,
+  })
+
+  return (
+    <>
+      <TouchableRipple onPress={() => setOpen(true)} accessibilityLabel={`Select ${label}`}>
+        <View style={S.fieldRow}>
+          <TextInput
+            label={`${label}${required ? " *" : ""}`}
+            value={displayLabel}
+            mode="outlined"
+            editable={false}
+            right={<TextInput.Icon icon="magnify" />}
+            error={!!error}
+            pointerEvents="none"
+          />
+          {error ? <HelperText type="error" visible>{error}</HelperText> : null}
+        </View>
+      </TouchableRipple>
+      <Modal visible={open} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setOpen(false)}>
+        <View style={S.modalContainer}>
+          <View style={S.modalHeader}>
+            <Text variant="titleMedium" style={S.modalTitle}>{label}</Text>
+            <MaterialCommunityIcons name="close" size={22} color="#64748b" onPress={() => setOpen(false)} accessibilityLabel="Close" />
+          </View>
+          <TextInput
+            mode="outlined"
+            placeholder={`Search ${label.toLowerCase()}…`}
+            value={search}
+            onChangeText={setSearch}
+            style={S.searchInput}
+            left={<TextInput.Icon icon="magnify" />}
+            autoFocus
+            accessibilityLabel={`Search ${label}`}
+          />
+          <FlatList
+            data={options as Record<string, unknown>[]}
+            keyExtractor={(o) => String((o as Record<string, unknown>).id ?? JSON.stringify(o))}
+            ListEmptyComponent={
+              <Text style={S.emptyText}>{isLoading ? "Loading…" : "No results"}</Text>
+            }
+            renderItem={({ item }) => {
+              const rec = item as Record<string, unknown>
+              const lbl = String(rec[displayField] ?? rec.name ?? rec.title ?? rec.id)
+              const id = rec.id ?? rec._id
+              return (
+                <List.Item
+                  title={lbl}
+                  style={S.listItem}
+                  onPress={() => {
+                    onChange(id as string | number, lbl)
+                    setDisplayLabel(lbl)
+                    setOpen(false)
+                  }}
+                  right={() => value === id ? <MaterialCommunityIcons name="check" size={18} color="#4f46e5" /> : null}
+                  accessibilityLabel={lbl}
+                />
+              )
+            }}
+            ItemSeparatorComponent={Divider}
+          />
+        </View>
+      </Modal>
+    </>
+  )
+}
+
+export default function New{{ name }}Screen() {
+  const router = useRouter()
+  const queryClient = useQueryClient()
+
+  const { control, handleSubmit, setValue, formState: { errors, isSubmitting } } = useForm<{{ name }}Input>({
+    resolver: zodResolver({{ name }}Schema),
+  })
+
+  const mutation = useMutation({
+    mutationFn: (data: {{ name }}Input) => {{ name | lower }}Api.create(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["{{ table_name }}"] })
+      Toast.show({ type: "success", text1: "Created", text2: "{{ name | replace('_', ' ') }} created successfully." })
+      router.back()
+    },
+    onError: (e: unknown) => {
+      Toast.show({ type: "error", text1: "Error", text2: e instanceof Error ? e.message : "Creation failed" })
+    },
+  })
+
+  return (
+    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={S.flex}>
+      <ScrollView style={S.container} contentContainerStyle={S.scroll}>
+
+        <View style={S.header}>
+          <Text variant="headlineSmall" style={S.headerTitle}>New {{ name | replace('_', ' ') }}</Text>
+          <Text variant="bodyMedium" style={S.headerSub}>{{ description | default('Fill in the details below.') }}</Text>
+        </View>
+
+        <Surface style={S.formCard} elevation={1}>
+          {% for field in fields %}{% if not field.primary_key %}
+          {% set fl = field.name | lower %}
+          {% set is_bool = field.type in ["bool", "boolean"] %}
+          {% set is_numeric = field.type in ['int', 'integer', 'float', 'Decimal', 'decimal', 'number'] %}
+          {% set is_date = field.type in ['datetime', 'date'] or field.format in ['date', 'date-time'] %}
+          {% set is_email = 'email' in fl %}
+          {% set is_phone = 'phone' in fl %}
+          {% set is_url = 'url' in fl or 'website' in fl or 'link' in fl %}
+          {% set is_secret = 'password' in fl or 'secret' in fl or 'passwd' in fl %}
+          {% set is_multiline = ('description' in fl or 'notes' in fl or 'body' in fl or 'content' in fl or 'summary' in fl or 'comment' in fl or 'remarks' in fl) and field.type in ['str', 'string', 'text'] %}
+          {% set is_fk = field.foreignKey is defined and field.foreignKey %}
+          {% set has_enum = field.enum is defined and field.enum | length > 0 %}
+          {% set kbd = 'numeric' if is_numeric else ('email-address' if is_email else ('phone-pad' if is_phone else ('url' if is_url else 'default'))) %}
+
+          {% if is_bool %}
+          <View style={S.boolRow}>
+            <Text variant="bodyMedium" style={S.fieldLabel}>{{ field.name | replace('_', ' ') | title }}</Text>
+            <Controller
+              control={control}
+              name="{{ field.name }}"
+              defaultValue={false}
+              render={({ field: { onChange, value } }) => (
+                <Switch
+                  value={!!value}
+                  onValueChange={onChange}
+                  color="#4f46e5"
+                  accessibilityLabel="{{ field.name | replace('_', ' ') | title }}"
+                />
+              )}
+            />
+          </View>
+          <Divider />
+
+          {% elif is_date %}
+          <Controller
+            control={control}
+            name="{{ field.name }}"
+            render={({ field: { onChange, value } }) => (
+              <DateField
+                label="{{ field.name | replace('_', ' ') | title }}"
+                value={value as string | undefined}
+                onChange={onChange}
+                error={errors.{{ field.name }}?.message}
+                {% if not field.nullable %}required={true}{% else %}required={false}{% endif %}
+              />
+            )}
+          />
+          <Divider />
+
+          {% elif has_enum %}
+          <Controller
+            control={control}
+            name="{{ field.name }}"
+            render={({ field: { onChange, value } }) => (
+              <EnumField
+                label="{{ field.name | replace('_', ' ') | title }}{% if not field.nullable %} *{% endif %}"
+                value={value as string | undefined}
+                options={[{% for v in field.enum %}"{{ v }}"{% if not loop.last %}, {% endif %}{% endfor %}]}
+                onChange={onChange}
+                error={errors.{{ field.name }}?.message}
+              />
+            )}
+          />
+          <Divider />
+
+          {% elif is_fk %}
+          <Controller
+            control={control}
+            name="{{ field.name }}"
+            render={({ field: { onChange, value } }) => (
+              <RelationField
+                label="{{ field.name | replace('_id', '') | replace('_', ' ') | title }}"
+                value={value as string | number | undefined}
+                fetchFn={(params) => {{ field.foreignKey.split('.')[0] | lower }}Api.list(params)}
+                displayField="name"
+                onChange={(id) => onChange(id)}
+                error={errors.{{ field.name }}?.message}
+                {% if not field.nullable %}required={true}{% else %}required={false}{% endif %}
+              />
+            )}
+          />
+          <Divider />
+
+          {% else %}
+          <View style={S.fieldRow}>
+            <Controller
+              control={control}
+              name="{{ field.name }}"
+              render={({ field: { onChange, onBlur, value } }) => (
+                <TextInput
+                  label="{{ field.name | replace('_', ' ') | title }}{% if not field.nullable %} *{% endif %}"
+                  mode="outlined"
+                  onBlur={onBlur}
+                  onChangeText={(text) => onChange({% if is_numeric %}text === "" ? undefined : Number(text){% else %}text{% endif %})}
+                  value={value != null ? String(value) : ""}
+                  keyboardType="{{ kbd }}"
+                  {% if is_secret %}secureTextEntry{% endif %}
+                  {% if is_multiline %}multiline numberOfLines={4}{% endif %}
+                  {% if is_email %}autoCapitalize="none" autoComplete="email"{% endif %}
+                  error={!!errors.{{ field.name }}}
+                  accessibilityLabel="{{ field.name | replace('_', ' ') | title }}"
+                />
+              )}
+            />
+            <HelperText type="error" visible={!!errors.{{ field.name }}}>
+              {errors.{{ field.name }}?.message ?? ""}
+            </HelperText>
+          </View>
+          <Divider />
+          {% endif %}
+
+          {% endif %}{% endfor %}
+        </Surface>
+
+        <Button
+          mode="contained"
+          onPress={handleSubmit((data) => mutation.mutate(data))}
+          disabled={isSubmitting || mutation.isPending}
+          loading={isSubmitting || mutation.isPending}
+          style={S.submitBtn}
+          contentStyle={S.submitContent}
+          buttonColor="#4f46e5"
+          accessibilityLabel="Create {{ name }}"
+        >
+          {isSubmitting || mutation.isPending ? "Creating…" : "Create {{ name | replace('_', ' ') }}"}
+        </Button>
+
+        <Button
+          mode="text"
+          onPress={() => router.back()}
+          style={S.cancelBtn}
+          textColor="#64748b"
+          accessibilityLabel="Cancel"
+        >
+          Cancel
+        </Button>
+      </ScrollView>
+    </KeyboardAvoidingView>
+  )
+}

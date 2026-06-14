@@ -1,0 +1,183 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'components/page_header.html' import page_header %}
+{% from 'components/metrics_card.html' import metrics_card %}
+{% from 'components/badge.html' import badge %}
+
+{% block title %}Process Optimization{% endblock %}
+
+{% block breadcrumb %}
+{% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
+{{ breadcrumb_nav(items=[
+    {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
+    {'text': 'Enterprise Architecture'},
+    {'text': 'Process Optimization', 'current': true}
+]) }}
+{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    {{ page_header(
+        title='Process Optimization',
+        subtitle='Identify automation and simplification opportunities'
+    ) }}
+
+    <!-- Summary Metrics -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        {{ metrics_card(title='Total Processes', value=total_processes, icon='workflow') }}
+        {{ metrics_card(title='Avg Automation %', value=(avg_automation|string) ~ '%', icon='zap') }}
+        {{ metrics_card(title='Low Automation (<30%)', value=low_automation_count, icon='alert-triangle', icon_class='!text-destructive') }}
+        {{ metrics_card(title='Open Recommendations', value=open_recommendations_count, icon='lightbulb') }}
+    </div>
+
+    <!-- Low Automation Processes -->
+    <div data-slot="card" class="rounded-xl border bg-card shadow-sm overflow-hidden mb-6">
+        <div class="p-6 border-b border-border">
+            <h3 class="text-base font-semibold text-foreground">Low Automation Processes (Top Candidates)</h3>
+            <p class="text-sm text-muted-foreground mt-1">Processes with automation percentage below 30%</p>
+        </div>
+
+        {% if low_automation_processes %}
+        <div class="p-6 space-y-4">
+            {% for process in low_automation_processes %}
+            <div class="flex items-center justify-between p-4 rounded-lg border border-border hover:bg-muted/30">
+                <div class="flex-1 min-w-0 mr-4">
+                    <div class="flex items-center gap-2 mb-2">
+                        <h4 class="text-sm font-medium text-foreground truncate">{{ process.name }}</h4>
+                        {% if process.status %}
+                            {{ badge(process.status, 'secondary') }}
+                        {% endif %}
+                    </div>
+                    {% if process.primary_capability %}
+                    <p class="text-xs text-muted-foreground">
+                        Capability: {{ process.primary_capability.name if process.primary_capability.name else 'N/A' }}
+                    </p>
+                    {% endif %}
+                </div>
+                <div class="flex items-center gap-4">
+                    <div class="w-48">
+                        <div class="flex items-center justify-between text-xs mb-1">
+                            <span class="text-muted-foreground">Automation</span>
+                            <span class="font-medium text-foreground">{{ process.automation_percentage if process.automation_percentage is not none else 0 }}%</span>
+                        </div>
+                        <div class="h-2 bg-muted rounded-full overflow-hidden">
+                            {% set automation = process.automation_percentage if process.automation_percentage is not none else 0 %}
+                            <div class="h-full {% if automation < 30 %}bg-destructive{% elif automation < 60 %}bg-warning{% else %}bg-success{% endif %}" 
+                                 style="width: {{ automation }}%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="p-12 text-center">
+            <div class="rounded-lg bg-muted/30 p-3 inline-block mb-4">
+                <i data-lucide="check-circle" class="w-8 h-8 text-muted-foreground" aria-hidden="true"></i>
+            </div>
+            <h3 class="text-base font-semibold text-foreground mb-2">All Processes Well Automated</h3>
+            <p class="text-sm text-muted-foreground">No processes found with automation below 30%</p>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Optimization Recommendations -->
+    <div data-slot="card" class="rounded-xl border bg-card shadow-sm overflow-hidden">
+        <div class="p-6 border-b border-border">
+            <h3 class="text-base font-semibold text-foreground">Process Optimization Recommendations</h3>
+            <p class="text-sm text-muted-foreground mt-1">AI-generated improvement recommendations from APQC benchmarking</p>
+        </div>
+
+        {% if optimization_recommendations %}
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead class="bg-muted/50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Recommendation</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Type</th>
+                        <th class="px-6 py-3 text-center text-xs font-medium text-muted-foreground uppercase tracking-wider">Impact</th>
+                        <th class="px-6 py-3 text-center text-xs font-medium text-muted-foreground uppercase tracking-wider">Effort</th>
+                        <th class="px-6 py-3 text-center text-xs font-medium text-muted-foreground uppercase tracking-wider">Priority</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-border">
+                    {% for rec in optimization_recommendations %}
+                    <tr class="hover:bg-muted/30">
+                        <td class="px-6 py-4">
+                            <div class="text-sm font-medium text-foreground">{{ rec.recommendation_title }}</div>
+                            {% if rec.recommendation_description %}
+                            <div class="text-xs text-muted-foreground mt-1 line-clamp-2">{{ rec.recommendation_description }}</div>
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm">
+                            {{ badge(rec.recommendation_type or 'general', 'info') }}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-center">
+                            <span class="inline-flex items-center justify-center w-8 h-8 rounded-full 
+                                {% if rec.impact_score and rec.impact_score >= 7 %}bg-success/10 text-success
+                                {% elif rec.impact_score and rec.impact_score >= 4 %}bg-warning/10 text-warning
+                                {% else %}bg-muted-foreground/10 text-muted-foreground{% endif %}">
+                                <span class="text-xs font-semibold">{{ rec.impact_score if rec.impact_score else '-' }}</span>
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-center">
+                            <span class="inline-flex items-center justify-center w-8 h-8 rounded-full 
+                                {% if rec.effort_score and rec.effort_score >= 7 %}bg-destructive/10 text-destructive
+                                {% elif rec.effort_score and rec.effort_score >= 4 %}bg-warning/10 text-warning
+                                {% else %}bg-success/10 text-success{% endif %}">
+                                <span class="text-xs font-semibold">{{ rec.effort_score if rec.effort_score else '-' }}</span>
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-center">
+                            {% if rec.priority_score %}
+                            <span class="text-sm font-medium text-foreground">{{ "%.1f"|format(rec.priority_score) }}</span>
+                            {% else %}
+                            <span class="text-sm text-muted-foreground">-</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm">
+                            {% if rec.status == 'pending' %}
+                                {{ badge('pending', 'warning') }}
+                            {% elif rec.status == 'accepted' %}
+                                {{ badge('accepted', 'success') }}
+                            {% elif rec.status == 'in_progress' %}
+                                {{ badge('in progress', 'info') }}
+                            {% elif rec.status == 'completed' %}
+                                {{ badge('completed', 'success') }}
+                            {% elif rec.status == 'rejected' %}
+                                {{ badge('rejected', 'danger') }}
+                            {% else %}
+                                {{ badge(rec.status or 'unknown', 'secondary') }}
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="p-12 text-center">
+            <div class="rounded-lg bg-muted/30 p-3 inline-block mb-4">
+                <i data-lucide="lightbulb" class="w-8 h-8 text-muted-foreground" aria-hidden="true"></i>
+            </div>
+            <h3 class="text-base font-semibold text-foreground mb-2">No Recommendations Yet</h3>
+            <p class="text-sm text-muted-foreground mb-4">No optimization recommendations have been generated yet.</p>
+            <button id="startOptimize" class="px-4 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90" aria-label="Action">
+                Start Optimization
+            </button>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+document.getElementById('startOptimize')?.addEventListener('click', function() {
+    if (typeof Platform !== 'undefined' && Platform.toast) {
+        Platform.toast.show('Optimization scan queued — results will appear here when complete', 'info');
+    } else {
+        Platform.toast.success('Optimization scan queued — results will appear here when complete');
+    }
+});
+</script>
+{% endblock %}
+

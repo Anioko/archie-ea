@@ -1,0 +1,259 @@
+{% extends 'layouts/admin_base.html' %}
+{% from 'components/page_header.html' import page_header %}
+{% from 'components/metrics_card.html' import metrics_card %}
+
+{% block title %}Capability Health Dashboard{% endblock %}
+
+{% block breadcrumb %}
+{% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
+{{ breadcrumb_nav(items=[
+    {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
+    {'text': 'Strategy Layer', 'href': url_for('archimate_crud.dashboard') + '#strategy'},
+    {'text': 'Capability Health', 'current': true}
+]) }}
+{% endblock %}
+
+{% block content %}
+<div class="flex flex-col space-y-8 animate-in fade-in duration-500">
+    {{ page_header(
+        title='Capability Health Dashboard',
+        description='Real-time assessment of business capabilities based on maturity, coverage, and technical risk.',
+        breadcrumbs=[
+            {'label': 'Home', 'href': url_for('main.index')},
+            {'label': 'Capability Health'}
+        ],
+        actions=[
+            {'text': 'Create Plan', 'icon': 'lightbulb', 'onclick': "document.dispatchEvent(new CustomEvent('open-initiative-health-remediation-modal'))", 'variant': 'default'}
+        ]
+    ) }}
+
+    {# ── Metrics (v4 SectionCards) ────────────────────────────────────────── #}
+    <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        {{ metrics_card(
+            title='Avg. Portfolio Health',
+            value=metrics.average_health|string + '%',
+            icon='activity',
+            description='Across ' + metrics.total_capabilities|string + ' business capabilities'
+        ) }}
+        {{ metrics_card(
+            title='Critical Capabilities',
+            value=metrics.critical_capabilities|string,
+            icon='alert-triangle',
+            description='Labeled as high strategic importance'
+        ) }}
+        {{ metrics_card(
+            title='At Risk Hotspots',
+            value=metrics.at_risk_capabilities|string,
+            icon='flame',
+            description='Health score currently below 60%',
+            value_class='text-warning'
+        ) }}
+        {{ metrics_card(
+            title='Active Gaps',
+            value=metrics.gaps_summary.gaps_identified|string,
+            icon='git-branch',
+            description=metrics.gaps_summary.gaps_with_decisions|string + ' already have linked solutions or requirements'
+        ) }}
+    </div>
+
+    <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
+        <!-- Domain Heatmap (Left) -->
+        <div data-slot="card" class="col-span-4 rounded-xl border bg-card text-card-foreground shadow">
+            <div class="flex flex-col space-y-1.5 p-6">
+                <h2 class="font-semibold leading-none tracking-tight">Domain Health Index</h2>
+                <p class="text-sm text-muted-foreground">Aggregated health by L0 capability domains.</p>
+            </div>
+            <div class="p-6 pt-0">
+                <div class="space-y-6">
+                    {% for domain in metrics.health_by_domain %}
+                    <div class="space-y-2">
+                        <div class="flex items-center justify-between text-sm font-medium">
+                            <div class="flex items-center">
+                                <span class="mr-2">{{ domain.name }}</span>
+                                <span class="text-xs text-muted-foreground font-normal">({{ domain.count }} caps)</span>
+                            </div>
+                            <span class="{% if domain.score < 60 %}text-destructive{% elif domain.score < 80 %}text-warning{% else %}text-success{% endif %}">
+                                {{ domain.score }}%
+                            </span>
+                        </div>
+                        <div class="h-2 w-full bg-secondary rounded-full overflow-hidden">
+                            <div class="h-full {% if domain.score < 60 %}bg-destructive{% elif domain.score < 80 %}bg-warning{% else %}bg-success{% endif %}" 
+                                 style="width: {{ domain.score }}%"></div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Health Chart (Right) -->
+        <div data-slot="card" class="col-span-3 rounded-xl border bg-card text-card-foreground shadow">
+            <div class="flex flex-col space-y-1.5 p-6">
+                <h2 class="font-semibold leading-none tracking-tight">Portfolio Distribution</h2>
+                <p class="text-sm text-muted-foreground">Status breakdown across all regions.</p>
+            </div>
+            <div class="p-6 pt-0 flex flex-col items-center justify-center min-h-[300px]">
+                <div style="position:relative;width:250px;height:250px;">
+                    <canvas id="healthDistributionChart"></canvas>
+                </div>
+                <div class="grid grid-cols-3 gap-8 mt-8 text-center w-full">
+                    <div>
+                        <div class="text-xs text-muted-foreground mb-1">Healthy</div>
+                        <div class="text-sm font-bold text-success" id="healthy-count">0</div>
+                    </div>
+                    <div>
+                        <div class="text-xs text-muted-foreground mb-1">Warning</div>
+                        <div class="text-sm font-bold text-warning" id="warning-count">0</div>
+                    </div>
+                    <div>
+                        <div class="text-xs text-muted-foreground mb-1">Critical</div>
+                        <div class="text-sm font-bold text-destructive" id="critical-count">0</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- At Risk Table -->
+    <div data-slot="card" class="rounded-xl border bg-card text-card-foreground shadow overflow-hidden">
+        <div class="flex flex-col space-y-1.5 p-6 border-b">
+            <h2 class="font-semibold leading-none tracking-tight">Top At-Risk Capabilities</h2>
+            <p class="text-sm text-muted-foreground">Prioritized list of capabilities requiring immediate attention based on Health Score.</p>
+        </div>
+        <div class="p-0">
+            <table class="w-full text-sm border-collapse">
+                <thead>
+                    <tr class="bg-muted/50 border-b">
+                        <th class="h-10 px-4 text-left align-middle font-medium text-muted-foreground">Capability</th>
+                        <th class="h-10 px-4 text-left align-middle font-medium text-muted-foreground">Domain</th>
+                        <th class="h-10 px-4 text-left align-middle font-medium text-muted-foreground">Maturity Gap</th>
+                        <th class="h-10 px-4 text-left align-middle font-medium text-muted-foreground">Compliance</th>
+                        <th class="h-10 px-4 text-left align-middle font-medium text-muted-foreground">Score</th>
+                        <th class="h-10 px-4 text-left align-middle font-medium text-muted-foreground">Status</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y">
+                    {% for item in metrics.at_risk_list %}
+                    <tr class="hover:bg-muted/50 transition-colors">
+                        <td class="p-4 font-medium">
+                            <div>{{ item.name }}</div>
+                            <div class="mt-1 text-xs text-muted-foreground">
+                                {{ item.application_count }} apps · {{ item.planned_solution_count }} solutions · {{ item.requirement_count }} reqs
+                            </div>
+                        </td>
+                        <td class="p-4 text-muted-foreground">{{ item.domain }}</td>
+                        <td class="p-4">
+                            <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold {% if item.maturity_gap > 1 %}border-destructive text-destructive{% else %}border-muted text-muted-foreground{% endif %}">
+                                L{{ item.maturity_gap }} Gap
+                            </span>
+                        </td>
+                        <td class="p-4">
+                            <div class="flex items-center space-x-2">
+                                <div class="w-12 h-1.5 bg-secondary rounded-full overflow-hidden">
+                                    <div class="h-full bg-primary" style="width: {{ item.compliance_score }}%"></div>
+                                </div>
+                                <span class="text-xs text-muted-foreground">{{ item.compliance_score|round }}%</span>
+                            </div>
+                        </td>
+                        <td class="p-4 font-bold">{{ item.score }}%</td>
+                        <td class="p-4">
+                            <div class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/80">
+                                {{ item.status }}
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="6" class="p-8 text-center text-muted-foreground italic">
+                            No high-risk capabilities found. All systems within health parameters.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Chart.js and Initialization -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const healthData = {{ metrics.health_by_capability|tojson }};
+    
+    const healthy = healthData.filter(h => h.score >= 80).length;
+    const warning = healthData.filter(h => h.score >= 60 && h.score < 80).length;
+    const critical = healthData.filter(h => h.score < 60).length;
+
+    document.getElementById('healthy-count').textContent = healthy;
+    document.getElementById('warning-count').textContent = warning;
+    document.getElementById('critical-count').textContent = critical;
+
+    const ctx = document.getElementById('healthDistributionChart').getContext('2d');
+    new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: ['Healthy', 'Warning', 'Critical'],
+            datasets: [{
+                data: [healthy, warning, critical],
+                backgroundColor: ['#16a34a', '#f97316', '#dc2626'],
+                borderWidth: 0,
+                cutout: '75%'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                }
+            }
+        }
+    });
+});
+</script>
+
+<!-- LLM-Powered Recommendations -->
+{% from 'components/llm_recommendations.html' import llm_recommendations %}
+
+{{ llm_recommendations(
+    dashboard='capability_health',
+    context_data={
+        'organization': {
+            'industry': 'general',
+            'size': 'medium',
+            'risk_tolerance': 'moderate'
+        },
+        'metrics': metrics,
+        'capabilities': metrics.get('capability_scores', [])[:15],
+        'active_initiatives': []
+    }
+) }}
+
+{% from 'components/initiative_modal.html' import initiative_modal %}
+
+{{ initiative_modal(
+    id='health-remediation-modal',
+    title='Create Remediation Plan',
+    endpoint='/strategic/api/initiatives/from-health',
+    fields=[
+        {'name': 'title', 'type': 'text', 'label': 'Plan Title', 'required': True, 'placeholder': 'e.g., Remediation: Finance Capability'},
+        {'name': 'description', 'type': 'textarea', 'label': 'Description', 'required': True, 'placeholder': 'Describe the remediation approach...'},
+        {'name': 'priority', 'type': 'select', 'label': 'Priority', 'required': True, 'options': [('high', 'High'), ('medium', 'Medium'), ('low', 'Low')], 'value': 'high'},
+        {'name': 'owner', 'type': 'text', 'label': 'Owner', 'required': True, 'placeholder': 'Team or individual responsible'},
+        {'name': 'start_date', 'type': 'date', 'label': 'Start Date', 'required': False},
+        {'name': 'target_completion_date', 'type': 'date', 'label': 'Target Completion', 'required': False},
+        {'name': 'budget', 'type': 'number', 'label': 'Budget ($)', 'required': False, 'placeholder': '0'}
+    ]
+) }}
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    if (window.Platform && window.Platform.modal) {
+        window.Platform.modal.close('initiative-health-remediation-modal');
+    }
+});
+</script>
+
+{% endblock %}

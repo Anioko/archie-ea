@@ -1,0 +1,94 @@
+{#
+  Accessibility Helper Macros
+  WCAG 2.1 AAA compliance utilities
+#}
+
+{# Skip to main content link (required for keyboard navigation) #}
+{% macro skip_to_main() %}
+<a href="#main-content" 
+   class="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-primary focus:text-primary-foreground focus:rounded-md focus:shadow-lg"
+   tabindex="1">
+  Skip to main content
+</a>
+{% endmacro %}
+
+{# Screen reader only text #}
+{% macro sr_only(text) %}
+<span class="sr-only">{{ text }}</span>
+{% endmacro %}
+
+{# Accessible icon with label #}
+{% macro accessible_icon(icon, label, decorative=false) %}
+{% if decorative %}
+  <i data-lucide="{{ icon }}" aria-hidden="true"></i>
+{% else %}
+  <i data-lucide="{{ icon }}" role="img" aria-label="{{ label }}"></i>
+{% endif %}
+{% endmacro %}
+
+{# Accessible button with icon #}
+{% macro icon_button(icon, label, type='button', classes='', onclick='') %}
+<button type="{{ type }}" 
+        class="inline-flex items-center justify-center rounded-md p-2 hover:bg-accent transition-colors {{ classes }}"
+        aria-label="{{ label }}"
+        {% if onclick %}onclick="{{ onclick }}"{% endif %}>
+  <i data-lucide="{{ icon }}" class="h-5 w-5" aria-hidden="true"></i>
+  <span class="sr-only">{{ label }}</span>
+</button>
+{% endmacro %}
+
+{# Live region for dynamic updates #}
+{% macro live_region(id, polite=true) %}
+<div id="{{ id }}" 
+     class="sr-only" 
+     role="status" 
+     aria-live="{{ 'polite' if polite else 'assertive' }}" 
+     aria-atomic="true">
+</div>
+{% endmacro %}
+
+{# Keyboard shortcut hint #}
+{% macro keyboard_hint(keys, description) %}
+<kbd class="inline-flex items-center gap-1 px-2 py-1 text-xs font-mono bg-muted border border-border rounded shadow-sm">
+  {% for key in keys.split('+') %}
+    {% if not loop.first %}<span class="text-muted-foreground">+</span>{% endif %}
+    <span>{{ key }}</span>
+  {% endfor %}
+</kbd>
+<span class="text-sm text-muted-foreground ml-2">{{ description }}</span>
+{% endmacro %}
+
+{# Focus trap for modals #}
+{% macro focus_trap(id) %}
+<script>
+(function() {
+  const modal = document.getElementById('{{ id }}');
+  if (!modal) return;
+  
+  const focusableElements = modal.querySelectorAll(
+    'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+  );
+  const firstElement = focusableElements[0];
+  const lastElement = focusableElements[focusableElements.length - 1];
+  
+  modal.addEventListener('keydown', (e) => {
+    if (e.key !== 'Tab') return;
+    
+    if (e.shiftKey) {
+      if (document.activeElement === firstElement) {
+        lastElement.focus();
+        e.preventDefault();
+      }
+    } else {
+      if (document.activeElement === lastElement) {
+        firstElement.focus();
+        e.preventDefault();
+      }
+    }
+  });
+  
+  // Focus first element when modal opens
+  setTimeout(() => firstElement?.focus(), 100);
+})();
+</script>
+{% endmacro %}

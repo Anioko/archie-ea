@@ -1,0 +1,79 @@
+{% extends 'layouts/admin_base.html' %}
+{% from 'components/page_header.html' import page_header %}
+{% from 'components/button.html' import button %}
+{% from 'components/card.html' import card, card_content %}
+{% from 'components/input.html' import label %}
+
+{% block title %}{{ action }} Work Package{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    {{ page_header(
+        title=action + ' Work Package',
+        description='Manage implementation work package details',
+        actions=[
+            {'text': 'Back to Dashboard', 'icon': 'arrow-left', 'href': url_for('implementation_planning.implementation_dashboard'), 'variant': 'outline'}
+        ]
+    ) }}
+
+    {% call card() %}
+        {% call card_content() %}
+            <form method="POST" class="space-y-6">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="space-y-2">
+                        {% call label(for='name', required=true) %}Work Package Name{% endcall %}
+                        <input type="text" id="name" name="name"
+                               value="{{ work_package.name if work_package else '' }}"
+                               required
+                               class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                               placeholder="Enter work package name">
+                    </div>
+                    <div class="space-y-2">
+                        {% call label(for='status') %}Status{% endcall %}
+                        <select id="status" name="status"
+                                class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+                            <option value="">Select Status</option>
+                            <option value="planned" {% if work_package and work_package.status == 'planned' %}selected{% endif %}>Planned</option>
+                            <option value="in_progress" {% if work_package and work_package.status == 'in_progress' %}selected{% endif %}>In Progress</option>
+                            <option value="completed" {% if work_package and work_package.status == 'completed' %}selected{% endif %}>Completed</option>
+                            <option value="on_hold" {% if work_package and work_package.status == 'on_hold' %}selected{% endif %}>On Hold</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="space-y-2">
+                    {% call label(for='description') %}Description{% endcall %}
+                    <textarea id="description" name="description" rows="3"
+                              class="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                              placeholder="Describe the work package scope and objectives">{{ work_package.description if work_package else '' }}</textarea>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="space-y-2">
+                        {% call label(for='start_date') %}Start Date{% endcall %}
+                        <input type="date" id="start_date" name="start_date"
+                               value="{{ work_package.start_date.strftime('%Y-%m-%d') if work_package and work_package.start_date else '' }}"
+                               class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+                    </div>
+                    <div class="space-y-2">
+                        {% call label(for='end_date') %}End Date{% endcall %}
+                        <input type="date" id="end_date" name="end_date"
+                               value="{{ work_package.end_date.strftime('%Y-%m-%d') if work_package and work_package.end_date else '' }}"
+                               class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+                    </div>
+                </div>
+
+                <div class="flex justify-between pt-4">
+                    <a href="{{ url_for('implementation_planning.implementation_dashboard') }}"
+                       class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2">
+                        Cancel
+                    </a>
+                    {{ button(action + ' Work Package', variant='default', type='submit', icon='save') }}
+                </div>
+            </form>
+        {% endcall %}
+    {% endcall %}
+</div>
+{% endblock %}

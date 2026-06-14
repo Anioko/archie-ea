@@ -1,0 +1,75 @@
+{# salesforce_apex/GENERATED.md.j2 #}
+{% macro object_api(name) -%}{% if sf_object_api_name is defined %}{{ sf_object_api_name(name) }}{% else %}{{ name }}__c{% endif %}{%- endmacro %}
+{% set sf_package_mode = package_mode if package_mode is defined else 'unmanaged' %}
+{% set sf_namespace = namespace_prefix if namespace_prefix is defined else '' %}
+# {{ solution_name }}
+
+> Generated from ArchiMate 3.2 architecture by [A.R.C.H.I.E.](https://archie.example.com)
+
+| Property | Value |
+|----------|-------|
+| Solution ID | {{ solution_id }} |
+| Bundle ID | {{ bundle_id }} |
+| Spec Hash | {{ spec_hash }} |
+| Generated At | {{ generated_at }} |
+| Platform | Salesforce / Apex |
+| API Version | 60.0 |
+| Package Mode | {{ sf_package_mode }} |
+| Namespace | {{ sf_namespace or '(none)' }} |
+
+## AppExchange Readiness
+
+| Signal | Status |
+|--------|--------|
+| Security scanner | Not executed during generation |
+| Generated test artifacts | {{ services | length }} service test class{% if services | length != 1 %}es{% endif %} |
+| Scratch org profile | {{ 'Packaging2 enabled for validation' if sf_package_mode == 'managed' else 'Standard developer scratch org' }} |
+
+{% if services %}
+Generated test files:
+{% for service_name in services %}- `{{ service_name }}ServiceTest.cls`
+{% endfor %}
+{% endif %}
+
+## Quick Start
+
+```bash
+# Authenticate to your Salesforce org
+sf org login web --alias my-org
+
+# Deploy to org (validate only)
+sf project deploy start --target-org my-org --dry-run
+
+# Deploy for real
+sf project deploy start --target-org my-org
+
+# Run tests
+sf apex run test --target-org my-org --test-level RunLocalTests --wait 10
+```
+
+## Project Structure
+
+``` 
+force-app/main/default/
+{% for model_name in models %}├── objects/{{ object_api(model_name) }}/
+│   └── {{ object_api(model_name) }}.object-meta.xml
+{% endfor %}├── classes/
+{% for service_name in services %}│   ├── {{ service_name }}Service.cls
+│   ├── {{ service_name }}ServiceTest.cls
+│   ├── {{ service_name }}TriggerHandler.cls
+{% endfor %}├── triggers/
+{% for model_name in models %}│   └── {{ model_name }}Trigger.trigger
+{% endfor %}├── lwc/
+{% for component_name in lwc_components %}│   └── {{ component_name }}/
+{% endfor %}└── permissionsets/
+    └── {{ solution_name | replace(' ', '_') }}_Access.permissionset-meta.xml
+```
+
+## Architecture Traceability
+
+Every generated artifact maps back to an ArchiMate element via `x-archimate-source` comments.
+Search for `x-archimate-source: <element_id>` to find the architecture decision behind any piece of code.
+
+{% for model_name, model_def in models.items() %}
+| {{ object_api(model_name) }} | ArchiMate Element {{ model_def.archimate_source_id | default('N/A') }} |
+{% endfor %}

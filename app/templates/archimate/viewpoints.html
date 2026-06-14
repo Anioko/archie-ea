@@ -1,0 +1,323 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'components/page_header.html' import page_header %}
+
+{% block page_title %}ArchiMate Viewpoints{% endblock %}
+
+{% block content %}
+<!-- modal-a11y-ok -->
+<div
+    class="space-y-6"
+    x-data="archimateViewpoints()"
+    x-init="init()"
+>
+    {{ page_header(
+        title="ArchiMate 3.2 Viewpoints",
+        description="Interactive ArchiMate viewpoint diagrams. Select a viewpoint to render its elements."
+    ) }}
+
+    <div class="flex gap-6 min-h-[70vh]">
+
+        {# ── Viewpoint selector sidebar ──────────────────────────────────── #}
+        <aside
+            class="w-56 flex-shrink-0 rounded-lg border border-border bg-card shadow-sm self-start"
+            aria-label="Viewpoint list"
+        >
+            <div class="border-b border-border px-4 py-3 bg-muted/40">
+                <h2 class="text-sm font-semibold text-foreground">Viewpoints</h2>
+            </div>
+            <ul class="p-2 space-y-1" role="list">
+                {% for vp in viewpoints %}
+                <li>
+                    <button
+                        type="button"
+                        @click="selectViewpoint('{{ vp.id }}')"
+                        :class="activeViewpoint === '{{ vp.id }}'
+                            ? 'bg-primary text-primary-foreground'
+                            : 'hover:bg-muted text-foreground'"
+                        class="w-full text-left rounded-md px-3 py-2 text-xs font-medium transition-colors"
+                        :aria-current="activeViewpoint === '{{ vp.id }}' ? 'true' : 'false'"
+                    >
+                        {{ vp.name }}
+                    </button>
+                </li>
+                {% endfor %}
+            </ul>
+        </aside>
+
+        {# ── Diagram area ────────────────────────────────────────────────── #}
+        <section
+            class="flex-1 rounded-lg border border-border bg-card shadow-sm overflow-hidden"
+            aria-label="Viewpoint diagram"
+        >
+            {# Header bar #}
+            <div class="flex items-center gap-3 border-b border-border px-5 py-3 bg-muted/30">
+                <h3 class="text-sm font-semibold text-foreground" x-text="currentName || 'Select a viewpoint'"></h3>
+                <span
+                    x-show="totalElements !== null" x-cloak
+                    class="ml-auto text-xs text-muted-foreground"
+                    x-text="totalElements + ' element(s)'"
+                ></span>
+                <span
+                    x-show="loading" x-cloak
+                    class="ml-auto text-xs text-muted-foreground animate-pulse"
+                >Loading…</span>
+            </div>
+
+            {# Loading state #}
+            <div x-show="loading" x-cloak class="flex items-center justify-center h-64 text-muted-foreground text-sm">
+                <svg class="animate-spin h-5 w-5 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+                </svg>
+                Loading diagram…
+            </div>
+
+            {# Empty state #}
+            <div
+                x-show="!loading && activeViewpoint && totalElements === 0" x-cloak
+                class="flex flex-col items-center justify-center h-64 text-muted-foreground"
+                role="status"
+                aria-live="polite"
+            >
+                <svg class="h-10 w-10 mb-3 opacity-40" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 17v-2a4 4 0 014-4h0a4 4 0 014 4v2M3 17v-2a4 4 0 014-4h0M12 7a3 3 0 100-6 3 3 0 000 6z"/>
+                </svg>
+                <p class="text-sm">No elements found for this viewpoint.</p>
+                <p class="text-xs mt-1 opacity-60">Import ArchiMate elements to populate this view.</p>
+            </div>
+
+            {# No viewpoint selected #}
+            <div
+                x-show="!loading && !activeViewpoint" x-cloak
+                class="flex items-center justify-center h-64 text-muted-foreground text-sm"
+            >
+                Select a viewpoint from the sidebar to render a diagram.
+            </div>
+
+            {# ── Layered viewpoint: horizontal band layout ──────────────── #}
+            <div
+                x-show="!loading && activeViewpoint === 'layered' && totalElements > 0" x-cloak
+                class="overflow-auto p-4 space-y-2"
+            >
+                <template x-for="layer in layerOrder" :key="layer">
+                    <div
+                        class="rounded border border-border"
+                        :class="layerColour(layer)"
+                    >
+                        <div class="flex items-center gap-2 px-3 py-1.5 border-b border-border/60">
+                            <span class="text-xs font-semibold capitalize" x-text="layer"></span>
+                            <span class="text-xs text-muted-foreground ml-auto" x-text="(groups[layer] || []).length + ' element(s)'"></span>
+                        </div>
+                        <div class="flex flex-wrap gap-2 p-3 min-h-[3rem]">
+                            <template x-if="(groups[layer] || []).length === 0">
+                                <span class="text-xs text-muted-foreground italic">No elements</span>
+                            </template>
+                            <template x-for="el in (groups[layer] || [])" :key="el.id">
+                                <button
+                                    type="button"
+                                    @click="selectElement(el)"
+                                    :class="selectedElement && selectedElement.id === el.id ? 'ring-2 ring-primary' : ''"
+                                    class="rounded border border-border bg-card px-2.5 py-1 text-xs shadow-sm hover:bg-muted transition-colors cursor-pointer"
+                                    :title="el.description || el.type"
+                                    x-text="el.name"
+                                ></button>
+                            </template>
+                        </div>
+                    </div>
+                </template>
+            </div>
+
+            {# ── Generic flat diagram (all non-layered viewpoints) ─────── #}
+            <div
+                x-show="!loading && activeViewpoint && activeViewpoint !== 'layered' && totalElements > 0" x-cloak
+                class="overflow-auto p-4"
+            >
+                {# SVG canvas — elements as rectangles arranged in a grid #}
+                <svg
+                    :viewBox="svgViewBox"
+                    :width="svgWidth"
+                    :height="svgHeight"
+                    xmlns="http://www.w3.org/2000/svg"
+                    class="max-w-full border border-border rounded bg-background"
+                    role="img"
+                    :aria-label="currentName + ' diagram'"
+                >
+                    <template x-for="(el, idx) in elements" :key="el.id">
+                        <g
+                            :transform="elementTransform(idx)"
+                            @click="selectElement(el)"
+                            class="cursor-pointer"
+                            role="button"
+                            :aria-label="el.name"
+                            tabindex="0"
+                            @keydown.enter="selectElement(el)"
+                        >
+                            <rect
+                                x="0" y="0"
+                                :width="boxW"
+                                :height="boxH"
+                                rx="6"
+                                :fill="selectedElement && selectedElement.id === el.id ? '#3b82f6' : '#f8fafc'"
+                                :stroke="selectedElement && selectedElement.id === el.id ? '#2563eb' : '#e2e8f0'"
+                                stroke-width="1.5"
+                            />
+                            <text
+                                :x="boxW / 2"
+                                :y="boxH / 2 - 6"
+                                text-anchor="middle"
+                                font-size="10"
+                                :fill="selectedElement && selectedElement.id === el.id ? '#fff' : '#1e293b'"
+                                font-family="sans-serif"
+                                x-text="el.name.length > 18 ? el.name.slice(0,17) + '…' : el.name"
+                            ></text>
+                            <text
+                                :x="boxW / 2"
+                                :y="boxH / 2 + 8"
+                                text-anchor="middle"
+                                font-size="8"
+                                :fill="selectedElement && selectedElement.id === el.id ? '#bfdbfe' : '#94a3b8'"
+                                font-family="sans-serif"
+                                x-text="el.type"
+                            ></text>
+                        </g>
+                    </template>
+                </svg>
+            </div>
+        </section>
+
+        {# ── Element detail panel ────────────────────────────────────────── #}
+        <aside
+            x-show="selectedElement" x-cloak
+            x-transition
+            class="w-64 flex-shrink-0 rounded-lg border border-border bg-card shadow-sm self-start"
+            aria-label="Element details"
+            role="complementary"
+        >
+            <div class="flex items-center justify-between border-b border-border px-4 py-3 bg-muted/30">
+                <h3 class="text-sm font-semibold text-foreground">Element Detail</h3>
+                <button
+                    type="button"
+                    @click="selectedElement = null"
+                    class="text-muted-foreground hover:text-foreground text-lg leading-none"
+                    aria-label="Close detail panel"
+                >&times;</button>
+            </div>
+            <dl class="p-4 space-y-3 text-xs" x-show="selectedElement" x-cloak>
+                <div>
+                    <dt class="font-semibold text-muted-foreground uppercase tracking-wide text-[10px]">Name</dt>
+                    <dd class="mt-0.5 text-foreground font-medium" x-text="selectedElement?.name"></dd>
+                </div>
+                <div>
+                    <dt class="font-semibold text-muted-foreground uppercase tracking-wide text-[10px]">Type</dt>
+                    <dd class="mt-0.5 text-foreground" x-text="selectedElement?.type || '—'"></dd>
+                </div>
+                <div>
+                    <dt class="font-semibold text-muted-foreground uppercase tracking-wide text-[10px]">Layer</dt>
+                    <dd class="mt-0.5 capitalize text-foreground" x-text="selectedElement?.layer || '—'"></dd>
+                </div>
+                <div x-show="selectedElement?.description" x-cloak>
+                    <dt class="font-semibold text-muted-foreground uppercase tracking-wide text-[10px]">Description</dt>
+                    <dd class="mt-0.5 text-foreground" x-text="selectedElement?.description"></dd>
+                </div>
+            </dl>
+        </aside>
+
+    </div>
+</div>
+
+<script>
+function archimateViewpoints() {
+    return {
+        activeViewpoint: null,
+        currentName: '',
+        loading: false,
+        elements: [],
+        groups: {},
+        layerOrder: [],
+        totalElements: null,
+        selectedElement: null,
+
+        // SVG layout constants
+        boxW: 120,
+        boxH: 50,
+        cols: 6,
+        padX: 16,
+        padY: 16,
+        gapX: 12,
+        gapY: 12,
+
+        init() {
+            // Auto-select first viewpoint
+            {% if viewpoints %}
+            this.selectViewpoint('{{ viewpoints[0].id }}');
+            {% endif %}
+        },
+
+        async selectViewpoint(id) {
+            this.activeViewpoint = id;
+            this.selectedElement = null;
+            this.loading = true;
+            this.totalElements = null;
+            this.elements = [];
+            this.groups = {};
+            this.layerOrder = [];
+
+            try {
+                const resp = await fetch(`/api/archimate/viewpoints/${id}/data`);
+                if (!resp.ok) throw new Error('Request failed');
+                const data = await resp.json();
+                this.currentName = data.viewpoint_name || id;
+                this.elements = data.elements || [];
+                this.groups = data.groups || {};
+                this.layerOrder = data.layer_order || [];
+                this.totalElements = data.total ?? this.elements.length;
+            } catch (e) {
+                this.currentName = id;
+                this.elements = [];
+                this.totalElements = 0;
+            } finally {
+                this.loading = false;
+            }
+        },
+
+        selectElement(el) {
+            this.selectedElement = this.selectedElement?.id === el.id ? null : el;
+        },
+
+        elementTransform(idx) {
+            const col = idx % this.cols;
+            const row = Math.floor(idx / this.cols);
+            const x = this.padX + col * (this.boxW + this.gapX);
+            const y = this.padY + row * (this.boxH + this.gapY);
+            return `translate(${x},${y})`;
+        },
+
+        get svgWidth() {
+            return this.padX * 2 + this.cols * this.boxW + (this.cols - 1) * this.gapX;
+        },
+
+        get svgHeight() {
+            const rows = Math.ceil(this.elements.length / this.cols) || 1;
+            return this.padY * 2 + rows * this.boxH + (rows - 1) * this.gapY;
+        },
+
+        get svgViewBox() {
+            return `0 0 ${this.svgWidth} ${this.svgHeight}`;
+        },
+
+        layerColour(layer) {
+            const map = {
+                strategy: 'bg-purple-50 dark:bg-purple-950/20',
+                motivation: 'bg-violet-50 dark:bg-violet-950/20',
+                business: 'bg-primary/5 dark:bg-blue-950/20',
+                application: 'bg-cyan-50 dark:bg-cyan-950/20',
+                technology: 'bg-emerald-500/5 dark:bg-green-950/20',
+                physical: 'bg-amber-50 dark:bg-amber-950/20',
+                implementation: 'bg-orange-50 dark:bg-orange-950/20',
+            };
+            return map[layer] || 'bg-muted/20';
+        },
+    };
+}
+</script>
+{% endblock %}

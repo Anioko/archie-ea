@@ -1,0 +1,332 @@
+{# LLM-Powered Recommendations Component
+
+   Displays AI-generated strategic recommendations with:
+   - Generate button (calls LLM API)
+   - Recommendations cards with confidence scores
+   - Star rating UI (1-5 stars)
+   - Feedback notes and implementation tracking
+   - LLM metadata (model used, provider)
+
+   Usage:
+   {% from 'components/llm_recommendations.html' import llm_recommendations %}
+
+   {{ llm_recommendations(
+       dashboard='capability_health',
+       context_data={...}  # Dashboard-specific context
+   ) }}
+#}
+
+{% macro llm_recommendations(dashboard='', context_data={}) %}
+<script>
+function llmRecommendationsComponent(dashboard) {
+    return {
+        loading: false,
+        error: null,
+        recommendations: [],
+        ratingRecommendation: null,
+        ratingData: {
+            rating: 0,
+            feedback_notes: '',
+            was_implemented: false
+        },
+
+        async generateRecommendations() {
+            this.loading = true;
+            this.error = null;
+
+            try {
+                const response = await fetch('/strategic/api/recommendations/' + dashboard, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        context: {{ context_data | tojson }},
+                        max_recommendations: 5
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    this.recommendations = data.recommendations;
+                    if (data.recommendations.length > 0) {
+                        this.showToast('Success', data.recommendations.length + ' recommendations generated', 'success');
+                    } else {
+                        this.error = 'No recommendations generated. Check that your LLM provider is configured and reachable.';
+                    }
+                } else {
+                    this.error = data.error || 'Failed to generate recommendations';
+                    this.showToast('Error', this.error, 'error');
+                }
+            } catch (err) {
+                this.error = 'Network error: ' + err.message;
+                this.showToast('Error', this.error, 'error');
+            } finally {
+                this.loading = false;
+            }
+        },
+
+        async rateRecommendation(recId) {
+            if (this.ratingData.rating === 0) {
+                this.showToast('Error', 'Please select a star rating', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/strategic/api/recommendations/${recId}/rate`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(this.ratingData)
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    const rec = this.recommendations.find(r => r.id === recId);
+                    if (rec) {
+                        rec.user_rating = this.ratingData.rating;
+                        rec.feedback_notes = this.ratingData.feedback_notes;
+                        rec.was_implemented = this.ratingData.was_implemented;
+                    }
+
+                    this.showToast('Success', 'Rating submitted successfully', 'success');
+                    this.ratingRecommendation = null;
+                    this.resetRatingForm();
+                } else {
+                    this.showToast('Error', data.error || 'Failed to submit rating', 'error');
+                }
+            } catch (err) {
+                this.showToast('Error', 'Network error: ' + err.message, 'error');
+            }
+        },
+
+        openRatingModal(rec) {
+            this.ratingRecommendation = rec;
+            this.ratingData = {
+                rating: rec.user_rating || 0,
+                feedback_notes: rec.feedback_notes || '',
+                was_implemented: rec.was_implemented || false
+            };
+        },
+
+        resetRatingForm() {
+            this.ratingData = {
+                rating: 0,
+                feedback_notes: '',
+                was_implemented: false
+            };
+        },
+
+        showToast(title, message, type) {
+            const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+            const toast = document.createElement('div');
+            toast.className = `fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg ${type === 'success' ? 'bg-success' : 'bg-destructive'} text-primary-foreground max-w-md`;
+            toast.innerHTML = `<strong>${esc(title)}:</strong> ${esc(message)}`;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 4000);
+        },
+
+        getPriorityColor(priority) {
+            const colors = {
+                'CRITICAL': 'border-destructive bg-destructive/5',
+                'HIGH': 'border-warning bg-warning/5',
+                'MEDIUM': 'border-warning bg-warning/5',
+                'LOW': 'border-primary bg-primary/5'
+            };
+            return colors[priority] || 'border-muted-foreground bg-muted';
+        },
+
+        getPriorityBadgeColor(priority) {
+            const colors = {
+                'CRITICAL': 'bg-destructive text-primary-foreground',
+                'HIGH': 'bg-warning text-primary-foreground',
+                'MEDIUM': 'bg-warning text-primary-foreground',
+                'LOW': 'bg-primary text-primary-foreground'
+            };
+            return colors[priority] || 'bg-muted-foreground text-primary-foreground';
+        }
+    };
+}
+</script>
+<div x-data='llmRecommendationsComponent({{ dashboard | tojson }})'>
+
+    <!-- Generate Button -->
+    <div class="rounded-xl border bg-card text-card-foreground shadow">
+        <div class="p-6">
+            <div class="flex items-center justify-between mb-4">
+                <div>
+                    <h3 class="text-lg font-semibold">AI-Powered Recommendations</h3>
+                    <p class="text-sm text-muted-foreground mt-1">
+                        Generate context-aware strategic recommendations using your configured LLM provider
+                    </p>
+                </div>
+                <button 
+                    @click="generateRecommendations()"
+                    :disabled="loading"
+                    class="inline-flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary disabled:bg-muted-foreground/40 text-primary-foreground font-medium rounded-lg transition-colors" aria-label="Generate recommendations">
+                    <i data-lucide="sparkles" class="h-4 w-4" :class="{ 'animate-spin': loading }"></i>
+                    <span x-text="loading ? 'Generating...' : 'Generate Recommendations'"></span>
+                </button>
+            </div>
+            
+            <!-- Error Message -->
+            <div x-show="error" x-cloak 
+                 class="p-4 bg-destructive/5 border border-destructive/20 rounded-lg text-destructive"
+                 x-transition>
+                <strong>Error:</strong> <span x-text="error"></span>
+            </div>
+            
+            <!-- Recommendations List -->
+            <div x-show="recommendations.length > 0" x-cloak 
+                 class="space-y-4 mt-6"
+                 x-transition>
+                
+                <template x-for="rec in recommendations" :key="rec.id">
+                    <div :class="getPriorityColor(rec.priority)" 
+                         class="p-5 rounded-lg border-l-4 shadow-sm hover:shadow-md transition-shadow">
+                        
+                        <!-- Header -->
+                        <div class="flex items-start justify-between mb-3">
+                            <div class="flex-1">
+                                <h4 class="text-lg font-semibold text-foreground" x-text="rec.title"></h4>
+                                <div class="flex items-center gap-2 mt-1">
+                                    <span :class="getPriorityBadgeColor(rec.priority)" 
+                                          class="text-xs px-2 py-1 rounded"
+                                          x-text="rec.priority"></span>
+                                    <span class="text-xs text-muted-foreground">
+                                        Confidence: <strong x-text="(rec.confidence_score * 100).toFixed(0) + '%'"></strong>
+                                    </span>
+                                    <span class="text-xs text-muted-foreground" x-text="`${rec.provider_used} / ${rec.model_used}`"></span>
+                                </div>
+                            </div>
+                            
+                            <!-- Rating Display or Button -->
+                            <div class="ml-4">
+                                <template x-if="rec.user_rating">
+                                    <div class="flex items-center gap-1">
+                                        <template x-for="star in 5" :key="star">
+                                            <i data-lucide="star" 
+                                               class="h-4 w-4"
+                                               :class="star <= rec.user_rating ? 'fill-yellow-400 text-warning/80' : 'text-muted-foreground/50'"></i>
+                                        </template>
+                                    </div>
+                                </template>
+                                <template x-if="!rec.user_rating">
+                                    <button 
+                                        @click="openRatingModal(rec)"
+                                        class="text-sm text-primary hover:text-primary font-medium" aria-label="Rate this recommendation">
+                                        Rate this
+                                    </button>
+                                </template>
+                            </div>
+                        </div>
+                        
+                        <!-- Description -->
+                        <p class="text-foreground/80 mb-3" x-text="rec.description"></p>
+                        
+                        <!-- Rationale -->
+                        <div class="bg-background/50 p-3 rounded border border-border mb-3">
+                            <strong class="text-sm text-muted-foreground">Rationale:</strong>
+                            <p class="text-sm text-foreground/80 mt-1" x-text="rec.rationale"></p>
+                        </div>
+                        
+                        <!-- Footer Metadata -->
+                        <div class="flex items-center gap-4 text-xs text-muted-foreground">
+                            <span x-show="rec.estimated_effort_weeks" x-cloak>
+                                <i data-lucide="clock" class="h-3 w-3 inline mr-1"></i>
+                                <span x-text="rec.estimated_effort_weeks + ' weeks'"></span>
+                            </span>
+                            <span x-show="rec.expected_impact" x-cloak>
+                                <i data-lucide="trending-up" class="h-3 w-3 inline mr-1"></i>
+                                <span x-text="rec.expected_impact"></span>
+                            </span>
+                            <template x-if="rec.dependencies && rec.dependencies.length > 0">
+                                <span>
+                                    <i data-lucide="link" class="h-3 w-3 inline mr-1"></i>
+                                    <span x-text="rec.dependencies.length + ' dependencies'"></span>
+                                </span>
+                            </template>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Rating Modal -->
+    <div x-show="ratingRecommendation !== null" x-cloak
+         x-cloak
+         class="modal-root fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
+         @click="ratingRecommendation = null; resetRatingForm()">
+        
+        <div class="bg-background rounded-lg shadow-xl max-w-md w-full p-6"
+             @click.stop>
+            
+            <h3 class="text-xl font-bold mb-4">Rate Recommendation</h3>
+            
+            <!-- Star Rating -->
+            <div class="mb-4">
+                <label class="block text-sm font-medium mb-2">Your Rating</label>
+                <div class="flex items-center gap-2">
+                    <template x-for="star in 5" :key="star">
+                        <button @click="ratingData.rating = star"
+                                class="focus:outline-none" :aria-label="'Rate ' + star + ' star' + (star > 1 ? 's' : '')"
+                                type="button">
+                            <i data-lucide="star" 
+                               class="h-8 w-8 cursor-pointer transition-colors"
+                               :class="star <= ratingData.rating ? 'fill-yellow-400 text-warning/80' : 'text-muted-foreground/50 hover:text-yellow-200'"></i>
+                        </button>
+                    </template>
+                    <span class="ml-2 text-sm text-muted-foreground" x-text="ratingData.rating + ' / 5'"></span>
+                </div>
+            </div>
+            
+            <!-- Feedback Notes -->
+            <div class="mb-4">
+                <label class="block text-sm font-medium mb-2">Feedback (Optional)</label>
+                <textarea 
+                    x-model="ratingData.feedback_notes"
+                    rows="3"
+                    class="w-full px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-ring focus:border-transparent"
+                    placeholder="Share your thoughts on this recommendation..."></textarea>
+            </div>
+            
+            <!-- Implementation Status -->
+            <div class="mb-6">
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input 
+                        type="checkbox"
+                        x-model="ratingData.was_implemented"
+                        class="w-4 h-4 text-primary border-border rounded focus:ring-ring" aria-label="Checkbox field">
+                    <span class="text-sm font-medium">I implemented this recommendation</span>
+                </label>
+            </div>
+            
+            <!-- Actions -->
+            <div class="flex items-center gap-3">
+                <button 
+                    @click="rateRecommendation(ratingRecommendation.id)"
+                    class="flex-1 px-4 py-2 bg-primary hover:bg-primary text-primary-foreground font-medium rounded-lg transition-colors" aria-label="Submit rating">
+                    Submit Rating
+                </button>
+                <button 
+                    @click="ratingRecommendation = null; resetRatingForm()"
+                    class="px-4 py-2 border border-border hover:bg-muted text-foreground/80 font-medium rounded-lg transition-colors" aria-label="Cancel rating">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- Lucide Icons Refresh -->
+<script>
+    if (typeof lucide !== 'undefined') {
+        setTimeout(() => lucide.createIcons(), 100);
+    }
+</script>
+{% endmacro %}

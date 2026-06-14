@@ -1,0 +1,944 @@
+{# AI Chat Document Upload Component #}
+{# Integrated document upload and analysis for AI chat interface #}
+
+{% macro ai_chat_document_upload() %}
+<div x-data="aiChatDocumentUploader()" class="w-full">
+            {# Header with Close Button #}
+            <div class="flex items-center justify-between mb-3 pb-2 border-b">
+                <div>
+                    <h3 class="text-sm font-semibold flex items-center gap-2">
+                        <i data-lucide="upload-cloud" class="h-4 w-4 text-primary"></i>
+                        Document Upload & Analysis
+                    </h3>
+                    <p class="text-xs text-muted-foreground mt-0.5">
+                        Upload documents to auto-create ArchiMate elements
+                    </p>
+                </div>
+                <button type="button"
+                    @click="document.getElementById('document-upload-panel').classList.add('hidden')"
+                    class="text-muted-foreground hover:text-foreground"
+                 aria-label="Close document upload panel">
+                    <i data-lucide="x" class="h-4 w-4"></i>
+                </button>
+            </div>
+            
+            {# Compact Upload Toggle Button and History Toggle #}
+            <div class="mb-2 flex gap-2">
+                <button type="button"
+                    @click="showUpload = !showUpload"
+                    class="flex-1 inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 text-xs bg-primary/10 hover:bg-primary/20 text-primary rounded-md transition-colors"
+                 aria-label="Toggle upload section">
+                    <i data-lucide="upload-cloud" class="h-3.5 w-3.5"></i>
+                    <span x-text="showUpload ? 'Hide Upload' : 'Upload Document'"></span>
+                    <i data-lucide="chevron-up" class="h-3 w-3 transition-transform" :class="{'rotate-180': !showUpload}"></i>
+                </button>
+                <button type="button"
+                    @click="showHistory = !showHistory; if(showHistory) loadDocumentHistory()"
+                    class="flex-1 inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 text-xs bg-muted hover:bg-accent text-muted-foreground rounded-md transition-colors"
+                 aria-label="Toggle document history">
+                    <i data-lucide="history" class="h-3.5 w-3.5"></i>
+                    <span>History</span>
+                    <i data-lucide="chevron-down" class="h-3 w-3 transition-transform" :class="{'rotate-180': !showHistory}"></i>
+                </button>
+            </div>
+            
+            {# Context Selector - Application vs Vendor vs General #}
+            <div class="mb-3 p-2 bg-card border rounded-md">
+                <label class="text-xs font-medium text-muted-foreground mb-2 block">Link elements to:</label>
+                <div class="flex gap-2 mb-2">
+                    <button type="button"
+                        @click="analysisContext = 'general'"
+                        :class="analysisContext === 'general' ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-accent'"
+                        class="flex-1 px-2 py-1.5 text-xs rounded-md transition-colors flex items-center justify-center gap-1"
+                     aria-label="Select general analysis context">
+                        <i data-lucide="layers" class="h-3 w-3"></i>
+                        General
+                    </button>
+                    <button type="button"
+                        @click="analysisContext = 'application'; loadApplications()"
+                        :class="analysisContext === 'application' ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-accent'"
+                        class="flex-1 px-2 py-1.5 text-xs rounded-md transition-colors flex items-center justify-center gap-1"
+                     aria-label="Select application analysis context">
+                        <i data-lucide="app-window" class="h-3 w-3"></i>
+                        Application
+                    </button>
+                    <button type="button"
+                        @click="analysisContext = 'vendor'; loadVendors()"
+                        :class="analysisContext === 'vendor' ? 'bg-warning text-warning-foreground' : 'bg-muted hover:bg-accent'"
+                        class="flex-1 px-2 py-1.5 text-xs rounded-md transition-colors flex items-center justify-center gap-1"
+                     aria-label="Select vendor analysis context">
+                        <i data-lucide="building-2" class="h-3 w-3"></i>
+                        Vendor
+                    </button>
+                </div>
+
+                {# Application Selector #}
+                <div x-show="analysisContext === 'application'" x-cloak x-transition class="mt-2">
+                    <select
+                        x-model="targetApplicationId"
+                        class="w-full text-xs px-2 py-1.5 border rounded-md bg-background"
+                    >
+                        <option value="">Select application (optional)</option>
+                        <template x-for="app in applicationsList" :key="app.id">
+                            <option :value="app.id" x-text="app.name"></option>
+                        </template>
+                    </select>
+                    <div class="flex items-center justify-between mt-1">
+                        <p class="text-xs text-muted-foreground">Elements will be linked to this application</p>
+                        <a x-show="targetApplicationId" x-cloak
+                           :href="'/dashboard/application/' + targetApplicationId"
+                           target="_blank"
+                           class="text-xs text-primary hover:underline flex items-center gap-1">
+                            <i data-lucide="external-link" class="h-3 w-3"></i>
+                            View Details
+                        </a>
+                    </div>
+                </div>
+
+                {# Vendor Selector #}
+                <div x-show="analysisContext === 'vendor'" x-cloak x-transition class="mt-2">
+                    <select
+                        x-model="targetVendorId"
+                        class="w-full text-xs px-2 py-1.5 border rounded-md bg-background"
+                    >
+                        <option value="">Select vendor (optional)</option>
+                        <template x-for="vendor in vendorsList" :key="vendor.id">
+                            <option :value="vendor.id" x-text="vendor.name"></option>
+                        </template>
+                    </select>
+                    <div class="flex items-center justify-between mt-1">
+                        <p class="text-xs text-muted-foreground">Elements will be linked to this vendor</p>
+                        <a x-show="targetVendorId" x-cloak
+                           :href="'/vendors/view/' + targetVendorId"
+                           target="_blank"
+                           class="text-xs text-primary hover:underline flex items-center gap-1">
+                            <i data-lucide="external-link" class="h-3 w-3"></i>
+                            View Details
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            {# Info Banner #}
+            <div class="mb-3 p-2 bg-primary/5 dark:bg-primary/20 border border-primary/20 dark:border-primary rounded-md">
+                <div class="flex items-start gap-2">
+                    <i data-lucide="info" class="h-3.5 w-3.5 text-primary mt-0.5 flex-shrink-0"></i>
+                    <div class="text-xs text-primary dark:text-primary">
+                        <p class="font-medium mb-1">How to Auto-Create Elements:</p>
+                        <ol class="list-decimal list-inside space-y-0.5 text-xs">
+                            <li>Select context: General, Application, or Vendor</li>
+                            <li>Upload a document (PDF, DOC, PPT, Images, CSV, Excel)</li>
+                            <li>Click "Analyze & Auto-Create Elements" button</li>
+                            <li>AI extracts elements based on your selected context</li>
+                        </ol>
+                    </div>
+                </div>
+            </div>
+    
+    {# Document History Panel #}
+    <div x-show="showHistory" x-cloak 
+         x-transition
+         class="mb-3 border rounded-md bg-card p-3">
+        <div class="flex items-center justify-between mb-2">
+            <h4 class="text-xs font-semibold">Upload History</h4>
+            <button type="button" @click="loadDocumentHistory()" class="text-xs text-muted-foreground hover:text-foreground" aria-label="Refresh document history">
+                <i data-lucide="refresh-cw" class="h-3 w-3"></i>
+            </button>
+        </div>
+        
+        <div x-show="loadingHistory" x-cloak class="text-center py-4">
+            <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-primary mx-auto"></div>
+            <p class="text-xs text-muted-foreground mt-2">Loading...</p>
+        </div>
+        
+        <div x-show="!loadingHistory && documentHistory.length === 0" x-cloak class="text-center py-4">
+            <p class="text-xs text-muted-foreground">No documents uploaded yet</p>
+        </div>
+        
+        <div x-show="!loadingHistory && documentHistory.length > 0" x-cloak class="space-y-2 max-h-64 overflow-y-auto">
+            <template x-for="doc in documentHistory" :key="doc.id">
+                <div class="flex items-center justify-between p-2 bg-muted/50 rounded-md hover:bg-muted transition-colors">
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2">
+                            <i data-lucide="file" class="h-3.5 w-3.5 text-muted-foreground flex-shrink-0"></i>
+                            <p class="text-xs font-medium truncate" x-text="doc.original_filename"></p>
+                        </div>
+                        <div class="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
+                            <span x-text="formatFileSize(doc.file_size)"></span>
+                            <span>•</span>
+                            <span :class="getStatusColor(doc.status)" class="px-1.5 py-0.5 rounded text-xs font-medium" x-text="doc.status"></span>
+                            <span x-show="doc.created_elements_count > 0" x-cloak class="text-success">
+                                <i data-lucide="check-circle" class="h-3 w-3 inline"></i>
+                                <span x-text="doc.created_elements_count + ' elements'"></span>
+                            </span>
+                        </div>
+                        <p class="text-xs text-muted-foreground mt-1" x-text="new Date(doc.created_at).toLocaleString()"></p>
+                    </div>
+                    <div class="flex items-center gap-1 flex-shrink-0">
+                        {# Show loading spinner for documents being analyzed #}
+                        <div x-show="doc.status === 'analyzing'" x-cloak class="p-1">
+                            <div class="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-primary"></div>
+                        </div>
+                        {# Show "Analyze" button for documents that haven't been analyzed #}
+                        <button type="button" 
+                            x-show="doc.status === 'uploading' || doc.status === 'pending' || doc.status === 'failed'" x-cloak
+                            @click="analyzeDocumentFromHistory(doc.id)"
+                            class="p-1 text-success hover:text-success hover:bg-success/5 rounded transition-colors"
+                            title="Analyze document"
+                        >
+                            <i data-lucide="sparkles" class="h-3.5 w-3.5"></i>
+                        </button>
+                        {# Show "Re-analyze" button for documents that have been analyzed #}
+                        <button type="button" 
+                            x-show="doc.status === 'completed' || doc.status === 'partial'" x-cloak
+                            @click="reAnalyzeDocument(doc.id)"
+                            class="p-1 text-primary hover:text-primary hover:bg-primary/5 rounded transition-colors"
+                            title="Re-analyze"
+                        >
+                            <i data-lucide="refresh-cw" class="h-3.5 w-3.5"></i>
+                        </button>
+                        <button type="button" 
+                            x-show="doc.status !== 'analyzing'" x-cloak
+                            @click="deleteDocument(doc.id)"
+                            class="p-1 text-destructive hover:text-destructive hover:bg-destructive/5 rounded transition-colors"
+                            title="Delete"
+                        >
+                            <i data-lucide="trash-2" class="h-3.5 w-3.5"></i>
+                        </button>
+                    </div>
+                </div>
+            </template>
+        </div>
+    </div>
+
+    {# Compact Upload Panel #}
+    <div x-show="showUpload" x-cloak 
+         x-transition:enter="transition ease-out duration-200"
+         x-transition:enter-start="opacity-0 transform scale-95"
+         x-transition:enter-end="opacity-100 transform scale-100"
+         x-transition:leave="transition ease-in duration-150"
+         x-transition:leave-start="opacity-100 transform scale-100"
+         x-transition:leave-end="opacity-0 transform scale-95"
+         class="mb-3">
+        
+        <div class="rounded-lg border bg-card p-3">
+            <div class="flex items-center justify-between mb-3">
+                <div>
+                    <h3 class="text-sm font-semibold">Document Upload</h3>
+                    <p class="text-xs text-muted-foreground mt-0.5">
+                        Upload documents for AI analysis and auto-creation
+                    </p>
+                </div>
+                <div class="flex items-center gap-1.5">
+                    <div class="px-1.5 py-0.5 rounded text-xs bg-success/10 text-success font-medium">
+                        <i data-lucide="sparkles" class="h-2.5 w-2.5 mr-0.5"></i>
+                        AI
+                    </div>
+                </div>
+            </div>
+
+            {# Compact File Upload Area #}
+            <div 
+                @drop.prevent="handleDrop($event)"
+                @dragover.prevent="dragover = true"
+                @dragleave.prevent="dragover = false"
+                :class="{'border-primary bg-primary/5': dragover}"
+                class="border-2 border-dashed rounded-md p-3 text-center transition-colors mb-3"
+            >
+                <label for="ai-chat-file-input" class="sr-only">Upload document</label>
+                <input
+                    type="file" 
+                    id="ai-chat-file-input"
+                    @change="handleFileSelect($event)"
+                    accept=".pdf,.doc,.docx,.ppt,.pptx,.png,.jpg,.jpeg,.gif,.svg,.txt,.md,.html,.csv,.xls,.xlsx"
+                    class="hidden"
+                    x-ref="fileInput"
+                >
+                
+                <div x-show="!uploading && !analysisResults" x-cloak class="space-y-1">
+                    <i data-lucide="file-text" class="h-8 w-8 mx-auto mb-2 text-muted-foreground"></i>
+                    <p class="text-xs font-medium mb-1">
+                        Drag & drop or
+                        <button type="button"
+                            @click="$refs.fileInput.click()"
+                            class="text-primary hover:underline"
+                         aria-label="Browse for files">
+                            browse
+                        </button>
+                    </p>
+                    <p class="text-xs text-muted-foreground">
+                        PDF, DOC, PPT, Images, CSV, Excel (Max 50MB)
+                    </p>
+                </div>
+
+                {# Compact Selected File Info #}
+                <div x-show="selectedFile && !uploading && !analysisResults" x-cloak class="mt-2">
+                    <div class="flex items-center gap-2 bg-muted rounded-md p-2">
+                        <i data-lucide="file" class="h-4 w-4 text-muted-foreground flex-shrink-0"></i>
+                        <div class="flex-1 min-w-0">
+                            <p class="text-xs font-medium truncate" x-text="selectedFile?.name || ''"></p>
+                            <p class="text-xs text-muted-foreground" x-text="selectedFile ? formatFileSize(selectedFile.size) : ''"></p>
+                        </div>
+                        <button type="button"
+                            @click="clearFile()"
+                            class="text-muted-foreground hover:text-foreground flex-shrink-0"
+                         aria-label="Remove selected file">
+                            <i data-lucide="x" class="h-3.5 w-3.5"></i>
+                        </button>
+                    </div>
+                </div>
+
+                {# Compact Uploading/Processing State #}
+                <div x-show="uploading" x-cloak class="mt-2">
+                    <div class="flex items-center gap-2 bg-muted rounded-md p-2">
+                        <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-primary flex-shrink-0"></div>
+                        <div class="flex-1 min-w-0">
+                            <p class="text-xs font-medium truncate" x-text="uploadStatus"></p>
+                            <div class="w-full bg-muted/50 rounded-full h-1.5 mt-1">
+                                <div 
+                                    class="bg-primary h-1.5 rounded-full transition-all duration-300"
+                                    :style="'width: ' + uploadProgress + '%'"
+                                ></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {# Analysis Mode Toggle - AI vs Simple Parsing #}
+            <div x-show="selectedFile && !uploading && !analysisResults" x-cloak class="mb-2 space-y-2">
+                <div class="flex items-center justify-between">
+                    <label class="text-xs font-medium text-muted-foreground">Analysis Mode:</label>
+                    <button type="button"
+                        @click="useSimpleParsing = !useSimpleParsing"
+                        :class="{
+                            'bg-success text-success-foreground': useSimpleParsing,
+                            'bg-muted text-muted-foreground': !useSimpleParsing
+                        }"
+                        class="px-2 py-1 rounded text-xs font-medium transition-colors flex items-center gap-1"
+                        title="Toggle between AI analysis and simple parsing (no LLM)"
+                    >
+                        <i data-lucide="zap" class="h-3 w-3"></i>
+                        <span x-text="useSimpleParsing ? 'Simple' : 'AI'"></span>
+                    </button>
+                </div>
+                
+                {# AI Provider Selection - Only show when AI mode is enabled #}
+                <div x-show="!useSimpleParsing" x-cloak class="flex items-center gap-2">
+                    <label class="text-xs text-muted-foreground">Provider:</label>
+                    <div class="flex gap-1">
+                        <template x-for="(provider, key) in providers" :key="key">
+                            <button type="button" 
+                                @click="selectedProvider = key"
+                                :class="{
+                                    'bg-primary text-primary-foreground': selectedProvider === key,
+                                    'bg-muted text-muted-foreground hover:bg-accent': selectedProvider !== key
+                                }"
+                                class="px-2 py-1 rounded text-xs font-medium transition-colors"
+                                :title="provider.name"
+                            >
+                                <i :data-lucide="provider.icon" class="h-3 w-3"></i>
+                            </button>
+                        </template>
+                    </div>
+                </div>
+                
+                {# Simple Parsing Info #}
+                <div x-show="useSimpleParsing" x-cloak class="p-2 bg-primary/5 dark:bg-primary/20 border border-primary/20 dark:border-primary rounded-md">
+                    <div class="flex items-start gap-2">
+                        <i data-lucide="info" class="h-3.5 w-3.5 text-primary mt-0.5 flex-shrink-0"></i>
+                        <div class="text-xs text-primary dark:text-primary">
+                            <p class="font-medium mb-1">Simple Parsing Mode (No LLM):</p>
+                            <p class="text-xs">Works best with structured CSV/Excel files. Maps columns directly to ArchiMate elements without AI analysis.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {# Analyze Button - Preview Mode #}
+            <div x-show="selectedFile && !uploading && !analysisResults && previewElements.length === 0" x-cloak class="mb-2">
+                <button type="button"
+                    @click="previewDocument()"
+                    class="w-full inline-flex items-center justify-center rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 h-8 px-3 py-1"
+                 aria-label="Preview extracted elements">
+                    <i data-lucide="eye" class="mr-1.5 h-3.5 w-3.5"></i>
+                    Preview Extracted Elements
+                </button>
+                <p class="text-xs text-muted-foreground mt-1 text-center">Review elements before creating them</p>
+            </div>
+
+            {# No Elements Found Message #}
+            <div x-show="!uploading && !analysisResults && previewElements.length === 0 && uploadStatus === 'No elements found'" x-cloak class="p-3 bg-warning/5 dark:bg-warning/20 border border-warning/20 dark:border-warning rounded-md mb-3">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="alert-circle" class="h-4 w-4 text-warning"></i>
+                    <p class="text-sm text-warning dark:text-warning">
+                        No ArchiMate elements were found in the document. The file may not contain architecture information, or the format may not be supported.
+                    </p>
+                </div>
+                <p class="text-xs text-warning dark:text-warning/60 mt-2">
+                    Try uploading a document that contains application names, system descriptions, or architecture diagrams.
+                </p>
+            </div>
+
+            {# Preview Results Panel - Shows extracted elements before creation #}
+            <div x-show="previewElements.length > 0 && !analysisResults" x-cloak class="space-y-2 mb-3">
+                <div class="p-2 bg-warning/5 dark:bg-warning/20 border border-warning/20 dark:border-warning rounded-md">
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="flex items-center gap-2">
+                            <i data-lucide="eye" class="h-4 w-4 text-warning"></i>
+                            <h4 class="text-sm font-semibold text-warning dark:text-warning">Preview Mode</h4>
+                            <span class="text-xs bg-warning/10 text-warning px-2 py-0.5 rounded-full"
+                                  x-text="previewElements.length + ' elements found'"></span>
+                        </div>
+                        <button type="button" @click="clearPreview()" class="text-warning hover:text-warning" aria-label="Close preview mode">
+                            <i data-lucide="x" class="h-4 w-4"></i>
+                        </button>
+                    </div>
+                    <p class="text-xs text-warning dark:text-warning mb-3">
+                        Review and select the elements you want to create. Uncheck any incorrect ones.
+                    </p>
+
+                    {# Select All / None Controls #}
+                    <div class="flex items-center gap-2 mb-2 pb-2 border-b border-warning/20">
+                        <button type="button" @click="selectAllElements()" class="text-xs text-warning hover:text-amber-900 underline" aria-label="Select all preview elements">Select All</button>
+                        <span class="text-warning">|</span>
+                        <button type="button" @click="selectNoneElements()" class="text-xs text-warning hover:text-amber-900 underline" aria-label="Deselect all preview elements">Select None</button>
+                        <span class="text-xs text-warning ml-auto" x-text="getSelectedCount() + ' selected'"></span>
+                    </div>
+
+                    {# Element List with Checkboxes #}
+                    <div class="space-y-1.5 max-h-64 overflow-y-auto">
+                        <template x-for="(elem, index) in previewElements" :key="index">
+                            <div class="flex items-start gap-2 p-2 bg-background dark:bg-warning/40 rounded border border-warning/20 dark:border-warning"
+                                 :class="{'opacity-50': !selectedElements[index]}">
+                                {# Checkbox #}
+                                <input type="checkbox"
+                                       :checked="selectedElements[index]"
+                                       @change="selectedElements[index] = $event.target.checked"
+                                       class="mt-1 h-4 w-4 rounded border-warning/30 text-warning focus:ring-warning" aria-label="Checkbox field">
+
+                                {# Element Info (editable when in edit mode) #}
+                                <div class="flex-1 min-w-0" x-show="editingElement !== index" x-cloak>
+                                    <div class="flex items-center gap-2 flex-wrap">
+                                        <span class="text-xs font-medium text-warning dark:text-warning truncate" 
+                                              x-text="elem.resolved_name || elem.name"></span>
+                                        <span class="text-xs px-1.5 py-0.5 bg-warning/10 text-warning rounded" x-text="elem.type"></span>
+                                        <span class="text-xs text-warning" x-text="elem.layer || ''"></span>
+                                        
+                                        {# Confidence Score Badge #}
+                                        <template x-if="elem.confidence">
+                                            <span class="text-xs px-1.5 py-0.5 rounded"
+                                                  :class="{
+                                                      'bg-success/10 text-success': elem.confidence.score >= 0.75,
+                                                      'bg-warning/10 text-warning': elem.confidence.score >= 0.5 && elem.confidence.score < 0.75,
+                                                      'bg-destructive/10 text-destructive': elem.confidence.score < 0.5
+                                                  }"
+                                                  :title="'Confidence: ' + (elem.confidence.score * 100).toFixed(0) + '%'">
+                                                <i data-lucide="trending-up" class="h-3 w-3 inline"></i>
+                                                <span x-text="(elem.confidence.score * 100).toFixed(0) + '%'"></span>
+                                            </span>
+                                        </template>
+                                        
+                                        {# Entity Resolution Badge #}
+                                        <template x-if="elem.resolution && elem.resolution.confidence > 0.7">
+                                            <span class="text-xs px-1.5 py-0.5 bg-primary/10 text-primary rounded"
+                                                  :title="'Resolved from: ' + elem.name">
+                                                <i data-lucide="check-circle" class="h-3 w-3 inline"></i>
+                                                Resolved
+                                            </span>
+                                        </template>
+                                    </div>
+                                    <p class="text-xs text-warning dark:text-warning truncate mt-0.5" x-text="elem.description || 'No description'"></p>
+                                    
+                                    {# Knowledge Graph Related Entities #}
+                                    <template x-if="elem.kg_related_entities && elem.kg_related_entities.length > 0">
+                                        <div class="mt-1 flex items-center gap-1 flex-wrap">
+                                            <span class="text-xs text-warning">Related:</span>
+                                            <template x-for="related in elem.kg_related_entities.slice(0, 3)" :key="related.id">
+                                                <span class="text-xs px-1 py-0.5 bg-warning/5 text-warning rounded"
+                                                      x-text="related.name"></span>
+                                            </template>
+                                        </div>
+                                    </template>
+                                    
+                                    {# Quality Indicators #}
+                                    <template x-if="elem.confidence && elem.confidence.quality_indicators && elem.confidence.quality_indicators.length > 0">
+                                        <div class="mt-1 flex items-center gap-1 flex-wrap">
+                                            <template x-for="indicator in elem.confidence.quality_indicators" :key="indicator">
+                                                <span class="text-xs px-1 py-0.5 bg-warning/10 text-warning rounded"
+                                                      x-text="indicator.replace('_', ' ')"></span>
+                                            </template>
+                                        </div>
+                                    </template>
+                                </div>
+
+                                {# Edit Form #}
+                                <div class="flex-1 min-w-0 space-y-1" x-show="editingElement === index" x-cloak>
+                                    <input type="text"
+                                           x-model="previewElements[index].name"
+                                           placeholder="Element name"
+                                           class="w-full text-xs px-2 py-1 border rounded bg-background" aria-label="Element name">
+                                    <input type="text"
+                                           x-model="previewElements[index].description"
+                                           placeholder="Description"
+                                           class="w-full text-xs px-2 py-1 border rounded bg-background" aria-label="Description">
+                                    <select x-model="previewElements[index].type" class="w-full text-xs px-2 py-1 border rounded bg-background">
+                                        <option value="ApplicationComponent">ApplicationComponent</option>
+                                        <option value="ApplicationService">ApplicationService</option>
+                                        <option value="ApplicationInterface">ApplicationInterface</option>
+                                        <option value="DataObject">DataObject</option>
+                                        <option value="BusinessProcess">BusinessProcess</option>
+                                        <option value="BusinessService">BusinessService</option>
+                                        <option value="BusinessActor">BusinessActor</option>
+                                        <option value="Goal">Goal</option>
+                                        <option value="Driver">Driver</option>
+                                        <option value="Node">Node</option>
+                                        <option value="TechnologyService">TechnologyService</option>
+                                    </select>
+                                </div>
+
+                                {# Action Buttons #}
+                                <div class="flex items-center gap-1 flex-shrink-0">
+                                    <button type="button" x-show="editingElement !== index" x-cloak
+                                            @click="startEditingElement(index)"
+                                            class="p-1 text-warning hover:text-warning hover:bg-warning/10 rounded"
+                                            title="Edit element">
+                                        <i data-lucide="pencil" class="h-3 w-3"></i>
+                                    </button>
+                                    <button type="button" x-show="editingElement === index" x-cloak
+                                            @click="saveElementEdit(index)"
+                                            class="p-1 text-success hover:text-success hover:bg-success/10 rounded"
+                                            title="Save changes">
+                                        <i data-lucide="check" class="h-3 w-3"></i>
+                                    </button>
+                                    <button type="button" x-show="editingElement === index" x-cloak
+                                            @click="cancelElementEdit(index)"
+                                            class="p-1 text-muted-foreground hover:text-foreground hover:bg-muted rounded"
+                                            title="Cancel editing">
+                                        <i data-lucide="x" class="h-3 w-3"></i>
+                                    </button>
+                                    <button type="button" @click="removePreviewElement(index)"
+                                            class="p-1 text-destructive hover:text-destructive hover:bg-destructive/10 rounded"
+                                            title="Remove element">
+                                        <i data-lucide="trash-2" class="h-3 w-3"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+
+                    {# Create Selected Elements Button #}
+                    <div class="mt-3 pt-2 border-t border-warning/20 flex gap-2">
+                        <button type="button" @click="createSelectedElements()"
+                                :disabled="getSelectedCount() === 0 || creatingElements"
+                                class="flex-1 inline-flex items-center justify-center rounded-md text-xs font-medium h-8 px-3 transition-colors"
+                                :class="getSelectedCount() > 0 && !creatingElements
+                                    ? 'bg-success text-success-foreground hover:bg-success'
+                                    : 'bg-muted text-muted-foreground cursor-not-allowed'" aria-label="Create selected elements">
+                            <template x-if="!creatingElements">
+                                <span class="flex items-center">
+                                    <i data-lucide="plus-circle" class="mr-1.5 h-3.5 w-3.5"></i>
+                                    Create <span x-text="getSelectedCount()" class="mx-1"></span> Selected Elements
+                                </span>
+                            </template>
+                            <template x-if="creatingElements">
+                                <span class="flex items-center">
+                                    <div class="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-white mr-1.5"></div>
+                                    Creating...
+                                </span>
+                            </template>
+                        </button>
+                        <button type="button" @click="clearPreview()"
+                                class="inline-flex items-center justify-center rounded-md text-xs font-medium border border-warning/30 text-warning hover:bg-warning/10 h-8 px-3" aria-label="Cancel element creation">
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            {# Analysis Results (after creation) #}
+            <div x-show="analysisResults" x-cloak class="space-y-2">
+                {# Compact Results Header #}
+                <div class="flex items-center justify-between p-2 bg-muted/50 rounded-md">
+                    <div>
+                        <h4 class="text-sm font-semibold">Analysis Complete</h4>
+                        <p class="text-xs text-muted-foreground" x-text="analysisResults?.chat_context_summary || ''"></p>
+                    </div>
+                    <div class="flex items-center gap-1.5 flex-shrink-0">
+                        <span
+                            :class="{
+                                'bg-success/10 text-success': analysisResults?.confidence === 'high',
+                                'bg-warning/10 text-warning': analysisResults?.confidence === 'medium',
+                                'bg-destructive/10 text-destructive': analysisResults?.confidence === 'low'
+                            }"
+                            class="px-1.5 py-0.5 rounded text-xs font-medium"
+                            x-text="(analysisResults?.confidence || 'medium').toUpperCase()"
+                        ></span>
+                        <button type="button"
+                            @click="clearResults()"
+                            class="text-muted-foreground hover:text-foreground"
+                         aria-label="Close analysis results">
+                            <i data-lucide="x" class="h-3.5 w-3.5"></i>
+                        </button>
+                    </div>
+                </div>
+
+                {# Compact Entity Matching Results - Collapsible #}
+                <div x-show="analysisResults?.entity_matching" x-cloak class="space-y-2">
+                    <button type="button" @click="showEntityDetails = !showEntityDetails" class="w-full flex items-center justify-between text-xs font-medium text-muted-foreground hover:text-foreground mb-1 p-1" aria-label="Toggle entity matching details">
+                        <span>Entity Matching</span>
+                        <i data-lucide="chevron-down" class="h-3 w-3 transition-transform" :class="{'rotate-180': showEntityDetails}"></i>
+                    </button>
+                    <div x-show="showEntityDetails" x-cloak class="space-y-2">
+                    {# High Confidence Matches #}
+                    <div x-show="analysisResults?.entity_matching?.matches && analysisResults.entity_matching.matches.length > 0" x-cloak
+                         class="p-2 bg-success/5 dark:bg-success/20 rounded-md border border-success/20 dark:border-success">
+                        <div class="flex items-center gap-2 mb-3">
+                            <i data-lucide="check-circle-2" class="h-4 w-4 text-success"></i>
+                            <h5 class="text-sm font-semibold text-success dark:text-success">Matched Entities</h5>
+                            <span class="text-xs bg-success/10 text-success px-2 py-0.5 rounded-full"
+                                  x-text="(analysisResults?.entity_matching?.matches?.length || 0) + ' found'"></span>
+                        </div>
+                        <div class="space-y-2 max-h-40 overflow-y-auto">
+                            <template x-for="match in (analysisResults?.entity_matching?.matches || [])" :key="match.entity_id">
+                                <div class="flex items-center justify-between bg-background dark:bg-success/40 rounded p-2 border border-success/20 dark:border-success">
+                                    <div class="flex-1 min-w-0">
+                                        <span class="text-sm font-medium text-success dark:text-success" x-text="match.entity_name"></span>
+                                        <span class="text-xs text-success ml-2" x-text="match.entity_type"></span>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-xs bg-success/20 text-success px-2 py-0.5 rounded" x-text="match.match_confidence + '%'"></span>
+                                        <button type="button" @click="linkToEntity(match)" class="text-success hover:text-success" aria-label="Link to entity">
+                                            <i data-lucide="link" class="h-4 w-4"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+
+                    {# Potential Duplicates Warning #}
+                    <div x-show="analysisResults?.entity_matching?.potential_duplicates && analysisResults.entity_matching.potential_duplicates.length > 0" x-cloak
+                         class="p-4 bg-warning/5 dark:bg-warning/20 rounded-lg border border-warning/20 dark:border-warning">
+                        <div class="flex items-center gap-2 mb-3">
+                            <i data-lucide="alert-triangle" class="h-4 w-4 text-warning"></i>
+                            <h5 class="text-sm font-semibold text-warning dark:text-warning">Potential Duplicates</h5>
+                            <span class="text-xs bg-warning/10 text-warning px-2 py-0.5 rounded-full"
+                                  x-text="(analysisResults?.entity_matching?.potential_duplicates?.length || 0) + ' warnings'"></span>
+                        </div>
+                        <div class="space-y-2 max-h-32 overflow-y-auto">
+                            <template x-for="dup in (analysisResults?.entity_matching?.potential_duplicates || [])" :key="dup.entity_id">
+                                <div class="flex items-center justify-between bg-background dark:bg-warning/40 rounded p-2 border border-warning/20 dark:border-warning">
+                                    <div class="flex-1 min-w-0">
+                                        <span class="text-sm font-medium text-warning dark:text-warning" x-text="dup.warning"></span>
+                                    </div>
+                                    <span class="text-xs px-2 py-0.5 rounded"
+                                          :class="{'bg-warning/20 text-warning': dup.match_level === 'medium', 'bg-warning/20 text-warning': dup.match_level === 'low'}"
+                                          x-text="dup.match_confidence + '%'"></span>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+
+                    {# Enhanced Created Elements Summary with Detailed Breakdown #}
+                    <div x-show="(analysisResults?.created_elements > 0) || (creationDetails?.totalCount > 0)" x-cloak 
+                         class="p-3 bg-success/5 dark:bg-success/20 rounded-md border border-success/20 dark:border-success">
+                        <div class="flex items-center justify-between mb-3">
+                            <div class="flex items-center gap-1.5">
+                                <i data-lucide="check-circle-2" class="h-4 w-4 text-success"></i>
+                                <h5 class="text-sm font-semibold text-success dark:text-success">
+                                    Successfully Created
+                                </h5>
+                                <span class="text-xs bg-success/10 text-success px-2 py-0.5 rounded-full font-medium"
+                                      x-text="(creationDetails?.totalCount || analysisResults?.created_elements || 0) + ' elements'"></span>
+                            </div>
+                            <button type="button" @click="creationDetails = null"
+                                     x-show="creationDetails" x-cloak
+                                     class="text-success hover:text-success" aria-label="Close creation details">
+                                <i data-lucide="x" class="h-3.5 w-3.5"></i>
+                            </button>
+                        </div>
+                        
+                        {# Detailed Breakdown - Show when creationDetails exists #}
+                        <div x-show="creationDetails" x-cloak class="space-y-3 mb-3">
+                            {# Breakdown by Element Type #}
+                            <div x-show="Object.keys(creationDetails?.byType || {}).length > 0" x-cloak>
+                                <h6 class="text-xs font-medium text-success dark:text-success/60 mb-1.5">By Element Type:</h6>
+                                <div class="flex flex-wrap gap-1.5">
+                                    <template x-for="[type, count] in Object.entries(creationDetails?.byType || {}).sort((a, b) => b[1] - a[1])" :key="type">
+                                        <span class="text-xs bg-background dark:bg-success/40 text-success dark:text-success px-2 py-1 rounded border border-success/20 dark:border-success">
+                                            <span x-text="type"></span>
+                                            <span class="ml-1 font-semibold" x-text="'(' + count + ')'"></span>
+                                        </span>
+                                    </template>
+                                </div>
+                            </div>
+                            
+                            {# Breakdown by Layer #}
+                            <div x-show="Object.keys(creationDetails?.byLayer || {}).length > 0" x-cloak>
+                                <h6 class="text-xs font-medium text-success dark:text-success/60 mb-1.5">By ArchiMate Layer:</h6>
+                                <div class="flex flex-wrap gap-1.5">
+                                    <template x-for="[layer, count] in Object.entries(creationDetails?.byLayer || {}).sort((a, b) => b[1] - a[1])" :key="layer">
+                                        <span class="text-xs bg-background dark:bg-success/40 text-success dark:text-success px-2 py-1 rounded border border-success/20 dark:border-success">
+                                            <span x-text="layer"></span>
+                                            <span class="ml-1 font-semibold" x-text="'(' + count + ')'"></span>
+                                        </span>
+                                    </template>
+                                </div>
+                            </div>
+                            
+                            {# Element Names List #}
+                            <div x-show="(creationDetails?.elementNames || []).length > 0" x-cloak>
+                                <h6 class="text-xs font-medium text-success dark:text-success/60 mb-1.5">
+                                    Element Names (<span x-text="(creationDetails?.elementNames || []).length"></span> total):
+                                </h6>
+                                <div class="max-h-40 overflow-y-auto space-y-1 bg-background dark:bg-success/40 rounded p-2 border border-success/20 dark:border-success">
+                                    <template x-for="(name, idx) in (creationDetails?.elementNames || []).slice(0, 50)" :key="idx">
+                                        <div class="text-xs text-success dark:text-success flex items-center gap-2">
+                                            <span class="text-success w-4" x-text="(idx + 1) + '.'"></span>
+                                            <span class="truncate" x-text="name"></span>
+                                        </div>
+                                    </template>
+                                    <div x-show="(creationDetails?.elementNames || []).length > 50" x-cloak 
+                                         class="text-xs text-success text-center pt-1 border-t border-success/20 dark:border-success mt-1">
+                                        ... and <span x-text="(creationDetails?.elementNames || []).length - 50"></span> more elements
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            {# Errors if any #}
+                            <div x-show="(creationDetails?.errors || []).length > 0" x-cloak 
+                                 class="p-2 bg-destructive/5 dark:bg-destructive/20 rounded border border-destructive/20 dark:border-destructive">
+                                <h6 class="text-xs font-medium text-destructive dark:text-destructive/60 mb-1">
+                                    Errors (<span x-text="(creationDetails?.errors || []).length"></span>):
+                                </h6>
+                                <div class="space-y-1 max-h-24 overflow-y-auto">
+                                    <template x-for="(err, idx) in (creationDetails?.errors || []).slice(0, 5)" :key="idx">
+                                        <div class="text-xs text-destructive dark:text-destructive/60" x-text="err"></div>
+                                    </template>
+                                    <div x-show="(creationDetails?.errors || []).length > 5" x-cloak 
+                                         class="text-xs text-destructive text-center">
+                                        ... and <span x-text="(creationDetails?.errors || []).length - 5"></span> more errors
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        {# Compact View - Element List #}
+                        <div x-show="!creationDetails && analysisResults?.created_details && analysisResults.created_details.length > 0" x-cloak 
+                             class="space-y-1 max-h-32 overflow-y-auto">
+                            <template x-for="(elem, index) in (analysisResults?.created_details || []).slice(0, 10)" :key="index">
+                                <div class="flex items-center justify-between bg-background dark:bg-success/40 rounded p-1.5 border border-success/20 dark:border-success">
+                                    <div class="flex-1 min-w-0">
+                                        <span class="text-xs font-medium text-success dark:text-success truncate block" x-text="elem.name"></span>
+                                        <span class="text-xs text-success" x-text="elem.type"></span>
+                                    </div>
+                                </div>
+                            </template>
+                            <div x-show="(analysisResults?.created_details || []).length > 10" x-cloak 
+                                 class="text-xs text-success text-center pt-1">
+                                +<span x-text="(analysisResults?.created_details || []).length - 10"></span> more
+                            </div>
+                        </div>
+                        
+                        {# Actions #}
+                        <div class="mt-3 pt-2 border-t border-success/20 dark:border-success flex items-center justify-between">
+                            <button type="button" @click="buildCreationDetails(analysisResults?.created_elements || 0, analysisResults?.created_details || [], analysisResults?.errors || [])"
+                                    x-show="!creationDetails && (analysisResults?.created_elements > 0)" x-cloak
+                                    class="text-xs text-success hover:text-success font-medium flex items-center gap-1" aria-label="Show element breakdown">
+                                <i data-lucide="chevron-down" class="h-3 w-3"></i>
+                                Show Details
+                            </button>
+                            <a href="/architecture" target="_blank" 
+                               class="text-xs text-success hover:text-success font-medium flex items-center gap-1">
+                                <i data-lucide="external-link" class="h-3 w-3"></i>
+                                View in Dashboard
+                            </a>
+                        </div>
+                    </div>
+
+                {# New Entities Found #}
+                    <div x-show="analysisResults?.entity_matching?.new_entities && analysisResults.entity_matching.new_entities.length > 0" x-cloak
+                         class="p-4 bg-primary/5 dark:bg-primary/20 rounded-lg border border-primary/20 dark:border-primary">
+                        <div class="flex items-center gap-2 mb-3">
+                            <i data-lucide="plus-circle" class="h-4 w-4 text-primary"></i>
+                            <h5 class="text-sm font-semibold text-primary dark:text-primary">New Entities Discovered</h5>
+                            <span class="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full"
+                                  x-text="(analysisResults?.entity_matching?.new_entities?.length || 0) + ' new'"></span>
+                        </div>
+                        <div class="space-y-2 max-h-32 overflow-y-auto">
+                            <template x-for="entity in (analysisResults?.entity_matching?.new_entities || [])" :key="entity.name">
+                                <div class="flex items-center justify-between bg-background dark:bg-primary/40 rounded p-2 border border-primary/20 dark:border-primary">
+                                    <div class="flex-1 min-w-0">
+                                        <span class="text-sm font-medium text-primary dark:text-primary" x-text="entity.name"></span>
+                                        <span class="text-xs text-primary ml-2" x-text="entity.type"></span>
+                                    </div>
+                                    <button type="button" @click="createEntity(entity)" class="text-xs bg-primary text-primary-foreground px-2 py-1 rounded hover:bg-primary" aria-label="Create entity">
+                                        Create
+                                    </button>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+
+                    {# Relationship Suggestions #}
+                    <div x-show="analysisResults?.entity_matching?.relationship_suggestions && analysisResults.entity_matching.relationship_suggestions.length > 0" x-cloak
+                         class="p-4 bg-primary/5 dark:bg-primary/20 rounded-lg border border-primary/20 dark:border-primary">
+                        <div class="flex items-center gap-2 mb-3">
+                            <i data-lucide="git-branch" class="h-4 w-4 text-primary"></i>
+                            <h5 class="text-sm font-semibold text-primary dark:text-primary">Suggested Relationships</h5>
+                        </div>
+                        <div class="space-y-2 max-h-32 overflow-y-auto">
+                            <template x-for="rel in (analysisResults?.entity_matching?.relationship_suggestions || [])" :key="rel.source + rel.target_name">
+                                <div class="flex items-center gap-2 text-xs bg-background dark:bg-primary/40 rounded p-2 border border-primary/20 dark:border-primary">
+                                    <span class="text-primary dark:text-primary" x-text="rel.source || rel.source_name"></span>
+                                    <i data-lucide="arrow-right" class="h-3 w-3 text-primary"></i>
+                                    <span class="px-1.5 py-0.5 bg-primary/10 text-primary rounded" x-text="rel.relationship_type"></span>
+                                    <i data-lucide="arrow-right" class="h-3 w-3 text-primary"></i>
+                                    <span class="text-primary dark:text-primary" x-text="rel.target_name"></span>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+
+                {# Compact Gap Analysis Results #}
+                <div x-show="analysisResults?.gap_analysis && analysisResults.gap_analysis.total_extracted > 0" x-cloak
+                     class="p-2 bg-warning/5 dark:bg-warning/20 rounded-md border border-warning/20 dark:border-warning">
+                    <div class="flex items-center gap-1.5 mb-2">
+                        <i data-lucide="pie-chart" class="h-3.5 w-3.5 text-warning"></i>
+                        <h5 class="text-xs font-semibold text-warning dark:text-warning">Gap Analysis</h5>
+                    </div>
+                    <div class="grid grid-cols-3 gap-1.5 mb-2">
+                        <div class="text-center p-1.5 bg-background dark:bg-warning/40 rounded">
+                            <div class="text-sm font-bold text-warning" x-text="analysisResults?.gap_analysis?.total_extracted || 0"></div>
+                            <div class="text-xs text-warning">Extracted</div>
+                        </div>
+                        <div class="text-center p-1.5 bg-background dark:bg-warning/40 rounded">
+                            <div class="text-sm font-bold text-success" x-text="analysisResults?.gap_analysis?.existing_matches_count || 0"></div>
+                            <div class="text-xs text-success">Matched</div>
+                        </div>
+                        <div class="text-center p-1.5 bg-background dark:bg-warning/40 rounded">
+                            <div class="text-sm font-bold text-primary" x-text="analysisResults?.gap_analysis?.new_elements_count || 0"></div>
+                            <div class="text-xs text-primary">New</div>
+                        </div>
+                    </div>
+                    <div class="w-full bg-muted rounded-full h-1.5 mb-1">
+                        <div class="bg-success h-1.5 rounded-full" :style="'width: ' + (analysisResults?.gap_analysis?.coverage_percentage || 0) + '%'"></div>
+                    </div>
+                    <p class="text-xs text-warning dark:text-warning/60" x-text="(analysisResults?.gap_analysis?.coverage_percentage || 0) + '% coverage'"></p>
+                    <div x-show="analysisResults?.gap_analysis?.recommendations && analysisResults.gap_analysis.recommendations.length > 0" x-cloak class="mt-2 space-y-1">
+                        <template x-for="rec in (analysisResults?.gap_analysis?.recommendations || [])" :key="rec">
+                            <p class="text-xs text-warning"><i data-lucide="info" class="h-3 w-3 inline mr-1"></i><span x-text="rec"></span></p>
+                        </template>
+                    </div>
+                </div>
+
+                {# Persona-Specific Insights #}
+                <div x-show="analysisResults?.persona_insights?.persona" x-cloak
+                     class="p-4 bg-primary/5 dark:bg-primary/20 rounded-lg border border-primary/20 dark:border-violet-800">
+                    <div class="flex items-center gap-2 mb-3">
+                        <i data-lucide="user-cog" class="h-4 w-4 text-primary"></i>
+                        <h5 class="text-sm font-semibold text-primary dark:text-primary">
+                            <span x-text="(analysisResults?.persona_insights?.persona || '').replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())"></span> Insights
+                        </h5>
+                    </div>
+                    <div class="space-y-2">
+                        <p class="text-xs text-primary dark:text-primary">
+                            <span x-text="analysisResults?.persona_insights?.relevant_elements_count || 0"></span> relevant elements found
+                        </p>
+                        <div x-show="analysisResults?.persona_insights?.recommended_actions && analysisResults.persona_insights.recommended_actions.length > 0" x-cloak class="space-y-1">
+                            <template x-for="action in (analysisResults?.persona_insights?.recommended_actions || [])" :key="action">
+                                <div class="flex items-start gap-2 text-xs text-primary dark:text-primary">
+                                    <i data-lucide="check" class="h-3 w-3 mt-0.5 text-primary"></i>
+                                    <span x-text="action"></span>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+
+                {# Domain Insights #}
+                <div x-show="analysisResults?.domain_insights" x-cloak class="p-4 bg-primary/5 dark:bg-primary/20 rounded-lg border border-primary/20 dark:border-primary">
+                    <div class="flex items-center gap-2 mb-2">
+                        <i data-lucide="brain" class="h-4 w-4 text-primary"></i>
+                        <h5 class="text-sm font-semibold text-primary dark:text-primary">Domain Insights</h5>
+                    </div>
+                    <div class="space-y-2 text-sm">
+                        <template x-for="finding in (analysisResults?.domain_insights?.key_findings || [])" :key="finding">
+                            <div class="flex items-start gap-2">
+                                <i data-lucide="check-circle" class="h-3 w-3 text-primary mt-0.5 flex-shrink-0"></i>
+                                <span class="text-primary dark:text-primary/60" x-text="finding"></span>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                {# Conversational Elements #}
+                <div x-show="analysisResults?.conversational_elements && analysisResults.conversational_elements.length > 0" x-cloak class="p-4 bg-success/5 dark:bg-success/20 rounded-lg border border-success/20 dark:border-success">
+                    <div class="flex items-center gap-2 mb-3">
+                        <i data-lucide="message-square" class="h-4 w-4 text-success"></i>
+                        <h5 class="text-sm font-semibold text-success dark:text-success">Discovered Elements</h5>
+                        <span class="text-xs bg-success/10 text-success px-2 py-1 rounded" x-text="(analysisResults?.conversational_elements?.length || 0) + ' elements'"></span>
+                    </div>
+                    <div class="space-y-2 max-h-48 overflow-y-auto">
+                        <template x-for="element in (analysisResults?.conversational_elements || [])" :key="element.chat_friendly_name || element.name">
+                            <div class="bg-background dark:bg-success/40 rounded p-2 border border-success/20 dark:border-success">
+                                <div class="flex items-center justify-between mb-1">
+                                    <span class="text-sm font-medium text-success dark:text-success" x-text="element.chat_friendly_name"></span>
+                                    <span class="text-xs bg-success/10 text-success px-1 py-0.5 rounded" x-text="element.layer"></span>
+                                </div>
+                                <p class="text-xs text-success dark:text-success/60" x-text="element.description"></p>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                {# Follow-up Questions #}
+                <div x-show="analysisResults?.follow_up_questions && analysisResults.follow_up_questions.length > 0" x-cloak class="p-4 bg-accent dark:bg-primary/20 rounded-lg border border-primary/20 dark:border-primary">
+                    <div class="flex items-center gap-2 mb-3">
+                        <i data-lucide="help-circle" class="h-4 w-4 text-primary"></i>
+                        <h5 class="text-sm font-semibold text-primary dark:text-primary">Suggested Questions</h5>
+                    </div>
+                    <div class="space-y-2">
+                        <template x-for="question in (analysisResults?.follow_up_questions || [])" :key="question">
+                            <button type="button"
+                                @click="askQuestion(question)"
+                                class="w-full text-left text-sm text-primary dark:text-primary hover:text-primary dark:hover:text-primary p-2 rounded hover:bg-accent dark:hover:bg-primary/40 transition-colors"
+                             aria-label="Ask follow-up question">
+                                <i data-lucide="arrow-right" class="h-3 w-3 mr-2 inline"></i>
+                                <span x-text="question"></span>
+                            </button>
+                        </template>
+                    </div>
+                </div>
+
+                {# Compact Action Buttons #}
+                <div class="flex items-center gap-2 pt-2">
+                    <button type="button"
+                        @click="addToChat()"
+                        class="flex-1 inline-flex items-center justify-center rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 h-7 px-2"
+                     aria-label="Add analysis results to chat">
+                        <i data-lucide="plus-circle" class="mr-1.5 h-3.5 w-3.5"></i>
+                        Add to Chat
+                    </button>
+                    <button type="button"
+                        @click="analyzeWithDifferentProvider()"
+                        class="inline-flex items-center justify-center rounded-md text-xs font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-7 px-2"
+                     aria-label="Re-analyze with different provider">
+                        <i data-lucide="refresh-cw" class="mr-1.5 h-3.5 w-3.5"></i>
+                        Re-analyze
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+  window.__APP_CONFIG__ = window.__APP_CONFIG__ || {};
+</script>
+<script src="{{ url_for('static', filename='js/ai_chat/document_upload.js') }}"></script>
+{# INLINE JS EXTRACTED to static/js/ai_chat/document_upload.js #}
+{# Original inline script removed - all JS now in external file #}
+{% endmacro %}

@@ -1,0 +1,196 @@
+{# WARNING: THIS FILE IS NOT REGISTERED #}
+{# _section_shell.html — Unified section shell for all 10 ADM phases
+
+   Usage (in detail.html):
+
+   {%- raw %}
+   {% call section_shell(
+       id='sec-5', badge='E', title='Options & Financial Analysis',
+       phase_label='Phase E — Opportunities & Solutions',
+       phase_key='E', icon='scale',
+       viewpoint_name='Implementation & Migration Viewpoint',
+       viewpoint_type='implementation_migration',
+       canvas_layer='implementation', canvas_layer_filter=none,
+       element_badge_color='sky',
+       empty_text='No implementation elements linked.',
+       comment_key='phase_e',
+       badge_class='',
+       show_generate=true
+   ) %}
+       Phase-specific content goes here via caller()
+   {% endcall %}
+   {% endraw %}
+#}
+
+{% from "solutions/partials/_comment_macro.html" import section_comment_thread %}
+
+{% macro section_shell(
+    id, badge, title, phase_label, phase_key, icon,
+    viewpoint_name, viewpoint_type,
+    canvas_layer, canvas_layer_filter,
+    element_badge_color, empty_text,
+    comment_key, badge_class='',
+    show_generate=true
+) %}
+<section id="{{ id }}" x-show="personaVisible('{{ id }}')"
+         class="sad-scroll-mt mb-8 bg-card rounded-2xl border border-border shadow-sm overflow-hidden"
+         x-intersect.once="initSectionCanvas('{{ phase_key }}')">
+
+    {# ── Slim header — colored left-bar + title + compact actions ── #}
+    <div class="flex items-center gap-3 px-5 py-3 border-b border-border border-l-4 border-l-{{ element_badge_color }}-500"
+         :class="!expandedSections['{{ id }}'] ? 'cursor-pointer hover:bg-muted/30 transition-colors' : ''"
+         @click="if (!expandedSections['{{ id }}']) expandedSections['{{ id }}'] = true">
+        <div class="w-1 h-5 rounded-full bg-{{ element_badge_color }}-500 shrink-0"></div>
+        <h2 class="text-sm font-semibold text-foreground flex-1 min-w-0">{{ title }}</h2>
+
+        {# ── Collapsed: status + action ── #}
+        <template x-if="!expandedSections['{{ id }}']">
+            <div class="flex items-center gap-2 shrink-0">
+                <span class="text-xs tabular-nums"
+                      :class="(phaseSummaries['{{ id }}']||{}).completePct >= 100 ? 'text-emerald-600' : (phaseSummaries['{{ id }}']||{}).completePct >= 40 ? 'text-amber-600' : 'text-muted-foreground'"
+                      x-text="((phaseSummaries['{{ id }}']||{}).completePct||0) + '%'"></span>
+                {% if show_generate %}
+                <button @click.stop="expandedSections['{{ id }}'] = true; $nextTick(() => generatePhase('{{ phase_key }}'))"
+                        x-show="(phaseSummaries['{{ id }}']||{}).completePct === 0"
+                        class="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
+                        aria-label="Begin {{ title }}">
+                    <i data-lucide="sparkles" class="w-3.5 h-3.5 inline-block -mt-0.5"></i> Begin
+                </button>
+                {% endif %}
+                <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-muted-foreground" aria-hidden="true"></i>
+            </div>
+        </template>
+
+        {# ── Expanded: generate + collapse ── #}
+        <template x-if="expandedSections['{{ id }}'] || ((phaseSummaries['{{ id }}']||{}).completePct > 0 && (phaseSummaries['{{ id }}']||{}).completePct < 100)">
+            <div class="flex items-center gap-2 shrink-0">
+                {% if show_generate %}
+                <button @click.stop="generatePhase('{{ phase_key }}')" :disabled="generateLoading === '{{ phase_key }}'"
+                        class="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-primary/70 hover:text-primary transition-colors disabled:opacity-50"
+                        aria-label="Generate missing {{ title }} elements">
+                    <i data-lucide="sparkles" class="h-3 w-3" :class="generateLoading === '{{ phase_key }}' && 'animate-spin'" aria-hidden="true"></i>
+                    <span x-text="generateLoading === '{{ phase_key }}' ? 'Generating...' : 'Generate'"></span>
+                </button>
+                {% endif %}
+                <button @click.stop="expandedSections['{{ id }}'] = false"
+                        x-show="expandedSections['{{ id }}']"
+                        class="inline-flex items-center justify-center w-7 h-7 rounded-md text-muted-foreground hover:bg-accent transition-colors"
+                        aria-label="Collapse {{ title }}">
+                    <i data-lucide="chevron-up" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                </button>
+            </div>
+        </template>
+    </div>
+
+    {# ── Full view: shown when in-progress (1-99%) OR manually expanded ── #}
+    <template x-if="expandedSections['{{ id }}'] || (phaseSummaries['{{ id }}'].completePct > 0 && phaseSummaries['{{ id }}'].completePct < 100)">
+        <div>
+            {# ── Generate preview panel ── #}
+            <template x-if="generatePreview && generatePreview.phase === '{{ phase_key }}'">
+                <div class="mx-6 mt-4 mb-4 rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 space-y-3">
+                    <div class="flex items-center justify-between">
+                        <h4 class="text-sm font-medium text-amber-700">Would create <span x-text="generatePreview.count"></span> elements</h4>  <!-- frontend-quality-ok -->
+                        <span class="text-xs text-muted-foreground" x-text="'Completeness: ' + Math.round((generatePreview.completeness_before||0)*100) + '% → ' + Math.round((generatePreview.completeness_after||0)*100) + '%'"></span>
+                    </div>
+                    <div class="space-y-1.5 max-h-48 overflow-y-auto">
+                        <template x-for="item in (generatePreview.would_create||[])" :key="item.type+item.name">
+                            <div class="flex items-center gap-2 text-xs">
+                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium" :class="item.direction==='upstream' ? 'bg-blue-500/10 text-blue-600' : 'bg-emerald-500/10 text-emerald-600'" x-text="item.direction==='upstream' ? 'up' : 'down'"></span>
+                                <span class="font-medium" x-text="item.type"></span>
+                                <span class="text-muted-foreground truncate" x-text="item.name"></span>
+                            </div>
+                        </template>
+                    </div>
+                    <div class="flex gap-2 pt-2 border-t border-amber-500/20" x-show="generatePreview.count > 0">
+                        <button @click="confirmGenerate()" :disabled="generateLoading" class="px-3 py-1.5 text-xs font-medium bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50"><span x-text="generateLoading ? 'Creating...' : 'Confirm'"></span></button>
+                        <button @click="cancelGenerate()" class="px-3 py-1.5 text-xs font-medium border border-border rounded-md hover:bg-accent">Cancel</button>
+                    </div>
+                </div>
+            </template>
+
+            {# ── Main content ── #}
+            <div class="p-6 md:p-8">
+
+                {# Interpretation callout — actionable #}
+                <div class="mb-5 rounded-lg border px-4 py-3"
+                     :class="phaseSummaries['{{ id }}'].completePct >= 100 ? 'border-emerald-500/20 bg-emerald-500/5' : phaseSummaries['{{ id }}'].completePct >= 50 ? 'border-primary/20 bg-primary/5' : 'border-amber-500/20 bg-amber-500/5'">
+                    <div class="flex items-start gap-2.5">
+                        <i data-lucide="sparkles" class="w-4 h-4 shrink-0 mt-0.5"
+                           :class="phaseSummaries['{{ id }}'].completePct >= 100 ? 'text-emerald-600' : phaseSummaries['{{ id }}'].completePct >= 50 ? 'text-primary' : 'text-amber-600'" aria-hidden="true"></i>
+                        <div class="flex-1 min-w-0 text-sm">
+                            <span x-show="phaseSummaries['{{ id }}'].present.length > 0" x-text="phaseSummaries['{{ id }}'].present.join('. ') + ' linked.'" class="text-foreground"></span>
+                            <span x-show="phaseSummaries['{{ id }}'].missing.length > 0" class="text-muted-foreground" x-text="(phaseSummaries['{{ id }}'].present.length > 0 ? ' Missing: ' : 'Missing: ') + phaseSummaries['{{ id }}'].missing.join(', ') + '.'"></span>
+                            {% if show_generate %}
+                            <button x-show="phaseSummaries['{{ id }}'].completePct < 100"
+                                    @click="generatePhase('{{ phase_key }}')" :disabled="generateLoading === '{{ phase_key }}'"
+                                    class="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                                <i data-lucide="sparkles" class="w-3 h-3" :class="generateLoading === '{{ phase_key }}' && 'animate-spin'" aria-hidden="true"></i>
+                                <span x-text="generateLoading === '{{ phase_key }}' ? 'Generating...' : 'Fix gaps'"></span>
+                            </button>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                {# Viewpoint bar + canvas — only shown when elements exist AND canvas_layer is set (partial can override by passing canvas_layer=none) #}
+                {% if canvas_layer %}
+                <template x-if="sectionCanvasData['{{ phase_key }}'] && sectionCanvasData['{{ phase_key }}'].length > 0">
+                    <div class="mb-6 rounded-xl border border-border overflow-hidden">
+                        <div class="flex items-center justify-between px-4 py-2.5 bg-muted/30 border-b border-border">
+                            <div class="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
+                                <i data-lucide="hexagon" class="w-3.5 h-3.5" aria-hidden="true"></i>
+                                {{ viewpoint_name }}
+                            </div>
+                        </div>
+                        <!-- inline-style-ok --><!-- ratchet-ok -->
+                        <div class="relative bg-muted/10 h-[280px]"
+                             style="background-image: radial-gradient(circle, hsl(var(--border)) 1px, transparent 1px); background-size: 20px 20px;"
+                             :id="'canvas-{{ phase_key }}'">
+                            <div x-init="$nextTick(() => {
+                                if (typeof ComposerRenderer !== 'undefined') {
+                                    const r = ComposerRenderer.create($el, {mode: 'view', width: '100%', height: 280});
+                                    r.loadElements(sectionCanvasData['{{ phase_key }}'], []);
+                                    r.fitToContent();
+                                }
+                            })" class="w-full h-full"></div>
+                        </div>
+                    </div>
+                </template>
+
+                {# Element tags — capped at 10, expandable #}
+                <div class="mb-6" x-show="sectionCanvasData['{{ phase_key }}'] && sectionCanvasData['{{ phase_key }}'].length > 0" x-cloak
+                     x-data="{ showAllElements: false }">
+                    <div class="flex flex-wrap gap-1.5">
+                    <template x-for="(el, idx) in (sectionCanvasData['{{ phase_key }}'] || [])" :key="el.id || el.name">
+                        <span x-show="showAllElements || idx < 10" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-{{ element_badge_color }}-500/10 text-{{ element_badge_color }}-600 border border-{{ element_badge_color }}-500/20">
+                            <i data-lucide="hexagon" class="w-2.5 h-2.5" aria-hidden="true"></i>
+                            <span x-text="el.name"></span>
+                        </span>
+                    </template>
+                    </div>
+                    <button x-show="(sectionCanvasData['{{ phase_key }}'] || []).length > 10 && !showAllElements"
+                            @click="showAllElements = true"
+                            class="mt-1.5 text-xs text-primary hover:underline">
+                        <span x-text="'Show all ' + sectionCanvasData['{{ phase_key }}'].length + ' elements'"></span>
+                    </button>
+                    <button x-show="showAllElements && (sectionCanvasData['{{ phase_key }}'] || []).length > 10"
+                            @click="showAllElements = false"
+                            class="mt-1.5 text-xs text-muted-foreground hover:underline">
+                        Show fewer
+                    </button>
+                </div>
+                {% endif %}{# end canvas_layer guard #}
+
+                {# Phase-specific content #}
+                <div class="space-y-7">
+                    {{ caller() }}
+                </div>
+
+                {# Comments #}
+                {{ section_comment_thread(comment_key) }}
+            </div>
+        </div>
+    </template>
+
+</section>
+{% endmacro %}

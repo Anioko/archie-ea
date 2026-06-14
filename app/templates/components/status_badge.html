@@ -1,0 +1,75 @@
+{# Status Badge Component
+
+   Semantic status badge with consistent colors for use across all pages.
+   Uses the design token pattern: bg-{color}-500/10 text-{color}-600 border-{color}-500/30
+
+   Usage:
+   {% from 'components/status_badge.html' import status_badge %}
+
+   {{ status_badge('Active', 'success') }}
+   {{ status_badge('Pending Review', 'warning', icon='clock') }}
+   {{ status_badge('Failed', 'error', dot=true) }}
+   {{ status_badge('Archived', 'neutral') }}
+#}
+
+{% macro status_badge_auto(status, size='sm') %}
+  {%- set colour_map = {
+    'active':       'bg-emerald-500/10 text-green-800',
+    'inactive':     'bg-muted text-muted-foreground',
+    'pending':      'bg-amber-500/10 text-yellow-800',
+    'in_progress':  'bg-primary/10 text-primary/90',
+    'done':         'bg-emerald-500/10 text-green-800',
+    'blocked':      'bg-destructive/10 text-red-800',
+    'draft':        'bg-muted text-muted-foreground',
+    'approved':     'bg-emerald-500/10 text-green-800',
+    'rejected':     'bg-destructive/10 text-red-800',
+    'review':       'bg-purple-100 text-purple-800',
+    'archived':     'bg-muted text-muted-foreground',
+    'deployed':     'bg-emerald-500/10 text-green-800',
+    'planned':      'bg-amber-500/10 text-yellow-800',
+    'implemented':  'bg-emerald-500/10 text-green-800',
+    'compliant':    'bg-emerald-500/10 text-green-800',
+    'open':         'bg-amber-500/10 text-yellow-800',
+    'closed':       'bg-emerald-500/10 text-green-800',
+  } -%}
+  {%- set classes = colour_map.get(status | lower, 'bg-muted text-muted-foreground') -%}
+  <span class="inline-flex items-center px-2 py-0.5 rounded text-{{ size }} font-medium {{ classes }}">
+    {{ status | replace('_', ' ') | title }}
+  </span>
+{% endmacro %}
+
+{% macro status_badge(
+    text='',
+    variant='neutral',
+    icon=none,
+    dot=false,
+    class=''
+) %}
+    {% set variants = {
+        'success': 'bg-success/10 text-success border-success/30',
+        'warning': 'bg-warning/10 text-warning border-warning/30',
+        'error': 'bg-destructive/10 text-destructive border-destructive/30',
+        'info': 'bg-primary/10 text-primary border-primary/30',
+        'neutral': 'bg-muted/50 text-foreground border-border',
+        'primary': 'bg-primary/10 text-primary border-primary/30'
+    } %}
+
+    {% set dot_colors = {
+        'success': 'bg-success',
+        'warning': 'bg-warning',
+        'error': 'bg-destructive',
+        'info': 'bg-primary',
+        'neutral': 'bg-muted-foreground',
+        'primary': 'bg-primary'
+    } %}
+
+    <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-medium border {{ variants[variant] or variants['neutral'] }} {{ class }}">
+        {% if dot %}
+        <span class="w-1.5 h-1.5 rounded-full {{ dot_colors[variant] or dot_colors['neutral'] }}"></span>
+        {% endif %}
+        {% if icon %}
+        <i data-lucide="{{ icon }}" class="w-3 h-3" aria-hidden="true"></i>
+        {% endif %}
+        {{ text }}
+    </span>
+{% endmacro %}

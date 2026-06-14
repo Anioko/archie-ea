@@ -1,0 +1,162 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'components/page_header.html' import page_header %}
+
+{% block title %}APQC Recommendations{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Breadcrumbs -->
+    <nav class="flex items-center gap-2 text-sm text-muted-foreground mb-6">
+        <a href="{{ url_for('main.index') }}" class="hover:text-foreground transition-colors">Dashboard</a>
+        <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
+        <a href="{{ url_for('industry_apqc.industry_apqc_dashboard') }}" class="hover:text-foreground transition-colors">Industry APQC</a>
+        <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
+        <span class="text-foreground font-medium">Recommendations</span>
+    </nav>
+
+    <!-- Page Header -->
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+        {{ page_header(
+        title='Process Recommendations',
+        description='AI-generated recommendations based on maturity assessments'
+    ) }}
+    </div>
+
+    <!-- Filters -->
+    <div class="rounded-xl border-2 border-input bg-background p-4 mb-6">
+        <form method="GET" class="flex flex-wrap items-center gap-4">
+            <div>
+                <label class="text-sm font-medium text-muted-foreground">Industry</label>
+                <select name="industry" class="ml-2 rounded-lg border-2 border-input px-3 py-1.5 text-sm">
+                    <option value="">All Industries</option>
+                    {% for fw in frameworks %}
+                    <option value="{{ fw.industry_code }}" {% if selected_industry == fw.industry_code %}selected{% endif %}>
+                        {{ fw.industry_name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="flex items-center gap-2">
+                <input type="checkbox" name="quick_wins" value="true" id="quick_wins"
+                       {% if quick_wins_only %}checked{% endif %}>
+                <label for="quick_wins" class="text-sm">Quick Wins Only</label>
+            </div>
+            <button type="submit" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm" aria-label="Submit">
+                <i data-lucide="filter" class="h-4 w-4" aria-hidden="true"></i>
+                Apply Filters
+            </button>
+        </form>
+    </div>
+
+    <!-- Recommendations List -->
+    {% if recommendations %}
+    <div class="space-y-4">
+        {% for rec in recommendations %}
+        <div class="rounded-xl border-2 border-input bg-background p-6 hover:border-primary/50 transition-all">
+            <div class="flex items-start justify-between mb-4">
+                <div class="flex-1">
+                    <div class="flex items-center gap-3 mb-2">
+                        <h3 class="text-lg font-semibold">{{ rec.recommendation_title }}</h3>
+                        {% if rec.is_quick_win %}
+                        <span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium bg-success/10 text-success">
+                            Quick Win
+                        </span>
+                        {% endif %}
+                        {% if rec.is_strategic_initiative %}
+                        <span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium bg-accent text-primary">
+                            Strategic
+                        </span>
+                        {% endif %}
+                    </div>
+                    <p class="text-muted-foreground">{{ rec.recommendation_description }}</p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button @click="acceptRecommendation({{ rec.id }})"
+                            class="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-success/10 text-success hover:bg-success/20 text-sm" aria-label="Action">
+                        <i data-lucide="check" class="h-4 w-4" aria-hidden="true"></i>
+                        Accept
+                    </button>
+                    <button @click="rejectRecommendation({{ rec.id }})"
+                            class="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-destructive/10 text-destructive hover:bg-destructive/20 text-sm" aria-label="Reject">
+                        <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
+                        Reject
+                    </button>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                <div>
+                    <span class="text-muted-foreground">Type:</span>
+                    <span class="ml-1 font-medium">{{ rec.recommendation_type }}</span>
+                </div>
+                <div>
+                    <span class="text-muted-foreground">Impact:</span>
+                    <span class="ml-1 font-medium">{{ rec.impact_score }}/10</span>
+                </div>
+                <div>
+                    <span class="text-muted-foreground">Effort:</span>
+                    <span class="ml-1 font-medium">{{ rec.effort_score }}/10</span>
+                </div>
+                <div>
+                    <span class="text-muted-foreground">Priority:</span>
+                    <span class="ml-1 font-medium">{{ rec.priority_score }}</span>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="rounded-xl border-2 border-input bg-background p-12 text-center">
+        <i data-lucide="lightbulb" class="h-12 w-12 text-muted-foreground mx-auto mb-4" aria-hidden="true"></i>
+        <h3 class="text-lg font-semibold mb-2">No Pending Recommendations</h3>
+        <p class="text-muted-foreground">Generate recommendations by running a maturity assessment.</p>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+async function acceptRecommendation(id) {
+    try {
+        const response = await fetch(`/api/vendors/recommendations`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token() }}'
+            }
+        });
+        const data = await response.json();
+        if (data.success) {
+            location.reload();
+        } else {
+            Platform.toast.error('Error: ' + data.error);
+        }
+    } catch (error) {
+        Platform.toast.error('Error: ' + error.message);
+    }
+}
+
+async function rejectRecommendation(id) {
+    const reason = prompt('Reason for rejection:');
+    if (!reason) return;
+
+    try {
+        const response = await fetch(`/api/vendors/recommendations`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token() }}'
+            },
+            body: JSON.stringify({ reason })
+        });
+        const data = await response.json();
+        if (data.success) {
+            location.reload();
+        } else {
+            Platform.toast.error('Error: ' + data.error);
+        }
+    } catch (error) {
+        Platform.toast.error('Error: ' + error.message);
+    }
+}
+</script>
+{% endblock %}

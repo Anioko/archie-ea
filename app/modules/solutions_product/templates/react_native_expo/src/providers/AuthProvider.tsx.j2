@@ -1,0 +1,75 @@
+{# react_native_expo/src/providers/AuthProvider.tsx.j2 #}
+{# Rendered only when auth == "jwt-local". Provides auth state, signIn, signOut, user profile. #}
+import { createContext, useContext, useEffect, useState, useCallback } from "react"
+import type { ReactNode } from "react"
+import * as SecureStore from "expo-secure-store"
+import { TOKEN_KEY, authApi } from "@/lib/api"
+import type { UserProfile } from "@/lib/api"
+
+interface AuthContextValue {
+  user: UserProfile | null
+  isAuthenticated: boolean
+  isLoading: boolean
+  signIn: (token: string) => Promise<void>
+  signOut: () => Promise<void>
+  refreshUser: () => Promise<void>
+}
+
+const AuthContext = createContext<AuthContextValue | null>(null)
+
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [user, setUser] = useState<UserProfile | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+
+  const fetchProfile = useCallback(async () => {
+    try {
+      const profile = await authApi.me()
+      setUser(profile)
+    } catch {
+      // Token expired or invalid — clear it
+      await SecureStore.deleteItemAsync(TOKEN_KEY)
+      setUser(null)
+    }
+  }, [])
+
+  // Restore session on mount
+  useEffect(() => {
+    SecureStore.getItemAsync(TOKEN_KEY)
+      .then((token) => {
+        if (token) return fetchProfile()
+      })
+      .finally(() => setIsLoading(false))
+  }, [fetchProfile])
+
+  const signIn = async (token: string) => {
+    await SecureStore.setItemAsync(TOKEN_KEY, token)
+    await fetchProfile()
+  }
+
+  const signOut = async () => {
+    await authApi.logout().catch(() => {})
+    await SecureStore.deleteItemAsync(TOKEN_KEY)
+    setUser(null)
+  }
+
+  const ctxValue: AuthContextValue = {
+    user,
+    isAuthenticated: !!user,
+    isLoading,
+    signIn,
+    signOut,
+    refreshUser: fetchProfile,
+  }
+
+  return (
+    <AuthContext.Provider value={ctxValue}>
+      {children}
+    </AuthContext.Provider>
+  )
+}
+
+export function useAuth(): AuthContextValue {
+  const ctx = useContext(AuthContext)
+  if (!ctx) throw new Error("useAuth must be used within <AuthProvider>")
+  return ctx
+}

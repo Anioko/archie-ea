@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# generate-assets.sh — Generate all required icon and splash sizes for {{ solution_name }}
+#
+# Prerequisites:
+#   brew install imagemagick   # macOS
+#   apt-get install imagemagick  # Ubuntu/Debian
+#
+# Usage:
+#   Place your source icon (1024×1024 PNG, no transparency for App Store) at:
+#     assets/source-icon.png
+#
+#   Place your source splash (2048×2048 PNG, centered logo on white) at:
+#     assets/source-splash.png
+#
+#   Then run:
+#     bash assets/generate-assets.sh
+#
+set -e
+
+ICON_SRC="assets/source-icon.png"
+SPLASH_SRC="assets/source-splash.png"
+
+if [ ! -f "$ICON_SRC" ]; then
+  echo "❌  Missing: $ICON_SRC"
+  echo "   Create a 1024×1024 PNG with no transparency."
+  exit 1
+fi
+
+if [ ! -f "$SPLASH_SRC" ]; then
+  echo "❌  Missing: $SPLASH_SRC"
+  echo "   Create a 2048×2048 PNG (centered logo, white background)."
+  exit 1
+fi
+
+echo "▶  Generating icon.png (1024×1024)…"
+magick "$ICON_SRC" -resize 1024x1024 assets/icon.png
+
+echo "▶  Generating adaptive-icon.png (1024×1024, Android)…"
+magick "$ICON_SRC" -resize 1024x1024 assets/adaptive-icon.png
+
+echo "▶  Generating splash.png (2048×2048)…"
+magick "$SPLASH_SRC" -resize 2048x2048 assets/splash.png
+
+echo "▶  Generating favicon.png (48×48, web)…"
+magick "$ICON_SRC" -resize 48x48 assets/favicon.png
+
+echo ""
+echo "✅  All assets generated."
+echo ""
+echo "Next steps:"
+echo "  1. Run: npx expo prebuild --clean"
+echo "  2. Run: eas build --platform ios   # or android / all"

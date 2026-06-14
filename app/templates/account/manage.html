@@ -1,0 +1,167 @@
+{% extends 'layouts/admin_base.html' %}
+{% from 'components/page_header.html' import page_header %}
+{% import 'macros/form_macros.html' as f %}
+{% import 'macros/check_password.html' as check %}
+
+{% set endpoints = [
+    ('account.manage', 'Account information'),
+    ('account.change_email_request', 'Change email address'),
+    ('account.change_password', 'Change password'),
+    ('account.logout', 'Log out')
+] %}
+
+{% macro navigation(items) %}
+    <nav class="flex flex-col space-y-1">
+        {% for route, name in items %}
+            {% set href = url_for(route) %}
+            <a class="flex items-center rounded-md px-3 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == route %}bg-accent text-accent-foreground{% else %}text-muted-foreground{% endif %}" href="{{ href }}">
+                {{ name }}
+            </a>
+        {% endfor %}
+    </nav>
+{% endmacro %}
+
+{% macro user_info(user) %}
+    <div class="rounded-lg border bg-card text-card-foreground shadow-sm">
+        <div class="p-6">
+            <div class="space-y-4">
+                <div class="flex justify-between items-start py-3 border-b border-border">
+                    <dt class="font-medium text-sm text-muted-foreground">Full name</dt>
+                    <dd class="text-sm">{{ '%s %s' % (user.first_name, user.last_name) }}</dd>
+                </div>
+                <div class="flex justify-between items-start py-3 border-b border-border">
+                    <dt class="font-medium text-sm text-muted-foreground">Email address</dt>
+                    <dd class="text-sm">{{ user.email }}</dd>
+                </div>
+                <div class="flex justify-between items-start py-3">
+                    <dt class="font-medium text-sm text-muted-foreground">Account type</dt>
+                    <dd class="text-sm">
+                        {{ user.role.name }}
+                        {% if user.is_admin() %}
+                            <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-amber-500/10 text-amber-600 border border-amber-500/30">Admin</span>
+                        {% endif %}
+                    </dd>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# Security Information — Last Login #}
+    <div class="rounded-lg border bg-card text-card-foreground shadow-sm mt-6">
+        <div class="p-6">
+            <h3 class="text-sm font-semibold mb-4">Security Information</h3>
+            <div class="space-y-4">
+                <div class="flex justify-between items-start py-3 border-b border-border">
+                    <dt class="font-medium text-sm text-muted-foreground">Last login</dt>
+                    <dd class="text-sm">
+                        {% set login_time = user.last_login_at|default(none, true) %}
+                        {% if login_time %}
+                            {{ login_time.strftime('%d %b %Y at %H:%M UTC') }}
+                        {% else %}
+                            <span class="text-muted-foreground">Last login tracking not available</span>
+                        {% endif %}
+                    </dd>
+                </div>
+                <div class="flex justify-between items-start py-3">
+                    <dt class="font-medium text-sm text-muted-foreground">Last login IP</dt>
+                    <dd class="text-sm">
+                        {% set login_ip = user.last_login_ip|default(none, true) %}
+                        {% if login_ip %}
+                            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">{{ login_ip }}</code>
+                        {% else %}
+                            <span class="text-muted-foreground">IP tracking not available</span>
+                        {% endif %}
+                    </dd>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# PLT-017: Notification Preferences #}
+    {% set notif_prefs = [
+        ('arb_decisions',       'ARB decisions',       'Receive notifications when an ARB decision is recorded for a solution you own.'),
+        ('solution_updates',    'Solution updates',    'Receive notifications when a solution you own advances to a new ADM phase.'),
+        ('assignment_changes',  'Assignment changes',  'Receive notifications when an ArchiMate element is assigned or re-assigned to you.'),
+        ('weekly_digest',       'Weekly digest',       'Receive a weekly summary of activity across your solutions and architecture portfolio.'),
+        ('mention_notifications','Mentions',           'Receive notifications when you are mentioned in a comment or review.')
+    ] %}
+    <div class="rounded-lg border bg-card text-card-foreground shadow-sm mt-6">
+        <div class="p-6">
+            <h3 class="text-sm font-semibold mb-1">Notification Preferences</h3>
+            <p class="text-xs text-muted-foreground mb-5">Choose which in-app notifications you want to receive.</p>
+            <form method="POST" action="{{ url_for('account.save_notification_preferences') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="space-y-4">
+                    {% for pref_key, pref_label, pref_desc in notif_prefs %}
+                        {% set is_enabled = user.get_notification_preference(pref_key) %}
+                        <div class="flex items-start justify-between gap-4 py-3 {% if not loop.last %}border-b border-border{% endif %}">
+                            <div class="flex-1 min-w-0">
+                                <label for="pref_{{ pref_key }}" class="text-sm font-medium cursor-pointer">{{ pref_label }}</label>
+                                <p class="text-xs text-muted-foreground mt-0.5">{{ pref_desc }}</p>
+                            </div>
+                            <div class="flex-shrink-0 pt-0.5">
+                                <button type="button"
+                                        id="pref_{{ pref_key }}_btn"
+                                        role="switch"
+                                        aria-checked="{{ 'true' if is_enabled else 'false' }}"
+                                        aria-labelledby="pref_{{ pref_key }}"
+                                        @click="
+                                            const btn = $el;
+                                            const checked = btn.getAttribute('aria-checked') === 'true';
+                                            btn.setAttribute('aria-checked', (!checked).toString());
+                                            const inp = document.getElementById('pref_{{ pref_key }}');
+                                            if (inp) inp.checked = !checked;
+                                            btn.classList.toggle('bg-primary', !checked);
+                                            btn.classList.toggle('bg-muted', checked);
+                                            btn.querySelector('span').classList.toggle('translate-x-5', !checked);
+                                            btn.querySelector('span').classList.toggle('translate-x-0', checked);
+                                        "
+                                        class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 {{ 'bg-primary' if is_enabled else 'bg-muted' }}">
+                                    <span class="inline-block h-4 w-4 transform rounded-full bg-background shadow transition-transform {{ 'translate-x-5' if is_enabled else 'translate-x-0' }} ml-0.5"></span>
+                                </button>
+                                <input type="checkbox"
+                                       id="pref_{{ pref_key }}"
+                                       name="{{ pref_key }}"
+                                       value="on"
+                                       class="sr-only"
+                                       {% if is_enabled %}checked{% endif %}>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+                <div class="mt-6 flex justify-end">
+                    <button type="submit"
+                            class="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 py-2">
+                        Save preferences
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+{% endmacro %}
+
+{% block content %}
+    <div class="max-w-7xl mx-auto">
+        {{ page_header(
+        title='Account Settings',
+        description='Manage your account settings and change your login information.'
+    ) }}
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-8">
+            <div class="md:col-span-1">
+                {{ navigation(endpoints) }}
+            </div>
+            <div class="md:col-span-3">
+                {% if form %}
+                    <div class="rounded-lg border bg-card text-card-foreground shadow-sm">
+                        <div class="p-6">
+                            {{ f.render_form(form) }}
+                        </div>
+                    </div>
+                {% else %}
+                    {{ user_info(user) }}
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {{ check.password_check('new_password', 0) }}
+{% endblock %}

@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blueprint — {{ solution.name }}</title>
+    <style><!-- inline-style-ok -->
+        :root {
+            --primary: #2563eb;
+            --muted: #6b7280;
+            --border: #e5e7eb;
+            --bg-light: #f9fafb;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+            font-size: 11pt;
+            line-height: 1.6;
+            color: #1f2937;
+            max-width: 210mm;
+            margin: 0 auto;
+            padding: 20mm;
+        }
+
+        @media print {
+            body { padding: 15mm; max-width: none; }
+            .no-print { display: none !important; }
+            .page-break { page-break-before: always; }
+            section { break-inside: avoid; }
+            @page { margin: 15mm 20mm; size: A4; }
+            @page :first { margin-top: 0; }
+        }
+
+        /* Print action bar */
+        .print-bar {
+            position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+            background: #1e293b; color: white; padding: 12px 24px;
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .print-bar button {
+            background: var(--primary); color: white; border: none;
+            padding: 8px 20px; border-radius: 6px; font-size: 13px;
+            font-weight: 600; cursor: pointer;
+        }
+        .print-bar button:hover { opacity: 0.9; }
+        .print-bar a { color: #93c5fd; text-decoration: none; font-size: 13px; }
+        .print-bar a:hover { text-decoration: underline; }
+
+        /* Cover page */
+        .cover {
+            min-height: 75vh; display: flex; flex-direction: column;
+            justify-content: center; padding: 40px 0;
+        }
+        .cover h1 { font-size: 28pt; font-weight: 700; color: #0f172a; margin-bottom: 8px; }
+        .cover .subtitle { font-size: 14pt; color: var(--muted); margin-bottom: 40px; }
+        .cover .meta-grid {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+            border-top: 2px solid var(--primary); padding-top: 24px;
+        }
+        .cover .meta-label { font-size: 9pt; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+        .cover .meta-value { font-size: 11pt; font-weight: 600; color: #1f2937; }
+
+        /* Completeness strip */
+        .completeness-strip {
+            display: flex; gap: 4px; margin: 24px 0;
+        }
+        .completeness-dot {
+            width: 24px; height: 24px; border-radius: 50%; display: flex;
+            align-items: center; justify-content: center; font-size: 7pt; font-weight: 700; color: white;
+        }
+        .completeness-dot.high { background: #22c55e; }
+        .completeness-dot.medium { background: #eab308; }
+        .completeness-dot.low { background: #ef4444; }
+        .completeness-dot.empty { background: #d1d5db; color: #6b7280; }
+
+        /* Maturity badge */
+        .maturity-badge {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 4px 12px; border-radius: 20px; font-size: 10pt; font-weight: 600;
+        }
+        .maturity-high { background: #dcfce7; color: #166534; }
+        .maturity-medium { background: #fef3c7; color: #92400e; }
+        .maturity-low { background: #fee2e2; color: #991b1b; }
+
+        /* TOC */
+        .toc { margin: 24px 0 40px; }
+        .toc h2 { font-size: 14pt; margin-bottom: 12px; color: #0f172a; }
+        .toc ol { padding-left: 20px; }
+        .toc li { margin-bottom: 6px; font-size: 10.5pt; color: var(--muted); }
+
+        /* Sections */
+        h2.section-title {
+            font-size: 16pt; font-weight: 700; color: #0f172a;
+            border-bottom: 2px solid var(--primary); padding-bottom: 8px;
+            margin: 32px 0 16px;
+        }
+        .section-meta {
+            display: flex; gap: 16px; margin-bottom: 12px; font-size: 9pt; color: var(--muted);
+        }
+        .section-meta .score {
+            font-weight: 700; padding: 2px 8px; border-radius: 10px;
+        }
+        .score-high { background: #dcfce7; color: #166534; }
+        .score-medium { background: #fef3c7; color: #92400e; }
+        .score-low { background: #fee2e2; color: #991b1b; }
+
+        h3 { font-size: 12pt; font-weight: 600; color: #374151; margin: 20px 0 8px; }
+        p, li { font-size: 10.5pt; margin-bottom: 8px; }
+
+        /* Tables */
+        table {
+            width: 100%; border-collapse: collapse; margin: 12px 0 24px;
+            font-size: 9.5pt;
+        }
+        th {
+            background: var(--bg-light); font-weight: 600; text-align: left;
+            padding: 8px 10px; border: 1px solid var(--border);
+            font-size: 8.5pt; text-transform: uppercase; letter-spacing: 0.03em; color: var(--muted);
+        }
+        td { padding: 7px 10px; border: 1px solid var(--border); vertical-align: top; }
+        tr:nth-child(even) td { background: #fafafa; }
+
+        /* Badges */
+        .badge {
+            display: inline-block; padding: 2px 8px; border-radius: 10px;
+            font-size: 8pt; font-weight: 600; text-transform: uppercase;
+        }
+        .badge-green { background: #dcfce7; color: #166534; }
+        .badge-amber { background: #fef3c7; color: #92400e; }
+        .badge-red { background: #fee2e2; color: #991b1b; }
+        .badge-blue { background: #dbeafe; color: #1e40af; }
+        .badge-gray { background: #f3f4f6; color: #6b7280; }
+
+        /* Narrative */
+        .narrative {
+            padding: 16px; background: var(--bg-light); border-radius: 6px;
+            border-left: 3px solid var(--primary); margin: 12px 0;
+            font-size: 10.5pt; white-space: pre-wrap;
+        }
+
+        /* Empty state */
+        .empty-state {
+            padding: 16px; background: var(--bg-light); border-radius: 6px;
+            color: var(--muted); font-style: italic; font-size: 10pt;
+            border-left: 3px solid var(--border);
+        }
+
+        /* Footer */
+        .doc-footer {
+            margin-top: 60px; padding-top: 16px;
+            border-top: 1px solid var(--border);
+            font-size: 8.5pt; color: var(--muted);
+            display: flex; justify-content: space-between;
+        }
+    </style>
+</head>
+<body>
+    <!-- Print action bar -->
+    <div class="print-bar no-print">
+        <div>
+            <strong>Solution Architecture Blueprint</strong> — {{ solution.name }}
+        </div>
+        <div style="display:flex;gap:12px;align-items:center;"><!-- inline-style-ok -->
+            <a href="{{ url_for('solution_design.view_solution', solution_id=solution.id) }}">Back to Blueprint</a>
+            <button id="btn-print-blueprint">Print / Save as PDF</button>
+        </div>
+    </div>
+    <div style="height:50px;" class="no-print"><!-- inline-style-ok --></div>
+
+    {# ═══════════════════════════════════════════════════════════ #}
+    {# COVER PAGE                                                  #}
+    {# ═══════════════════════════════════════════════════════════ #}
+    <div class="cover">
+        <h1>{{ solution.name }}</h1>
+        <div class="subtitle">Solution Architecture Blueprint</div>
+
+        {% set overall = scores.values()|map(attribute='overall', default=0)|list if scores else [] %}
+        {% set avg_score = (overall|sum / overall|length)|round|int if overall else 0 %}
+        <span class="maturity-badge {{ 'maturity-high' if avg_score >= 70 else ('maturity-medium' if avg_score >= 40 else 'maturity-low') }}">
+            Completeness: {{ avg_score }}%
+        </span>
+
+        <div class="meta-grid" style="margin-top:24px;"><!-- inline-style-ok -->
+            <div>
+                <div class="meta-label">Domain</div>
+                <div class="meta-value">{{ solution.business_domain or '—' }}</div>
+            </div>
+            <div>
+                <div class="meta-label">Type</div>
+                <div class="meta-value">{{ solution.solution_type or '—' }}</div>
+            </div>
+            <div>
+                <div class="meta-label">Status</div>
+                <div class="meta-value">{{ solution.governance_status or solution.status or '—' }}</div>
+            </div>
+            <div>
+                <div class="meta-label">ADM Phase</div>
+                <div class="meta-value">{{ solution.adm_phase or '—' }}</div>
+            </div>
+            <div>
+                <div class="meta-label">Created</div>
+                <div class="meta-value">{{ solution.created_at.strftime('%Y-%m-%d') if solution.created_at else '—' }}</div>
+            </div>
+            <div>
+                <div class="meta-label">Exported</div>
+                <div class="meta-value">{{ export_timestamp }}</div>
+            </div>
+        </div>
+
+        {# Completeness strip #}
+        <div style="margin-top:32px;"><!-- inline-style-ok -->
+            <div class="meta-label" style="margin-bottom:8px;"><!-- inline-style-ok -->Section Completeness</div>
+            <div class="completeness-strip">
+                {% for sec_id, sec_def in section_definitions.items() %}
+                    {% set s = scores.get(sec_id, {}).get('overall', 0) if scores else 0 %}
+                    <div class="completeness-dot {{ 'high' if s >= 70 else ('medium' if s >= 40 else ('low' if s > 0 else 'empty')) }}"
+                         title="{{ sec_id }}: {{ s }}%">{{ s }}</div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    {# ═══════════════════════════════════════════════════════════ #}
+    {# TABLE OF CONTENTS                                           #}
+    {# ═══════════════════════════════════════════════════════════ #}
+    <div class="page-break"></div>
+    <div class="toc">
+        <h2>Table of Contents</h2>
+        <ol>
+            {% set section_names = {
+                'executive_summary': 'Executive Summary',
+                'vision_motivation': 'Vision & Motivation',
+                'value_stream_map': 'Value Stream & Strategy',
+                'business_process_view': 'Business Process View',
+                'application_cooperation': 'Application Cooperation',
+                'data_information': 'Data & Information',
+                'deployment_view': 'Deployment View',
+                'network_communication': 'Network & Communication',
+                'gap_analysis': 'Gap Analysis',
+                'transition_roadmap': 'Transition Roadmap',
+                'work_packages': 'Work Packages',
+                'security_viewpoint': 'Security Viewpoint',
+                'nfr_satisfaction': 'NFR Satisfaction',
+                'requirements_traceability': 'Requirements Traceability'
+            } %}
+            {% for sec_id in section_definitions %}
+                {% set s = scores.get(sec_id, {}).get('overall', 0) if scores else 0 %}
+                <li>{{ section_names.get(sec_id, sec_id) }}
+                    <span class="badge {{ 'badge-green' if s >= 70 else ('badge-amber' if s >= 40 else 'badge-red') }}">{{ s }}%</span>
+                </li>
+            {% endfor %}
+        </ol>
+    </div>
+
+    {# ═══════════════════════════════════════════════════════════ #}
+    {# SECTIONS                                                    #}
+    {# ═══════════════════════════════════════════════════════════ #}
+    {% for sec_id, sec_def in section_definitions.items() %}
+    <div class="page-break"></div>
+    <section id="{{ sec_id }}">
+        {% set sec_name = section_names.get(sec_id, sec_id) %}
+        {% set sec_score = scores.get(sec_id, {}).get('overall', 0) if scores else 0 %}
+
+        <h2 class="section-title">{{ loop.index }}. {{ sec_name }}</h2>
+        <div class="section-meta">
+            {% if sec_def.get('viewpoint') %}<span>Viewpoint: {{ sec_def.viewpoint }}</span>{% endif %}
+            <span class="score {{ 'score-high' if sec_score >= 70 else ('score-medium' if sec_score >= 40 else 'score-low') }}">{{ sec_score }}%</span>
+        </div>
+
+        {# Narrative #}
+        {% set narrative = narratives.get(sec_id, '') if narratives else '' %}
+        {% if narrative %}
+            <div class="narrative">{{ narrative }}</div>
+        {% endif %}
+
+        {# Elements table #}
+        {% set sec_elements = section_elements.get(sec_id, []) %}
+        {% if sec_elements %}
+            <h3>Architecture Elements</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Type</th>
+                        <th>Layer</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for el in sec_elements %}
+                    <tr>
+                        <td><strong>{{ el.name or '—' }}</strong></td>
+                        <td>{{ el.element_type or el.type or '—' }}</td>
+                        <td>{{ el.layer or '—' }}</td>
+                        <td>{{ el.description or '—' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% elif sec_id != 'executive_summary' %}
+            <div class="empty-state">No architecture elements linked to this viewpoint yet.</div>
+        {% endif %}
+
+        {# SAD data sections #}
+        {% if sec_id == 'vision_motivation' and sad_data %}
+            {% if sad_data.get('integration_flows') %}
+                <h3>Integration Flows</h3>
+                <table>
+                    <thead><tr><th>Name</th><th>Source</th><th>Target</th><th>Protocol</th></tr></thead>
+                    <tbody>
+                        {% for f in sad_data.integration_flows %}
+                        <tr><td>{{ f.name or '—' }}</td><td>{{ f.source_system or '—' }}</td><td>{{ f.target_system or '—' }}</td><td>{{ f.protocol or '—' }}</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            {% endif %}
+        {% endif %}
+
+        {% if sec_id == 'application_cooperation' and sad_data %}
+            {% if sad_data.get('quality_attributes') %}
+                <h3>Quality Attributes</h3>
+                <table>
+                    <thead><tr><th>Attribute</th><th>Target</th><th>Priority</th></tr></thead>
+                    <tbody>
+                        {% for qa in sad_data.quality_attributes %}
+                        <tr><td>{{ qa.name or '—' }}</td><td>{{ qa.target_value or '—' }}</td><td>{{ qa.priority or '—' }}</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            {% endif %}
+            {% if sad_data.get('slas') %}
+                <h3>Service Level Agreements</h3>
+                <table>
+                    <thead><tr><th>SLA</th><th>Target</th><th>Measurement</th></tr></thead>
+                    <tbody>
+                        {% for sla in sad_data.slas %}
+                        <tr><td>{{ sla.name or '—' }}</td><td>{{ sla.target_value or '—' }}</td><td>{{ sla.measurement_method or '—' }}</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            {% endif %}
+        {% endif %}
+
+        {% if sec_id == 'transition_roadmap' and sad_data %}
+            {% if sad_data.get('investment_phases') %}
+                <h3>Investment Phases</h3>
+                <table>
+                    <thead><tr><th>#</th><th>Phase</th><th>Budget</th><th>Status</th></tr></thead>
+                    <tbody>
+                        {% for ip in sad_data.investment_phases %}
+                        <tr><td>{{ ip.phase_number or '—' }}</td><td>{{ ip.name or '—' }}</td><td>{{ ip.budget or '—' }}</td><td>{{ ip.status or '—' }}</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            {% endif %}
+        {% endif %}
+
+        {% if sec_id == 'gap_analysis' %}
+            {% if arb_ready and arb_ready.gaps %}
+                <h3>Identified Gaps</h3>
+                <ul>
+                    {% for gap in arb_ready.gaps %}
+                    <li>{{ gap }}</li>
+                    {% endfor %}
+                </ul>
+            {% endif %}
+        {% endif %}
+    </section>
+    {% endfor %}
+
+    {# ═══════════════════════════════════════════════════════════ #}
+    {# ARB READINESS                                               #}
+    {# ═══════════════════════════════════════════════════════════ #}
+    {% if arb_ready %}
+    <div class="page-break"></div>
+    <section>
+        <h2 class="section-title">ARB Readiness Assessment</h2>
+        <div class="section-meta">
+            <span class="badge {{ 'badge-green' if arb_ready.is_ready else 'badge-red' }}">
+                {{ 'READY' if arb_ready.is_ready else 'NOT READY' }}
+            </span>
+        </div>
+        {% if arb_ready.get('phase_checklist') or phase_checklist %}
+            <h3>Phase Checklist</h3>
+            <table>
+                <thead><tr><th>Phase</th><th>Status</th></tr></thead>
+                <tbody>
+                    {% for phase in (phase_checklist or arb_ready.get('phase_checklist', [])) %}
+                    <tr>
+                        <td>{{ phase.name }}</td>
+                        <td><span class="badge {{ 'badge-green' if phase.passed else 'badge-red' }}">{{ 'PASS' if phase.passed else 'FAIL' }}</span></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% endif %}
+    </section>
+    {% endif %}
+
+    {# ═══════════════════════════════════════════════════════════ #}
+    {# FOOTER                                                      #}
+    {# ═══════════════════════════════════════════════════════════ #}
+    <div class="doc-footer">
+        <span>A.R.C.H.I.E. — Solution Architecture Blueprint</span>
+        <span>Generated {{ export_timestamp }}</span>
+    </div>
+    <script nonce="{{ csp_nonce }}">
+    document.getElementById('btn-print-blueprint').addEventListener('click', function() { window.print(); });
+    </script>
+</body>
+</html>

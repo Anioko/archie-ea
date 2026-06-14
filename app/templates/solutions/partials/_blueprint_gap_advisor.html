@@ -1,0 +1,149 @@
+{# ── Blueprint Gap Advisor ──────────────────────────────────────────────────── #}
+{# Variables: solution, scores (dict of section_id -> {element, relationship,   #}
+{#            traceability, overall})                                             #}
+{# Shows a prioritised list of incomplete sections with specific guidance.       #}
+{# Collapsed by default unless > 3 sections are at 0%.                          #}
+{# Quick-add buttons call openAdd(entityType) on the parent blueprintPage()     #}
+{# Alpine scope — no extra event dispatch needed.                                #}
+
+{# Section → (entity_type, button_label) for quick-add. Only sections with     #}
+{# directly addable business entities are listed; ArchiMate-only sections omit. #}
+{% set _quickadd = {
+    'vision_motivation':        [('driver', '+ Driver'), ('goal', '+ Goal')],
+    'gap_analysis':             [('risk', '+ Risk')],
+    'nfr_satisfaction':         [('requirement', '+ NFR')],
+    'requirements_traceability':[('requirement', '+ Requirement')],
+    'transition_roadmap':       [('plateau', '+ Plateau')],
+} %}
+
+{% set _sections = [
+    ('executive_summary',        'Exec Summary',            'Write the executive summary — aim for 100+ words describing the problem, solution approach, and business value.'),
+    ('vision_motivation',        'Vision & Motivation',     'Add Business Drivers, Goals, and Architecture Principles to anchor the design rationale.'),
+    ('value_stream_map',         'Value Stream',            'Build the strategy chain: Goal → ValueStream (realization) → Capability (association) → Outcome (realization). Stages link via triggering. Without this chain the blueprint has no traceable path from business goal to delivered outcome.'),
+    ('business_process_view',    'Business Process',        'Document Business Processes, Business Functions, and the actors who perform them.'),
+    ('application_cooperation',  'Application Cooperation', 'Link Application Components and define integration interfaces and data exchange patterns.'),
+    ('data_information',         'Data & Information',      'Add Data Objects and Data Components; show how information flows and is governed.'),
+    ('deployment_view',          'Deployment',              'Define Deployment Nodes, System Software, and the infrastructure that runs this solution.'),
+    ('network_communication',    'Network & Comms',         'Map Network Components, Communication Paths, and connectivity between deployment nodes.'),
+    ('gap_analysis',             'Gap Analysis',            'Document current-state vs. target-state gaps — show what is missing and the impact of each gap.'),
+    ('transition_roadmap',       'Transition Roadmap',      'Add Transition States and Plateaus that show how the architecture evolves from now to target.'),
+    ('work_packages',            'Work Packages',           'Define Work Packages with owners, timelines, and cross-package dependencies.'),
+    ('security_viewpoint',       'Security',                'Document security controls, policies, trust boundaries, and threat mitigations.'),
+    ('nfr_satisfaction',         'Non-Functional Req.',     'List Non-Functional Requirements (performance, reliability, scalability) and how the design satisfies each.'),
+    ('requirements_traceability','Requirements Trace',      'Link Requirement elements to architecture elements to demonstrate end-to-end traceability.'),
+] %}
+
+{# Build gap list using namespace to mutate inside loop #}
+{% set _ns = namespace(gaps=[], n_zero=0, n_low=0) %}
+{% for _sid, _lbl, _hint in _sections %}
+    {% set _s = scores.get(_sid, {}) if scores else {} %}
+    {% set _pct = _s.get('overall', 0) if _s else 0 %}
+    {% if _pct < 80 %}
+        {% set _ns.gaps = _ns.gaps + [{'id': _sid, 'label': _lbl, 'hint': _hint, 'pct': _pct}] %}
+        {% if _pct == 0 %}{% set _ns.n_zero = _ns.n_zero + 1 %}{% endif %}
+        {% if _pct > 0 and _pct < 40 %}{% set _ns.n_low = _ns.n_low + 1 %}{% endif %}
+    {% endif %}
+{% endfor %}
+
+{% if _ns.gaps %}
+<div x-data="{ advisorOpen: {{ 'true' if _ns.n_zero > 3 else 'false' }} }"
+     class="mb-6"
+     id="bp-gap-advisor">
+
+    {# ── Collapsed trigger ── #}
+    <button type="button"
+            @click="advisorOpen = !advisorOpen"
+            class="w-full flex items-center justify-between px-4 py-2.5 rounded-xl
+                   border border-amber-500/30 bg-amber-500/5
+                   hover:bg-amber-500/10 transition-colors group">
+        <span class="flex items-center gap-2 flex-wrap text-sm">
+            <svg class="w-4 h-4 text-amber-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <span class="font-medium text-amber-700">Blueprint gaps</span>
+            <span class="text-muted-foreground text-xs">&middot;</span>
+            {% if _ns.n_zero > 0 %}
+            <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold
+                         bg-destructive/10 text-destructive border border-destructive/20">
+                {{ _ns.n_zero }} not started
+            </span>
+            {% endif %}
+            {% if _ns.n_low > 0 %}
+            <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold
+                         bg-amber-500/10 text-amber-700 border border-amber-500/20">
+                {{ _ns.n_low }} incomplete
+            </span>
+            {% endif %}
+            <span class="text-xs text-muted-foreground">
+                {{ _ns.gaps | length }} of {{ _sections | length }} sections need work
+            </span>
+        </span>
+        <svg class="w-4 h-4 text-muted-foreground transition-transform duration-200 shrink-0"
+             :class="advisorOpen ? 'rotate-180' : ''"
+             fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+        </svg>
+    </button>
+
+    {# ── Expanded gap cards ── #}
+    <div x-show="advisorOpen"
+         x-cloak
+         x-transition:enter="transition ease-out duration-150"
+         x-transition:enter-start="opacity-0 -translate-y-1"
+         x-transition:enter-end="opacity-100 translate-y-0"
+         class="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
+
+        {% for _g in _ns.gaps %}
+        <div class="flex items-start gap-3 px-4 py-3 rounded-lg border
+            {% if _g.pct == 0 %}border-border/60 bg-muted/20
+            {% elif _g.pct < 40 %}border-amber-500/20 bg-amber-500/5
+            {% else %}border-border/40 bg-muted/10{% endif %}">
+
+            {# Score pill #}
+            <div class="shrink-0 mt-0.5 flex flex-col items-center w-10">
+                <span class="text-xs font-bold leading-none
+                    {% if _g.pct == 0 %}text-muted-foreground/60
+                    {% elif _g.pct < 40 %}text-destructive
+                    {% else %}text-amber-600{% endif %}">{{ _g.pct }}%</span>
+                <div class="mt-1 w-10 h-1 bg-muted rounded-full overflow-hidden">
+                    <div class="h-full rounded-full transition-all
+                        {% if _g.pct == 0 %}bg-muted-foreground/30
+                        {% elif _g.pct < 40 %}bg-destructive
+                        {% else %}bg-amber-500{% endif %}"
+                         style="width: {{ [_g.pct, 4] | max }}%"></div>
+                </div>
+            </div>
+
+            {# Text + action #}
+            <div class="flex-1 min-w-0">
+                <div class="flex items-center justify-between gap-2">
+                    <span class="text-sm font-semibold text-foreground leading-tight">{{ _g.label }}</span>
+                    <button type="button"
+                            data-section-scroll="{{ _g.id }}"
+                            class="shrink-0 text-[10px] font-medium text-primary hover:underline whitespace-nowrap">
+                        Go ↓
+                    </button>
+                </div>
+                <p class="mt-0.5 text-xs text-muted-foreground leading-relaxed">{{ _g.hint }}</p>
+                {# Quick-add buttons for sections with directly addable entities #}
+                {% if _g.id in _quickadd %}
+                <div class="mt-1.5 flex flex-wrap gap-1">
+                    {% for _et, _el in _quickadd[_g.id] %}
+                    <button type="button"
+                            @click="openAdd('{{ _et }}')"
+                            class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium
+                                   bg-primary/10 text-primary border border-primary/20
+                                   hover:bg-primary/20 transition-colors">
+                        {{ _el }}
+                    </button>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+
+    </div>
+</div>
+{% endif %}

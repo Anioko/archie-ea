@@ -1,0 +1,470 @@
+{% extends 'layouts/admin_base.html' %}
+{% from 'components/modal.html' import modal %}
+
+{% block title %}AI Chat Persona Management{% endblock %}
+
+{% block content %}
+<div x-data="personaAdmin()" x-init="loadPersonas()">
+    <!-- Page Header -->
+    <div class="flex items-center justify-between mb-6">
+        <div>
+            <h1 class="text-2xl font-bold tracking-tight text-foreground">AI Chat Persona Management</h1>
+            <p class="text-sm text-muted-foreground mt-1">
+                View and override AI chat persona configurations. Overrides are stored in the database and take precedence over defaults.
+            </p>
+        </div>
+        <div class="flex items-center gap-2">
+            <span x-show="loading" x-cloak class="text-sm text-muted-foreground">Loading...</span>
+            <button type="button" @click="loadPersonas()"
+                    class="inline-flex items-center justify-center rounded-md text-sm font-medium
+                           ring-offset-background transition-colors
+                           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2
+                           border border-input bg-background hover:bg-accent hover:text-accent-foreground
+                           h-9 px-3"
+                    aria-label="Refresh persona list">
+                <i data-lucide="refresh-cw" class="h-4 w-4 mr-2" aria-hidden="true"></i>
+                Refresh
+            </button>
+        </div>
+    </div>
+
+    <!-- Error banner -->
+    <div x-show="errorMsg" x-cloak
+         class="mb-4 rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive"
+         role="alert">
+        <span x-text="errorMsg"></span>
+    </div>
+
+    <!-- Success banner -->
+    <div x-show="successMsg" x-cloak
+         class="mb-4 rounded-md border border-green-500/50 bg-green-500/10 p-3 text-sm text-emerald-700 dark:text-green-400"
+         role="status">
+        <span x-text="successMsg"></span>
+    </div>
+
+    <!-- Personas Table -->
+    <div class="rounded-xl border border-border bg-card text-card-foreground shadow-sm overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b border-border bg-muted/50">
+                        <th class="px-4 py-3 text-left font-medium text-muted-foreground">Name</th>
+                        <th class="px-4 py-3 text-left font-medium text-muted-foreground">Icon</th>
+                        <th class="px-4 py-3 text-left font-medium text-muted-foreground">Domain</th>
+                        <th class="px-4 py-3 text-left font-medium text-muted-foreground">Description</th>
+                        <th class="px-4 py-3 text-left font-medium text-muted-foreground">Status</th>
+                        <th class="px-4 py-3 text-right font-medium text-muted-foreground">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="persona in personas" :key="persona.key">
+                        <tr class="border-b border-border hover:bg-muted/30 transition-colors">
+                            <td class="px-4 py-3 font-medium text-foreground" x-text="persona.name"></td>
+                            <td class="px-4 py-3 text-muted-foreground">
+                                <i :data-lucide="persona.icon" class="h-4 w-4 inline-block" aria-hidden="true"></i>
+                                <span class="ml-1 text-xs" x-text="persona.icon"></span>
+                            </td>
+                            <td class="px-4 py-3">
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium
+                                             bg-primary/10 text-primary border border-primary/30"
+                                      x-text="persona.default_domain">
+                                </span>
+                            </td>
+                            <td class="px-4 py-3 text-muted-foreground max-w-xs truncate" x-text="persona.description"></td>
+                            <td class="px-4 py-3">
+                                <span x-show="persona.has_override" x-cloak
+                                      class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium
+                                             bg-amber-500/10 text-amber-600 border border-amber-500/30">
+                                    Overridden
+                                </span>
+                                <span x-show="!persona.has_override" x-cloak
+                                      class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium
+                                             bg-green-500/10 text-emerald-600 border border-green-500/30">
+                                    Default
+                                </span>
+                            </td>
+                            <td class="px-4 py-3 text-right">
+                                <div class="flex items-center justify-end gap-2">
+                                    <button type="button" @click="openEdit(persona)"
+                                            class="inline-flex items-center justify-center rounded-md text-sm font-medium
+                                                   ring-offset-background transition-colors
+                                                   focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2
+                                                   border border-input bg-background hover:bg-accent hover:text-accent-foreground
+                                                   h-8 px-3"
+                                            :aria-label="'Edit ' + persona.name">
+                                        <i data-lucide="pencil" class="h-3.5 w-3.5 mr-1.5" aria-hidden="true"></i>
+                                        Edit
+                                    </button>
+                                    <button type="button" x-show="persona.has_override" x-cloak
+                                            @click="openReset(persona)"
+                                            class="inline-flex items-center justify-center rounded-md text-sm font-medium
+                                                   ring-offset-background transition-colors
+                                                   focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2
+                                                   border border-destructive/50 text-destructive hover:bg-destructive/10
+                                                   h-8 px-3"
+                                            :aria-label="'Reset ' + persona.name + ' to defaults'">
+                                        <i data-lucide="rotate-ccw" class="h-3.5 w-3.5 mr-1.5" aria-hidden="true"></i>
+                                        Reset
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    </template>
+                    <tr x-show="!loading && personas.length === 0" x-cloak>
+                        <td colspan="6" class="px-4 py-8 text-center text-muted-foreground">
+                            No persona configurations found.
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block modals %}
+<!-- Edit Persona Modal -->
+{% call modal(id='edit-persona-modal', title='Edit Persona Configuration', size='lg') %}
+<div x-data x-init="
+    document.getElementById('edit-persona-modal').addEventListener('modal:opened', function() {
+        /* Lucide icons inside modal need refresh */
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    });
+">
+    <form @submit.prevent="$dispatch('persona-save')">
+        <!-- Persona Name (read-only) -->
+        <div class="mb-4">
+            <label class="block text-sm font-medium text-foreground mb-1">Persona Name</label>
+            <input type="text" readonly
+                   class="w-full rounded-md border border-input bg-muted px-3 py-2 text-sm text-muted-foreground cursor-not-allowed"
+                   :value="document.querySelector('[x-data*=personaAdmin]')?._x_dataStack?.[0]?.editForm?.name || ''"
+                   aria-label="Persona name (read-only)">
+        </div>
+
+        <!-- Description -->
+        <div class="mb-4">
+            <label for="edit-description" class="block text-sm font-medium text-foreground mb-1">Description</label>
+            <textarea id="edit-description"
+                      rows="2"
+                      class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground
+                             placeholder:text-muted-foreground
+                             focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background"
+                      placeholder="Persona description..."
+                      x-model="$root.closest('[x-data]')._x_dataStack ? '' : ''"
+                      aria-label="Persona description"></textarea>
+        </div>
+
+        <!-- System Prompt Override -->
+        <div class="mb-4">
+            <label for="edit-system-prompt" class="block text-sm font-medium text-foreground mb-1">System Prompt Override</label>
+            <p class="text-xs text-muted-foreground mb-2">
+                Custom system prompt that overrides the default. Leave empty to use the built-in prompt.
+            </p>
+            <textarea id="edit-system-prompt"
+                      rows="6"
+                      class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground font-mono
+                             placeholder:text-muted-foreground
+                             focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background"
+                      placeholder="You are an enterprise architect specializing in..."
+                      aria-label="System prompt override"></textarea>
+        </div>
+
+        <!-- Sample Prompts -->
+        <div class="mb-4">
+            <label class="block text-sm font-medium text-foreground mb-1">Sample Prompts</label>
+            <p class="text-xs text-muted-foreground mb-2">
+                Suggested prompts displayed to users for this persona.
+            </p>
+            <div id="edit-sample-prompts-list" class="space-y-2">
+                <!-- Populated by JS -->
+            </div>
+            <button type="button" id="btn-add-sample-prompt"
+                    class="mt-2 inline-flex items-center justify-center rounded-md text-sm font-medium
+                           ring-offset-background transition-colors
+                           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2
+                           border border-input bg-background hover:bg-accent hover:text-accent-foreground
+                           h-8 px-3"
+                    aria-label="Add sample prompt">
+                <i data-lucide="plus" class="h-3.5 w-3.5 mr-1.5" aria-hidden="true"></i>
+                Add Prompt
+            </button>
+        </div>
+
+        <!-- Footer -->
+        <div class="flex items-center justify-end gap-2 pt-4 border-t border-border">
+            <button type="button"
+                    data-modal-close="edit-persona-modal"
+                    class="inline-flex items-center justify-center rounded-md text-sm font-medium
+                           ring-offset-background transition-colors
+                           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2
+                           border border-input bg-background hover:bg-accent hover:text-accent-foreground
+                           h-9 px-4">
+                Cancel
+            </button>
+            <button type="submit"
+                    id="btn-save-persona"
+                    class="inline-flex items-center justify-center rounded-md text-sm font-medium
+                           ring-offset-background transition-colors
+                           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2
+                           bg-primary text-primary-foreground hover:bg-primary/90
+                           h-9 px-4">
+                Save Changes
+            </button>
+        </div>
+    </form>
+</div>
+{% endcall %}
+
+<!-- Reset Confirmation Modal -->
+{% call modal(id='reset-persona-modal', title='Reset Persona to Defaults', size='sm') %}
+<div>
+    <p class="text-sm text-muted-foreground mb-4">
+        Are you sure you want to reset <strong id="reset-persona-name"></strong> to its default configuration?
+        This will remove all custom overrides.
+    </p>
+    <div class="flex items-center justify-end gap-2 pt-4 border-t border-border">
+        <button type="button"
+                data-modal-close="reset-persona-modal"
+                class="inline-flex items-center justify-center rounded-md text-sm font-medium
+                       ring-offset-background transition-colors
+                       focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2
+                       border border-input bg-background hover:bg-accent hover:text-accent-foreground
+                       h-9 px-4">
+            Cancel
+        </button>
+        <button type="button"
+                id="btn-confirm-reset"
+                class="inline-flex items-center justify-center rounded-md text-sm font-medium
+                       ring-offset-background transition-colors
+                       focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2
+                       bg-destructive text-destructive-foreground hover:bg-destructive/90
+                       h-9 px-4">
+            Reset to Defaults
+        </button>
+    </div>
+</div>
+{% endcall %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('alpine:init', function() {
+    Alpine.data('personaAdmin', function() {
+        return {
+            personas: [],
+            loading: false,
+            errorMsg: '',
+            successMsg: '',
+            editForm: {
+                key: '',
+                name: '',
+                description: '',
+                system_prompt: '',
+                sample_prompts: []
+            },
+            resetKey: '',
+            resetName: '',
+
+            async loadPersonas() {
+                this.loading = true;
+                this.errorMsg = '';
+                try {
+                    const resp = await fetch('/ai-chat/admin/prompts/data');
+                    if (!resp.ok) {
+                        if (resp.status === 403) {
+                            this.errorMsg = 'Access denied. Admin privileges required.';
+                            return;
+                        }
+                        throw new Error('Failed to load personas');
+                    }
+                    const data = await resp.json();
+                    this.personas = data.personas || [];
+                    this.$nextTick(function() {
+                        if (typeof lucide !== 'undefined') lucide.createIcons();
+                    });
+                } catch (err) {
+                    this.errorMsg = err.message || 'Failed to load persona data';
+                } finally {
+                    this.loading = false;
+                }
+            },
+
+            openEdit(persona) {
+                this.errorMsg = '';
+                this.successMsg = '';
+                this.editForm = {
+                    key: persona.key,
+                    name: persona.name,
+                    description: persona.description || '',
+                    system_prompt: persona.system_prompt_override || '',
+                    sample_prompts: (persona.sample_prompts || []).slice()
+                };
+                /* Populate form fields in the modal */
+                let descEl = document.getElementById('edit-description');
+                let sysEl = document.getElementById('edit-system-prompt');
+                let nameEl = document.querySelector('#edit-persona-modal input[readonly]');
+                if (descEl) descEl.value = this.editForm.description;
+                if (sysEl) sysEl.value = this.editForm.system_prompt;
+                if (nameEl) nameEl.value = this.editForm.name;
+                this._renderSamplePrompts();
+                Platform.modal.open('edit-persona-modal');
+            },
+
+            _renderSamplePrompts() {
+                let container = document.getElementById('edit-sample-prompts-list');
+                if (!container) return;
+                container.innerHTML = '';
+                let self = this;
+                this.editForm.sample_prompts.forEach(function(prompt, idx) {
+                    self._addPromptRow(container, prompt, idx);
+                });
+            },
+
+            _addPromptRow(container, value, idx) {
+                let row = document.createElement('div');
+                row.className = 'flex items-center gap-2';
+                row.setAttribute('data-prompt-idx', idx);
+
+                let input = document.createElement('input');
+                input.type = 'text';
+                input.value = value;
+                input.className = 'flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground ' +
+                    'placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring';
+                input.setAttribute('aria-label', 'Sample prompt ' + (idx + 1));
+                input.setAttribute('data-prompt-input', '');
+
+                let removeBtn = document.createElement('button');
+                removeBtn.type = 'button';
+                removeBtn.className = 'inline-flex items-center justify-center rounded-md h-8 w-8 ' +
+                    'border border-input bg-background hover:bg-destructive/10 hover:text-destructive transition-colors';
+                removeBtn.setAttribute('aria-label', 'Remove prompt ' + (idx + 1));
+                removeBtn.innerHTML = '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M18 6L6 18M6 6l12 12"/></svg>';
+                removeBtn.addEventListener('click', function() {
+                    row.remove();
+                });
+
+                row.appendChild(input);
+                row.appendChild(removeBtn);
+                container.appendChild(row);
+            },
+
+            _collectSamplePrompts() {
+                let inputs = document.querySelectorAll('#edit-sample-prompts-list [data-prompt-input]');
+                let prompts = [];
+                inputs.forEach(function(input) {
+                    let val = input.value.trim();
+                    if (val) prompts.push(val);
+                });
+                return prompts;
+            },
+
+            async savePersona() {
+                let descEl = document.getElementById('edit-description');
+                let sysEl = document.getElementById('edit-system-prompt');
+                let payload = {
+                    description: descEl ? descEl.value.trim() : '',
+                    system_prompt: sysEl ? sysEl.value.trim() : '',
+                    sample_prompts: this._collectSamplePrompts()
+                };
+
+                try {
+                    let resp = await fetch('/ai-chat/admin/prompts/' + this.editForm.key + '/update', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify(payload)
+                    });
+                    let data = await resp.json();
+                    if (!resp.ok) {
+                        this.errorMsg = data.error || 'Failed to save changes';
+                        return;
+                    }
+                    /* Update local state */
+                    let idx = this.personas.findIndex(function(p) { return p.key === data.persona.key; });
+                    if (idx >= 0) this.personas[idx] = data.persona;
+                    Platform.modal.close('edit-persona-modal');
+                    this.successMsg = 'Persona "' + this.editForm.name + '" updated successfully.';
+                    setTimeout(function() { this.successMsg = ''; }.bind(this), 4000);
+                } catch (err) {
+                    this.errorMsg = err.message || 'Network error saving persona';
+                }
+            },
+
+            openReset(persona) {
+                this.errorMsg = '';
+                this.successMsg = '';
+                this.resetKey = persona.key;
+                this.resetName = persona.name;
+                let nameEl = document.getElementById('reset-persona-name');
+                if (nameEl) nameEl.textContent = persona.name;
+                Platform.modal.open('reset-persona-modal');
+            },
+
+            async confirmReset() {
+                try {
+                    let resp = await fetch('/ai-chat/admin/prompts/' + this.resetKey + '/reset', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'}
+                    });
+                    let data = await resp.json();
+                    if (!resp.ok) {
+                        this.errorMsg = data.error || 'Failed to reset persona';
+                        return;
+                    }
+                    let idx = this.personas.findIndex(function(p) { return p.key === data.persona.key; });
+                    if (idx >= 0) this.personas[idx] = data.persona;
+                    Platform.modal.close('reset-persona-modal');
+                    this.successMsg = 'Persona "' + this.resetName + '" reset to defaults.';
+                    setTimeout(function() { this.successMsg = ''; }.bind(this), 4000);
+                } catch (err) {
+                    this.errorMsg = err.message || 'Network error resetting persona';
+                }
+            }
+        };
+    });
+});
+
+/* Wire modal form events after DOM ready */
+document.addEventListener('DOMContentLoaded', function() {
+    /* Save button and form submit */
+    document.addEventListener('persona-save', function() {
+        let adminEl = document.querySelector('[x-data*="personaAdmin"]');
+        if (adminEl && adminEl._x_dataStack) {
+            adminEl._x_dataStack[0].savePersona();
+        }
+    });
+
+    let saveBtn = document.getElementById('btn-save-persona');
+    if (saveBtn) {
+        saveBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            document.dispatchEvent(new CustomEvent('persona-save'));
+        });
+    }
+
+    /* Reset confirm button */
+    let resetBtn = document.getElementById('btn-confirm-reset');
+    if (resetBtn) {
+        resetBtn.addEventListener('click', function() {
+            let adminEl = document.querySelector('[x-data*="personaAdmin"]');
+            if (adminEl && adminEl._x_dataStack) {
+                adminEl._x_dataStack[0].confirmReset();
+            }
+        });
+    }
+
+    /* Add sample prompt button */
+    let addBtn = document.getElementById('btn-add-sample-prompt');
+    if (addBtn) {
+        addBtn.addEventListener('click', function() {
+            let container = document.getElementById('edit-sample-prompts-list');
+            if (!container) return;
+            let idx = container.children.length;
+            let adminEl = document.querySelector('[x-data*="personaAdmin"]');
+            if (adminEl && adminEl._x_dataStack) {
+                adminEl._x_dataStack[0]._addPromptRow(container, '', idx);
+            }
+        });
+    }
+});
+</script>
+{% endblock %}
