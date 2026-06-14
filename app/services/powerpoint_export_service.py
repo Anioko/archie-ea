@@ -57,7 +57,19 @@ def _truncate_to_words(text: str, max_words: int) -> str:
     return " ".join(words[:max_words]) + " …"
 
 
+def _num_score(score):
+    """Coerce a score (sometimes a dict of metrics) to a number, or None."""
+    if isinstance(score, dict):
+        for _k in ("completeness", "overall_score", "score", "value", "percentage"):
+            _v = score.get(_k)
+            if isinstance(_v, (int, float)):
+                return _v
+        return None
+    return score if isinstance(score, (int, float)) else None
+
+
 def _badge_colour(score: Optional[float]) -> RGBColor:
+    score = _num_score(score)
     if score is None:
         return _AMBER
     if score >= 80:
@@ -68,6 +80,7 @@ def _badge_colour(score: Optional[float]) -> RGBColor:
 
 
 def _badge_label(score: Optional[float]) -> str:
+    score = _num_score(score)
     if score is None:
         return "N/A"
     return f"{int(round(score))}%"

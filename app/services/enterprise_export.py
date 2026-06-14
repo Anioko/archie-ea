@@ -124,7 +124,8 @@ class EnterpriseExportService:
         title = slide.shapes.title
         subtitle = slide.placeholders[1]
         title.text = solution.name
-        subtitle.text = f"Solution Architecture Document\n{solution.created_at.strftime('%B %d, %Y')}"
+        _created = solution.created_at.strftime('%B %d, %Y') if solution.created_at else ""
+        subtitle.text = f"Solution Architecture Document\n{_created}"
         
         # Slide 2: Executive Summary
         bullet_layout = prs.slide_layouts[1]
