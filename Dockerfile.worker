@@ -1,21 +1,41 @@
-FROM python:3.8-alpine
+FROM python:3.11-slim
 
-
-# Packages required for psycopg2
-RUN apk update && apk add postgresql-dev gcc python3-dev musl-dev
-
-#MAINTANER Your Name "youremail@domain.tld"
-ENV MAIL_USERNAME=yourmail@test.com
-ENV MAIL_PASSWORD=testpass
-ENV SECRET_KEY=SuperRandomStringToBeUsedForEncryption
-# We copy just the requirements.txt first to leverage Docker cache
-COPY ./requirements.txt /app/requirements.txt
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONIOENCODING=UTF-8 \
+    PATH=/venv/bin:$PATH
 
 WORKDIR /app
-RUN pip3 install -r requirements.txt
-ENV PYTHONIOENCODING=UTF-8
-RUN pip3 install sqlalchemy_utils==0.38.3 flask_dance==5.1.0 Flask-Caching==1.11.1 python-gitlab==3.10.0
 
+# System build deps for native wheels. Must be a glibc base (not Alpine/musl):
+# faiss-cpu — required to boot — ships manylinux (glibc) wheels only, so an
+# Alpine image fails with "No matching distribution found for faiss-cpu".
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libpq-dev \
+    curl \
+    ca-certificates \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create and use virtualenv
+RUN python -m venv /venv
+
+# Install requirements (cache layer). Mirror the server image's dependency set.
+COPY requirements.txt /app/requirements.txt
+RUN /venv/bin/pip install --upgrade pip setuptools wheel && \
+    /venv/bin/pip install -r /app/requirements.txt && \
+    /venv/bin/pip install \
+        sqlalchemy_utils==0.38.3 \
+        flask_dance==5.1.0 \
+        Flask-Caching==1.11.1 \
+        python-gitlab==3.10.0
+
+# Copy application
 COPY . /app
 
-ENTRYPOINT ["python3", "-u" ,"manage.py", "run_worker"]
+# Non-root user
+RUN useradd --create-home appuser && chown -R appuser /app
+USER appuser
+
+# RQ background worker
+ENTRYPOINT ["python", "-u", "manage.py", "run_worker"]
