@@ -115,13 +115,29 @@ def vendors_create():
             return render_template("vendors/create_simple.html")
 
         try:
+            import re
+
+            from flask_login import current_user
+
+            # code and seed_source_id are NOT NULL + unique; the form doesn't collect
+            # them, so derive a stable unique code from the name (VEND-ACME-CLOUD-INC).
+            base_code = ("VEND-" + re.sub(r"[^A-Z0-9]+", "-", name.upper()).strip("-"))[:44] or "VEND"
+            code = base_code
+            suffix = 1
+            while VendorOrganization.query.filter_by(code=code).first():
+                suffix += 1
+                code = f"{base_code[:42]}-{suffix}"
+
             vendor = VendorOrganization(
                 name=name,
+                code=code,
+                seed_source_id=f"manual:{code}",
                 vendor_type=vendor_type or None,
                 description=description or None,
                 website=website or None,
                 headquarters_location=headquarters_location or None,
                 status="active",
+                created_by_id=getattr(current_user, "id", None),
             )
             db.session.add(vendor)
             db.session.commit()
