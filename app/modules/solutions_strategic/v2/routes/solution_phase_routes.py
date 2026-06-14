@@ -14,6 +14,26 @@ logger = logging.getLogger(__name__)
 
 _PRIORITY_NAMES = {"critical": 1, "highest": 1, "high": 2, "medium": 3, "low": 4, "minor": 5}
 
+_SCALE_NAMES = {
+    "critical": 5, "very high": 5, "highest": 5, "high": 4,
+    "medium": 3, "moderate": 3, "low": 2, "very low": 1, "minimal": 1,
+}
+
+
+def _coerce_scale(raw):
+    """Coerce a 1-5 impact/urgency value (int or named level) to an int (5=highest).
+
+    The driver UI/API sends either an int (1-5) or a named level ("high"/...), but
+    impact_level/urgency are Integer columns, so a raw string 500s the insert
+    ("invalid input syntax for type integer"). Returns None when unset/unparseable.
+    """
+    if isinstance(raw, str):
+        raw = _SCALE_NAMES.get(raw.strip().lower(), raw.strip())
+    try:
+        return int(raw) if raw not in (None, "") else None
+    except (TypeError, ValueError):
+        return None
+
 
 def _coerce_priority(raw):
     """Coerce a priority value to the integer the model expects (1=highest..5).
@@ -1036,8 +1056,8 @@ def create_solution_driver(solution_id):
         name=data.get("name", ""),
         description=data.get("description", ""),
         driver_type=dtype,
-        impact_level=data.get("impact_level") or None,
-        urgency=data.get("urgency") or None,
+        impact_level=_coerce_scale(data.get("impact_level")),
+        urgency=_coerce_scale(data.get("urgency")),
         source=data.get("source", ""),
     )
     db.session.add(driver)
@@ -1065,7 +1085,10 @@ def update_solution_driver(solution_id, driver_id):
     data = request.get_json()
     for field in ["name", "description", "impact_level", "urgency", "source"]:
         if field in data:
-            setattr(driver, field, data[field])
+            value = data[field]
+            if field in ("impact_level", "urgency"):
+                value = _coerce_scale(value)
+            setattr(driver, field, value)
     if "driver_type" in data:
         from app.models.solution_architect_models import DriverType
         try:
