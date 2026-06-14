@@ -301,7 +301,13 @@ class SeedManagementService:
         )
         seeder = ManufacturingDomainHierarchySeeder()
         result = seeder.seed()
-        return result if isinstance(result, dict) else {"success": True, "message": "Manufacturing domains seeded"}
+        if isinstance(result, dict):
+            # The seeder reports status="success" but no boolean "success" key, which
+            # the orchestrator checks (r.get("success")). Normalize it so an idempotent
+            # re-run ("Created 0 domains, updated 39") isn't reported as a failure.
+            result.setdefault("success", result.get("status") == "success")
+            return result
+        return {"success": True, "message": "Manufacturing domains seeded"}
 
     def _seed_capability_vendor_mappings(self):
         """Seed capability-vendor junction tables from domain JSON files."""
