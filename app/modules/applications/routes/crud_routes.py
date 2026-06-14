@@ -144,7 +144,11 @@ def application_create():
     if not is_valid:
         validation_errors.append(error)
     else:
-        name = sanitize_html(validated_name)
+        # Plain-text field: do NOT HTML-sanitize. sanitize_html() entity-escapes
+        # ('&' -> '&amp;') and Jinja autoescapes again on render, which double-
+        # escapes the displayed name (e.g. "Billing & Invoicing" -> "Billing &amp;
+        # Invoicing"). Validation above + template autoescape already make it safe.
+        name = validated_name
 
     # Validate optional string fields
     description = data.get("description")
@@ -152,7 +156,7 @@ def application_create():
     if not is_valid:
         validation_errors.append(error)
     else:
-        description = sanitize_html(validated_desc) if validated_desc else None
+        description = validated_desc or None
 
     application_code = data.get("application_code")
     is_valid, validated_code, error = validate_string(
@@ -161,7 +165,7 @@ def application_create():
     if not is_valid:
         validation_errors.append(error)
     else:
-        application_code = sanitize_html(validated_code) if validated_code else None
+        application_code = validated_code or None
 
     component_type = data.get("application_type")
     is_valid, validated_type, error = validate_string(
