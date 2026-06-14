@@ -12,10 +12,14 @@ through the people who actually use the product.
 | Persona | What they come to do | Where in the product |
 |---|---|---|
 | **Enterprise Architect** | Understand the estate: capabilities, applications, health | Dashboard, Capability Map, Architecture views |
+| **ArchiMate Modeler** | Model the enterprise across all ArchiMate layers | Architecture elements (Strategy→Technology), Traceability matrix, Composer |
 | **Application / Portfolio Manager** | Rationalise the app portfolio; cut redundancy and cost | Applications, Rationalization (TIME/6R), Overlap detection, bulk import |
 | **Solution Architect** | Design a solution within governance, AI-assisted | Solution journey (drivers/goals/requirements), AI architect, ArchiMate composer |
+| **Transformation / Programme Manager** | Run change as governed programmes; sequence capability uplift | Programmes (brownfield/greenfield), Capability Roadmap |
 | **Procurement / Vendor Manager** | Manage the vendor landscape and concentration risk | Vendors (CRUD), vendor analysis, contracts |
 | **Architecture Review Board (ARB)** | Govern every design decision with an audit trail | ARB submit → review → approve, governance scorecard |
+| **Data Steward** | Bring the estate in and keep it clean | Bulk import (Excel/CSV), Data Stewardship (classify/baseline) |
+| **Platform Administrator** | Operate the platform | Users & Organizations, RBAC, System Configuration |
 | **CTO / Executive** | See portfolio & governance health at a glance | Dashboard, Health Scorecard, EA briefing |
 
 ## Storyboard (the recorded sequence)
@@ -25,20 +29,33 @@ through the people who actually use the product.
 3. **Enterprise Architect**
    - Dashboard — *your workspace; portfolio health at a glance.*
    - Capability Map — *the business capabilities mapped across the enterprise.*
-4. **Application Portfolio Manager**
+4. **ArchiMate Modeler**
+   - Architecture Elements — *the full ArchiMate model across every layer.*
+   - Traceability — *requirements traced across the architecture.*
+5. **Application Portfolio Manager**
    - Applications — *every application: owner, lifecycle, business domain.*
    - Rationalization — *redundancy & retirement candidates (TIME / 6R).*
    - Overlap detection — *find duplicate / overlapping applications.*
-5. **Solution Architect**
+6. **Solution Architect**
    - Solution detail — *TOGAF solution design: drivers, goals, requirements.*
    - AI Chat — *AI architect, grounded in your portfolio data.*
    - ArchiMate composer — *model the architecture in ArchiMate 3.2.*
-6. **Procurement / Vendor Manager**
+7. **Transformation / Programme Manager**
+   - Programmes — *brownfield & greenfield transformation programmes.*
+   - Capability Roadmap — *sequence capability uplift over time.*
+8. **Procurement / Vendor Manager**
    - Vendors — *vendor portfolio, contracts and concentration risk.*
-7. **Architecture Review Board / CTO**
+9. **Architecture Review Board**
    - Reviews — *submit, review and approve, with a full audit trail.*
+10. **Data Steward**
+   - Bulk import — *bring applications/capabilities/ArchiMate in via Excel/CSV.*
+   - Data Stewardship — *classify, baseline and steward the data.*
+11. **Platform Administrator**
+   - Users & Organizations — *RBAC and tenant administration.*
+   - System Configuration — *reference-data seeding and platform settings.*
+12. **CTO / Executive**
    - Health Scorecard — *architecture & governance maturity, scored.*
-8. **Title card** — *Self-host it. AGPL-3.0 · github.com/Anioko/archie-ea.*
+13. **Title card** — *Self-host it. AGPL-3.0 · github.com/Anioko/archie-ea.*
 
 ## How the video is recorded
 
