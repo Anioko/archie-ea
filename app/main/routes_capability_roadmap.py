@@ -1,5 +1,6 @@
 """Enhanced Capability-Based Roadmap Routes - Option 1"""
 
+from werkzeug.exceptions import HTTPException
 import logging
 import re
 from datetime import datetime, timedelta
@@ -70,6 +71,10 @@ def get_grouped_capabilities():
             }
         )
 
+    except HTTPException:
+
+        raise
+
     except Exception as e:
         return jsonify({"error": "An internal error occurred"}), 500
 
@@ -93,6 +98,10 @@ def get_capability_domains():
         ]
 
         return jsonify({"success": True, "domains": domain_list, "total_count": len(domain_list)})
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         return jsonify({"error": "An internal error occurred"}), 500
@@ -132,6 +141,10 @@ def check_capability_duplicate():
 
         return jsonify({"success": True, "is_duplicate": False, "message": "No duplicate found"})
 
+    except HTTPException:
+
+        raise
+
     except Exception as e:
         return jsonify({"error": "An internal error occurred"}), 500
 
@@ -151,6 +164,8 @@ def list_users_for_assignment():
                 "total": len(users),
             }
         )
+    except HTTPException:
+        raise
     except Exception as e:
         return jsonify({"error": "An internal error occurred"}), 500
 
@@ -173,6 +188,8 @@ def list_capabilities():
                 "total": len(capabilities),
             }
         )
+    except HTTPException:
+        raise
     except Exception as e:
         return jsonify({"error": "An internal error occurred"}), 500
 
@@ -338,6 +355,10 @@ def create_capability():
             ),
             201,
         )
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         db.session.rollback()
@@ -538,6 +559,8 @@ def get_capability_work_packages():
             )
 
         return jsonify({"work_packages": work_packages_list})
+    except HTTPException:
+        raise
     except Exception as e:
         return jsonify({"error": "An internal error occurred"}), 500
 
@@ -616,6 +639,10 @@ def create_capability_work_package():
                 },
             }
         )
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         db.session.rollback()
@@ -700,6 +727,10 @@ def update_capability_work_package(wp_id):
             }
         )
 
+    except HTTPException:
+
+        raise
+
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": "An internal error occurred"}), 500
@@ -718,6 +749,10 @@ def delete_capability_work_package(wp_id):
         db.session.commit()
 
         return jsonify({"success": True, "message": f"Work package {wp_id} deleted"})
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         db.session.rollback()
@@ -753,6 +788,10 @@ def get_work_package_tasks(wp_id):
                 "total_tasks": len(tasks),
             }
         )
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         return jsonify({"error": "An internal error occurred"}), 500
@@ -797,6 +836,10 @@ def create_work_package_task(wp_id):
         db.session.commit()
 
         return jsonify({"success": True, "task": new_task.to_dict()}), 201
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         db.session.rollback()
@@ -847,6 +890,10 @@ def update_work_package_task(wp_id, task_id):
 
         return jsonify({"success": True, "task": task.to_dict()})
 
+    except HTTPException:
+
+        raise
+
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": "An internal error occurred"}), 500
@@ -865,6 +912,10 @@ def delete_work_package_task(wp_id, task_id):
         db.session.commit()
 
         return jsonify({"success": True, "message": f"Task {task_id} deleted"})
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         db.session.rollback()
@@ -900,6 +951,10 @@ def get_work_package_deliverables(wp_id):
                 "total_deliverables": len(deliverables),
             }
         )
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         return jsonify({"error": "An internal error occurred"}), 500
@@ -937,6 +992,10 @@ def create_work_package_deliverable(wp_id):
         db.session.commit()
 
         return jsonify({"success": True, "deliverable": new_deliverable.to_dict()}), 201
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         db.session.rollback()
@@ -989,6 +1048,10 @@ def update_work_package_deliverable(wp_id, deliverable_id):
 
         return jsonify({"success": True, "deliverable": deliverable.to_dict()})
 
+    except HTTPException:
+
+        raise
+
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": "An internal error occurred"}), 500
@@ -1012,6 +1075,10 @@ def delete_work_package_deliverable(wp_id, deliverable_id):
         db.session.commit()
 
         return jsonify({"success": True, "message": f"Deliverable {deliverable_id} deleted"})
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         db.session.rollback()
@@ -1123,6 +1190,10 @@ def get_work_package_details(wp_id):
                 },
             }
         )
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         return jsonify({"error": "An internal error occurred"}), 500

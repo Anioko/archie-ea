@@ -4,6 +4,7 @@ API v1 Applications Endpoints
 Standardized application management API endpoints following PRD - 003.
 """
 
+from werkzeug.exceptions import HTTPException
 from flask import Blueprint, request
 from flask_login import login_required
 
@@ -142,6 +143,10 @@ def get_applications():
             }
         )
 
+    except HTTPException:
+
+        raise
+
     except Exception as e:
         return error_response(
             message="Failed to retrieve applications",
@@ -219,6 +224,10 @@ def get_application(application_id):
         }
 
         return success_response(app_data)
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         return error_response(
@@ -311,6 +320,10 @@ def create_application():
             },
             status_code=201,
         )
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         db.session.rollback()
@@ -413,6 +426,10 @@ def update_application(application_id):
             }
         )
 
+    except HTTPException:
+
+        raise
+
     except Exception as e:
         db.session.rollback()
         return error_response(
@@ -470,6 +487,10 @@ def delete_application(application_id):
         return success_response(
             {"message": "Application deleted successfully", "id": str(application_id)}
         )
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         db.session.rollback()
@@ -636,6 +657,10 @@ def get_application_acm(application_id):
             }
         )
 
+    except HTTPException:
+
+        raise
+
     except Exception as e:
         return error_response(
             message="Failed to retrieve ACM data",
@@ -698,6 +723,10 @@ def delete_application_acm_mapping(application_id, mapping_id):
                 "mapping_id": mapping_id,
             }
         )
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         db.session.rollback()
@@ -810,6 +839,10 @@ def add_application_acm_mapping(application_id):
             status_code=201,
         )
 
+    except HTTPException:
+
+        raise
+
     except Exception as e:
         db.session.rollback()
         return error_response(
@@ -835,5 +868,7 @@ def api_application_tco(app_id):
         breakdown = service.calculate_tco_breakdown(app_obj)
         roi = service.calculate_roi_score(app_obj)
         return success_response(data={"tco": breakdown, "roi": roi})
+    except HTTPException:
+        raise
     except Exception as e:
         return error_response(message=str(e), code="TCO_ERROR", status_code=500)
