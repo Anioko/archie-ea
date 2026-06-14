@@ -3,6 +3,7 @@ Vendor Options Analysis API Routes
 
 Provides API endpoints for vendor comparison and analysis with export capabilities.
 """
+from werkzeug.exceptions import HTTPException
 import csv
 import io
 import json
@@ -213,6 +214,8 @@ def api_list_vendor_analyses():
                 "has_prev": pagination.has_prev,
             },
         })
+    except HTTPException:
+        raise
     except Exception as e:
         current_app.logger.error(f"Error listing analyses: {e}", exc_info=True)
         return jsonify({"error": "An internal error occurred"}), 500
@@ -276,6 +279,8 @@ def api_get_vendor_analysis_detail(analysis_id):
                 ),
             }
         )
+    except HTTPException:
+        raise
     except Exception as e:
         current_app.logger.error(f"Error getting analysis detail: {e}", exc_info=True)
         return jsonify({"error": "An internal error occurred"}), 500
@@ -340,6 +345,8 @@ def api_update_vendor_analysis(analysis_id):
 
         db.session.commit()
         return jsonify({"success": True, "analysis_id": analysis.id})
+    except HTTPException:
+        raise
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"Error updating analysis: {e}", exc_info=True)
@@ -364,6 +371,8 @@ def api_delete_vendor_analysis(analysis_id):
         db.session.delete(analysis)
         db.session.commit()
         return jsonify({"success": True})
+    except HTTPException:
+        raise
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"Error deleting analysis: {e}", exc_info=True)
@@ -406,6 +415,8 @@ def api_add_vendor_option(analysis_id):
         db.session.add(option)
         db.session.commit()
         return jsonify({"success": True, "option_id": option.id}), 201
+    except HTTPException:
+        raise
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"Error adding vendor option: {e}", exc_info=True)
@@ -437,6 +448,8 @@ def api_delete_vendor_option(analysis_id, option_id):
         db.session.delete(option)
         db.session.commit()
         return jsonify({"success": True})
+    except HTTPException:
+        raise
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"Error deleting vendor option: {e}", exc_info=True)
@@ -496,6 +509,8 @@ def api_get_option_scores(analysis_id, option_id):
 
         scores = {field: getattr(option, field, None) for field in MANUAL_SCORE_FIELDS}
         return jsonify({"success": True, "scores": scores})
+    except HTTPException:
+        raise
     except Exception as e:
         current_app.logger.error(f"Error getting option scores: {e}", exc_info=True)
         return jsonify({"error": "An internal error occurred"}), 500
@@ -576,6 +591,8 @@ def api_update_option_scores(analysis_id, option_id):
         if errors:
             result["warnings"] = errors
         return jsonify(result)
+    except HTTPException:
+        raise
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"Error updating option scores: {e}", exc_info=True)
@@ -614,6 +631,8 @@ def api_run_scoring(analysis_id):
         db.session.commit()
 
         return jsonify({"success": True, "status": analysis.status})
+    except HTTPException:
+        raise
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"Error running scoring: {e}", exc_info=True)
@@ -696,6 +715,8 @@ def api_record_decision(analysis_id):
                                 plan.target_app_name = (
                                     f"{vendor_name} (from analysis: {analysis.name})"
                                 )
+                    except HTTPException:
+                        raise
                     except Exception as link_err:
                         current_app.logger.warning(
                             f"Rationalization linkage skipped: {link_err}"
@@ -719,6 +740,8 @@ def api_record_decision(analysis_id):
                 "approval_status": analysis.approval_status,
             }
         )
+    except HTTPException:
+        raise
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"Error recording decision: {e}", exc_info=True)
@@ -774,6 +797,8 @@ def api_create_vendor_analysis():
                         db.session.add(capability)
                         db.session.flush()
                         capability_id = capability.id
+            except HTTPException:
+                raise
             except Exception as cap_err:
                 current_app.logger.warning(f"Capability resolution failed: {cap_err}")
 
@@ -836,6 +861,8 @@ def api_create_vendor_analysis():
                     weight_multiplier=2.0 if imp == "critical" else 1.0,
                 )
                 db.session.add(req)
+        except HTTPException:
+            raise
         except Exception as seed_err:
             current_app.logger.warning(
                 f"Auto-seed requirements skipped: {seed_err}"
@@ -844,6 +871,10 @@ def api_create_vendor_analysis():
         db.session.commit()
 
         return jsonify({"success": True, "analysis_id": analysis.id, "status": analysis.status})
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         db.session.rollback()
@@ -871,6 +902,10 @@ def api_get_vendor_comparison(analysis_id):
         return jsonify(
             {"vendors": vendors, "analysis_id": analysis.id, "analysis_name": analysis.name}
         )
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         current_app.logger.error(f"Error getting vendor comparison: {str(e)}")
@@ -903,6 +938,8 @@ def _ensure_fulfillment_column():
                 )
             )
             db.session.commit()
+    except HTTPException:
+        raise
     except Exception:
         db.session.rollback()
 
@@ -963,6 +1000,8 @@ def api_list_requirements(analysis_id):
                 _serialize_requirement(r, vendor_ids) for r in requirements
             ],
         })
+    except HTTPException:
+        raise
     except Exception as e:
         current_app.logger.error(f"Error listing requirements: {e}", exc_info=True)
         return jsonify({"error": "An internal error occurred"}), 500
@@ -1026,6 +1065,8 @@ def api_create_requirement(analysis_id):
             "success": True,
             "requirement": _serialize_requirement(req, vendor_ids),
         }), 201
+    except HTTPException:
+        raise
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"Error creating requirement: {e}", exc_info=True)
@@ -1103,6 +1144,8 @@ def api_update_requirement(analysis_id, req_id):
             "success": True,
             "requirement": _serialize_requirement(req, vendor_ids),
         })
+    except HTTPException:
+        raise
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"Error updating requirement: {e}", exc_info=True)
@@ -1132,6 +1175,8 @@ def api_delete_requirement(analysis_id, req_id):
         db.session.delete(req)
         db.session.commit()
         return jsonify({"success": True})
+    except HTTPException:
+        raise
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"Error deleting requirement: {e}", exc_info=True)
@@ -1198,6 +1243,8 @@ def api_set_fulfillment(analysis_id, req_id):
         db.session.commit()
 
         return jsonify({"success": True, "fulfillment": fulfillment})
+    except HTTPException:
+        raise
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"Error setting fulfillment: {e}", exc_info=True)
@@ -1241,6 +1288,10 @@ def api_get_vendor_results(analysis_id):
                 "analysis_name": analysis.name,
             }
         )
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         current_app.logger.error(f"Error getting vendor results: {str(e)}")
@@ -1325,6 +1376,10 @@ def api_export_vendor_analysis(analysis_id):
                 "available_formats": ["csv", "xlsx"]
             }), 501
 
+    except HTTPException:
+
+        raise
+
     except Exception as e:
         current_app.logger.error(f"Error exporting vendor analysis: {str(e)}", exc_info=True)
         return jsonify({"error": "An internal error occurred"}), 500
@@ -1337,6 +1392,8 @@ def api_get_export_history(analysis_id):
     try:
         # For now, return empty array (can be enhanced with export tracking table)
         return jsonify([])
+    except HTTPException:
+        raise
     except Exception as e:
         current_app.logger.error(f"Error getting export history: {str(e)}")
         return jsonify({"error": "An internal error occurred"}), 500
@@ -1357,6 +1414,10 @@ def api_get_capabilities():
                 for cap in capabilities
             ]
         )
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         current_app.logger.error(f"Error getting capabilities: {str(e)}")
@@ -1479,6 +1540,10 @@ def api_get_vendors_by_capabilities():
 
         return jsonify(vendor_list)
 
+    except HTTPException:
+
+        raise
+
     except Exception as e:
         current_app.logger.error(f"Error getting vendors by capabilities: {str(e)}")
         return jsonify({"error": "An internal error occurred"}), 500
@@ -1528,6 +1593,8 @@ def api_get_business_domains():
                 svc._seed_business_domains()
                 domains = BusinessDomain.query.order_by(BusinessDomain.name).all()
                 current_app.logger.info(f"Auto-seeded {len(domains)} business domains")
+            except HTTPException:
+                raise
             except Exception as seed_err:
                 current_app.logger.warning(f"Auto-seed failed: {seed_err}")
 
@@ -1542,6 +1609,10 @@ def api_get_business_domains():
             result.append(domain_data)
 
         return jsonify(result)
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         current_app.logger.error(f"Error getting business domains: {str(e)}")
@@ -1593,6 +1664,10 @@ def api_get_value_streams():
         current_app.logger.info(f"Returning {len(value_streams)} value streams for {domain.code}")
 
         return jsonify(value_streams)
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         current_app.logger.error(f"Error getting value streams: {str(e)}")
@@ -1666,12 +1741,18 @@ def api_get_related_capabilities():
                         "specialization_type": getattr(cap, "specialization_type", "") or "",
                     }
                 )
+            except HTTPException:
+                raise
             except Exception as cap_error:
                 current_app.logger.error(f"Error processing capability {cap.id}: {str(cap_error)}")
                 continue
 
         current_app.logger.info(f"Returning {len(result)} capabilities")
         return jsonify(result)
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         current_app.logger.error(f"Error getting related capabilities: {str(e)}")
@@ -1824,6 +1905,10 @@ def api_get_unified_capabilities():
             ]
         )
 
+    except HTTPException:
+
+        raise
+
     except Exception as e:
         current_app.logger.error(f"Error getting capabilities: {str(e)}")
         return jsonify({"error": "An internal error occurred"}), 500
@@ -1862,6 +1947,10 @@ def api_get_capability_levels():
 
         return jsonify(level_info)
 
+    except HTTPException:
+
+        raise
+
     except Exception as e:
         current_app.logger.error(f"Error getting capability levels: {str(e)}")
         return jsonify({"error": "An internal error occurred"}), 500
@@ -1886,6 +1975,10 @@ def api_get_vendor_organizations():
                 for vendor in vendors
             ]
         )
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         current_app.logger.error(f"Error getting vendor organizations: {str(e)}")
@@ -1927,6 +2020,10 @@ def api_get_vendor_products():
                 for product in products
             ]
         )
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         current_app.logger.error(f"Error getting vendor products: {str(e)}")
@@ -1980,6 +2077,10 @@ def api_get_vendor_provenance(analysis_id):
                 "results": results,
             },
         })
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         current_app.logger.error(f"Error getting vendor provenance: {str(e)}")
@@ -2054,6 +2155,8 @@ def api_list_scenarios(analysis_id):
 
         scenarios = [_serialize_scenario(s) for s in analysis.scenarios]
         return jsonify({"success": True, "scenarios": scenarios})
+    except HTTPException:
+        raise
     except Exception as e:
         current_app.logger.error(f"Error listing scenarios: {e}", exc_info=True)
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
@@ -2103,6 +2206,8 @@ def api_create_scenario(analysis_id):
         db.session.commit()
 
         return jsonify({"success": True, "scenario": _serialize_scenario(scenario)}), 201
+    except HTTPException:
+        raise
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"Error creating scenario: {e}", exc_info=True)
@@ -2131,6 +2236,8 @@ def api_delete_scenario(analysis_id, scenario_id):
         db.session.delete(scenario)
         db.session.commit()
         return jsonify({"success": True})
+    except HTTPException:
+        raise
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"Error deleting scenario: {e}", exc_info=True)
@@ -2180,6 +2287,8 @@ def api_save_current_as_scenario(analysis_id):
         db.session.commit()
 
         return jsonify({"success": True, "scenario": _serialize_scenario(scenario)}), 201
+    except HTTPException:
+        raise
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"Error saving current scenario: {e}", exc_info=True)
@@ -2222,6 +2331,8 @@ def api_list_stakeholders(analysis_id):
 
         stakeholders = [_serialize_stakeholder(si) for si in analysis.stakeholder_inputs]
         return jsonify({"success": True, "stakeholders": stakeholders})
+    except HTTPException:
+        raise
     except Exception as e:
         current_app.logger.error(f"Error listing stakeholders: {e}", exc_info=True)
         return jsonify({"error": "An internal error occurred"}), 500
@@ -2269,6 +2380,8 @@ def api_invite_stakeholder(analysis_id):
         db.session.commit()
 
         return jsonify({"success": True, "stakeholder": _serialize_stakeholder(si)}), 201
+    except HTTPException:
+        raise
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"Error inviting stakeholder: {e}", exc_info=True)
@@ -2320,6 +2433,8 @@ def api_submit_stakeholder_scores(analysis_id, input_id):
         db.session.commit()
 
         return jsonify({"success": True, "stakeholder": _serialize_stakeholder(si)})
+    except HTTPException:
+        raise
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"Error submitting stakeholder scores: {e}", exc_info=True)
@@ -2383,6 +2498,8 @@ def api_get_stakeholder_consensus(analysis_id):
             "vendor_consensus": consensus,
             "vendor_preferences": vendor_preferences,
         })
+    except HTTPException:
+        raise
     except Exception as e:
         current_app.logger.error(f"Error computing consensus: {e}", exc_info=True)
         return jsonify({"error": "An internal error occurred"}), 500
@@ -2408,6 +2525,8 @@ def api_remove_stakeholder(analysis_id, input_id):
         db.session.commit()
 
         return jsonify({"success": True})
+    except HTTPException:
+        raise
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"Error removing stakeholder: {e}", exc_info=True)

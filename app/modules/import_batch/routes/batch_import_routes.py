@@ -200,6 +200,8 @@ def create_job():
                 "error": "Invalid file or parameters. Please check your file format (CSV, Excel, or JSON).",
             }
         ), 400
+    except HTTPException:
+        raise
     except Exception as e:
         sanitized_error = handle_import_error(
             error=e,
@@ -260,6 +262,8 @@ def analyze_import():
             user_id=current_user.id
         )
         return jsonify({"success": False, "error": "Invalid request parameters"}), 400
+    except HTTPException:
+        raise
     except Exception as e:
         sanitized_error = handle_import_error(
             error=e,
@@ -339,6 +343,8 @@ def list_jobs():
             }
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         sanitized_error = handle_import_error(
             error=e,
@@ -375,6 +381,8 @@ def get_job(job_id):
             }
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         sanitized_error = handle_import_error(
             error=e,
@@ -410,6 +418,8 @@ def get_job_progress(job_id):
             }
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         sanitized_error = handle_import_error(
             error=e,
@@ -473,6 +483,8 @@ def start_job(job_id):
         return jsonify({"success": False, "error": "Access denied"}), 403
     except ValueError as e:
         return jsonify({"success": False, "error": "Invalid request parameters"}), 400
+    except HTTPException:
+        raise
     except Exception as e:
         sanitized_error = handle_import_error(
             error=e,
@@ -516,6 +528,8 @@ def get_task_status(job_id, task_id):
 
         return jsonify(status)
 
+    except HTTPException:
+        raise
     except Exception as e:
         sanitized_error = handle_import_error(
             error=e,
@@ -699,6 +713,8 @@ def stream_job_progress(job_id):
                         },
                     )
 
+        except HTTPException:
+            raise
         except Exception as e:
             sanitized_error = handle_import_error(
                 error=e,
@@ -865,6 +881,8 @@ def _process_batch_with_events(batch, job):
                     },
                 )
 
+            except HTTPException:
+                raise
             except Exception as e:
                 # Rollback the application savepoint
                 db.session.rollback()
@@ -934,6 +952,8 @@ def _process_batch_with_events(batch, job):
             },
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         sanitized_error = handle_import_error(
             error=e,
@@ -1071,6 +1091,8 @@ def pause_job(job_id):
         return jsonify({"success": False, "error": "Access denied"}), 403
     except ValueError as e:
         return jsonify({"success": False, "error": "Invalid request parameters"}), 400
+    except HTTPException:
+        raise
     except Exception as e:
         sanitized_error = handle_import_error(
             error=e,
@@ -1104,6 +1126,8 @@ def resume_job(job_id):
         return jsonify({"success": False, "error": "Access denied"}), 403
     except ValueError as e:
         return jsonify({"success": False, "error": "Invalid request parameters"}), 400
+    except HTTPException:
+        raise
     except Exception as e:
         sanitized_error = handle_import_error(
             error=e,
@@ -1140,6 +1164,8 @@ def cancel_job(job_id):
         return jsonify({"success": False, "error": "Access denied"}), 403
     except ValueError as e:
         return jsonify({"success": False, "error": "Invalid request parameters"}), 400
+    except HTTPException:
+        raise
     except Exception as e:
         sanitized_error = handle_import_error(
             error=e,
@@ -1170,6 +1196,8 @@ def delete_job(job_id):
 
     except PermissionError as e:
         return jsonify({"success": False, "error": "Access denied"}), 403
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error deleting job: {e}", exc_info=True)
         return jsonify({"success": False, "error": "Failed to delete job"}), 500
@@ -1201,6 +1229,8 @@ def list_batches(job_id):
             }
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error listing batches: {e}", exc_info=True)
         return jsonify({"success": False, "error": "Failed to list batches"}), 500
@@ -1228,6 +1258,8 @@ def get_batch(batch_id):
             }
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error getting batch: {e}", exc_info=True)
         return jsonify({"success": False, "error": "Failed to get batch"}), 500
@@ -1269,6 +1301,8 @@ def get_batch_elements(batch_id):
             }
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error getting batch elements: {e}", exc_info=True)
         return jsonify({"success": False, "error": "Failed to get elements"}), 500
@@ -1317,6 +1351,8 @@ def approve_batch(batch_id):
 
     except ValueError as e:
         return jsonify({"success": False, "error": "Invalid request parameters"}), 400
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error approving batch: {e}", exc_info=True)
         return jsonify({"success": False, "error": "Failed to approve batch"}), 500
@@ -1352,6 +1388,8 @@ def reject_batch(batch_id):
 
     except ValueError as e:
         return jsonify({"success": False, "error": "Invalid request parameters"}), 400
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error rejecting batch: {e}", exc_info=True)
         return jsonify({"success": False, "error": "Failed to reject batch"}), 500
@@ -1383,6 +1421,8 @@ def commit_batch(batch_id):
 
     except ValueError as e:
         return jsonify({"success": False, "error": "Invalid request parameters"}), 400
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error committing batch: {e}", exc_info=True)
         return jsonify({"success": False, "error": "Failed to commit batch"}), 500
@@ -1411,6 +1451,8 @@ def retry_batch(batch_id):
 
     except ValueError as e:
         return jsonify({"success": False, "error": "Invalid request parameters"}), 400
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error retrying batch: {e}", exc_info=True)
         return jsonify({"success": False, "error": "Failed to retry batch"}), 500
@@ -1444,6 +1486,8 @@ def auto_approve_batch(batch_id):
             }
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error auto-approving: {e}", exc_info=True)
         return jsonify({"success": False, "error": "Failed to auto-approve"}), 500
@@ -1511,6 +1555,8 @@ def update_element(element_id):
             }
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error modifying element: {e}", exc_info=True)
         return jsonify({"success": False, "error": "Failed to modify element"}), 500
@@ -1541,6 +1587,8 @@ def approve_element(element_id):
 
     except ValueError as e:
         return jsonify({"success": False, "error": "Invalid request parameters"}), 400
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error approving element: {e}", exc_info=True)
         return jsonify({"success": False, "error": "Failed to approve element"}), 500
@@ -1574,6 +1622,8 @@ def reject_element(element_id):
 
     except ValueError as e:
         return jsonify({"success": False, "error": "Invalid request parameters"}), 400
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error rejecting element: {e}", exc_info=True)
         return jsonify({"success": False, "error": "Failed to reject element"}), 500
@@ -1619,6 +1669,8 @@ def process_single_batch(job_id, batch_id):
             }
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error processing batch: {e}", exc_info=True)
         return jsonify(
@@ -1658,6 +1710,8 @@ def get_job_preview(job_id):
             }
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error generating preview for job {job_id}: {e}", exc_info=True)
         return jsonify({"success": False, "error": "Failed to generate preview"}), 500
@@ -1696,6 +1750,8 @@ def resolve_import_conflicts(job_id):
             }
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error resolving conflicts for job {job_id}: {e}", exc_info=True)
         return jsonify({"success": False, "error": "Failed to save resolutions"}), 500

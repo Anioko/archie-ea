@@ -17,6 +17,7 @@ RELATIONSHIP:
 Phase 2: Route consolidation (2 → 1) with full preservation
 """
 
+from werkzeug.exceptions import HTTPException
 import json
 import logging  # dead-code-ok
 from datetime import datetime
@@ -93,6 +94,10 @@ def run_enterprise_detection():
         else:
             return jsonify(result), 400
 
+    except HTTPException:
+
+        raise
+
     except Exception as e:
         current_app.logger.error(f"Enterprise detection route error: {str(e)}")
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
@@ -110,6 +115,10 @@ def get_enterprise_analysis(application_id):
         else:
             return jsonify(result), 400
 
+    except HTTPException:
+
+        raise
+
     except Exception as e:
         current_app.logger.error(f"Enterprise analysis route error: {str(e)}")
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
@@ -123,6 +132,10 @@ def get_enterprise_groups():
         groups = unified_service.get_duplicate_groups("enterprise")
         return jsonify({"success": True, "groups": groups}), 200
 
+    except HTTPException:
+
+        raise
+
     except Exception as e:
         current_app.logger.error(f"Enterprise groups route error: {str(e)}")
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
@@ -135,6 +148,10 @@ def get_enterprise_runs():
     try:
         runs = unified_service.get_detection_runs("enterprise")
         return jsonify({"success": True, "runs": runs}), 200
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         current_app.logger.error(f"Enterprise runs route error: {str(e)}")
@@ -192,6 +209,10 @@ def run_simple_detection():
         else:
             return jsonify(result), 400
 
+    except HTTPException:
+
+        raise
+
     except Exception as e:
         current_app.logger.error(f"Simple detection route error: {str(e)}")
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
@@ -212,6 +233,10 @@ def run_hybrid_detection():
         else:
             return jsonify(result), 400
 
+    except HTTPException:
+
+        raise
+
     except Exception as e:
         current_app.logger.error(f"Hybrid detection route error: {str(e)}")
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
@@ -224,6 +249,10 @@ def get_simple_groups():
     try:
         groups = unified_service.get_duplicate_groups("simple")
         return jsonify({"success": True, "groups": groups}), 200
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         current_app.logger.error(f"Simple groups route error: {str(e)}")
@@ -249,6 +278,10 @@ def get_simple_runs():
             runs_data.append(run_dict)
         return jsonify({"success": True, "runs": runs_data}), 200
 
+    except HTTPException:
+
+        raise
+
     except Exception as e:
         current_app.logger.error(f"Simple runs route error: {str(e)}")
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
@@ -265,6 +298,10 @@ def cleanup_stale_data():
             return jsonify(result), 200
         else:
             return jsonify(result), 400
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         current_app.logger.error(f"Cleanup route error: {str(e)}")
@@ -297,6 +334,10 @@ def delete_duplicates(group_id):
             return jsonify(result), 200
         else:
             return jsonify(result), 400
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         current_app.logger.error(f"Delete duplicates route error: {str(e)}")
@@ -346,6 +387,10 @@ def bulk_delete_duplicates_api():
                         f"Group {group_id}: {result.get('error', 'Unknown error')}"
                     )
 
+            except HTTPException:
+
+                raise
+
             except Exception as e:
                 results["failed_groups"].append(group_id_str)
                 current_app.logger.error(f"Error processing group {group_id_str}: {e}")
@@ -355,6 +400,10 @@ def bulk_delete_duplicates_api():
             results["success"] = len(results["successful_groups"]) > 0
 
         return jsonify(results), 200
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         current_app.logger.error(f"Bulk delete duplicates error: {str(e)}")
@@ -372,6 +421,10 @@ def get_group_savings(group_id):
 
         savings = unified_service._estimate_group_savings(group)
         return jsonify({"success": True, "savings": savings}), 200
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         current_app.logger.error(f"Savings route error: {str(e)}")
@@ -436,6 +489,10 @@ def get_simple_statistics():
             }
         )
 
+    except HTTPException:
+
+        raise
+
     except Exception as e:
         current_app.logger.error(f"Simple statistics route error: {str(e)}")
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
@@ -450,6 +507,10 @@ def get_simple_groups_api():
             "simple", include_applications=False
         )
         return jsonify({"success": True, "groups": groups})
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         current_app.logger.error(f"Simple groups API route error: {str(e)}")
@@ -466,6 +527,8 @@ def run_simple_detection_api():
             db.session.execute(  # tenant-exempt: system table (existence check)
                 db.text("SELECT 1 FROM unified_duplicate_groups LIMIT 1")  # tenant-exempt
             )
+        except HTTPException:
+            raise
         except Exception as e:
             current_app.logger.warning("Consolidation tables not found: %s", e)
             return (
@@ -507,6 +570,8 @@ def run_simple_detection_api():
                         "note": "Enhanced results are stored in duplicate_groups table. Use /duplicate-detection/ to view.",
                     }
                 )
+            except HTTPException:
+                raise
             except Exception as e:
                 db.session.rollback()  # Ensure session is clean
                 current_app.logger.error(f"Enhanced detection failed: {e}")
@@ -543,6 +608,8 @@ def run_simple_detection_api():
                         "method": "hybrid",
                     }
                 )
+            except HTTPException:
+                raise
             except Exception as e:
                 db.session.rollback()  # Ensure session is clean
                 current_app.logger.error(f"Hybrid detection failed: {e}")
@@ -586,6 +653,10 @@ def run_simple_detection_api():
                     "warning": run.get("warning"),
                 }
             )
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         db.session.rollback()  # Ensure session is clean
@@ -680,6 +751,10 @@ def find_similar_applications_api(app_id):
             }
         )
 
+    except HTTPException:
+
+        raise
+
     except Exception as e:
         current_app.logger.error(f"Find similar apps API error: {e}")
         import traceback
@@ -764,6 +839,8 @@ def simple_group_detail(group_id):
             from flask import url_for
 
             dashboard_registry_url = url_for("dynamic_dashboards.model_registry_index")
+        except HTTPException:
+            raise
         except Exception as e:
             current_app.logger.debug("Could not resolve dashboard registry URL: %s", e)
             dashboard_registry_url = "/auto-dashboard/registry"
@@ -829,6 +906,10 @@ def simple_group_detail(group_id):
             dashboard_registry_url=dashboard_registry_url,
         )
 
+    except HTTPException:
+
+        raise
+
     except Exception as e:
         current_app.logger.error(f"Error viewing consolidation group: {e}")
         return "Group not found", 404
@@ -872,6 +953,10 @@ def run_unified_detection():
         else:
             return jsonify(result), 400
 
+    except HTTPException:
+
+        raise
+
     except Exception as e:
         current_app.logger.error(f"Unified detection route error: {str(e)}")
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
@@ -886,6 +971,10 @@ def get_unified_groups():
         groups = unified_service.get_duplicate_groups(mode)
         return jsonify({"success": True, "groups": groups}), 200
 
+    except HTTPException:
+
+        raise
+
     except Exception as e:
         current_app.logger.error(f"Unified groups route error: {str(e)}")
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
@@ -899,6 +988,10 @@ def get_unified_runs():
         mode = request.args.get("mode", "all")
         runs = unified_service.get_detection_runs(mode)
         return jsonify({"success": True, "runs": runs}), 200
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         current_app.logger.error(f"Unified runs route error: {str(e)}")
@@ -932,6 +1025,10 @@ def get_unified_stats():
 
         return jsonify({"success": True, "stats": stats}), 200
 
+    except HTTPException:
+
+        raise
+
     except Exception as e:
         current_app.logger.error(f"Unified stats route error: {str(e)}")
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
@@ -952,6 +1049,10 @@ def duplicate_dashboard():
             )
 
         return render_template("duplicate_detection/dashboard.html")
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         current_app.logger.error(
@@ -1006,6 +1107,8 @@ def ai_dashboard():
             performance_metrics=ai_stats,
             ai_unavailable=False,
         )
+    except HTTPException:
+        raise
     except Exception as e:
         current_app.logger.error(f"Error loading AI dashboard: {e}")
         return render_template(
@@ -1059,6 +1162,10 @@ def ai_analyze():
             )
         else:
             return jsonify(result), 500
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         current_app.logger.error(f"AI analysis failed: {e}")
@@ -1115,6 +1222,10 @@ def ai_insights(run_id):
         return render_template(
             "dedupe/ai_insights.html", run=run, ai_insights=ai_insights
         )
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         current_app.logger.error(f"Error loading AI insights: {e}")
@@ -1182,6 +1293,8 @@ def api_ai_detect():
     except ValueError as e:
         current_app.logger.warning(f"Invalid AI detection parameters: {e}")
         return jsonify({"success": False, "error": "Invalid detection parameters"}), 400
+    except HTTPException:
+        raise
     except Exception as e:
         current_app.logger.error(f"AI detection API failed: {e}")
         return jsonify(
@@ -1250,6 +1363,10 @@ def api_feedback():
 
         return jsonify({"success": True, "message": "Feedback processed successfully"})
 
+    except HTTPException:
+
+        raise
+
     except Exception as e:
         current_app.logger.error(f"Feedback processing failed: {e}")
         return jsonify(
@@ -1267,6 +1384,8 @@ def api_performance():
 
         metrics = ai_detection_service.get_performance_metrics()
         return jsonify({"success": True, "metrics": metrics})
+    except HTTPException:
+        raise
     except Exception as e:
         current_app.logger.error(f"Error getting performance metrics: {e}")
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
@@ -1318,6 +1437,10 @@ def api_compare_strategies():
                 else:
                     comparison_results[strategy] = {"error": result["error"]}
 
+            except HTTPException:
+
+                raise
+
             except Exception as e:
                 current_app.logger.error(f"Strategy {strategy} comparison failed: {e}")
                 comparison_results[strategy] = {"error": "Strategy comparison failed"}
@@ -1325,6 +1448,10 @@ def api_compare_strategies():
         return jsonify(
             {"success": True, "threshold": threshold, "comparison": comparison_results}
         )
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         current_app.logger.error(f"Strategy comparison failed: {e}")
@@ -1365,6 +1492,10 @@ def api_optimize_threshold():
                 "recommendation": _get_threshold_recommendation(optimized_threshold),
             }
         )
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         current_app.logger.error(f"Threshold optimization failed: {e}")
@@ -1507,6 +1638,10 @@ def api_group_confidence(group_id):
                 },
             }
         )
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         current_app.logger.error(f"Error getting group confidence for {group_id}: {e}")
@@ -1669,6 +1804,10 @@ def api_group_merge_preview(group_id):
             }
         )
 
+    except HTTPException:
+
+        raise
+
     except Exception as e:
         current_app.logger.error(f"Error getting merge preview for {group_id}: {e}")
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
@@ -1725,6 +1864,8 @@ def api_group_impact(group_id):
                         )  # model-safety-ok: checking dynamic query vs list interface
                         else len(list(app.business_processes))
                     )
+                except HTTPException:
+                    raise
                 except Exception as e:
                     current_app.logger.debug(
                         "Could not count processes for app %s: %s", app.id, e
@@ -1744,6 +1885,8 @@ def api_group_impact(group_id):
                         )  # model-safety-ok: checking dynamic query vs list interface
                         else len(list(app.capabilities))
                     )
+                except HTTPException:
+                    raise
                 except Exception as e:
                     current_app.logger.debug(
                         "Could not count capabilities for app %s: %s", app.id, e
@@ -1763,6 +1906,8 @@ def api_group_impact(group_id):
                         )  # model-safety-ok: checking dynamic query vs list interface
                         else len(list(app.integrations))
                     )
+                except HTTPException:
+                    raise
                 except Exception as e:
                     current_app.logger.debug(
                         "Could not count integrations for app %s: %s", app.id, e
@@ -1832,6 +1977,10 @@ def api_group_impact(group_id):
             }
         )
 
+    except HTTPException:
+
+        raise
+
     except Exception as e:
         current_app.logger.error(f"Error getting impact analysis for {group_id}: {e}")
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
@@ -1891,6 +2040,10 @@ def api_statistics_summary():
                 else None,
             }
         )
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         current_app.logger.error(f"Stats summary error: {e}")
@@ -1963,6 +2116,10 @@ def api_duplicate_groups():
             }
         )
 
+    except HTTPException:
+
+        raise
+
     except Exception as e:
         current_app.logger.error(f"Duplicate groups API error: {e}")
         return jsonify(
@@ -2011,6 +2168,10 @@ def api_detection_runs():
 
         return jsonify({"runs": runs_data})
 
+    except HTTPException:
+
+        raise
+
     except Exception as e:
         current_app.logger.error(f"Detection runs API error: {e}")
         return jsonify({"runs": []})
@@ -2030,6 +2191,10 @@ def run_detection():
             return jsonify(result), 200
         else:
             return jsonify(result), 400
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         current_app.logger.error(f"Run detection error: {e}")
@@ -2064,6 +2229,10 @@ def approve_consolidation_recommendation(recommendation_id):
                 "approved_at": group.reviewed_at.isoformat(),
             }
         )
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         current_app.logger.error(
@@ -2101,6 +2270,10 @@ def reject_consolidation_recommendation(recommendation_id):
                 "rejected_at": group.reviewed_at.isoformat(),
             }
         )
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         current_app.logger.error(
@@ -2235,6 +2408,10 @@ def api_add_group_to_consolidation(group_id):
                 db.session.add(entry)
                 added_count += 1
 
+            except HTTPException:
+
+                raise
+
             except Exception as e:
                 current_app.logger.error(
                     f"Error adding app {app_id} to consolidation: {e}"
@@ -2253,6 +2430,10 @@ def api_add_group_to_consolidation(group_id):
                 + (f" ({skipped_count} already listed)" if skipped_count else ""),
             }
         )
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         current_app.logger.error(f"Error adding group {group_id} to consolidation: {e}")
@@ -2291,6 +2472,10 @@ def api_ignore_group(group_id):
             legacy_group.recommendation_notes = f"Ignored: {reason}"
         db.session.commit()
         return jsonify({"success": True, "group_id": group_id_int, "status": "ignored"})
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         current_app.logger.error(f"Error ignoring group {group_id}: {e}")

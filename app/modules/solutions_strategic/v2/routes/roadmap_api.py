@@ -7,6 +7,7 @@ Roadmap API Blueprint
 Complete CRUD operations for roadmap entities with automation support
 """
 
+from werkzeug.exceptions import HTTPException
 import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -187,6 +188,10 @@ def get_work_packages():
             }
         )
 
+    except HTTPException:
+
+        raise
+
     except Exception as e:
         return handle_error(e, "get_work_packages")
 
@@ -324,6 +329,10 @@ def create_work_package():
             201,
         )
 
+    except HTTPException:
+
+        raise
+
     except Exception as e:
         db.session.rollback()
         return handle_error(e, "create_work_package")
@@ -418,6 +427,10 @@ def get_work_package(work_package_id: int):
                 ],
             }
         )
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         return handle_error(e, "get_work_package")
@@ -527,6 +540,10 @@ def update_work_package(work_package_id: int):
             }
         )
 
+    except HTTPException:
+
+        raise
+
     except Exception as e:
         db.session.rollback()
         return handle_error(e, "update_work_package")
@@ -609,6 +626,10 @@ def delete_work_package(work_package_id: int):
 
         return jsonify({"message": "Work package deleted successfully"})
 
+    except HTTPException:
+
+        raise
+
     except Exception as e:
         db.session.rollback()
         return handle_error(e, "delete_work_package")
@@ -677,6 +698,10 @@ def get_deliverables():
                 ]
             }
         )
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         return handle_error(e, "get_deliverables")
@@ -763,6 +788,10 @@ def create_deliverable():
             201,
         )
 
+    except HTTPException:
+
+        raise
+
     except Exception as e:
         db.session.rollback()
         return handle_error(e, "create_deliverable")
@@ -848,6 +877,10 @@ def update_deliverable(deliverable_id: int):
             }
         )
 
+    except HTTPException:
+
+        raise
+
     except Exception as e:
         db.session.rollback()
         return handle_error(e, "update_deliverable")
@@ -887,6 +920,10 @@ def delete_deliverable(deliverable_id: int):
         db.session.commit()
 
         return jsonify({"message": "Deliverable deleted successfully"})
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         db.session.rollback()
@@ -955,6 +992,10 @@ def get_gaps():
                 ]
             }
         )
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         return handle_error(e, "get_gaps")
@@ -1040,6 +1081,10 @@ def create_gap():
             201,
         )
 
+    except HTTPException:
+
+        raise
+
     except Exception as e:
         db.session.rollback()
         return handle_error(e, "create_gap")
@@ -1086,6 +1131,10 @@ def get_plateaus():
                 ]
             }
         )
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         return handle_error(e, "get_plateaus")
@@ -1171,6 +1220,10 @@ def create_plateau():
             201,
         )
 
+    except HTTPException:
+
+        raise
+
     except Exception as e:
         db.session.rollback()
         return handle_error(e, "create_plateau")
@@ -1239,6 +1292,10 @@ def generate_work_packages():
             }
         )
 
+    except HTTPException:
+
+        raise
+
     except Exception as e:
         return handle_error(e, "generate_work_packages")
 
@@ -1295,6 +1352,10 @@ def optimize_timeline():
             {"message": "Timeline optimized successfully", "optimized_timeline": optimized_timeline}
         )
 
+    except HTTPException:
+
+        raise
+
     except Exception as e:
         return handle_error(e, "optimize_timeline")
 
@@ -1341,6 +1402,10 @@ def detect_conflicts():
 
         return jsonify({"conflicts": conflicts, "conflict_count": len(conflicts)})
 
+    except HTTPException:
+
+        raise
+
     except Exception as e:
         return handle_error(e, "detect_conflicts")
 
@@ -1373,6 +1438,10 @@ def sync_capabilities():
 
         return jsonify({"message": "Capabilities synced successfully", "sync_result": sync_result})
 
+    except HTTPException:
+
+        raise
+
     except Exception as e:
         return handle_error(e, "sync_capabilities")
 
@@ -1401,6 +1470,10 @@ def sync_applications():
         sync_result = sync_service.sync_applications_to_deliverables()
 
         return jsonify({"message": "Applications synced successfully", "sync_result": sync_result})
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         return handle_error(e, "sync_applications")
@@ -1513,6 +1586,10 @@ def get_statistics():
 
         return jsonify(stats)
 
+    except HTTPException:
+
+        raise
+
     except Exception as e:
         return handle_error(e, "get_statistics")
 
@@ -1587,6 +1664,10 @@ def generate_archimate_roadmap():
         else:
             return jsonify(result), 400
 
+    except HTTPException:
+
+        raise
+
     except Exception as e:
         return handle_error(e, "generate_archimate_roadmap")
 
@@ -1643,6 +1724,10 @@ def preview_archimate_roadmap():
         else:
             return jsonify(result), 400
 
+    except HTTPException:
+
+        raise
+
     except Exception as e:
         return handle_error(e, "preview_archimate_roadmap")
 
@@ -1687,6 +1772,10 @@ def generate_single_gap_roadmap(gap_id: int):
             return jsonify(result), 200
         else:
             return jsonify(result), 400
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         return handle_error(e, "generate_single_gap_roadmap")

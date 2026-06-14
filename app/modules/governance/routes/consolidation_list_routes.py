@@ -9,6 +9,7 @@ Routes for managing the consolidation list - applications marked for consolidati
 that can be planned for decommissioning, retirement, or added to roadmap.
 """
 
+from werkzeug.exceptions import HTTPException
 import logging
 from datetime import datetime
 
@@ -41,12 +42,16 @@ def dashboard():
 
         try:
             dashboard_registry_url = url_for("dynamic_dashboards.model_registry_index")
+        except HTTPException:
+            raise
         except Exception as e:
             logger.debug("Could not resolve dashboard registry URL: %s", e)
             dashboard_registry_url = "/auto-dashboard/registry"
         return render_template(
             "consolidation_list/dashboard.html", dashboard_registry_url=dashboard_registry_url
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error loading consolidation dashboard: {e}")
         return f"Error loading dashboard: {str(e)}", 500
@@ -153,6 +158,8 @@ def get_entries():
                         ed["time_action"] = None
                         ed["time_score"] = None
                 db.session.commit()
+        except HTTPException:
+            raise
         except Exception as e:
             logger.warning(f"Could not enrich entries with TIME scores: {e}")
 
@@ -250,6 +257,8 @@ def get_entries():
             if total_entries == 0:
                 summary["portfolio_annual_cost"] = rat_tco_total
                 summary["total_estimated_savings"] = rat_savings_estimate
+        except HTTPException:
+            raise
         except Exception as e:
             logger.warning("Could not enrich summary with rationalization data: %s", e)
 
@@ -268,6 +277,8 @@ def get_entries():
                 },
             }
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error getting consolidation entries: {e}")
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
@@ -341,6 +352,8 @@ def add_to_list():
 
             except (ValueError, TypeError) as e:
                 errors.append(f"Invalid application ID {app_id}: {str(e)}")
+            except HTTPException:
+                raise
             except Exception as e:
                 errors.append(f"Error adding application {app_id}: {str(e)}")
 
@@ -355,6 +368,10 @@ def add_to_list():
                 "message": f"Added {added_count} application(s) to consolidation list",
             }
         )
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         db.session.rollback()
@@ -403,6 +420,8 @@ def get_entry_detail(entry_id):
                             or (getattr(app, "business_criticality", "") or "").lower() == "critical"
                         ),
                     })
+        except HTTPException:
+            raise
         except Exception as e:
             logger.warning(f"Could not load capabilities for entry {entry_id}: {e}")
 
@@ -440,6 +459,8 @@ def get_entry_detail(entry_id):
             } if entry.target_application_id else None,
             "links": links,
         })
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error getting entry detail {entry_id}: {e}")
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
@@ -524,6 +545,8 @@ def update_entry(entry_id):
                 if app:
                     app.total_cost_of_ownership = float(data["annual_operating_cost"])
                     app.updated_at = datetime.utcnow()
+            except HTTPException:
+                raise
             except Exception as e:
                 logger.warning(f"Could not back-propagate TCO for entry {entry_id}: {e}")
 
@@ -540,6 +563,8 @@ def update_entry(entry_id):
                         "RATA-014: Auto-created roadmap link for consolidation %d, quarter %s",
                         entry.id, data["target_quarter"]
                     )
+                except HTTPException:
+                    raise
                 except Exception as roadmap_err:
                     logger.error("RATA-014 roadmap auto-create failed: %s", roadmap_err)
 
@@ -556,6 +581,10 @@ def update_entry(entry_id):
             result["benefits_prompt"] = True
             result["estimated_savings"] = float(entry.estimated_savings or 0)
         return jsonify(result)
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         db.session.rollback()
@@ -574,6 +603,10 @@ def remove_entry(entry_id):
         db.session.commit()
 
         return jsonify({"success": True, "message": "Entry removed from consolidation list"})
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         db.session.rollback()
@@ -651,6 +684,10 @@ def bulk_action():
                 entry.updated_at = datetime.utcnow()
                 updated_count += 1
 
+            except HTTPException:
+
+                raise
+
             except Exception as e:
                 errors.append(f"Error processing entry {entry_id}: {str(e)}")
 
@@ -664,6 +701,10 @@ def bulk_action():
                 "message": f"Processed {updated_count} entry/entries",
             }
         )
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         db.session.rollback()
@@ -764,6 +805,10 @@ def create_roadmap_task():
                 }
             )
 
+    except HTTPException:
+
+        raise
+
     except Exception as e:
         db.session.rollback()
         logger.error(f"Error creating roadmap task: {e}", exc_info=True)
@@ -859,6 +904,10 @@ def recalculate_savings():
             }
         )
 
+    except HTTPException:
+
+        raise
+
     except Exception as e:
         db.session.rollback()
         logger.error(f"Error recalculating savings: {e}", exc_info=True)
@@ -934,6 +983,10 @@ def bulk_cost_import():
                     app.updated_at = datetime.utcnow()
                     updated_count += 1
 
+            except HTTPException:
+
+                raise
+
             except Exception as e:
                 errors.append(f"Row {row_num}: {str(e)}")
                 skipped_count += 1
@@ -947,6 +1000,10 @@ def bulk_cost_import():
             "skipped_count": skipped_count,
             "errors": errors[:50] if errors else [],
         })
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         db.session.rollback()
@@ -1085,6 +1142,10 @@ def score_all_entries():
             "scored_count": scored_count,
             "skipped_count": skipped_count,
         })
+
+    except HTTPException:
+
+        raise
 
     except Exception as e:
         db.session.rollback()

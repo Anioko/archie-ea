@@ -80,6 +80,7 @@ else:
     from .simple_duplicate_detection import *  # noqa
     from .optimization import *  # noqa
     from .mapping_metrics import *  # noqa
+    from app.modules.codegen.services.scenario_tracker import ScenarioResult  # noqa - codegen_scenario_results
     from .architecture_decision import (  # noqa: F401
         ArchitectureDecision, DecisionCapabilityLink,
         ArchitectureChangeRequest, ChangeImpactAssessment, ArchitectureChangeNotice,
