@@ -1179,7 +1179,7 @@ class EAWorkflowEngine:
             category = self._categorize_stakeholder(user)
             stakeholders.append({
                 "id": user.id,
-                "name": user.full_name or user.username,
+                "name": user.full_name() or user.username,
                 "email": user.email,
                 "category": category,
                 "concerns": self._get_stakeholder_concerns(category),

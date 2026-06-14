@@ -1507,7 +1507,7 @@ def create_from_wizard():
             title = f"{option_name} for {cap_names}" if cap_names else option_name
 
         # Determine owner name
-        owner = getattr(current_user, "full_name", None) or current_user.email
+        owner = current_user.full_name() or current_user.email
 
         now = datetime.utcnow()
 
@@ -4129,7 +4129,7 @@ def create_solution_comment(solution_id: int):
             solution_id=solution_id,
             section_name=section,
             author_id=current_user.id,
-            author_name=current_user.full_name or current_user.email,
+            author_name=current_user.full_name() or current_user.email,
             content=content,
             parent_comment_id=int(parent_id) if parent_id else None,
         )
@@ -8255,7 +8255,12 @@ def create_with_draft():
     brief = (data.get("brief") or "").strip()
     title = (data.get("title") or "AI-Generated Solution").strip() or "AI-Generated Solution"
 
-    owner = getattr(current_user, "full_name", None) or getattr(current_user, "email", "")
+    # User.full_name is a method, not a property — call it when callable, otherwise
+    # getattr returns the bound method and the insert fails with "can't adapt type 'method'".
+    owner = getattr(current_user, "full_name", None)
+    if callable(owner):
+        owner = owner()
+    owner = owner or getattr(current_user, "email", "")
 
     solution = Solution(
         name=title[:255],

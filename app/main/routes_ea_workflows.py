@@ -1106,7 +1106,7 @@ def register_ea_workflow_routes(main_blueprint):
                     pending_step.error_message = f"Rejected: {reason}"
 
             instance.status = "failed"
-            instance.error_message = f"Rejected by {current_user.full_name or current_user.email}: {reason}"
+            instance.error_message = f"Rejected by {current_user.full_name() or current_user.email}: {reason}"
             instance.pending_approval_step_id = None
             db.session.commit()
 

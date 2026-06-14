@@ -94,7 +94,7 @@ class PowerPointExportService:
         if solution.created_by_id:
             user = User.query.get(solution.created_by_id)
             if user:
-                architect_name = getattr(user, "full_name", None) or getattr(user, "name", None) or user.email or "Unknown"
+                architect_name = (user.full_name() if (user and callable(getattr(user, "full_name", None))) else None) or getattr(user, "name", None) or user.email or "Unknown"
 
         section_narratives: dict = solution.section_narratives or {}
         section_scores: dict = solution.section_scores or {}

@@ -2647,7 +2647,7 @@ class EAWorkflowEngine:
 
         def _add_stakeholder(user_id, name_fallback, category, email_fallback=None):
             user = db.session.get(User, user_id) if user_id else None
-            name = (user.full_name or user.username) if user else name_fallback
+            name = (user.full_name() or user.username) if user else name_fallback
             email = user.email if user else email_fallback
             if not email or email in seen_emails:
                 return
@@ -2711,7 +2711,7 @@ class EAWorkflowEngine:
                     seen_emails.add(user.email)
                     stakeholders.append({
                         "id": user.id,
-                        "name": user.full_name or user.username,
+                        "name": user.full_name() or user.username,
                         "email": user.email,
                         "category": category,
                         "concerns": self._get_stakeholder_concerns(category),

@@ -367,7 +367,7 @@ class PolicyExemption(db.Model):
             "id": self.id,
             "violation_id": self.violation_id,
             "requested_by": self.requested_by,
-            "requester_name": self.requester.full_name
+            "requester_name": self.requester.full_name()
             if self.requester and hasattr(self.requester, "full_name")
             else None,
             "requested_at": self.requested_at.isoformat() if self.requested_at else None,
@@ -377,7 +377,7 @@ class PolicyExemption(db.Model):
             "expiry_date": self.expiry_date.isoformat() if self.expiry_date else None,
             "status": self.status,
             "approved_by": self.approved_by,
-            "approver_name": self.approver.full_name
+            "approver_name": self.approver.full_name()
             if self.approver and hasattr(self.approver, "full_name")
             else None,
             "approved_at": self.approved_at.isoformat() if self.approved_at else None,

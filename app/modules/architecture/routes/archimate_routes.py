@@ -4825,7 +4825,7 @@ def api_diagram_active_editors(diagram_id):
         try:
             from app.models.user import User
             users = User.query.filter(User.id.in_(user_ids)).all()
-            editors = [{"id": u.id, "name": u.full_name or u.email, "email": u.email} for u in users]
+            editors = [{"id": u.id, "name": u.full_name() or u.email, "email": u.email} for u in users]
         except Exception:  # noqa: BLE001
             editors = [{"id": uid, "name": f"User {uid}", "email": ""} for uid in user_ids]
 
