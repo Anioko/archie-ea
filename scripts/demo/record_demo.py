@@ -121,6 +121,15 @@ def main():
             click_el("#password", 250); page.type("#password", PASS, delay=50); page.wait_for_timeout(400)
             click_el("#submit", 3000)
             goto("/dashboard/overview", 1600)
+            # Fail loudly if auth didn't take — otherwise every chapter silently
+            # records the login page (a redirect to /account/login still returns 200,
+            # so this is the only reliable signal that the recording is valid).
+            if "/account/login" in page.url:
+                raise RuntimeError(
+                    "LOGIN FAILED — recorder is not authenticated (still on %s). "
+                    "Check DEMO_USER/DEMO_PASS; aborting so we don't ship a login-only video."
+                    % page.url
+                )
             title("Enterprise Architect", "Know the estate &mdash; capabilities, applications, health", 2600)
             cap("Enterprise Architect", "Your workspace: portfolio health at a glance"); wander([(420, 360), (900, 420), (1150, 360)])
             goto("/capability-map", 2400); cap("Enterprise Architect", "Business capabilities mapped across the enterprise"); wander([(400, 400), (760, 500), (1050, 420)])
