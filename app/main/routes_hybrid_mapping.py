@@ -39,6 +39,7 @@ def hybrid_mapping_dashboard():
         )
 
     except Exception as e:
+        db.session.rollback()  # clear any aborted txn so later queries don't cascade
         flash("Error loading hybrid mapping dashboard. Please try again.", "error")
         empty_stats = {
             "total_capabilities": 0,
@@ -221,6 +222,7 @@ def get_mapping_statistics():
         }
 
     except Exception as e:
+        db.session.rollback()  # clear any aborted txn so later queries don't cascade
         import logging
         logging.getLogger(__name__).error(f"Error getting mapping statistics: {e}")
         return {
@@ -284,6 +286,7 @@ def get_application_mappings():
         ]
 
     except Exception as e:
+        db.session.rollback()  # clear any aborted txn so later queries don't cascade
         return []
 
 
@@ -344,6 +347,7 @@ def get_product_mappings():
         ]
 
     except Exception as e:
+        db.session.rollback()  # clear any aborted txn so later queries don't cascade
         return []
 
 
@@ -397,6 +401,7 @@ def get_archimate_mappings():
         ]
 
     except Exception as e:
+        db.session.rollback()  # clear any aborted txn so later queries don't cascade
         return []
 
 
@@ -433,6 +438,7 @@ def get_unmapped_capabilities():
         ]
 
     except Exception as e:
+        db.session.rollback()  # clear any aborted txn so later queries don't cascade
         return []
 
 
@@ -466,6 +472,7 @@ def get_unmapped_vendor_products():
         ]
 
     except Exception as e:
+        db.session.rollback()  # clear any aborted txn so later queries don't cascade
         return []
 
 
@@ -496,6 +503,7 @@ def get_unmapped_archimate_elements():
         return [dict(zip(["id", "name", "type", "layer", "description"], row)) for row in result]
 
     except Exception as e:
+        db.session.rollback()  # clear any aborted txn so later queries don't cascade
         return []
 
 
@@ -519,4 +527,5 @@ def export_hybrid_mapping():
         )
 
     except Exception as e:
+        db.session.rollback()  # clear any aborted txn so later queries don't cascade
         return jsonify({"error": "An internal error occurred"}), 500
