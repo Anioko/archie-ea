@@ -912,7 +912,11 @@ def _register_capabilities(app, csrf):
 
 def _register_dashboard(app):
     # --- Tier 1: v2 (guardrail-enabled, new architecture) ---
-    if _is_flag("USE_DASHBOARD_GUARDRAILS"):
+    # Default ON: v2 is the canonical dashboard — only it registers the
+    # health_scorecard route that admin_sidebar.html links to. The legacy tiers
+    # lack it, so a default install would 500 admin pages on the sidebar link.
+    # Set USE_DASHBOARD_GUARDRAILS=false to fall back to the legacy dashboard.
+    if os.environ.get("USE_DASHBOARD_GUARDRAILS", "true").lower() == "true":
         try:
             from app.modules.dashboard.v2 import register as _reg_v2
 
