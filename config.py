@@ -34,8 +34,11 @@ for _canonical_flag in (
     "USE_NEW_ARCHITECTURE",
     "USE_AI_CHAT_GUARDRAILS",
     "USE_NEW_AI_CHAT",
-    "USE_VENDORS_GUARDRAILS",
-    "USE_NEW_VENDORS",
+    # NOTE: vendors are intentionally NOT defaulted to the v2/guardrail path.
+    # The always-on unified vendor blueprints serve the vendor pages AND the
+    # /api/vendors/* JSON the vendor dashboard widgets call (list, ranking).
+    # Forcing USE_VENDORS_GUARDRAILS switches to v2-only and drops the unified
+    # API, 404-ing those widgets ("not found" in the UI).
 ):
     os.environ.setdefault(_canonical_flag, "true")
 
