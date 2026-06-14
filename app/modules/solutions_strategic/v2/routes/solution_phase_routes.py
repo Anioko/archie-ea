@@ -12,6 +12,24 @@ from .solution_design_routes import solution_design_bp
 logger = logging.getLogger(__name__)
 
 
+_PRIORITY_NAMES = {"critical": 1, "highest": 1, "high": 2, "medium": 3, "low": 4, "minor": 5}
+
+
+def _coerce_priority(raw):
+    """Coerce a priority value to the integer the model expects (1=highest..5).
+
+    Different UI paths send either an int (1-5) or a named level
+    ("critical"/"high"/...), so pass either through without 500-ing the insert
+    ("invalid input syntax for type integer"). Returns None when unset/unparseable.
+    """
+    if isinstance(raw, str):
+        raw = _PRIORITY_NAMES.get(raw.strip().lower(), raw.strip())
+    try:
+        return int(raw) if raw not in (None, "") else None
+    except (TypeError, ValueError):
+        return None
+
+
 def _validate_entity(data, required_fields):
     """Validate entity data. Returns (errors, 400) or (None, None)."""
     errors = []
@@ -1110,7 +1128,7 @@ def create_solution_goal(solution_id):
         problem_id=pd.id,
         name=data.get("name", ""),
         description=data.get("description", ""),
-        priority=data.get("priority") or None,
+        priority=_coerce_priority(data.get("priority")),
         measurement_criteria=data.get("measurement_criteria", ""),
     )
     db.session.add(goal)
@@ -1302,7 +1320,7 @@ def create_solution_requirement(solution_id):
         name=data.get("name", ""),
         description=data.get("description", ""),
         requirement_type=rtype,
-        priority=data.get("priority") or None,
+        priority=_coerce_priority(data.get("priority")),
         is_mandatory=data.get("is_mandatory", False),
         source=data.get("source", ""),
         rationale=data.get("rationale", ""),
