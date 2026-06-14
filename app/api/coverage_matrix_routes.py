@@ -543,25 +543,20 @@ def export_matrix():
         if not matrix_data:
             return jsonify({"success": False, "error": "matrix_data is required"}), 400
 
-        # Generate export (placeholder - would implement actual export logic)
-        export_filename = (
-            f"coverage_matrix_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{export_format}"
-        )
-        export_url = f"/downloads/{export_filename}"
-
+        # Server-side export rendering is not implemented yet. Return an honest
+        # 501 instead of a download URL for a file that was never generated
+        # (the previous placeholder also crashed: replace(hour=hour+24) is always
+        # an invalid hour, so this endpoint returned 500 on every call).
         return jsonify(
             {
-                "success": True,
-                "data": {
-                    "download_url": export_url,
-                    "format": export_format,
-                    "file_size": 2048000,  # Placeholder
-                    "expires_at": datetime.utcnow()
-                    .replace(hour=datetime.utcnow().hour + 24)
-                    .isoformat(),
-                },
+                "success": False,
+                "error": "not_implemented",
+                "message": (
+                    "Server-side coverage-matrix export is not available yet. "
+                    "Use the on-screen matrix or export the underlying data instead."
+                ),
             }
-        )
+        ), 501
 
     except Exception as e:
         logger.error(f"Matrix export error: {e}")

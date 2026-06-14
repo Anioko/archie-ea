@@ -875,7 +875,7 @@ def api_bulk_consolidate():
                 {"primary_id": 1, "secondary_id": 2},
                 {"primary_id": 3, "secondary_id": 4}
             ],
-            "merge_strategy": "primary" | "secondary" | "new"
+            "merge_strategy": "primary" | "secondary"
         }
 
     Returns:
@@ -885,6 +885,15 @@ def api_bulk_consolidate():
         data = request.get_json()
         pairs = data.get("pairs", [])
         merge_strategy = data.get("merge_strategy", "primary")
+
+        if merge_strategy not in ("primary", "secondary"):
+            return jsonify({
+                "error": "Unsupported merge_strategy",
+                "message": (
+                    f"merge_strategy must be 'primary' or 'secondary' "
+                    f"(got {merge_strategy!r}). The 'new record' strategy is not yet available."
+                ),
+            }), 400
 
         results = []
 
@@ -956,7 +965,7 @@ def consolidate_applications(primary, secondary, strategy):
     Args:
         primary: Primary application (will be kept)
         secondary: Secondary application (will be merged/deleted)
-        strategy: 'primary', 'secondary', or 'new'
+        strategy: 'primary' or 'secondary'
     """
     if strategy == "primary":
         # Merge secondary into primary
@@ -975,8 +984,9 @@ def consolidate_applications(primary, secondary, strategy):
         db.session.delete(primary)
 
     else:
-        # Create new merged record (not implemented)
-        raise ValueError("New record strategy not yet implemented")
+        # Defensive: callers validate merge_strategy up-front, so this only fires
+        # if an unsupported strategy reaches here.
+        raise ValueError(f"Unsupported merge strategy: {strategy!r}")
 
     db.session.commit()
 
