@@ -57,7 +57,10 @@ def main():
             browser = p.chromium.launch(headless=True)
         ctx = browser.new_context(viewport={"width": 1440, "height": 900},
                                   record_video_dir=OUTDIR, record_video_size={"width": 1440, "height": 900})
-        ctx.add_init_script(OVERLAY)
+        # OVERLAY is a bare arrow function `() => {...}`; add_init_script evaluates the
+        # expression but never calls it, so the caption/cursor/title helpers were never
+        # defined and every overlay call silently no-op'd. Wrap in an IIFE so it runs.
+        ctx.add_init_script("(" + OVERLAY + ")()")
         page = ctx.new_page(); page.set_default_timeout(15000)
         cur = [720, 450]
 
