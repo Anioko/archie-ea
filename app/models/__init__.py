@@ -31,6 +31,7 @@ from .constants import (  # noqa
 )
 from .mixins import AuditMixin, HierarchyMixin, SoftDeleteMixin, StatusMixin, TenantMixin, TimestampMixin  # noqa
 from .organization import Organization  # noqa
+from .system_setting import SystemSetting  # noqa
 from .validators import (  # noqa
     validate_code,
     validate_date_range,
