@@ -15,6 +15,30 @@ import urllib.parse
 
 basedir = os.path.abspath(os.path.dirname(__file__))
 
+# Canonical module configuration. The v2 ("guardrail") modules are the active code
+# path (see CLAUDE.md), and the navigation/templates reference their endpoints, so
+# they MUST be registered by default. Without these flags a fresh install registers
+# only legacy/partial blueprints and every authenticated page 500s on a sidebar
+# url_for to an unregistered endpoint (e.g. solution_design.list_solutions). Using
+# setdefault means an explicit env value (true/false) is still respected.
+for _canonical_flag in (
+    "USE_SOLUTIONS_STRATEGIC_GUARDRAILS",
+    "USE_NEW_SOLUTIONS_STRATEGIC",
+    "USE_CAPABILITIES_GUARDRAILS",
+    "USE_NEW_CAPABILITIES",
+    "USE_DASHBOARD_GUARDRAILS",
+    "USE_NEW_DASHBOARD",
+    "USE_APPLICATIONS_GUARDRAILS",
+    "USE_NEW_APPLICATIONS",
+    "USE_ARCHITECTURE_GUARDRAILS",
+    "USE_NEW_ARCHITECTURE",
+    "USE_AI_CHAT_GUARDRAILS",
+    "USE_NEW_AI_CHAT",
+    "USE_VENDORS_GUARDRAILS",
+    "USE_NEW_VENDORS",
+):
+    os.environ.setdefault(_canonical_flag, "true")
+
 
 def _env_bool(name: str, default: bool) -> bool:
     value = os.environ.get(name)
