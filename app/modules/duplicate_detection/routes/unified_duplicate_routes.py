@@ -1179,7 +1179,9 @@ def ai_analyze():
 def ai_insights(run_id):
     """View AI insights for a specific detection run"""
     try:
-        run = UnifiedDetectionRun.query.get_or_404(run_id)
+        run = UnifiedDetectionRun.query.get(run_id)
+        if run is None:
+            return render_template("errors/404.html"), 404
 
         # Get AI-specific insights
         if run.algorithm_version.startswith("ai_"):
