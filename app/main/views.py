@@ -336,6 +336,9 @@ def get_capability_vendors(capability_id):
 
         return jsonify({"capability_id": capability_id, "vendors": vendors})
 
+    except ValueError as e:
+        # selector raises ValueError("Capability <id> not found") for a missing capability
+        return jsonify({"error": str(e)}), 404
     except Exception as e:
         current_app.logger.error(f"Capability vendors fetch failed: {e}")
         return jsonify({"error": "An internal error occurred"}), 500

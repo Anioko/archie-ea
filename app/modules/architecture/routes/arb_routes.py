@@ -1216,6 +1216,9 @@ def api_assess_review(id):
             }
         )
 
+    except ValueError as e:
+        # service raises ValueError("Review item <id> not found") for a missing review
+        return jsonify({"success": False, "error": str(e)}), 404
     except Exception as e:
         current_app.logger.error(f"Error assessing review: {e}")
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
