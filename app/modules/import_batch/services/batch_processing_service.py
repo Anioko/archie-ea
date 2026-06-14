@@ -642,6 +642,16 @@ class BatchProcessingService:
         except Exception as e:
             logger.error(f"Error handling job failure for {job_id}: {e}")
 
+    def get_job(self, job_id):
+        """Return a BatchJob by id (or None). Used by the import-history API."""
+        from app.models.batch_processing import BatchJob
+        return BatchJob.query.get(job_id)
+
+    def get_job_items(self, job_id):
+        """Return all BatchJobItems for a job."""
+        from app.models.batch_processing import BatchJobItem
+        return BatchJobItem.query.filter_by(batch_job_id=job_id).all()
+
     def get_job_progress(self, job_id: int) -> Optional[BatchJobProgress]:
         """
         Get real-time progress for a batch job.

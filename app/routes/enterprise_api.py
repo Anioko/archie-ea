@@ -203,11 +203,11 @@ def get_archimate_model(model_id):
     Get specific ArchiMate model with full details
     """
     try:
-        model = archimate_service.get_model(model_id)
+        model = archimate_service.get_architecture_model(model_id)
         if not model:
             return jsonify({"success": False, "error": "Model not found"}), 404
 
-        return jsonify({"success": True, "data": model})
+        return jsonify({"success": True, "data": model.to_dict()})
 
     except Exception as e:
         logger.error(f"ArchiMate model retrieval failed: {e}")
@@ -225,23 +225,12 @@ def export_archimate_model(model_id):
     - format: Export format (xml, json) - default: xml
     """
     try:
-        export_format = request.args.get("format", "xml")
-
-        exported_data = archimate_service.export_model(model_id=model_id, format=export_format)
-
-        if not exported_data:
-            return jsonify({"success": False, "error": "Model not found or export failed"}), 404
-
-        audit_logger.log_event(
-            event_type=AuditEventType.DATA_ACCESS,
-            severity=AuditEventSeverity.LOW,
-            action="archimate_model_exported",
-            resource_type="archimate_model",
-            resource_id=model_id,
-            details={"format": export_format},
-        )
-
-        return jsonify({"success": True, "data": exported_data})
+        # ArchiMate exchange-format export is not implemented in ArchiMateService yet.
+        # Return an honest 501 rather than crashing on a missing method.
+        return jsonify({
+            "success": False,
+            "error": "ArchiMate model export is not implemented yet",
+        }), 501
 
     except Exception as e:
         logger.error(f"ArchiMate model export failed: {e}")
@@ -596,7 +585,7 @@ def get_arb_workflow(workflow_id):
     Get ARB workflow details
     """
     try:
-        workflow = arb_service.get_workflow(workflow_id)
+        workflow = arb_service.get_workflow_status(workflow_id)
         if not workflow:
             return jsonify({"success": False, "error": "Workflow not found"}), 404
 

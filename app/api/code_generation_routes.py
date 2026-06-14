@@ -440,7 +440,7 @@ def get_architecture_context(view_id):
     """
     try:
         # Import ArchiMate models
-        from app.models.archimate_view import ArchiMateView
+        from app.models.archimate import ArchiMateView
 
         view = ArchiMateView.query.get(view_id)
         if not view:
