@@ -507,7 +507,9 @@ def export_hybrid_mapping():
     try:
         return jsonify(
             {
-                "statistics": get_mapping_statistics(),
+                # get_mapping_statistics is also a route handler and returns a Flask
+                # Response (jsonify), not raw data — unwrap it so it serializes here.
+                "statistics": get_mapping_statistics().get_json(),
                 "application_mappings": get_application_mappings(),
                 "product_mappings": get_product_mappings(),
                 "archimate_mappings": get_archimate_mappings(),
