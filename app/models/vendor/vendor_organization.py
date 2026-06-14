@@ -17,6 +17,7 @@ Key Features:
 from __future__ import annotations  # dead-code-ok
 
 import json
+import uuid
 from datetime import datetime
 from decimal import Decimal
 from typing import Dict, List
@@ -343,10 +344,18 @@ class VendorOrganization(db.Model):
     # NOTE: Migration backfills existing vendors with generated code/seed_source_id
     # After migration, these columns are required (NOT NULL) and unique
     code = db.Column(
-        db.String(50), nullable=False, unique=True, index=True
+        db.String(50),
+        nullable=False,
+        unique=True,
+        index=True,
+        default=lambda: "VEND-" + uuid.uuid4().hex[:10].upper(),
     )  # Stable vendor identifier (VEND-SAP, VEND-SF, etc.)
     seed_source_id = db.Column(
-        db.String(100), nullable=False, unique=True, index=True
+        db.String(100),
+        nullable=False,
+        unique=True,
+        index=True,
+        default=lambda: "auto-" + uuid.uuid4().hex,
     )  # ID in seed file (upsert key)
     seed_version = db.Column(
         db.String(50), index=True
