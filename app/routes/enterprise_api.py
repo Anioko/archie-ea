@@ -585,11 +585,12 @@ def get_arb_workflow(workflow_id):
     Get ARB workflow details
     """
     try:
-        workflow = arb_service.get_workflow_status(workflow_id)
-        if not workflow:
-            return jsonify({"success": False, "error": "Workflow not found"}), 404
-
-        return jsonify({"success": True, "data": workflow})
+        # ARBWorkflowService has no get-workflow-by-id method; return an honest 501
+        # rather than crashing on a missing method.
+        return jsonify({
+            "success": False,
+            "error": "ARB workflow retrieval by id is not implemented yet",
+        }), 501
 
     except Exception as e:
         logger.error(f"ARB workflow retrieval failed: {e}")

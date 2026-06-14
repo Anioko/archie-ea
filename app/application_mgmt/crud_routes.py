@@ -361,8 +361,11 @@ def application_edit(id):
     form.vendor_products.choices = vendor_choices
 
     existing_vendor_ids = []
-    if app.archimate_element:
-        existing_vendor_ids = [vp.id for vp in app.archimate_element.vendor_products]
+    # ApplicationComponent has archimate_element_id (FK) but no archimate_element
+    # relationship; guard so the edit page renders instead of 500ing.
+    _arch_elem = getattr(app, "archimate_element", None)
+    if _arch_elem is not None:
+        existing_vendor_ids = [vp.id for vp in getattr(_arch_elem, "vendor_products", [])]
 
     # Map booleans and specific fields for the form
     if request.method == "GET":

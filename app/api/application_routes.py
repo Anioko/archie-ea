@@ -332,14 +332,18 @@ def api_application_details(id):
         app = ApplicationComponent.query.get_or_404(id)
 
         # Get related data
+        # ApplicationComponent maps to capabilities through capability_mappings, not a
+        # direct .capabilities relationship; .vendors does not exist as a relationship.
         capabilities = []
-        for cap in app.capabilities or []:
-            capabilities.append(
-                {"id": cap.id, "name": cap.name, "level": getattr(cap, "level", None)}
-            )
+        for m in (getattr(app, "capability_mappings", None) or []):
+            cap = getattr(m, "business_capability", None)
+            if cap:
+                capabilities.append(
+                    {"id": cap.id, "name": cap.name, "level": getattr(cap, "level", None)}
+                )
 
         vendors = []
-        for vendor in app.vendors or []:
+        for vendor in (getattr(app, "vendors", None) or []):
             vendors.append({"id": vendor.id, "name": vendor.name})
 
         return jsonify(
