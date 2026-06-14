@@ -56,6 +56,19 @@ def register_cli_commands(app):
         existing tables and data are preserved. Use this when tables are missing
         (e.g. after cloning the repo or switching to a fresh database).
         """
+        # Schema coherence for fresh installs: a few tables are mapped by two model
+        # classes (legacy duplicates). SQLAlchemy merges them via extend_existing,
+        # which can leave the SAME index defined twice on a table. A from-scratch
+        # create_all() then emits a duplicate "CREATE INDEX" and fails on an empty
+        # database. (Production never hit this because its schema was built
+        # incrementally.) Drop duplicate same-named indexes per table before creating.
+        for _table in db.metadata.tables.values():
+            _seen = {}
+            for _idx in list(_table.indexes):
+                if _idx.name in _seen:
+                    _table.indexes.discard(_idx)
+                else:
+                    _seen[_idx.name] = _idx
         db.create_all()
         # LEGACY WORKAROUNDS: These ALTER TABLE statements add columns that predate
         # alembic tracking. They are idempotent (IF NOT EXISTS) and remain here to
