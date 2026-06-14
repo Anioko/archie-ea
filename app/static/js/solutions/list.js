@@ -23,12 +23,12 @@ window.deleteSolution = function(solutionId, solutionName) {
                 setTimeout(function() { window.location.reload(); }, 400);
             } else {
                 if (window.Platform && Platform.toast) Platform.toast.error(data.error || 'Failed to delete');
-                else alert(data.error || 'Failed to delete solution');
+                else Platform.toast.error(data.error || 'Failed to delete solution');
             }
         })
         .catch(function(err) {
             if (window.Platform && Platform.toast) Platform.toast.error('Delete failed: ' + (err.message || err));
-            else alert('Delete failed: ' + (err.message || err));
+            else Platform.toast.error('Delete failed: ' + (err.message || err));
         });
     }
 

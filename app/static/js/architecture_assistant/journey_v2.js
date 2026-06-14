@@ -1028,7 +1028,7 @@
                     self.stackblitzLoading = false;
                     let files = data.files || {};
                     if (!Object.keys(files).length) {
-                        alert('No frontend files found — generate with Full-Stack selected first.');
+                        Platform.toast.warning('No frontend files found — generate with Full-Stack selected first.');
                         return;
                     }
                     // POST files to StackBlitz via hidden form (their API requires form submission)
@@ -1054,7 +1054,7 @@
                     document.body.removeChild(form);
                 }).catch(function (e) {
                     self.stackblitzLoading = false;
-                    alert('StackBlitz data failed: ' + ((e && e.message) || 'unknown error'));
+                    Platform.toast.error('StackBlitz data failed: ' + ((e && e.message) || 'unknown error'));
                 });
             },
 
@@ -1318,7 +1318,7 @@
                         self.briefUploading = false;
                         self.briefUploadProgress = '';
                         if (errors.length && !briefs.length) {
-                            alert('Could not extract text from any document:\n' + errors.join('\n'));
+                            Platform.toast.error('Could not extract text from any document:\n' + errors.join('\n'));
                             return;
                         }
                         if (briefs.length === 1) {

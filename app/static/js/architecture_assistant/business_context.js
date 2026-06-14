@@ -153,7 +153,7 @@ function businessContextApp() {
                 let result = await response.json();
                 if (result.success) {
                     this.context.id = result.data.id;
-                    alert('Business context saved successfully!');
+                    Platform.toast.success('Business context saved successfully!');
 
                     // Save individual components
                     await this.saveDrivers();
@@ -162,11 +162,11 @@ function businessContextApp() {
                     await this.saveMetrics();
                     await this.saveCapabilities();
                 } else {
-                    alert('Error saving context: ' + result.error);
+                    Platform.toast.error('Error saving context: ' + result.error);
                 }
             } catch (error) {
                 console.error('Error:', error);
-                alert('Error saving context');
+                Platform.toast.error('Error saving context');
             }
         },
 
@@ -325,7 +325,7 @@ function businessContextApp() {
         // Generate analysis
         async generateAnalysis() {
             if (!this.context.id) {
-                alert('Please save the business context first');
+                Platform.toast.warning('Please save the business context first');
                 return;
             }
 
@@ -359,7 +359,7 @@ function businessContextApp() {
 
             } catch (error) {
                 console.error('Error generating analysis:', error);
-                alert('Error generating analysis');
+                Platform.toast.error('Error generating analysis');
             }
         },
 

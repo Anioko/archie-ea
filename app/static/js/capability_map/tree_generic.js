@@ -291,7 +291,7 @@ document.addEventListener('alpine:init', () => {
 
                 if (!resp.ok) {
                     const err = await resp.json();
-                    alert(err.error || 'Save failed');
+                    Platform.toast.error(err.error || 'Save failed');
                     return;
                 }
 
@@ -301,7 +301,7 @@ document.addEventListener('alpine:init', () => {
                 await this.loadTree();
             } catch (e) {
                 console.error('Save error:', e);
-                alert('Save failed. Check console.');
+                Platform.toast.error('Save failed. Check console.');
             }
         },
 
@@ -318,7 +318,7 @@ document.addEventListener('alpine:init', () => {
                 });
                 if (!resp.ok) {
                     const err = await resp.json();
-                    alert(err.error || 'Delete failed');
+                    Platform.toast.error(err.error || 'Delete failed');
                     return;
                 }
                 this.selected = null;

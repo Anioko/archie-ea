@@ -220,7 +220,7 @@ function planningApp() {
                 if (data.success || data.status) {
                     self.reviewStatus = newStatus;
                 } else {
-                    alert('Transition failed: ' + (data.error || 'Unknown error'));
+                    Platform.toast.error('Transition failed: ' + (data.error || 'Unknown error'));
                 }
             })
             .catch(function(err) { console.error('Review transition error:', err); });
@@ -238,9 +238,9 @@ function planningApp() {
             .then(function(data) {
                 self.savingReplacement = false;
                 if (data.success || data.id) {
-                    alert('Replacement plan saved.');
+                    Platform.toast.success('Replacement plan saved.');
                 } else {
-                    alert('Save failed: ' + (data.error || 'Unknown error'));
+                    Platform.toast.error('Save failed: ' + (data.error || 'Unknown error'));
                 }
             })
             .catch(function(err) { self.savingReplacement = false; console.error('Save error:', err); });
@@ -259,7 +259,7 @@ function planningApp() {
                     self.tabLoaded.options = false;
                     self.loadTab('options');
                 } else {
-                    alert('ARB submission failed: ' + (data.error || 'Unknown error'));
+                    Platform.toast.error('ARB submission failed: ' + (data.error || 'Unknown error'));
                 }
             })
             .catch(function(err) { console.error('ARB submit error:', err); });
@@ -278,7 +278,7 @@ function planningApp() {
                     self.tabLoaded.overrides = false;
                     self.loadTab('overrides');
                 } else {
-                    alert('Override failed: ' + (data.error || 'Unknown error'));
+                    Platform.toast.error('Override failed: ' + (data.error || 'Unknown error'));
                 }
             })
             .catch(function(err) { console.error('Override error:', err); });

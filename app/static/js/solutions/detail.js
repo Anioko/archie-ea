@@ -25,10 +25,10 @@ function deleteSolution() {
                     if (data.success) {
                         window.location.href = data.redirect_url || window.__SOLUTION_CONFIG__?.listUrl || '/solutions/';
                     } else {
-                        alert('Delete failed: ' + (data.error || 'unknown error'));
+                        Platform.toast.error('Delete failed: ' + (data.error || 'unknown error'));
                     }
                 } catch(err) {
-                    alert('Delete failed: ' + err.message);
+                    Platform.toast.error('Delete failed: ' + err.message);
                 }
             } }
         ]
@@ -1049,11 +1049,11 @@ document.addEventListener('alpine:init', function () {
                     if (data.success) {
                         window.location.reload();
                     } else {
-                        alert('Sync failed: ' + (data.error || 'Unknown error'));
+                        Platform.toast.error('Sync failed: ' + (data.error || 'Unknown error'));
                     }
                 } catch (err) {
                     console.error('[solutionDetail] sync error:', err);
-                    alert('Sync failed. Check console for details.');
+                    Platform.toast.error('Sync failed. Check console for details.');
                 }
                 this.syncing = false;
             },
@@ -1108,7 +1108,7 @@ document.addEventListener('alpine:init', function () {
                             if (window.Platform && Platform.toast && Platform.toast.error) {
                                 Platform.toast.error('Phase gate not met: ' + errors[0]);
                             }
-                            alert(errMsg);
+                            Platform.toast.info(errMsg);
                         } else if (warnings.length > 0) {
                             // Only warnings — allow force advance
                             let warnMsg = '⚠️ Phase gate warnings:\n\n' + warnings.map(w => '• ' + w).join('\n') + '\n\nAdvance anyway?';
@@ -1120,7 +1120,7 @@ document.addEventListener('alpine:init', function () {
                             if (window.Platform && Platform.toast && Platform.toast.error) {
                                 Platform.toast.error(msg);
                             } else {
-                                alert(msg);
+                                Platform.toast.info(msg);
                             }
                         }
                     }
@@ -1175,15 +1175,15 @@ document.addEventListener('alpine:init', function () {
                                 this.doSubmitToArb(aiContentReviewed);
                                 return;
                             } else {
-                                alert('ARB submission requires cost_source to be "tco_engine" or "manual_override".');
+                                Platform.toast.info('ARB submission requires cost_source to be "tco_engine" or "manual_override".');
                             }
                         } else {
-                            alert(data.error || 'Submission failed.');
+                            Platform.toast.error(data.error || 'Submission failed.');
                         }
                     }
                 } catch (err) {
                     console.error('[solutionDetail] ARB submit error:', err);
-                    alert('Failed to submit to ARB. Check console for details.');
+                    Platform.toast.error('Failed to submit to ARB. Check console for details.');
                 }
                 this.submittingArb = false;
             },
@@ -1225,8 +1225,8 @@ document.addEventListener('alpine:init', function () {
                     if (data.success) {
                         if (window.Platform && Platform.toast && Platform.toast.success) Platform.toast.success('Outcome recorded.');
                         this.outcomeForm = { go_live_date: '', actual_duration_weeks: '', actual_cost_usd: '', business_value_realized: '', lessons_learned: '', what_went_well: '', what_to_improve: '' };
-                    } else { alert(data.error || 'Failed to save outcome.'); }
-                } catch (err) { console.error(err); alert('Failed to save outcome.'); }
+                    } else { Platform.toast.error(data.error || 'Failed to save outcome.'); }
+                } catch (err) { console.error(err); Platform.toast.error('Failed to save outcome.'); }
                 this.outcomeSubmitting = false;
             },
 
@@ -1734,11 +1734,11 @@ document.addEventListener('alpine:init', function () {
                         // Reload the page to show generated content
                         window.location.reload();
                     } else {
-                        alert(data.error || 'Generation failed. Please try again.');
+                        Platform.toast.error(data.error || 'Generation failed. Please try again.');
                     }
                 } catch (e) {
                     console.error('[solutionDetail] bootstrap error:', e);
-                    alert('Content generation failed. Please check your connection and try again.');
+                    Platform.toast.error('Content generation failed. Please check your connection and try again.');
                 } finally {
                     this.bootstrapLoading = false;
                 }
@@ -2037,13 +2037,13 @@ document.addEventListener('alpine:init', function () {
                     let data = await resp.json();
                     if (data.success) {
                         if (window.Platform && Platform.toast && Platform.toast.success) Platform.toast.success('Saved as template.');
-                        else alert('Saved as template.');
+                        else Platform.toast.success('Saved as template.');
                     } else {
-                        alert(data.error || 'Failed to save template.');
+                        Platform.toast.error(data.error || 'Failed to save template.');
                     }
                 } catch (err) {
                     console.error('[solutionDetail] saveAsTemplate error:', err);
-                    alert('Failed to save template.');
+                    Platform.toast.error('Failed to save template.');
                 }
                 this.savingAsTemplate = false;
             },
@@ -2196,11 +2196,11 @@ document.addEventListener('alpine:init', function () {
                         this.showArbAiConfirmModal = false;
                         this.resubmissionNotes = '';
                     } else {
-                        alert(data.error || 'Resubmission failed.');
+                        Platform.toast.error(data.error || 'Resubmission failed.');
                     }
                 } catch (err) {
                     console.error('[solutionDetail] ARB resubmit error:', err);
-                    alert('Failed to resubmit to ARB. Check console for details.');
+                    Platform.toast.error('Failed to resubmit to ARB. Check console for details.');
                 }
                 this.submittingArb = false;
             },
@@ -2229,7 +2229,7 @@ document.addEventListener('alpine:init', function () {
                     if (data.success) {
                         this.arbConditions = data.conditions;
                     } else {
-                        alert(data.error || 'Failed to toggle condition.');
+                        Platform.toast.error(data.error || 'Failed to toggle condition.');
                     }
                 } catch (err) {
                     console.error('[solutionDetail] condition toggle error:', err);
@@ -3087,7 +3087,7 @@ document.addEventListener('alpine:init', function () {
                     }
                 } catch (err) {
                     console.error('[phaseHReview] new cycle error:', err);
-                    alert('Failed to create new ADM cycle. Check console for details.');
+                    Platform.toast.error('Failed to create new ADM cycle. Check console for details.');
                 }
                 this.creatingCycle = false;
             },

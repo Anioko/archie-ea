@@ -40,7 +40,7 @@ function notifyFrameworkError(message) {
     if (typeof window.showToast === 'function') {
         window.showToast(message, 'error');
     } else {
-        alert(message);
+        Platform.toast.info(message);
     }
 }
 
@@ -227,15 +227,15 @@ function activateExtension(extensionId) {
     .then(function(response) { return response.json(); })
     .then(function(data) {
         if (data.success) {
-            alert(data.message);
+            Platform.toast.info(data.message);
             loadData();
         } else {
-            alert('Failed to activate extension: ' + data.message);
+            Platform.toast.error('Failed to activate extension: ' + data.message);
         }
     })
     .catch(function(error) {
         console.error('Error activating extension:', error);
-        alert('Error activating extension');
+        Platform.toast.error('Error activating extension');
     });
 }
 
@@ -256,15 +256,15 @@ function applyTemplate(templateId) {
     .then(function(response) { return response.json(); })
     .then(function(data) {
         if (data.success) {
-            alert(data.message);
+            Platform.toast.info(data.message);
             loadData();
         } else {
-            alert('Failed to apply template: ' + data.message);
+            Platform.toast.error('Failed to apply template: ' + data.message);
         }
     })
     .catch(function(error) {
         console.error('Error applying template:', error);
-        alert('Error applying template');
+        Platform.toast.error('Error applying template');
     });
 }
 
@@ -290,16 +290,16 @@ document.getElementById('deployForm').addEventListener('submit', function(e) {
     .then(function(response) { return response.json(); })
     .then(function(result) {
         if (result.success) {
-            alert(result.message);
+            Platform.toast.info(result.message);
             closeDeployModal();
             loadData();
         } else {
-            alert('Deployment failed: ' + result.message);
+            Platform.toast.error('Deployment failed: ' + result.message);
         }
     })
     .catch(function(error) {
         console.error('Error deploying configuration:', error);
-        alert('Error deploying configuration');
+        Platform.toast.error('Error deploying configuration');
     });
 });
 

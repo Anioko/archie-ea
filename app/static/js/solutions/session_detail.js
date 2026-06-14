@@ -219,11 +219,11 @@ function sessionDetail() {
                 if (data.success) {
                     window.location.href = '/solutions/' + data.solution_id;
                 } else {
-                    alert('Failed: ' + (data.error || 'Unknown error'));
+                    Platform.toast.error('Failed: ' + (data.error || 'Unknown error'));
                 }
             } catch (err) {
                 console.error('[sessionDetail] accept error:', err);
-                alert('Failed to accept recommendation');
+                Platform.toast.error('Failed to accept recommendation');
             } finally {
                 this.acceptingRec = null;
             }
@@ -252,11 +252,11 @@ function sessionDetail() {
                     // Reload page to show newly created motivation elements
                     window.location.reload();
                 } else {
-                    alert('Analysis failed: ' + (data.error || 'Unknown error'));
+                    Platform.toast.error('Analysis failed: ' + (data.error || 'Unknown error'));
                 }
             } catch (err) {
                 console.error('[sessionDetail] analyze error:', err);
-                alert('Failed to run analysis. Please try again.');
+                Platform.toast.error('Failed to run analysis. Please try again.');
             } finally {
                 this.analyzingProblem = false;
             }
@@ -294,13 +294,13 @@ function sessionDetail() {
                 );
                 let data = await resp.json();
                 if (data.success) {
-                    alert('Applied ' + data.created + ' elements to solution.');
+                    Platform.toast.success('Applied ' + data.created + ' elements to solution.');
                 } else {
-                    alert('Failed: ' + (data.error || 'Unknown error'));
+                    Platform.toast.error('Failed: ' + (data.error || 'Unknown error'));
                 }
             } catch (err) {
                 console.error('[sessionDetail] apply elements error:', err);
-                alert('Failed to apply elements');
+                Platform.toast.error('Failed to apply elements');
             } finally {
                 this.applyingElements = false;
             }
@@ -335,14 +335,14 @@ function sessionDetail() {
                 );
                 let data = await resp.json();
                 if (data.success) {
-                    alert('Applied ' + data.created + ' requirements.');
+                    Platform.toast.success('Applied ' + data.created + ' requirements.');
                     window.location.reload();
                 } else {
-                    alert('Failed: ' + (data.error || 'Unknown error'));
+                    Platform.toast.error('Failed: ' + (data.error || 'Unknown error'));
                 }
             } catch (err) {
                 console.error('[sessionDetail] apply requirements error:', err);
-                alert('Failed to apply requirements');
+                Platform.toast.error('Failed to apply requirements');
             } finally {
                 this.applyingRequirements = false;
             }
@@ -375,13 +375,13 @@ function sessionDetail() {
                 );
                 let data = await resp.json();
                 if (data.success) {
-                    alert('Applied ' + data.created + ' roadmap phases.');
+                    Platform.toast.success('Applied ' + data.created + ' roadmap phases.');
                 } else {
-                    alert('Failed: ' + (data.error || 'Unknown error'));
+                    Platform.toast.error('Failed: ' + (data.error || 'Unknown error'));
                 }
             } catch (err) {
                 console.error('[sessionDetail] apply roadmap error:', err);
-                alert('Failed to apply roadmap');
+                Platform.toast.error('Failed to apply roadmap');
             } finally {
                 this.applyingRoadmap = false;
             }

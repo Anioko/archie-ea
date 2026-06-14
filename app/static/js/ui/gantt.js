@@ -1034,11 +1034,11 @@
                             self.selectedTaskId = null;
                             self.reload();
                         } else {
-                            alert('Delete failed: ' + ((data && data.error) || 'Unknown error'));
+                            Platform.toast.error('Delete failed: ' + ((data && data.error) || 'Unknown error'));
                         }
                     }).catch(function (err) {
                         let msg = (err && err.data && err.data.error) || (err && err.message) || 'Network error';
-                        alert('Delete failed: ' + msg);
+                        Platform.toast.error('Delete failed: ' + msg);
                     });
             },
 

@@ -98,7 +98,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Allow double-click to open properties (placeholder)
     el.addEventListener('dblclick', (ev) => {
       ev.stopPropagation();
-      alert('Open properties for ' + (node.name || node.id));
+      Platform.toast.info('Open properties for ' + (node.name || node.id));
     });
 
     return el;
@@ -138,7 +138,7 @@ document.addEventListener('DOMContentLoaded', function() {
               const el = makeNodeElement(payload);
               canvasEl.appendChild(el);
             } else {
-              alert('Failed to add node: ' + (rj.error || 'unknown'));
+              Platform.toast.error('Failed to add node: ' + (rj.error || 'unknown'));
             }
           } catch (e) {
             console.warn('Failed to add node', e);

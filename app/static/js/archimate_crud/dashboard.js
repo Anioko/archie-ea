@@ -458,10 +458,10 @@ document.addEventListener('alpine:init', function() {
                         this.loadElements();
                         this.loadAllLayerCounts();
                     } else {
-                        alert(data.error || 'Delete failed');
+                        Platform.toast.error(data.error || 'Delete failed');
                     }
                 } catch (err) {
-                    alert('Error: ' + err.message);
+                    Platform.toast.error('Error: ' + err.message);
                 } finally {
                     this.deleting = false;
                 }
@@ -502,7 +502,7 @@ document.addEventListener('alpine:init', function() {
                                 self.loadElements();
                                 self.loadAllLayerCounts();
                             } catch (err) {
-                                alert('Error during bulk delete');
+                                Platform.toast.error('Error during bulk delete');
                             }
                         } }
                     ]
@@ -578,10 +578,10 @@ document.addEventListener('alpine:init', function() {
                         let self = this;
                         setTimeout(function() { self.detailSaved = false; }, 3000);
                     } else {
-                        alert(data.error || 'Save failed');
+                        Platform.toast.error(data.error || 'Save failed');
                     }
                 } catch (e) {
-                    alert('Error: ' + e.message);
+                    Platform.toast.error('Error: ' + e.message);
                 } finally {
                     this.detailSaving = false;
                 }

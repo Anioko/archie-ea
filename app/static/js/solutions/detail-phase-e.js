@@ -110,7 +110,7 @@
                     }
                 } catch (err) {
                     console.error('[solutionDetail] AI suggest error:', err);
-                    alert('AI suggestion failed. Check console for details.');
+                    Platform.toast.error('AI suggestion failed. Check console for details.');
                 }
                 this.suggestingElements = false;
             },
@@ -224,7 +224,7 @@
                     }
                 } catch (err) {
                     console.error('[solutionDetail] options analysis error:', err);
-                    alert('Options analysis failed. Check console for details.');
+                    Platform.toast.error('Options analysis failed. Check console for details.');
                 }
                 this.analyzingOptions = false;
             },
@@ -268,7 +268,7 @@
                     }
                 } catch (err) {
                     console.error('[solutionDetail] generate variants error:', err);
-                    alert('Generate variants failed. Check console for details.');
+                    Platform.toast.error('Generate variants failed. Check console for details.');
                 }
                 this.generatingVariants = false;
             },
@@ -289,11 +289,11 @@
                         await this.refreshEntityData();
                         this.architectureVariants = [];
                     } else {
-                        alert(json.error || 'Failed to apply variant.');
+                        Platform.toast.error(json.error || 'Failed to apply variant.');
                     }
                 } catch (err) {
                     console.error('[solutionDetail] apply variant error:', err);
-                    alert('Apply variant failed.');
+                    Platform.toast.error('Apply variant failed.');
                 }
                 this.applyingVariantId = null;
             },
@@ -360,11 +360,11 @@
                     if (json.success) {
                         this.editingMcdaCriteria = false;
                     } else {
-                        alert(json.error || 'Failed to save criteria.');
+                        Platform.toast.error(json.error || 'Failed to save criteria.');
                     }
                 } catch (err) {
                     console.error('[ENT-058] save MCDA criteria error:', err);
-                    alert('Failed to save criteria weights.');
+                    Platform.toast.error('Failed to save criteria weights.');
                 }
                 this.savingCriteria = false;
             },

@@ -85,7 +85,7 @@ let ArchAssistant = {
                 }
             });
         } else {
-            alert('Unified mapping modal is not available');
+            Platform.toast.info('Unified mapping modal is not available');
         }
     },
 
@@ -335,16 +335,16 @@ let ArchAssistant = {
             let res = await fetch('/api/architecture-assistant/capability-sets', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
             let data = await res.json();
             if (data.success) {
-                alert('Saved');
+                Platform.toast.success('Saved');
                 let dropdown = document.getElementById('saved-sets-dropdown');
                 dropdown.classList.add('hidden');
                 this.loadSavedSets(window.CURRENT_USER_ID || 0);
             } else {
-                alert('Save failed: ' + (data.error || 'unknown'));
+                Platform.toast.error('Save failed: ' + (data.error || 'unknown'));
             }
         } catch (e) {
             console.error('Save set failed', e);
-            alert('Save failed');
+            Platform.toast.error('Save failed');
         }
     },
 
@@ -1735,7 +1735,7 @@ let ArchAssistant = {
         if (typeof window.showToast === 'function') {
             window.showToast(message, type);
         } else {
-            alert(message);
+            Platform.toast.info(message);
         }
     }
 };

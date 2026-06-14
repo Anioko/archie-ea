@@ -621,7 +621,7 @@ if (window.__ALPINE_ARCH_LOADED__) {
                     if (!confirm(`Delete solution "${name}"?`)) return;
                     _fetch(`/enterprise/api/solutions/${id}`, { method: 'DELETE' })
                         .then(() => this._loadItems())
-                        .catch(err => alert('Delete failed: ' + err.message));
+                        .catch(err => Platform.toast.error('Delete failed: ' + err.message));
                 }
             });
         });

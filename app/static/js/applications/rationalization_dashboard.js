@@ -135,13 +135,13 @@ function rationalizationDashboard() {
                 if (data.success) {
                     window.location.reload();
                 } else {
-                    alert('Detection failed: ' + (data.error || 'Unknown error'));
+                    Platform.toast.error('Detection failed: ' + (data.error || 'Unknown error'));
                 }
             })
             .catch(function(err) {
                 self.detectionLoading = false;
                 console.error('Detection error:', err);
-                alert('Detection request failed. Check console for details.');
+                Platform.toast.error('Detection request failed. Check console for details.');
             });
         },
 
@@ -187,7 +187,7 @@ function rationalizationDashboard() {
             })
             .catch(function(err) {
                 console.error('Export failed:', err);
-                alert('Export failed. Please try again.');
+                Platform.toast.error('Export failed. Please try again.');
             })
             .finally(function() { self.exportLoading = false; });
         },
@@ -360,13 +360,13 @@ function rationalizationDashboard() {
                 if (data.success) {
                     window.location.reload();
                 } else {
-                    alert('Auto-resolve failed: ' + (data.error || 'Unknown error'));
+                    Platform.toast.error('Auto-resolve failed: ' + (data.error || 'Unknown error'));
                 }
             })
             .catch(function(err) {
                 self.autoResolveLoading = false;
                 console.error('Auto-resolve error:', err);
-                alert('Auto-resolve request failed.');
+                Platform.toast.error('Auto-resolve request failed.');
             });
         }
     };

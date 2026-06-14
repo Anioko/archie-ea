@@ -121,18 +121,18 @@
                     if (data.success) {
                         window.location.reload();
                     } else {
-                        alert('Save failed: ' + (data.error || 'Unknown error'));
+                        Platform.toast.error('Save failed: ' + (data.error || 'Unknown error'));
                     }
                 } catch (err) {
                     console.error('[solutionDetail] sync error:', err);
-                    alert('Save failed. Check console for details.');
+                    Platform.toast.error('Save failed. Check console for details.');
                 }
                 this.manageSaving = false;
             },
             async unlinkEntity(type, id) {
                 if (!confirm('Remove this item?')) return;
                 if (type === 'capability' && !id) {
-                    alert('Cannot remove this capability: no mapping record found. Try re-linking it first.');
+                    Platform.toast.error('Cannot remove this capability: no mapping record found. Try re-linking it first.');
                     return;
                 }
                 let urlMap = {
@@ -151,11 +151,11 @@
                     if (data.success) {
                         window.location.reload();
                     } else {
-                        alert('Remove failed: ' + (data.error || 'Unknown error'));
+                        Platform.toast.error('Remove failed: ' + (data.error || 'Unknown error'));
                     }
                 } catch (err) {
                     console.error('[solutionDetail] unlink error:', err);
-                    alert('Remove failed. Check console for details.');
+                    Platform.toast.error('Remove failed. Check console for details.');
                 }
             },
 
@@ -188,7 +188,7 @@
                     }
                 } catch (err) {
                     console.error('[solutionDetail] AI requirements error:', err);
-                    alert('AI requirements generation failed.');
+                    Platform.toast.error('AI requirements generation failed.');
                 }
                 this.generatingReqs = false;
             },

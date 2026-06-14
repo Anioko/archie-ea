@@ -1815,7 +1815,7 @@
     
     To edit this gap, use "Convert to Roadmap" first.`;
     
-        alert(message);
+        Platform.toast.info(message);
     }
     
     // Export roadmap

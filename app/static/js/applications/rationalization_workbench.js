@@ -184,7 +184,7 @@ function workbenchApp() {
             const labels = { approve: 'Approve', defer: 'Defer', request_data: 'Request Data for', set_disposition: 'Set disposition for' };
             let confirmMsg = (labels[action] || action) + ' ' + ids.length + ' application(s)?';
             if (action === 'set_disposition') {
-                if (!self.bulkDisposition) { alert('Select a disposition first.'); return; }
+                if (!self.bulkDisposition) { Platform.toast.warning('Select a disposition first.'); return; }
                 confirmMsg = 'Set disposition to "' + self.bulkDisposition + '" for ' + ids.length + ' application(s)?';
             }
             if (!confirm(confirmMsg)) return;
@@ -207,12 +207,12 @@ function workbenchApp() {
                     self.bulkDisposition = '';
                     self.load();
                 } else {
-                    alert('Bulk action failed: ' + (data.error || 'Unknown error'));
+                    Platform.toast.error('Bulk action failed: ' + (data.error || 'Unknown error'));
                 }
             })
             .catch(function(err) {
                 console.error('Bulk action error:', err);
-                alert('Bulk action request failed.');
+                Platform.toast.error('Bulk action request failed.');
             });
         },
 
@@ -229,7 +229,7 @@ function workbenchApp() {
                 self.compareApps = self.compareApps.filter(function(ca) { return ca.id !== app.id; });
             } else {
                 if (self.compareIds.length >= 4) {
-                    alert('Maximum 4 applications can be compared at once.');
+                    Platform.toast.info('Maximum 4 applications can be compared at once.');
                     return;
                 }
                 self.compareIds.push(app.id);

@@ -980,7 +980,7 @@ class ApplicationArchitectureManager {
       })
       .catch(error => {
         console.error('Error exporting JSON:', error);
-        alert('Failed to export JSON. Please try again.');
+        Platform.toast.error('Failed to export JSON. Please try again.');
       });
   }
 

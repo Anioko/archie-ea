@@ -355,14 +355,14 @@ function duplicateDetection() {
                             if (data.success) {
                                 let msg = 'Added ' + (data.added_count || 0) + ' application(s) to consolidation list' +
                                     (data.skipped_count ? ' (' + data.skipped_count + ' already listed)' : '');
-                                alert(msg);
+                                Platform.toast.info(msg);
                                 await self.loadGroups();
                             } else {
-                                alert('Error: ' + (data.error || 'Unknown error'));
+                                Platform.toast.error('Error: ' + (data.error || 'Unknown error'));
                             }
                         } catch (error) {
                             console.error('Error adding to consolidation:', error);
-                            alert('Failed to add to consolidation: ' + error.message);
+                            Platform.toast.error('Failed to add to consolidation: ' + error.message);
                         }
                     } }
                 ]
@@ -390,11 +390,11 @@ function duplicateDetection() {
                                 self.allGroups = self.allGroups.filter(function(g) { return g.id !== groupId; });
                                 await self.loadStats();
                             } else {
-                                alert('Error: ' + (data.error || 'Unknown error'));
+                                Platform.toast.error('Error: ' + (data.error || 'Unknown error'));
                             }
                         } catch (error) {
                             console.error('Error dismissing group:', error);
-                            alert('Failed to dismiss group: ' + error.message);
+                            Platform.toast.error('Failed to dismiss group: ' + error.message);
                         }
                     } }
                 ]

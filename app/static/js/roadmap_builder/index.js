@@ -572,7 +572,7 @@ let RoadmapBuilder = {
         if (typeof window.showToast === 'function') {
             window.showToast(message, type);
         } else {
-            alert(message);
+            Platform.toast.info(message);
         }
     }
 };

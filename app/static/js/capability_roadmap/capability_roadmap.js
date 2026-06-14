@@ -351,7 +351,7 @@ function filterACMCapabilities() {
 
 function openACMCapabilityDetail(capabilityId, capabilityName) {
     // Open detail modal or navigate to detail page
-    alert('View details for: ' + capabilityName + ' (ID: ' + capabilityId + ')\n\nFull detail view coming soon.');
+    Platform.toast.info('View details for: ' + capabilityName + ' (ID: ' + capabilityId + ')\n\nFull detail view coming soon.');
 }
 
 // =============================================================================

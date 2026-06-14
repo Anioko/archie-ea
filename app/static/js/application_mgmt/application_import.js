@@ -86,7 +86,7 @@ function handleDrop(event) {
       document.getElementById('excel-file-input').files = files;
       handleExcelFileSelect({ target: { files: [file] } });
     } else {
-      alert('Please upload an Excel (.xlsx, .xls), CSV, or JSON file.');
+      Platform.toast.warning('Please upload an Excel (.xlsx, .xls), CSV, or JSON file.');
     }
   }
 }
@@ -150,7 +150,7 @@ function previewExcelFile(file) {
   })
   .then(data => {
     if (data.error) {
-      alert('Error: ' + data.error);
+      Platform.toast.error('Error: ' + data.error);
       return;
     }
 
@@ -159,7 +159,7 @@ function previewExcelFile(file) {
     document.getElementById('excel-preview').classList.remove('hidden');
   })
   .catch(error => {
-    alert('Error previewing file: ' + (error.message || 'Unknown error'));
+    Platform.toast.error('Error previewing file: ' + (error.message || 'Unknown error'));
   });
 }
 
@@ -351,11 +351,11 @@ function runPostImportAutoMap(importedCount, suffix) {
     if (data.archimate_elements_created > 0) mapMessage += `ArchiMate elements: ${data.archimate_elements_created}\n`;
     if (data.vendor_archimate_cloned > 0) mapMessage += `Vendor elements cloned: ${data.vendor_archimate_cloned}\n`;
     if (data.vendor_matches_found > 0) mapMessage += `Vendor matches: ${data.vendor_matches_found}\n`;
-    alert(mapMessage);
+    Platform.toast.info(mapMessage);
     window.location.reload();
   })
   .catch(error => {
-    alert('Import succeeded but auto-mapping failed: ' + error.message);
+    Platform.toast.error('Import succeeded but auto-mapping failed: ' + error.message);
     window.location.reload();
   });
 }
@@ -365,7 +365,7 @@ let _importInProgress = false;
 
 function processExcelImport() {
   if (!selectedExcelFile) {
-    alert('Please select a file first');
+    Platform.toast.warning('Please select a file first');
     return;
   }
 
@@ -379,7 +379,7 @@ function processExcelImport() {
   // Validate that name column is mapped
   if (!Object.values(fieldMappings).includes('name')) {
     _importInProgress = false;
-    alert('Please map at least one column to "Name" (required field) before importing.');
+    Platform.toast.warning('Please map at least one column to "Name" (required field) before importing.');
     return;
   }
 
@@ -449,7 +449,7 @@ function processExcelImport() {
       importBtn.disabled = false;
       importBtn.textContent = originalText;
       _importInProgress = false;  // AUDIT-IMP-005: Reset guard on error
-      alert('Error: ' + data.error);
+      Platform.toast.error('Error: ' + data.error);
       return;
     }
 
@@ -464,7 +464,7 @@ function processExcelImport() {
     importBtn.disabled = false;
     importBtn.textContent = originalText;
     _importInProgress = false;  // AUDIT-IMP-005: Reset guard on failure
-    alert('Error importing: ' + error.message);
+    Platform.toast.error('Error importing: ' + error.message);
   });
 }
 
@@ -513,7 +513,7 @@ function processManualImport() {
   const rows = tbody.querySelectorAll('tr');
 
   if (rows.length === 0) {
-    alert('Please add at least one application');
+    Platform.toast.warning('Please add at least one application');
     return;
   }
 
@@ -544,7 +544,7 @@ function processManualImport() {
   }
 
   if (applications.length === 0) {
-    alert('No valid applications to import');
+    Platform.toast.error('No valid applications to import');
     return;
   }
 
@@ -572,7 +572,7 @@ function processManualImport() {
     if (data.error) {
       importBtn.disabled = false;
       importBtn.textContent = originalText;
-      alert('Error: ' + data.error);
+      Platform.toast.error('Error: ' + data.error);
       return;
     }
 
@@ -587,14 +587,14 @@ function processManualImport() {
 
     importBtn.disabled = false;
     importBtn.textContent = originalText;
-    alert(message);
+    Platform.toast.info(message);
 
     window.location.reload();
   })
   .catch(error => {
     importBtn.disabled = false;
     importBtn.textContent = originalText;
-    alert('Error importing: ' + error.message);
+    Platform.toast.error('Error importing: ' + error.message);
   });
 }
 
@@ -641,7 +641,7 @@ function loadImportHistory() {
 // Import Analyzer Function with Real-time Progress
 function analyzeImportFile(analysisType) {
   if (!selectedExcelFile) {
-    alert('Please select a file first to analyze.');
+    Platform.toast.warning('Please select a file first to analyze.');
     return;
   }
 
