@@ -18,14 +18,35 @@ def _default_org_id():
     Resolves the current request's organization (set by the tenant_context
     middleware on g.current_org_id) so inserts that bypass the tenant before_flush
     listener — raw Table.insert() in model events, seeders, bulk paths — still get
-    an org rather than violating the NOT NULL constraint. Returns None outside a
-    request context (CLI / background), where the caller must set it explicitly.
+    an org rather than violating the NOT NULL constraint.
+
+    Outside a request (CLI seeders, background jobs) there is no g.current_org_id.
+    For a single-tenant install (exactly one Organization — the default for a
+    self-hosted deployment) fall back to that org so `flask seed ...` and similar
+    work out of the box. When several organizations exist we cannot safely guess
+    the tenant, so we return None and let the NOT NULL constraint surface the
+    missing context rather than silently writing into the wrong tenant.
     """
     try:
         from flask import g, has_request_context
 
         if has_request_context():
             return getattr(g, "current_org_id", None)
+    except Exception:
+        pass
+    try:
+        from app import db
+        from app.models.organization import Organization
+
+        with db.session.no_autoflush:
+            ids = (
+                db.session.query(Organization.id)
+                .order_by(Organization.id.asc())
+                .limit(2)
+                .all()
+            )
+        if len(ids) == 1:
+            return ids[0][0]
     except Exception:
         pass
     return None
