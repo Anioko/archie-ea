@@ -454,7 +454,7 @@ class PageGuideService:
             f"Page title: {page_title}\n"
             f"Page summary: {entry['summary']}\n\n"
             f"{generic_endpoint_hint}"
-            f"{('Live page data:\n' + live_context + chr(10)) if live_context else ''}"
+            f"{('Live page data:' + chr(10) + live_context + chr(10)) if live_context else ''}"
             f"{generic_rules}"
             "Persona emphasis:\n"
             f"{chr(10).join(emphasis_lines)}\n\n"

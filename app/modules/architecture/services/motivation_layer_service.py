@@ -156,7 +156,7 @@ Name: {business_function.name}
 Description: {business_function.description or 'No description provided'}
 {stakeholder_context}
 
-{f'ADDITIONAL CONTEXT:\n{context}' if context else ''}
+{f'ADDITIONAL CONTEXT:{chr(10)}{context}' if context else ''}
 
 Generate a comprehensive set of requirements that:
 

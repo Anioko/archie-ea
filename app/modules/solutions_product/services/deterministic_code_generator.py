@@ -7320,7 +7320,7 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
 
         # ── tailwind.config.js ──
         entity_content_paths = ", ".join([
-            f'"./src/pages/{e['pascal']}/**/*.{{ts,tsx}}"' for e in entities
+            f'"./src/pages/{e["pascal"]}/**/*.{{ts,tsx}}"' for e in entities
         ]) if entities else ""
         files.append(GeneratedFile(
             path="frontend/tailwind.config.js",

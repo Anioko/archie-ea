@@ -248,10 +248,11 @@ class LightweightAdversarialValidator:
         
         for pattern in absolute_patterns:
             if re.search(pattern, explanation, re.IGNORECASE):
+                readable_pattern = pattern.replace('\\s+', ' ')
                 concerns.append(LightweightConcern(
                     category="accuracy",
                     severity=ConcernSeverity.SUGGEST,
-                    message=f"Absolute statement found ('{pattern.replace('\\s+', ' ')}') - verify this is correct",
+                    message=f"Absolute statement found ('{readable_pattern}') - verify this is correct",
                     suggested_action="Consider adding caveats or context"
                 ))
         
