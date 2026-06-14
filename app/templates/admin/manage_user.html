@@ -65,8 +65,8 @@
         </a>
         
         {{ page_header(
-        title='{{ user.full_name() }}',
-        description='View and manage {{ user.full_name() }}'s account.'
+        title=user.full_name(),
+        description='View and manage ' ~ user.full_name() ~ "'s account."
     ) }}
 
         <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">

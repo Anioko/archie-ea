@@ -60,6 +60,10 @@ if _FAST_INIT:
     from .user import *  # noqa
 else:
     from .adr import *  # noqa - ArchitectureDecisionRecord (Solution Architecture governance)
+    from .ai_audit_log import *  # noqa - AIAuditLog (ai_audit_logs table; needed by create_all)
+    # SolutionCodeBundle lives in a feature module; import it so create_all() builds its
+    # table (the route imports it lazily, which is too late for a fresh schema build).
+    from app.modules.solutions_product.models import *  # noqa
     from .architecture_decision import (  # noqa: F401
         ArchitectureDecision, DecisionCapabilityLink,
         ArchitectureChangeRequest, ChangeImpactAssessment, ArchitectureChangeNotice,
