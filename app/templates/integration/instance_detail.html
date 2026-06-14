@@ -31,7 +31,7 @@
         </div>
         <div class="flex gap-2">
             {% if instance.status == 'running' or instance.status == 'waiting_approval' %}
-                <form action="{{ url_for('integration.cancel_workflow', instance_id=instance.id) }}" method="post" @submit.prevent="return confirm('Are you sure you want to cancel this workflow?');">
+                <form action="{{ url_for('integration.cancel_workflow', instance_id=instance.id) }}" method="post" @submit.prevent="Platform.modal.confirmSubmit($event, 'Are you sure you want to cancel this workflow?')">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit" class="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-destructive hover:text-destructive-foreground h-10 px-4 py-2" aria-label="Submit">
                         Cancel Workflow

@@ -316,7 +316,7 @@ function wbChatPanel() {
           msg.allApplied = msg.patches.every(p => p.applied);
         } else {
           if (result.requires_force) {
-            if (confirm('⚠ Security warning: ' + (result.warnings || []).join('\n') + '\n\nApply anyway?')) {
+            if (await Platform.modal.confirm('⚠ Security warning: ' + (result.warnings || []).join('\n') + '\n\nApply anyway?')) {
               const r2 = await fetch(`/solutions/${this.solutionId}/codegen/chat-edit/apply-patch`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-CSRFToken': window.CSRF_TOKEN || '' },
@@ -325,11 +325,11 @@ function wbChatPanel() {
               if (r2.ok) { patch.applied = true; window.wbRefreshFile?.(patch.file); }
             }
           } else {
-            alert('Failed to apply patch: ' + (result.error || 'Unknown error'));
+            Platform.toast.error('Failed to apply patch: ' + (result.error || 'Unknown error'));
           }
         }
       } catch (e) {
-        alert('Network error: ' + e.message);
+        Platform.toast.error('Network error: ' + e.message);
       }
     },
 

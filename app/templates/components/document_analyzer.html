@@ -595,14 +595,14 @@ function documentAnalyzer(entityType, entityId) {
             files.forEach(file => {
                 // Check file size
                 if (file.size > MAX_FILE_SIZE) {
-                    alert(`File "${file.name}" is too large. Maximum size is 50MB.`);
+                    Platform.toast.info(`File "${file.name}" is too large. Maximum size is 50MB.`);
                     return;
                 }
                 
                 // Check file extension
                 const ext = '.' + file.name.split('.').pop().toLowerCase();
                 if (!allowedExtensions.includes(ext)) {
-                    alert(`File "${file.name}" has unsupported format. Allowed: ${allowedExtensions.join(', ')}`);
+                    Platform.toast.info(`File "${file.name}" has unsupported format. Allowed: ${allowedExtensions.join(', ')}`);
                     return;
                 }
                 
@@ -785,12 +785,12 @@ function documentAnalyzer(entityType, entityId) {
                     `- ${data.archimate_elements_created} ArchiMate elements created\n` +
                     `- Application/Vendor details updated`;
                 
-                if (confirm(message + '\n\nReload page to see changes?')) {
+                if (await Platform.modal.confirm(message + '\n\nReload page to see changes?')) {
                     window.location.reload();
                 }
             } catch (error) {
                 this.applying = false;
-                alert('Error applying analysis: ' + error.message);
+                Platform.toast.error('Error applying analysis: ' + error.message);
             }
         },
 

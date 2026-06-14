@@ -735,7 +735,7 @@ function ganttChartManager() {
         exportToPNG() {
             const ganttElement = document.querySelector('.gantt-chart-view');
             if (!ganttElement) {
-                alert('Gantt chart view not found');
+                Platform.toast.error('Gantt chart view not found');
                 return;
             }
             
@@ -751,14 +751,14 @@ function ganttChartManager() {
                 link.click();
             }).catch(error => {
                 console.error('Error generating PNG:', error);
-                alert('Error generating PNG export');
+                Platform.toast.error('Error generating PNG export');
             });
         },
         
         exportToJPG() {
             const ganttElement = document.querySelector('.gantt-chart-view');
             if (!ganttElement) {
-                alert('Gantt chart view not found');
+                Platform.toast.error('Gantt chart view not found');
                 return;
             }
             
@@ -774,7 +774,7 @@ function ganttChartManager() {
                 link.click();
             }).catch(error => {
                 console.error('Error generating JPG:', error);
-                alert('Error generating JPG export');
+                Platform.toast.error('Error generating JPG export');
             });
         }
     };

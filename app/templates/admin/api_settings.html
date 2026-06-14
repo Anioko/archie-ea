@@ -196,7 +196,7 @@
                                         </form>
                                         <form method="POST" action="{{ url_for('admin.delete_api_settings', settings_id=settings.id) }}"
                                               class="inline"
-                                              @submit="if(!confirm('Delete {{ settings.provider }}{% if settings.key_label %} ({{ settings.key_label }}){% endif %}? This cannot be undone.')) $event.preventDefault()">
+                                              @submit="Platform.modal.confirmSubmit($event, 'Delete {{ settings.provider }}{% if settings.key_label %} ({{ settings.key_label }}){% endif %}? This cannot be undone.')">
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                                             <button type="submit"
                                                     class="p-1.5 rounded-md hover:bg-background transition-colors text-destructive"

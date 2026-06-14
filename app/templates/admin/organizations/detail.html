@@ -74,7 +74,7 @@
             </span>
             {% if org.slug != 'default' %}
             <form method="POST" action="{{ url_for('admin.organization_delete', org_id=org.id) }}"
-                  onsubmit="return confirm('Delete {{ org.name }}? All users will be moved to the Default organization.')">
+                  onsubmit="return Platform.modal.confirmSubmit(event, 'Delete {{ org.name }}? All users will be moved to the Default organization.')">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button type="submit"
                     class="inline-flex items-center justify-center rounded-md text-xs font-medium transition-colors h-7 px-2.5 bg-destructive/10 text-destructive hover:bg-destructive/20">
@@ -137,7 +137,7 @@
                                 </form>
                                 {% if org.slug != 'default' %}
                                 <form method="POST" action="{{ url_for('admin.remove_user_from_org', org_id=org.id, user_id=user.id) }}" class="inline"
-                                      onsubmit="return confirm('Remove {{ user.full_name() or user.email }} from this organization?')">
+                                      onsubmit="return Platform.modal.confirmSubmit(event, 'Remove {{ user.full_name() or user.email }} from this organization?')">
                                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                     <button type="submit"
                                         class="inline-flex items-center justify-center rounded-md text-xs font-medium transition-colors h-7 px-2.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"

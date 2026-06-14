@@ -414,7 +414,7 @@ async function rejectReviewItem(itemId) {
 
 async function bulkApproveSelected() {
   if (selectedReviewItems.size === 0) {
-    alert('Please select items to approve');
+    Platform.toast.info('Please select items to approve');
     return;
   }
 
@@ -428,7 +428,7 @@ async function bulkApproveSelected() {
 
 async function bulkRejectSelected() {
   if (selectedReviewItems.size === 0) {
-    alert('Please select items to reject');
+    Platform.toast.info('Please select items to reject');
     return;
   }
 
@@ -471,7 +471,7 @@ async function confirmReviewedMappings() {
   const approved = reviewQueueItems.filter(i => i.status === 'approved');
 
   if (approved.length === 0) {
-    alert('No mappings approved. Please review and approve items before confirming.');
+    Platform.toast.info('No mappings approved. Please review and approve items before confirming.');
     return;
   }
 

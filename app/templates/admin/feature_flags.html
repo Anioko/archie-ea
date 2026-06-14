@@ -340,7 +340,7 @@
                                             <i data-lucide="edit" class="w-4 h-4" aria-hidden="true"></i>
                                         </a>
                                         <form method="POST" action="{{ url_for('admin.feature_flag_delete', id=feature.id) }}"
-                                              @submit.prevent="return confirm('Delete this feature flag?')" class="inline">
+                                              @submit.prevent="Platform.modal.confirmSubmit($event, 'Delete this feature flag?')" class="inline">
                                             {{ csrf_token() }}
                                             {% call button(type='submit', variant='ghost', size='icon', class='hover:bg-destructive hover:text-destructive-foreground h-8 w-8', aria_label='Delete feature flag') %}
                                                 <i data-lucide="trash-2" class="w-4 h-4" aria-hidden="true"></i>

@@ -709,7 +709,7 @@
                 <td class="py-2 text-right">
                   {% if row.delete_url %}
                   <form method="POST" action="{{ row.delete_url }}" class="inline"
-                    onsubmit="return confirm('Remove this ArchiMate link?');">
+                    onsubmit="return Platform.modal.confirmSubmit(event, 'Remove this ArchiMate link?')">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit" class="inline-flex items-center justify-center h-7 w-7 rounded-md text-destructive hover:bg-destructive/10 transition-colors" aria-label="Remove link">
                       <i data-lucide="x" class="h-3.5 w-3.5" aria-hidden="true"></i>
@@ -912,7 +912,7 @@
                 <td class="py-2 text-right">
                   {% if row.delete_url %}
                   <form method="POST" action="{{ row.delete_url }}" class="inline"
-                    onsubmit="return confirm('Remove capability mapping for {{ row.name | e }}?');">
+                    onsubmit="return Platform.modal.confirmSubmit(event, 'Remove capability mapping for {{ row.name | e }}?')">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit" class="inline-flex items-center justify-center h-7 w-7 rounded-md text-destructive hover:bg-destructive/10 transition-colors" aria-label="Remove mapping">
                       <i data-lucide="x" class="h-3.5 w-3.5" aria-hidden="true"></i>
@@ -1071,7 +1071,7 @@
                 </td>
                 <td class="py-2 text-right">
                   <form method="POST" action="{{ url_for('application_mgmt.application_vendor_footprint', id=app.id) }}" class="inline"
-                    onsubmit="return confirm('Remove {{ v.product_name | e }} from vendor footprint?');">
+                    onsubmit="return Platform.modal.confirmSubmit(event, 'Remove {{ v.product_name | e }} from vendor footprint?')">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <input type="hidden" name="action" value="delete">
                     <input type="hidden" name="vendor_product_id" value="{{ v.product_id }}">

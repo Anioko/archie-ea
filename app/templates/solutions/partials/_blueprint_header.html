@@ -218,8 +218,8 @@ function archieShowBanner(msg, type) {
             headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf ? csrf.content : '' }
         }).then(function(r) { return r.json(); }).then(function(d) {
             if (d.success) { window.location.href = '/solutions/'; }
-            else { alert(d.error || 'Delete failed'); }
-        }).catch(function(e) { alert('Delete failed: ' + e.message); });
+            else { Platform.toast.error(d.error || 'Delete failed'); }
+        }).catch(function(e) { Platform.toast.error('Delete failed: ' + e.message); });
     }
     document.addEventListener('click', function(e) {
         let btn = e.target.closest('[data-action="delete-solution"]');

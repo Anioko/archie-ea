@@ -775,7 +775,7 @@
           </td>
           <td class="px-4 py-3">
             <a href="{{ url_for('application_mgmt.delete_capability', app_id=app.id, id=cap.id) }}"
-              @click="if (!confirm('Unmap this capability?')) $event.preventDefault()"
+              @click.prevent="const h = $event.currentTarget.href; Platform.modal.confirm('Unmap this capability?').then(ok => { if (ok) window.location.assign(h); })"
               class="text-destructive text-xs no-underline">Unmap</a>
           </td>
         </tr>
@@ -2103,7 +2103,7 @@
             {% endif %}
             {% if edit_mode %}
             <form method="POST" action="{{ url_for('unified_applications.delete_document_file', doc_id=doc.id) }}"
-              @submit="if (!confirm('Are you sure you want to delete this document?')) $event.preventDefault()" class="m-0">
+              @submit="Platform.modal.confirmSubmit($event, 'Are you sure you want to delete this document?')" class="m-0">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
               <button type="submit"
                 class="bg-destructive/10 text-destructive border-none p-2 rounded-md cursor-pointer inline-flex items-center justify-center" aria-label="Submit">
@@ -2383,7 +2383,7 @@
 
               <form method="POST"
                 action="{{ url_for('unified_applications.application_capability_mapping_delete', id=app.id, mapping_id=mapping.id) }}"
-                class="m-0" @submit="if (!confirm('Remove {{ capability.name }} from this application?')) $event.preventDefault()">
+                class="m-0" @submit="Platform.modal.confirmSubmit($event, 'Remove {{ capability.name }} from this application?')">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
                 <button type="submit"
                   class="px-3 py-1.5 bg-background border border-destructive rounded-md text-destructive text-xs font-semibold cursor-pointer" aria-label="Submit">Delete</button>
@@ -2700,13 +2700,16 @@
     if (!overviewForm) return;
 
     overviewForm.addEventListener('submit', async function (e) {
+      // Async confirms can't decide AFTER the native submit fires, so we prevent the
+      // default up-front and submit natively only once every check passes.
+      e.preventDefault();
+
       // Numeric validation for userCount
       const userCountEl = document.getElementById('userCount');
       if (userCountEl && userCountEl.value) {
         const v = parseInt(userCountEl.value, 10);
         if (isNaN(v) || v < 0) {
           Platform.toast.info('User Count must be a non-negative integer.');
-          e.preventDefault();
           userCountEl.focus();
           return;
         }
@@ -2715,8 +2718,7 @@
       // Length checks
       const descEl = document.getElementById('description');
       if (descEl && descEl.value && descEl.value.length > 1000) {
-        if (!confirm('Description is longer than 1000 characters. Continue saving?')) {
-          e.preventDefault();
+        if (!(await Platform.modal.confirm('Description is longer than 1000 characters. Continue saving?'))) {
           descEl.focus();
           return;
         }
@@ -2728,22 +2730,18 @@
         const val = vendorInputs[i].value || '';
         if (val.length > 200) {
           Platform.toast.info('Vendor classification must be 200 characters or fewer for ' + vendorInputs[i].id);
-          e.preventDefault();
           vendorInputs[i].focus();
           return;
         }
       }
 
-      // Final confirmation checkpoint. NOTE: native confirm() is intentional here —
-      // this is a form 'submit' handler that calls e.preventDefault() on cancel, which
-      // requires a SYNCHRONOUS decision. An async Platform.modal.confirm() resolves
-      // after the default submit has already fired, so preventDefault would be too late.
-      // Proper migration needs a redesign (preventDefault first, then async confirm, then
-      // submit). Tracked under native-dialog Phase B sync-dependent sites.
-      if (!confirm('Save changes to Overview?')) {
-        e.preventDefault();
+      // Final confirmation checkpoint
+      if (!(await Platform.modal.confirm('Save changes to Overview?'))) {
         return;
       }
+
+      // All checks passed — native submit (bypasses this handler, no re-prompt loop)
+      overviewForm.submit();
     });
   });
 

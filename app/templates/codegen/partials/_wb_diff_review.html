@@ -131,7 +131,7 @@ function wbDiffReview() {
           window.wbRefreshFile?.(patch.file);
         } else {
           const err = await r.json();
-          alert(err.error || 'Apply failed');
+          Platform.toast.error(err.error || 'Apply failed');
         }
       } finally { this.isApplying = false; }
     },

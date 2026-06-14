@@ -71,7 +71,7 @@
                                         </form>
                                         <!-- Delete button -->
                                         <form method="POST" action="{{ url_for('admin.webhook_settings') }}" class="inline"
-                                              @submit="if(!confirm('Delete this webhook subscription? This cannot be undone.')) $event.preventDefault()">
+                                              @submit="Platform.modal.confirmSubmit($event, 'Delete this webhook subscription? This cannot be undone.')">
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                                             <input type="hidden" name="action" value="delete"/>
                                             <input type="hidden" name="subscription_id" value="{{ sub.id }}"/>

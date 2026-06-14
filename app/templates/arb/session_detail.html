@@ -27,7 +27,7 @@
         {{ status_badge(session.status|title, status_variant_map[session.status]|default('neutral')) }}
         {% if session.status in ['scheduled', 'draft'] %}
         <form method="POST" action="{{ url_for('arb.cancel_session', id=session.id) }}" class="inline"
-              onsubmit="return confirm('Cancel this session?')">
+              onsubmit="return Platform.modal.confirmSubmit(event, 'Cancel this session?')">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit"
                     class="px-3 py-1.5 text-xs font-medium text-amber-600 border border-amber-300 rounded-lg hover:bg-amber-50">

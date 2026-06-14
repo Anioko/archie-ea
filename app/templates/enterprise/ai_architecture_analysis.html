@@ -23,7 +23,7 @@
     ) }}
 
     {# ─ Onboarding Banner ─ #}
-    {% call alert(variant='default', icon='info', dismissible=true, class='bg-primary/5/50 dark:bg-primary/10 border-primary/20 dark:border-primary') %}
+    {% call Platform.toast.info(variant='default', icon='info', dismissible=true, class='bg-primary/5/50 dark:bg-primary/10 border-primary/20 dark:border-primary') %}
         {% call alert_title(class='text-primary dark:text-primary/60') %}Welcome to Architecture Intelligence{% endcall %}
         {% call alert_description(class='text-primary dark:text-primary/80 mt-1') %}
             This dashboard continuously scans your application portfolio to identify architectural gaps, highlight redundancies, and recommend structural improvements. Start by reviewing your top priorities below.

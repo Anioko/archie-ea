@@ -1251,7 +1251,7 @@ eas build --platform android --profile preview</pre>
                              try {
                                  const r = await fetch('/solutions/' + solutionId + '/codegen/stackblitz-data');
                                  const d = await r.json();
-                                 if (d.error) { alert(d.error); return; }
+                                 if (d.error) { Platform.toast.error(d.error); return; }
                                  const form = document.createElement('form');
                                  form.method = 'POST';
                                  form.action = 'https://stackblitz.com/run';
@@ -1266,7 +1266,7 @@ eas build --platform android --profile preview</pre>
                                  document.body.appendChild(form);
                                  form.submit();
                                  document.body.removeChild(form);
-                             } catch(e) { alert('StackBlitz launch failed: ' + e.message); }
+                             } catch(e) { Platform.toast.error('StackBlitz launch failed: ' + e.message); }
                              finally { this.sbLaunching = false; }
                          }
                      }"

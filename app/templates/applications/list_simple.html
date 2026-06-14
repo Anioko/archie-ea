@@ -440,7 +440,7 @@
                 </div>
                 {% if current_user.is_admin() or current_user.role_archetype == 'architect' %}
                 <form method="POST" action="{{ url_for('unified_applications.application_delete', id=app.id) }}"
-                  @submit.prevent="if (confirm('Delete {{ app.name | e }}? This cannot be undone.')) $el.submit()">
+                  @submit.prevent="Platform.modal.confirmSubmit($event, 'Delete {{ app.name | e }}? This cannot be undone.')">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                   <button type="submit" data-testid="btn-delete-{{ app.id }}"
                     class="inline-flex items-center justify-center h-8 px-3 rounded-md text-sm font-medium text-destructive hover:bg-destructive/10 transition-colors"

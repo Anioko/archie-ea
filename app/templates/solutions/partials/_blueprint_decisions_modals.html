@@ -356,7 +356,7 @@
                     this.narrative = json.narrative || this.narrative;
                     await this.autoSave();
                 } catch (e) {
-                    alert('Could not generate narrative: ' + e.message);
+                    Platform.toast.info('Could not generate narrative: ' + e.message);
                 } finally {
                     this.generatingNarrative = false;
                 }
@@ -533,7 +533,7 @@
                         ];
                     }
                 } catch (e) {
-                    alert('Could not approve: ' + e.message);
+                    Platform.toast.info('Could not approve: ' + e.message);
                 } finally {
                     this.actionLoading = { ...this.actionLoading, [id]: false };
                 }

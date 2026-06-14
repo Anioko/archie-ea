@@ -222,14 +222,14 @@ document.addEventListener('alpine:init', function() {
           this.loading = false;
         },
 
-        doAdvance() {
+        async doAdvance() {
           if (this.gate.critical_failures.length > 0) return;
           let hasWarnings = this.gate.warnings.length > 0;
           if (hasWarnings) {
             let msg = 'Phase gate warnings:\n\n' +
               this.gate.warnings.map(function(w) { return '- ' + w.label + ' (' + w.actual + '/' + w.required + ')'; }).join('\n') +
               '\n\nAdvance anyway?';
-            if (!confirm(msg)) return;
+            if (!(await Platform.modal.confirm(msg))) return;
           }
           // Dispatch to parent solutionDetail.advancePhase
           let el = this.$el;
@@ -262,10 +262,10 @@ document.addEventListener('alpine:init', function() {
             if (data.success || data.completed) {
               window.location.reload();
             } else {
-              alert((data.errors || []).join('\n') || 'Phase advance failed.');
+              Platform.toast.error((data.errors || []).join('\n') || 'Phase advance failed.');
             }
           } catch (err) {
-            alert('Error: ' + err.message);
+            Platform.toast.error('Error: ' + err.message);
           }
         },
       };

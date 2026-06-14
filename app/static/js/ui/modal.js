@@ -731,6 +731,16 @@
     });
 
     // ── Public API ───────────────────────────────────────────────────────────
+    function confirmSubmit(event, message, options) {
+        if (event && typeof event.preventDefault === 'function') event.preventDefault();
+        var t = event && event.target;
+        var form = t && t.closest ? t.closest('form') : (t && t.tagName === 'FORM' ? t : null);
+        confirmDialog(message, options).then(function (ok) {
+            if (ok && form && typeof form.submit === 'function') form.submit();
+        });
+        return false;
+    }
+
     const modal = {
         register:    register,
         open:        open,
@@ -745,6 +755,7 @@
         openDrawer:  openDrawer,
         closeDrawer: closeDrawer,
         confirm:  confirmDialog,
+        confirmSubmit: confirmSubmit,
         isOpen: function (id) {
             return _registry[id] ? _registry[id].isOpen : false;
         },
