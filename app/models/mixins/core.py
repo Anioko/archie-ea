@@ -12,6 +12,25 @@ from sqlalchemy.ext.declarative import declared_attr
 from sqlalchemy.orm import backref, relationship
 
 
+def _default_org_id():
+    """Column default for tenant organization_id.
+
+    Resolves the current request's organization (set by the tenant_context
+    middleware on g.current_org_id) so inserts that bypass the tenant before_flush
+    listener — raw Table.insert() in model events, seeders, bulk paths — still get
+    an org rather than violating the NOT NULL constraint. Returns None outside a
+    request context (CLI / background), where the caller must set it explicitly.
+    """
+    try:
+        from flask import g, has_request_context
+
+        if has_request_context():
+            return getattr(g, "current_org_id", None)
+    except Exception:
+        pass
+    return None
+
+
 class TenantMixin:  # migration-exempt
     """Add to every model that holds tenant-specific business data.
 
@@ -28,6 +47,10 @@ class TenantMixin:  # migration-exempt
             db.ForeignKey("organizations.id", ondelete="CASCADE"),
             nullable=False,
             index=True,
+            # Belt-and-suspenders: the tenant before_flush sets this for ORM inserts,
+            # but raw Table.insert() (model events, seeders) bypasses it. This column
+            # default fills the org from the request context for those paths too.
+            default=_default_org_id,
         )
 
     @declared_attr
