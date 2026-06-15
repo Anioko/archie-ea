@@ -52,7 +52,10 @@ services:
       # Init script creates flask_dev and flask_test databases on startup
       - ./scripts/database/init-databases.sh:/docker-entrypoint-initdb.d/init-databases.sh:ro
     ports:
-      - '5432:5432'
+      # Bind to loopback only — the app reaches Postgres over the internal Docker
+      # network (host 'postgres'), so this never needs to be public. Publishing on
+      # 0.0.0.0 exposed the DB to the internet (Shadowserver/DO security finding).
+      - '127.0.0.1:5432:5432'
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -63,14 +66,17 @@ services:
     image: adminer
     restart: always
     ports:
-      - 8080:8080
+      # Adminer is a DB admin UI — loopback only (reach it via an SSH tunnel), never public.
+      - '127.0.0.1:8080:8080'
     depends_on:
       - postgres
 
   redis:
     image: redis:6-alpine
     ports:
-      - '6379:6379'
+      # Loopback only — the app uses Redis over the Docker network (host 'redis').
+      # Publishing on 0.0.0.0 left Redis open to the internet on 6379 (the security finding).
+      - '127.0.0.1:6379:6379'
 
 volumes:
   db-data:
