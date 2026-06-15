@@ -87,7 +87,7 @@
         <required>{{ field.required | default(false) | lower }}</required>
         {% else %}
         <type>Text</type>
-        <length>{{ field.max_length | default(255) }}</length>
+        <length>{{ field.max_length | default(255, true) }}</length>
         <required>{{ field.required | default(false) | lower }}</required>
         {% if field.unique | default(false) %}
         <unique>true</unique>
