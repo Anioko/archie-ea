@@ -1234,6 +1234,40 @@ def _register_misc_blueprints(app, csrf):
 
         # COM-015: vendor_comparison removed (BPM-001 wave-2, zero callers, merged into unified_vendors_api)
 
+    # The vendors page (vendors/list.html) and its JS depend on the vendor JSON API
+    # (/api/vendors/list, /api/vendors/ranking) and on vendor_management.create_vendor.
+    # When USE_VENDORS_GUARDRAILS is on, the v2 vendor blueprints can fail to register
+    # with no fallback, so the vendor table 404s on load ("NOT FOUND" toasts) and the
+    # Add Vendor button is dead. Register the canonical vendor API + management routes
+    # unconditionally, guarded against double-registration so v1 and v2 both work.
+    if "unified_vendors_api" not in app.blueprints:
+        try:
+            from app.modules.vendors.routes.unified_vendor_api import (
+                unified_vendors_api_bp,
+            )
+
+            app.register_blueprint(unified_vendors_api_bp)
+            app.logger.info(
+                "[BLUEPRINT] Vendor JSON API registered at /api/vendors (always-on)"
+            )
+        except Exception as e:  # pragma: no cover - defensive
+            app.logger.warning(f"[BLUEPRINT] Vendor JSON API registration failed: {e}")
+
+    if "vendor_management" not in app.blueprints:
+        try:
+            from app.modules.vendors.routes.vendor_management_routes import (
+                vendor_management_bp,
+            )
+
+            app.register_blueprint(vendor_management_bp)
+            app.logger.info(
+                "[BLUEPRINT] Vendor Management registered (always-on)"
+            )
+        except Exception as e:  # pragma: no cover - defensive
+            app.logger.warning(
+                f"[BLUEPRINT] Vendor Management registration failed: {e}"
+            )
+
     if not _use_applications:
         # Application Merging
         from app.api.application_merging_routes import merging_bp

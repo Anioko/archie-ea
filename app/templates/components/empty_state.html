@@ -28,9 +28,10 @@
     cta_onclick=None,
     cta_href=None,
     cta_icon=None,
-    class=''
+    class='',
+    padding='py-12'
 ) %}
-<div class="text-center py-12 px-4 {{ class }}" role="status">
+<div class="text-center {{ padding }} px-4 {{ class }}" role="status">
     <!-- Icon -->
     <div class="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-muted mb-4">
         <i data-lucide="{{ icon }}" class="h-8 w-8 text-muted-foreground" aria-hidden="true"></i>

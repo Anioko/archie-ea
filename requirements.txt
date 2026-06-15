@@ -36,6 +36,8 @@ PyYAML>=6.0,<7.0.0
 beautifulsoup4>=4.12.0           # HTML parsing (required to boot)
 faiss-cpu>=1.7.4                 # vector index for semantic search (required to boot)
 sentence-transformers>=2.2.0     # local embeddings for semantic search (required to boot)
+scikit-learn>=1.3.0              # unguarded imports in vendor/predictive services (required to boot)
+scipy>=1.11.0                    # scikit-learn runtime dependency (required to boot)
 
 # -----------------------------------------------------------------------------
 # 2. DATABASE & ORM
