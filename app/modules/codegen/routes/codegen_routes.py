@@ -1535,6 +1535,9 @@ def generate_code(solution_id):
                 ts = CodegenTemplateSet.query.get(template_set_id)
                 if ts and ts.created_by_id and ts.created_by_id != current_user.id:
                     template_set_id = None
+            # Import here too: the genome branch's import (above) makes this name a
+            # function-local, so the deterministic branch must import it in its own scope.
+            from app.modules.solutions_product.services.deterministic_code_generator import DeterministicCodeGenerator
             generator = DeterministicCodeGenerator(language=language)
             code_bundle = generator.generate(bundle, template_set_id=template_set_id)
             files = {f.path: f.content for f in code_bundle.files}

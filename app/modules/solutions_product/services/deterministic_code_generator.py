@@ -8248,6 +8248,9 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
             if not sap_service:
                 continue
             primary_model_name, primary_model_def = next(iter(models.items()))
+            # Apex class names must be valid identifiers — _pascal strips spaces and
+            # illegal chars like ()+ from the solution name (e.g. "… (CPI + MuleSoft)").
+            integration_class = f"{_pascal(bundle.solution_name)}SapIntegration"
             integration_ctx = dict(
                 ctx,
                 sap_named_credential=_snake(integ_name),
@@ -8255,10 +8258,11 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
                 source_entity=_salesforce_extract_source_entity(integ_name, normalized_integration),
                 target_object=ctx["sf_object_api_name"](primary_model_name),
                 field_mappings=_salesforce_field_mappings(primary_model_def, ctx["sf_field_api_name"]),
+                integration_class=integration_class,
             )
             template = self._env.get_template("sap_to_sf_integration.cls.j2")
             content = template.render(**integration_ctx)
-            integration_class_name = f"{bundle.solution_name.replace(' ', '')}SapIntegration.cls"
+            integration_class_name = f"{integration_class}.cls"
             self._validate_salesforce_code(
                 f"force-app/main/default/classes/{integration_class_name}",
                 content,

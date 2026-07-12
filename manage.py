@@ -1910,5 +1910,13 @@ else:
     from app import create_app
 
     app = create_app(os.getenv("FLASK_CONFIG") or "default")
+    # Behind a TLS-terminating reverse proxy (Caddy/nginx), honour X-Forwarded-Proto/Host
+    # so the app builds https:// URLs + form actions (no mixed-content warnings) and the
+    # secure session cookie stays consistent. Opt-in via TRUST_PROXY to avoid trusting
+    # forged headers when exposed directly.
+    if os.environ.get("TRUST_PROXY", "").lower() in ("1", "true", "yes") and not getattr(app, "_proxyfix_applied", False):
+        from werkzeug.middleware.proxy_fix import ProxyFix
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
+        app._proxyfix_applied = True
     migrate = Migrate(app, db)
     register_cli_commands(app)

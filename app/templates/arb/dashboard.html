@@ -460,6 +460,16 @@
   const rejected = {{ dashboard_data.metrics.rejected_items | int }};
   const total = {{ dashboard_data.metrics.total_items | int }};
   const other = Math.max(0, total - pending - approved - rejected);
+  if (total === 0) {
+    // An all-zero doughnut reads as a blank/broken chart — show an empty state instead.
+    const wrap = ctx.parentElement;
+    if (wrap) wrap.innerHTML = '<div class="flex flex-col items-center justify-center py-10 text-center">'
+      + '<span class="flex h-12 w-12 items-center justify-center rounded-xl bg-muted text-muted-foreground mb-3">'
+      + '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M9 12h6"/><path d="M9 16h4"/></svg>'
+      + '</span><p class="text-sm font-medium text-foreground">No reviews yet</p>'
+      + '<p class="text-xs text-muted-foreground mt-1">Submit a design to the ARB to start tracking decisions.</p></div>';
+    return;
+  }
   new Chart(ctx, {
     type: 'doughnut',
     data: {
