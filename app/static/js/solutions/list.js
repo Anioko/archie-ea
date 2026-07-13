@@ -44,7 +44,7 @@ window.deleteSolution = async function(solutionId, solutionName) {
         });
         Platform.modal.open(modalId);
     } else {
-        if ((await Platform.modal.confirm('Delete "' + solutionName + '"? This cannot be undone.'))) doDelete();
+        if ((await window.confirm('Delete "' + solutionName + '"? This cannot be undone.'))) doDelete();
     }
 };
 

@@ -323,12 +323,10 @@ def get_initiatives():
                     "name": init.name,
                     "description": init.description,
                     "type": init.initiative_type or "Unknown",
-                    "status": init.status or "Unknown",
-                    "priority": init.priority or "Unknown",
-                    "start_date": init.start_date.isoformat()
-                    if init.start_date
-                    else None,
-                    "end_date": init.end_date.isoformat() if init.end_date else None,
+                    "status": getattr(init, "status", None) or getattr(init, "current_phase", None) or "Unknown",
+                    "priority": getattr(init, "priority", None) or "Unknown",
+                    "start_date": init.planned_start_date.isoformat() if getattr(init, "planned_start_date", None) else None,
+                    "end_date": init.planned_end_date.isoformat() if getattr(init, "planned_end_date", None) else None,
                 }
             )
 
@@ -810,12 +808,10 @@ def get_all_entities():
                     "code": getattr(init, "code", None),
                     "type": "initiative",
                     "subtype": init.initiative_type or "Unknown",
-                    "status": init.status or "Unknown",
-                    "priority": init.priority or "Unknown",
-                    "start_date": init.start_date.isoformat()
-                    if init.start_date
-                    else None,
-                    "end_date": init.end_date.isoformat() if init.end_date else None,
+                    "status": getattr(init, "status", None) or getattr(init, "current_phase", None) or "Unknown",
+                    "priority": getattr(init, "priority", None) or "Unknown",
+                    "start_date": init.planned_start_date.isoformat() if getattr(init, "planned_start_date", None) else None,
+                    "end_date": init.planned_end_date.isoformat() if getattr(init, "planned_end_date", None) else None,
                 }
                 for init in initiatives
             ]

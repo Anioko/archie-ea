@@ -1786,7 +1786,7 @@ def _build_solution_detail_context(solution):
         # Path 2: query all SolutionAnalysisSessions by solution_id (covers solutions without
         # analysis_session_id set, or those with additional sessions created via the wizard)
         try:
-            extra_sessions = SolutionAnalysisSession.query.filter_by(solution_id=solution.id).all()
+            extra_sessions = SolutionAnalysisSession.query.filter_by(id=solution.analysis_session_id).all()
             existing_driver_ids = {d.id for d in drivers_all}
             existing_goal_ids = {g.id for g in goals_all}
             existing_constraint_ids = {c.id for c in constraints_all}

@@ -5,12 +5,23 @@
 {% block title %}Business Capabilities{% endblock %}
 
 {% block content %}
+{% set can_edit = current_user.is_admin() or current_user.role_archetype == 'architect' %}
+{% set can_delete = current_user.is_admin() %}
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-    {{ page_header(title='Business Capabilities', description='Capability taxonomy and hierarchy') }}
+    <div class="flex flex-wrap items-start justify-between gap-3">
+        {{ page_header(title='Business Capabilities', description='Capability taxonomy and hierarchy') }}
+        {% if can_edit %}
+        <button type="button" onclick="openCapCreate()"
+            class="inline-flex items-center gap-2 h-9 px-4 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:opacity-90 shrink-0"
+            aria-label="New Capability">
+            <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i> New Capability
+        </button>
+        {% endif %}
+    </div>
 
     {% set total = capabilities|length %}
     {% set level1 = capabilities|selectattr('level', 'equalto', 1)|list|length %}
-    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6 mt-4">
         {{ metrics_card(title='Total Capabilities', value=total, icon='layers') }}
         {{ metrics_card(title='Level 1', value=level1, icon='chevrons-up', value_class='text-primary') }}
         {{ metrics_card(title='Level 2+', value=total - level1, icon='chevrons-down', value_class='text-primary') }}
@@ -19,11 +30,11 @@
     <!-- Level filter -->
     <div class="mb-4 flex flex-wrap gap-2 items-center">
         <span class="text-sm text-muted-foreground">Filter by level:</span>
-        <button @click="filterLevel(0)" id="btn-all"
-            class="px-3 py-1 rounded-md text-xs font-medium border border-border bg-primary text-primary-foreground" aria-label="Action">All</button>
+        <button type="button" onclick="filterLevel(0)" id="btn-all"
+            class="px-3 py-1 rounded-md text-xs font-medium border border-border bg-primary text-primary-foreground" aria-label="All levels">All</button>
         {% for lvl in [1,2,3,4,5] %}
-        <button @click="filterLevel({{ lvl }})" id="btn-{{ lvl }}"
-            class="px-3 py-1 rounded-md text-xs font-medium border border-border bg-background text-foreground hover:bg-muted" aria-label="Action">Level {{ lvl }}</button>
+        <button type="button" onclick="filterLevel({{ lvl }})" id="btn-{{ lvl }}"
+            class="px-3 py-1 rounded-md text-xs font-medium border border-border bg-background text-foreground hover:bg-muted" aria-label="Level {{ lvl }}">Level {{ lvl }}</button>
         {% endfor %}
     </div>
 
@@ -32,12 +43,29 @@
         {% set current_mat = cap.current_maturity_level|default(0)|int %}
         {% set mat_pct = ((current_mat / 5) * 100)|int if current_mat else 0 %}
         <div data-slot="card" class="rounded-xl border bg-card shadow-sm p-5 hover:bg-muted/30 cap-card"
-             data-level="{{ cap.level|default(1) }}">
+             data-level="{{ cap.level|default(1) }}"
+             data-cap-id="{{ cap.id }}"
+             data-cap-name="{{ cap.name|e }}"
+             data-cap-category="{{ cap.category|default('operational')|e }}"
+             data-cap-level="{{ cap.level|default(1) }}"
+             data-cap-desc="{{ cap.description|default('')|e }}">
             <div class="flex justify-between items-start mb-2">
                 <h3 class="font-medium text-foreground leading-snug">{{ cap.name }}</h3>
-                <span class="ml-2 shrink-0 inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30">
-                    L{{ cap.level|default(1) }}
-                </span>
+                <div class="flex items-center gap-1 shrink-0 ml-2">
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30">L{{ cap.level|default(1) }}</span>
+                    {% if can_edit %}
+                    <button type="button" onclick="openCapEdit(this.closest('.cap-card'))"
+                        class="p-1 rounded hover:bg-muted text-muted-foreground" aria-label="Edit {{ cap.name|e }}">
+                        <i data-lucide="pencil" class="h-3.5 w-3.5" aria-hidden="true"></i>
+                    </button>
+                    {% endif %}
+                    {% if can_delete %}
+                    <button type="button" onclick="deleteCap({{ cap.id }}, this.closest('.cap-card').dataset.capName)"
+                        class="p-1 rounded hover:bg-destructive/10 text-destructive" aria-label="Delete {{ cap.name|e }}">
+                        <i data-lucide="trash-2" class="h-3.5 w-3.5" aria-hidden="true"></i>
+                    </button>
+                    {% endif %}
+                </div>
             </div>
             <p class="text-sm text-muted-foreground mb-3">{{ cap.description|default('No description')|truncate(100) }}</p>
             {% if cap.parent_capability_id %}
@@ -61,13 +89,58 @@
         </div>
         {% else %}
         <div data-slot="card" class="col-span-full rounded-xl border bg-card shadow-sm p-10 text-center text-muted-foreground">
-            No capabilities found.
+            No capabilities yet.{% if can_edit %} Click <b>New Capability</b> to add one.{% endif %}
         </div>
         {% endfor %}
     </div>
 </div>
 
+{% if can_edit %}
+<dialog id="cap-dialog" class="rounded-xl border border-border bg-card text-foreground p-0 w-full max-w-md backdrop:bg-black/50">
+  <div class="p-6">
+    <h3 id="cap-dialog-title" class="text-lg font-semibold mb-4">New Capability</h3>
+    <input type="hidden" id="cap-id" value="">
+    <div class="space-y-3">
+      <div>
+        <label class="block text-sm font-medium mb-1" for="cap-name">Name *</label>
+        <input id="cap-name" type="text" class="w-full h-9 px-3 rounded-md border border-border bg-background text-sm" required>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-sm font-medium mb-1" for="cap-category">Category</label>
+          <select id="cap-category" class="w-full h-9 px-2 rounded-md border border-border bg-background text-sm">
+            <option value="operational">Operational</option>
+            <option value="strategic">Strategic</option>
+            <option value="core">Core</option>
+            <option value="supporting">Supporting</option>
+            <option value="enabling">Enabling</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1" for="cap-level">Level</label>
+          <select id="cap-level" class="w-full h-9 px-2 rounded-md border border-border bg-background text-sm">
+            <option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1" for="cap-desc">Description</label>
+        <textarea id="cap-desc" rows="3" class="w-full px-3 py-2 rounded-md border border-border bg-background text-sm"></textarea>
+      </div>
+    </div>
+    <div class="flex justify-end gap-2 mt-5">
+      <button type="button" onclick="document.getElementById('cap-dialog').close()"
+        class="h-9 px-4 rounded-md text-sm border border-border hover:bg-muted">Cancel</button>
+      <button type="button" id="cap-save" onclick="submitCap()"
+        class="h-9 px-4 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:opacity-90">Save</button>
+    </div>
+  </div>
+</dialog>
+{% endif %}
+
 <script>
+const CAP_CSRF = '{{ csrf_token() }}';
+
 function filterLevel(lvl) {
     document.querySelectorAll('.cap-card').forEach(function(c) {
         c.style.display = (lvl === 0 || parseInt(c.dataset.level) === lvl) ? '' : 'none';
@@ -79,6 +152,84 @@ function filterLevel(lvl) {
         b.className = 'px-3 py-1 rounded-md text-xs font-medium border border-border ' +
             (active ? 'bg-primary text-primary-foreground' : 'bg-background text-foreground hover:bg-muted');
     });
+}
+
+function capToast(msg, isErr) {
+    if (window.Platform && Platform.toast) { isErr ? Platform.toast.error(msg) : Platform.toast.success(msg); }
+    else { console[isErr ? 'error' : 'log']('[capabilities] ' + msg); }
+}
+
+function capField(id) { return document.getElementById(id); }
+
+function openCapCreate() {
+    capField('cap-dialog-title').textContent = 'New Capability';
+    capField('cap-id').value = '';
+    capField('cap-name').value = '';
+    capField('cap-category').value = 'operational';
+    capField('cap-level').value = '1';
+    capField('cap-desc').value = '';
+    capField('cap-dialog').showModal();
+}
+
+function openCapEdit(card) {
+    capField('cap-dialog-title').textContent = 'Edit Capability';
+    capField('cap-id').value = card.dataset.capId;
+    capField('cap-name').value = card.dataset.capName || '';
+    capField('cap-category').value = card.dataset.capCategory || 'operational';
+    capField('cap-level').value = card.dataset.capLevel || '1';
+    capField('cap-desc').value = card.dataset.capDesc || '';
+    capField('cap-dialog').showModal();
+}
+
+async function submitCap() {
+    const id = capField('cap-id').value;
+    const payload = {
+        name: capField('cap-name').value.trim(),
+        type: capField('cap-category').value,
+        level: parseInt(capField('cap-level').value, 10),
+        description: capField('cap-desc').value.trim()
+    };
+    if (!payload.name) { capToast('Name is required', true); return; }
+    const btn = capField('cap-save'); btn.disabled = true;
+    try {
+        const url = id ? '/enterprise/capabilities/' + id : '/enterprise/capabilities';
+        const r = await fetch(url, {
+            method: id ? 'PUT' : 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CAP_CSRF },
+            body: JSON.stringify(payload)
+        });
+        const data = await r.json();
+        if (r.ok && data.success) {
+            capToast(id ? 'Capability updated' : 'Capability created');
+            capField('cap-dialog').close();
+            setTimeout(function() { window.location.reload(); }, 400);
+        } else {
+            capToast(data.error || 'Save failed', true);
+            btn.disabled = false;
+        }
+    } catch (e) {
+        capToast('Save failed: ' + (e.message || e), true);
+        btn.disabled = false;
+    }
+}
+
+async function deleteCap(id, name) {
+    if (!window.confirm('Delete "' + name + '"? This cannot be undone.')) return;
+    try {
+        const r = await fetch('/enterprise/capabilities/' + id, {
+            method: 'DELETE',
+            headers: { 'X-CSRFToken': CAP_CSRF }
+        });
+        const data = await r.json();
+        if (r.ok && data.success) {
+            capToast('Capability deleted');
+            setTimeout(function() { window.location.reload(); }, 400);
+        } else {
+            capToast(data.error || 'Delete failed', true);
+        }
+    } catch (e) {
+        capToast('Delete failed: ' + (e.message || e), true);
+    }
 }
 </script>
 {% endblock %}

@@ -220,7 +220,7 @@ class EnterpriseExportService:
         
         Uses: openpyxl
         """
-        from app.models import Application, Vendor
+        from app.models import Application
         from openpyxl import Workbook
         from openpyxl.styles import Font, PatternFill, Alignment
         
@@ -246,13 +246,13 @@ class EnterpriseExportService:
         apps = Application.query.all()
         for app in apps:
             ws_apps.append([
-                app.name,
-                app.vendor.name if app.vendor else '',
-                app.lifecycle_status or '',
-                app.annual_cost or 0,
-                app.technical_owner or '',
-                app.business_owner or '',
-                app.criticality or ''
+                getattr(app, "name", "") or "",
+                getattr(app, "vendor_name", "") or "",
+                getattr(app, "lifecycle_status", "") or "",
+                getattr(app, "annual_cost", 0) or 0,
+                getattr(app, "technical_owner", "") or "",
+                getattr(app, "business_owner", "") or "",
+                getattr(app, "criticality", "") or "",
             ])
         
         # Auto-size columns

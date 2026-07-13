@@ -141,8 +141,12 @@ def reset_password_request():
         return redirect(url_for("main.index"))
     form = RequestResetPasswordForm()
     if form.validate_on_submit():
-        _svc.request_password_reset(form.email.data)
-        flash("A password reset link has been sent to {}.".format(form.email.data), "warning")
+        from flask import current_app as _ca
+        try:
+            _svc.request_password_reset(form.email.data)
+        except Exception:
+            _ca.logger.exception("password reset request failed for %s", form.email.data)
+        flash("If an account exists for {}, a password reset link has been sent.".format(form.email.data), "info")
         return redirect(url_for("account.login"))
     return render_template("account/reset_password.html", form=form)
 
@@ -214,7 +218,14 @@ def change_email(token):
 @timed_route
 def confirm_request():
     """Respond to new user's request to confirm their account."""
-    _svc.send_confirmation_email(current_user)
+    from flask import current_app as _ca
+    if _ca.config.get("MAIL_USERNAME") or _ca.config.get("MAIL_PASSWORD"):
+        try:
+            _svc.send_confirmation_email(current_user)
+        except Exception:
+            _ca.logger.warning("confirmation email send failed")
+    else:
+        _ca.logger.info("mail not configured; skipping confirmation email")
     flash("A new confirmation link has been sent to {}.".format(current_user.email), "warning")
     return redirect(url_for("main.index"))
 

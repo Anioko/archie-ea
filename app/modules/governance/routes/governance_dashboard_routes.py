@@ -28,12 +28,12 @@ def dashboard():
 def api_metrics():
     """API endpoint to get governance metrics."""
     try:
-        from app.models.solution_governance import SolutionGovernance
+        from app.models.solution_governance import SolutionARBReview as SolutionGovernance
         from app.models.governance_gates import GovernanceGate
         
         # Count pending ARB reviews
         pending_reviews = db.session.query(SolutionGovernance).filter(
-            SolutionGovernance.status.in_(['pending', 'in_review', 'arb_review'])
+            SolutionGovernance.arb_decision.in_(['pending', 'in_review', 'arb_review'])
         ).count()
         
         # Count active risks (if risk model exists)
@@ -44,7 +44,7 @@ def api_metrics():
                 Risk.status == 'active',
                 Risk.severity.in_(['high', 'critical'])
             ).count()
-        except ImportError:
+        except Exception:
             pass
         
         # Count recent ADRs (last 90 days)
@@ -55,13 +55,13 @@ def api_metrics():
             recent_adrs = db.session.query(ArchitectureDecision).filter(
                 ArchitectureDecision.created_at >= ninety_days_ago
             ).count()
-        except ImportError:
+        except Exception:
             pass
         
         # Calculate compliance rate
         total_solutions = db.session.query(SolutionGovernance).count()
         approved_solutions = db.session.query(SolutionGovernance).filter(
-            SolutionGovernance.status == 'approved'
+            SolutionGovernance.arb_decision == 'approved'
         ).count()
         compliance_rate = round((approved_solutions / total_solutions * 100) if total_solutions > 0 else 0, 1)
         
@@ -138,22 +138,22 @@ def api_standards():
 def api_recent_reviews():
     """API endpoint to get recent ARB reviews."""
     try:
-        from app.models.solution_governance import SolutionGovernance
-        from app.models.solution import Solution
+        from app.models.solution_governance import SolutionARBReview as SolutionGovernance
+        from app.models.solution_models import Solution
         
         reviews = db.session.query(
             SolutionGovernance, Solution
         ).join(
             Solution, SolutionGovernance.solution_id == Solution.id
         ).order_by(
-            SolutionGovernance.review_date.desc()
+            SolutionGovernance.submitted_at.desc()
         ).limit(10).all()
         
         return jsonify([{
             'id': gov.id,
             'solution_name': sol.name,
-            'review_date': gov.review_date.strftime('%Y-%m-%d') if gov.review_date else 'N/A',
-            'status': gov.status,
+            'review_date': gov.submitted_at.strftime('%Y-%m-%d') if gov.submitted_at else 'N/A',
+            'status': gov.arb_decision,
             'reviewer': gov.reviewer_name if hasattr(gov, 'reviewer_name') else 'ARB'
         } for gov, sol in reviews])
     except Exception as e:
