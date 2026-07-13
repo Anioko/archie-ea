@@ -213,6 +213,7 @@ document.addEventListener('alpine:init', () => {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
+                        'X-CSRFToken': '{{ csrf_token() }}',
                     },
                     body: JSON.stringify(this.formData)
                 });
