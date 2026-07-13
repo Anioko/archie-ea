@@ -268,6 +268,16 @@ class Config:
     @staticmethod
     def init_app(app):
         """Base class hook — subclasses override to customize app initialization."""
+        # Behind a TLS-terminating reverse proxy (Caddy/nginx/Traefik), trust the
+        # X-Forwarded-* headers so request.scheme/host reflect the real https URL.
+        # Without this the app builds http:// URLs behind https, causing
+        # mixed-content blocking. Opt-in via TRUST_PROXY so forged headers are not
+        # trusted when the app is exposed directly.
+        if os.environ.get("TRUST_PROXY", "false").lower() in ("1", "true", "yes") \
+                and not getattr(app, "_proxyfix_applied", False):
+            from werkzeug.middleware.proxy_fix import ProxyFix
+            app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
+            app._proxyfix_applied = True
         return
 
 

@@ -10,7 +10,7 @@
 // Named Credential: {{ sap_named_credential }}
 // DO NOT EDIT IN PLACE — REGENERATE FROM ARCHITECTURE
 /**
- * {{ solution_name | replace(' ', '') }}SapIntegration
+ * {{ integration_class }}
  *
  * Reads {{ source_entity }} records from SAP via OData (Named Credential:
  * {{ sap_named_credential }}) and upserts them into {{ target_object }}.
@@ -20,7 +20,7 @@
  *   {{ m.source }} → {{ m.target }}
 {% endfor %}
  */
-public with sharing class {{ solution_name | replace(' ', '') }}SapIntegration {
+public with sharing class {{ integration_class }} {
 
     private static final String SAP_SERVICE_ROOT =
         'callout:{{ sap_named_credential }}/sap/opu/odata/sap/{{ sap_odata_service }}';
