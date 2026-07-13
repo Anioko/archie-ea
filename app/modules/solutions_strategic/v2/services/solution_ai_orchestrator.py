@@ -3773,19 +3773,19 @@ CRITICAL -- TRACEABILITY:
         try:
             return json.loads(text)
         except json.JSONDecodeError:
-            logger.exception("Failed to JSON parsing")
             pass
 
-        # Regex fallback: extract first JSON object
-        match = re.search(r'\{[\s\S]*\}', text)
-        if match:
+        # Robust fallback: scan for the first balanced JSON object
+        for _i, _ch in enumerate(text):
+            if _ch != '{':
+                continue
             try:
-                return json.loads(match.group(0))
+                _obj, _ = json.JSONDecoder().raw_decode(text[_i:])
+                return _obj
             except json.JSONDecodeError:
-                logger.exception("Failed to JSON parsing")
-                pass
+                continue
 
-        logger.warning("Failed to parse LLM response as JSON")
+        logger.warning("Failed to parse LLM response as JSON (len=%d)", len(text))
         return None
 
     def _sync_archimate_element(self, solution_id: int, name: str, element_type: str, layer: str, description: str = "", role: str = "ai_derived"):

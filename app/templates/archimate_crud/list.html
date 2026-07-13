@@ -234,6 +234,7 @@ document.addEventListener('alpine:init', () => {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
+                        'X-CSRFToken': '{{ csrf_token() }}',
                     },
                     body: JSON.stringify({
                         prompt: this.aiPrompt,
@@ -315,6 +316,7 @@ document.addEventListener('alpine:init', () => {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
+                        'X-CSRFToken': '{{ csrf_token() }}',
                     },
                     body: JSON.stringify({ ids: this.selectedItems })
                 });
@@ -351,6 +353,7 @@ document.addEventListener('alpine:init', () => {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
+                        'X-CSRFToken': '{{ csrf_token() }}',
                     }
                 });
                 

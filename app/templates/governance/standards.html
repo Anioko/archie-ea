@@ -1,0 +1,43 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'components/page_header.html' import page_header %}
+{% block title %}Technology Standards{% endblock %}
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+  {{ page_header(title='Technology Standards', description='Approved technologies and their status') }}
+  <div class="mt-6 rounded-xl border bg-card shadow-sm overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="border-b border-border text-left text-muted-foreground">
+          <th class="px-4 py-3 font-medium">Technology</th>
+          <th class="px-4 py-3 font-medium">Category</th>
+          <th class="px-4 py-3 font-medium">Status</th>
+          <th class="px-4 py-3 font-medium">Version</th>
+        </tr>
+      </thead>
+      <tbody id="gov-rows">
+        <tr><td colspan="4" class="px-4 py-10 text-center text-muted-foreground">Loading&hellip;</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+<script>
+(function(){
+  function esc(s){ var d=document.createElement('div'); d.textContent=(s==null?'':String(s)); return d.innerHTML; }
+  var body=document.getElementById('gov-rows');
+  function empty(msg){ body.innerHTML='<tr><td colspan="4" class="px-4 py-10 text-center text-muted-foreground">'+msg+'</td></tr>'; }
+  fetch('/governance/api/standards',{headers:{'Accept':'application/json'}})
+    .then(function(r){ return r.json(); })
+    .then(function(items){
+      if(!items || !items.length){ empty('No technology standards defined yet.'); return; }
+      body.innerHTML=items.map(function(s){
+        return '<tr class="border-b border-border last:border-0">'
+          +'<td class="px-4 py-3 font-medium text-foreground">'+esc(s.technology)+'</td>'
+          +'<td class="px-4 py-3 text-muted-foreground">'+esc(s.category||'')+'</td>'
+          +'<td class="px-4 py-3"><span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30">'+esc(s.status||'')+'</span></td>'
+          +'<td class="px-4 py-3 text-muted-foreground">'+esc(s.version||'')+'</td></tr>';
+      }).join('');
+    })
+    .catch(function(){ empty('No technology standards defined yet.'); });
+})();
+</script>
+{% endblock %}

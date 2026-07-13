@@ -23,12 +23,15 @@
     ) }}
 
     {# ─ Onboarding Banner ─ #}
-    {% call Platform.toast.info(variant='default', icon='info', dismissible=true, class='bg-primary/5/50 dark:bg-primary/10 border-primary/20 dark:border-primary') %}
-        {% call alert_title(class='text-primary dark:text-primary/60') %}Welcome to Architecture Intelligence{% endcall %}
-        {% call alert_description(class='text-primary dark:text-primary/80 mt-1') %}
-            This dashboard continuously scans your application portfolio to identify architectural gaps, highlight redundancies, and recommend structural improvements. Start by reviewing your top priorities below.
-        {% endcall %}
-    {% endcall %}
+    <div class="rounded-lg border border-primary/20 dark:border-primary bg-primary/5 dark:bg-primary/10 p-4">
+        <div class="flex items-start gap-3">
+            <i data-lucide="info" class="h-5 w-5 text-primary shrink-0 mt-0.5" aria-hidden="true"></i>
+            <div>
+                <h3 class="font-semibold text-primary dark:text-primary/60">Welcome to Architecture Intelligence</h3>
+                <p class="text-sm text-primary dark:text-primary/80 mt-1">This dashboard continuously scans your application portfolio to identify architectural gaps, highlight redundancies, and recommend structural improvements. Start by reviewing your top priorities below.</p>
+            </div>
+        </div>
+    </div>
 
     {# ─ Top Priorities / Quick Actions ─ #}
     {% set has_priorities = gaps_by_severity.critical > 0 or gaps_by_severity.high > 0 or apps_needing_review|length > 0 %}

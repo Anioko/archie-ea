@@ -1120,12 +1120,11 @@ def get_plateaus():
                     {
                         "id": p.id,
                         "name": p.name,
-                        "description": p.description,
-                        "start_date": p.start_date.isoformat() if p.start_date else None,
-                        "end_date": p.end_date.isoformat() if p.end_date else None,
-                        "stability_period": p.stability_period,
-                        "transition_state": p.transition_state,
-                        "created_at": p.created_at.isoformat() if p.created_at else None,
+                        "description": getattr(p, "description", None),
+                        "target_date": p.target_date.isoformat() if getattr(p, "target_date", None) else None,
+                        "sequence_order": getattr(p, "sequence_order", None),
+                        "state_summary": getattr(p, "state_summary", None),
+                        "created_at": p.created_at.isoformat() if getattr(p, "created_at", None) else None,
                     }
                     for p in plateaus
                 ]
