@@ -249,9 +249,13 @@ def send_message():
     if data is None:
         return validation_error_response("Request body is required")
 
-    # Capture before schema validation strips unknown fields — the conversation
-    # this turn belongs to (None on the first message of a new chat).
+    # Capture the conversation this turn belongs to (None on the first message),
+    # then REMOVE it from the payload — the request schema is strict
+    # (unknown=RAISE), so leaving thread_id in would 400 the whole message.
     incoming_thread_id = data.get("thread_id")
+    if isinstance(data, dict) and "thread_id" in data:
+        data = dict(data)
+        data.pop("thread_id", None)
 
     # T-031: marshmallow schema validation
     _schema = ChatMessageSchema()
@@ -651,9 +655,12 @@ def send_message_stream():
     if not data:
         return validation_error_response("Request body is required")
 
-    # Capture before schema validation strips unknown fields — this is the
-    # conversation the turn belongs to (None on the first message of a new chat).
+    # Capture the conversation this turn belongs to, then REMOVE it from the
+    # payload — the schema is strict (unknown=RAISE) and would 400 otherwise.
     incoming_thread_id = data.get("thread_id")
+    if isinstance(data, dict) and "thread_id" in data:
+        data = dict(data)
+        data.pop("thread_id", None)
 
     _schema = ChatMessageSchema()
     _validated, _err = _load_and_validate(_schema, data)
