@@ -171,7 +171,7 @@ def edit_capability_maturity(capability_id):
                     maturity_assessment_date = :assessment_date,
                     maturity_assessment_notes = :notes,
                     updated_at = :updated_at
-                WHERE id = :capability_id
+                WHERE id = :capability_id AND organization_id = :org_id
             """
 
             params = {
@@ -182,6 +182,7 @@ def edit_capability_maturity(capability_id):
                 "notes": notes,
                 "updated_at": datetime.utcnow(),
                 "capability_id": capability_id,
+                "org_id": getattr(g, "current_org_id", None),
             }
 
 
@@ -268,15 +269,22 @@ def batch_update_maturity():
                 "updated_at": datetime.utcnow(),
             }
 
-            # Add WHERE conditions
-            where_conditions = []
+            # Add WHERE conditions. CRITICAL: always scope to the caller's org
+            # so a blank filter can never mass-update every tenant's capabilities.
+            # Refuse the write outright if there is no tenant context (should not
+            # happen on a @login_required route — but never run an unscoped UPDATE).
+            _org = getattr(g, "current_org_id", None)
+            if _org is None:
+                flash("Your session has expired — please sign in again.", "error")
+                return redirect(url_for("maturity_management.batch_update_maturity"))
+            where_conditions = ["organization_id = :org_id"]
+            params["org_id"] = _org
 
             if strategic_importance:
                 where_conditions.append("strategic_importance = :strategic_importance")
                 params["strategic_importance"] = strategic_importance
 
-            if where_conditions:
-                update_query += " WHERE " + " AND ".join(where_conditions)
+            update_query += " WHERE " + " AND ".join(where_conditions)
 
             # Calculate and update gaps
             if current_level is not None and target_level is not None:

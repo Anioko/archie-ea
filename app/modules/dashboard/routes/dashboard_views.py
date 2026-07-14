@@ -115,15 +115,21 @@ def _build_overview_context():
     total_apps = metrics["applications"] or 1  # avoid division by zero
     data_coverage = {"owner": 0, "vendor": 0, "cost": 0, "risk": 0, "criticality": 0}
     try:
+        from flask import g
         from sqlalchemy import text
-        row = db.session.execute(text("""
+        # Scope to the caller's org so coverage matches the (org-scoped) app count
+        # and never aggregates other tenants' data. No-op in system contexts.
+        _org = getattr(g, "current_org_id", None)
+        _cov_where = "WHERE organization_id = :org" if _org is not None else ""
+        row = db.session.execute(text(f"""
             SELECT
                 COUNT(*) FILTER (WHERE application_owner IS NOT NULL OR business_owner IS NOT NULL) AS owner_n,
                 COUNT(*) FILTER (WHERE vendor_product_id IS NOT NULL OR vendor_name IS NOT NULL) AS vendor_n,
                 COUNT(*) FILTER (WHERE total_cost_of_ownership IS NOT NULL OR license_cost IS NOT NULL OR maintenance_cost IS NOT NULL) AS cost_n,
                 COUNT(*) FILTER (WHERE business_criticality IS NOT NULL) AS crit_n
             FROM application_components
-        """)).fetchone()
+            {_cov_where}
+        """), ({"org": _org} if _org is not None else {})).fetchone()
         data_coverage["owner"] = round(row[0] / total_apps * 100)
         data_coverage["vendor"] = round(row[1] / total_apps * 100)
         data_coverage["cost"] = round(row[2] / total_apps * 100)

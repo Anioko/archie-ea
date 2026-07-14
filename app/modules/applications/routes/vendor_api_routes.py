@@ -6,7 +6,7 @@ import logging
 import time
 from datetime import datetime
 
-from flask import current_app, jsonify, redirect, request, send_file, session, url_for
+from flask import current_app, g, jsonify, redirect, request, send_file, session, url_for
 from flask_login import current_user, login_required
 from sqlalchemy import text
 from sqlalchemy.orm import joinedload
@@ -232,9 +232,15 @@ def confirm_vendor_matches():
                 if app.vendor_product_id is None:
                     db.session.execute(
                         text(
-                            "UPDATE application_components SET vendor_product_id = :prod_id WHERE id = :app_id AND vendor_product_id IS NULL"
+                            "UPDATE application_components SET vendor_product_id = :prod_id "
+                            "WHERE id = :app_id AND vendor_product_id IS NULL "
+                            "AND organization_id = :org_id"  # defense-in-depth; app already org-scoped via prefetch
                         ),
-                        {"app_id": application_id, "prod_id": vendor_product.id},
+                        {
+                            "app_id": application_id,
+                            "prod_id": vendor_product.id,
+                            "org_id": getattr(g, "current_org_id", None),
+                        },
                     )
 
             except HTTPException:
