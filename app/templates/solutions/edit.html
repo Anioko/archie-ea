@@ -23,7 +23,7 @@
     <!-- Form -->
     <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <form method="POST" action="{{ url_for('solution_design.edit_solution', solution_id=solution.id) }}" class="space-y-6">
-            {{ csrf_token() }}
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <!-- Basic Information -->
             <div class="bg-card rounded-lg shadow border border-border p-6">
                 <h2 class="text-xl font-bold text-foreground mb-4">Basic Information</h2>

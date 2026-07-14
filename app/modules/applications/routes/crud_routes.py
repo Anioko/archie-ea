@@ -782,6 +782,9 @@ def application_delete(id):
         return redirect(url_for("unified_applications.application_list"))
 
     except Exception as e:
+        from werkzeug.exceptions import HTTPException
+        if isinstance(e, HTTPException):
+            raise
         db.session.rollback()
         if is_ajax:
             return jsonify(

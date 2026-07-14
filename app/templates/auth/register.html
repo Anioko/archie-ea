@@ -3,6 +3,7 @@
 <div class="register-form">
   <h2>Register your organization</h2>
   <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div>
       <label for="org_name">Organization Name</label>
       <input type="text" id="org_name" name="org_name" required>

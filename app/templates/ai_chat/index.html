@@ -156,7 +156,7 @@ x-cloak>
             </div>
             <div>
                 <h1 id="domain-title" class="text-base lg:text-lg font-semibold">Multi-Domain AI Assistant</h1>
-                <p id="domain-description" class="text-xs text-muted-foreground hidden sm:block">Select a domain for specialized assistance</p>
+                <p id="domain-description" class="text-xs text-muted-foreground hidden sm:block">Ask anything about your architecture — no setup needed</p>
             </div>
             <!-- Mobile sidebar toggle -->
             <button type="button" id="sidebar-toggle" @click="toggleSidebar()" aria-label="Toggle sidebar" class="lg:hidden ml-auto inline-flex h-9 w-9 items-center justify-center rounded-md border border-input bg-background hover:bg-accent transition-colors">
@@ -202,7 +202,7 @@ x-cloak>
                         class="h-9 w-full appearance-none rounded-lg border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring font-medium">
                         <option value="">Select Role</option>
                         <optgroup label="AI Architects (governed, live-data)">
-                            <option value="enterprise_architect">AI Enterprise Architect</option>
+                            <option value="enterprise_architect" selected>AI Enterprise Architect</option>
                             <option value="solutions_architect">AI Solution Architect</option>
                             <option value="technology_architect">AI Technical Architect</option>
                             <option value="data_architect">AI Data Architect</option>
@@ -578,7 +578,7 @@ x-cloak>
                             <i data-lucide="bot" class="h-7 w-7" aria-hidden="true"></i>
                         </div>
                         <h2 class="text-2xl font-bold text-foreground tracking-tight">How can I help you today?</h2>
-                        <p class="text-sm text-muted-foreground max-w-md mx-auto">Choose a governed AI Architect for a role-specific partner, or pick a domain below.</p>
+                        <p class="text-sm text-muted-foreground max-w-md mx-auto">Just type your question below — or pick a specialist for a role-tuned partner.</p>
                     </div>
 
                     {# ── AI Architects: governed, evidence-grounded personas (AI-1/PROG-006) ── #}

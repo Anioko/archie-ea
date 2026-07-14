@@ -118,6 +118,8 @@ let promptTemplates = window.promptTemplates || [];
 let personaConfig = window.personaConfig || {};
 let currentDomain = sessionStorage.getItem('ai_chat_domain') || 'general';
 let currentPersona = sessionStorage.getItem('ai_chat_persona') || 'enterprise_architect';
+let lastUserMessage = '';
+let isRegenerating = false;
 let chatHistory = [];
 let contextElement = null;
 let isSending = false;
@@ -1477,6 +1479,8 @@ function appendMessage(role, text, metadata) {
             '<i data-lucide="thumbs-up" class="h-3 w-3"></i></button>' +
             '<button class="js-feedback-down inline-flex h-6 px-2 items-center justify-center rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors text-xs gap-1" title="Not helpful" aria-label="Not helpful">' +
             '<i data-lucide="thumbs-down" class="h-3 w-3"></i></button>' +
+            '<button class="js-regen-msg inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors" title="Regenerate response" aria-label="Regenerate response">' +
+            '<i data-lucide="refresh-cw" class="h-3 w-3"></i></button>' +
             '</div>';
 
         bubble = '<div class="rounded-xl bg-muted/50 p-4 text-sm prose dark:prose-invert max-w-3xl group">' +
@@ -1503,6 +1507,14 @@ function appendMessage(role, text, metadata) {
     let downBtn = div.querySelector('.js-feedback-down');
     if (upBtn) upBtn.addEventListener('click', function() { submitFeedback('up', feedbackDomain, feedbackPersona, text, this, downBtn); });
     if (downBtn) downBtn.addEventListener('click', function() { submitFeedback('down', feedbackDomain, feedbackPersona, text, this, upBtn); });
+    let regenBtn = div.querySelector('.js-regen-msg');
+    if (regenBtn) regenBtn.addEventListener('click', function() {
+        if (lastUserMessage && !isSending) {
+            isRegenerating = true;
+            userInput.value = lastUserMessage;
+            if (chatForm.requestSubmit) { chatForm.requestSubmit(); } else { chatForm.dispatchEvent(new Event('submit', { cancelable: true })); }
+        }
+    });
     messagesContainer.appendChild(div);
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
     lucide.createIcons();
@@ -1675,8 +1687,12 @@ chatForm.addEventListener('submit', async function(e) {
     _clearAttachedImage(); // ENT-085: clear attached image after sending
 
     let timestamp = new Date().toISOString();
-    chatHistory.push({ role: 'user', content: message, timestamp: timestamp });
-    appendMessage('user', message);
+    lastUserMessage = message;
+    if (!isRegenerating) {
+        chatHistory.push({ role: 'user', content: message, timestamp: timestamp });
+        appendMessage('user', message);
+    }
+    isRegenerating = false;
 
     if (message.startsWith('/')) {
         let handled = await handleChatCommand(message);
