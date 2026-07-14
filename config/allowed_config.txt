@@ -1,0 +1,21 @@
+# allowed_config.txt — the ONLY things allowed to be flag-gated / default-off.
+#
+# RULE: product features ship ON and wired. A name may live here ONLY if it is
+# OPERATIONAL config, never a product feature:
+#   - external secrets/keys are auto-exempt by suffix (_API_KEY, _SECRET, ...)
+#   - deploy-environment selectors
+#   - infrastructure / performance / observability toggles
+# Every entry needs a one-line reason. Adding a PRODUCT FEATURE here is a governance
+# breach — the no-dark-features gate exists precisely to stop that.
+
+FLASK_CONFIG                    # deploy-environment selector (development|production|testing)
+TRUST_PROXY                     # reverse-proxy header trust (transport)
+PREFERRED_URL_SCHEME            # transport (http|https behind proxy)
+SESSION_COOKIE_SECURE           # security transport toggle
+SSL_DISABLE                     # deploy transport
+CELERY_ENABLED                  # infra: async worker on/off (perf, not a feature)
+ENABLE_REDIS_CACHE              # infra perf cache
+USE_READ_REPLICA_FOR_DASHBOARD  # infra perf (read replica)
+OTEL_ENABLED                    # observability (OpenTelemetry export)
+MAIL_USE_TLS                    # SMTP transport
+MAIL_USE_SSL                    # SMTP transport
