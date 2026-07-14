@@ -13,6 +13,18 @@ and direct DB queries — without introducing new data-access patterns.
 import logging
 import re
 from dataclasses import dataclass, field
+
+
+def _org_and(prefix=""):
+    """(' AND <prefix>organization_id = :org', {'org': id}) in a tenant request,
+    else ('', {}). Defense-in-depth org scoping for these id/domain-keyed raw
+    queries that enrich the LLM context — they must not surface another org's
+    entities. No-op for system callers (mirrors the ORM tenant filter)."""
+    from flask import g
+    org = getattr(g, "current_org_id", None)
+    if org is None:
+        return "", {}
+    return f" AND {prefix}organization_id = :org", {"org": org}
 from typing import Any, Dict, List, Optional
 
 from app import db
@@ -646,14 +658,15 @@ triggering, flow, specialization, association.
         for r in results:
             app_data = dict(r)
             try:
-                row = db.session.execute(  # tenant-filtered: scoped via parent FK (id from search results)
+                _oc, _op = _org_and()
+                row = db.session.execute(
                     db.text(
                         "SELECT vendor_name, technology_stack, criticality, "
                         "lifecycle_status, business_domain, integration_methods, "
                         "deployment_model "
-                        "FROM application_components WHERE id = :id"
+                        "FROM application_components WHERE id = :id" + _oc
                     ),
-                    {"id": r["id"]},
+                    {"id": r["id"], **_op},
                 ).fetchone()
                 if row:
                     app_data["metadata"] = {
@@ -905,13 +918,14 @@ triggering, flow, specialization, association.
         for r in results:
             cap_data = dict(r)
             try:
-                row = db.session.execute(  # tenant-filtered: scoped via parent FK (id from search results)
+                _oc, _op = _org_and()
+                row = db.session.execute(
                     db.text(
                         "SELECT current_maturity_level, target_maturity_level, "
                         "strategic_importance, business_value, business_domain "
-                        "FROM business_capability WHERE id = :id"
+                        "FROM business_capability WHERE id = :id" + _oc
                     ),
-                    {"id": r["id"]},
+                    {"id": r["id"], **_op},
                 ).fetchone()
                 if row:
                     cap_data["metadata"] = {
@@ -951,6 +965,9 @@ triggering, flow, specialization, association.
                 "WHERE s.governance_status IN ('approved', 'arb_approved', 'deployed') "
             )
             params: Dict[str, Any] = {}
+            _oc, _op = _org_and(prefix="s.")
+            q += _oc + " "
+            params.update(_op)
             if domain:
                 q += "AND s.business_domain = :domain "
                 params["domain"] = domain
@@ -978,13 +995,14 @@ triggering, flow, specialization, association.
 
         # Linked applications
         try:
-            rows = db.session.execute(  # tenant-filtered: scoped via parent FK (solution_id)
+            _oc, _op = _org_and(prefix="ac.")
+            rows = db.session.execute(
                 db.text(
                     "SELECT ac.id, ac.name FROM application_components ac "
                     "JOIN solution_applications sa ON sa.application_id = ac.id "
-                    "WHERE sa.solution_id = :sid"
+                    "WHERE sa.solution_id = :sid" + _oc
                 ),
-                {"sid": solution_id},
+                {"sid": solution_id, **_op},
             ).fetchall()
             entities["applications"] = [{"id": r[0], "name": r[1]} for r in rows]
         except Exception:

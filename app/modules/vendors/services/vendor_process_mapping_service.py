@@ -727,15 +727,18 @@ class VendorProcessMappingService:
                 batch = new_mappings[i : i + batch_size]
 
                 try:
-                    # Build batch insert values
+                    # Build batch insert values. Stamp organization_id explicitly —
+                    # raw INSERT bypasses the TenantMixin before_flush auto-set, so
+                    # without this the mappings would be unowned / not org-scoped.
+                    from flask import g as _g
                     values_list = []
-                    params = {}
+                    params = {"org": getattr(_g, "current_org_id", None)}
 
                     for idx, mapping in enumerate(batch):
                         prefix = f"m{idx}_"
                         values_list.append(
                             f"""(
-                            :{prefix}product_id, :{prefix}process_id, :{prefix}support_level,
+                            :org, :{prefix}product_id, :{prefix}process_id, :{prefix}support_level,
                             :{prefix}automation_coverage, :{prefix}out_of_box_fit, :{prefix}integration_complexity,
                             :{prefix}customization_required, :{prefix}cycle_time_reduction,
                             :{prefix}cost_reduction, :{prefix}error_rate_reduction,
@@ -767,6 +770,7 @@ class VendorProcessMappingService:
                     # Execute batch insert
                     insert_sql = f"""
                         INSERT INTO vendor_process_mappings (
+                            organization_id,
                             vendor_product_id, business_process_id, support_level,
                             automation_coverage, out_of_box_fit, integration_complexity,
                             customization_required, expected_cycle_time_reduction,
