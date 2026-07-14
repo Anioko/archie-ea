@@ -404,7 +404,7 @@
                             </div>
                         </td>
                     </tr>
-                    <template x-for="el in group.elements" :key="el.element_type + '-' + el.id">
+                    <template x-for="(el, elIdx) in group.elements" :key="group.type + '-' + elIdx + '-' + el.id">
                         <tr data-testid="element-row"
                             x-cloak x-show="!groupByType || !collapsedTypes[group.type]"
                             class="border-t hover:bg-muted/10 cursor-pointer"
