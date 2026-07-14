@@ -535,21 +535,27 @@ x-cloak>
                 </div>
             </div>
 
-            {# History Tab (AIC-110) #}
+            {# History Tab (AIC-110) — persisted conversations, ChatGPT-style rail #}
             <div id="panel-history" class="hidden flex-1 flex-col overflow-hidden">
                 <div class="p-4 border-b flex items-center justify-between shrink-0">
                     <h2 class="font-semibold text-sm flex items-center gap-2">
-                        <i data-lucide="clock" class="h-4 w-4 text-muted-foreground" aria-hidden="true"></i>
-                        Saved Sessions
+                        <i data-lucide="messages-square" class="h-4 w-4 text-muted-foreground" aria-hidden="true"></i>
+                        Conversations
                     </h2>
-                    <button type="button" @click="loadSessionList()" class="text-xs text-primary hover:underline flex items-center gap-1" aria-label="Refresh sessions">
+                    <button type="button" @click="loadSessionList()" class="text-xs text-primary hover:underline flex items-center gap-1" aria-label="Refresh conversations">
                         <i data-lucide="refresh-cw" class="h-3 w-3" aria-hidden="true"></i>
                         Refresh
                     </button>
                 </div>
+                <div class="p-3 border-b shrink-0">
+                    <button type="button" onclick="startNewConversation()" class="w-full inline-flex items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium hover:bg-accent transition-colors" aria-label="Start a new chat">
+                        <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i>
+                        New chat
+                    </button>
+                </div>
                 <div class="flex-1 overflow-y-auto p-4 space-y-2 min-h-0">
                     <div id="session-list" class="space-y-2">
-                        <p class="text-xs text-muted-foreground text-center py-8">Click Refresh to load saved sessions</p>
+                        <p class="text-xs text-muted-foreground text-center py-8">Loading your conversations…</p>
                     </div>
                 </div>
             </div>

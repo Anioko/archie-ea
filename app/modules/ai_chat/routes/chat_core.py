@@ -249,6 +249,10 @@ def send_message():
     if data is None:
         return validation_error_response("Request body is required")
 
+    # Capture before schema validation strips unknown fields — the conversation
+    # this turn belongs to (None on the first message of a new chat).
+    incoming_thread_id = data.get("thread_id")
+
     # T-031: marshmallow schema validation
     _schema = ChatMessageSchema()
     _validated, _err = _load_and_validate(_schema, data)
@@ -463,6 +467,23 @@ def send_message():
             except Exception as _junc_err:
                 logger.debug("ENH-018: Junction populate skipped: %s", _junc_err)
 
+        # Persist this turn (thread-backed history rail). Always on; never
+        # breaks the reply if storage hiccups. thread_id rides back so the next
+        # turn appends to the same conversation.
+        thread_id = incoming_thread_id
+        try:
+            from app.services.conversation_history import persist_turn
+
+            thread_id = persist_turn(
+                current_user.id,
+                incoming_thread_id,
+                user_message,
+                agent_result.get("response", ""),
+                model=requested_model or (agent_result.get("metadata", {}) or {}).get("model"),
+            )
+        except Exception:
+            logger.warning("send_message persist_turn failed", exc_info=True)
+
         return jsonify(
             {
                 "success": True,
@@ -473,6 +494,7 @@ def send_message():
                 "requires_approval": bool(agent_result.get("pending_approvals")),
                 "context_used": True,
                 "workspace_id": workspace_id,
+                "thread_id": thread_id,
                 "processing_metadata": {
                     "domain": domain,
                     "persona": persona,
@@ -629,6 +651,10 @@ def send_message_stream():
     if not data:
         return validation_error_response("Request body is required")
 
+    # Capture before schema validation strips unknown fields — this is the
+    # conversation the turn belongs to (None on the first message of a new chat).
+    incoming_thread_id = data.get("thread_id")
+
     _schema = ChatMessageSchema()
     _validated, _err = _load_and_validate(_schema, data)
     if _err is not None:
@@ -691,6 +717,20 @@ def send_message_stream():
                     requested_model=requested_model or None,
                     stream_mode=True,
                 )
+                # Persist this turn (thread-backed history rail). Always on;
+                # never breaks the stream. thread_id rides back on the done event.
+                try:
+                    from app.services.conversation_history import persist_turn
+
+                    result["thread_id"] = persist_turn(
+                        user_id_for_thread,
+                        incoming_thread_id,
+                        user_message,
+                        result.get("response", ""),
+                        model=requested_model or (result.get("metadata", {}) or {}).get("model"),
+                    )
+                except Exception:
+                    logger.warning("stream persist_turn failed", exc_info=True)
                 event_queue.put({"type": "done", **result})
         except Exception as exc:
             logger.exception("send_message_stream: agent error")
@@ -1119,6 +1159,67 @@ def load_chat_session(session_id):
                 "details": "See server logs for details",
             }
         ), 500
+
+
+# ============================================================================
+# CONVERSATION THREADS — the ChatGPT-style history rail (always on)
+# Backed by the conversation_history thread/message model. Every chat turn is
+# persisted (see persist_turn in send_message / send_message_stream), so history
+# survives reloads and restarts. Ownership-checked to prevent cross-user reads.
+# ============================================================================
+
+
+def _conv_dict(obj):
+    """Normalise a thread/message to a dict whether cached as object or dict."""
+    return obj.to_dict() if hasattr(obj, "to_dict") else obj
+
+
+@unified_ai_chat_bp.route("/threads", methods=["GET"])
+@login_required
+def list_conversation_threads():
+    """List the current user's conversations, newest first, for the rail."""
+    try:
+        from app.services.conversation_history import get_history_service
+
+        threads = get_history_service().get_user_threads(current_user.id, limit=100)
+        return jsonify({"success": True, "threads": [_conv_dict(t) for t in threads]})
+    except Exception as e:
+        current_app.logger.warning("list_conversation_threads failed: %s", e)
+        return jsonify({"success": True, "threads": []})
+
+
+@unified_ai_chat_bp.route("/threads/<thread_id>", methods=["GET"])
+@login_required
+def get_conversation_thread(thread_id):
+    """Load one conversation's messages (ownership-checked)."""
+    from app.services.conversation_history import get_history_service, thread_owned_by
+
+    if not thread_owned_by(thread_id, current_user.id):
+        return jsonify({"success": False, "error": "Conversation not found"}), 404
+    messages = get_history_service().get_thread_messages(thread_id)
+    return jsonify(
+        {
+            "success": True,
+            "thread_id": thread_id,
+            "messages": [_conv_dict(m) for m in messages],
+        }
+    )
+
+
+@unified_ai_chat_bp.route("/threads/<thread_id>", methods=["DELETE"])
+@login_required
+def delete_conversation_thread(thread_id):
+    """Delete one conversation (ownership-checked)."""
+    from app.services.conversation_history import get_history_service, thread_owned_by
+
+    if not thread_owned_by(thread_id, current_user.id):
+        return jsonify({"success": False, "error": "Conversation not found"}), 404
+    try:
+        get_history_service().delete_thread(thread_id)
+        return jsonify({"success": True})
+    except Exception as e:
+        current_app.logger.warning("delete_conversation_thread failed: %s", e)
+        return jsonify({"success": False, "error": "Could not delete conversation"}), 500
 
 
 # ============================================================================
