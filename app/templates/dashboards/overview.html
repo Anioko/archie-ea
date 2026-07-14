@@ -15,15 +15,8 @@
 </script>
 {% endblock %}
 
-{% from 'components/inline_hint.html' import inline_hint %}
-{% block page_hint %}
-{{ inline_hint(
-    hint_id='dashboard_overview',
-    text='Your architecture health at a glance — live counts for apps, solutions, capabilities, and ArchiMate elements.',
-    action_text='View health scorecard',
-    action_href='/dashboard/health'
-) }}
-{% endblock %}
+{# page_hint removed — the "Start here" welcome card below covers first-run
+   guidance; the blue hint was redundant with it. #}
 
 {% block breadcrumb %}
 {% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
@@ -719,6 +712,12 @@
 {% endblock %}
 
 {% block extra_js %}
+<!-- JointJS peer deps (jQuery → Lodash → Backbone) MUST load before joint.min.js,
+     otherwise joint throws "Cannot read properties of undefined (reading 'Model')"
+     and the Layered Viewpoint diagram silently fails to render. -->
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/lodash@4.17.21/lodash.min.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/backbone@1.4.1/backbone-min.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/jointjs@3.7.7/dist/joint.min.js" crossorigin="anonymous"></script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jointjs@3.7.7/dist/joint.min.css" crossorigin="anonymous">
 <script src="{{ url_for('static', filename='js/archimate/composer_renderer.js') }}"></script>

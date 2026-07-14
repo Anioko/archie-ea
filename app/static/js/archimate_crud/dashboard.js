@@ -7,6 +7,7 @@ document.addEventListener('alpine:init', function() {
             elements: [],
             pagination: { page: 1, pages: 0, per_page: 25, total: 0, has_next: false, has_prev: false },
             loading: false,
+            loadError: null,   // referenced by x-show/x-text in the template; must exist to avoid Alpine ReferenceError
             searchQuery: '',
             typeFilter: '',
             perPage: 25,
