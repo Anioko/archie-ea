@@ -809,20 +809,24 @@ class VendorProcessMappingService:
         """Analyze process coverage by vendors."""
         try:
             # Get process coverage stats
-            coverage_stats = db.session.execute(  # tenant-filtered: scoped via parent FK (vendor product joins)
+            from flask import g as _g
+            _org = getattr(_g, "current_org_id", None)
+            _jc = " AND vpm.organization_id = :org" if _org is not None else ""
+            _p = {"org": _org} if _org is not None else {}
+            coverage_stats = db.session.execute(
                 text(
-                    """
+                    f"""
                 SELECT
                     p.category_level_1,
                     COUNT(DISTINCT p.id) as total_processes,
                     COUNT(DISTINCT vpm.business_process_id) as covered_processes,
                     ROUND(COUNT(DISTINCT vpm.business_process_id) * 100.0 / COUNT(DISTINCT p.id), 2) as coverage_percentage
                 FROM apqc_process p
-                LEFT JOIN vendor_process_mappings vpm ON p.id = vpm.business_process_id
+                LEFT JOIN vendor_process_mappings vpm ON p.id = vpm.business_process_id{_jc}
                 GROUP BY p.category_level_1
                 ORDER BY coverage_percentage DESC
             """
-                )
+                ), _p
             ).fetchall()
 
             analysis = {}
@@ -844,9 +848,13 @@ class VendorProcessMappingService:
     def get_vendor_capability_analysis(self) -> Dict:
         """Analyze vendor capabilities across processes."""
         try:
-            vendor_stats = db.session.execute(  # tenant-filtered: scoped via parent FK (vendor organization joins)
+            from flask import g as _g
+            _org = getattr(_g, "current_org_id", None)
+            _wc = " WHERE vpm.organization_id = :org" if _org is not None else ""
+            _p = {"org": _org} if _org is not None else {}
+            vendor_stats = db.session.execute(
                 text(
-                    """
+                    f"""
                 SELECT
                     vo.name as vendor_name,
                     COUNT(DISTINCT vpm.business_process_id) as processes_supported,
@@ -855,11 +863,11 @@ class VendorProcessMappingService:
                     AVG(vpm.out_of_box_fit) as avg_fit
                 FROM vendor_process_mappings vpm
                 JOIN vendor_products vp ON vpm.vendor_product_id = vp.id
-                JOIN vendor_organizations vo ON vp.vendor_organization_id = vo.id
+                JOIN vendor_organizations vo ON vp.vendor_organization_id = vo.id{_wc}
                 GROUP BY vo.name
                 ORDER BY processes_supported DESC
             """
-                )
+                ), _p
             ).fetchall()
 
             analysis = {}

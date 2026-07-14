@@ -4670,8 +4670,12 @@ def architecture_accuracy(solution_id):
     def _tokens(text):
         return {w for w in _re.split(r'[^a-z]+', (text or '').lower()) if len(w) > 2 and w not in _STOP}
 
+    from flask import g as _g
+    _org = getattr(_g, "current_org_id", None)
+    _oc = " AND organization_id = :org" if _org is not None else ""
+    _sp = {'s': solution_id, 'org': _org} if _org is not None else {'s': solution_id}
     sol_row = db.session.execute(
-        db.text('SELECT name, description FROM solutions WHERE id = :s'), {'s': solution_id}
+        db.text(f'SELECT name, description FROM solutions WHERE id = :s{_oc}'), _sp
     ).fetchone()
     _sol_name = sol_row[0] if sol_row else ""
     _sol_desc = sol_row[1] if sol_row else ""

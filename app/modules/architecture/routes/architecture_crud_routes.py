@@ -100,19 +100,28 @@ def list_elements():
     )
 
     # Elements with no relationships (neither source nor target) — use raw scalar subquery
+    from flask import g as _g
     from sqlalchemy import text as _text
+    # Scope raw counts to the caller's org so they match the (org-scoped) total.
+    _org = getattr(_g, "current_org_id", None)
+    _oc = " AND organization_id = :org" if _org is not None else ""
+    _pp = {"org": _org} if _org is not None else {}
     total_count = ArchitectureElement.query.count()
     with_rels_count = db.session.execute(_text(
         "SELECT COUNT(DISTINCT id) FROM archimate_elements WHERE id IN "
-        "(SELECT source_id FROM archimate_relationships WHERE source_id IS NOT NULL "
-        "UNION SELECT target_id FROM archimate_relationships WHERE target_id IS NOT NULL)"
-    )).scalar() or 0
+        "(SELECT source_id FROM archimate_relationships WHERE source_id IS NOT NULL" + _oc + " "
+        "UNION SELECT target_id FROM archimate_relationships WHERE target_id IS NOT NULL" + _oc + ")"
+        + _oc
+    ), _pp).scalar() or 0
     no_rels_count = max(0, total_count - with_rels_count)
 
-    # Elements not linked to any solution
+    # Elements not linked to any solution (scope via the element's org)
     with_solutions_count = db.session.execute(_text(
-        "SELECT COUNT(DISTINCT element_id) FROM solution_archimate_elements WHERE element_id IS NOT NULL"
-    )).scalar() or 0
+        "SELECT COUNT(DISTINCT sae.element_id) FROM solution_archimate_elements sae "
+        "JOIN archimate_elements e ON e.id = sae.element_id "
+        "WHERE sae.element_id IS NOT NULL"
+        + (" AND e.organization_id = :org" if _org is not None else "")
+    ), _pp).scalar() or 0
     no_solutions_count = max(0, total_count - with_solutions_count)
 
     return render_template("architecture/elements.html",

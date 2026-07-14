@@ -1399,6 +1399,22 @@ def api_element_detail(element_id):
     if not el:
         return jsonify({"error": "Element not found"}), 404
 
+    # Tenant guard: this handler uses the non-TenantMixin archimate_core model
+    # and raw SQL keyed by element_id, so a cross-org id would leak its linked
+    # solutions. Validate ownership before any downstream query. No-op for
+    # system contexts / legacy rows with no organization_id.
+    from flask import g as _g
+    _org = getattr(_g, "current_org_id", None)
+    if _org is not None:
+        _owner = getattr(el, "organization_id", None)
+        if _owner is None:
+            _owner = db.session.execute(
+                db.text("SELECT organization_id FROM archimate_elements WHERE id = :id"),
+                {"id": element_id},
+            ).scalar()
+        if _owner is not None and _owner != _org:
+            return jsonify({"error": "Element not found"}), 404
+
     rel_count = ArchiMateRelationship.query.filter(
         db.or_(
             ArchiMateRelationship.source_id == element_id,

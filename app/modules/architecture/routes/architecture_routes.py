@@ -555,14 +555,23 @@ def software_architecture_dashboard():
 
         component_count = ApplicationComponent.query.count()
 
-        service_count = db.session.execute(  # tenant-filtered: scoped via parent FK (application tables)
-            text("SELECT COUNT(*) FROM application_services")
+        from flask import g as _g
+        _org = getattr(_g, "current_org_id", None)
+        _oc = " WHERE organization_id = :org" if _org is not None else ""
+        _pp = {"org": _org} if _org is not None else {}
+        # application_services has no organization_id — scope via its app component.
+        service_count = db.session.execute(
+            text(
+                "SELECT COUNT(*) FROM application_services s"
+                + (" JOIN application_components ac ON ac.id = s.application_component_id"
+                   " WHERE ac.organization_id = :org" if _org is not None else "")
+            ), _pp
         ).scalar() or 0
-        interface_count = db.session.execute(  # tenant-filtered: scoped via parent FK
-            text("SELECT COUNT(*) FROM application_interfaces")
+        interface_count = db.session.execute(
+            text(f"SELECT COUNT(*) FROM application_interfaces{_oc}"), _pp
         ).scalar() or 0
-        dependency_count = db.session.execute(  # tenant-filtered: scoped via parent FK
-            text("SELECT COUNT(*) FROM application_dependencies")  # tenant-filtered
+        dependency_count = db.session.execute(
+            text(f"SELECT COUNT(*) FROM application_dependencies{_oc}"), _pp
         ).scalar() or 0
 
         raw_components = ApplicationComponent.query.with_entities(
