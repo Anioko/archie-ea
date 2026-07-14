@@ -2738,9 +2738,13 @@ def view_solution(solution_id: int):
     if not _check_solution_access(solution):
         abort(403)
 
-    # Blueprint page feature flag (default: True); ?edit=1 forces legacy detail view
+    # Blueprint page ships ON by default (wired, reachable). Explicit config/env
+    # value can opt OUT; ?edit=1 forces the legacy detail/editor view.
+    _bp_setting = current_app.config.get("USE_BLUEPRINT_PAGE")
+    if _bp_setting is None:
+        _bp_setting = os.environ.get("USE_BLUEPRINT_PAGE", "true")
     use_blueprint = (
-        current_app.config.get("USE_BLUEPRINT_PAGE", os.environ.get("USE_BLUEPRINT_PAGE", "").lower() == "true")
+        str(_bp_setting).strip().lower() in ("true", "1", "yes", "on")
         and request.args.get("edit") != "1"
     )
 

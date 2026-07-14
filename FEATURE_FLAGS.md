@@ -17,7 +17,7 @@ _Last verified: 2026-07-14 against the deployed instance (134.122.105.56)._
 | `AI_PAGE_GUIDE_ENABLED` | In-app "Ask the guide" AI helper | `.env` | 🟢 ON |
 | `ENABLE_LOCAL_EMBEDDINGS` | Semantic search via bundled local model | `.env` | 🟢 ON |
 | `USE_PGVECTOR` | Indexed vector search | `.env` | 🟢 ON |
-| `USE_BLUEPRINT_PAGE` | Blueprint solution UI + proactive AI | env (default OFF) | 🔴 **OFF — dark; turning on** |
+| `USE_BLUEPRINT_PAGE` | Blueprint solution UI + proactive AI | code default ON (env can opt out; ?edit=1 = legacy) | 🟢 **ON** |
 | `ABACUS_ENABLED` | Abacus/Avolution portfolio import | env + creds | 🔴 OFF (needs Abacus credentials) |
 
 ## Operational config — allowed to be off (not features)
@@ -43,5 +43,7 @@ _Last verified: 2026-07-14 against the deployed instance (134.122.105.56)._
 | `MAIL_USERNAME` / `MAIL_PASSWORD` | 🔴 **unset** | **password-reset & teammate invites silently do nothing** — the one thing blocking self-serve team onboarding |
 
 > **The only thing dark and actionable right now:** `MAIL_*` (needs your SMTP
-> credentials) and `USE_BLUEPRINT_PAGE` (a product feature — being turned on).
+> credentials — password-reset & invites are silent without it). Every product
+> feature is now ON. `USE_BLUEPRINT_PAGE` was turned on 2026-07-14 (default ON in
+> code, verified rendering for the demo user on a real solution).
 > Everything else product-facing is ON.

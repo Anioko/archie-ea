@@ -24,6 +24,8 @@ ALLOW = ROOT / "config" / "allowed_config.txt"
 PATTERNS = [
     re.compile(r"""_env_bool\(\s*['"]([A-Z0-9_]+)['"]\s*,\s*False\b"""),
     re.compile(r"""(?:os\.)?(?:environ\.get|getenv)\(\s*['"]([A-Z0-9_]+)['"]\s*,\s*['"](?:false|0|no|off)['"]"""),
+    # default empty-string, opt-IN to true -- dark by omission: get("X","").lower()=="true"
+    re.compile(r"""(?:os\.)?(?:environ\.get|getenv)\(\s*['"]([A-Z0-9_]+)['"]\s*,\s*['"]['"]\s*\)\s*\.lower\(\)\s*==\s*['"]true['"]"""),
     re.compile(r"""FeatureFlag\([^)]*\benabled\s*=\s*False\b"""),
     re.compile(r"""enabled\s*=\s*db\.Column\([^)]*default\s*=\s*False"""),
 ]
