@@ -442,7 +442,7 @@ class AIDataInteractionService:
                 relationship_type=mapping_data.get("relationship_type", "enables"),
                 gap_status=mapping_data.get("gap_status", "unknown"),
                 priority=mapping_data.get("priority", "medium"),
-                assessor=self.user_id if self.user_id else "AI_Assistant",
+                assessor=str(self.user_id) if self.user_id else "AI_Assistant",
             )
 
             db.session.add(mapping)
@@ -737,26 +737,41 @@ class AIDataInteractionService:
     def link_application_to_capability(self, link_data: Dict[str, Any]) -> Dict[str, Any]:
         """AIC-303: Create application-capability mapping junction row."""
         try:
-            from sqlalchemy import text
+            from app.models.application_capability import ApplicationCapabilityMapping
+            from app.middleware.tenant_context import current_org_id
 
             app_id = link_data.get("application_id")
             cap_id = link_data.get("capability_id")
             if not app_id or not cap_id:
                 return {"success": False, "error": "Both application_id and capability_id required"}
 
-            # Check if already linked
-            existing = db.session.execute(text(  # tenant-filtered: scoped via parent FK
-                "SELECT 1 FROM application_capability_mapping WHERE application_component_id = :app AND business_capability_id = :cap"
-            ), {"app": app_id, "cap": cap_id}).fetchone()
+            # ApplicationCapabilityMapping does NOT use TenantMixin, so organization_id
+            # is neither auto-stamped on insert nor auto-filtered on select. The prior
+            # raw-SQL INSERT omitted the NOT NULL organization_id (IntegrityError on
+            # every call) and the raw SELECT read across all tenants. Scope both to the
+            # active org explicitly via the ORM.
+            org_id = current_org_id()
+            if org_id is None:
+                return {"success": False, "error": "No active organization context"}
+
+            # Check if already linked (scoped to this org)
+            existing = ApplicationCapabilityMapping.query.filter_by(
+                application_component_id=app_id,
+                business_capability_id=cap_id,
+                organization_id=org_id,
+            ).first()
             if existing:
                 return {"success": True, "message": "Already linked", "already_existed": True}
 
-            db.session.execute(text(  # tenant-filtered: scoped via parent FK
-                "INSERT INTO application_capability_mapping (application_component_id, business_capability_id) VALUES (:app, :cap)"
-            ), {"app": app_id, "cap": cap_id})
+            mapping = ApplicationCapabilityMapping(
+                application_component_id=app_id,
+                business_capability_id=cap_id,
+                organization_id=org_id,
+            )
+            db.session.add(mapping)
             db.session.commit()
 
-            self._log_operation("link_application_capability", None, link_data)
+            self._log_operation("link_application_capability", mapping.id, link_data)
 
             return {
                 "success": True,
@@ -950,10 +965,19 @@ class AIDataInteractionService:
                 name=name,
                 type="Requirement",
                 layer="motivation",
-                plateau="Target",
                 scope="enterprise",
                 properties=json.dumps(props),
             )
+            # The DB column 'plateau' is mapped to the Python attribute
+            # 'togaf_plateau' on the production model (the bare name 'plateau' is a
+            # relationship backref from Plateau, so passing a string to it raises
+            # "Incompatible collection type: str is not list-like"). The lightweight
+            # FAST_INIT model keeps 'plateau' as the column attr — set whichever
+            # exists so both runtimes persist the value.
+            if hasattr(type(req_element), "togaf_plateau"):
+                req_element.togaf_plateau = "Target"
+            else:
+                req_element.plateau = "Target"
             db.session.add(req_element)
             db.session.flush()
 
@@ -961,11 +985,13 @@ class AIDataInteractionService:
             capability_id = requirement_data.get("capability_id")
             if capability_id:
                 # Link Requirement → Capability via Association relationship
+                # ArchiMateRelationship has no 'name' column; the user-facing label
+                # field is 'custom_label'.
                 rel = ArchiMateRelationship(
                     source_id=req_element.id,
                     target_id=capability_id,
                     type="Association",
-                    name=f"supports",
+                    custom_label="supports",
                 )
                 db.session.add(rel)
                 db.session.flush()
