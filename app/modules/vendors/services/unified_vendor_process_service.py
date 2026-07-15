@@ -308,10 +308,11 @@ class UnifiedVendorProcessService:
         Returns:
             Domain-specific analysis
         """
-        # Get APQC processes for this domain
-        processes = APQCProcess.query.filter(
-            APQCProcess.architecture_domains.contains([domain])
-        ).all()
+        # APQCProcess has no architecture-domain column, so there is no schema
+        # linkage from an architecture domain to APQC processes. Degrade gracefully
+        # to an empty set rather than crash on a non-existent attribute (the old
+        # `.architecture_domains.contains(...)` raised AttributeError).
+        processes = []
 
         # Get all vendor mappings for these processes
         process_ids = [p.id for p in processes]
