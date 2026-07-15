@@ -182,8 +182,15 @@ def _export_csv(capabilities, mappings, mapped_capability_ids, applications):
                     app.name,
                     mapping.support_level,
                     mapping.coverage_percentage,
-                    mapping.gap_status,
-                    mapping.assessment_notes,
+                    # ApplicationCapabilityCoverage has no gap_status/assessment_notes
+                    # columns; derive the gap status from real coverage_percentage
+                    # and use the real notes column.
+                    (
+                        "Covered" if (mapping.coverage_percentage or 0) >= 80
+                        else "Partial" if (mapping.coverage_percentage or 0) >= 40
+                        else "Gap"
+                    ),
+                    mapping.notes,
                     "High" if (capability.level or 1) == 1 else "Medium",
                 ]
             )
@@ -263,7 +270,7 @@ def _export_json(capabilities, mappings, mapped_capability_ids, applications):
     # Add mappings
     for mapping in mappings:
         app = json_apps_by_id.get(mapping.application_component_id)
-        capability = json_caps_by_id.get(mapping.unified_capability_id)
+        capability = json_caps_by_id.get(mapping.capability_id)
 
         if app and capability:
             export_data["mappings"].append(
@@ -381,7 +388,7 @@ def _export_image(capabilities, mappings, mapped_capability_ids, format_type, ap
                 break
 
             app = img_apps_by_id.get(mapping.application_component_id)
-            capability = img_caps_by_id.get(mapping.unified_capability_id)
+            capability = img_caps_by_id.get(mapping.capability_id)
 
             if app and capability:
                 draw.text(

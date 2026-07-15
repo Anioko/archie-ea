@@ -14,7 +14,11 @@ def unmapped_capabilities():
     """Dedicated page for viewing capabilities with no applications mapped"""
 
     try:
-        # Get unmapped capabilities with detailed information
+        # Get unmapped capabilities with detailed information.
+        # unified_capabilities is a global (non-tenant) table, so no org predicate
+        # is applied — org_filter was referenced but never defined (NameError on
+        # every request); make it an explicit empty clause.
+        org_filter = ""
         org_params = {}
 
         # Get summary statistics

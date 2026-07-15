@@ -39,10 +39,14 @@ def api_metrics():
         # Count active risks (if risk model exists)
         active_risks = 0
         try:
-            from app.models.risk import Risk
+            from app.models.risk import Risk, RiskStatus
+            # 'severity' is not a column; risk level derives from likelihood*impact
+            # (>=9 == high/critical). 'status' is a RiskStatus enum (OPEN == active),
+            # not the string 'active'. The old filters raised AttributeError (swallowed
+            # below), so this metric was always 0.
             active_risks = db.session.query(Risk).filter(
-                Risk.status == 'active',
-                Risk.severity.in_(['high', 'critical'])
+                Risk.status == RiskStatus.OPEN,
+                (Risk.likelihood * Risk.impact) >= 9,
             ).count()
         except Exception:
             pass
