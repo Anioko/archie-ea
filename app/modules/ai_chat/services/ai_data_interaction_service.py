@@ -71,13 +71,19 @@ class AIDataInteractionService:
                     "operation": "create_capability",
                 }
 
-            # Create capability
+            # Create capability. NB: BusinessCapability.level is an INTEGER and has
+            # no `maturity_level` column (it uses current_/target_maturity_level).
+            # The old code passed level="Unknown" (str) + maturity_level=... which
+            # raised "invalid keyword argument for BusinessCapability".
+            try:
+                _level = int(capability_data.get("level", 2))
+            except (TypeError, ValueError):
+                _level = 2
             capability = BusinessCapability(
                 name=capability_data["name"],
                 description=capability_data.get("description", ""),
-                level=capability_data.get("level", "Unknown"),
+                level=_level,
                 business_domain=capability_data.get("business_domain", ""),
-                maturity_level=capability_data.get("maturity_level", "Defined"),
             )
 
             db.session.add(capability)
