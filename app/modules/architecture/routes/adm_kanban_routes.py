@@ -310,7 +310,6 @@ def create_board():
         board = KanbanBoard(
             name=data["name"],
             description=data.get("description"),
-            architecture_id=data.get("architecture_id"),
             project_name=data.get("project_name"),
             created_by_id=current_user.id,
         )

@@ -598,7 +598,7 @@ class StructuredDeliverableService:
                 req = SolutionRequirement(
                     solution_id=solution_id,
                     capability_id=capability_id,
-                    requirement_name=req_data.get("requirement_name", "").strip(),
+                    name=req_data.get("requirement_name", "").strip(),
                     description=req_data.get("description"),
                     requirement_type=req_data.get("requirement_type", "functional"),
                     moscow_priority=req_data.get("moscow_priority", "SHOULD"),
@@ -615,7 +615,7 @@ class StructuredDeliverableService:
                 "requirements": [
                     {
                         "id": r.id,
-                        "requirement_name": r.requirement_name,
+                        "requirement_name": r.name,
                         "requirement_type": r.requirement_type,
                         "moscow_priority": r.moscow_priority,
                     }

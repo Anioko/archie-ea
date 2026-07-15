@@ -445,7 +445,7 @@ def create_unified_to_application_mapping():
         # Check for duplicates
         existing = UnifiedCapabilityApplicationMapping.query.filter_by(
             unified_capability_id=data["unified_capability_id"],
-            application_id=data["application_id"],
+            application_component_id=data["application_id"],
         ).first()
 
         if existing:
@@ -453,13 +453,13 @@ def create_unified_to_application_mapping():
 
         mapping = UnifiedCapabilityApplicationMapping(
             unified_capability_id=data["unified_capability_id"],
-            application_id=data["application_id"],
-            coverage_type=data.get("coverage_type", "supported"),
+            application_component_id=data["application_id"],
+            support_level=data.get("coverage_type", "supported"),
             coverage_percentage=data.get("coverage_percentage", 80.0),
-            gap_description=data.get("gap_description"),
-            roadmap_priority=data.get("roadmap_priority"),
-            implementation_status=data.get("implementation_status", "active"),
-            notes=data.get("notes"),
+            gaps_description=data.get("gap_description"),
+            modernization_priority=data.get("roadmap_priority"),
+            health_status=data.get("implementation_status", "active"),
+            mapping_notes=data.get("notes"),
         )
 
         db.session.add(mapping)
@@ -671,12 +671,10 @@ def create_unified_to_vendor_org_mapping():
         mapping = UnifiedCapabilityVendorOrganizationMapping(
             unified_capability_id=data["unified_capability_id"],
             vendor_organization_id=data["vendor_organization_id"],
-            strategic_alignment=data.get("strategic_alignment", "tactical"),
+            strategic_importance=data.get("strategic_alignment", "tactical"),
             annual_spend=data.get("annual_spend"),
-            primary_contact=data.get("primary_contact"),
-            vendor_score=data.get("vendor_score"),
-            relationship_status=data.get("relationship_status", "active"),
-            notes=data.get("notes"),
+            relationship_type=data.get("relationship_status", "active"),
+            strategic_notes=data.get("notes"),
         )
 
         db.session.add(mapping)
@@ -873,26 +871,20 @@ def create_application_to_vendor_mapping():
 
         # Check for duplicates
         existing = ApplicationVendorProductMapping.query.filter_by(
-            application_id=data["application_id"], vendor_product_id=data["vendor_product_id"]
+            application_component_id=data["application_id"],
+            vendor_product_id=data["vendor_product_id"],
         ).first()
 
         if existing:
             return error_response("Mapping already exists", 409)
 
         mapping = ApplicationVendorProductMapping(
-            application_id=data["application_id"],
+            application_component_id=data["application_id"],
             vendor_product_id=data["vendor_product_id"],
-            tech_stack_category=data.get("tech_stack_category"),
-            integration_type=data.get("integration_type", "direct"),
-            integration_status=data.get("integration_status", "active"),
-            performance_impact=data.get("performance_impact"),
-            security_alignment=data.get("security_alignment"),
-            support_level=data.get("support_level", "standard"),
-            version=data.get("version"),
+            product_version=data.get("version"),
             deployment_model=data.get("deployment_model", "cloud"),
-            licensing_model=data.get("licensing_model"),
-            annual_license_cost=data.get("annual_license_cost"),
-            notes=data.get("notes"),
+            license_cost_annual=data.get("annual_license_cost"),
+            mapping_notes=data.get("notes"),
         )
 
         db.session.add(mapping)

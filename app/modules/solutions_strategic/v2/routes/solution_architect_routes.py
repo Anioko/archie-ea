@@ -146,12 +146,11 @@ def clone_session(session_id):
     try:
         session = SolutionAnalysisSession.query.get_or_404(session_id)
 
+        # SolutionAnalysisSession has no 'problem_description' column (that lives on
+        # SolutionProblemDefinition) — passing it TypeError'd on every clone.
         new_session = SolutionAnalysisSession(
             name=f"{session.name} (Copy)",
             description=session.description,
-            problem_description=session.problem_description
-            if hasattr(session, "problem_description")
-            else "",
             status=SolutionSessionStatus.DRAFT
             if hasattr(SolutionSessionStatus, "DRAFT")
             else "draft",
@@ -201,7 +200,7 @@ def analyze():
             is_critical=data.get("is_critical", False),
             organization_size=data.get("organization_size"),
             industry_vertical=data.get("industry_vertical"),
-            constraints=data.get("constraints", []),
+            existing_constraints=data.get("constraints", []),
             compliance_requirements=data.get("compliance_requirements", []),
         )
 

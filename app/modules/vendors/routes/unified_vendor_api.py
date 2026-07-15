@@ -236,7 +236,7 @@ def create_vendor():
     vendor = VendorOrganization(
         name=data["name"],
         vendor_type=data.get("vendor_type", "software_vendor"),
-        country=data.get("country"),
+        headquarters_location=data.get("country"),  # model column is headquarters_location
         description=data.get("description"),
         website=data.get("website"),
         created_at=datetime.utcnow(),
@@ -398,8 +398,8 @@ def match_vendor():
 
             service = VendorProductService()
 
-            match_result = service.find_best_vendor_match(
-                app_name=application_name, description=description
+            match_result = service.find_vendor_product_match(
+                application_name=application_name, description=description
             )
 
             return jsonify(

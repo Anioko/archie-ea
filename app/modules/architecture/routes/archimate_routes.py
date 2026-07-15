@@ -4021,7 +4021,6 @@ def api_create_pattern():
             name=name,
             description=(data.get("description") or "").strip() or None,
             pattern_json=_json.dumps(pattern_data),
-            is_builtin=False,
             created_by=current_user.id if current_user and hasattr(current_user, "id") else None,
         )
         db.session.add(pat)

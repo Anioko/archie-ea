@@ -946,22 +946,15 @@ class ARBWorkflowService:
         if existing:
             return {"error": f"Stage with code '{code}' already exists"}
 
+        # ARBWorkflowStage is intentionally lightweight (see its
+        # evaluate_gate_conditions docstring — gate rules are not persisted): the
+        # table has only code/name/order/is_active. The extra stage-config args are
+        # accepted for API compatibility but not stored, so pass only real columns
+        # (the old code passed 11 non-existent kwargs and TypeError'd on every call).
         stage = ARBWorkflowStage(
             name=name,
             code=code,
-            description=description,
             order=order,
-            is_initial=is_initial,
-            is_terminal=is_terminal,
-            color=color,
-            icon=icon,
-            required_approvers=required_approvers,
-            approver_roles=approver_roles,
-            gate_conditions=gate_conditions,
-            allowed_transitions=allowed_transitions,
-            sla_hours=sla_hours,
-            notify_on_enter=notify_on_enter,
-            created_by_id=created_by_id,
             is_active=True,
         )
 

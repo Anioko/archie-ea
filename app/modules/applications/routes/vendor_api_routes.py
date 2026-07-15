@@ -414,7 +414,7 @@ def generate_vendor_process_mappings():
 
         service = VendorProcessMappingService()
         mappings = service.generate_vendor_process_mappings(
-            vendor_id=vendor_id, confidence_threshold=confidence_threshold
+            confidence_threshold=confidence_threshold
         )
 
         # Format response for UI

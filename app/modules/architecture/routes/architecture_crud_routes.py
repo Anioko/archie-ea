@@ -155,7 +155,7 @@ def create_element():
     # Create
     element = ArchitectureElement(
         name=data["name"],
-        element_type=data["element_type"],
+        type=data["element_type"],  # model column is 'type', not 'element_type'
         layer=data.get("layer"),
         description=data.get("description"),
     )
@@ -217,7 +217,7 @@ def update_element(element_id):
 
     # Update
     element.name = data.get("name", element.name)
-    element.element_type = data.get("element_type", element.element_type)
+    element.type = data.get("element_type", element.type)  # column is 'type'
     element.layer = data.get("layer", element.layer)
     element.description = data.get("description", element.description)
 
@@ -299,7 +299,7 @@ def create_relationship():
     relationship = Relationship(
         source_id=data["source_id"],
         target_id=data["target_id"],
-        relationship_type=data["relationship_type"],
+        type=data["relationship_type"],  # model column is 'type'
         description=data.get("description"),
     )
 
@@ -329,8 +329,8 @@ def update_relationship(rel_id):
     if not is_valid:
         return jsonify({"error": "Validation failed", "details": errors}), 400
 
-    relationship.relationship_type = data.get(
-        "relationship_type", relationship.relationship_type
+    relationship.type = data.get(  # model column is 'type'
+        "relationship_type", relationship.type
     )
     relationship.description = data.get("description", relationship.description)
 
