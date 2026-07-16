@@ -454,9 +454,12 @@ def _export_image(capabilities, mappings, mapped_capability_ids, format_type, ap
                     y_position += 18
                     gap_count += 1
 
-        # Save image to BytesIO
+        # Save image to BytesIO. PIL's format key for JPEG is "JPEG", not "JPG",
+        # so format_type.upper() == "JPG" raised (and the broad except below then
+        # mislabeled it as a missing-Pillow error).
         img_buffer = BytesIO()
-        img.save(img_buffer, format=format_type.upper())
+        _pil_format = "JPEG" if format_type.lower() in ("jpg", "jpeg") else format_type.upper()
+        img.save(img_buffer, format=_pil_format)
         img_buffer.seek(0)
 
         # Create response
@@ -467,13 +470,22 @@ def _export_image(capabilities, mappings, mapped_capability_ids, format_type, ap
 
         return response
 
-    except Exception as e:
-        # Fallback to error response if PIL is not available
+    except ImportError:
         return (
             jsonify(
                 {
-                    "error": "Image export requires PIL/Pillow library. Please install it with: pip install Pillow",
-                    "details": "See server logs for details",
+                    "error": "Image export requires the Pillow library (pip install Pillow).",
+                }
+            ),
+            500,
+        )
+    except Exception as e:
+        current_app.logger.error("Capability image export failed: %s", e, exc_info=True)
+        return (
+            jsonify(
+                {
+                    "error": "Image export failed while rendering the report.",
+                    "details": str(e),
                 }
             ),
             500,
