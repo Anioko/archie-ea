@@ -704,6 +704,50 @@ def vendor_templates():
         return render_template("architecture/vendor_templates.html", templates=[])
 
 
+@architecture_bp.route("/archimate-vendor-templates")
+@login_required
+def archimate_vendor_templates():
+    """Browse the canonical vendor→ArchiMate element templates.
+
+    Distinct from /vendor-templates (which lists VendorStackTemplate solution
+    stacks): this page surfaces VendorArchiMateTemplate — the deterministic,
+    versioned SAP/Microsoft vendor→ArchiMate element mappings that
+    VendorTemplateService.populate_from_vendor() applies when an architect links
+    a vendor product. The Technology Architect persona reports a count of these;
+    this is the page a human can open to inspect them.
+    """
+    grouped = {}
+    version = None
+    try:
+        from app.models.vendor.vendor_organization import VendorArchiMateTemplate
+
+        rows = (
+            VendorArchiMateTemplate.query
+            .order_by(
+                VendorArchiMateTemplate.vendor_key,
+                VendorArchiMateTemplate.display_order,
+                VendorArchiMateTemplate.element_name,
+            )
+            .all()
+        )
+        for row in rows:
+            grouped.setdefault(row.vendor_key, []).append(row)
+            version = version or row.version
+    except Exception:
+        current_app.logger.warning(
+            "archimate_vendor_templates: could not load VendorArchiMateTemplate",
+            exc_info=True,
+        )
+        grouped = {}
+
+    return render_template(
+        "architecture/vendor_archimate_templates.html",
+        grouped=grouped,
+        total=sum(len(v) for v in grouped.values()),
+        version=version,
+    )
+
+
 @architecture_bp.route("/vendors/<int:vendor_id>/products")
 @login_required
 def vendor_products(vendor_id):

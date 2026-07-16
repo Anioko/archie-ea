@@ -330,7 +330,8 @@ def _ta_context() -> str:
     def templates():
         from app.models.vendor.vendor_organization import VendorArchiMateTemplate
         n = db.session.query(func.count(VendorArchiMateTemplate.id)).scalar() or 0
-        return f"- Vendor ArchiMate templates: {n} (SAP/Microsoft reference structures)"
+        return (f"- Vendor ArchiMate templates: {n} (SAP/Microsoft reference "
+                "structures — browse at /architecture/archimate-vendor-templates)")
 
     def sap_clean_core():
         from app.models.application_portfolio import ApplicationComponent
