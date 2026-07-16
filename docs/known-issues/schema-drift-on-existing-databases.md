@@ -2,7 +2,9 @@
 
 - **Severity:** High (user-facing 500s on core persona pages)
 - **Type:** Schema / migrations / ops
-- **Status:** Open
+- **Status:** Fixed (mitigated) — `flask reconcile-schema` added and wired into
+  container boot (2026-07-16). Adopting Alembic autogenerate remains the ideal
+  long-term direction (see options below).
 - **Found by:** SQA live persona verification (2026-07-16)
 - **Affects:** Any long-lived Archie database created from an older model version
   and upgraded in place. A **fresh** `docker compose up` / `flask --app manage
@@ -74,39 +76,54 @@ boot detects or repairs the gap.
 3. Run `init-db` again (no error — it only ensures tables).
 4. Log in and open `/arb/reviews` (or `/dashboard/overview`) → **500**.
 
-## Fix (immediate, for a drifted DB)
+## Fix (implemented)
 
-Add the missing columns so the physical schema matches the models. A safe
-reconcile — **ADD COLUMN only, all nullable, never drop/retype** — is enough:
-for each mapped table that exists, diff `db.metadata` columns against the live
-columns (`sqlalchemy.inspect(engine).get_columns`) and
-`ALTER TABLE "<t>" ADD COLUMN "<c>" <type.compile(dialect)>` for each missing
-one. This resolved all 47 columns and turned every persona route green.
+A supported command now reconciles a drifted DB — **ADD COLUMN only, all
+nullable, never drop/retype**, using `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`
+so it is safe and idempotent:
 
-*(The QA harness used for this is `scratchpad/schema_sync.py`; it should be
-hardened into a supported command — see below.)*
+```
+flask --app manage reconcile-schema            # apply
+flask --app manage reconcile-schema --dry-run  # report drift only
+```
 
-## Recommended permanent solutions (pick one)
+It diffs every mapped model's columns against the live table
+(`sqlalchemy.inspect(engine).get_columns`) and adds any the model declares but
+the table lacks. Implemented in `app/commands/reconcile_schema.py`, registered in
+`app/_bootstrap/cli.py`. Running it resolved all 47 columns and turned every
+persona route green; re-running is a no-op.
+
+It is now wired into container boot in `docker-compose.yml`:
+
+```
+flask --app manage init-db && flask --app manage reconcile-schema && gunicorn ...
+```
+
+so `init-db` creates missing tables and `reconcile-schema` adds missing columns
+on every start — existing deployments self-heal.
+
+This supersedes the earlier piecemeal one-column patches
+(`add_vendor_seed_column`, `add_integration_flow_columns`), which added specific
+columns by hand; new column drift no longer needs a bespoke command each time.
+
+## Longer-term direction
 
 1. **Adopt Alembic autogenerate migrations** as the source of truth and run
-   `flask db upgrade` on deploy/boot. The repo already has a `migrations/`
-   directory and Flask-Migrate — but column additions aren't reliably captured
-   or applied. This is the correct long-term fix.
-2. **Ship a supported `flask reconcile-schema` command** (the safe ADD COLUMN
-   diff above) and run it in the container entrypoint right after `init-db`,
-   e.g. `flask --app manage init-db && flask --app manage reconcile-schema`.
-   Cheap, idempotent, non-destructive; covers the common "just add a column"
-   case without full migration discipline.
-3. **At minimum, fail loudly at boot:** compare model columns to live columns on
-   startup and log/abort with the exact drift list instead of letting individual
-   requests 500 later.
+   `flask db upgrade` on deploy. The repo already has a `migrations/` directory
+   and Flask-Migrate; making column additions reliably captured/applied there is
+   the cleanest end state. `reconcile-schema` is the pragmatic bridge until then.
+2. **Optional fail-loud check:** a startup diff that logs the exact drift list
+   (rather than relying on later requests to surface it) would make any residual
+   gap obvious in the boot log.
 
 ## Hardening follow-ups (independent of the migration decision)
 
-- **`/dashboard/overview` template robustness:** guard
-  `persona_metrics.cfo.tco_by_category` (and siblings) so a partial
-  `persona_metrics` degrades gracefully instead of raising `UndefinedError`.
-  Schema drift triggered it here, but any incomplete metrics dict would.
+- **`/dashboard/overview` template robustness — DONE.**
+  `templates/dashboards/overview.html` now sets a local
+  `cfo = (persona_metrics or {}).get('cfo') or {}` and reads it with `.get(...)`,
+  so a partial/missing `persona_metrics` degrades to an empty TCO table instead
+  of raising `UndefinedError` and 500-ing the whole EA landing page. Verified
+  against missing-key, None, and no-variable inputs.
 - **Transaction hygiene:** a single `UndefinedColumn` aborts the request
   transaction and cascades into `InFailedSqlTransaction` for every later query
   on the page. Consider per-widget query isolation / savepoints on dashboard

@@ -3,10 +3,14 @@ services:
   server:
     build:
       context: .
-    # Create the schema (idempotent, non-destructive) before starting the web server.
-    # Without this, `docker compose up` boots gunicorn against an empty database and
-    # every request fails with "relation does not exist".
-    command: sh -c "flask --app manage init-db && gunicorn -c gunicorn.conf.py manage:app"
+    # Bring the schema up before starting the web server (both idempotent, non-destructive):
+    #   init-db          — create any missing tables (create_all). Without it, gunicorn
+    #                      boots against an empty DB and every request 500s ("relation does not exist").
+    #   reconcile-schema — add any columns the models gained since this DB was created.
+    #                      create_all never alters existing tables, so a long-lived DB drifts
+    #                      and core pages 500 (e.g. arb_review_items.jira_issue_key). See
+    #                      docs/known-issues/schema-drift-on-existing-databases.md
+    command: sh -c "flask --app manage init-db && flask --app manage reconcile-schema && gunicorn -c gunicorn.conf.py manage:app"
     ports:
       - '5000:5000'
     volumes:
