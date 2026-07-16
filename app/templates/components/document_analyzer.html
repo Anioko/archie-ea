@@ -801,14 +801,14 @@ function documentAnalyzer(entityType, entityId) {
             // For images, show preview
             if (fileToPreview.type.startsWith('image/')) {
                 const reader = new FileReader();
-                reader.@load= (e) => {
+                reader.onload = (e) => {
                     this.filePreview = `<img src="${e.target.result}" class="max-w-full h-auto rounded" alt="Preview">`;
                 };
                 reader.readAsDataURL(fileToPreview);
             } else {
                 // For text-based files, show first 1000 chars
                 const reader = new FileReader();
-                reader.@load= (e) => {
+                reader.onload = (e) => {
                     const text = e.target.result.substring(0, 1000);
                     this.filePreview = `<pre class="whitespace-pre-wrap text-xs">${this.escapeHtml(text)}</pre>`;
                 };

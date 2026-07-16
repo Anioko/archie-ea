@@ -4838,7 +4838,7 @@ def download_zip(solution_id):
 
         if config.get("include_frontend"):
             frontend_files = _generate_refine_frontend(
-                _stream_solution.name or f"Solution {solution_id}",
+                solution.name or f"Solution {solution_id}",
                 gen.uml_snapshot or {},
             )
             for filepath, content in frontend_files.items():

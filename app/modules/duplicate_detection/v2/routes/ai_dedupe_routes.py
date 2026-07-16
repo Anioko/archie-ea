@@ -138,7 +138,7 @@ def ai_insights(run_id):
     try:
         run = UnifiedDetectionRun.query.get_or_404(run_id)
         if (getattr(run, "strategy", "") or "").startswith("ai_"):
-            groups = UnifiedDuplicateGroup.query.filter_by(run_id=run_id).all()
+            groups = UnifiedDuplicateGroup.query.filter_by(detection_run_id=run_id).all()
             ai_insights_data = {
                 "algorithm_version": getattr(run, "strategy", None),
                 "total_groups": len(groups),

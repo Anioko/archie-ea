@@ -555,11 +555,11 @@
 
 {% block extra_js %}
 {% if solution_id %}
-<script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/lodash@4.17.21/lodash.min.js" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/backbone@1.4.1/backbone-min.js" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/jointjs@3.7.7/dist/joint.min.js" crossorigin="anonymous"></script>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jointjs@3.7.7/dist/joint.min.css" crossorigin="anonymous">
+<script src="/static/vendor/jquery.min.js" crossorigin="anonymous"></script>
+<script src="/static/vendor/lodash.min.js" crossorigin="anonymous"></script>
+<script src="/static/vendor/backbone-min.js" crossorigin="anonymous"></script>
+<script src="/static/vendor/joint.min.js" crossorigin="anonymous"></script>
+<link rel="stylesheet" href="/static/vendor/joint.min.css" crossorigin="anonymous">
 <script src="{{ url_for('static', filename='js/archimate/composer_renderer.js') }}"></script> <!-- entity-picker-ok -->
 <script src="{{ url_for('static', filename='js/solutions/vendor_suggestions.js') }}?v=1"></script> <!-- entity-picker-ok -->
 <script src="{{ url_for('static', filename='js/architecture_assistant/architecture_journey.js') }}?v=13"></script>

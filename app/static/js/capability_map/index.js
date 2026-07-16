@@ -3259,12 +3259,12 @@
         try {
             // Load html2canvas dynamically if not already loaded
             if (typeof html2canvas === 'undefined') {
-                await loadScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js');
+                await loadScript('/static/vendor/html2canvas.min.js');
             }
     
             // Load jsPDF dynamically if not already loaded
             if (typeof jspdf === 'undefined') {
-                await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+                await loadScript('/static/vendor/jspdf.umd.min.js');
             }
     
             showToast('Generating high-quality PDF...', 'info');
@@ -3331,7 +3331,7 @@
         try {
             // Load html2canvas dynamically if not already loaded
             if (typeof html2canvas === 'undefined') {
-                await loadScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js');
+                await loadScript('/static/vendor/html2canvas.min.js');
             }
     
             showToast(`Generating high-quality ${format.toUpperCase()}...`, 'info');

@@ -1118,7 +1118,7 @@ def api_rationalization_onboard():
             description=data.get("description"),
             application_type=data.get("type"),
             lifecycle_status=data.get("lifecycle_status", "planning"),
-            estimated_cost=data.get("annual_cost"),
+            total_cost_of_ownership=data.get("annual_cost"),
         )
         db.session.add(app)
         db.session.flush()

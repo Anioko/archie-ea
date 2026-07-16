@@ -143,7 +143,7 @@ def api_bulk_reject():
 @audit_log("review_thresholds_save")
 def api_save_thresholds():
     """Save confidence threshold configuration."""
-    from app.models.confidence_threshold import ConfidenceThreshold
+    from app.models.confidence_review import ConfidenceThreshold
     from app import db
 
     data = request.json
@@ -156,7 +156,7 @@ def api_save_thresholds():
         auto_approval_threshold=data.get("auto_approval_threshold", 0.8),
         rejection_threshold=data.get("rejection_threshold", 0.3),
         requires_human_review=data.get("requires_human_review", True),
-        user_id=data.get("user_id"),
+        created_by_id=data.get("user_id"),
     )
 
     db.session.add(threshold)

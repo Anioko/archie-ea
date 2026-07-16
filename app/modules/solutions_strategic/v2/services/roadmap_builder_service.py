@@ -123,23 +123,24 @@ class RoadmapBuilderService:
             Dict with created work package details
         """
         try:
+            # WorkPackage columns are target_date/dependencies/owner_id — the old
+            # kwargs end_date/work_dependencies/created_by don't exist, and
+            # assigned_to (a free-text name) can't map to the integer owner_id FK,
+            # so it's dropped rather than mis-typed.
             work_package = ImplementationWorkPackage(
                 name=name,
                 description=description,
                 start_date=start_date,
-                end_date=end_date,
+                target_date=end_date,
                 priority=priority,
                 status=status,
-                assigned_to=assigned_to,
                 estimated_cost=estimated_cost,
-                work_dependencies=dependencies or [],
-                created_by=created_by,
+                dependencies=dependencies or [],
                 created_at=datetime.utcnow(),
             )
 
-            if start_date and end_date:
-                work_package.duration_days = (end_date - start_date).days
-
+            # duration_days is a read-only computed property (derived from
+            # start_date/target_date) — do not assign it.
             db.session.add(work_package)
             db.session.commit()
 
@@ -225,10 +226,17 @@ class RoadmapBuilderService:
             if not work_package:
                 return {"success": False, "error": "Work package not found"}
 
-            # Remove this work package from dependencies of other work packages
-            dependent_packages = ImplementationWorkPackage.query.filter(
-                ImplementationWorkPackage.dependencies.contains([work_package_id])
-            ).all()
+            # Remove this work package from dependencies of other work packages.
+            # dependencies is a db.JSON column; .contains() compiles to a SQL LIKE
+            # that Postgres rejects on json ("operator does not exist: json ~~ text"),
+            # so filter membership in Python.
+            dependent_packages = [
+                p
+                for p in ImplementationWorkPackage.query.filter(
+                    ImplementationWorkPackage.dependencies.isnot(None)
+                ).all()
+                if isinstance(p.dependencies, (list, tuple)) and work_package_id in p.dependencies
+            ]
 
             for dep_pkg in dependent_packages:
                 if dep_pkg.dependencies:

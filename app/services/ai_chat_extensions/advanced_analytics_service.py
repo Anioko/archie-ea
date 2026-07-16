@@ -543,19 +543,26 @@ class AdvancedAnalyticsService:
         """
         try:
             from app.extensions import db
+            from flask import g
             from sqlalchemy import text
 
-            total_rels = db.session.execute(text("SELECT COUNT(*) FROM archimate_relationships")).scalar() or 0  # raw-sql-ok: tenant-filtered: scoped via archimate_relationships
-            total_els = db.session.execute(text("SELECT COUNT(*) FROM archimate_elements")).scalar() or 0  # raw-sql-ok: tenant-filtered: scoped via archimate_elements
+            # Scope to the caller's org (raw SQL bypasses the ORM tenant filter).
+            _org = getattr(g, "current_org_id", None)
+            _w = " WHERE organization_id = :org" if _org is not None else ""
+            _we = " WHERE e.organization_id = :org" if _org is not None else ""
+            _p = {"org": _org} if _org is not None else {}
+
+            total_rels = db.session.execute(text(f"SELECT COUNT(*) FROM archimate_relationships{_w}"), _p).scalar() or 0
+            total_els = db.session.execute(text(f"SELECT COUNT(*) FROM archimate_elements{_w}"), _p).scalar() or 0
 
             # Find most connected elements
             most_connected = []
             if total_rels > 0:
-                rows = db.session.execute(text(  # raw-sql-ok: tenant-filtered: scoped via archimate_elements + archimate_relationships
+                rows = db.session.execute(text(
                     "SELECT e.name, COUNT(*) as cnt FROM archimate_elements e "
                     "JOIN archimate_relationships r ON r.source_id = e.id OR r.target_id = e.id "
-                    "GROUP BY e.id, e.name ORDER BY cnt DESC LIMIT 5"
-                )).fetchall()
+                    f"{_we} GROUP BY e.id, e.name ORDER BY cnt DESC LIMIT 5"
+                ), _p).fetchall()
                 most_connected = [{"name": r[0], "connections": r[1]} for r in rows]
 
             return {
@@ -697,13 +704,17 @@ class AdvancedAnalyticsService:
         """Calculate capability coverage score from real mapping data."""
         try:
             from app.extensions import db
+            from flask import g
             from sqlalchemy import text
-            total = db.session.execute(text("SELECT COUNT(*) FROM business_capability")).scalar() or 0  # raw-sql-ok: tenant-filtered: scoped via business_capability
+            _org = getattr(g, "current_org_id", None)
+            _w = " WHERE organization_id = :org" if _org is not None else ""
+            _p = {"org": _org} if _org is not None else {}
+            total = db.session.execute(text(f"SELECT COUNT(*) FROM business_capability{_w}"), _p).scalar() or 0
             if total == 0:
                 return 0.0
-            mapped = db.session.execute(text(  # raw-sql-ok: tenant-filtered: scoped via parent FK (junction)
-                "SELECT COUNT(DISTINCT business_capability_id) FROM application_capability_mapping"
-            )).scalar() or 0
+            mapped = db.session.execute(text(
+                f"SELECT COUNT(DISTINCT business_capability_id) FROM application_capability_mapping{_w}"
+            ), _p).scalar() or 0
             return round((mapped / total) * 100, 1)
         except Exception:
             logger.debug("Capability coverage query failed, returning 0")
@@ -713,11 +724,15 @@ class AdvancedAnalyticsService:
         """Calculate integration health from ArchiMate relationship density."""
         try:
             from app.extensions import db
+            from flask import g
             from sqlalchemy import text
-            elements = db.session.execute(text("SELECT COUNT(*) FROM archimate_elements")).scalar() or 0  # raw-sql-ok: tenant-filtered: scoped via archimate_elements
+            _org = getattr(g, "current_org_id", None)
+            _w = " WHERE organization_id = :org" if _org is not None else ""
+            _p = {"org": _org} if _org is not None else {}
+            elements = db.session.execute(text(f"SELECT COUNT(*) FROM archimate_elements{_w}"), _p).scalar() or 0
             if elements == 0:
                 return 0.0
-            relationships = db.session.execute(text("SELECT COUNT(*) FROM archimate_relationships")).scalar() or 0  # raw-sql-ok: tenant-filtered: scoped via archimate_relationships
+            relationships = db.session.execute(text(f"SELECT COUNT(*) FROM archimate_relationships{_w}"), _p).scalar() or 0
             ratio = relationships / elements if elements > 0 else 0
             score = min(ratio / 2.0 * 100, 100)
             return round(score, 1)

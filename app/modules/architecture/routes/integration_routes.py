@@ -134,7 +134,12 @@ def list_instances():
         if status != "all":
             query = query.filter_by(status=status)
         if workflow_code:
-            query = query.filter_by(workflow_code=workflow_code)
+            # workflow_code lives on EAWorkflowDefinition, not EAWorkflowInstance —
+            # resolve it to the definition id and filter by the real FK column.
+            from app.models.workflow_models import EAWorkflowDefinition
+
+            _defn = EAWorkflowDefinition.query.filter_by(workflow_code=workflow_code).first()
+            query = query.filter_by(workflow_definition_id=_defn.id if _defn else -1)
 
         instances = query.order_by(EAWorkflowInstance.started_at.desc()).limit(50).all()
 

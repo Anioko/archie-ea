@@ -688,12 +688,17 @@ class ApplicationTechnologyInstance(db.Model):
         return f"<ApplicationTechnologyInstance {self.instance_name}>"
 
 
-class VendorContract(db.Model):
+class VendorContract(TenantMixin, db.Model):
     """
     Vendor Contract Model
 
     Manages vendor contracts and agreements for applications.
     Supports contract lifecycle management and compliance.
+
+    Tenant-scoped: inherits TenantMixin so the automatic org filter applies.
+    The explicit organization_id column + organization relationship below
+    override the mixin's declared_attr versions (same definition), so this is
+    a behavioural change only — VendorContract SELECTs are now org-filtered.
     """
 
     __tablename__ = "vendor_contracts"

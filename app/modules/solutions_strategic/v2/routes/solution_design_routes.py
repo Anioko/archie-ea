@@ -1786,7 +1786,7 @@ def _build_solution_detail_context(solution):
         # Path 2: query all SolutionAnalysisSessions by solution_id (covers solutions without
         # analysis_session_id set, or those with additional sessions created via the wizard)
         try:
-            extra_sessions = SolutionAnalysisSession.query.filter_by(solution_id=solution.id).all()
+            extra_sessions = SolutionAnalysisSession.query.filter_by(id=solution.analysis_session_id).all()
             existing_driver_ids = {d.id for d in drivers_all}
             existing_goal_ids = {g.id for g in goals_all}
             existing_constraint_ids = {c.id for c in constraints_all}
@@ -2738,9 +2738,13 @@ def view_solution(solution_id: int):
     if not _check_solution_access(solution):
         abort(403)
 
-    # Blueprint page feature flag (default: True); ?edit=1 forces legacy detail view
+    # Blueprint page ships ON by default (wired, reachable). Explicit config/env
+    # value can opt OUT; ?edit=1 forces the legacy detail/editor view.
+    _bp_setting = current_app.config.get("USE_BLUEPRINT_PAGE")
+    if _bp_setting is None:
+        _bp_setting = os.environ.get("USE_BLUEPRINT_PAGE", "true")
     use_blueprint = (
-        current_app.config.get("USE_BLUEPRINT_PAGE", os.environ.get("USE_BLUEPRINT_PAGE", "").lower() == "true")
+        str(_bp_setting).strip().lower() in ("true", "1", "yes", "on")
         and request.args.get("edit") != "1"
     )
 
@@ -6645,6 +6649,11 @@ def get_archimate_layer_elements(layer: str):
         if search:
             conditions.append("name ILIKE :search")
             params["search"] = f"%{search}%"
+        from flask import g as _g
+        _org = getattr(_g, "current_org_id", None)
+        if _org is not None:
+            conditions.append("organization_id = :org")
+            params["org"] = _org
         where_clause = "WHERE " + " AND ".join(conditions)
         sql = db.text(f"""
             SELECT id, name, type, layer, description, status
@@ -7237,6 +7246,11 @@ def api_archimate_all_elements():
             conditions.append("name ILIKE :search")
             params["search"] = f"%{search_term}%"
 
+        from flask import g as _g
+        _org = getattr(_g, "current_org_id", None)
+        if _org is not None:
+            conditions.append("organization_id = :org")
+            params["org"] = _org
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
         sql = db.text(f"""
             SELECT id, name, type, layer, description, status,

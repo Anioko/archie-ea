@@ -65,12 +65,21 @@ class AccountService:
 
         Returns the newly created User object.
         """
-        # Auto-assign to Default organization if none specified.
-        # Without an org, multi-tenant tables (solutions, etc.) will reject inserts
-        # with NOT NULL violation on organization_id.
+        # Each self-serve sign-up gets its OWN organization (single-tenant isolation).
+        # Team members are invited into an existing org rather than registering here.
+        import re as _re
+        import uuid as _uuid
         from app.models import Organization
-        default_org = Organization.query.first()
-        default_org_id = default_org.id if default_org else None
+        _label = ("{} {}".format(first_name or "", last_name or "").strip()
+                  or (email.split("@")[0] if email else "New"))
+        _base_slug = _re.sub(r"[^a-z0-9]+", "-",
+                             ((first_name or "") + (last_name or "") or email.split("@")[0]).lower()).strip("-") or "org"
+        _slug = _base_slug
+        while Organization.query.filter_by(slug=_slug).first():
+            _slug = "{}-{}".format(_base_slug, _uuid.uuid4().hex[:6])
+        org = Organization(name="{}'s Workspace".format(_label), slug=_slug)
+        db.session.add(org)
+        db.session.flush()
 
         user = User(
             first_name=first_name,
@@ -78,8 +87,10 @@ class AccountService:
             email=email,
             password=password,
             confirmed=True,  # Auto-confirm — email verification disabled for now
-            organization_id=default_org_id,
+            organization_id=org.id,
         )
+        if hasattr(user, "is_org_admin"):
+            user.is_org_admin = True
         db.session.add(user)
         db.session.commit()
         # Auto-login after registration

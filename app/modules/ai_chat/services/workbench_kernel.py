@@ -1288,7 +1288,7 @@ class GreenfieldWorkflow:
                 session_obj = SolutionAnalysisSession.query.get(workspace_id)
                 if session_obj:
                     problem = SolutionProblemDefinition(
-                        session_id=session_obj.id, description=brief,
+                        session_id=session_obj.id, problem_description=brief,
                         business_context=user_feedback or brief,
                     )
                     db.session.add(problem)
