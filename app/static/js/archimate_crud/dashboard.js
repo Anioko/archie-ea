@@ -180,6 +180,7 @@ document.addEventListener('alpine:init', function() {
             },
 
             init() {
+                var self = this;
                 let urlLayer = new URLSearchParams(window.location.search).get('layer');
                 if (urlLayer && this.layerConfig[urlLayer]) {
                     this.activeTab = urlLayer;
@@ -189,7 +190,18 @@ document.addEventListener('alpine:init', function() {
                     this.showHealthPanel = true;
                 }
                 this.loadElements();
-                this.loadAllLayerCounts();
+                this.loadAllLayerCounts().then(function(){
+                    // Default tab 'motivation' is usually empty; if the user didn't pick
+                    // a layer, land on the most-populated one so a populated estate does
+                    // not render as all-zero cards.
+                    if (!urlLayer) {
+                        var best = Object.entries(self.layerCounts || {})
+                            .sort(function(a, b){ return (b[1]||0) - (a[1]||0); })[0];
+                        if (best && best[1] > 0 && best[0] !== self.activeTab) {
+                            self.switchTab(best[0]);
+                        }
+                    }
+                });
                 this.loadViewpoints();
             },
 
