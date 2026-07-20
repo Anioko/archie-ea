@@ -10,7 +10,7 @@ services:
     #                      create_all never alters existing tables, so a long-lived DB drifts
     #                      and core pages 500 (e.g. arb_review_items.jira_issue_key). See
     #                      docs/known-issues/schema-drift-on-existing-databases.md
-    command: sh -c "flask --app manage init-db && flask --app manage reconcile-schema && gunicorn -c gunicorn.conf.py manage:app"
+    command: sh -c "flask --app manage init-db && flask --app manage reconcile-schema && flask --app manage backfill-architect-role && gunicorn -c gunicorn.conf.py manage:app"
     ports:
       - '5000:5000'
     volumes:

@@ -59,8 +59,17 @@ class Role(db.Model):
 
     @staticmethod
     def insert_roles():
+        # "Architect" is the DEFAULT role for new sign-ups. This platform is FOR
+        # architects, and the CRUD route guards use require_roles("admin",
+        # "architect") — so the default role MUST normalize to "architect", or
+        # every normal user gets 403 on create/update/delete of their own data
+        # (the "CRUD is broken" symptom). Architect gets GENERAL permission (NOT
+        # ADMINISTER), so user.can(ADMINISTER)/is_admin() stays False and truly
+        # admin-only areas (user mgmt, seeding) remain restricted.
+        # (name, permissions, index, is_default)
         roles = {
-            "User": (Permission.GENERAL, "main", True),
+            "User": (Permission.GENERAL, "main", False),
+            "Architect": (Permission.GENERAL, "main", True),
             "Administrator": (Permission.ADMINISTER, "admin", False),
         }
         for r in roles:
