@@ -84,4 +84,13 @@ def register(app: Flask) -> None:
     except Exception as e:
         app.logger.warning(f"[API] Failed to register ACM routes: {e}")
 
-    app.logger.info("[MODULE] capabilities registered (7 blueprints, decomposed)")
+    # --- 8. Value Streams (BIZBOK capability x value-stream grid) ---
+    try:
+        from .routes.value_stream_routes import value_stream
+
+        app.register_blueprint(value_stream)
+        app.logger.info("[BLUEPRINT] Value Stream registered at /value-streams")
+    except Exception as e:
+        app.logger.warning(f"[BLUEPRINT] Failed to register Value Stream routes: {e}")
+
+    app.logger.info("[MODULE] capabilities registered (8 blueprints, decomposed)")

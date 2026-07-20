@@ -34,6 +34,7 @@ ARCHITECT_PERSONAS = (
     "solutions_architect",
     "technology_architect",
     "data_architect",
+    "business_architect",
 )
 
 _EVIDENCE_RULES = """
@@ -149,6 +150,34 @@ SCOPE OF DUTY:
 
 HOW YOU ANSWER: entity-centric — name the data object, its classification
 state, where it lives, and the governance gap; propose the smallest fix.
+{_EVIDENCE_RULES}""",
+
+    "business_architect": f"""You are ARCHIE's AI Business Architect — the capability-to-strategy translator.
+
+MISSION: connect business strategy to the capability model — what the
+business must be able to do, how mature that ability is today, and where the
+operating model and application landscape fail to support it. You think in
+capabilities, value streams, and business/IT alignment — not individual
+applications or ArchiMate mechanics.
+
+SCOPE OF DUTY:
+- Capability-based strategy: which business capabilities exist, their current
+  vs. target maturity, and which strategic goals depend on closing that gap.
+- Capability maturity & gaps: read maturity levels and maturity_gap directly
+  from the capability catalog — never estimate a maturity score.
+- Value-stream health: where a value stream lacks capability or application
+  support, or spans capabilities with conflicting maturity.
+- Strategy-to-capability traceability: goals/drivers/requirements should trace
+  to the capabilities that realize them (see /architecture/traceability);
+  untraceable strategy items are a finding, not a footnote.
+- Business/IT alignment: capabilities without adequate application support
+  (see /applications/rationalization) or with unclear ownership are gaps to
+  surface to the business, not silently absorbed.
+
+HOW YOU ANSWER: capability-first — name the capability, its maturity gap (if
+any), the strategic driver it serves or fails to serve, and ONE recommended
+next action on a specific ARCHIE page (Capability Map, Traceability Matrix,
+or Application Rationalization).
 {_EVIDENCE_RULES}""",
 }
 
@@ -426,11 +455,65 @@ def _da_context() -> str:
     return "\n".join(lines)
 
 
+def _ba_context() -> str:
+    lines = []
+
+    def capabilities():
+        from app.models.business_capabilities import BusinessCapability
+        total = db.session.query(func.count(BusinessCapability.id)).scalar() or 0
+        return f"- Business capabilities: {total} in catalog (browse at /capability-map)"
+
+    def maturity():
+        from app.models.business_capabilities import BusinessCapability
+        levels = [
+            lvl for (lvl,) in db.session.query(BusinessCapability.current_maturity_level).all()
+            if lvl is not None
+        ]
+        if not levels:
+            return "- Capability maturity: no maturity assessments recorded"
+        dist: Dict[int, int] = {}
+        for lvl in levels:
+            dist[lvl] = dist.get(lvl, 0) + 1
+        avg_pct = round(sum(levels) / len(levels) / 5 * 100)
+        mix = ", ".join(f"L{k}: {v}" for k, v in sorted(dist.items()))
+        return f"- Capability maturity: avg {avg_pct}% of target (distribution — {mix})"
+
+    def gaps():
+        from app.models.business_capabilities import BusinessCapability
+        n = db.session.query(func.count(BusinessCapability.id)).filter(
+            BusinessCapability.maturity_gap.isnot(None),
+            BusinessCapability.maturity_gap > 0,
+        ).scalar() or 0
+        return f"- Capabilities with an open maturity gap (current < target): {n}"
+
+    def business_layer():
+        from app.models.archimate_core import ArchiMateElement
+        n = db.session.query(func.count(ArchiMateElement.id)).filter(
+            ArchiMateElement.layer == "business"
+        ).scalar() or 0
+        return f"- Business-layer ArchiMate elements: {n} (processes, roles, actors)"
+
+    def learned_rules():
+        from app.modules.architecture.services.feedback_learning_service import FeedbackLearningService
+        rules = FeedbackLearningService.get_correction_rules_for_persona("business_architect", limit=4)
+        if not rules:
+            return ""
+        return "- Learned corrections (auto-tuned): " + "; ".join(rules)
+
+    lines.append(_safe("capabilities", capabilities))
+    lines.append(_safe("maturity", maturity))
+    lines.append(_safe("gaps", gaps))
+    lines.append(_safe("business_layer", business_layer))
+    lines.append(_safe("learned_rules", learned_rules))
+    return "\n".join(lines)
+
+
 _CONTEXT_BUILDERS: Dict[str, Callable[[], str]] = {
     "enterprise_architect": _ea_context,
     "solutions_architect": _sa_context,
     "technology_architect": _ta_context,
     "data_architect": _da_context,
+    "business_architect": _ba_context,
 }
 
 

@@ -75,17 +75,18 @@ VIOLATION NOTES:
                  'ai':           ['all'],
                  'application':  ['enterprise_architect', 'portfolio_manager', 'platform_admin', 'application_manager', 'cto'],
                  'vendor':       ['enterprise_architect', 'solution_architect', 'portfolio_manager', 'platform_admin', 'procurement', 'application_manager', 'cto'],
-                 'archimate':    ['enterprise_architect', 'solution_architect', 'platform_admin', 'cto'],
-                 'solutions':    ['solution_architect', 'enterprise_architect', 'arb_member', 'platform_admin', 'cto'],
-                 'arb':          ['arb_member', 'solution_architect', 'platform_admin', 'cto'],
-                 'capabilities': ['enterprise_architect', 'portfolio_manager', 'platform_admin', 'cto'],
-                 'roadmaps':     ['portfolio_manager', 'enterprise_architect', 'platform_admin', 'cto'],
+                 'archimate':    ['enterprise_architect', 'solution_architect', 'business_architect', 'platform_admin', 'cto'],
+                 'solutions':    ['solution_architect', 'enterprise_architect', 'business_architect', 'arb_member', 'platform_admin', 'cto'],
+                 'arb':          ['arb_member', 'solution_architect', 'business_architect', 'platform_admin', 'cto'],
+                 'capabilities': ['enterprise_architect', 'business_architect', 'portfolio_manager', 'platform_admin', 'cto'],
+                 'business_architecture': ['business_architect', 'enterprise_architect', 'platform_admin'],
+                 'roadmaps':     ['portfolio_manager', 'enterprise_architect', 'business_architect', 'platform_admin', 'cto'],
                  'data':         ['platform_admin', 'enterprise_architect', 'application_manager'],
                  'admin':        ['platform_admin'],
              },
              roleVisible(group) {
                  if (this.showAll) return true;
-                 const knownRoles = ['solution_architect', 'enterprise_architect', 'arb_member', 'portfolio_manager', 'platform_admin', 'cto', 'application_manager', 'procurement'];
+                 const knownRoles = ['solution_architect', 'enterprise_architect', 'business_architect', 'arb_member', 'portfolio_manager', 'platform_admin', 'cto', 'application_manager', 'procurement'];
                  if (!knownRoles.includes(this.userRole)) return true;
                  const roles = this.roleMap[group] || ['all'];
                  return roles.includes('all') || roles.includes(this.userRole);
@@ -97,6 +98,7 @@ VIOLATION NOTES:
              startHereDots: {
                  solution_architect:   ['/architecture-journey/', '/solutions/', '/archimate/composer'],
                  enterprise_architect: ['/applications/', '/capability-map/', '/architecture/dashboard'],
+                 business_architect:   ['/capability-map/', '/architecture/traceability', '/applications/rationalization'],
                  arb_member:           ['/arb/dashboard', '/solutions/', '/arb/sessions'],
                  portfolio_manager:    ['/dashboard/rationalization', '/vendors/', '/applications/'],
                  cto:                  ['/dashboard/overview', '/dashboard/rationalization', '/solutions/'],
@@ -743,6 +745,45 @@ VIOLATION NOTES:
                     <i data-lucide="git-branch" class="h-4 w-4"></i>
                     <span>Requirements Traceability</span>
                 </a>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Business Architecture Section (Business Architect persona) -->
+        {% if 'business_architecture' in user_visible_sections %}
+        <div class="px-3 py-2" x-cloak x-show="matchesSearch('Business Architecture Capability Map Traceability Impact Analysis Rationalization APQC Process Framework')" :class="roleVisible('business_architecture') ? '' : 'opacity-40'">
+            <div class="mb-2 px-2 text-xs font-semibold tracking-tight text-muted-foreground uppercase" role="heading" aria-level="3">
+                Business Architecture
+            </div>
+            <div class="space-y-1">
+                <a href="{{ url_for('capability_map.index') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'capability_map.index' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint == 'capability_map.index' -%}aria-current="page"{%- endif -%}>
+                    <i data-lucide="map" class="h-4 w-4"></i>
+                    <span>Capability Map</span>
+                </a>
+                {% if 'value_stream.index' in flask.current_app.view_functions %}
+                <a href="{{ url_for('value_stream.index') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint and request.endpoint.startswith('value_stream.') %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint and request.endpoint.startswith('value_stream.') -%}aria-current="page"{%- endif -%}>
+                    <i data-lucide="waypoints" class="h-4 w-4"></i>
+                    <span>Value Streams</span>
+                </a>
+                {% endif %}
+                <a href="{{ url_for('architect_ui.traceability_matrix') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'architect_ui.traceability_matrix' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint == 'architect_ui.traceability_matrix' -%}aria-current="page"{%- endif -%}>
+                    <i data-lucide="git-branch" class="h-4 w-4"></i>
+                    <span>Traceability Matrix</span>
+                </a>
+                <a href="{{ url_for('strategic.impact_analysis') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'strategic.impact_analysis' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint == 'strategic.impact_analysis' -%}aria-current="page"{%- endif -%}>
+                    <i data-lucide="git-compare" class="h-4 w-4"></i>
+                    <span>Impact Analysis</span>
+                </a>
+                <a href="{{ url_for('unified_applications.rationalization_dashboard') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'unified_applications.rationalization_dashboard' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint == 'unified_applications.rationalization_dashboard' -%}aria-current="page"{%- endif -%}>
+                    <i data-lucide="git-merge" class="h-4 w-4"></i>
+                    <span>Application Rationalization</span>
+                </a>
+                {% if 'industry_apqc.industry_apqc_dashboard' in flask.current_app.view_functions %}
+                <a href="{{ url_for('industry_apqc.industry_apqc_dashboard') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'industry_apqc.industry_apqc_dashboard' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint == 'industry_apqc.industry_apqc_dashboard' -%}aria-current="page"{%- endif -%}>
+                    <i data-lucide="list-tree" class="h-4 w-4"></i>
+                    <span>APQC Process Framework</span>
+                </a>
+                {% endif %}
             </div>
         </div>
         {% endif %}
