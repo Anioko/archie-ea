@@ -252,28 +252,28 @@
                     {{ data_card(
                         icon='grid-3x3',
                         icon_color='blue',
-                        value='<span id="unified-domain-count">' ~ (domain_count|default(0)) ~ '</span>' | safe,
+                        value=('<span id="unified-domain-count">' ~ (domain_count|default(0)) ~ '</span>') | safe,
                         label='Total Domains',
                         subtitle='Business areas'
                     ) }}
                     {{ data_card(
                         icon='boxes',
                         icon_color='green',
-                        value='<span id="unified-cap-count">' ~ (total_capabilities|default(0)) ~ '</span>' | safe,
+                        value=('<span id="unified-cap-count">' ~ (total_capabilities|default(0)) ~ '</span>') | safe,
                         label='Total Capabilities',
                         subtitle='All types'
                     ) }}
                     {{ data_card(
                         icon='link',
                         icon_color='purple',
-                        value='<span id="unified-mapped-count">' ~ (mapped_count|default(0)) ~ '</span>' | safe,
+                        value=('<span id="unified-mapped-count">' ~ (mapped_count|default(0)) ~ '</span>') | safe,
                         label='Mapped to Apps',
                         subtitle='Active mappings'
                     ) }}
                     {{ data_card(
                         icon='pie-chart',
                         icon_color='amber',
-                        value='<span id="unified-coverage">' ~ (coverage|default(0)) ~ '%</span>' | safe,
+                        value=('<span id="unified-coverage">' ~ (coverage|default(0)) ~ '%</span>') | safe,
                         label='Coverage',
                         subtitle='Application support'
                     ) }}
