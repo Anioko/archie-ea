@@ -355,3 +355,6 @@ else:
 
     # INTARCH-001: Integration Pattern library — SAP↔Microsoft governance
     from .integration_pattern import IntegrationPattern  # noqa: F401
+
+    # BMC-001: Business Model Canvas + Operating Model (Business-Architect artifact)
+    from .business_model import BusinessModelCanvas  # noqa: F401

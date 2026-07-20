@@ -1,0 +1,186 @@
+"""Tests for the Business Architect capability-map visuals:
+
+  1. Capability Model — nested-box BIZBOK view (new tab)
+  2. Maturity Radar — current vs. target maturity per domain (new tab)
+  3. Investment Bubble — 2x2 TIME quadrant chart (enterprise/investment_matrix.html)
+
+These are lightweight, file-content assertions only — no Flask app import and no
+database is required, since booting the full app is slow and shared in this repo.
+They check that:
+  - the new JS files exist and reference the EXISTING data endpoint they reuse
+    (GET /capability-map/api/unified-capabilities), rather than a new route,
+  - the new tab ids/Alpine wiring were actually added to
+    capability_map/index.html so the tabs are reachable,
+  - enterprise/investment_matrix.html still renders its original table and now
+    also wires up the bubble chart,
+  - no new external CDN library (beyond the Chart.js build already used
+    elsewhere in the app, e.g. arb/dashboard.html) was introduced.
+"""
+
+from pathlib import Path
+
+import pytest
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+INDEX_HTML = REPO_ROOT / "app" / "templates" / "capability_map" / "index.html"
+INVESTMENT_MATRIX_HTML = REPO_ROOT / "app" / "templates" / "enterprise" / "investment_matrix.html"
+
+NESTED_MAP_JS = REPO_ROOT / "app" / "static" / "js" / "capability_map" / "nested_map.js"
+MATURITY_RADAR_JS = REPO_ROOT / "app" / "static" / "js" / "capability_map" / "maturity_radar.js"
+INVESTMENT_BUBBLE_JS = REPO_ROOT / "app" / "static" / "js" / "capability_map" / "investment_bubble.js"
+
+REUSED_ENDPOINT = "/capability-map/api/unified-capabilities"
+CHART_JS_CDN = "cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"
+
+
+@pytest.fixture(scope="module")
+def index_html_text():
+    assert INDEX_HTML.exists(), f"missing {INDEX_HTML}"
+    return INDEX_HTML.read_text(encoding="utf-8")
+
+
+@pytest.fixture(scope="module")
+def investment_matrix_text():
+    assert INVESTMENT_MATRIX_HTML.exists(), f"missing {INVESTMENT_MATRIX_HTML}"
+    return INVESTMENT_MATRIX_HTML.read_text(encoding="utf-8")
+
+
+class TestNewJsFilesExist:
+    def test_nested_map_js_exists(self):
+        assert NESTED_MAP_JS.exists()
+
+    def test_maturity_radar_js_exists(self):
+        assert MATURITY_RADAR_JS.exists()
+
+    def test_investment_bubble_js_exists(self):
+        assert INVESTMENT_BUBBLE_JS.exists()
+
+    def test_new_js_files_compile_as_valid_javascript_braces(self):
+        # Not a real JS parser (none is available here) — a cheap sanity check
+        # that braces/parens balance, catching obvious syntax breakage.
+        for path in (NESTED_MAP_JS, MATURITY_RADAR_JS, INVESTMENT_BUBBLE_JS):
+            text = path.read_text(encoding="utf-8")
+            assert text.count("{") == text.count("}"), f"unbalanced braces in {path.name}"
+            assert text.count("(") == text.count(")"), f"unbalanced parens in {path.name}"
+
+
+class TestNestedMapReusesExistingEndpoint:
+    def test_fetches_unified_capabilities_endpoint(self):
+        text = NESTED_MAP_JS.read_text(encoding="utf-8")
+        assert REUSED_ENDPOINT in text
+
+    def test_does_not_define_a_new_flask_route_pattern(self):
+        text = NESTED_MAP_JS.read_text(encoding="utf-8")
+        # This is a static JS file — it must not contain a Flask route decorator,
+        # confirming no backend route was smuggled in here.
+        assert "@capability_map.route" not in text
+        assert "@app.route" not in text
+
+    def test_exposes_global_tab_loader(self):
+        text = NESTED_MAP_JS.read_text(encoding="utf-8")
+        assert "window.loadCapabilityModelTab" in text
+
+    def test_reuses_existing_heatmap_drilldown_instead_of_duplicating_it(self):
+        text = NESTED_MAP_JS.read_text(encoding="utf-8")
+        assert "showHeatmapDetail" in text
+        assert "tab-heatmap" in text
+
+
+class TestMaturityRadarReusesExistingEndpoint:
+    def test_fetches_unified_capabilities_endpoint(self):
+        text = MATURITY_RADAR_JS.read_text(encoding="utf-8")
+        assert REUSED_ENDPOINT in text
+
+    def test_exposes_global_tab_loader(self):
+        text = MATURITY_RADAR_JS.read_text(encoding="utf-8")
+        assert "window.loadMaturityRadarTab" in text
+
+    def test_uses_chartjs_radar_type(self):
+        text = MATURITY_RADAR_JS.read_text(encoding="utf-8")
+        assert "type: 'radar'" in text
+
+    def test_has_domain_and_level_selector_hooks(self):
+        text = MATURITY_RADAR_JS.read_text(encoding="utf-8")
+        assert "maturity-domain-select" in text
+        assert "maturity-level-select" in text
+
+
+class TestInvestmentBubbleUsesEmbeddedTableData:
+    def test_reads_embedded_data_global_not_a_new_fetch_endpoint(self):
+        text = INVESTMENT_BUBBLE_JS.read_text(encoding="utf-8")
+        assert "window.__investmentBubbleData" in text
+        # The bubble chart must not introduce its own fetch() call — it consumes
+        # data already embedded by the template from the existing `capabilities`
+        # context variable, per the "reuse the data the table already renders" rule.
+        assert "fetch(" not in text
+
+    def test_uses_chartjs_bubble_type(self):
+        text = INVESTMENT_BUBBLE_JS.read_text(encoding="utf-8")
+        assert "type: 'bubble'" in text
+
+    def test_has_time_quadrant_labels(self):
+        text = INVESTMENT_BUBBLE_JS.read_text(encoding="utf-8")
+        for label in ("INVEST", "MIGRATE", "TOLERATE", "ELIMINATE"):
+            assert label in text
+
+
+class TestIndexHtmlNewTabs:
+    def test_capability_model_tab_button_and_panel_present(self, index_html_text):
+        assert 'id="tab-capability-model"' in index_html_text
+        assert 'id="panel-capability-model"' in index_html_text
+        assert "activeTab = 'capability-model'" in index_html_text
+        assert "loadCapabilityModelTab()" in index_html_text
+
+    def test_maturity_tab_button_and_panel_present(self, index_html_text):
+        assert 'id="tab-maturity"' in index_html_text
+        assert 'id="panel-maturity"' in index_html_text
+        assert "activeTab = 'maturity'" in index_html_text
+        assert "loadMaturityRadarTab()" in index_html_text
+
+    def test_new_tab_buttons_have_type_button(self, index_html_text):
+        # DESIGN.md: every <button> must declare type= explicitly.
+        for marker in ('id="tab-capability-model"', 'id="tab-maturity"'):
+            idx = index_html_text.index(marker)
+            # Look back a short window for the opening <button ...> tag.
+            snippet = index_html_text[max(0, idx - 600): idx]
+            assert "<button type=\"button\"" in snippet
+
+    def test_new_scripts_are_included(self, index_html_text):
+        assert "js/capability_map/nested_map.js" in index_html_text
+        assert "js/capability_map/maturity_radar.js" in index_html_text
+
+    def test_chartjs_cdn_matches_existing_usage_elsewhere_in_app(self, index_html_text):
+        # Same CDN + version already used by app/templates/arb/dashboard.html —
+        # not a new external library.
+        assert CHART_JS_CDN in index_html_text
+        arb_dashboard = (REPO_ROOT / "app" / "templates" / "arb" / "dashboard.html").read_text(encoding="utf-8")
+        assert CHART_JS_CDN in arb_dashboard
+
+    def test_no_unrelated_new_cdn_libraries_added(self, index_html_text):
+        # D3 was not needed for these three visuals (CSS grid + Chart.js only) —
+        # make sure it wasn't accidentally introduced on this page.
+        assert "d3.v7.min.js" not in index_html_text
+        assert "d3@7" not in index_html_text
+
+
+class TestInvestmentMatrixBubbleChart:
+    def test_keeps_existing_table(self, investment_matrix_text):
+        assert "All Capabilities" in investment_matrix_text
+        assert "<table" in investment_matrix_text
+        assert "cap.strategic_importance" in investment_matrix_text
+
+    def test_adds_bubble_canvas_and_script(self, investment_matrix_text):
+        assert 'id="investment-bubble-chart"' in investment_matrix_text
+        assert "js/capability_map/investment_bubble.js" in investment_matrix_text
+
+    def test_embeds_data_from_existing_context_var_not_new_endpoint(self, investment_matrix_text):
+        assert "window.__investmentBubbleData" in investment_matrix_text
+        assert "capabilities|default([])" in investment_matrix_text
+
+    def test_chartjs_cdn_present(self, investment_matrix_text):
+        assert CHART_JS_CDN in investment_matrix_text
+
+    def test_has_quadrant_legend(self, investment_matrix_text):
+        for label in ("Invest", "Migrate", "Tolerate", "Eliminate"):
+            assert label in investment_matrix_text

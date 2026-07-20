@@ -208,3 +208,11 @@ def init_cli(app):
         app.logger.info("\u2705 Codegen drift detection CLI command registered")
     except Exception as e:
         app.logger.warning(f"\u26a0\ufe0f  Failed to register codegen drift CLI: {e}")
+
+    # Motivation bridge CLI command (journey Solution* motivation -> enterprise layer)
+    try:
+        from app.commands.bridge_motivation import init_app as init_bridge_motivation
+        init_bridge_motivation(app)
+        app.logger.info("\u2705 Motivation bridge CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"\u26a0\ufe0f  Failed to register motivation bridge CLI: {e}")
