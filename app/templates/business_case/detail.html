@@ -1,0 +1,274 @@
+{% extends 'layouts/admin_base.html' %}
+{% from 'components/page_header.html' import page_header %}
+{% from 'components/modal.html' import modal %}
+{% import 'components/card.html' as card %}
+
+{% block title %}{{ business_case.title or 'Business Case' }}{% endblock %}
+
+{% set _status_badge = {
+    'draft':     'bg-muted text-muted-foreground border-border',
+    'submitted': 'bg-info/10 text-info border-info/30',
+    'approved':  'bg-success/10 text-success border-success/30',
+    'rejected':  'bg-destructive/10 text-destructive border-destructive/30'
+} %}
+
+{% block content %}
+<div class="flex-1 overflow-auto" x-data="businessCaseDetail({
+    businessCaseId: {{ business_case.id }},
+    fields: {{ {
+        'problem_statement': business_case.problem_statement or '',
+        'options_considered': business_case.options_considered or '',
+        'recommended_option': business_case.recommended_option or '',
+        'expected_benefits': business_case.expected_benefits or '',
+        'key_risks': business_case.key_risks or '',
+        'financial_benefit_annual': business_case.financial_benefit_annual if business_case.financial_benefit_annual is not none else '',
+        'capex': business_case.capex if business_case.capex is not none else '',
+        'opex_annual': business_case.opex_annual if business_case.opex_annual is not none else '',
+        'tco_3yr': business_case.tco_3yr if business_case.tco_3yr is not none else '',
+        'roi_percentage': business_case.roi_percentage if business_case.roi_percentage is not none else '',
+        'payback_months': business_case.payback_months if business_case.payback_months is not none else ''
+    } | tojson }},
+    status: {{ (business_case.status or 'draft') | tojson }},
+    capabilityId: {{ business_case.capability_id | tojson }},
+    strategicInitiativeId: {{ business_case.strategic_initiative_id | tojson }},
+    solutionId: {{ business_case.solution_id | tojson }},
+    fieldApiUrl: {{ url_for('business_case.save_field', business_case_id=business_case.id) | tojson }},
+    updateApiUrl: {{ url_for('business_case.update', business_case_id=business_case.id) | tojson }},
+    pullFinancialsApiUrl: {{ url_for('business_case.pull_financials', business_case_id=business_case.id) | tojson }}
+  })" x-cloak>
+
+  {{ page_header(
+      title=business_case.title or 'Untitled Business Case',
+      description=business_case.description,
+      breadcrumbs=[
+          {'label': 'Home', 'href': url_for('main.index')},
+          {'label': 'Business Cases', 'href': url_for('business_case.index')},
+          {'label': business_case.title or 'Business Case'}
+      ],
+      actions=[
+          {'text': 'Delete', 'icon': 'trash-2', 'onclick': "Platform.modal.open('bc-delete-modal')", 'variant': 'outline'}
+      ]
+  ) }}
+
+  <div class="p-6 space-y-6">
+
+    {# ── Status + Links panel ── #}
+    <div class="rounded-lg border border-border bg-card p-4 space-y-4" data-testid="bc-meta-panel">
+      <div class="flex flex-wrap items-center gap-3">
+        <div class="flex items-center gap-2">
+          <span class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Status</span>
+          <select x-model="status" @change="saveMeta()" data-testid="bc-status-select"
+            class="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+            {% for s in statuses %}
+            <option value="{{ s }}">{{ s | capitalize }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <span x-show="savingMeta" x-cloak class="text-xs text-muted-foreground inline-flex items-center gap-1">
+          <i data-lucide="loader-2" class="h-3 w-3 animate-spin" aria-hidden="true"></i> Saving…
+        </span>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div>
+          <label for="bc-link-capability" class="block text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Linked Capability</label>
+          <select id="bc-link-capability" x-model="capabilityId" @change="saveMeta()" data-testid="bc-link-capability"
+            class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+            <option value="">None</option>
+            {% for cap in capabilities %}
+            <option value="{{ cap.id }}">{{ cap.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label for="bc-link-initiative" class="block text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Linked Strategic Initiative</label>
+          <select id="bc-link-initiative" x-model="strategicInitiativeId" @change="saveMeta()" data-testid="bc-link-initiative"
+            class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+            <option value="">None</option>
+            {% for init in initiatives %}
+            <option value="{{ init.id }}">{{ init.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label for="bc-link-solution" class="block text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Linked Solution</label>
+          <select id="bc-link-solution" x-model="solutionId" @change="saveMeta()" data-testid="bc-link-solution"
+            class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+            <option value="">None</option>
+            {% for sol in solutions %}
+            <option value="{{ sol.id }}">{{ sol.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+    </div>
+
+    {# ── Problem / Options / Recommendation ── #}
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {% call card.card() %}
+        {% call card.card_header() %}
+          {% call card.card_title(class='text-base flex items-center gap-2') %}
+            <i data-lucide="alert-circle" class="h-4 w-4 text-muted-foreground" aria-hidden="true"></i> Problem Statement
+          {% endcall %}
+        {% endcall %}
+        {% call card.card_content() %}
+          <textarea x-model="fields.problem_statement" @blur="saveField('problem_statement')"
+            data-testid="bc-textarea-problem_statement" rows="5" placeholder="What business problem or opportunity is driving this case?"
+            class="w-full min-h-[120px] rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-y"></textarea>
+          <p class="mt-1 h-4 text-xs">
+            <span x-show="savingField === 'problem_statement'" x-cloak class="text-muted-foreground inline-flex items-center gap-1"><i data-lucide="loader-2" class="h-3 w-3 animate-spin" aria-hidden="true"></i> Saving…</span>
+            <span x-show="savedField === 'problem_statement'" x-cloak class="text-success">Saved</span>
+          </p>
+        {% endcall %}
+      {% endcall %}
+
+      {% call card.card() %}
+        {% call card.card_header() %}
+          {% call card.card_title(class='text-base flex items-center gap-2') %}
+            <i data-lucide="list-checks" class="h-4 w-4 text-muted-foreground" aria-hidden="true"></i> Options Considered
+          {% endcall %}
+        {% endcall %}
+        {% call card.card_content() %}
+          <textarea x-model="fields.options_considered" @blur="saveField('options_considered')"
+            data-testid="bc-textarea-options_considered" rows="5" placeholder="What alternatives were evaluated (including do-nothing)?"
+            class="w-full min-h-[120px] rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-y"></textarea>
+          <p class="mt-1 h-4 text-xs">
+            <span x-show="savingField === 'options_considered'" x-cloak class="text-muted-foreground inline-flex items-center gap-1"><i data-lucide="loader-2" class="h-3 w-3 animate-spin" aria-hidden="true"></i> Saving…</span>
+            <span x-show="savedField === 'options_considered'" x-cloak class="text-success">Saved</span>
+          </p>
+        {% endcall %}
+      {% endcall %}
+    </div>
+
+    {% call card.card(class='border-primary/30') %}
+      {% call card.card_header() %}
+        {% call card.card_title(class='text-base flex items-center gap-2') %}
+          <i data-lucide="target" class="h-4 w-4 text-primary" aria-hidden="true"></i> Recommendation
+        {% endcall %}
+      {% endcall %}
+      {% call card.card_content() %}
+        <textarea x-model="fields.recommended_option" @blur="saveField('recommended_option')"
+          data-testid="bc-textarea-recommended_option" rows="4" placeholder="Which option is recommended, and why?"
+          class="w-full min-h-[100px] rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-y"></textarea>
+        <p class="mt-1 h-4 text-xs">
+          <span x-show="savingField === 'recommended_option'" x-cloak class="text-muted-foreground inline-flex items-center gap-1"><i data-lucide="loader-2" class="h-3 w-3 animate-spin" aria-hidden="true"></i> Saving…</span>
+          <span x-show="savedField === 'recommended_option'" x-cloak class="text-success">Saved</span>
+        </p>
+      {% endcall %}
+    {% endcall %}
+
+    {# ── Costs / ROI ── #}
+    {% call card.card() %}
+      {% call card.card_header() %}
+        {% call card.card_title(class='text-base flex items-center gap-2') %}
+          <i data-lucide="calculator" class="h-4 w-4 text-muted-foreground" aria-hidden="true"></i> Costs, Benefits &amp; ROI
+        {% endcall %}
+        {% call card.card_description() %}
+          Pull figures from the linked capability cost allocation, strategic initiative budget, and solution — blank fields are pre-populated, filled-in fields are cross-checked.
+        {% endcall %}
+      {% endcall %}
+      {% call card.card_content() %}
+        <div class="flex justify-end mb-4">
+          <button type="button" @click="pullFinancials()" :disabled="pullingFinancials" data-testid="bc-pull-financials"
+            class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-4 py-2 disabled:opacity-50 disabled:pointer-events-none">
+            <span x-show="pullingFinancials" x-cloak class="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full inline-block mr-2"></span>
+            <i data-lucide="download-cloud" class="h-4 w-4 mr-2" aria-hidden="true" x-show="!pullingFinancials"></i>
+            Pull financials from links
+          </button>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div>
+            <label for="bc-capex" class="block text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Capex</label>
+            <input id="bc-capex" type="number" step="0.01" x-model="fields.capex" @blur="saveField('capex')" data-testid="bc-input-capex"
+              class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+          </div>
+          <div>
+            <label for="bc-opex" class="block text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Opex (annual)</label>
+            <input id="bc-opex" type="number" step="0.01" x-model="fields.opex_annual" @blur="saveField('opex_annual')" data-testid="bc-input-opex_annual"
+              class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+          </div>
+          <div>
+            <label for="bc-tco" class="block text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">3yr TCO</label>
+            <input id="bc-tco" type="number" step="0.01" x-model="fields.tco_3yr" @blur="saveField('tco_3yr')" data-testid="bc-input-tco_3yr"
+              class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+          </div>
+          <div>
+            <label for="bc-benefit" class="block text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Annual Financial Benefit</label>
+            <input id="bc-benefit" type="number" step="0.01" x-model="fields.financial_benefit_annual" @blur="saveField('financial_benefit_annual')" data-testid="bc-input-financial_benefit_annual"
+              class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+          </div>
+          <div>
+            <label for="bc-roi" class="block text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">ROI %</label>
+            <input id="bc-roi" type="number" step="0.01" x-model="fields.roi_percentage" @blur="saveField('roi_percentage')" data-testid="bc-input-roi_percentage"
+              class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+          </div>
+          <div>
+            <label for="bc-payback" class="block text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Payback (months)</label>
+            <input id="bc-payback" type="number" step="1" x-model="fields.payback_months" @blur="saveField('payback_months')" data-testid="bc-input-payback_months"
+              class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+          </div>
+        </div>
+      {% endcall %}
+    {% endcall %}
+
+    {# ── Expected Benefits / Key Risks ── #}
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {% call card.card() %}
+        {% call card.card_header() %}
+          {% call card.card_title(class='text-base flex items-center gap-2') %}
+            <i data-lucide="trending-up" class="h-4 w-4 text-success" aria-hidden="true"></i> Expected Benefits
+          {% endcall %}
+        {% endcall %}
+        {% call card.card_content() %}
+          <textarea x-model="fields.expected_benefits" @blur="saveField('expected_benefits')"
+            data-testid="bc-textarea-expected_benefits" rows="5" placeholder="Quantified and qualitative benefits expected"
+            class="w-full min-h-[120px] rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-y"></textarea>
+          <p class="mt-1 h-4 text-xs">
+            <span x-show="savingField === 'expected_benefits'" x-cloak class="text-muted-foreground inline-flex items-center gap-1"><i data-lucide="loader-2" class="h-3 w-3 animate-spin" aria-hidden="true"></i> Saving…</span>
+            <span x-show="savedField === 'expected_benefits'" x-cloak class="text-success">Saved</span>
+          </p>
+        {% endcall %}
+      {% endcall %}
+
+      {% call card.card() %}
+        {% call card.card_header() %}
+          {% call card.card_title(class='text-base flex items-center gap-2') %}
+            <i data-lucide="shield-alert" class="h-4 w-4 text-destructive" aria-hidden="true"></i> Key Risks
+          {% endcall %}
+        {% endcall %}
+        {% call card.card_content() %}
+          <textarea x-model="fields.key_risks" @blur="saveField('key_risks')"
+            data-testid="bc-textarea-key_risks" rows="5" placeholder="Delivery, adoption, financial and technical risks"
+            class="w-full min-h-[120px] rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-y"></textarea>
+          <p class="mt-1 h-4 text-xs">
+            <span x-show="savingField === 'key_risks'" x-cloak class="text-muted-foreground inline-flex items-center gap-1"><i data-lucide="loader-2" class="h-3 w-3 animate-spin" aria-hidden="true"></i> Saving…</span>
+            <span x-show="savedField === 'key_risks'" x-cloak class="text-success">Saved</span>
+          </p>
+        {% endcall %}
+      {% endcall %}
+    </div>
+  </div>
+</div>
+
+{% call modal(id='bc-delete-modal', title='Delete this business case?', description='This cannot be undone.', size='sm') %}
+<form method="POST" action="{{ url_for('business_case.delete', business_case_id=business_case.id) }}" data-testid="bc-delete-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="flex justify-end gap-3 pt-2">
+    <button type="button" data-modal-close="bc-delete-modal"
+      class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 h-9 px-4 py-2">
+      Cancel
+    </button>
+    <button type="submit" data-testid="bc-delete-submit"
+      class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-destructive text-destructive-foreground hover:bg-destructive/90 h-9 px-4 py-2">
+      Delete
+    </button>
+  </div>
+</form>
+{% endcall %}
+
+{% endblock %}
+
+{% block extra_head_js %}
+<script src="{{ url_for('static', filename='js/business_case/detail.js') }}"></script>
+{% endblock %}

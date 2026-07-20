@@ -1,0 +1,19 @@
+{% extends 'layouts/admin_base.html' %}
+{% from 'components/empty_state.html' import empty_state %}
+
+{% block title %}Business Case Not Found{% endblock %}
+
+{% block content %}
+<div class="flex-1 overflow-auto">
+  <div class="p-6">
+    {{ empty_state(
+        icon='search-x',
+        title='Business case not found',
+        description='Business Case #' ~ business_case_id ~ ' does not exist or you do not have access to it.',
+        cta_text='Back to Business Cases',
+        cta_href=url_for('business_case.index'),
+        cta_icon='arrow-left'
+    ) }}
+  </div>
+</div>
+{% endblock %}

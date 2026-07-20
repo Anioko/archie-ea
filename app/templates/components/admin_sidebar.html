@@ -784,6 +784,18 @@ VIOLATION NOTES:
                     <i data-lucide="git-merge" class="h-4 w-4"></i>
                     <span>Application Rationalization</span>
                 </a>
+                {% if 'business_case.index' in flask.current_app.view_functions %}
+                <a href="{{ url_for('business_case.index') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint and request.endpoint.startswith('business_case.') %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint and request.endpoint.startswith('business_case.') -%}aria-current="page"{%- endif -%}>
+                    <i data-lucide="file-text" class="h-4 w-4"></i>
+                    <span>Business Cases</span>
+                </a>
+                {% endif %}
+                {% if 'organization.index' in flask.current_app.view_functions %}
+                <a href="{{ url_for('organization.index') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint and request.endpoint.startswith('organization.') %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint and request.endpoint.startswith('organization.') -%}aria-current="page"{%- endif -%}>
+                    <i data-lucide="network" class="h-4 w-4"></i>
+                    <span>Organization &amp; RACI</span>
+                </a>
+                {% endif %}
                 {% if 'industry_apqc.industry_apqc_dashboard' in flask.current_app.view_functions %}
                 <a href="{{ url_for('industry_apqc.industry_apqc_dashboard') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'industry_apqc.industry_apqc_dashboard' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}" {%- if request.endpoint == 'industry_apqc.industry_apqc_dashboard' -%}aria-current="page"{%- endif -%}>
                     <i data-lucide="list-tree" class="h-4 w-4"></i>
