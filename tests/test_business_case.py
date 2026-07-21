@@ -275,6 +275,22 @@ class TestAggregateFinancials:
             db.session.add(solution)
             db.session.flush()
 
+            # UnifiedCapability(id=capability.id) above sets the PK explicitly,
+            # which does NOT advance the Postgres identity sequence. Realign it to
+            # MAX(id) so a later autoincrement insert (e.g. the value-stream test
+            # sharing this DB) doesn't reuse the id and hit unified_capabilities_pkey.
+            try:
+                from sqlalchemy import text
+
+                db.session.execute(
+                    text(
+                        "SELECT setval(pg_get_serial_sequence('unified_capabilities', 'id'), "
+                        "(SELECT COALESCE(MAX(id), 1) FROM unified_capabilities))"
+                    )
+                )
+            except Exception:
+                pass
+
             business_case = BusinessCase(
                 title=f"Business Case {suffix}",
                 organization_id=org.id,
