@@ -220,9 +220,15 @@ class TestAggregateFinancials:
         from app.models.unified_capability import UnifiedCapability
         from app.modules.business_case import service
 
-        with app.app_context():
+        # Request context + g.current_org_id so the tenant-scoped ArchiMateElement
+        # rows auto-created by seeded entities' listeners (Solution, etc.) resolve
+        # organization_id on a fresh NOT-NULL schema (local DBs had it backfilled
+        # nullable by reconcile-schema, which masked this).
+        with app.test_request_context():
             suffix = uuid.uuid4().hex[:8]
             org, user = _make_org_and_user(db, suffix)
+            from flask import g
+            g.current_org_id = org.id
 
             initiative = StrategicInitiative(
                 name=f"Initiative {suffix}",
@@ -359,9 +365,15 @@ class TestAggregateFinancials:
         from app.models.strategic import StrategicInitiative
         from app.modules.business_case import service
 
-        with app.app_context():
+        # Request context + g.current_org_id so the tenant-scoped ArchiMateElement
+        # rows auto-created by seeded entities' listeners (Solution, etc.) resolve
+        # organization_id on a fresh NOT-NULL schema (local DBs had it backfilled
+        # nullable by reconcile-schema, which masked this).
+        with app.test_request_context():
             suffix = uuid.uuid4().hex[:8]
             org, user = _make_org_and_user(db, suffix)
+            from flask import g
+            g.current_org_id = org.id
 
             initiative = StrategicInitiative(
                 name=f"Initiative {suffix}",
