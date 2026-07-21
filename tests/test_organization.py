@@ -204,6 +204,13 @@ def _make_org_hierarchy(db, suffix):
     db.session.add(org)
     db.session.flush()
 
+    # The BusinessActor before_insert listener auto-creates an ArchiMateElement,
+    # whose tenant organization_id resolves via _default_org_id() -> g.current_org_id.
+    # Set it so the element lands in this org (outside a request, with several test
+    # orgs present, _default_org_id can't guess and would violate NOT NULL).
+    from flask import g
+    g.current_org_id = org.id
+
     holdco = BusinessActor(
         name=f"HoldCo {suffix}", actor_type="Business Unit", organization_id=org.id
     )
@@ -265,7 +272,7 @@ class TestBuildOrgTree:
 
         suffix = uuid.uuid4().hex[:8]
 
-        with app.app_context():
+        with app.test_request_context():
             org, holdco, dept_a, dept_b, orphan = _make_org_hierarchy(db, suffix)
             try:
                 tree = service.build_org_tree()
@@ -302,12 +309,15 @@ class TestBuildOrgTree:
 
         suffix = uuid.uuid4().hex[:8]
 
-        with app.app_context():
+        with app.test_request_context():
             org = Organization(
                 name=f"Flat Fallback Test Org {suffix}", slug=f"flat-fallback-test-{suffix}"
             )
             db.session.add(org)
             db.session.flush()
+
+            from flask import g
+            g.current_org_id = org.id
 
             actor = BusinessActor(
                 name=f"Standalone Dept {suffix}", actor_type="Department", organization_id=org.id

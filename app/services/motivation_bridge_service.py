@@ -61,30 +61,38 @@ def _get_problem_definition(solution):
     ).first()
 
 
-def _create_archimate_element(name, el_type, description=None):
+def _create_archimate_element(name, el_type, description=None, organization_id=None):
     """Create the ArchiMateElement a newly-promoted enterprise entity needs.
 
     Driver/Goal/Outcome/Principle have no after_insert listener auto-creating
     this (unlike Meaning/Value/Assessment) — callers must create it explicitly,
     matching the pattern used in app/modules/architecture/services/*_service.py.
+
+    ArchiMateElement is tenant-scoped (organization_id NOT NULL). This service
+    runs under the `flask bridge-motivation` CLI — no request context — so
+    _default_org_id() can only fall back to a single-org guess and returns None
+    on a multi-org install, which would violate the NOT NULL constraint. Pass the
+    source solution's organization_id explicitly so the promoted element lands in
+    the right tenant.
     """
     ae = ArchiMateElement(
         name=name,
         type=el_type,
         layer="Motivation",
         description=description or f"{el_type}: {name}",
+        organization_id=organization_id,
     )
     db.session.add(ae)
     db.session.flush()
     return ae
 
 
-def _find_or_create_driver(sd, name):
+def _find_or_create_driver(sd, name, org_id=None):
     existing = Driver.query.filter_by(name=name).first()
     if existing:
         return existing, False
 
-    ae = _create_archimate_element(name, "Driver", sd.description)
+    ae = _create_archimate_element(name, "Driver", sd.description, organization_id=org_id)
     driver_type = sd.driver_type.value if getattr(sd, "driver_type", None) is not None else None
     driver = Driver(
         name=name,
@@ -99,7 +107,7 @@ def _find_or_create_driver(sd, name):
     return driver, True
 
 
-def _find_or_create_goal(sg, name):
+def _find_or_create_goal(sg, name, org_id=None):
     existing = Goal.query.filter_by(name=name).first()
     if existing:
         return existing, False
@@ -120,7 +128,7 @@ def _find_or_create_goal(sg, name):
             sg.target_date.date() if hasattr(sg.target_date, "date") else sg.target_date
         )
 
-    ae = _create_archimate_element(name, "Goal", sg.description)
+    ae = _create_archimate_element(name, "Goal", sg.description, organization_id=org_id)
     goal = Goal(
         name=name,
         description=sg.description,
@@ -137,7 +145,7 @@ def _find_or_create_goal(sg, name):
     return goal, True
 
 
-def _find_or_create_outcome(so, name):
+def _find_or_create_outcome(so, name, org_id=None):
     existing = Outcome.query.filter_by(name=name).first()
     if existing:
         return existing, False
@@ -145,7 +153,7 @@ def _find_or_create_outcome(so, name):
     tracking_value = (
         so.tracking_status.value if getattr(so, "tracking_status", None) is not None else None
     )
-    ae = _create_archimate_element(name, "Outcome", so.description)
+    ae = _create_archimate_element(name, "Outcome", so.description, organization_id=org_id)
     outcome = Outcome(
         name=name,
         description=so.description,
@@ -162,13 +170,13 @@ def _find_or_create_outcome(so, name):
     return outcome, True
 
 
-def _find_or_create_principle(sp, name):
+def _find_or_create_principle(sp, name, org_id=None):
     existing = Principle.query.filter_by(name=name).first()
     if existing:
         return existing, False
 
     statement = sp.statement or name
-    ae = _create_archimate_element(name, "Principle", statement)
+    ae = _create_archimate_element(name, "Principle", statement, organization_id=org_id)
     principle = Principle(
         name=name,
         statement=statement,
@@ -212,7 +220,7 @@ def _promote_one(element, sol_type, ent_type, solution, summary):
     if find_or_create is None:
         raise ValueError(f"Unsupported enterprise_element_type: {ent_type}")
 
-    enterprise_obj, created = find_or_create(element, name)
+    enterprise_obj, created = find_or_create(element, name, solution.organization_id)
 
     link = MotivationBridgeLink(
         solution_id=solution.id,
