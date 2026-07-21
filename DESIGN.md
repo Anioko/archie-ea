@@ -467,6 +467,45 @@ Risk level badge colors: `CRITICAL`/`HIGH` → `text-destructive`, `MEDIUM` → 
 
 ---
 
+## Business Architecture surfaces (persona: `business_architect`)
+
+`business_architect` is a first-class `enterprise_role` (`app/models/user.py`,
+`ROLE_BUSINESS_ARCHITECT`) with a governed AI charter (`architect_persona_charters.py`,
+in `ARCHITECT_PERSONAS`). Its pages are grouped in the **"Business Architecture"** sidebar
+section (`components/admin_sidebar.html`, gated on the `business_architecture` nav section
+in `role_access.py` / `context_processors.py`) and mirrored as "Your Workspace" cards on
+`/dashboard/overview` (plus a "Business" persona tab). All these pages extend
+`layouts/admin_base.html` and use the standard macros/tokens — **no new components or color
+tokens were introduced** for them.
+
+| Surface | Route (endpoint) | Notes |
+|---|---|---|
+| Capability map + visuals | `/capability-map` (`capability_map.index`) | nested-box map, maturity radar, 2×2 TIME investment bubble (Chart.js) |
+| Value streams + BIZBOK grid | `/value-streams` (`value_stream.index`) | stage swimlane + capability×stage grid, click-to-set cells |
+| Business / Operating Model canvas | `/business-model` (`business_model.index`) | 9-box BMC + operating-model archetype, inline block editing |
+| Traceability matrix | `/architecture/traceability` (`architect_ui.traceability_matrix`) | existing; surfaced in nav |
+| Impact analysis | `/strategic/impact-analysis` (`strategic.impact_analysis`) | existing; the old `/impact-analysis` nav item was a dead link — repointed here |
+| Application rationalization | `/rationalization` (`unified_applications.rationalization_dashboard`) | existing; surfaced in nav |
+| Organization & RACI | `/organization` (`organization.index`) | D3 org chart (BusinessActor composition) + enterprise RACI matrix |
+| Business cases | `/business-case` (`business_case.index`) | structured business-case document |
+
+**Guarded nav links (required pattern).** The value-stream / business-model / organization /
+business-case blueprints register **non-fatally** (a load failure is logged, not raised).
+A sidebar `url_for('<endpoint>')` to such a blueprint therefore MUST be guarded, or one
+failed registration would `BuildError` and 500 **every** page:
+
+```jinja
+{% if 'value_stream.index' in flask.current_app.view_functions %}
+<a href="{{ url_for('value_stream.index') }}">…</a>
+{% endif %}
+```
+
+**Motivation bridge.** Journey-scoped `Solution*` motivation is promoted into the enterprise
+motivation layer (Driver/Goal/Outcome/Principle + ArchiMate element) via the
+`flask bridge-motivation` CLI — non-destructive and idempotent (`MotivationBridgeLink`).
+
+---
+
 ## What Not to Do (summary)
 
 | ❌ Forbidden | ✅ Use instead |

@@ -115,8 +115,8 @@
                                     {{ cap.strategic_importance|default('Normal')|title }}
                                 </span>
                             </td>
-                            <td class="p-3">{{ cap.current_maturity|default(0) }}</td>
-                            <td class="p-3">{{ cap.target_maturity|default(5) }}</td>
+                            <td class="p-3">{{ cap.current_maturity_level|default(1) }}</td>
+                            <td class="p-3">{{ cap.target_maturity_level|default(3) }}</td>
                         </tr>
                         {% else %}
                         <tr>
