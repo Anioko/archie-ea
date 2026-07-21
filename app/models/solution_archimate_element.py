@@ -14,11 +14,16 @@ class SolutionArchiMateElement(db.Model):  # migration-exempt
     __tablename__ = "solution_archimate_elements"
 
     id = db.Column(db.Integer, primary_key=True)
+    # NOTE: no index=True here. This class shares __tablename__
+    # "solution_archimate_elements" (extend_existing) with the polymorphic
+    # definition in solution_models.py, which already indexes solution_id.
+    # Declaring index=True in BOTH registers the implicit index
+    # ix_solution_archimate_elements_solution_id twice, so a fresh create_all()
+    # (e.g. flask init-db on a new DB, or CI) fails with DuplicateTable.
     solution_id = db.Column(
         db.Integer,
         db.ForeignKey("solutions.id", ondelete="CASCADE"),
         nullable=False,
-        index=True,
     )
     element_id = db.Column(
         db.Integer,
