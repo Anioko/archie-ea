@@ -1360,7 +1360,7 @@ def create_fit_gap_entry(solution_id):
                 entity_id=entry.id,
                 action="create",
                 user_id=current_user.id,
-                details={"solution_id": solution_id, "business_process": business_process},
+                new_value={"solution_id": solution_id, "business_process": business_process},
             )
             db.session.add(audit)
         except Exception as exc:
@@ -1399,7 +1399,7 @@ def update_fit_gap_entry(solution_id, entry_id):
                 entity_id=entry_id,
                 action="update",
                 user_id=current_user.id,
-                details={"fields_updated": [f for f in updatable if f in data]},
+                new_value={"fields_updated": [f for f in updatable if f in data]},
             )
             db.session.add(audit)
         except Exception as exc:
@@ -1429,7 +1429,7 @@ def delete_fit_gap_entry(solution_id, entry_id):
                 entity_id=entry_id,
                 action="delete",
                 user_id=current_user.id,
-                details={"solution_id": solution_id},
+                new_value={"solution_id": solution_id},
             )
             db.session.add(audit)
         except Exception as exc:

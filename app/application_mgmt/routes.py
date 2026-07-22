@@ -1579,6 +1579,21 @@ def _delete_archimate_element(element_id, rel_type="realization"):
 
         eid = int(element_id)
 
+        # Tenant guard: never let one org delete another org's element graph.
+        # Query.get_or_404 can be served from the identity map and bypass the
+        # ORM tenant filter, so assert ownership against the actual column before
+        # the destructive cascade. No-op in system contexts (no tenant); legacy
+        # rows with no organization_id are left deletable.
+        from flask import abort as _abort, g as _g
+        _org = getattr(_g, "current_org_id", None)
+        if _org is not None:
+            _owner = db.session.execute(
+                text("SELECT organization_id FROM archimate_elements WHERE id = :id"),
+                {"id": eid},
+            ).scalar()
+            if _owner is not None and _owner != _org:
+                _abort(404)
+
         # ------------------------------------------------------------------
         # 1. Self-referential: clear children that point to this as parent/template
         # ------------------------------------------------------------------

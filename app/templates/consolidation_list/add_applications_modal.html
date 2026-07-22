@@ -161,14 +161,8 @@ document.addEventListener('change', function (e) {
     }
 });
 
-// ── Filter + submit wiring (CSP-safe) ───────────────────────────────────
-[domainSelect, critSelect, statusSelect, costSelect].forEach(function (el) {
-    if (el) el.addEventListener('change', function () { filterApplications(); });
-});
-if (searchInput) searchInput.addEventListener('input', function () { filterApplications(); });
-const clearBtn = document.getElementById('app-clear-btn');
-if (clearBtn) clearBtn.addEventListener('click', function () { clearSearchFilter(); });
-if (submitBtn) submitBtn.addEventListener('click', function () { submitAddApplications(); });
+// (Filter + submit wiring already done above — the duplicate block here
+//  re-declared `const clearBtn`, causing "Identifier already declared".)
 
 // ── Public: open / close ────────────────────────────────────────────────
 window.openAddApplicationsModal = function () {

@@ -16,6 +16,10 @@ function blueprintPage() {
         csrfToken: cfg.csrfToken || '',
         narratives: {},
         scores: cfg.scores || {},
+        // Declared so the shared solution partials (_technology_elements,
+        // _phase_a_elements, …) that reference archimateElements don't throw a
+        // ReferenceError on the blueprint page. Empty is handled by their guards.
+        archimateElements: cfg.archimateElements || [],
         riskImporting: false,
         riskImportResult: null,
         sectionElements: {},

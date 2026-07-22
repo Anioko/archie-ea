@@ -7,6 +7,7 @@ document.addEventListener('alpine:init', function() {
             elements: [],
             pagination: { page: 1, pages: 0, per_page: 25, total: 0, has_next: false, has_prev: false },
             loading: false,
+            loadError: null,   // referenced by x-show/x-text in the template; must exist to avoid Alpine ReferenceError
             searchQuery: '',
             typeFilter: '',
             perPage: 25,
@@ -102,12 +103,16 @@ document.addEventListener('alpine:init', function() {
             },
 
             get currentLayerTypes() {
+                // Must ALWAYS return an array of UNIQUE values — x-for over
+                // undefined, or with duplicate :key values, throws Alpine's
+                // "reading 'after'" reconciliation error on tab switch.
                 let cfg = this.layerConfig[this.activeTab];
-                return cfg ? cfg.elements : [];
+                let arr = (cfg && Array.isArray(cfg.elements)) ? cfg.elements : [];
+                return Array.from(new Set(arr));
             },
 
             get elementGroups() {
-                let filtered = this.elements;
+                let filtered = Array.isArray(this.elements) ? this.elements : [];
                 if (this.cardFilter === 'orphaned') {
                     filtered = filtered.filter(function(el) { return !el.rel_count || el.rel_count === 0; });
                 } else if (this.cardFilter === 'undocumented') {

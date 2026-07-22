@@ -2,7 +2,7 @@
 
 {% block extra_css %}
 <!-- Marked.js for Markdown rendering in AI Chat -->
-<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="/static/vendor/marked.min.js"></script>
 <!-- DOMPurify loaded globally via _head.html (v3.0.8 with SRI) — no duplicate needed -->
 <!-- Custom Styles for Chat Elements -->
 <style>
@@ -412,9 +412,9 @@ x-cloak>
                     Alerts
                     <span id="alert-badge" class="hidden absolute top-2.5 right-3 h-4 w-4 bg-destructive text-destructive-foreground text-[9px] rounded-full items-center justify-center font-bold border-2 border-muted/30">0</span>
                 </button>
-                <button type="button" id="tab-history" @click="switchSidebarTab('history')"
-                    class="flex-1 px-3 py-3 text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors" aria-label="Action">
-                    History
+                <button type="button" id="tab-history" @click="switchSidebarTab('history'); loadSessionList()"
+                    class="flex-1 px-3 py-3 text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors" aria-label="Conversations">
+                    Chats
                 </button>
             </div>
 
@@ -535,21 +535,27 @@ x-cloak>
                 </div>
             </div>
 
-            {# History Tab (AIC-110) #}
+            {# History Tab (AIC-110) — persisted conversations, ChatGPT-style rail #}
             <div id="panel-history" class="hidden flex-1 flex-col overflow-hidden">
                 <div class="p-4 border-b flex items-center justify-between shrink-0">
                     <h2 class="font-semibold text-sm flex items-center gap-2">
-                        <i data-lucide="clock" class="h-4 w-4 text-muted-foreground" aria-hidden="true"></i>
-                        Saved Sessions
+                        <i data-lucide="messages-square" class="h-4 w-4 text-muted-foreground" aria-hidden="true"></i>
+                        Conversations
                     </h2>
-                    <button type="button" @click="loadSessionList()" class="text-xs text-primary hover:underline flex items-center gap-1" aria-label="Refresh sessions">
+                    <button type="button" @click="loadSessionList()" class="text-xs text-primary hover:underline flex items-center gap-1" aria-label="Refresh conversations">
                         <i data-lucide="refresh-cw" class="h-3 w-3" aria-hidden="true"></i>
                         Refresh
                     </button>
                 </div>
+                <div class="p-3 border-b shrink-0">
+                    <button type="button" onclick="startNewConversation()" class="w-full inline-flex items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium hover:bg-accent transition-colors" aria-label="Start a new chat">
+                        <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i>
+                        New chat
+                    </button>
+                </div>
                 <div class="flex-1 overflow-y-auto p-4 space-y-2 min-h-0">
                     <div id="session-list" class="space-y-2">
-                        <p class="text-xs text-muted-foreground text-center py-8">Click Refresh to load saved sessions</p>
+                        <p class="text-xs text-muted-foreground text-center py-8">Loading your conversations…</p>
                     </div>
                 </div>
             </div>
@@ -2323,33 +2329,45 @@ ${v.tco_estimate ? `**3-Year TCO:** $${v.tco_estimate.three_year.toLocaleString(
         }
 
         const startTime = performance.now();
+        // Shared payload. thread_id keeps multi-turn chats in one conversation.
+        const _payload = JSON.stringify({
+            message: message,
+            domain: currentDomain,
+            template_name: templateSelector.value,
+            element_id: selectedElementIdInput.value || null,
+            context_type: contextElement?.type || null,
+            persona: currentPersona || null,
+            model: document.getElementById('model-selector')?.value || null,
+            thread_id: window.__threadId || null,
+            image_data: imageForRequest ? imageForRequest.dataUrl.split(',')[1] : null,
+            image_media_type: imageForRequest ? imageForRequest.mimeType : null,
+        });
+
+        // Stream the reply token-by-token (like ChatGPT). If streaming can't be
+        // established, fall through to the non-streaming request below.
+        try { if (await streamAiReply(_payload, loadingId, startTime, timestamp)) return; }
+        catch (_streamErr) { /* fall through to non-streaming */ }
 
         try {
             const response = await fetch('/ai-chat/message', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    message: message,
-                    domain: currentDomain,
-                    template_name: templateSelector.value,
-                    element_id: selectedElementIdInput.value || null,
-                    context_type: contextElement?.type || null,
-                    persona: currentPersona || null,
-                    model: document.getElementById('model-selector')?.value || null,
-                    // ENT-085: include attached image if present (strip data URL prefix → raw base64)
-                    image_data: imageForRequest ? imageForRequest.dataUrl.split(',')[1] : null,
-                    image_media_type: imageForRequest ? imageForRequest.mimeType : null,
-                })
+                headers: { 'Content-Type': 'application/json' },
+                body: _payload
             });
 
             const data = await response.json();
+            // Remember the conversation this turn was saved to, and refresh the
+            // history rail so a brand-new chat appears immediately.
+            if (data.thread_id) {
+                const _wasNew = data.thread_id !== window.__threadId;
+                window.__threadId = data.thread_id;
+                if (_wasNew && window.loadSessionList) window.loadSessionList();
+            }
             const endTime = performance.now();
             const processingTime = Math.round(endTime - startTime);
 
-            // Remove loading
-            document.getElementById(loadingId).remove();
+            // Remove loading (guard: may already be gone if streaming ran first)
+            { const _l = document.getElementById(loadingId); if (_l) _l.remove(); }
 
             if (data.error) {
                 // Enhanced error handling with specific error types
@@ -2394,11 +2412,75 @@ ${v.tco_estimate ? `**3-Year TCO:** $${v.tco_estimate.three_year.toLocaleString(
             }
 
         } catch (error) {
-            document.getElementById(loadingId).remove();
+            { const _l = document.getElementById(loadingId); if (_l) _l.remove(); }
             appendMessage('ai', `**Network Error:** ${error.message}`, { domain: currentDomain });
             appendSystemMessage(`Network error: ${error.message}`, 'error');
         }
     });
+
+    // Stream an AI reply via SSE. Renders tokens live into a bubble; returns true
+    // when it rendered a reply (caller then stops), throws/returns false to let
+    // the caller fall back to the non-streaming endpoint.
+    async function streamAiReply(payload, loadingId, startTime, timestamp) {
+        const resp = await fetch('/ai-chat/message/stream', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': window.csrfToken || (document.querySelector('meta[name=csrf-token]') || {}).content || '' },
+            body: payload
+        });
+        if (!resp.ok || !resp.body) throw new Error('stream ' + resp.status);
+
+        { const _l = document.getElementById(loadingId); if (_l) _l.remove(); }
+        const bubbleId = 'stream-' + Date.now();
+        const grad = getColorClass(domainConfig[currentDomain]?.color || 'primary', 'gradient');
+        const wrap = document.createElement('div');
+        wrap.className = 'flex gap-4';
+        wrap.innerHTML =
+            '<div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br ' + grad + ' text-primary-foreground shadow-lg"><i data-lucide="' + (domainConfig[currentDomain]?.icon || 'bot') + '" class="h-5 w-5"></i></div>' +
+            '<div class="rounded-xl bg-muted/50 p-4 text-sm prose dark:prose-invert max-w-3xl" id="' + bubbleId + '"><span class="animate-pulse">▍</span></div>';
+        messagesContainer.appendChild(wrap);
+        if (window.lucide) lucide.createIcons();
+        const target = document.getElementById(bubbleId);
+
+        const reader = resp.body.getReader();
+        const dec = new TextDecoder();
+        let buf = '', full = '', meta = { domain: currentDomain };
+        try {
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                buf += dec.decode(value, { stream: true });
+                const lines = buf.split('\n'); buf = lines.pop();
+                for (const line of lines) {
+                    const s = line.trim();
+                    if (!s.startsWith('data:')) continue;
+                    const raw = s.slice(5).trim();
+                    if (raw === '[DONE]') continue;
+                    let ev; try { ev = JSON.parse(raw); } catch (_) { continue; }
+                    if (ev.thread_id) {
+                        const wasNew = ev.thread_id !== window.__threadId;
+                        window.__threadId = ev.thread_id;
+                        if (wasNew && window.loadSessionList) window.loadSessionList();
+                    }
+                    if (ev.action === 'redirect' && ev.url) { wrap.remove(); appendSystemMessage('Redirecting…', 'info'); setTimeout(() => { window.location.href = ev.url; }, 800); return true; }
+                    if (ev.type === 'token' && ev.text) {
+                        full += ev.text;
+                        if (target) { target.innerHTML = (window.DOMPurify && window.marked) ? (DOMPurify.sanitize(marked.parse(full)) + '<span class="animate-pulse">▍</span>') : (full + '▍'); messagesContainer.scrollTop = messagesContainer.scrollHeight; }
+                    } else if (ev.type === 'done') {
+                        if (ev.error) throw new Error(ev.error);
+                        if (!full && ev.response) full = ev.response;
+                        meta = { domain: ev.domain || currentDomain, processing_time: Math.round(performance.now() - startTime) };
+                    } else if (ev.error) { throw new Error(ev.error); }
+                }
+            }
+        } catch (e) { wrap.remove(); throw e; }
+
+        wrap.remove();
+        if (!full || !full.trim()) return false;  // let caller fall back
+        chatHistory.push({ role: 'ai', content: full, timestamp, metadata: meta });
+        appendMessage('ai', full, meta);
+        if (window._genomePanelInstance) { try { await window._genomePanelInstance.extractAfterMessage(chatHistory); } catch (_) {} }
+        return true;
+    }
 
     // ==========================================================================
     // Document Upload Panel Toggle
@@ -3347,6 +3429,85 @@ Would you like me to provide more details about the extracted elements or help y
             appendSystemMessage(`${entityLabel} context loaded (ID: ${entityId}). Ask me anything about this ${contextType.replace(/_/g, ' ')}.`, 'info');
         }
     });
+</script>
+<script>
+/* Conversation history rail — wired into the LIVE inline chat. Defines the
+   functions the template buttons call (loadSessionList / startNewConversation),
+   plus open/delete, and keeps window.__threadId in sync so multi-turn chats
+   stay in one conversation. Backed by the /ai-chat/threads API. */
+(function () {
+  function csrf() { return (window.csrfToken) || (document.querySelector('meta[name=csrf-token]') || {}).content || ''; }
+  function H() { return { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() }; }
+  function esc(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : String(s)); return d.innerHTML; }
+
+  window.loadSessionList = async function () {
+    var c = document.getElementById('session-list');
+    if (!c) return;
+    c.innerHTML = '<div class="text-center py-4"><i data-lucide="loader-2" class="h-5 w-5 animate-spin mx-auto"></i></div>';
+    if (window.lucide) lucide.createIcons();
+    try {
+      var r = await fetch('/ai-chat/threads', { headers: H() });
+      var j = await r.json();
+      var t = (j && j.threads) || [];
+      if (!t.length) {
+        c.innerHTML = '<p class="text-xs text-muted-foreground text-center py-8">No conversations yet. Ask anything below — your chats are saved here automatically.</p>';
+        return;
+      }
+      c.innerHTML = t.map(function (x) {
+        var active = (x.id === window.__threadId) ? ' bg-accent' : '';
+        var d = ''; try { d = new Date(x.updated_at || x.created_at).toLocaleDateString(); } catch (e) {}
+        return '<div class="js-thr group relative flex items-center rounded-lg border border-border hover:bg-accent/50 transition-colors' + active + '" data-id="' + esc(x.id) + '">' +
+          '<button type="button" class="js-thr-open flex-1 text-left p-3 min-w-0">' +
+          '<div class="font-medium text-xs truncate">' + esc(x.title || 'New chat') + '</div>' +
+          '<div class="text-[10px] text-muted-foreground mt-1">' + esc(d) + (x.message_count ? ' · ' + x.message_count + ' messages' : '') + '</div></button>' +
+          '<button type="button" class="js-thr-del opacity-0 group-hover:opacity-100 shrink-0 p-2 text-muted-foreground hover:text-destructive" title="Delete conversation" aria-label="Delete conversation"><i data-lucide="trash-2" class="h-3.5 w-3.5"></i></button></div>';
+      }).join('');
+      c.querySelectorAll('.js-thr').forEach(function (row) {
+        var id = row.getAttribute('data-id');
+        var o = row.querySelector('.js-thr-open'); if (o) o.addEventListener('click', function () { window.loadSession(id); });
+        var del = row.querySelector('.js-thr-del'); if (del) del.addEventListener('click', function (e) { e.stopPropagation(); window.deleteConversation(id); });
+      });
+      if (window.lucide) lucide.createIcons();
+    } catch (e) {
+      c.innerHTML = '<p class="text-xs text-destructive text-center py-4">Couldn\'t load conversations.</p>';
+    }
+  };
+
+  window.loadSession = async function (id) {
+    if (!id) return;
+    try {
+      var r = await fetch('/ai-chat/threads/' + encodeURIComponent(id), { headers: H() });
+      if (!r.ok) return;
+      var j = await r.json();
+      var msgs = (j && j.messages) || [];
+      window.__threadId = id;
+      var wg = document.getElementById('domain-welcome-grid'); if (wg) wg.classList.add('hidden');
+      var mc = document.getElementById('messages-container'); if (mc) mc.innerHTML = '';
+      msgs.forEach(function (m) {
+        if (typeof appendMessage === 'function') {
+          appendMessage(m.role === 'assistant' ? 'ai' : m.role, m.content, { domain: window.currentDomain || 'general' });
+        }
+      });
+      window.loadSessionList();
+      if (mc) mc.scrollTop = mc.scrollHeight;
+    } catch (e) {}
+  };
+
+  window.deleteConversation = async function (id) {
+    if (!id) return;
+    try { await fetch('/ai-chat/threads/' + encodeURIComponent(id), { method: 'DELETE', headers: H() }); } catch (e) {}
+    if (id === window.__threadId) { window.startNewConversation(); return; }
+    window.loadSessionList();
+  };
+
+  // "New chat" — a fresh page load is the most reliable reset for the inline
+  // chat (welcome grid, in-page state, and __threadId all reset cleanly).
+  window.startNewConversation = function () { window.__threadId = null; window.location.href = window.location.pathname; };
+
+  // Auto-load the rail so past chats are visible without clicking Refresh.
+  function boot() { try { window.loadSessionList(); } catch (e) {} }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
+})();
 </script>
 <script src="{{ url_for('static', filename='js/ai_chat/document_upload.js') }}"></script>
 <script src="{{ url_for('static', filename='js/ai_chat/approval_modal.js') }}"></script>

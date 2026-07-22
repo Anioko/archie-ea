@@ -559,7 +559,6 @@ def create_solution_business_element(solution_id):
         description=data.get("description", ""),
         owner=data.get("owner", ""),
         notes=data.get("notes", ""),
-        created_by_id=current_user.id,
     )
     row.archimate_element_id = data.get('archimate_element_id')
     row.archimate_layer = data.get('archimate_layer')
@@ -608,7 +607,6 @@ def create_solution_app_element(solution_id):
         description=data.get("description", ""),
         technology=data.get("technology", ""),
         notes=data.get("notes", ""),
-        created_by_id=current_user.id,
     )
     db.session.add(row)
     db.session.commit()
@@ -654,7 +652,6 @@ def create_solution_tech_element(solution_id):
         description=data.get("description", ""),
         specification=data.get("specification", ""),
         notes=data.get("notes", ""),
-        created_by_id=current_user.id,
     )
     row.archimate_element_id = data.get('archimate_element_id')
     row.archimate_layer = data.get('archimate_layer')

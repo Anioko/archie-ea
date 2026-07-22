@@ -3357,46 +3357,54 @@ def audit_log_viewer():
     try:
         from app.models.audit_log import AuditLog
 
-        query = AuditLog.query.filter_by(is_deleted=False)
+        # NOTE: AuditLog's real columns are created_at / user_id / table_name /
+        # record_id (no timestamp/user_email/entity_type/description/is_deleted).
+        # Filters below use the real columns; the model exposes the old names as
+        # read-only display properties for the template/CSV.
+        query = AuditLog.query
 
         if date_from:
             try:
-                query = query.filter(AuditLog.timestamp >= dt.fromisoformat(date_from))
+                query = query.filter(AuditLog.created_at >= dt.fromisoformat(date_from))
             except ValueError:
                 logger.debug("PLT-032: invalid date_from: %s", date_from)
 
         if date_to:
             try:
                 to_dt = dt.fromisoformat(date_to).replace(hour=23, minute=59, second=59)
-                query = query.filter(AuditLog.timestamp <= to_dt)
+                query = query.filter(AuditLog.created_at <= to_dt)
             except ValueError:
                 logger.debug("PLT-032: invalid date_to: %s", date_to)
 
         if user_email:
-            query = query.filter(AuditLog.user_email.ilike(f"%{user_email}%"))
+            # AuditLog stores user_id, not email — resolve matching users first.
+            from app.models.user import User
+
+            _uids = [u.id for u in User.query.filter(User.email.ilike(f"%{user_email}%")).all()]
+            query = query.filter(AuditLog.user_id.in_(_uids or [-1]))
 
         if action_filter:
             query = query.filter(AuditLog.action == action_filter)
 
         if entity_type_filter:
-            query = query.filter(AuditLog.entity_type == entity_type_filter)
+            query = query.filter(AuditLog.table_name == entity_type_filter)
 
         if search_q:
             query = query.filter(
                 db.or_(
-                    AuditLog.description.ilike(f"%{search_q}%"),
-                    AuditLog.entity_name.ilike(f"%{search_q}%"),
+                    AuditLog.table_name.ilike(f"%{search_q}%"),
+                    AuditLog.action.ilike(f"%{search_q}%"),
                 )
             )
 
-        query = query.order_by(AuditLog.timestamp.desc())
+        query = query.order_by(AuditLog.created_at.desc())
 
-        # Get distinct action types and entity types for filter dropdowns
+        # Get distinct action types and entity types (table names) for dropdowns
         action_types = [
             r[0] for r in db.session.query(AuditLog.action).distinct().order_by(AuditLog.action).all() if r[0]
         ]
         entity_types = [
-            r[0] for r in db.session.query(AuditLog.entity_type).distinct().order_by(AuditLog.entity_type).all() if r[0]
+            r[0] for r in db.session.query(AuditLog.table_name).distinct().order_by(AuditLog.table_name).all() if r[0]
         ]
 
         if export_csv:

@@ -1954,17 +1954,13 @@ Provide analysis in JSON format:
                     try:
                         # Check if mapping already exists
                         existing = UnifiedApplicationCapabilityMapping.query.filter_by(
-                            application_id=application_id, capability_id=mapping["capability_id"]
+                            application_component_id=application_id, unified_capability_id=mapping["capability_id"]
                         ).first()
 
                         if not existing:
                             new_mapping = UnifiedApplicationCapabilityMapping(
-                                application_id=application_id,
-                                capability_id=mapping["capability_id"],
-                                confidence_score=mapping.get("confidence_score", 0.5),
-                                mapping_method="ai_llm",
-                                rationale=mapping.get("rationale", ""),
-                                created_by=created_by,
+                                application_component_id=application_id,
+                                unified_capability_id=mapping["capability_id"],
                             )
                             db.session.add(new_mapping)
                             results["capability_mappings_created"] += 1
@@ -1977,17 +1973,13 @@ Provide analysis in JSON format:
                     try:
                         # Check if mapping already exists
                         existing = ProcessApplicationMapping.query.filter_by(
-                            application_id=application_id, process_id=mapping["process_id"]
+                            application_id=application_id, apqc_process_id=mapping["process_id"]
                         ).first()
 
                         if not existing:
                             new_mapping = ProcessApplicationMapping(
                                 application_id=application_id,
-                                process_id=mapping["process_id"],
-                                confidence_score=mapping.get("similarity_score", 0.5),
-                                mapping_method=mapping.get("match_method", "semantic"),
-                                rationale=f"AI classification with {mapping.get('confidence', 'medium')} confidence",
-                                created_by=created_by,
+                                apqc_process_id=mapping["process_id"],
                             )
                             db.session.add(new_mapping)
                             results["process_mappings_created"] += 1
@@ -2266,16 +2258,12 @@ Provide analysis in JSON format:
                     for m in caps:
                         if m.get("confidence_score", 0) >= confidence_threshold:
                             if not UnifiedApplicationCapabilityMapping.query.filter_by(
-                                application_id=app.id, capability_id=m["capability_id"]
+                                application_component_id=app.id, unified_capability_id=m["capability_id"]
                             ).first():
                                 db.session.add(
                                     UnifiedApplicationCapabilityMapping(
-                                        application_id=app.id,
-                                        capability_id=m["capability_id"],
-                                        confidence_score=m.get("confidence_score", 0.5),
-                                        mapping_method="ai_import_integrated",
-                                        rationale=m.get("rationale", ""),
-                                        created_by=created_by,
+                                        application_component_id=app.id,
+                                        unified_capability_id=m["capability_id"],
                                     )
                                 )
                                 result["mappings_created"]["capabilities"] += 1
@@ -2290,15 +2278,12 @@ Provide analysis in JSON format:
                     for m in procs:
                         if m.get("similarity_score", 0) >= confidence_threshold:
                             if not ProcessApplicationMapping.query.filter_by(
-                                application_id=app.id, process_id=m["process_id"]
+                                application_id=app.id, apqc_process_id=m["process_id"]
                             ).first():
                                 db.session.add(
                                     ProcessApplicationMapping(
                                         application_id=app.id,
-                                        process_id=m["process_id"],
-                                        confidence_score=m.get("similarity_score", 0.5),
-                                        mapping_method="ai_import_integrated",
-                                        created_by=created_by,
+                                        apqc_process_id=m["process_id"],
                                     )
                                 )
                                 result["mappings_created"]["processes"] += 1

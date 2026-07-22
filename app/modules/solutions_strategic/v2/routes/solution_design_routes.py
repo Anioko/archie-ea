@@ -6649,6 +6649,11 @@ def get_archimate_layer_elements(layer: str):
         if search:
             conditions.append("name ILIKE :search")
             params["search"] = f"%{search}%"
+        from flask import g as _g
+        _org = getattr(_g, "current_org_id", None)
+        if _org is not None:
+            conditions.append("organization_id = :org")
+            params["org"] = _org
         where_clause = "WHERE " + " AND ".join(conditions)
         sql = db.text(f"""
             SELECT id, name, type, layer, description, status
@@ -7241,6 +7246,11 @@ def api_archimate_all_elements():
             conditions.append("name ILIKE :search")
             params["search"] = f"%{search_term}%"
 
+        from flask import g as _g
+        _org = getattr(_g, "current_org_id", None)
+        if _org is not None:
+            conditions.append("organization_id = :org")
+            params["org"] = _org
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
         sql = db.text(f"""
             SELECT id, name, type, layer, description, status,

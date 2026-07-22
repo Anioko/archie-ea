@@ -760,14 +760,14 @@ def create_deliverable():
         # Validate work package exists
         work_package = ImplementationWorkPackage.query.get_or_404(data["work_package_id"])
 
+        # Deliverable columns are delivery_status/target_date/assigned_user_id — the
+        # old code used status/due_date/approval_criteria/created_by (none exist).
         deliverable = Deliverable(
             name=data["name"],
             description=data.get("description", ""),
             work_package_id=data["work_package_id"],
-            status=data.get("status", "planned"),
-            due_date=datetime.fromisoformat(data["due_date"]) if data.get("due_date") else None,
-            approval_criteria=data.get("approval_criteria", ""),
-            created_by=current_user.id,
+            delivery_status=data.get("status", "planned"),
+            target_date=datetime.fromisoformat(data["due_date"]) if data.get("due_date") else None,
         )
 
         db.session.add(deliverable)
@@ -781,7 +781,7 @@ def create_deliverable():
                         "id": deliverable.id,
                         "name": deliverable.name,
                         "work_package_id": deliverable.work_package_id,
-                        "status": deliverable.status,
+                        "status": deliverable.delivery_status,
                     },
                 }
             ),
@@ -1052,15 +1052,20 @@ def create_gap():
 
         data = request.get_json()
 
+        # Gap has no 'impact_assessment' (only a short 'impact' enum) and no
+        # 'created_by' — the old kwargs crashed every call. Fold the free-text
+        # impact narrative into description so it isn't lost.
+        _impact = (data.get("impact_assessment") or "").strip()
+        _desc = data.get("description", "")
+        if _impact:
+            _desc = (f"{_desc}\n\nImpact: {_impact}" if _desc else f"Impact: {_impact}")
         gap = ImplementationGap(
             name=data["name"],
-            description=data.get("description", ""),
+            description=_desc,
             gap_type=data["gap_type"],
             priority=data.get("priority", "medium"),
             current_state_ref=data.get("current_state", ""),
             target_state_ref=data.get("target_state", ""),
-            impact_assessment=data.get("impact_assessment", ""),
-            created_by=current_user.id,
         )
 
         db.session.add(gap)
@@ -1190,16 +1195,13 @@ def create_plateau():
 
         data = request.get_json()
 
+        # Plateau is milestone-based: it has target_date/sequence_order, not
+        # start_date/end_date/stability_period/transition_state/created_by. Map the
+        # target milestone to end_date; the other legacy kwargs have no columns.
         plateau = ImplementationPlateau(
             name=data["name"],
             description=data.get("description", ""),
-            start_date=datetime.fromisoformat(data["start_date"])
-            if data.get("start_date")
-            else None,
-            end_date=datetime.fromisoformat(data["end_date"]) if data.get("end_date") else None,
-            stability_period=data.get("stability_period", ""),
-            transition_state=data.get("transition_state", ""),
-            created_by=current_user.id,
+            target_date=datetime.fromisoformat(data["end_date"]) if data.get("end_date") else None,
         )
 
         db.session.add(plateau)
@@ -1212,7 +1214,7 @@ def create_plateau():
                     "plateau": {
                         "id": plateau.id,
                         "name": plateau.name,
-                        "transition_state": plateau.transition_state,
+                        "target_date": plateau.target_date.isoformat() if plateau.target_date else None,
                     },
                 }
             ),

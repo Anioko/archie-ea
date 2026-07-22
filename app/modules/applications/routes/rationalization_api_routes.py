@@ -68,7 +68,7 @@ def _auto_create_consolidation_for_app(app_id, score, actor_name):
         from app.models.consolidation_list import ConsolidationListEntry
 
         existing = ConsolidationListEntry.query.filter(
-            ConsolidationListEntry.source_application_id == app_id
+            ConsolidationListEntry.application_id == app_id
         ).first()
         if existing:
             return  # Already has a consolidation entry
@@ -80,7 +80,7 @@ def _auto_create_consolidation_for_app(app_id, score, actor_name):
 
         savings = float(getattr(score, "estimated_annual_savings", 0) or 0)
         entry = ConsolidationListEntry(
-            source_application_id=app_id,
+            application_id=app_id,
             recommended_action=disposition,
             estimated_savings=savings,
             status="proposed",

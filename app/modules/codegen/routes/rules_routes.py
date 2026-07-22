@@ -38,7 +38,7 @@ def list_rule_templates(solution_id):
     suggestions = []
     if gen and gen.generated_files:
         model_fields = _extract_model_fields(gen.generated_files)
-        suggestions = engine.suggest(model_fields)
+        suggestions = engine.suggest_templates(model_fields)
 
     return jsonify({"templates": templates, "suggestions": suggestions})
 

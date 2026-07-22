@@ -41,7 +41,7 @@ async function loadQuickAccessItems(type, limit) {
   const container = document.querySelector(`[data-quick-access="${type}"]`);
 
   if (!container) {
-    console.warn(`[Sidebar] Container [data-quick-access="${type}"] not found, skipping async load`);
+    console.debug(`[Sidebar] Container [data-quick-access="${type}"] not found, skipping async load`);
     return;
   }
 

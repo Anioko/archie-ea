@@ -100,7 +100,7 @@ def create_vendor():
     vendor = VendorOrganization(
         name=data["name"],
         vendor_type=data.get("vendor_type"),
-        country=data.get("country"),
+        headquarters_location=data.get("country"),  # model column is headquarters_location
         description=data.get("description"),
         website=data.get("website"),
         created_at=datetime.utcnow(),
@@ -404,7 +404,7 @@ def api_create_vendor():
     vendor = VendorOrganization(
         name=data["name"],
         vendor_type=data.get("vendor_type"),
-        country=data.get("country"),
+        headquarters_location=data.get("country"),  # model column is headquarters_location
         description=data.get("description"),
         website=data.get("website"),
         created_at=datetime.utcnow(),

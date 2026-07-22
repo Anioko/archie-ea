@@ -11,15 +11,21 @@ from app.extensions import db
 from app.modules.vendors.services.analysis_service import (
     CapabilityService,
     ExportService,
-    VendorAnalysisService,
     VendorService,
+)
+from app.modules.architecture.services.options_analysis_service import (
+    OptionsAnalysisService,
 )
 
 # Create blueprint
 vendor_analysis_bp = Blueprint("vendor_analysis", __name__, url_prefix="/vendor-analysis")
 
-# Service instances
-analysis_service = VendorAnalysisService()
+# Service instances. The create/run/get-analysis/comparison endpoints in this
+# module were written against OptionsAnalysisService's API (create_analysis,
+# run_analysis, get_analysis, get_comparison_data) — the previously-wired
+# VendorAnalysisService has none of those methods, so every one of them raised
+# AttributeError.
+analysis_service = OptionsAnalysisService()
 capability_service = CapabilityService()
 vendor_service = VendorService()
 export_service = ExportService()
