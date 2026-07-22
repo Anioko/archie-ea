@@ -1,0 +1,81 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'components/page_header.html' import page_header %}
+
+{% block title %}Vendor ArchiMate Templates{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-background">
+    {{ page_header(
+        title='Vendor ArchiMate Templates',
+        description='Canonical vendor→ArchiMate element mappings applied when a vendor product is linked (SAP / Microsoft reference structures)'
+    ) }}
+
+    <div class="flex items-center gap-3 mb-6 text-sm text-muted-foreground">
+        <span class="px-2 py-1 rounded-full bg-primary/10 text-primary font-medium">{{ total }} template element{{ '' if total == 1 else 's' }}</span>
+        {% if version %}<span>Template version {{ version }}</span>{% endif %}
+        <span>{{ grouped|length }} vendor{{ '' if grouped|length == 1 else 's' }}</span>
+    </div>
+
+    {% if grouped %}
+    <div class="space-y-8">
+        {% for vendor_key, rows in grouped.items() %}
+        <section class="bg-card rounded-lg border border-border overflow-hidden">
+            <div class="flex items-center justify-between px-6 py-4 border-b border-border">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
+                        <i data-lucide="layers" class="w-5 h-5 text-primary" aria-hidden="true"></i>
+                    </div>
+                    <h2 class="text-lg font-semibold text-foreground">{{ vendor_key }}</h2>
+                </div>
+                <span class="text-xs text-muted-foreground">{{ rows|length }} element{{ '' if rows|length == 1 else 's' }}</span>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="text-left text-xs uppercase tracking-wide text-muted-foreground border-b border-border">
+                            <th class="px-6 py-3 font-medium">Element</th>
+                            <th class="px-6 py-3 font-medium">Type</th>
+                            <th class="px-6 py-3 font-medium">Layer</th>
+                            <th class="px-6 py-3 font-medium">Requirement</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for t in rows %}
+                        <tr class="border-b border-border/60 last:border-0 hover:bg-muted/40">
+                            <td class="px-6 py-3 font-medium text-foreground">{{ t.element_name }}</td>
+                            <td class="px-6 py-3 text-muted-foreground">{{ t.element_type or '—' }}</td>
+                            <td class="px-6 py-3">
+                                <span class="px-2 py-0.5 rounded-full text-xs font-medium bg-muted text-muted-foreground">{{ t.archimate_layer or '—' }}</span>
+                            </td>
+                            <td class="px-6 py-3">
+                                {% if t.mandatory %}
+                                <span class="px-2 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary">Mandatory</span>
+                                {% else %}
+                                <span class="px-2 py-0.5 rounded-full text-xs font-medium bg-muted text-muted-foreground">Suggested</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="bg-card rounded-lg border border-border p-12 text-center">
+        <div class="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
+            <i data-lucide="layers" class="w-8 h-8 text-muted-foreground" aria-hidden="true"></i>
+        </div>
+        <h3 class="text-lg font-semibold text-foreground mb-2">No Vendor ArchiMate Templates</h3>
+        <p class="text-muted-foreground mb-4">Seed them with <code class="px-1.5 py-0.5 rounded bg-muted text-foreground">flask seed-vendor-templates</code> to auto-populate Technology-layer elements when linking SAP or Microsoft products.</p>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
+</script>
+{% endblock %}

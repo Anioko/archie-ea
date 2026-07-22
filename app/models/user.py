@@ -12,6 +12,7 @@ from .validators import validate_email as validate_model_email
 # ── Enterprise RBAC role constants (ENT-068, updated NS-001) ─────────────────────────
 ROLE_SOLUTION_ARCHITECT = "solution_architect"
 ROLE_ENTERPRISE_ARCHITECT = "enterprise_architect"
+ROLE_BUSINESS_ARCHITECT = "business_architect"
 ROLE_ARB_MEMBER = "arb_member"
 ROLE_PORTFOLIO_MANAGER = "portfolio_manager"
 ROLE_CTO = "cto"
@@ -22,6 +23,7 @@ ROLE_PLATFORM_ADMIN = "platform_admin"
 VALID_ROLES = [
     ROLE_SOLUTION_ARCHITECT,
     ROLE_ENTERPRISE_ARCHITECT,
+    ROLE_BUSINESS_ARCHITECT,
     ROLE_ARB_MEMBER,
     ROLE_PORTFOLIO_MANAGER,
     ROLE_CTO,
@@ -34,6 +36,7 @@ VALID_ROLES = [
 ROLE_DISPLAY_NAMES = {
     ROLE_SOLUTION_ARCHITECT: "Solution Architect",
     ROLE_ENTERPRISE_ARCHITECT: "Enterprise Architect",
+    ROLE_BUSINESS_ARCHITECT: "Business Architect",
     ROLE_ARB_MEMBER: "ARB Member",
     ROLE_PORTFOLIO_MANAGER: "Portfolio Manager",
     ROLE_CTO: "CTO / CIO",
@@ -59,8 +62,17 @@ class Role(db.Model):
 
     @staticmethod
     def insert_roles():
+        # "Architect" is the DEFAULT role for new sign-ups. This platform is FOR
+        # architects, and the CRUD route guards use require_roles("admin",
+        # "architect") — so the default role MUST normalize to "architect", or
+        # every normal user gets 403 on create/update/delete of their own data
+        # (the "CRUD is broken" symptom). Architect gets GENERAL permission (NOT
+        # ADMINISTER), so user.can(ADMINISTER)/is_admin() stays False and truly
+        # admin-only areas (user mgmt, seeding) remain restricted.
+        # (name, permissions, index, is_default)
         roles = {
-            "User": (Permission.GENERAL, "main", True),
+            "User": (Permission.GENERAL, "main", False),
+            "Architect": (Permission.GENERAL, "main", True),
             "Administrator": (Permission.ADMINISTER, "admin", False),
         }
         for r in roles:
@@ -284,33 +296,37 @@ class User(UserMixin, db.Model):
         return self.enterprise_role in roles
 
     def can_edit_solutions(self):
-        """Solution editing: solution_architect, enterprise_architect, platform_admin."""
+        """Solution editing: solution_architect, enterprise_architect, business_architect, platform_admin."""
         return self.enterprise_role in (
             ROLE_SOLUTION_ARCHITECT,
             ROLE_ENTERPRISE_ARCHITECT,
+            ROLE_BUSINESS_ARCHITECT,
             ROLE_PLATFORM_ADMIN,
         )
 
     def can_edit_archimate(self):
-        """ArchiMate editing: enterprise_architect, platform_admin."""
+        """ArchiMate editing: enterprise_architect, business_architect, platform_admin."""
         return self.enterprise_role in (
             ROLE_ENTERPRISE_ARCHITECT,
+            ROLE_BUSINESS_ARCHITECT,
             ROLE_PLATFORM_ADMIN,
         )
 
     def can_vote_arb(self):
-        """ARB voting: arb_member, enterprise_architect, platform_admin."""
+        """ARB voting: arb_member, enterprise_architect, business_architect, platform_admin."""
         return self.enterprise_role in (
             ROLE_ARB_MEMBER,
             ROLE_ENTERPRISE_ARCHITECT,
+            ROLE_BUSINESS_ARCHITECT,
             ROLE_PLATFORM_ADMIN,
         )
 
     def can_manage_portfolio(self):
-        """Portfolio management: portfolio_manager, enterprise_architect, platform_admin."""
+        """Portfolio management: portfolio_manager, enterprise_architect, business_architect, platform_admin."""
         return self.enterprise_role in (
             ROLE_PORTFOLIO_MANAGER,
             ROLE_ENTERPRISE_ARCHITECT,
+            ROLE_BUSINESS_ARCHITECT,
             ROLE_PLATFORM_ADMIN,
         )
 

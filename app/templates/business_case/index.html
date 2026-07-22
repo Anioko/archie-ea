@@ -1,0 +1,110 @@
+{% extends 'layouts/admin_base.html' %}
+{% from 'components/page_header.html' import page_header %}
+{% from 'components/empty_state.html' import empty_state %}
+{% from 'components/modal.html' import modal %}
+{% import 'components/card.html' as card %}
+
+{% block title %}Business Cases{% endblock %}
+
+{% set _status_badge = {
+    'draft':     'bg-muted text-muted-foreground border-border',
+    'submitted': 'bg-info/10 text-info border-info/30',
+    'approved':  'bg-success/10 text-success border-success/30',
+    'rejected':  'bg-destructive/10 text-destructive border-destructive/30'
+} %}
+
+{% block content %}
+<div class="flex-1 overflow-auto">
+  {{ page_header(
+      title='Business Cases',
+      description='Consolidated business-case documents — problem, options, recommendation, costs, benefits and risk in one place.',
+      breadcrumbs=[
+          {'label': 'Home', 'href': url_for('main.index')},
+          {'label': 'Business Cases'}
+      ],
+      actions=[
+          {'text': 'New Business Case', 'icon': 'plus', 'onclick': "Platform.modal.open('bc-create-modal')", 'variant': 'default'}
+      ]
+  ) }}
+
+  <div class="p-6 space-y-6">
+    {% if business_cases %}
+    {% call card.card() %}
+      {% call card.card_content(class='p-0') %}
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm" data-testid="bc-table">
+            <thead>
+              <tr class="border-b border-border text-left">
+                <th class="px-4 py-3 font-medium text-muted-foreground">Title</th>
+                <th class="px-4 py-3 font-medium text-muted-foreground">Status</th>
+                <th class="px-4 py-3 font-medium text-muted-foreground text-right">3yr TCO</th>
+                <th class="px-4 py-3 font-medium text-muted-foreground text-right">ROI</th>
+                <th class="px-4 py-3 font-medium text-muted-foreground">Updated</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for bc in business_cases %}
+              <tr class="border-b border-border last:border-0 hover:bg-accent/50 transition-colors" data-testid="bc-row-{{ bc.id }}">
+                <td class="px-4 py-3">
+                  <a href="{{ url_for('business_case.detail', business_case_id=bc.id) }}" class="font-medium text-foreground hover:text-primary transition-colors">
+                    {{ bc.title or 'Untitled Business Case' }}
+                  </a>
+                </td>
+                <td class="px-4 py-3">
+                  <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium border {{ _status_badge.get(bc.status, _status_badge['draft']) }}">
+                    {{ (bc.status or 'draft') | capitalize }}
+                  </span>
+                </td>
+                <td class="px-4 py-3 text-right tabular-nums">
+                  {{ bc.tco_3yr|format_currency if bc.tco_3yr is not none else '—' }}
+                </td>
+                <td class="px-4 py-3 text-right tabular-nums">
+                  {% if bc.roi_percentage is not none %}{{ bc.roi_percentage }}%{% else %}—{% endif %}
+                </td>
+                <td class="px-4 py-3 text-muted-foreground">{{ bc.updated_at.strftime('%Y-%m-%d') if bc.updated_at else '—' }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endcall %}
+    {% endcall %}
+    {% else %}
+    {{ empty_state(
+        icon='file-text',
+        title='No Business Cases yet',
+        description='Create your first business case to document a problem, the options considered, the recommendation, and its financial justification.',
+        cta_text='New Business Case',
+        cta_onclick="Platform.modal.open('bc-create-modal')",
+        cta_icon='plus'
+    ) }}
+    {% endif %}
+  </div>
+</div>
+
+{% call modal(id='bc-create-modal', title='New Business Case', description='Give it a title — you can fill in the rest of the document next.', size='default') %}
+<form method="POST" action="{{ url_for('business_case.create') }}" class="space-y-4" data-testid="bc-create-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div>
+    <label for="bc-title" class="block text-sm font-medium mb-1">Title <span class="text-destructive" aria-hidden="true">*</span></label>
+    <input id="bc-title" name="title" type="text" required maxlength="256" placeholder="e.g. Consolidate Regional CRM Instances"
+      class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+  </div>
+  <div>
+    <label for="bc-description" class="block text-sm font-medium mb-1">Description</label>
+    <textarea id="bc-description" name="description" rows="2" maxlength="2000" placeholder="Optional context for this business case"
+      class="flex min-h-[64px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"></textarea>
+  </div>
+  <div class="flex justify-end gap-3 pt-2 border-t">
+    <button type="button" data-modal-close="bc-create-modal"
+      class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 h-9 px-4 py-2">
+      Cancel
+    </button>
+    <button type="submit" data-testid="bc-create-submit"
+      class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 py-2">
+      Create Business Case
+    </button>
+  </div>
+</form>
+{% endcall %}
+{% endblock %}

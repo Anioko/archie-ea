@@ -132,6 +132,9 @@ def _register_optional_standalone(app):
         ("app.modules.governance.routes.governance_dashboard_routes", "governance_bp", None),
         ("app.modules.admin.billing_routes", "billing_bp", "/admin/billing"),
         ("app.modules.admin.team_routes", "team_bp", "/admin"),
+        ("app.modules.business_model_canvas.routes", "business_model_bp", "/business-model"),
+        ("app.modules.organization.routes", "organization_bp", "/organization"),
+        ("app.modules.business_case.routes", "business_case_bp", "/business-case"),
     ]
     for module_path, attr, prefix in specs:
         try:

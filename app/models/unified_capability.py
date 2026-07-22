@@ -224,8 +224,10 @@ class UnifiedCapability(db.Model, OptimisticLockMixin):
         "UnifiedApplicationCapabilityMapping", back_populates="unified_capability"
     )
 
-    # Value stream relationships (commented out to avoid conflicts)
-    # value_stream_mappings = relationship('CapabilityValueStreamMapping', back_populates='capability')
+    # Value stream relationships
+    value_stream_mappings = relationship(
+        "CapabilityValueStreamMapping", back_populates="capability", lazy="dynamic"
+    )
 
     # Process relationships (commented out to avoid conflicts)
     # process_mappings = relationship('UnifiedCapabilityProcessMapping', back_populates='capability')
@@ -393,10 +395,10 @@ class CapabilityValueStreamMapping(db.Model):
     created_at = Column(db.DateTime, default=datetime.utcnow)
     updated_at = Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # Relationships (commented out to avoid conflicts)
-    # capability = relationship('UnifiedCapability')
-    # value_stream = relationship('ValueStream')
-    # value_stream_stage = relationship('ValueStreamStage')
+    # Relationships
+    capability = relationship("UnifiedCapability", back_populates="value_stream_mappings")
+    value_stream = relationship("ValueStream", back_populates="capability_mappings")
+    value_stream_stage = relationship("ValueStreamStage", back_populates="capability_mappings")
 
     def __repr__(self):
         return f"<CapabilityValueStreamMapping cap={self.capability_id} -> vs={self.value_stream_stage_id}>"
@@ -439,6 +441,9 @@ class ValueStream(db.Model):
 
     # Relationships
     stages = relationship("ValueStreamStage", backref="value_stream", lazy="dynamic")
+    capability_mappings = relationship(
+        "CapabilityValueStreamMapping", back_populates="value_stream", lazy="dynamic"
+    )
 
     def __repr__(self):
         return f"<ValueStream {self.name}>"
@@ -476,6 +481,11 @@ class ValueStreamStage(db.Model):
     # Timestamps
     created_at = Column(db.DateTime, default=datetime.utcnow)
     updated_at = Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    capability_mappings = relationship(
+        "CapabilityValueStreamMapping", back_populates="value_stream_stage", lazy="dynamic"
+    )
 
     def __repr__(self):
         return f"<ValueStreamStage {self.name}>"

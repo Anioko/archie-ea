@@ -182,6 +182,20 @@ def init_cli(app):
         app.logger.warning(f"\u26a0\ufe0f  Failed to register integration flow columns CLI: {e}")
 
     try:
+        from app.commands.reconcile_schema import init_app as init_reconcile_schema
+        init_reconcile_schema(app)
+        app.logger.info("\u2705 Schema reconcile CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"\u26a0\ufe0f  Failed to register schema reconcile CLI: {e}")
+
+    try:
+        from app.commands.backfill_architect_role import init_app as init_backfill_architect
+        init_backfill_architect(app)
+        app.logger.info("\u2705 Architect-role backfill CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"\u26a0\ufe0f  Failed to register architect-role backfill CLI: {e}")
+
+    try:
         from app.commands.seed_minimal_vendor_products import seed_minimal_vendor_products
         app.cli.add_command(seed_minimal_vendor_products)
         app.logger.info("\u2705 Minimal vendor products seed CLI command registered")
@@ -194,3 +208,11 @@ def init_cli(app):
         app.logger.info("\u2705 Codegen drift detection CLI command registered")
     except Exception as e:
         app.logger.warning(f"\u26a0\ufe0f  Failed to register codegen drift CLI: {e}")
+
+    # Motivation bridge CLI command (journey Solution* motivation -> enterprise layer)
+    try:
+        from app.commands.bridge_motivation import init_app as init_bridge_motivation
+        init_bridge_motivation(app)
+        app.logger.info("\u2705 Motivation bridge CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"\u26a0\ufe0f  Failed to register motivation bridge CLI: {e}")

@@ -112,13 +112,17 @@ def requires_application_owner(f):
 
 def requires_any_architect(f):
     """
-    Shorthand decorator for architect routes (SA or EA).
+    Shorthand decorator for architect routes (SA, EA, or BA).
     """
-    return requires_role(["solution_architect", "enterprise_architect"])(f)
+    return requires_role(
+        ["solution_architect", "enterprise_architect", "business_architect"]
+    )(f)
 
 
 def requires_governance(f):
     """
-    Shorthand decorator for governance routes (ARB, EA, CTO).
+    Shorthand decorator for governance routes (ARB, EA, BA, CTO).
     """
-    return requires_role(["arb_member", "enterprise_architect", "cto"])(f)
+    return requires_role(
+        ["arb_member", "enterprise_architect", "business_architect", "cto"]
+    )(f)

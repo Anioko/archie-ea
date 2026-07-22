@@ -72,6 +72,14 @@
                     ('package', 'Application Portfolio', 'All applications', '/applications/'),
                     ('bar-chart-2', 'Cost Analysis', 'Portfolio cost overview', '/dashboard/overview'),
                 ] %}
+            {% elif role == 'business_architect' %}
+                {% set cards = [
+                    ('map', 'Capability Map', 'Business capability landscape', '/capability-map/'),
+                    ('waypoints', 'Value Streams', 'Value streams and capability grid', '/value-streams/'),
+                    ('layout-dashboard', 'Business Model Canvas', 'Business & operating model', '/business-model/'),
+                    ('git-branch', 'Traceability Matrix', 'Strategy-to-capability traceability', '/architecture/traceability'),
+                    ('git-merge', 'Application Rationalization', 'Rationalize the application portfolio', '/applications/rationalization'),
+                ] %}
             {% else %}
                 {% set cards = [
                     ('building-2', 'Organizations', 'Manage tenant organizations', '/admin/organizations'),
@@ -104,7 +112,7 @@
             <p class="text-sm text-muted-foreground mt-0.5">Architecture health, portfolio insights, and actions needed</p>
         </div>
         <div class="flex items-center gap-1 rounded-lg border border-border bg-muted/50 p-1">
-            {% for role_key, role_label in [('overview', 'Overview'), ('cto', 'CTO'), ('cfo', 'CFO'), ('architect', 'Architect')] %}
+            {% for role_key, role_label in [('overview', 'Overview'), ('cto', 'CTO'), ('cfo', 'CFO'), ('architect', 'Architect'), ('business', 'Business')] %}
             <button @click="activeRole = '{{ role_key }}'"
                     :class="activeRole === '{{ role_key }}' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'"
                     class="px-3 py-1.5 rounded-md text-xs font-medium transition-all">
@@ -519,6 +527,10 @@
                     {% call card.card_title(class='text-lg') %}Total Cost of Ownership{% endcall %}
                 {% endcall %}
                 {% call card.card_content() %}
+                    {# Guard: persona_metrics may arrive partial (e.g. a metrics query
+                       failed) — degrade to an empty TCO table instead of 500-ing the
+                       whole Enterprise Architect landing page. #}
+                    {% set cfo = (persona_metrics or {}).get('cfo') or {} %}
                     <div class="rounded-lg border border-border bg-background overflow-hidden">
                         <table class="w-full text-sm">
                             <thead class="bg-muted/50">
@@ -528,7 +540,7 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                {% for cat, amount in (persona_metrics.cfo.tco_by_category or {}).items() %}
+                                {% for cat, amount in (cfo.get('tco_by_category') or {}).items() %}
                                 <tr class="border-t border-border">
                                     <td class="px-4 py-2 text-foreground capitalize">{{ cat }}</td>
                                     <td class="px-4 py-2 text-right text-foreground font-medium">${{ '{:,.0f}'.format(amount) }}</td>
@@ -541,9 +553,9 @@
                             </tbody>
                         </table>
                     </div>
-                    {% if persona_metrics.cfo.total_tco %}
+                    {% if cfo.get('total_tco') %}
                     <div class="mt-3 flex justify-end">
-                        <span class="text-sm font-semibold text-foreground">Total: ${{ '{:,.0f}'.format(persona_metrics.cfo.total_tco) }}</span>
+                        <span class="text-sm font-semibold text-foreground">Total: ${{ '{:,.0f}'.format(cfo.get('total_tco')) }}</span>
                     </div>
                     {% endif %}
                 {% endcall %}
@@ -671,6 +683,59 @@
                     {% else %}
                     <p class="text-sm text-muted-foreground">No ArchiMate elements linked to solutions yet.</p>
                     {% endif %}
+                {% endcall %}
+            {% endcall %}
+        </div>
+    </div>
+
+    {# ══════════════════════════════════════════════════════════════════════
+       BUSINESS TAB — Business Architect persona: capability strategy focus
+       ══════════════════════════════════════════════════════════════════════ #}
+    {% set business = (persona_metrics or {}).get('business') or {} %}
+    <div x-show="activeRole === 'business'" x-cloak>
+        <div class="space-y-6">
+            <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                {{ metrics_card(title='Business Capabilities', value=(business.total_capabilities or 0)|string, icon='layers', description='Total capabilities catalogued', href='/capability-map/', class='border-l-4 border-l-emerald-500') }}
+                {{ metrics_card(title='Avg Maturity', value=(business.avg_maturity or 0)|string ~ '%', icon='trending-up', description='Average capability maturity', href='/strategic/capability-health', class='border-l-4 border-l-sky-500') }}
+                {{ metrics_card(title='Capability Gaps', value=(business.gap_count or 0)|string, icon='alert-triangle', description='Capabilities with identified gaps', href='/strategic/capability-health', class='border-l-4 border-l-amber-500') }}
+                {{ metrics_card(title='Business Layer Elements', value=(business.business_element_count or 0)|string, icon='boxes', description='ArchiMate business-layer elements', href='/architecture/dashboard', class='border-l-4 border-l-violet-500') }}
+            </div>
+
+            {% call card.card(class='border-l-4 border-l-emerald-500') %}
+                {% call card.card_header(class='pb-3') %}
+                    {% call card.card_title(class='text-lg') %}Capability Strategy{% endcall %}
+                    {% call card.card_description() %}Capability maturity, gaps, and strategy-to-capability traceability{% endcall %}
+                {% endcall %}
+                {% call card.card_content() %}
+                    <div class="grid grid-cols-2 gap-4 mb-2">
+                        <div class="rounded-lg border border-border bg-background p-4">
+                            <p class="text-xs text-muted-foreground">Total Business Capabilities</p>
+                            <p class="text-3xl font-bold text-foreground">{{ business.total_capabilities or 0 }}</p>
+                        </div>
+                        <div class="rounded-lg border border-border bg-background p-4">
+                            <p class="text-xs text-muted-foreground">Average Maturity</p>
+                            <p class="text-3xl font-bold text-foreground">{{ business.avg_maturity or 0 }}%</p>
+                        </div>
+                        <div class="rounded-lg border border-border bg-background p-4">
+                            <p class="text-xs text-muted-foreground">Capability Gaps</p>
+                            <p class="text-3xl font-bold text-amber-600">{{ business.gap_count or 0 }}</p>
+                        </div>
+                        <div class="rounded-lg border border-border bg-background p-4">
+                            <p class="text-xs text-muted-foreground">Business-Layer Elements</p>
+                            <p class="text-3xl font-bold text-foreground">{{ business.business_element_count or 0 }}</p>
+                        </div>
+                    </div>
+                    <div class="mt-4 flex flex-wrap gap-3">
+                        <a href="/capability-map/" class="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline">
+                            Capability Map <i data-lucide="arrow-right" class="h-3 w-3"></i>
+                        </a>
+                        <a href="/architecture/traceability" class="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline">
+                            Traceability Matrix <i data-lucide="arrow-right" class="h-3 w-3"></i>
+                        </a>
+                        <a href="/applications/rationalization" class="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline">
+                            Application Rationalization <i data-lucide="arrow-right" class="h-3 w-3"></i>
+                        </a>
+                    </div>
                 {% endcall %}
             {% endcall %}
         </div>

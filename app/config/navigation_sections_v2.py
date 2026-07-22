@@ -300,13 +300,15 @@ AI_ANALYSIS_SECTION = NavigationSectionV2(
         ),
         # ✅ FIXED: Impact Analysis now has proper icon
         # ❌ OLD: endpoint=None, url_fallback="#" (broken link)
-        # ✅ NEW: Either give it endpoint or mark as disabled
+        # ✅ NEW (BA persona work): repointed to the live strategic impact-analysis
+        # dashboard (strategic_bp, /strategic/impact-analysis) — the standalone
+        # /impact-analysis route was never implemented, so this was disabled forever.
         NavigationItemV2(
             label="Impact Analysis",
             icon="git-compare",
-            endpoint=None,
-            url_fallback="/impact-analysis",  # Route not yet implemented (disabled below)
-            disabled=True,  # Mark as disabled until implemented
+            endpoint="strategic.impact_analysis",
+            url_fallback="/strategic/impact-analysis",
+            disabled=False,
             order=5,
         ),
     ],

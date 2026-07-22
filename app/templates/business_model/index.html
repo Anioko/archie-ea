@@ -1,0 +1,101 @@
+{% extends 'layouts/admin_base.html' %}
+{% from 'components/page_header.html' import page_header %}
+{% from 'components/empty_state.html' import empty_state %}
+{% from 'components/modal.html' import modal %}
+{% import 'components/card.html' as card %}
+
+{% block title %}Business Model Canvas{% endblock %}
+
+{% block content %}
+<div class="flex-1 overflow-auto">
+  {{ page_header(
+      title='Business Model Canvas',
+      description='Osterwalder/Pigneur canvases paired with a Ross/Weill operating-model archetype.',
+      breadcrumbs=[
+          {'label': 'Home', 'href': url_for('main.index')},
+          {'label': 'Business Model Canvas'}
+      ],
+      actions=[
+          {'text': 'New Canvas', 'icon': 'plus', 'onclick': "Platform.modal.open('bmc-create-modal')", 'variant': 'default'}
+      ]
+  ) }}
+
+  <div class="p-6 space-y-6">
+    {% if canvases %}
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" data-testid="bmc-canvas-grid">
+      {% for c in canvases %}
+      <a href="{{ url_for('business_model.detail', canvas_id=c.id) }}" class="block" data-testid="bmc-canvas-card-{{ c.id }}">
+        {% call card.card(class='h-full hover:border-primary/50 transition-colors') %}
+          {% call card.card_header() %}
+            {% call card.card_title(class='text-base') %}{{ c.name or 'Untitled Canvas' }}{% endcall %}
+            {% if c.description %}
+            {% call card.card_description() %}{{ c.description[:120] }}{% if c.description|length > 120 %}…{% endif %}{% endcall %}
+            {% endif %}
+          {% endcall %}
+          {% call card.card_content() %}
+            {% if c.operating_model_type %}
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30">
+              {{ c.operating_model_type | capitalize }}
+            </span>
+            {% else %}
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground border border-border">
+              No operating model set
+            </span>
+            {% endif %}
+          {% endcall %}
+          {% call card.card_footer() %}
+            <p class="text-xs text-muted-foreground">Updated {{ c.updated_at.strftime('%Y-%m-%d') if c.updated_at else '—' }}</p>
+          {% endcall %}
+        {% endcall %}
+      </a>
+      {% endfor %}
+    </div>
+    {% else %}
+    {{ empty_state(
+        icon='layout-grid',
+        title='No Business Model Canvases yet',
+        description='Create your first canvas to map value propositions, channels, and cost/revenue structure against an operating-model archetype.',
+        cta_text='New Canvas',
+        cta_onclick="Platform.modal.open('bmc-create-modal')",
+        cta_icon='plus'
+    ) }}
+    {% endif %}
+  </div>
+</div>
+
+{% call modal(id='bmc-create-modal', title='New Business Model Canvas', description='Give it a name — you can fill in the 9 blocks next.', size='default') %}
+<form method="POST" action="{{ url_for('business_model.create') }}" class="space-y-4" data-testid="bmc-create-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div>
+    <label for="bmc-name" class="block text-sm font-medium mb-1">Name <span class="text-destructive" aria-hidden="true">*</span></label>
+    <input id="bmc-name" name="name" type="text" required maxlength="256" placeholder="e.g. Core Retail Business"
+      class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+  </div>
+  <div>
+    <label for="bmc-description" class="block text-sm font-medium mb-1">Description</label>
+    <textarea id="bmc-description" name="description" rows="2" maxlength="2000" placeholder="Optional context for this canvas"
+      class="flex min-h-[64px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"></textarea>
+  </div>
+  <div>
+    <label for="bmc-operating-model" class="block text-sm font-medium mb-1">Operating Model Archetype</label>
+    <select id="bmc-operating-model" name="operating_model_type"
+      class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+      <option value="">Not set</option>
+      {% for t in operating_model_types %}
+      <option value="{{ t }}">{{ t | capitalize }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="flex justify-end gap-3 pt-2 border-t">
+    <button type="button" data-modal-close="bmc-create-modal"
+      class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 h-9 px-4 py-2">
+      Cancel
+    </button>
+    <button type="submit" data-testid="bmc-create-submit"
+      class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 py-2">
+      Create Canvas
+    </button>
+  </div>
+</form>
+{% endcall %}
+{% endblock %}

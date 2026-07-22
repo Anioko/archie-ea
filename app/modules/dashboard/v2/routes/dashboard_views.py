@@ -272,6 +272,58 @@ def overview():
         except Exception as exc:
             logger.error("ENT-017: persona_metrics computation failed: %s", exc)
 
+    # Business Architect metrics: capability count, maturity, gaps, business-layer
+    # elements. Every sub-query is independently fault-tolerant (try/except -> 0)
+    # so a missing table/column never 500s the dashboard (see
+    # docs/known-issues/schema-drift-on-existing-databases.md).
+    _ba_total_capabilities = 0
+    _ba_avg_maturity = 0
+    _ba_gap_count = 0
+    _ba_business_element_count = 0
+    try:
+        from app.models.business_capabilities import BusinessCapability as _BACap
+        _ba_total_capabilities = db.session.query(db.func.count(_BACap.id)).scalar() or 0
+    except Exception as exc:
+        logger.warning("ENT-017: business capability count unavailable: %s", exc)
+        db.session.rollback()
+    try:
+        from app.models.business_capabilities import BusinessCapability as _BACap
+        _levels = [
+            lvl for (lvl,) in db.session.query(_BACap.current_maturity_level).all()
+            if lvl is not None
+        ]
+        if _levels:
+            _ba_avg_maturity = round(sum(_levels) / len(_levels) / 5 * 100)
+    except Exception as exc:
+        logger.warning("ENT-017: business capability maturity unavailable: %s", exc)
+        db.session.rollback()
+    try:
+        from app.models.business_capabilities import BusinessCapability as _BACap
+        _ba_gap_count = (
+            db.session.query(db.func.count(_BACap.id))
+            .filter(_BACap.maturity_gap.isnot(None), _BACap.maturity_gap > 0)
+            .scalar()
+        ) or 0
+    except Exception as exc:
+        logger.warning("ENT-017: business capability gap count unavailable: %s", exc)
+        db.session.rollback()
+    try:
+        from app.models.archimate_core import ArchiMateElement as _BAElement
+        _ba_business_element_count = (
+            db.session.query(db.func.count(_BAElement.id))
+            .filter(_BAElement.layer == "business")
+            .scalar()
+        ) or 0
+    except Exception as exc:
+        logger.warning("ENT-017: business-layer element count unavailable: %s", exc)
+        db.session.rollback()
+    persona_metrics["business"] = {
+        "total_capabilities": _ba_total_capabilities,
+        "avg_maturity": _ba_avg_maturity,
+        "gap_count": _ba_gap_count,
+        "business_element_count": _ba_business_element_count,
+    }
+
     # CAP-017: Capability health heat map data
     capability_health = []
     try:
