@@ -122,9 +122,13 @@ raygun4py>=4.4.0,<5.0.0
 webassets>=2.0,<3.0.0
 jsmin>=3.0.0,<4.0.0
 
-# Fuzzy string matching (for duplicate detection)
-fuzzywuzzy>=0.18.0
-python-Levenshtein>=0.21.0  # Optional speedup for fuzzywuzzy
+# Fuzzy string matching (for duplicate detection).
+# rapidfuzz (MIT) replaces fuzzywuzzy (GPL-2.0-only) + python-Levenshtein
+# (GPL-2.0-or-later). Those two, plus their transitive Levenshtein, put GPL-2.0
+# code in the dependency tree of a product that is also offered under a
+# commercial licence — see docs/adr/0006. rapidfuzz is API-compatible for the
+# functions used and is faster.
+rapidfuzz>=3.9.0
 jellyfish>=1.0.0  # Jaro-Winkler, phonetic matching
 
 # =============================================================================

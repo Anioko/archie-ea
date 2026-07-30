@@ -18,7 +18,12 @@ import logging
 from datetime import datetime
 from typing import Dict, List, Optional
 
-from fuzzywuzzy import fuzz
+# rapidfuzz (MIT), not fuzzywuzzy (GPL-2.0-only). fuzzywuzzy and its
+# python-Levenshtein speedup are GPL-2.0, which cannot be sublicensed under
+# Archie's commercial licence — see docs/adr/0006. rapidfuzz is API-compatible
+# for the functions used here; it returns a float where fuzzywuzzy returned
+# int(round(...)), so call sites round to keep scores identical.
+from rapidfuzz import fuzz
 from sqlalchemy import and_
 
 from app.models.vendor_taxonomy import ProductTaxonomy, TaxonomyMapping, VendorTaxonomy
@@ -108,14 +113,14 @@ class VendorMDMService:
 
         for candidate in candidates:
             # Check canonical name
-            score = fuzz.ratio(raw_name.lower(), candidate.canonical_name.lower())
+            score = round(fuzz.ratio(raw_name.lower(), candidate.canonical_name.lower()))
             if score > best_score:
                 best_score = score
                 best_match = candidate
 
             # Check aliases
             for alias in candidate.aliases_list:
-                score = fuzz.ratio(raw_name.lower(), alias.lower())
+                score = round(fuzz.ratio(raw_name.lower(), alias.lower()))
                 if score > best_score:
                     best_score = score
                     best_match = candidate
@@ -187,7 +192,7 @@ class VendorMDMService:
         best_score = 0.0
 
         for candidate in candidates:
-            score = fuzz.ratio(raw_name.lower(), candidate.canonical_name.lower())
+            score = round(fuzz.ratio(raw_name.lower(), candidate.canonical_name.lower()))
             if score > best_score:
                 best_score = score
                 best_match = candidate
@@ -248,7 +253,7 @@ class VendorMDMService:
 
                 checked.add((name1, name2))
 
-                similarity = fuzz.ratio(name1.lower(), name2.lower())
+                similarity = round(fuzz.ratio(name1.lower(), name2.lower()))
                 if similarity >= (threshold * 100):
                     duplicates.append(
                         {

@@ -187,6 +187,27 @@ jobs:
           pip install -r requirements.txt
       - name: Create schema
         run: flask --app manage init-db
+      - name: Generate SBOM (CycloneDX)
+        # From the INSTALLED environment, not requirements.txt: the latter pins
+        # ranges, so a requirements-derived SBOM has no resolved versions and no
+        # licence data — useless for a security review.
+        run: |
+          pip install cyclonedx-bom
+          python -m cyclonedx_py environment -o sbom.cyclonedx.json
+          python - <<'PY'
+          import json
+          d = json.load(open("sbom.cyclonedx.json", encoding="utf-8"))
+          c = d.get("components", [])
+          print(f"SBOM: {len(c)} components, spec {d.get('specVersion')}")
+          print(f"  with version: {sum(1 for x in c if x.get('version'))}")
+          print(f"  with licence: {sum(1 for x in c if x.get('licenses'))}")
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sbom-cyclonedx
+          path: sbom.cyclonedx.json
+          if-no-files-found: warn
       - name: Schema drift gate
         # --require-db turns a missing database into a FAILURE rather than a skip,
         # so this gate cannot silently pass by not running.
