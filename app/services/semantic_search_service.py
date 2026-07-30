@@ -8,6 +8,7 @@ re-ranking and intelligent result processing.
 import asyncio  # dead-code-ok
 import json
 import logging
+import threading
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple  # dead-code-ok
 
@@ -625,3 +626,43 @@ class SemanticSearchService:
         except Exception as e:
             self.logger.error(f"Error getting search stats: {e}")
             return {}
+
+
+# ---------------------------------------------------------------------------
+# Factory
+# ---------------------------------------------------------------------------
+# SemanticSearchService requires a VectorEmbeddingService, and every caller in
+# this codebase got that wrong:
+#
+#   workspace_ai_service.py      SemanticSearchService()            -> TypeError
+#   architecture_generation.py   SemanticSearchService.semantic_search(...)
+#                                (called on the CLASS, so self was never bound)
+#
+# Both sites sit inside broad try/except blocks, so semantic search silently
+# degraded to a flat list instead of failing loudly - it had almost certainly
+# never worked. Found by SonarQube python:S930.
+#
+# Constructing it correctly is not obvious from the call site, so the dependency
+# is resolved here instead of being rediscovered by each caller. Cached for the
+# process: __init__ captures only the embedding service, a process-level vector
+# store and static re-ranking weights - no request-scoped state - and
+# _initialize_vector_store() can load a FAISS index, which is not worth
+# repeating per call.
+
+_service_lock = threading.Lock()
+_service_instance: Optional["SemanticSearchService"] = None
+
+
+def get_semantic_search_service() -> "SemanticSearchService":
+    """Return the shared SemanticSearchService, building it on first use.
+
+    Prefer this over calling SemanticSearchService(...) directly.
+    """
+    global _service_instance
+    if _service_instance is None:
+        # Double-checked under a lock: gunicorn runs gthread workers, so several
+        # threads can reach this concurrently on a cold process.
+        with _service_lock:
+            if _service_instance is None:
+                _service_instance = SemanticSearchService(VectorEmbeddingService())
+    return _service_instance

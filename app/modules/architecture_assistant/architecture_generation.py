@@ -1530,9 +1530,11 @@ class ArchitectureGenerationService:
     def _get_semantic_catalog_context(self, capability_name: str, capability_desc: str) -> str:
         """Use semantic search to find the most relevant applications for a capability."""
         try:
-            from app.services.semantic_search_service import SemanticSearchService
+            from app.services.semantic_search_service import get_semantic_search_service
             query = f"{capability_name}: {capability_desc}"
-            results = SemanticSearchService.semantic_search(
+            # Was SemanticSearchService.semantic_search(...) - called on the CLASS,
+            # so self was never bound and query landed in the self slot.
+            results = get_semantic_search_service().semantic_search(
                 query=query, domain="applications", top_k=15,
             )
             if results:
@@ -1557,9 +1559,9 @@ class ArchitectureGenerationService:
     def _get_semantic_vendor_context(self, capability_name: str, capability_desc: str) -> str:
         """Use semantic search to find the most relevant vendor products for a capability."""
         try:
-            from app.services.semantic_search_service import SemanticSearchService
+            from app.services.semantic_search_service import get_semantic_search_service
             query = f"{capability_name}: {capability_desc}"
-            results = SemanticSearchService.semantic_search(
+            results = get_semantic_search_service().semantic_search(
                 query=query, domain="vendors", top_k=10,
             )
             if results:

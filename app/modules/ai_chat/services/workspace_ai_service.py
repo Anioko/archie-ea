@@ -29,7 +29,7 @@ from app.services.ai_suggestion_service import AISuggestionService
 from app.services.archimate.document_processor import DocumentProcessor
 from app.services.llm_service import LLMService
 from app.services.motivational_element_generator import MotivationalElementGenerator
-from app.services.semantic_search_service import SemanticSearchService
+from app.services.semantic_search_service import get_semantic_search_service
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +48,7 @@ class WorkspaceAIService:
     def __init__(self):
         self.ai_suggestions = AISuggestionService()
         self.motivational_generator = MotivationalElementGenerator()
-        self.semantic_search = SemanticSearchService()
+        self.semantic_search = get_semantic_search_service()
         self.llm_service = LLMService()
         self.document_processor = DocumentProcessor(
             current_app.config.get("UPLOAD_FOLDER", "uploads")
