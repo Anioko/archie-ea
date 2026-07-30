@@ -105,9 +105,13 @@ jobs:
       # That stops the bleeding immediately without blocking every change behind
       # a large cleanup. Regenerate the baseline ONLY when deliberately accepting
       # a finding, and say why in the commit message.
+      # Not `bandit -b baseline.json`: its matching keys on file path AND line
+      # number, so a Windows-generated baseline never matches the Linux runner's
+      # "./app/..." paths, and any edit above a finding shifts its line and trips
+      # "-- Candidate Issues --". This gate fingerprints on
+      # (test_id, normalised path, source line) instead.
       - name: bandit (fail on new findings only)
-        run: |
-          bandit -r app config.py manage.py             -x "./app/static/vendor,./app/modules/solutions_product/templates,./tests"             -ll -b .bandit-baseline.json
+        run: python scripts/ci/bandit_gate.py
 
   sonarcloud:
     name: SonarCloud (advisory)
