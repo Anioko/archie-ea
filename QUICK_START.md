@@ -1,6 +1,21 @@
 # QUICK_START.md — Expert Agent Startup (5 steps)
 ## For agents that already know the codebase
 
+> ## ⚠️ OUT OF DATE — DO NOT FOLLOW IN THIS REPOSITORY
+>
+> This document describes the upstream private repository. Every file and command it
+> references is **absent from this open-source extract**: `DOMAIN.md`,
+> `DATA_REALITY.md`, `docs/design_system/pattern_registry.json`,
+> `docs/design_system/token_map.json`, and all of `scripts/guardrails/` — so the
+> claim/release task workflow in Step 5 cannot be run here. It also cites production
+> SSH access and data counts (844 applications, 720 ArchiMate elements) that describe
+> a database this repo does not ship.
+>
+> **Use [`CLAUDE.md`](CLAUDE.md) instead**, and `python scripts/verify.py` for the
+> verification steps this document gestures at. `DESIGN.md` is the live UI contract.
+>
+> Kept for historical reference only.
+
 ---
 
 This is the fast path. If you are new to this codebase, read CLAUDE.md instead.
