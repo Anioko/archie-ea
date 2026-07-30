@@ -6,12 +6,20 @@
 # Migration: Copied from app/routes/enterprise_api_routes.py -> app/modules/capabilities/routes/
 # Date: 2026-02-14 | Relative imports fixed for new location.
 #
+# CORRECTION (2026-07-30): the "DEPRECATED / fallback / do NOT modify" note above is
+# stale. app/routes/enterprise_api_routes.py no longer exists, and this file is
+# imported live by app/modules/capabilities/__init__.py — it is the only copy and it
+# serves traffic. Two real defects were fixed here on that basis (an unbound `logger`
+# used in nine except blocks, and Python accidentally embedded in the Playwright
+# template string). Treat this as live code, not a frozen fallback.
+#
 # Enterprise Entity API Routes for Unified Mapping Modal
 # Provides endpoints for fetching applications, systems, initiatives, projects
 # Used by ADM Kanban enterprise integration
 
 import csv
 import io
+import logging
 
 import requests
 from flask import Blueprint, Response, jsonify, request
@@ -27,6 +35,14 @@ from app.models.project_models import Project
 from app.models.solution_architect_models import SolutionRequirement
 from app.models.system_architecture import SystemBoundary
 from app.models.vendor.vendor_organization import EnterpriseInitiative
+
+# Module-level logger. Nine call sites in this file referenced `logger` — all inside
+# `except` blocks — but it was never bound at module scope: the only
+# `logger = logging.getLogger(__name__)` in the file was accidentally embedded in the
+# Playwright TypeScript template string below, so it was string content, not code.
+# Every one of those handlers therefore raised NameError and masked the exception it
+# was meant to report.
+logger = logging.getLogger(__name__)
 
 enterprise_api_bp = Blueprint(
     "enterprise_entity_api", __name__, url_prefix="/api/enterprise"
@@ -643,8 +659,6 @@ Then response status is 401
 // Generated from: {req_ac}
 import {{ test, expect }} from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
-import logging
-logger = logging.getLogger(__name__)
 
 test('{req_name} - WCAG 2.1 AA compliance', async ({{ page }}) => {{
   await page.goto('/relevant-page');

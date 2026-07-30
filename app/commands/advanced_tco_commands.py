@@ -15,6 +15,7 @@ Usage:
     python manage.py tco-benchmarks
 """
 
+from datetime import datetime
 import logging
 
 import click

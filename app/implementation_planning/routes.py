@@ -17,7 +17,7 @@ Complies with:
 import json  # dead-code-ok
 from datetime import datetime, timedelta  # dead-code-ok
 
-from flask import flash, jsonify, redirect, render_template, request, url_for
+from flask import current_app, flash, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 from sqlalchemy import and_, func, or_, text  # dead-code-ok
 from sqlalchemy.orm import joinedload  # dead-code-ok

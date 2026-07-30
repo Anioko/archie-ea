@@ -1,6 +1,26 @@
 #!/usr/bin/env python
 import os
 import subprocess
+import sys
+
+# Force UTF-8 on stdout/stderr before anything prints.
+#
+# Several CLI commands below print non-ASCII progress markers (check marks, warning
+# signs). On Windows the default console encoding is cp1252, which cannot encode
+# them, so `flask --app manage init-db` died mid-run with:
+#
+#     UnicodeEncodeError: 'charmap' codec can't encode character '✓'
+#
+# That aborted the documented setup path from README.md partway through — after some
+# tables were created but before the final commit. Reconfiguring here fixes the whole
+# class of failure rather than the ~30 individual call sites, and covers future ones.
+# errors="replace" guarantees output can never again crash a command.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        # Not a TextIOWrapper (redirected/wrapped stream) — nothing to reconfigure.
+        pass
 
 # Load .env file if present — allows API keys to be set without restarting
 try:

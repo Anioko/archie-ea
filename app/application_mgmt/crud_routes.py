@@ -4,6 +4,7 @@ Core CRUD Routes for Application Management
 Handles create, read (legacy redirect), update, and delete operations for ApplicationComponent.
 """
 
+from datetime import datetime
 from flask import current_app, flash, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 

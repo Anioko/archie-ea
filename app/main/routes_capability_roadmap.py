@@ -5,7 +5,7 @@ import logging
 import re
 from datetime import datetime, timedelta
 
-from flask import flash, jsonify, redirect, render_template, request, url_for
+from flask import current_app, flash, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 from sqlalchemy import func, text
 

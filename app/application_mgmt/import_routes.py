@@ -4,6 +4,7 @@ Import Routes for Application Management
 Handles application data import (CSV, Excel, JSON, manual) and import history.
 """
 
+import re
 import csv
 import io
 import json

@@ -2,7 +2,7 @@
 
 from datetime import datetime, timedelta  # dead-code-ok
 
-from flask import flash, g, jsonify, redirect, render_template, request, url_for  # dead-code-ok
+from flask import current_app, flash, g, jsonify, redirect, render_template, request, url_for  # dead-code-ok
 from flask_login import current_user, login_required
 from sqlalchemy import func, text  # dead-code-ok
 

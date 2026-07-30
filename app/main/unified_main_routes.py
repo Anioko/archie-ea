@@ -26,7 +26,7 @@ All routes maintain backward compatibility and include proper error handling.
 import logging
 from datetime import datetime
 
-from flask import flash, g, redirect, render_template, request, url_for  # dead-code-ok
+from flask import flash, g, jsonify, redirect, render_template, request, url_for  # dead-code-ok
 from flask_login import login_required
 from sqlalchemy import text
 

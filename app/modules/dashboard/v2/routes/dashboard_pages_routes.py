@@ -17,7 +17,7 @@ All 40 routes preserved exactly from v1 dashboard_pages_routes.py.
 
 import logging
 
-from flask import Blueprint, jsonify, redirect, render_template, request, url_for
+from flask import Blueprint, current_app, jsonify, redirect, render_template, request, url_for
 from flask_login import login_required
 
 from app.core.compat import mark_blueprint_guardrailed

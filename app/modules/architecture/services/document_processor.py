@@ -18,6 +18,12 @@ import uuid
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
+# Module-level logger. 34 call sites in this file referenced `logger` without it ever
+# being bound at module scope (only three functions defined their own local), so every
+# one of those raised NameError when reached — including inside except blocks, where it
+# would mask the original exception.
+logger = logging.getLogger(__name__)
+
 from app import db
 from app.models import (
     APISettings,
