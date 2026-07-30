@@ -169,11 +169,15 @@ def search_templates_advanced():
         for tag in tags:
             base_query = base_query.filter(ElementTemplate.tags.contains([tag]))
 
+    # Imported here rather than inside the `if` below: or_ is used by BOTH
+    # branches, but the import only ran in the fuzzy one, so the else branch -
+    # which is the DEFAULT, since fuzzy defaults to False - raised
+    # NameError: name 'or_' is not defined and returned a 500.
+    from sqlalchemy import func, or_  # noqa: F401  (func used by the fuzzy branch)
+
     # Fuzzy search across multiple fields
     if data.get("fuzzy", False):
         # PostgreSQL-compatible fuzzy search using similarity
-        from sqlalchemy import func, or_
-
         search_pattern = f"%{query}%"
         base_query = base_query.filter(
             or_(
