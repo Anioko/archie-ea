@@ -1,0 +1,36 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'components/page_header.html' import page_header %}
+{% block title %}Architecture Principles{% endblock %}
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+  {{ page_header(title='Architecture Principles', description='Guiding principles that steer architecture decisions') }}
+  <div id="gov-list" class="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div class="col-span-full text-center text-muted-foreground py-12">Loading&hellip;</div>
+  </div>
+</div>
+<script>
+(function(){
+  function esc(s){ var d=document.createElement('div'); d.textContent=(s==null?'':String(s)); return d.innerHTML; }
+  var el=document.getElementById('gov-list');
+  fetch('/governance/api/principles',{headers:{'Accept':'application/json'}})
+    .then(function(r){ return r.json(); })
+    .then(function(items){
+      if(!items || !items.length){
+        el.innerHTML='<div class="col-span-full rounded-xl border bg-card shadow-sm p-10 text-center text-muted-foreground">No architecture principles defined yet.</div>';
+        return;
+      }
+      el.innerHTML=items.map(function(p){
+        return '<div data-slot="card" class="rounded-xl border bg-card shadow-sm p-5">'
+          +'<div class="flex justify-between items-start mb-1"><h3 class="font-medium text-foreground leading-snug">'+esc(p.name)+'</h3>'
+          +(p.priority?'<span class="ml-2 shrink-0 inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30">'+esc(p.priority)+'</span>':'')
+          +'</div>'
+          +(p.domain?'<p class="text-xs text-muted-foreground mb-2">'+esc(p.domain)+'</p>':'')
+          +'<p class="text-sm text-muted-foreground">'+esc(p.statement||'')+'</p></div>';
+      }).join('');
+    })
+    .catch(function(){
+      el.innerHTML='<div class="col-span-full rounded-xl border bg-card shadow-sm p-10 text-center text-muted-foreground">No architecture principles defined yet.</div>';
+    });
+})();
+</script>
+{% endblock %}

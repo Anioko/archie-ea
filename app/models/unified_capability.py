@@ -35,7 +35,7 @@ from sqlalchemy.orm import relationship
 from app.models.unified_application_capability_mapping import UnifiedApplicationCapabilityMapping
 
 from .. import db
-from .mixins import OptimisticLockMixin
+from .mixins import OptimisticLockMixin, TenantMixin
 
 logger = logging.getLogger(__name__)
 
@@ -353,7 +353,7 @@ class UnifiedCapability(db.Model, OptimisticLockMixin):
         self.kpis = json.dumps(kpis_list)
 
 
-class CapabilityValueStreamMapping(db.Model):
+class CapabilityValueStreamMapping(TenantMixin, db.Model):
     """
     Capability-Value Stream Mapping
 
@@ -404,7 +404,7 @@ class CapabilityValueStreamMapping(db.Model):
         return f"<CapabilityValueStreamMapping cap={self.capability_id} -> vs={self.value_stream_stage_id}>"
 
 
-class ValueStream(db.Model):
+class ValueStream(TenantMixin, db.Model):
     """
     Value Stream Model
 
@@ -419,7 +419,10 @@ class ValueStream(db.Model):
     # Value stream identity
     name = Column(db.String(256), nullable=False, index=True)
     description = Column(db.Text)
-    code = Column(db.String(50), unique=True, index=True)  # e.g., OTC, C2M, R2R
+    # NOT globally unique: the code is only unique WITHIN an organisation, or
+    # two tenants could not both define an "OTC" value stream. See the
+    # composite constraint applied by `flask backfill-value-stream-tenancy`.
+    code = Column(db.String(50), index=True)  # e.g., OTC, C2M, R2R
 
     # Value stream classification
     value_stream_type = Column(db.String(50))  # customer_facing, internal, supporting
@@ -449,7 +452,7 @@ class ValueStream(db.Model):
         return f"<ValueStream {self.name}>"
 
 
-class ValueStreamStage(db.Model):
+class ValueStreamStage(TenantMixin, db.Model):
     """
     Value Stream Stage Model
 

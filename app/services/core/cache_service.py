@@ -62,7 +62,7 @@ class CacheService:
         key_data = {"args": args, "kwargs": sorted_kwargs}
 
         serialized = json.dumps(key_data, sort_keys=True, default=str)
-        hash_key = hashlib.md5(serialized.encode()).hexdigest()
+        hash_key = hashlib.md5(serialized.encode(), usedforsecurity=False).hexdigest()
 
         return f"{prefix}:{hash_key}"
 

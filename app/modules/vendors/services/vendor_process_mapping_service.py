@@ -727,15 +727,18 @@ class VendorProcessMappingService:
                 batch = new_mappings[i : i + batch_size]
 
                 try:
-                    # Build batch insert values
+                    # Build batch insert values. Stamp organization_id explicitly —
+                    # raw INSERT bypasses the TenantMixin before_flush auto-set, so
+                    # without this the mappings would be unowned / not org-scoped.
+                    from flask import g as _g
                     values_list = []
-                    params = {}
+                    params = {"org": getattr(_g, "current_org_id", None)}
 
                     for idx, mapping in enumerate(batch):
                         prefix = f"m{idx}_"
                         values_list.append(
                             f"""(
-                            :{prefix}product_id, :{prefix}process_id, :{prefix}support_level,
+                            :org, :{prefix}product_id, :{prefix}process_id, :{prefix}support_level,
                             :{prefix}automation_coverage, :{prefix}out_of_box_fit, :{prefix}integration_complexity,
                             :{prefix}customization_required, :{prefix}cycle_time_reduction,
                             :{prefix}cost_reduction, :{prefix}error_rate_reduction,
@@ -767,6 +770,7 @@ class VendorProcessMappingService:
                     # Execute batch insert
                     insert_sql = f"""
                         INSERT INTO vendor_process_mappings (
+                            organization_id,
                             vendor_product_id, business_process_id, support_level,
                             automation_coverage, out_of_box_fit, integration_complexity,
                             customization_required, expected_cycle_time_reduction,
@@ -809,20 +813,24 @@ class VendorProcessMappingService:
         """Analyze process coverage by vendors."""
         try:
             # Get process coverage stats
-            coverage_stats = db.session.execute(  # tenant-filtered: scoped via parent FK (vendor product joins)
+            from flask import g as _g
+            _org = getattr(_g, "current_org_id", None)
+            _jc = " AND vpm.organization_id = :org" if _org is not None else ""
+            _p = {"org": _org} if _org is not None else {}
+            coverage_stats = db.session.execute(
                 text(
-                    """
+                    f"""
                 SELECT
                     p.category_level_1,
                     COUNT(DISTINCT p.id) as total_processes,
                     COUNT(DISTINCT vpm.business_process_id) as covered_processes,
                     ROUND(COUNT(DISTINCT vpm.business_process_id) * 100.0 / COUNT(DISTINCT p.id), 2) as coverage_percentage
                 FROM apqc_process p
-                LEFT JOIN vendor_process_mappings vpm ON p.id = vpm.business_process_id
+                LEFT JOIN vendor_process_mappings vpm ON p.id = vpm.business_process_id{_jc}
                 GROUP BY p.category_level_1
                 ORDER BY coverage_percentage DESC
             """
-                )
+                ), _p
             ).fetchall()
 
             analysis = {}
@@ -844,9 +852,13 @@ class VendorProcessMappingService:
     def get_vendor_capability_analysis(self) -> Dict:
         """Analyze vendor capabilities across processes."""
         try:
-            vendor_stats = db.session.execute(  # tenant-filtered: scoped via parent FK (vendor organization joins)
+            from flask import g as _g
+            _org = getattr(_g, "current_org_id", None)
+            _wc = " WHERE vpm.organization_id = :org" if _org is not None else ""
+            _p = {"org": _org} if _org is not None else {}
+            vendor_stats = db.session.execute(
                 text(
-                    """
+                    f"""
                 SELECT
                     vo.name as vendor_name,
                     COUNT(DISTINCT vpm.business_process_id) as processes_supported,
@@ -855,11 +867,11 @@ class VendorProcessMappingService:
                     AVG(vpm.out_of_box_fit) as avg_fit
                 FROM vendor_process_mappings vpm
                 JOIN vendor_products vp ON vpm.vendor_product_id = vp.id
-                JOIN vendor_organizations vo ON vp.vendor_organization_id = vo.id
+                JOIN vendor_organizations vo ON vp.vendor_organization_id = vo.id{_wc}
                 GROUP BY vo.name
                 ORDER BY processes_supported DESC
             """
-                )
+                ), _p
             ).fetchall()
 
             analysis = {}

@@ -519,8 +519,8 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/d3-sankey@0.12.3/dist/d3-sankey.min.js"></script>
+<script src="/static/vendor/d3.min.js"></script>
+<script src="/static/vendor/d3-sankey.min.js"></script>
 <script src="{{ url_for('static', filename='js/archimate_views/traceability_sankey.js') + '?v=2' }}"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {

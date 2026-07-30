@@ -28,6 +28,11 @@ import logging
 from flask import Blueprint, jsonify, redirect, render_template, request, url_for
 from flask_login import login_required
 
+# Destructive and mutating routes were guarded by @login_required only, so any
+# authenticated user could delete another user's records. Matches the gating
+# already used by app/modules/capabilities/routes/enterprise_crud_routes.py.
+from app.decorators import require_roles
+
 from app import db
 
 from app.modules.capabilities.services import value_stream_service as vs_service
@@ -73,6 +78,7 @@ def detail(value_stream_id):
 
 @value_stream.route("/create", methods=["POST"])
 @login_required
+@require_roles("admin", "architect", "business_architect")
 def create():
     try:
         vs = vs_service.create_value_stream(request.form.to_dict())
@@ -85,6 +91,7 @@ def create():
 
 @value_stream.route("/<int:value_stream_id>/edit", methods=["POST"])
 @login_required
+@require_roles("admin", "architect", "business_architect")
 def edit(value_stream_id):
     try:
         vs = vs_service.update_value_stream(value_stream_id, request.form.to_dict())
@@ -99,6 +106,7 @@ def edit(value_stream_id):
 
 @value_stream.route("/<int:value_stream_id>/delete", methods=["POST"])
 @login_required
+@require_roles("admin")
 def delete(value_stream_id):
     try:
         vs_service.delete_value_stream(value_stream_id)
@@ -114,6 +122,7 @@ def delete(value_stream_id):
 
 @value_stream.route("/<int:value_stream_id>/stages", methods=["POST"])
 @login_required
+@require_roles("admin", "architect", "business_architect")
 def create_stage(value_stream_id):
     try:
         vs_service.create_stage(value_stream_id, request.form.to_dict())
@@ -125,6 +134,7 @@ def create_stage(value_stream_id):
 
 @value_stream.route("/stages/<int:stage_id>/edit", methods=["POST"])
 @login_required
+@require_roles("admin", "architect", "business_architect")
 def edit_stage(stage_id):
     stage = None
     try:
@@ -140,6 +150,7 @@ def edit_stage(stage_id):
 
 @value_stream.route("/stages/<int:stage_id>/delete", methods=["POST"])
 @login_required
+@require_roles("admin")
 def delete_stage(stage_id):
     value_stream_id = request.form.get("value_stream_id")
     try:
@@ -193,6 +204,7 @@ def api_unmapped_capabilities(value_stream_id):
 
 @value_stream.route("/api/mapping", methods=["POST", "PUT"])
 @login_required
+@require_roles("admin", "architect", "business_architect")
 def api_upsert_mapping():
     """
     Create or update a single BIZBOK grid cell.
@@ -251,6 +263,7 @@ def api_upsert_mapping():
 
 @value_stream.route("/api/mapping", methods=["DELETE"])
 @login_required
+@require_roles("admin")
 def api_delete_mapping():
     """Remove a BIZBOK grid cell. Same body shape as the upsert (only the three ids are required)."""
     data = request.get_json(silent=True) or {}

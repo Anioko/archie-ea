@@ -1,0 +1,50 @@
+# Global server timeouts.
+# Rationale: the backend runs gunicorn gthread, which dedicates a thread to each
+# in-flight request. On 24 Jul 2026 all 8 request threads ended up pinned by
+# connections whose data was never consumed, and the site stopped answering for
+# six days without the process ever dying. Bounding how long a client may take to
+# send its headers/body stops a slow or abandoned client from holding a thread.
+{
+	servers {
+		timeouts {
+			read_header 15s
+			read_body   120s
+			write       300s
+			idle        300s
+		}
+	}
+}
+
+165-22-125-156.sslip.io {
+	# HSTS was absent. CSP, X-Content-Type-Options, X-Frame-Options and
+	# Referrer-Policy were already present; this closes the remaining gap by
+	# stopping a browser downgrading to HTTP after its first visit.
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+
+	# Private network, not the public IP. Routing over 134.122.105.56 required the
+	# backend to publish port 5000 on 0.0.0.0, which left the app reachable from
+	# the open internet with no TLS, no timeouts and none of the headers set above
+	# (verified 2026-07-30: arbitrary scanner IPs held connections directly to it).
+	# Both droplets sit on the same DigitalOcean VPC, so this hop never leaves it.
+	reverse_proxy 10.106.0.6:5000 {
+		transport http {
+			dial_timeout            10s
+			response_header_timeout 120s
+		}
+
+		# Active health checking: if the app stops answering, fail fast with 502
+		# instead of hanging the client. Pairs with the host-side watchdog, which
+		# restarts the wedged container.
+		health_uri      /health
+		health_interval 15s
+		health_timeout  10s
+		health_status   2xx
+		# There is only ONE upstream, so marking it down means a hard 503 for
+		# everybody. With the default health_fails=1, a single slow check during a
+		# traffic burst took the whole site down (observed 2026-07-30 under a load
+		# test). Require 3 consecutive failures (~45s) before pulling it out: still
+		# far faster than the 3-minute watchdog, but immune to transient spikes.
+		health_fails    3
+		health_passes   1
+	}
+}

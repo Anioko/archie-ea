@@ -709,6 +709,64 @@ Be specific and practical. Consider real-world constraints.
             # Don't cache errors
             return error_result
 
+    def get_analysis(self, analysis_id):
+        """Return a persisted OptionsAnalysis as a plain dict, or None if absent.
+
+        Consumed by the vendor-analysis provenance route, which reads the result
+        as a mapping (analysis.get(...)).
+        """
+        from app.models.vendor_analysis import OptionsAnalysis
+
+        analysis = OptionsAnalysis.query.get(analysis_id)
+        if not analysis:
+            return None
+        return {
+            "id": analysis.id,
+            "name": analysis.name,
+            "status": analysis.status,
+            "capability_id": analysis.capability_id,
+            "analysis_type": analysis.analysis_type,
+            "created_at": analysis.created_at.isoformat() if getattr(analysis, "created_at", None) else None,
+            "created_by": (analysis.created_by.email if getattr(analysis, "created_by", None) else None),
+            "vendor_count": analysis.total_vendors_analyzed or len(analysis.vendor_options or []),
+            "recommended_vendor_id": analysis.recommended_vendor_id,
+            "recommendation_confidence": analysis.recommendation_confidence,
+        }
+
+    def get_comparison_data(self, analysis_id):
+        """Return the analysis plus its per-vendor option scores for the
+        comparison/results views. Raises ValueError if the analysis is absent.
+        """
+        from app.models.vendor_analysis import OptionsAnalysis
+
+        analysis = OptionsAnalysis.query.get(analysis_id)
+        if not analysis:
+            raise ValueError(f"Analysis {analysis_id} not found")
+        options = []
+        for opt in (analysis.vendor_options or []):
+            options.append({
+                "id": opt.id,
+                "vendor_organization_id": opt.vendor_organization_id,
+                "vendor_product_id": opt.vendor_product_id,
+                "status": opt.analysis_status,
+                "total_score": opt.total_score,
+                "cost_score": opt.cost_score,
+                "capability_coverage_score": opt.capability_coverage_score,
+                "risk_score": opt.risk_score,
+                "strategic_fit_score": opt.strategic_fit_score,
+                "implementation_score": opt.implementation_score,
+                "tco_total": float(opt.tco_total) if opt.tco_total is not None else None,
+            })
+        options.sort(key=lambda o: (o["total_score"] or 0), reverse=True)
+        return {
+            "analysis_id": analysis.id,
+            "name": analysis.name,
+            "status": analysis.status,
+            "capability_id": analysis.capability_id,
+            "recommended_vendor_id": analysis.recommended_vendor_id,
+            "options": options,
+        }
+
     def generate_course_of_action_elements(self, options_analysis: Dict) -> List[Dict]:
         """
         Convert options analysis into ArchiMate Course of Action elements

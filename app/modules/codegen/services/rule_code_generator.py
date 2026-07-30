@@ -24,7 +24,7 @@ _OPERATOR_MAP = {
 
 def _rule_hash(rule_def: Dict[str, Any]) -> str:
     raw = json.dumps(rule_def, sort_keys=True, default=str)
-    return hashlib.md5(raw.encode()).hexdigest()[:8]
+    return hashlib.md5(raw.encode(), usedforsecurity=False).hexdigest()[:8]
 
 
 def _snake(name: str) -> str:

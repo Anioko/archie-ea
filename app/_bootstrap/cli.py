@@ -189,6 +189,13 @@ def init_cli(app):
         app.logger.warning(f"\u26a0\ufe0f  Failed to register schema reconcile CLI: {e}")
 
     try:
+        from app.commands.backfill_value_stream_tenancy import init_app as init_vs_tenancy
+        init_vs_tenancy(app)
+        app.logger.info("✅ Value-stream tenancy backfill CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"⚠️  Failed to register value-stream tenancy backfill CLI: {e}")
+
+    try:
         from app.commands.backfill_architect_role import init_app as init_backfill_architect
         init_backfill_architect(app)
         app.logger.info("\u2705 Architect-role backfill CLI command registered")

@@ -12,6 +12,7 @@ Key capabilities:
 - View and viewpoint preservation
 """
 
+from app.utils import safe_xml  # untrusted XML: entity-expansion safe
 import uuid
 import xml.etree.ElementTree as ET
 from datetime import datetime
@@ -69,7 +70,7 @@ class ArchiMateExchangeService:
             Dict with import statistics and node mappings
         """
         try:
-            root = ET.fromstring(xml_content)
+            root = safe_xml.fromstring(xml_content)
         except ET.ParseError as e:
             raise ValueError(f"Invalid XML format: {e}")
 
@@ -382,7 +383,7 @@ class ArchiMateExchangeService:
     def validate_exchange_format(xml_content: str) -> Dict[str, Any]:
         """Validate ArchiMate exchange format XML."""
         try:
-            root = ET.fromstring(xml_content)
+            root = safe_xml.fromstring(xml_content)
         except ET.ParseError as e:
             return {"valid": False, "errors": [f"XML parsing error: {e}"]}
 
@@ -427,7 +428,7 @@ class ArchiMateExchangeService:
         # In production, this would do detailed structural comparison
 
         try:
-            orig_root = ET.fromstring(original_xml)
+            orig_root = safe_xml.fromstring(original_xml)
             export_root = ET.fromstring(exported_xml)
         except ET.ParseError:
             return {"score": 0.0, "errors": ["XML parsing failed"]}

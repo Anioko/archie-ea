@@ -185,6 +185,15 @@ class PageGuideService:
     def _get_live_context(self, page_key: str, scope_key: str) -> str:
         """Query live DB data to give the LLM real page context. Returns '' on any error."""
         try:
+            # Tenant scoping for these raw-SQL snapshots (they bypass the ORM
+            # filter). _oa/_ow yield an org clause only in a tenant request, so
+            # the LLM never sees another org's portfolio. _op supplies the bind.
+            from flask import g
+            _org = getattr(g, "current_org_id", None)
+            _oa = (lambda col="organization_id": f" AND {col} = :org" if _org is not None else "")
+            _ow = (lambda col="organization_id": f" WHERE {col} = :org" if _org is not None else "")
+            _op = ({"org": _org} if _org is not None else {})
+
             record_id: Optional[int] = None
             if ":" in (scope_key or ""):
                 try:
@@ -195,18 +204,18 @@ class PageGuideService:
             if page_key == "solutions.detail" and record_id:
                 row = db.session.execute(
                     text(
-                        """
+                        f"""
                         SELECT s.name, s.governance_status, s.maturity_current,
                                COUNT(DISTINCT sa.id) AS linked_apps,
                                COUNT(DISTINCT sae.id) AS archimate_elements
                         FROM solutions s
                         LEFT JOIN solution_applications sa ON sa.solution_id = s.id
                         LEFT JOIN solution_archimate_elements sae ON sae.solution_id = s.id
-                        WHERE s.id = :id
+                        WHERE s.id = :id{_oa('s.organization_id')}
                         GROUP BY s.name, s.governance_status, s.maturity_current
                         """
                     ),
-                    {"id": record_id},
+                    {"id": record_id, **_op},
                 ).fetchone()
                 if row:
                     mc = row[2]
@@ -223,7 +232,7 @@ class PageGuideService:
             elif page_key == "applications.detail" and record_id:
                 row = db.session.execute(
                     text(
-                        """
+                        f"""
                         SELECT a.name, a.lifecycle_status,
                                ars.rationalization_action, ars.overall_health_score,
                                COUNT(DISTINCT cam.business_capability_id) AS capability_count
@@ -232,12 +241,12 @@ class PageGuideService:
                             ON ars.application_component_id = a.id
                         LEFT JOIN application_capability_mapping cam
                             ON cam.application_component_id = a.id
-                        WHERE a.id = :id
+                        WHERE a.id = :id{_oa('a.organization_id')}
                         GROUP BY a.name, a.lifecycle_status,
                                  ars.rationalization_action, ars.overall_health_score
                         """
                     ),
-                    {"id": record_id},
+                    {"id": record_id, **_op},
                 ).fetchone()
                 if row:
                     score = f"{round(float(row[3]), 1)}" if row[3] is not None else "not scored"
@@ -252,16 +261,17 @@ class PageGuideService:
             elif page_key == "dashboard.overview":
                 row = db.session.execute(
                     text(
-                        """
+                        f"""
                         SELECT
-                            (SELECT COUNT(*) FROM application_components) AS total_apps,
-                            (SELECT COUNT(*) FROM solutions) AS total_solutions,
+                            (SELECT COUNT(*) FROM application_components{_ow()}) AS total_apps,
+                            (SELECT COUNT(*) FROM solutions{_ow()}) AS total_solutions,
                             (SELECT ROUND(AVG(maturity_current), 1) FROM solutions
-                             WHERE maturity_current > 0) AS avg_maturity_level,
+                             WHERE maturity_current > 0{_oa()}) AS avg_maturity_level,
                             (SELECT COUNT(*) FROM application_rationalization_scores
-                             WHERE rationalization_action = 'ELIMINATE') AS eliminate_count
+                             WHERE rationalization_action = 'ELIMINATE'{_oa()}) AS eliminate_count
                         """
-                    )
+                    ),
+                    _op,
                 ).fetchone()
                 if row:
                     avg = f"CMM {row[2]}/5" if row[2] is not None else "n/a"
@@ -276,16 +286,17 @@ class PageGuideService:
             elif page_key == "rationalization":
                 row = db.session.execute(
                     text(
-                        """
+                        f"""
                         SELECT
                             COUNT(*) FILTER (WHERE rationalization_action = 'INVEST') AS invest,
                             COUNT(*) FILTER (WHERE rationalization_action = 'TOLERATE') AS tolerate,
                             COUNT(*) FILTER (WHERE rationalization_action = 'ELIMINATE') AS eliminate,
                             COUNT(*) FILTER (WHERE rationalization_action = 'MIGRATE') AS migrate,
                             COUNT(*) AS total
-                        FROM application_rationalization_scores
+                        FROM application_rationalization_scores{_ow()}
                         """
-                    )
+                    ),
+                    _op,
                 ).fetchone()
                 if row and row[4]:
                     return (
@@ -297,16 +308,17 @@ class PageGuideService:
             elif page_key == "solutions.list":
                 row = db.session.execute(
                     text(
-                        """
+                        f"""
                         SELECT
                             COUNT(*) AS total,
                             COUNT(*) FILTER (WHERE governance_status = 'approved') AS approved,
                             COUNT(*) FILTER (WHERE governance_status = 'pending_review') AS pending,
                             COUNT(*) FILTER (WHERE governance_status = 'draft' OR governance_status IS NULL) AS draft,
                             ROUND(AVG(maturity_current) FILTER (WHERE maturity_current > 0), 1) AS avg_maturity
-                        FROM solutions
+                        FROM solutions{_ow()}
                         """
-                    )
+                    ),
+                    _op,
                 ).fetchone()
                 if row and row[0]:
                     avg = f"CMM {row[4]}/5" if row[4] is not None else "n/a"
@@ -320,15 +332,16 @@ class PageGuideService:
             elif page_key == "applications.list":
                 row = db.session.execute(
                     text(
-                        """
+                        f"""
                         SELECT
                             COUNT(*) AS total,
                             COUNT(*) FILTER (WHERE lifecycle_status ILIKE '%strategic%' OR lifecycle_status ILIKE '%invest%') AS strategic,
                             COUNT(*) FILTER (WHERE lifecycle_status ILIKE '%decommission%' OR lifecycle_status ILIKE '%eliminat%') AS decommission,
                             COUNT(*) FILTER (WHERE lifecycle_status IS NULL OR lifecycle_status = '') AS unknown
-                        FROM application_components
+                        FROM application_components{_ow()}
                         """
-                    )
+                    ),
+                    _op,
                 ).fetchone()
                 if row and row[0]:
                     return (
@@ -342,20 +355,21 @@ class PageGuideService:
             elif page_key == "capability_map":
                 row = db.session.execute(
                     text(
-                        """
+                        f"""
                         SELECT
                             COUNT(*) AS total,
                             COUNT(*) FILTER (WHERE id NOT IN (
                                 SELECT DISTINCT business_capability_id
-                                FROM application_capability_mapping
+                                FROM application_capability_mapping{_ow()}
                             )) AS uncovered,
                             COUNT(*) FILTER (WHERE id IN (
                                 SELECT DISTINCT business_capability_id
-                                FROM application_capability_mapping
+                                FROM application_capability_mapping{_ow()}
                             )) AS covered
-                        FROM business_capability
+                        FROM business_capability{_ow()}
                         """
-                    )
+                    ),
+                    _op,
                 ).fetchone()
                 if row and row[0]:
                     pct = round(row[2] / row[0] * 100, 1) if row[0] else 0

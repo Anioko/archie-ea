@@ -8,6 +8,7 @@ Duplicate detection is by (name, element_type) case-insensitive match
 against the ``archimate_elements`` table.
 """
 
+from app.utils import safe_xml  # untrusted XML: entity-expansion safe
 import logging
 import xml.etree.ElementTree as ET
 from typing import Any, Dict, List
@@ -138,7 +139,7 @@ class ArchiMateImportService:
             raise ValueError("Empty XML content")
 
         try:
-            root = ET.fromstring(xml_content)
+            root = safe_xml.fromstring(xml_content)
         except ET.ParseError as exc:
             raise ValueError(f"Malformed XML: {exc}") from exc
 

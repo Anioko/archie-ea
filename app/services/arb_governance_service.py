@@ -210,6 +210,10 @@ class ARBGovernanceService:
         business_impact: str = "medium",
         estimated_effort: str = "medium",
         capability_ids: List[int] = None,
+        decision_sought: str = None,
+        alternatives_considered: str = None,
+        application_ids: List[int] = None,
+        capability_impacts: List[Dict[str, Any]] = None,
     ) -> ARBReviewItem:
         """
         Submit an item for ARB review.
@@ -261,19 +265,47 @@ class ARBGovernanceService:
             status="draft",
         )
 
+        # Store submission context (decision sought, alternatives considered,
+        # affected applications, and the structured per-capability impacts) on the
+        # capability_impacts JSON column, which the review detail view reads back as
+        # a mapping. The route already validates decision_sought as required.
+        submission_context = {}
+        if decision_sought:
+            submission_context["decision_sought"] = decision_sought
+        if alternatives_considered:
+            submission_context["alternatives_considered"] = alternatives_considered
+        if application_ids:
+            submission_context["application_ids"] = [int(a) for a in application_ids]
+        if capability_impacts:
+            submission_context["impacts"] = capability_impacts
+        if submission_context:
+            item.capability_impacts = submission_context
+
         db.session.add(item)
         db.session.flush()  # Get ID for capability links
 
-        # Link capabilities
-        if capability_ids:
-            for cap_id in capability_ids:
-                impact = ARBCapabilityImpact(
+        # Link capabilities — prefer the structured impacts (with per-capability
+        # impact_type/impact_level), fall back to the legacy flat capability_ids.
+        capability_links = []
+        if capability_impacts:
+            for imp in capability_impacts:
+                cap_id = imp.get("capability_id")
+                if cap_id:
+                    capability_links.append(
+                        (int(cap_id), imp.get("impact_type") or "modifies", imp.get("impact_level") or "medium")
+                    )
+        elif capability_ids:
+            capability_links = [(cap_id, "modifies", "medium") for cap_id in capability_ids]
+
+        for cap_id, impact_type, impact_level in capability_links:
+            db.session.add(
+                ARBCapabilityImpact(
                     review_item_id=item.id,
                     capability_id=cap_id,
-                    impact_type="modifies",
-                    impact_level="medium",
+                    impact_type=impact_type,
+                    impact_level=impact_level,
                 )
-                db.session.add(impact)
+            )
 
         # Initialize governance checklist based on review type
         item.governance_checklist = self._get_governance_checklist(review_type, togaf_phase)
@@ -750,7 +782,6 @@ class ARBGovernanceService:
         """Get governance standards applicable to a review type."""
         query = ARBGovernanceStandard.query.filter(
             ARBGovernanceStandard.status == "active",
-            ARBGovernanceStandard.applies_to_review_types.contains([review_type]),
         )
 
         if togaf_phase:
@@ -761,7 +792,16 @@ class ARBGovernanceService:
                 )
             )
 
-        return query.all()
+        # applies_to_review_types is a db.JSON column holding a list. SQLAlchemy's
+        # .contains() compiles to a SQL LIKE, which Postgres rejects on the json
+        # type ("operator does not exist: json ~~ text"). This is a small config
+        # table, so filter membership in Python — DB-agnostic and correct.
+        return [
+            s
+            for s in query.all()
+            if isinstance(s.applies_to_review_types, (list, tuple))
+            and review_type in s.applies_to_review_types
+        ]
 
     def _determine_priority_from_solution(self, solution) -> str:
         """Determine review priority from solution characteristics."""

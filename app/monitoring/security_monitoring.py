@@ -180,7 +180,7 @@ class SecurityMonitoringService:
         """Generate unique event ID."""
         timestamp = str(int(datetime.utcnow().timestamp()))
         data = f"{timestamp}_{threading.get_ident()}"
-        return hashlib.md5(data.encode()).hexdigest()[:16]
+        return hashlib.md5(data.encode(), usedforsecurity=False).hexdigest()[:16]
     
     def _check_security_rules(self, event: SecurityEvent):
         """Check security rules against the event."""

@@ -28,7 +28,7 @@ async function loadQuickAccessItems(type, limit) {
   const container = document.getElementById(containerId);
 
   if (!container) {
-    console.warn(`[Sidebar] Container #${containerId} not found, skipping async load`);
+    console.debug(`[Sidebar] Container #${containerId} not found, skipping async load`);
     return;
   }
 

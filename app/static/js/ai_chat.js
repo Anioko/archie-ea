@@ -118,10 +118,13 @@ let promptTemplates = window.promptTemplates || [];
 let personaConfig = window.personaConfig || {};
 let currentDomain = sessionStorage.getItem('ai_chat_domain') || 'general';
 let currentPersona = sessionStorage.getItem('ai_chat_persona') || 'enterprise_architect';
+let lastUserMessage = '';
+let isRegenerating = false;
 let chatHistory = [];
 let contextElement = null;
 let isSending = false;
 let hasConversationStarted = false;
+let currentThreadId = null; // conversation this chat belongs to (persisted history rail)
 let _activeAbortController = null;
 let _activeAbortTimer = null; // auto-abort on timeout
 
@@ -1477,6 +1480,8 @@ function appendMessage(role, text, metadata) {
             '<i data-lucide="thumbs-up" class="h-3 w-3"></i></button>' +
             '<button class="js-feedback-down inline-flex h-6 px-2 items-center justify-center rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors text-xs gap-1" title="Not helpful" aria-label="Not helpful">' +
             '<i data-lucide="thumbs-down" class="h-3 w-3"></i></button>' +
+            '<button class="js-regen-msg inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors" title="Regenerate response" aria-label="Regenerate response">' +
+            '<i data-lucide="refresh-cw" class="h-3 w-3"></i></button>' +
             '</div>';
 
         bubble = '<div class="rounded-xl bg-muted/50 p-4 text-sm prose dark:prose-invert max-w-3xl group">' +
@@ -1503,6 +1508,14 @@ function appendMessage(role, text, metadata) {
     let downBtn = div.querySelector('.js-feedback-down');
     if (upBtn) upBtn.addEventListener('click', function() { submitFeedback('up', feedbackDomain, feedbackPersona, text, this, downBtn); });
     if (downBtn) downBtn.addEventListener('click', function() { submitFeedback('down', feedbackDomain, feedbackPersona, text, this, upBtn); });
+    let regenBtn = div.querySelector('.js-regen-msg');
+    if (regenBtn) regenBtn.addEventListener('click', function() {
+        if (lastUserMessage && !isSending) {
+            isRegenerating = true;
+            userInput.value = lastUserMessage;
+            if (chatForm.requestSubmit) { chatForm.requestSubmit(); } else { chatForm.dispatchEvent(new Event('submit', { cancelable: true })); }
+        }
+    });
     messagesContainer.appendChild(div);
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
     lucide.createIcons();
@@ -1675,8 +1688,12 @@ chatForm.addEventListener('submit', async function(e) {
     _clearAttachedImage(); // ENT-085: clear attached image after sending
 
     let timestamp = new Date().toISOString();
-    chatHistory.push({ role: 'user', content: message, timestamp: timestamp });
-    appendMessage('user', message);
+    lastUserMessage = message;
+    if (!isRegenerating) {
+        chatHistory.push({ role: 'user', content: message, timestamp: timestamp });
+        appendMessage('user', message);
+    }
+    isRegenerating = false;
 
     if (message.startsWith('/')) {
         let handled = await handleChatCommand(message);
@@ -1901,7 +1918,8 @@ async function sendMessageStreaming(message, loadingId, startTime) {
         element_id: selectedElementIdInput.value ? parseInt(selectedElementIdInput.value) : null,
         context_type: contextElement ? contextElement.type : null,
         persona: currentPersona || null,
-        model: modelSelector ? modelSelector.value : null
+        model: modelSelector ? modelSelector.value : null,
+        thread_id: currentThreadId
     };
     // ENT-085: attach image data for vision analysis
     if (_attachedImageData) {
@@ -1964,6 +1982,9 @@ async function sendMessageStreaming(message, loadingId, startTime) {
                 if (data === '[DONE]') continue;
                 try {
                     let parsed = JSON.parse(data);
+                    // Capture the conversation id so the next turn appends to
+                    // the same thread and the history rail can refresh.
+                    if (parsed.thread_id) { _rememberThread(parsed.thread_id); }
                     if (parsed.action === 'redirect' && parsed.url) {
                         // AIF-003: create_solution intent — redirect to solution detail
                         streamDiv.remove();
@@ -2033,7 +2054,8 @@ async function sendMessageFallback(message, loadingId, startTime) {
         element_id: selectedElementIdInput.value ? parseInt(selectedElementIdInput.value) : null,
         context_type: contextElement ? contextElement.type : null,
         persona: currentPersona || null,
-        model: modelSelector ? modelSelector.value : null
+        model: modelSelector ? modelSelector.value : null,
+        thread_id: currentThreadId
     };
     // ENT-085: attach image data for vision analysis
     if (_attachedImageData) {
@@ -2055,6 +2077,7 @@ async function sendMessageFallback(message, loadingId, startTime) {
         throw new Error('Server returned an unexpected response (HTTP ' + response.status + '). Please try again.');
     }
     let data = await response.json();
+    if (data.thread_id) { _rememberThread(data.thread_id); }
     let processingTime = Math.round(performance.now() - startTime);
     removeLoadingMessage(loadingId);
     if (data.error) {
@@ -2134,70 +2157,126 @@ function switchSidebarTab(tab) {
     lucide.createIcons();
 }
 
-// AIC-110: Session history loading
+// Conversation history rail — backed by persisted threads (survives reload).
+// Remember which thread the live chat belongs to; refresh the rail when a
+// brand-new conversation is created so it shows up immediately.
+function _rememberThread(tid) {
+    if (!tid) return;
+    let isNew = tid !== currentThreadId;
+    currentThreadId = tid;
+    if (isNew) { loadSessionList().catch(function(){}); }
+}
+
 async function loadSessionList() {
     let container = document.getElementById('session-list');
     if (!container) return;
     safeHTML(container, '<div class="text-center py-4"><i data-lucide="loader-2" class="h-5 w-5 animate-spin mx-auto"></i></div>');
     lucide.createIcons();
     try {
-        let resp = await fetch('/ai-chat/sessions', { headers: csrfHeaders() });
+        let resp = await fetch('/ai-chat/threads', { headers: csrfHeaders() });
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         let data = await resp.json();
-        let sessions = data.sessions || [];
-        if (sessions.length === 0) {
-            safeHTML(container, '<p class="text-xs text-muted-foreground text-center py-8">No saved sessions yet. Sessions auto-save every 5 messages.</p>');
+        let threads = data.threads || [];
+        if (threads.length === 0) {
+            safeHTML(container, '<p class="text-xs text-muted-foreground text-center py-8">No conversations yet. Ask anything below — chats are saved here automatically.</p>');
             return;
         }
         let html = '';
-        sessions.forEach(function(s) {
-            let name = s.name || s.session_name || 'Untitled session';
-            let date = s.created_at || s.timestamp || '';
+        threads.forEach(function(t) {
+            let id = t.id || '';
+            let name = t.title || 'New chat';
+            let date = t.updated_at || t.created_at || '';
             if (date) { try { date = new Date(date).toLocaleDateString(); } catch(e) {} }
-            let msgCount = (s.messages || s.history || []).length;
-            html += '<button onclick="loadSession(\'' + (s.session_id || s.id || '') + '\')" class="w-full text-left p-3 rounded-lg border border-border hover:bg-accent/50 transition-colors">'
+            let count = t.message_count || 0;
+            let active = (id === currentThreadId) ? ' bg-accent' : '';
+            html += '<div class="js-thread-item group relative flex items-center rounded-lg border border-border hover:bg-accent/50 transition-colors' + active + '" data-thread-id="' + DOMPurify.sanitize(id) + '">'
+                  + '<button type="button" class="js-thread-open flex-1 text-left p-3 min-w-0">'
                   + '<div class="font-medium text-xs truncate">' + DOMPurify.sanitize(name) + '</div>'
-                  + '<div class="text-[10px] text-muted-foreground mt-1">' + DOMPurify.sanitize(date) + (msgCount ? ' · ' + msgCount + ' messages' : '') + '</div>'
-                  + '</button>';
+                  + '<div class="text-[10px] text-muted-foreground mt-1">' + DOMPurify.sanitize(String(date)) + (count ? ' · ' + count + ' messages' : '') + '</div>'
+                  + '</button>'
+                  + '<button type="button" class="js-thread-del opacity-0 group-hover:opacity-100 shrink-0 p-2 text-muted-foreground hover:text-destructive" title="Delete conversation" aria-label="Delete conversation"><i data-lucide="trash-2" class="h-3.5 w-3.5"></i></button>'
+                  + '</div>';
         });
         safeHTML(container, html);
+        container.querySelectorAll('.js-thread-item').forEach(function(row) {
+            let id = row.getAttribute('data-thread-id');
+            let openBtn = row.querySelector('.js-thread-open');
+            if (openBtn) openBtn.addEventListener('click', function() { loadSession(id); });
+            let delBtn = row.querySelector('.js-thread-del');
+            if (delBtn) delBtn.addEventListener('click', function(e) { e.stopPropagation(); deleteConversation(id); });
+        });
     } catch (err) {
-        safeHTML(container, '<p class="text-xs text-destructive text-center py-4">Failed to load sessions: ' + DOMPurify.sanitize(err.message) + '</p>');
+        safeHTML(container, '<p class="text-xs text-destructive text-center py-4">Failed to load conversations: ' + DOMPurify.sanitize(err.message) + '</p>');
     }
     lucide.createIcons();
 }
 
-async function loadSession(sessionId) {
-    if (!sessionId) return;
+async function loadSession(threadId) {
+    if (!threadId) return;
     try {
-        let resp = await fetch(`/ai-chat/session/${encodeURIComponent(sessionId)}`, { headers: csrfHeaders() });
+        let resp = await fetch('/ai-chat/threads/' + encodeURIComponent(threadId), { headers: csrfHeaders() });
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         let data = await resp.json();
-        if (data.success === false) { appendSystemMessage('Could not load session: ' + (data.error || 'Unknown error'), 'warning'); return; }
-        // Restore chat history
-        let messages = data.messages || data.history || [];
-        if (messages.length === 0) { appendSystemMessage('Session is empty', 'info'); return; }
-        chatHistory = messages;
+        if (data.success === false) { appendSystemMessage('Could not load conversation: ' + (data.error || 'Unknown error'), 'warning'); return; }
+        let messages = data.messages || [];
+        currentThreadId = threadId;
+        chatHistory = [];
         hasConversationStarted = true;
-        // Re-render all messages
-        let messagesContainer = document.getElementById('chat-messages');
+        _hideChatWelcome();
         if (messagesContainer) safeHTML(messagesContainer, '');
         messages.forEach(function(msg) {
             let role = msg.role || 'user';
             let content = msg.content || msg.text || '';
+            chatHistory.push({ role: (role === 'assistant' ? 'ai' : role), content: content, timestamp: msg.created_at });
             if (role === 'ai' || role === 'assistant') {
-                appendMessage('ai', content, { domain: msg.domain || currentDomain });
-            } else {
+                appendMessage('ai', content, { domain: currentDomain });
+            } else if (role === 'user') {
                 appendMessage('user', content);
             }
         });
-        appendSystemMessage('Session restored (' + messages.length + ' messages)', 'info');
-        // Switch back to chat
-        switchSidebarTab('context');
+        loadSessionList().catch(function(){});  // reflect active selection
+        if (typeof switchSidebarTab === 'function') switchSidebarTab('context');
+        if (messagesContainer) messagesContainer.scrollTop = messagesContainer.scrollHeight;
     } catch (err) {
-        appendSystemMessage('Failed to load session: ' + err.message, 'warning');
+        appendSystemMessage('Failed to load conversation: ' + err.message, 'warning');
     }
 }
+
+async function deleteConversation(threadId) {
+    if (!threadId) return;
+    try {
+        let resp = await fetch('/ai-chat/threads/' + encodeURIComponent(threadId), { method: 'DELETE', headers: csrfHeaders() });
+        let data = await resp.json().catch(function(){ return {}; });
+        if (!resp.ok || data.success === false) throw new Error(data.error || ('HTTP ' + resp.status));
+        if (threadId === currentThreadId) { startNewConversation(); }
+        else { loadSessionList().catch(function(){}); }
+    } catch (err) {
+        appendSystemMessage('Could not delete conversation: ' + err.message, 'warning');
+    }
+}
+
+// Start a fresh conversation (like ChatGPT's "New chat"). Delegates to the
+// canonical reset which re-renders the welcome screen and clears state.
+function startNewConversation() {
+    if (typeof startNewChat === 'function') { startNewChat(); return; }
+    currentThreadId = null;
+    chatHistory = [];
+    hasConversationStarted = false;
+    if (messagesContainer) safeHTML(messagesContainer, '');
+    loadSessionList().catch(function(){});
+}
+
+// The welcome/empty-state grid lives inside the message list and is wiped when
+// the list is cleared; loadSession re-renders messages over it. This helper is
+// belt-and-suspenders for hiding it if a variant keeps it separate.
+function _hideChatWelcome() {
+    let w = document.getElementById('domain-welcome-grid');
+    if (w) w.classList.add('hidden');
+}
+
+window.startNewConversation = startNewConversation;
+window.loadSession = loadSession;
+window.deleteConversation = deleteConversation;
 
 // ==========================================================================
 // Natural Language Query Functions
@@ -2401,11 +2480,13 @@ function startNewChat() {
     chatHistory = [];
     hasConversationStarted = false;
     contextElement = null;
+    currentThreadId = null;  // next turn starts a fresh persisted conversation
     selectedElementIdInput.value = '';
     try {
         fetch('/ai-chat/history/clear', { method: 'POST', headers: csrfHeaders() });
     } catch (e) { /* ignore */ }
     renderWelcomeScreen();
+    loadSessionList().catch(function(){});  // de-select the previous conversation in the rail
     appendSystemMessage('New conversation started', 'info');
 }
 
@@ -3150,3 +3231,16 @@ function injectVendorApplyButtons(containerEl, solutionId) {
     });
 }
 window.injectVendorApplyButtons = injectVendorApplyButtons;
+
+// ==========================================================================
+// Auto-load the persisted conversation rail so past chats are visible on open
+// (no need to click "Refresh"). Safe whether the History panel is shown or not.
+// ==========================================================================
+(function _initConversationRail() {
+    function boot() { try { loadSessionList(); } catch (e) { /* rail is best-effort */ } }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', boot);
+    } else {
+        boot();
+    }
+})();

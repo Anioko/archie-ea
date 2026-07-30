@@ -384,11 +384,16 @@ class ProductionConfig(Config):
     JIRA_AUTO_PUSH = os.environ.get("JIRA_AUTO_PUSH", "false").lower() == "true"
 
     # PostgreSQL connection options (optimized for production)
+    # Sized per-process, not per-deployment: preload_app=True plus the
+    # post_fork db.engine.dispose() hook means every gunicorn worker and the
+    # RQ worker gets its own full pool. The hardcoded 20+30 let 2 workers +
+    # RQ worker demand 150 connections against max_connections=100. Env-
+    # overridable so the pool can track GUNICORN_THREADS without a code change.
     SQLALCHEMY_ENGINE_OPTIONS = {
         "pool_pre_ping": True,
         "pool_recycle": 300,
-        "pool_size": 20,
-        "max_overflow": 30,
+        "pool_size": int(os.environ.get("SQLALCHEMY_POOL_SIZE", 20)),
+        "max_overflow": int(os.environ.get("SQLALCHEMY_MAX_OVERFLOW", 30)),
         "pool_timeout": 30,
         "connect_args": {
             "client_encoding": "utf8",

@@ -1,8 +1,21 @@
 """RAG service for Architecture Assistant — retrieves organizational context."""
 import logging
+
+from flask import g
+
 from app import db
 
 logger = logging.getLogger(__name__)
+
+
+def _org_filter(prefix=""):
+    """(' AND <prefix>organization_id = :org', {'org': id}) in a tenant request,
+    else ('', {}). Keeps these LLM-context raw queries scoped to one org while
+    staying a no-op for system/CLI callers (mirrors the ORM tenant filter)."""
+    org = getattr(g, "current_org_id", None)
+    if org is None:
+        return "", {}
+    return f" AND {prefix}organization_id = :org", {"org": org}
 
 
 class ArchitectureRAGService:
@@ -21,10 +34,11 @@ class ArchitectureRAGService:
     def _get_principles(self, domain):
         """Retrieve architecture principles from ArchiMate Principle elements."""
         try:
+            _oc, _op = _org_filter()
             q = ("SELECT name, description FROM archimate_elements "
-                 "WHERE type = 'Principle' AND (description IS NOT NULL) "
-                 "ORDER BY name LIMIT 20")
-            rows = db.session.execute(db.text(q)).fetchall()
+                 "WHERE type = 'Principle' AND (description IS NOT NULL)"
+                 + _oc + " ORDER BY name LIMIT 20")
+            rows = db.session.execute(db.text(q), _op).fetchall()
             return [{"name": r[0], "description": r[1]} for r in rows]
         except Exception as e:
             logger.warning("RAG principles query failed: %s", e)
@@ -37,7 +51,8 @@ class ArchitectureRAGService:
                 "SELECT s.name, s.governance_status, s.business_domain, s.description "
                 "FROM solutions s WHERE s.governance_status IN ('approved', 'arb_approved') "
             )
-            params = {}
+            _oc, params = _org_filter(prefix="s.")
+            q += _oc + " "
             if domain:
                 q += "AND s.business_domain = :domain "
                 params["domain"] = domain
@@ -51,10 +66,11 @@ class ArchitectureRAGService:
     def _get_reference_architectures(self, domain):
         """Retrieve reference architecture patterns."""
         try:
+            _oc, _op = _org_filter()
             q = ("SELECT name, description, pattern_type FROM solution_patterns "
-                 "WHERE approval_status = 'approved' ")
+                 "WHERE approval_status = 'approved'" + _oc + " ")
             q += "ORDER BY name LIMIT 10"
-            rows = db.session.execute(db.text(q)).fetchall()
+            rows = db.session.execute(db.text(q), _op).fetchall()
             return [{"name": r[0], "description": r[1], "type": r[2]} for r in rows]
         except Exception as e:
             logger.warning("RAG reference architectures query failed: %s", e)
@@ -64,7 +80,8 @@ class ArchitectureRAGService:
         """Retrieve existing solution patterns for the domain."""
         try:
             q = "SELECT name, description, solution_type FROM solutions WHERE status = 'deployed'"
-            params = {}
+            _oc, params = _org_filter()
+            q += _oc
             if domain:
                 q += " AND business_domain = :domain"
                 params["domain"] = domain

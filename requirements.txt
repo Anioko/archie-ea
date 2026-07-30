@@ -209,3 +209,4 @@ stripe>=9.0.0
 
 # COM-013: PostHog product analytics — no existing analytics library in codebase
 posthog>=3.0.0
+defusedxml>=0.7.1                 # untrusted XML (ArchiMate uploads, SAML) - blocks entity expansion

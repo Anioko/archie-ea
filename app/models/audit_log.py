@@ -87,6 +87,70 @@ class AuditLog(db.Model):
         }
 
     # ------------------------------------------------------------------ #
+    #  Backward-compat display aliases. The admin audit-log view + CSV    #
+    #  export were written against an older schema (timestamp/user_email/ #
+    #  entity_*/description/status/old_values/new_values). Expose those   #
+    #  names as read-only properties over the real columns so the view    #
+    #  renders instead of blowing up on missing attributes. SQL-level     #
+    #  filters must still use the real column names.                      #
+    # ------------------------------------------------------------------ #
+    @property
+    def timestamp(self):
+        return self.created_at
+
+    @property
+    def entity_type(self):
+        return self.table_name
+
+    @property
+    def entity_id(self):
+        return self.record_id
+
+    @property
+    def old_values(self):
+        return self.old_value
+
+    @property
+    def new_values(self):
+        return self.new_value
+
+    @property
+    def user_email(self):
+        # No email column on AuditLog; resolve for display, best-effort.
+        if not self.user_id:
+            return ""
+        try:
+            from app.models.user import User
+
+            u = User.query.get(self.user_id)
+            return u.email if u and getattr(u, "email", None) else str(self.user_id)
+        except Exception:
+            return str(self.user_id)
+
+    @property
+    def entity_name(self):
+        return ""  # not tracked in this schema
+
+    @property
+    def description(self):
+        if not self.action:
+            return ""
+        _rec = f"#{self.record_id}" if self.record_id else ""
+        return f"{self.action} {self.table_name or ''}{_rec}".strip()
+
+    @property
+    def status(self):
+        return ""  # not tracked
+
+    @property
+    def request_id(self):
+        return None
+
+    @property
+    def error_message(self):
+        return None
+
+    # ------------------------------------------------------------------ #
     #  Class-level helpers — INSERT ONLY, no update/delete methods.       #
     # ------------------------------------------------------------------ #
 

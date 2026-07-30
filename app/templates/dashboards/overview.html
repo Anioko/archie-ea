@@ -15,15 +15,8 @@
 </script>
 {% endblock %}
 
-{% from 'components/inline_hint.html' import inline_hint %}
-{% block page_hint %}
-{{ inline_hint(
-    hint_id='dashboard_overview',
-    text='Your architecture health at a glance — live counts for apps, solutions, capabilities, and ArchiMate elements.',
-    action_text='View health scorecard',
-    action_href='/dashboard/health'
-) }}
-{% endblock %}
+{# page_hint removed — the "Start here" welcome card below covers first-run
+   guidance; the blue hint was redundant with it. #}
 
 {% block breadcrumb %}
 {% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
@@ -35,6 +28,45 @@
 
 {% block content %}
 <div class="space-y-6" x-data="{ activeRole: 'overview' }">
+
+    {# ── Start here — first-run guidance (dismissible, client-side) ─────── #}
+    <div x-data="{ show: !(typeof localStorage !== 'undefined' && localStorage.getItem('archie_starthere_dismissed') === '1') }"
+         x-show="show"
+         class="relative overflow-hidden rounded-xl border border-primary/20 bg-gradient-to-br from-primary/5 to-transparent p-5">
+        <button type="button"
+                @click="show = false; try { localStorage.setItem('archie_starthere_dismissed','1'); } catch (e) {}"
+                class="absolute top-3 right-3 text-muted-foreground hover:text-foreground transition-colors"
+                aria-label="Dismiss getting-started guide">
+            <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
+        </button>
+        <div class="flex items-start gap-3">
+            <div class="shrink-0 w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                <i data-lucide="rocket" class="h-5 w-5 text-primary" aria-hidden="true"></i>
+            </div>
+            <div class="min-w-0 pr-6">
+                <h2 class="text-base font-semibold text-foreground">Welcome to A.R.C.H.I.E. — start here</h2>
+                <p class="text-sm text-muted-foreground mt-0.5">A few quick ways to get value in your first few minutes. Dismiss anytime.</p>
+            </div>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-4">
+            <a href="/ai-chat" class="group flex items-start gap-3 rounded-lg border border-border bg-card p-3 hover:border-primary/40 transition-colors">
+                <span class="shrink-0 w-8 h-8 rounded-md bg-primary/10 flex items-center justify-center text-primary"><i data-lucide="sparkles" class="h-4 w-4" aria-hidden="true"></i></span>
+                <span class="min-w-0"><span class="block text-sm font-medium text-foreground group-hover:text-primary transition-colors">Ask the AI architect</span><span class="block text-xs text-muted-foreground mt-0.5">Chat about your architecture — no setup needed.</span></span>
+            </a>
+            <a href="/capability-map/" class="group flex items-start gap-3 rounded-lg border border-border bg-card p-3 hover:border-primary/40 transition-colors">
+                <span class="shrink-0 w-8 h-8 rounded-md bg-primary/10 flex items-center justify-center text-primary"><i data-lucide="map" class="h-4 w-4" aria-hidden="true"></i></span>
+                <span class="min-w-0"><span class="block text-sm font-medium text-foreground group-hover:text-primary transition-colors">Explore the capability map</span><span class="block text-xs text-muted-foreground mt-0.5">See the business capability landscape.</span></span>
+            </a>
+            <a href="/solutions/" class="group flex items-start gap-3 rounded-lg border border-border bg-card p-3 hover:border-primary/40 transition-colors">
+                <span class="shrink-0 w-8 h-8 rounded-md bg-primary/10 flex items-center justify-center text-primary"><i data-lucide="wrench" class="h-4 w-4" aria-hidden="true"></i></span>
+                <span class="min-w-0"><span class="block text-sm font-medium text-foreground group-hover:text-primary transition-colors">Design your first solution</span><span class="block text-xs text-muted-foreground mt-0.5">Blueprint an initiative with AI guidance.</span></span>
+            </a>
+            <a href="/applications/" class="group flex items-start gap-3 rounded-lg border border-border bg-card p-3 hover:border-primary/40 transition-colors">
+                <span class="shrink-0 w-8 h-8 rounded-md bg-primary/10 flex items-center justify-center text-primary"><i data-lucide="package" class="h-4 w-4" aria-hidden="true"></i></span>
+                <span class="min-w-0"><span class="block text-sm font-medium text-foreground group-hover:text-primary transition-colors">Bring in your applications</span><span class="block text-xs text-muted-foreground mt-0.5">Build out your portfolio inventory.</span></span>
+            </a>
+        </div>
+    </div>
 
     {# ── PLT-040: Your Workspace — role-based quick-access cards ─────── #}
     {% set role = enterprise_role|default('platform_admin') %}
@@ -745,7 +777,13 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="https://cdn.jsdelivr.net/npm/jointjs@3.7.7/dist/joint.min.js" crossorigin="anonymous"></script>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jointjs@3.7.7/dist/joint.min.css" crossorigin="anonymous">
+<!-- JointJS peer deps (jQuery → Lodash → Backbone) MUST load before joint.min.js,
+     otherwise joint throws "Cannot read properties of undefined (reading 'Model')"
+     and the Layered Viewpoint diagram silently fails to render. -->
+<script src="/static/vendor/jquery.min.js" crossorigin="anonymous"></script>
+<script src="/static/vendor/lodash.min.js" crossorigin="anonymous"></script>
+<script src="/static/vendor/backbone-min.js" crossorigin="anonymous"></script>
+<script src="/static/vendor/joint.min.js" crossorigin="anonymous"></script>
+<link rel="stylesheet" href="/static/vendor/joint.min.css" crossorigin="anonymous">
 <script src="{{ url_for('static', filename='js/archimate/composer_renderer.js') }}"></script>
 {% endblock %}

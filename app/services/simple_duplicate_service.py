@@ -330,7 +330,7 @@ class SimpleDuplicateService:
                 normalized = SimpleDuplicateService._normalize_name_for_hash(app.name)
                 if not normalized:
                     continue
-                name_hash = hashlib.md5(normalized.encode()).hexdigest()
+                name_hash = hashlib.md5(normalized.encode(), usedforsecurity=False).hexdigest()
                 
                 if name_hash in hash_groups:
                     hash_groups[name_hash].append(app)
@@ -570,10 +570,16 @@ class SimpleDuplicateService:
                     
                     # Now try to delete the main application record
                     try:
-                        result = db.session.execute(  # tenant-filtered: scoped via parent FK (app_id)
-                            db.text("DELETE FROM application_components WHERE id = :app_id"),
-                            {'app_id': app_id}
-                        )
+                        # Tenant guard on the destructive delete: never remove an
+                        # app outside the caller's org (raw SQL bypasses the ORM filter).
+                        from flask import g as _g
+                        _org = getattr(_g, "current_org_id", None)
+                        _dq = "DELETE FROM application_components WHERE id = :app_id"
+                        _dp = {'app_id': app_id}
+                        if _org is not None:
+                            _dq += " AND organization_id = :org"
+                            _dp['org'] = _org
+                        result = db.session.execute(db.text(_dq), _dp)
                         
                         if result.rowcount > 0:
                             deleted_count += 1

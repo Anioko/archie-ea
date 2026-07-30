@@ -3,6 +3,7 @@
 Implements XML-based interchange compatible with ArchiMate 3.0 OEF specification.
 """
 
+from app.utils import safe_xml  # untrusted XML: entity-expansion safe
 import xml.etree.ElementTree as ET
 from datetime import datetime  # dead-code-ok
 
@@ -161,7 +162,7 @@ class ArchiMateOEFService:
         }
 
         try:
-            root = ET.fromstring(xml_string)
+            root = safe_xml.fromstring(xml_string)
         except ET.ParseError as exc:
             result["errors"].append(f"XML parse error: {exc}")
             return result

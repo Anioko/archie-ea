@@ -24,6 +24,7 @@ Usage:
     xml = service.export_to_open_exchange(viewpoint)
 """
 
+from app.utils import safe_xml  # untrusted XML: entity-expansion safe
 import logging
 import uuid
 import xml.etree.ElementTree as ET
@@ -755,7 +756,7 @@ class ArchiMateViewpointGenerator:
 
         # Fallback: stdlib xml.etree structural checks
         try:
-            root = ET.fromstring(xml_string)
+            root = safe_xml.fromstring(xml_string)
 
             if "model" not in root.tag:
                 errors.append(f"Root element is '{root.tag}', expected 'model'")

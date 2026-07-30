@@ -551,7 +551,7 @@ class SolutionSpecGenerator:
     def _build_snapshot(self):
         """Capture current architecture state for future diff computation."""
         def _hash(text):
-            return hashlib.md5((text or "").encode()).hexdigest()[:8]
+            return hashlib.md5((text or "").encode(), usedforsecurity=False).hexdigest()[:8]
 
         return {
             "app_elements": [

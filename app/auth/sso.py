@@ -657,14 +657,11 @@ class SSOService:
 
         # 2. Parse XML — use defusedxml when available to guard against XXE
         try:
-            try:
-                import defusedxml.ElementTree as SafeET
+            # defusedxml is a hard requirement; a silent fallback to the
+            # stdlib parser would look protected without being protected.
+            from app.utils import safe_xml
 
-                root = SafeET.fromstring(xml_bytes)
-            except ImportError:
-                # defusedxml not installed; fall back to stdlib (safe when
-                # inputs arrive via HTTPS POST from a known IdP)
-                root = ET.fromstring(xml_bytes)  # noqa: S314
+            root = safe_xml.fromstring(xml_bytes)
         except ET.ParseError as exc:
             raise SSOError("SAML Response is not valid XML") from exc
 
