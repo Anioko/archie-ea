@@ -14,7 +14,13 @@ LAST_ACTION_FILE="$STATE_DIR/last_restart_epoch"
 LOG="/var/log/archie-watchdog.log"
 
 FAIL_THRESHOLD=3      # ~3 minutes of unresponsiveness before acting
-COOLDOWN_SECONDS=600  # app needs ~70s to boot; never restart-loop
+COOLDOWN_SECONDS=600  # never restart-loop
+# Startup grace. Boot runs init-db + reconcile-schema + backfill-architect-role
+# before gunicorn binds, which measured 286s on 2026-07-30 - longer than
+# FAIL_THRESHOLD*60. The watchdog duly restarted the container MID-MIGRATION.
+# It survived only because those commands are idempotent. Never act on a
+# container that is still legitimately booting.
+STARTUP_GRACE_SECONDS=600
 
 log() { echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) $*" >> "$LOG"; }
 
@@ -38,6 +44,20 @@ log "health check FAILED ($fails/$FAIL_THRESHOLD)"
 [ "$fails" -lt "$FAIL_THRESHOLD" ] && exit 0
 
 now=$(date +%s)
+
+# Still booting? Migrations run before gunicorn binds, so "not answering" is
+# expected for several minutes after a (re)start. Restarting here would abort a
+# schema migration and could loop indefinitely.
+started_at=$(docker inspect -f '{{.State.StartedAt}}' "$CONTAINER" 2>/dev/null || echo "")
+if [ -n "$started_at" ]; then
+    started_epoch=$(date -d "$started_at" +%s 2>/dev/null || echo 0)
+    uptime_s=$(( now - started_epoch ))
+    if [ "$started_epoch" -gt 0 ] && [ "$uptime_s" -lt "$STARTUP_GRACE_SECONDS" ]; then
+        log "threshold reached but container is only ${uptime_s}s old (grace ${STARTUP_GRACE_SECONDS}s) - still booting, not restarting"
+        exit 0
+    fi
+fi
+
 last=$(cat "$LAST_ACTION_FILE")
 if [ $(( now - last )) -lt "$COOLDOWN_SECONDS" ]; then
     log "threshold reached but still in cooldown ($(( now - last ))s < ${COOLDOWN_SECONDS}s) - not restarting"
