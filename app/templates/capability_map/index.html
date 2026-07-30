@@ -4,6 +4,8 @@
 {% from 'components/status_badge.html' import status_badge %}
 {% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
 {% from 'components/dropdown_menu.html' import dropdown_menu %}
+{% from 'components/empty_state.html' import empty_state %}
+{% from 'components/skeleton.html' import skeleton_list %}
 
 {# Reusable filter bar macro for capability tables #}
 {% macro capability_filter_bar(context_id, filters=[], has_search=True, has_clear=True) %}
@@ -175,6 +177,14 @@
                         <i data-lucide="briefcase" class="w-4 h-4 inline mr-2" aria-hidden="true"></i>
                         Business
                     </button>
+                    <button type="button" @click="activeTab = 'capability-model'; loadCapabilityModelTab();"
+                            :class="activeTab === 'capability-model' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'"
+                            :aria-selected="activeTab === 'capability-model'"
+                            role="tab" id="tab-capability-model" aria-controls="panel-capability-model"
+                            class="py-4 px-1 border-b-2 font-medium text-sm transition-colors whitespace-nowrap" aria-label="View Capability Model (nested BIZBOK map)">
+                        <i data-lucide="layout-grid" class="w-4 h-4 inline mr-2" aria-hidden="true"></i>
+                        Capability Model
+                    </button>
                     <button type="button" @click="activeTab = 'application'"
                             :class="activeTab === 'application' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'"
                             :aria-selected="activeTab === 'application'"
@@ -231,6 +241,14 @@
                         <i data-lucide="grid-3x3" class="w-4 h-4 inline mr-2" aria-hidden="true"></i>
                         Heat Map
                     </button>
+                    <button type="button" @click="activeTab = 'maturity'; loadMaturityRadarTab();"
+                            :class="activeTab === 'maturity' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'"
+                            :aria-selected="activeTab === 'maturity'"
+                            role="tab" id="tab-maturity" aria-controls="panel-maturity"
+                            class="py-4 px-1 border-b-2 font-medium text-sm transition-colors whitespace-nowrap" aria-label="View Maturity Radar">
+                        <i data-lucide="radar" class="w-4 h-4 inline mr-2" aria-hidden="true"></i>
+                        Maturity
+                    </button>
                     <button type="button" @click="activeTab = 'roadmap'; initRoadmapTab();"
                             :class="activeTab === 'roadmap' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'"
                             :aria-selected="activeTab === 'roadmap'"
@@ -252,28 +270,28 @@
                     {{ data_card(
                         icon='grid-3x3',
                         icon_color='blue',
-                        value='<span id="unified-domain-count">' ~ (domain_count|default(0)) ~ '</span>' | safe,
+                        value=('<span id="unified-domain-count">' ~ (domain_count|default(0)) ~ '</span>') | safe,
                         label='Total Domains',
                         subtitle='Business areas'
                     ) }}
                     {{ data_card(
                         icon='boxes',
                         icon_color='green',
-                        value='<span id="unified-cap-count">' ~ (total_capabilities|default(0)) ~ '</span>' | safe,
+                        value=('<span id="unified-cap-count">' ~ (total_capabilities|default(0)) ~ '</span>') | safe,
                         label='Total Capabilities',
                         subtitle='All types'
                     ) }}
                     {{ data_card(
                         icon='link',
                         icon_color='purple',
-                        value='<span id="unified-mapped-count">' ~ (mapped_count|default(0)) ~ '</span>' | safe,
+                        value=('<span id="unified-mapped-count">' ~ (mapped_count|default(0)) ~ '</span>') | safe,
                         label='Mapped to Apps',
                         subtitle='Active mappings'
                     ) }}
                     {{ data_card(
                         icon='pie-chart',
                         icon_color='amber',
-                        value='<span id="unified-coverage">' ~ (coverage|default(0)) ~ '%</span>' | safe,
+                        value=('<span id="unified-coverage">' ~ (coverage|default(0)) ~ '%</span>') | safe,
                         label='Coverage',
                         subtitle='Application support'
                     ) }}
@@ -406,6 +424,32 @@
                         </div>
                     </div>
                 </div>
+            </div>
+
+            <!-- Capability Model Tab — nested-box BIZBOK view (Business Architect visual 1) -->
+            <div x-cloak x-show="activeTab === 'capability-model'" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100" role="tabpanel" id="panel-capability-model" aria-labelledby="tab-capability-model">
+                <div class="mb-4 flex items-center justify-between flex-wrap gap-3">
+                    <div>
+                        <h2 class="text-lg font-bold text-foreground">Capability Model</h2>
+                        <p class="text-sm text-muted-foreground">Nested capability containers grouped by Business Domain. Boxes are heat-shaded by maturity gap (target − current). Click a capability to open its drill-down detail.</p>
+                    </div>
+                    <div class="flex items-center gap-3 text-xs flex-wrap">
+                        <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-emerald-500"></span> On Target (gap ≤ 0)</span>
+                        <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-amber-500"></span> Minor Gap (1)</span>
+                        <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-destructive"></span> Major Gap (2+)</span>
+                    </div>
+                </div>
+                <div id="capmodel-loading">
+                    {{ skeleton_list(rows=4) }}
+                </div>
+                <div id="capmodel-empty" class="hidden">
+                    {{ empty_state(
+                        icon='layout-grid',
+                        title='No capabilities found',
+                        description='Capability data will appear here once capabilities are defined for a business domain.'
+                    ) }}
+                </div>
+                <div id="capmodel-container" class="hidden overflow-x-auto"></div>
             </div>
 
             <!-- Manufacturing Capability Tab -->
@@ -1537,6 +1581,49 @@
                         </div>
                     </div>
                     <div id="heatmap-detail-app-list"></div>
+                </div>
+            </div>
+
+            <!-- Maturity Radar Tab — Business Architect visual 2 -->
+            <div x-cloak x-show="activeTab === 'maturity'" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100" role="tabpanel" id="panel-maturity" aria-labelledby="tab-maturity">
+                <div class="mb-4 flex items-center justify-between flex-wrap gap-3">
+                    <div>
+                        <h2 class="text-lg font-bold text-foreground">Maturity Radar</h2>
+                        <p class="text-sm text-muted-foreground">Current vs. target capability maturity (1–5 scale). Choose a domain to drill into its individual capabilities, or a level to filter which capabilities are averaged.</p>
+                    </div>
+                    <div class="flex items-center gap-3 flex-wrap">
+                        <div class="flex items-center gap-2">
+                            <label for="maturity-domain-select" class="text-xs font-medium text-muted-foreground">Domain:</label>
+                            <select id="maturity-domain-select" @change="loadMaturityRadarTab(true)" class="px-2 py-1 border border-input rounded text-xs">
+                                <option value="">All Domains (aggregate)</option>
+                            </select>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <label for="maturity-level-select" class="text-xs font-medium text-muted-foreground">Level:</label>
+                            <select id="maturity-level-select" @change="loadMaturityRadarTab(true)" class="px-2 py-1 border border-input rounded text-xs">
+                                <option value="">All Levels</option>
+                                <option value="1">Level 1 (Strategic)</option>
+                                <option value="2">Level 2 (Business)</option>
+                                <option value="3">Level 3 (Operational)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div id="maturity-loading" class="text-center py-12 text-muted-foreground">
+                    <i data-lucide="loader-2" class="w-6 h-6 animate-spin mx-auto mb-2"></i>
+                    Loading maturity data...
+                </div>
+                <div id="maturity-empty" class="hidden">
+                    {{ empty_state(
+                        icon='radar',
+                        title='No maturity data found',
+                        description='Maturity levels will appear here once capabilities have current/target maturity assessments.'
+                    ) }}
+                </div>
+                <div id="maturity-chart-container" class="hidden rounded-lg border border-border bg-card p-5">
+                    <div class="relative h-[420px]">
+                        <canvas id="maturity-radar-chart"></canvas>
+                    </div>
                 </div>
             </div>
 
@@ -2923,4 +3010,9 @@
 {# roadmap-utils.js is now loaded globally in admin_base.html #}
 <script src="{{ url_for('static', filename='js/capability_map/index.js') }}?v=2"></script>
 <script src="{{ url_for('static', filename='js/capability_map/index_inline.js') }}"></script>
+{# Business Architect visuals: Chart.js — same CDN/version already used by arb/dashboard.html
+   and applications/rationalization/dashboard.html. No new external library is introduced. #}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="{{ url_for('static', filename='js/capability_map/nested_map.js') }}"></script>
+<script src="{{ url_for('static', filename='js/capability_map/maturity_radar.js') }}"></script>
 {% endblock %}

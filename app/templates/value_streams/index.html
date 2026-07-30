@@ -1,0 +1,146 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'components/page_header.html' import page_header %}
+{% from 'components/empty_state.html' import empty_state %}
+{% from 'components/data_card.html' import data_card %}
+{% from 'components/modal.html' import modal %}
+
+{% block title %}Value Streams{% endblock %}
+
+{% block content %}
+<div class="flex-1 overflow-auto" x-data="valueStreamIndex()" x-cloak>
+    {{ page_header(
+        title='Value Streams',
+        description='End-to-end value delivery flows and the BIZBOK capability-to-stage cross-map.',
+        breadcrumbs=[
+            {'label': 'Home', 'href': url_for('main.index')},
+            {'label': 'Value Streams'}
+        ],
+        actions=[
+            {'text': 'New Value Stream', 'icon': 'plus', 'onclick': "Platform.modal.open('vs-create-modal')", 'variant': 'default'}
+        ]
+    ) }}
+
+    <div class="p-6 space-y-6">
+        {% if streams %}
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+            {{ data_card(icon='workflow', icon_color='blue', value=streams|length, label='Value Streams', subtitle='Defined end-to-end flows') }}
+            {{ data_card(icon='layers', icon_color='green', value=streams|sum(attribute='stage_count'), label='Total Stages', subtitle='Across all value streams') }}
+            {{ data_card(icon='link', icon_color='purple', value=streams|sum(attribute='mapped_capability_count'), label='Mapped Capabilities', subtitle='BIZBOK grid rows') }}
+            {{ data_card(icon='target', icon_color='amber', value=(streams|selectattr('strategic_importance', 'equalto', 'critical')|list|length), label='Critical Streams', subtitle='Strategic importance') }}
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {% for vs in streams %}
+            <a href="{{ url_for('value_stream.detail', value_stream_id=vs.id) }}"
+               class="block rounded-xl border border-input bg-background hover:border-primary/50 hover:shadow-sm transition-all duration-200 p-5">
+                <div class="flex items-start justify-between mb-3">
+                    <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                        <i data-lucide="workflow" class="h-5 w-5 text-primary" aria-hidden="true"></i>
+                    </div>
+                    {% if vs.code %}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground border border-border font-mono">{{ vs.code }}</span>
+                    {% endif %}
+                </div>
+                <h3 class="font-semibold text-foreground mb-1 truncate">{{ vs.name }}</h3>
+                <p class="text-xs text-muted-foreground mb-4 line-clamp-2">{{ vs.description or '—' }}</p>
+                <div class="flex items-center justify-between text-sm">
+                    <span class="text-muted-foreground">{{ vs.stage_count }} stage{{ 's' if vs.stage_count != 1 else '' }}</span>
+                    <span class="text-muted-foreground">{{ vs.mapped_capability_count }} capabilit{{ 'ies' if vs.mapped_capability_count != 1 else 'y' }}</span>
+                </div>
+                {% if vs.value_stream_type or vs.strategic_importance %}
+                <div class="flex items-center gap-2 mt-3">
+                    {% if vs.value_stream_type %}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground border border-border">{{ vs.value_stream_type|replace('_', ' ')|title }}</span>
+                    {% endif %}
+                    {% if vs.strategic_importance == 'critical' %}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive border border-destructive/30">Critical</span>
+                    {% elif vs.strategic_importance == 'high' %}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-amber-500/10 text-amber-600 border border-amber-500/30">High</span>
+                    {% endif %}
+                </div>
+                {% endif %}
+            </a>
+            {% endfor %}
+        </div>
+        {% else %}
+        {{ empty_state(
+            icon='workflow',
+            title='No value streams yet',
+            description='Model your end-to-end value delivery flows (e.g. Order-to-Cash, Concept-to-Market) and map supporting capabilities to each stage.',
+            cta_text='Create Value Stream',
+            cta_onclick="Platform.modal.open('vs-create-modal')",
+            cta_icon='plus'
+        ) }}
+        {% endif %}
+    </div>
+
+    {% call modal(id='vs-create-modal', title='New Value Stream', description='Define an end-to-end value delivery flow.', size='default') %}
+    <form method="POST" action="{{ url_for('value_stream.create') }}" class="space-y-4">
+        <div>
+            <label for="vs-name" class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Name</label>
+            <input type="text" id="vs-name" name="name" required
+                   class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                   placeholder="e.g. Order to Cash">
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+            <div>
+                <label for="vs-code" class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Code</label>
+                <input type="text" id="vs-code" name="code"
+                       class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm font-mono shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                       placeholder="OTC">
+            </div>
+            <div>
+                <label for="vs-type" class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Type</label>
+                <select id="vs-type" name="value_stream_type"
+                        class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                    <option value="customer_facing">Customer Facing</option>
+                    <option value="internal">Internal</option>
+                    <option value="supporting">Supporting</option>
+                </select>
+            </div>
+        </div>
+        <div>
+            <label for="vs-description" class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Description</label>
+            <textarea id="vs-description" name="description" rows="3"
+                      class="mt-1 flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"></textarea>
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+            <div>
+                <label for="vs-importance" class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Strategic Importance</label>
+                <select id="vs-importance" name="strategic_importance"
+                        class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                    <option value="">—</option>
+                    <option value="critical">Critical</option>
+                    <option value="high">High</option>
+                    <option value="medium">Medium</option>
+                    <option value="low">Low</option>
+                </select>
+            </div>
+            <div>
+                <label for="vs-owner" class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Business Owner</label>
+                <input type="text" id="vs-owner" name="business_owner"
+                       class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+            </div>
+        </div>
+        <div class="flex justify-end gap-2 pt-2">
+            <button type="button" data-modal-close="vs-create-modal"
+                    class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80 h-9 px-4 py-2">
+                Cancel
+            </button>
+            <button type="submit"
+                    class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 py-2">
+                Create
+            </button>
+        </div>
+    </form>
+    {% endcall %}
+</div>
+
+<script>
+Alpine.data('valueStreamIndex', function () {
+    return {
+        init() {}
+    };
+});
+</script>
+{% endblock %}

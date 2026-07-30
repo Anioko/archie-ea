@@ -62,6 +62,33 @@
         </div>
     </div>
 
+    <!-- 2x2 Investment Bubble Chart (Business Architect visual 3 — TIME quadrant) -->
+    <div data-slot="card" class="rounded-xl border bg-card p-6">
+        <div class="flex items-center justify-between flex-wrap gap-3 mb-4">
+            <div>
+                <h3 class="font-semibold">Investment Bubble — TIME Quadrant</h3>
+                <p class="text-xs text-muted-foreground mt-1">X = strategic importance, Y = maturity gap (target − current), bubble size = business value (1–10 scale, used as an investment-size proxy — this capability data does not carry an annual cost figure).</p>
+            </div>
+            <div class="flex items-center gap-3 text-xs flex-wrap">
+                <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-emerald-500"></span> Invest</span>
+                <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-amber-500"></span> Migrate</span>
+                <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-primary"></span> Tolerate</span>
+                <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-destructive"></span> Eliminate</span>
+            </div>
+        </div>
+        <div id="investment-bubble-empty" class="hidden">
+            {% from 'components/empty_state.html' import empty_state %}
+            {{ empty_state(
+                icon='scatter-chart',
+                title='No capability data to plot',
+                description='The bubble chart needs at least one capability with a strategic importance rating.'
+            ) }}
+        </div>
+        <div id="investment-bubble-container" class="relative h-[420px]">
+            <canvas id="investment-bubble-chart"></canvas>
+        </div>
+    </div>
+
     <!-- Capabilities List -->
     <div data-slot="card" class="rounded-xl border bg-card">
         <div class="p-6">
@@ -88,8 +115,8 @@
                                     {{ cap.strategic_importance|default('Normal')|title }}
                                 </span>
                             </td>
-                            <td class="p-3">{{ cap.current_maturity|default(0) }}</td>
-                            <td class="p-3">{{ cap.target_maturity|default(5) }}</td>
+                            <td class="p-3">{{ cap.current_maturity_level|default(1) }}</td>
+                            <td class="p-3">{{ cap.target_maturity_level|default(3) }}</td>
                         </tr>
                         {% else %}
                         <tr>
@@ -102,4 +129,31 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Investment Bubble data — built from the SAME `capabilities` context variable the
+// table above already renders (app/routes/unified_enterprise_routes.py:investment_matrix,
+// BusinessCapability.query.limit(500).all()). No new endpoint or route is introduced;
+// each field is emitted individually via |tojson so the SQLAlchemy model instances
+// themselves never need to be JSON-serialized.
+window.__investmentBubbleData = [
+    {% for cap in capabilities|default([]) %}
+    {% set gap = cap.maturity_gap if cap.maturity_gap is not none else ((cap.target_maturity_level|default(3, true)) - (cap.current_maturity_level|default(1, true))) %}
+    {
+        name: {{ cap.name|default('Unnamed Capability', true)|tojson }},
+        strategic_importance: {{ (cap.strategic_importance|default('medium', true))|lower|tojson }},
+        maturity_gap: {{ gap|tojson }},
+        business_value: {{ cap.business_value|default(5, true)|tojson }},
+        roi_score: {{ cap.roi_score|tojson }}
+    }{% if not loop.last %},{% endif %}
+    {% endfor %}
+];
+</script>
+{# Business Architect visuals: Chart.js — same CDN/version already used by
+   arb/dashboard.html and applications/rationalization/dashboard.html (RATA-010's
+   TIME quadrant chart). No new external library is introduced. #}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="{{ url_for('static', filename='js/capability_map/investment_bubble.js') }}"></script>
 {% endblock %}

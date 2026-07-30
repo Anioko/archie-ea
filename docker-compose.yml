@@ -3,10 +3,14 @@ services:
   server:
     build:
       context: .
-    # Create the schema (idempotent, non-destructive) before starting the web server.
-    # Without this, `docker compose up` boots gunicorn against an empty database and
-    # every request fails with "relation does not exist".
-    command: sh -c "flask --app manage init-db && gunicorn -c gunicorn.conf.py manage:app"
+    # Bring the schema up before starting the web server (both idempotent, non-destructive):
+    #   init-db          — create any missing tables (create_all). Without it, gunicorn
+    #                      boots against an empty DB and every request 500s ("relation does not exist").
+    #   reconcile-schema — add any columns the models gained since this DB was created.
+    #                      create_all never alters existing tables, so a long-lived DB drifts
+    #                      and core pages 500 (e.g. arb_review_items.jira_issue_key). See
+    #                      docs/known-issues/schema-drift-on-existing-databases.md
+    command: sh -c "flask --app manage init-db && flask --app manage reconcile-schema && flask --app manage backfill-architect-role && gunicorn -c gunicorn.conf.py manage:app"
     ports:
       - '5000:5000'
     volumes:
@@ -52,7 +56,10 @@ services:
       # Init script creates flask_dev and flask_test databases on startup
       - ./scripts/database/init-databases.sh:/docker-entrypoint-initdb.d/init-databases.sh:ro
     ports:
-      - '5432:5432'
+      # Bind to loopback only — the app reaches Postgres over the internal Docker
+      # network (host 'postgres'), so this never needs to be public. Publishing on
+      # 0.0.0.0 exposed the DB to the internet (Shadowserver/DO security finding).
+      - '127.0.0.1:5432:5432'
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -63,14 +70,17 @@ services:
     image: adminer
     restart: always
     ports:
-      - 8080:8080
+      # Adminer is a DB admin UI — loopback only (reach it via an SSH tunnel), never public.
+      - '127.0.0.1:8080:8080'
     depends_on:
       - postgres
 
   redis:
     image: redis:6-alpine
     ports:
-      - '6379:6379'
+      # Loopback only — the app uses Redis over the Docker network (host 'redis').
+      # Publishing on 0.0.0.0 left Redis open to the internet on 6379 (the security finding).
+      - '127.0.0.1:6379:6379'
 
 volumes:
   db-data:

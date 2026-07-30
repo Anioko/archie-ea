@@ -2117,6 +2117,7 @@ def get_relationship_mappings():
 _VALID_ROLES = [
     "solution_architect",
     "enterprise_architect",
+    "business_architect",
     "arb_member",
     "portfolio_manager",
     "platform_admin",

@@ -132,6 +132,9 @@ def _register_optional_standalone(app):
         ("app.modules.governance.routes.governance_dashboard_routes", "governance_bp", None),
         ("app.modules.admin.billing_routes", "billing_bp", "/admin/billing"),
         ("app.modules.admin.team_routes", "team_bp", "/admin"),
+        ("app.modules.business_model_canvas.routes", "business_model_bp", "/business-model"),
+        ("app.modules.organization.routes", "organization_bp", "/organization"),
+        ("app.modules.business_case.routes", "business_case_bp", "/business-case"),
     ]
     for module_path, attr, prefix in specs:
         try:
@@ -1233,6 +1236,40 @@ def _register_misc_blueprints(app, csrf):
             app.logger.warning(f"[BLUEPRINT] Unified Vendors not available: {e}")
 
         # COM-015: vendor_comparison removed (BPM-001 wave-2, zero callers, merged into unified_vendors_api)
+
+    # The vendors page (vendors/list.html) and its JS depend on the vendor JSON API
+    # (/api/vendors/list, /api/vendors/ranking) and on vendor_management.create_vendor.
+    # When USE_VENDORS_GUARDRAILS is on, the v2 vendor blueprints can fail to register
+    # with no fallback, so the vendor table 404s on load ("NOT FOUND" toasts) and the
+    # Add Vendor button is dead. Register the canonical vendor API + management routes
+    # unconditionally, guarded against double-registration so v1 and v2 both work.
+    if "unified_vendors_api" not in app.blueprints:
+        try:
+            from app.modules.vendors.routes.unified_vendor_api import (
+                unified_vendors_api_bp,
+            )
+
+            app.register_blueprint(unified_vendors_api_bp)
+            app.logger.info(
+                "[BLUEPRINT] Vendor JSON API registered at /api/vendors (always-on)"
+            )
+        except Exception as e:  # pragma: no cover - defensive
+            app.logger.warning(f"[BLUEPRINT] Vendor JSON API registration failed: {e}")
+
+    if "vendor_management" not in app.blueprints:
+        try:
+            from app.modules.vendors.routes.vendor_management_routes import (
+                vendor_management_bp,
+            )
+
+            app.register_blueprint(vendor_management_bp)
+            app.logger.info(
+                "[BLUEPRINT] Vendor Management registered (always-on)"
+            )
+        except Exception as e:  # pragma: no cover - defensive
+            app.logger.warning(
+                f"[BLUEPRINT] Vendor Management registration failed: {e}"
+            )
 
     if not _use_applications:
         # Application Merging

@@ -206,12 +206,12 @@ x-cloak>
                             <option value="solutions_architect">AI Solution Architect</option>
                             <option value="technology_architect">AI Technical Architect</option>
                             <option value="data_architect">AI Data Architect</option>
+                            <option value="business_architect">AI Business Architect</option>
                         </optgroup>
                         <optgroup label="Specialist roles">
                             <option value="application_architect">Application Architect</option>
                             <option value="integration_architect">Integration Architect</option>
                             <option value="systems_architect">Systems Architect</option>
-                            <option value="business_architect">Business Architect</option>
                             <option value="business_analyst">Business Analyst</option>
                             <option value="product_analyst">Product Analyst</option>
                             <option value="cio">CIO / IT Executive</option>
@@ -595,7 +595,7 @@ x-cloak>
                                 <i data-lucide="shield-check" class="h-3 w-3"></i> Evidence-grounded · live data
                             </span>
                         </div>
-                        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                        <div class="grid grid-cols-2 lg:grid-cols-5 gap-3">
                             <button type="button" data-persona="enterprise_architect"
                                     data-prompt="Give me a portfolio health verdict — rationalization picture, capability coverage, and any transformation programme that's drifting."
                                     class="architect-card group flex flex-col p-4 bg-card border border-border rounded-xl text-left hover:border-primary hover:shadow-md transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
@@ -631,6 +631,15 @@ x-cloak>
                                 </span>
                                 <h3 class="text-sm font-semibold text-foreground">AI Data Architect</h3>
                                 <p class="text-xs text-muted-foreground mt-0.5">Canonical model, classification, lineage.</p>
+                            </button>
+                            <button type="button" data-persona="business_architect"
+                                    data-prompt="Map my strategy to capabilities — which capabilities are most critical, where are the maturity gaps, and how do value streams depend on them?"
+                                    class="architect-card group flex flex-col p-4 bg-card border border-border rounded-xl text-left hover:border-primary hover:shadow-md transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                                <span class="w-9 h-9 bg-primary/10 rounded-lg flex items-center justify-center text-primary mb-2.5 group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
+                                    <i data-lucide="briefcase" class="h-5 w-5"></i>
+                                </span>
+                                <h3 class="text-sm font-semibold text-foreground">AI Business Architect</h3>
+                                <p class="text-xs text-muted-foreground mt-0.5">Capabilities, value streams, operating model.</p>
                             </button>
                         </div>
                     </div>
@@ -3285,7 +3294,7 @@ Would you like me to provide more details about the extracted elements or help y
                             <i data-lucide="shield-check" class="h-3 w-3"></i> Evidence-grounded · live data
                         </span>
                     </div>
-                    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                    <div class="grid grid-cols-2 lg:grid-cols-5 gap-3">
                         <button type="button" data-persona="enterprise_architect" data-prompt="Give me a portfolio health verdict — rationalization picture, capability coverage, and any transformation programme that's drifting."
                             class="architect-card group flex flex-col p-4 bg-card border border-border rounded-xl text-left hover:border-primary hover:shadow-md transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                             <span class="w-9 h-9 bg-primary/10 rounded-lg flex items-center justify-center text-primary mb-2.5 group-hover:bg-primary group-hover:text-primary-foreground transition-colors"><i data-lucide="building-2" class="h-5 w-5"></i></span>
@@ -3309,6 +3318,12 @@ Would you like me to provide more details about the extracted elements or help y
                             <span class="w-9 h-9 bg-primary/10 rounded-lg flex items-center justify-center text-primary mb-2.5 group-hover:bg-primary group-hover:text-primary-foreground transition-colors"><i data-lucide="database" class="h-5 w-5"></i></span>
                             <span class="text-sm font-semibold block text-foreground">AI Data Architect</span>
                             <span class="text-xs text-muted-foreground mt-0.5">Canonical model, classification, lineage.</span>
+                        </button>
+                        <button type="button" data-persona="business_architect" data-prompt="Map my strategy to capabilities — which capabilities are most critical, where are the maturity gaps, and how do value streams depend on them?"
+                            class="architect-card group flex flex-col p-4 bg-card border border-border rounded-xl text-left hover:border-primary hover:shadow-md transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                            <span class="w-9 h-9 bg-primary/10 rounded-lg flex items-center justify-center text-primary mb-2.5 group-hover:bg-primary group-hover:text-primary-foreground transition-colors"><i data-lucide="briefcase" class="h-5 w-5"></i></span>
+                            <span class="text-sm font-semibold block text-foreground">AI Business Architect</span>
+                            <span class="text-xs text-muted-foreground mt-0.5">Capabilities, value streams, operating model.</span>
                         </button>
                     </div>
                 </div>
