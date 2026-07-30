@@ -177,8 +177,16 @@ verification_artifacts/
 !app/static/img/*.png
 !app/static/img/*.jpg
 
-# One-off diagnostic scripts
+# One-off diagnostic scripts.
+#
+# NOTE: these globs are why DESIGN.md can reference a `check_token_migration.py`
+# pre-commit hook that is absent from the repository — a permanent quality gate was
+# named like a throwaway and got ignored out of existence. Permanent gates must be
+# negated below, not just named carefully.
 scripts/check_*.py
+# Permanent gate (enforces the DESIGN.md colour-token rule) — must stay tracked.
+# Note: gitignore has no inline comments, so this negation gets its own line.
+!scripts/check_design_tokens.py
 scripts/patch_*.py
 scripts/find_*.py
 scripts/delete_*.py
@@ -229,3 +237,23 @@ uploads/
 instance/
 *.backup
 *.bak
+
+# --- Local scratch / working files ---------------------------------------------
+# Ad-hoc scripts and dumps that accumulate at the repo root during investigation.
+# Listed explicitly rather than with broad globs (build_*.py, seed_*.py) so a
+# legitimately-named future module is not silently untracked.
+#
+# CI scans the FULL git history with gitleaks, so an accidental `git add -A` that
+# commits a dump containing real data is expensive to undo. Prefer putting new
+# throwaway work in scratch/ below.
+scratch/
+b_gz.html
+b_plain.html
+h_gz.txt
+h_plain.txt
+build_diagram.py
+build_engagement.py
+build_phase5.py
+codegen_incontainer.py
+seed_caps_overlap.py
+seed_sap_sfdc.py

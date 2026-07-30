@@ -1,0 +1,34 @@
+# Ruff configuration — pinned deliberately.
+#
+# The rule set is stated explicitly rather than relying on Ruff's defaults so the
+# ratchet baselines in verification_baseline.json stay reproducible when Ruff is
+# upgraded. Changing `select` invalidates those baselines — re-measure with
+# `python scripts/verify.py --update-baseline` in the same commit.
+#
+# Scope is correctness, not style. F/E4/E7/E9 catch defects that actually break at
+# runtime (undefined names, redefinitions, broken f-strings). Style families (UP,
+# BLE, DTZ, I, RUF...) add ~30k findings on this tree and are intentionally left
+# out of the gate: gating on them would mean either a multi-month cleanup or a
+# blanket noqa sweep, and neither improves correctness. Run them ad hoc if you
+# want the cleanup backlog.
+
+target-version = "py312"
+line-length = 100
+
+exclude = [
+    ".git",
+    "__pycache__",
+    "venv",
+    ".venv",
+    "migrations/versions",   # historical Alembic revisions; not maintained code
+    "app/static",
+    "node_modules",
+    "code_templates",        # emitted scaffolding, not application code
+]
+
+[lint]
+select = ["F", "E4", "E7", "E9"]
+
+[lint.per-file-ignores]
+# Test modules legitimately import fixtures for side effects and shadow names.
+"tests/*" = ["F811", "F401"]

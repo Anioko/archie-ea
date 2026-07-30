@@ -28,7 +28,63 @@ def _csrf_exempt_blueprint(app, blueprint):
 
 
 
+class _RegistrationFailureCapture(logging.Handler):
+    """Collect WARNING+ records emitted while blueprints register.
+
+    ``init_blueprints`` deliberately swallows import errors so one broken module
+    degrades a single feature instead of taking down the whole app — 99 of its
+    ~100 ``except`` handlers report via ``app.logger.warning``/``.error``. That
+    resilience is intentional, but it also makes breakage invisible: a module can
+    silently stop registering and the only symptom is a ``BuildError`` 500 the
+    next time a template calls ``url_for()`` on one of its endpoints.
+
+    Capturing the records here turns every one of those handlers into an
+    assertable signal without editing a single call site. Read the result from
+    ``app.extensions["blueprint_registration_failures"]``; see
+    ``tests/test_boot_health.py``.
+    """
+
+    def __init__(self):
+        super().__init__(level=logging.WARNING)
+        self.records = []
+
+    def emit(self, record):
+        try:
+            self.records.append(
+                {
+                    "level": record.levelname,
+                    "logger": record.name,
+                    "message": record.getMessage(),
+                }
+            )
+        except Exception:  # noqa: BLE001 — a broken record must never break boot
+            pass
+
+
 def init_blueprints(app):
+    """Register every blueprint / module on *app*, recording any failures.
+
+    Thin wrapper around :func:`_init_blueprints` that captures the warnings the
+    registration helpers emit when a module fails to import, and stashes them on
+    ``app.extensions["blueprint_registration_failures"]``.
+    """
+    capture = _RegistrationFailureCapture()
+    original_level = app.logger.level
+
+    # A logger whose effective level is above WARNING would drop the records
+    # before any handler sees them. Lower it for the duration, then restore.
+    if original_level > logging.WARNING or original_level == logging.NOTSET:
+        app.logger.setLevel(logging.WARNING)
+    app.logger.addHandler(capture)
+    try:
+        _init_blueprints(app)
+    finally:
+        app.logger.removeHandler(capture)
+        app.logger.setLevel(original_level)
+        app.extensions["blueprint_registration_failures"] = capture.records
+
+
+def _init_blueprints(app):
     """Register every blueprint / module on *app*."""
     from app.extensions import csrf
 
