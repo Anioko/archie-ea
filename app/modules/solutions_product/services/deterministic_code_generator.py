@@ -2557,7 +2557,7 @@ class DeterministicCodeGenerator:
             files.append(GeneratedFile(path="repository.go", content=content))
 
             # Generate migration
-            rev = hashlib.md5(bundle_id.encode()).hexdigest()[:12]
+            rev = hashlib.md5(bundle_id.encode(), usedforsecurity=False).hexdigest()[:12]
             template = self._env.get_template("migration.go.j2")
             content = template.render(**ctx, models=models, revision_id=rev)
             files.append(GeneratedFile(path="migration.go", content=content))
@@ -4622,7 +4622,7 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
 
     def _render_migration(self, ctx, models):
         """Render Alembic migration from confirmed fields."""
-        rev = hashlib.md5(ctx.get("bundle_id", "").encode()).hexdigest()[:12]
+        rev = hashlib.md5(ctx.get("bundle_id", "").encode(), usedforsecurity=False).hexdigest()[:12]
         template = self._env.get_template("alembic_migration.py.j2")
         content = template.render(**ctx, models=models, revision_id=rev)
         return GeneratedFile(path="alembic/versions/001_initial.py", content=content)

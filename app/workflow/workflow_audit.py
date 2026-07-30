@@ -548,13 +548,13 @@ class WorkflowAudit:
         """Generate unique event ID."""
         timestamp = str(int(datetime.utcnow().timestamp()))
         data = f"audit_{timestamp}_{threading.get_ident()}"
-        return hashlib.md5(data.encode()).hexdigest()[:16]
+        return hashlib.md5(data.encode(), usedforsecurity=False).hexdigest()[:16]
     
     def _generate_correlation_id(self) -> str:
         """Generate unique correlation ID."""
         timestamp = str(int(datetime.utcnow().timestamp()))
         data = f"corr_{timestamp}_{threading.get_ident()}"
-        return hashlib.md5(data.encode()).hexdigest()[:12]
+        return hashlib.md5(data.encode(), usedforsecurity=False).hexdigest()[:12]
     
     def _cleanup_old_events(self):
         """Clean up old audit events based on retention policy."""

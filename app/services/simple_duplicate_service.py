@@ -330,7 +330,7 @@ class SimpleDuplicateService:
                 normalized = SimpleDuplicateService._normalize_name_for_hash(app.name)
                 if not normalized:
                     continue
-                name_hash = hashlib.md5(normalized.encode()).hexdigest()
+                name_hash = hashlib.md5(normalized.encode(), usedforsecurity=False).hexdigest()
                 
                 if name_hash in hash_groups:
                     hash_groups[name_hash].append(app)

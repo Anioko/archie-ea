@@ -32,7 +32,7 @@ class QueryCache:
     def _make_key(self, prefix: str, *args, **kwargs) -> str:
         """Generate cache key from prefix and arguments."""
         key_data = json.dumps({"args": args, "kwargs": kwargs}, sort_keys=True, default=str)
-        key_hash = hashlib.md5(key_data.encode()).hexdigest()[:16]
+        key_hash = hashlib.md5(key_data.encode(), usedforsecurity=False).hexdigest()[:16]
         return f"{prefix}:{key_hash}"
 
     def get(self, key: str) -> Optional[Any]:

@@ -89,6 +89,26 @@ jobs:
       - run: pip install ruff
       - run: ruff check . || true
 
+  security-sast:
+    name: SAST (bandit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install bandit
+        run: python -m pip install --upgrade pip bandit
+      # Ratchet, not a big bang. .bandit-baseline.json records the MEDIUM+HIGH
+      # findings that existed on 2026-07-30, so this job fails only on NEW ones.
+      # That stops the bleeding immediately without blocking every change behind
+      # a large cleanup. Regenerate the baseline ONLY when deliberately accepting
+      # a finding, and say why in the commit message.
+      - name: bandit (fail on new findings only)
+        run: |
+          bandit -r app config.py manage.py             -x "./app/static/vendor,./app/modules/solutions_product/templates,./tests"             -ll -b .bandit-baseline.json
+
   sonarcloud:
     name: SonarCloud (advisory)
     runs-on: ubuntu-latest

@@ -19,6 +19,7 @@ Reference:
 - https://pubs.opengroup.org/architecture/archimate3 - doc/
 """
 
+from app.utils import safe_xml  # untrusted XML: entity-expansion safe
 import logging
 import uuid
 import xml.etree.ElementTree as ET
@@ -563,7 +564,7 @@ class ArchiMateExchangeService:
             result["warnings"] = validation.get("warnings", [])
 
             # Parse XML
-            root = ET.fromstring(xml_content)
+            root = safe_xml.fromstring(xml_content)
 
             # Extract model info
             model_name = root.get(
@@ -869,7 +870,7 @@ class ArchiMateExchangeService:
 
         try:
             # Parse XML
-            root = ET.fromstring(xml_content)
+            root = safe_xml.fromstring(xml_content)
 
             # Check for model element
             if "model" not in root.tag.lower():

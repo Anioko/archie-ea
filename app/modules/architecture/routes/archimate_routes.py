@@ -14,6 +14,7 @@ SA-007:
     GET /api/archimate/viewpoints/<id>/data         — filtered elements + layout hints
 """
 
+from app.utils import safe_xml  # untrusted XML: entity-expansion safe
 import concurrent.futures
 import json
 import re as _re
@@ -5702,7 +5703,7 @@ def api_import_oef():
         raw = file.read()
         if len(raw) > 10 * 1024 * 1024:
             return jsonify({"error": "File exceeds 10MB limit"}), 400
-        root = ET.fromstring(raw)  # noqa: S314
+        root = safe_xml.fromstring(raw)
     except ET.ParseError as exc:
         return jsonify({"error": f"XML parse error: {exc}"}), 400
     except Exception as exc:  # noqa: BLE001
