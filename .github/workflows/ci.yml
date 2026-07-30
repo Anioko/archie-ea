@@ -31,7 +31,10 @@ jobs:
       # the convenience wrapper is licensed.
       - name: gitleaks
         run: |
-          docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:latest             detect --source=/repo --redact --no-banner --exit-code 1
+          docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:latest             detect --source=/repo --redact --verbose --no-banner --exit-code 1
+        # --verbose is deliberate: without it gitleaks prints only "leaks found: N"
+        # and names nothing, which is unactionable. --redact keeps the secret values
+        # themselves out of the build log.
 
   tests:
     name: Tests (pytest)
