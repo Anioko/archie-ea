@@ -212,6 +212,20 @@ def gate_air_gap(baseline: int) -> Result:
     return Result("air-gap", PASS if count <= baseline else FAIL, "", count, baseline)
 
 
+def gate_vendor_integrity() -> Result:
+    """Vendored assets match their recorded provenance.
+
+    The air-gap gate proves nothing external is *referenced*; this proves the local
+    copies are the upstream bytes we recorded and not something modified in place.
+    Also catches the manifest drifting out of step with the pinned URL list, which
+    is easy to do when refreshing one library by hand.
+    """
+    proc = _run([sys.executable, "scripts/vendor_assets.py", "--verify"])
+    output = (proc.stdout + proc.stderr).strip()
+    return Result("vendor-integrity", PASS if proc.returncode == 0 else FAIL,
+                  output[-1500:])
+
+
 def gate_dependency_cves() -> Result:
     """No known CVEs in the production dependency set.
 
@@ -322,6 +336,10 @@ def build_gates(baseline: dict) -> list[Gate]:
              lambda: gate_air_gap(baseline["air_gap"]),
              remediation="vendor the asset into app/static/ and use url_for('static', ...)",
              tags=["static", "ui", "airgap"]),
+        Gate("vendor-integrity", "Vendored assets match their manifest", "command",
+             gate_vendor_integrity,
+             remediation="run: python scripts/vendor_assets.py",
+             tags=["static", "ui", "airgap", "security"]),
         Gate("dependency-cves", "No known CVEs in shipped dependencies", "zero",
              gate_dependency_cves,
              remediation="bump the affected package (watch for blocking upper bounds)",
