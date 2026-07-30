@@ -21,6 +21,7 @@ Usage:
 
 import argparse
 import json
+import re
 import os
 import subprocess
 import sys
@@ -37,9 +38,28 @@ def normalise(path):
     return p
 
 
+def strip_line_numbers(code):
+    """Drop bandit's leading line numbers from each line of a code snippet.
+
+    bandit's `code` field embeds the line number at the start of every line:
+
+        "379 search_query = text(\n380 f\\"\\"\\"\n"
+
+    Fingerprinting that raw means any edit ABOVE a finding shifts its numbers,
+    changes the hash, and reports an untouched finding as new - the very
+    brittleness this gate replaced `bandit -b baseline.json` to avoid. Adding a
+    single import once produced a bogus "1 NEW finding" for code nobody had
+    touched.
+    """
+    out = []
+    for line in code.splitlines():
+        out.append(re.sub(r"^\s*\d+\s?", "", line))
+    return " ".join(" ".join(out).split())
+
+
 def fingerprint(result):
     """Identity of a finding, independent of platform and line number."""
-    code = " ".join(result.get("code", "").split())
+    code = strip_line_numbers(result.get("code", ""))
     return "%s|%s|%s" % (result["test_id"], normalise(result["filename"]), code)
 
 
