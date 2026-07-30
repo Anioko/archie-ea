@@ -33,10 +33,12 @@ Verified on 2026-07-30:
 - The only environment file tracked in git is `.env.example`, a template.
 - `.gitignore` (231 lines) is committed on every branch and ignores `.env`.
 - A full-history gitleaks scan of 109 commits reported 10 findings. All ten were
-  inspected by hand and are false positives — documentation placeholders
-  (`Authorization: Bearer YOUR_OPENAI_API_KEY`), vendor catalogue prose
-  (`"authentication": "Integrated/SQL Auth"`), and deliberately invalid JWTs in
-  code-generation test fixtures. No live credential is present.
+  inspected by hand and are false positives, in three groups: documentation
+  placeholders telling the reader to substitute their own OpenAI key; vendor
+  catalogue metadata whose authentication-method descriptions trip the
+  generic-api-key entropy rule; and deliberately invalid JWTs used as fixtures in
+  the code-generation templates. No live credential is present. The exact
+  matches are listed in `.gitleaks.toml`.
 
 ## Sync procedure
 

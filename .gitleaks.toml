@@ -31,6 +31,10 @@ paths = [
   '''app/modules/architecture/services/archimate_prompts\.py''',
   # Test fixtures inside code-generation templates.
   '''app/modules/solutions_product/templates/.*/(__tests__/.*|test_.*)\.(j2|tsx|py)''',
+  # This very file documents the findings above, so it quotes the strings that
+  # trigger them. gitleaks scans all history, so rewording the current copy does
+  # not clear the commit that introduced it. Scoped to this one file.
+  '''docs/REPOSITORIES\.md''',
 ]
 
 [[rules]]
