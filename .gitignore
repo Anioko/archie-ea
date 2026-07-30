@@ -184,9 +184,10 @@ verification_artifacts/
 # named like a throwaway and got ignored out of existence. Permanent gates must be
 # negated below, not just named carefully.
 scripts/check_*.py
-# Permanent gate (enforces the DESIGN.md colour-token rule) — must stay tracked.
-# Note: gitignore has no inline comments, so this negation gets its own line.
+# Permanent gates — must stay tracked despite the check_*.py glob above.
+# Note: gitignore has no inline comments, so each negation gets its own line.
 !scripts/check_design_tokens.py
+!scripts/check_external_origins.py
 scripts/patch_*.py
 scripts/find_*.py
 scripts/delete_*.py

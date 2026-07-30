@@ -196,6 +196,22 @@ def gate_design_tokens(baseline: int) -> Result:
     return Result("design-tokens", PASS if count <= baseline else FAIL, "", count, baseline)
 
 
+def gate_air_gap(baseline: int) -> Result:
+    """No UI assets loaded from the public internet.
+
+    Archie is being prepared for deployment inside an enterprise network, where
+    public CDNs are blocked or proxied. Every external script is a page that breaks
+    on a managed workstation. Also a privacy control: each request leaks the
+    referring URL and client IP to a third party.
+    """
+    proc = _run([sys.executable, "scripts/check_external_origins.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("air-gap", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    return Result("air-gap", PASS if count <= baseline else FAIL, "", count, baseline)
+
+
 def gate_boot_health() -> Result:
     """Boot + wiring. Database-free by design — see tests/test_boot_health.py."""
     proc = _run([sys.executable, "-m", "pytest", "tests/test_boot_health.py", "-q", "-p", "no:cacheprovider"])
@@ -275,6 +291,10 @@ def build_gates(baseline: dict) -> list[Gate]:
              lambda: gate_design_tokens(baseline["design_tokens"]),
              remediation="use semantic tokens; see the table in DESIGN.md",
              tags=["static", "ui"]),
+        Gate("air-gap", "No UI assets loaded from public CDNs", "ratchet",
+             lambda: gate_air_gap(baseline["air_gap"]),
+             remediation="vendor the asset into app/static/ and use url_for('static', ...)",
+             tags=["static", "ui", "airgap"]),
         Gate("boot-health", "App boots; every url_for endpoint resolves", "command",
              gate_boot_health,
              remediation="see the failure message in tests/test_boot_health.py",
@@ -292,6 +312,7 @@ DEFAULT_BASELINE = {
     "redefinitions": 73,
     "lint_core": 4482,
     "design_tokens": 1255,
+    "air_gap": 78,
 }
 
 
