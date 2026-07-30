@@ -10,6 +10,11 @@ import logging
 from flask import Blueprint, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 
+# Destructive and mutating routes were guarded by @login_required only, so any
+# authenticated user could delete another user's records. Matches the gating
+# already used by app/modules/capabilities/routes/enterprise_crud_routes.py.
+from app.decorators import require_roles
+
 from app.models.business_case import BUSINESS_CASE_STATUSES
 from app.models.business_capabilities import BusinessCapability
 from app.models.solution_models import Solution
@@ -45,6 +50,7 @@ def index():
 
 @business_case_bp.route("/create", methods=["POST"])
 @login_required
+@require_roles("admin", "architect", "business_architect")
 def create():
     """Create a new business case and redirect to its document view."""
     title = (request.form.get("title") or "").strip()
@@ -84,6 +90,7 @@ def detail(business_case_id):
 
 @business_case_bp.route("/<int:business_case_id>/update", methods=["POST"])
 @login_required
+@require_roles("admin", "architect", "business_architect")
 def update(business_case_id):
     """Update business case meta fields (title/description/status/links) — JSON API."""
     business_case = service.get_business_case_or_none(business_case_id)
@@ -113,6 +120,7 @@ def update(business_case_id):
 
 @business_case_bp.route("/<int:business_case_id>/delete", methods=["POST"])
 @login_required
+@require_roles("admin")
 def delete(business_case_id):
     """Delete a business case."""
     business_case = service.get_business_case_or_none(business_case_id)
@@ -125,6 +133,7 @@ def delete(business_case_id):
 
 @business_case_bp.route("/<int:business_case_id>/api/field", methods=["POST", "PUT"])
 @login_required
+@require_roles("admin", "architect", "business_architect")
 def save_field(business_case_id):
     """Save a single business-case document section (inline save).
 
@@ -151,6 +160,7 @@ def save_field(business_case_id):
 
 @business_case_bp.route("/<int:business_case_id>/pull-financials", methods=["POST"])
 @login_required
+@require_roles("admin", "architect", "business_architect")
 def pull_financials(business_case_id):
     """Re-run aggregate_financials() against the linked capability / initiative
     / solution and pre-populate any blank financial fields (JSON API)."""

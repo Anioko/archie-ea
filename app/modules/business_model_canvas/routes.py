@@ -10,6 +10,11 @@ import logging
 from flask import Blueprint, redirect, render_template, request, url_for
 from flask_login import login_required
 
+# Destructive and mutating routes were guarded by @login_required only, so any
+# authenticated user could delete another user's records. Matches the gating
+# already used by app/modules/capabilities/routes/enterprise_crud_routes.py.
+from app.decorators import require_roles
+
 from app.models.business_model import CANVAS_BLOCKS, OPERATING_MODEL_TYPES
 from app.utils.api_response import error_response, not_found_response, success_response
 
@@ -36,6 +41,7 @@ def index():
 
 @business_model_bp.route("/create", methods=["POST"])
 @login_required
+@require_roles("admin", "architect", "business_architect")
 def create():
     """Create a new canvas and redirect to its detail/canvas view."""
     name = (request.form.get("name") or "").strip()
@@ -73,6 +79,7 @@ def detail(canvas_id):
 
 @business_model_bp.route("/<int:canvas_id>/update", methods=["POST"])
 @login_required
+@require_roles("admin", "architect", "business_architect")
 def update_canvas(canvas_id):
     """Update canvas name / description / operating model type (JSON API)."""
     canvas = service.get_canvas_or_none(canvas_id)
@@ -99,6 +106,7 @@ def update_canvas(canvas_id):
 
 @business_model_bp.route("/<int:canvas_id>/delete", methods=["POST"])
 @login_required
+@require_roles("admin")
 def delete_canvas(canvas_id):
     """Delete a canvas."""
     canvas = service.get_canvas_or_none(canvas_id)
@@ -111,6 +119,7 @@ def delete_canvas(canvas_id):
 
 @business_model_bp.route("/<int:canvas_id>/api/block", methods=["POST", "PUT"])
 @login_required
+@require_roles("admin", "architect", "business_architect")
 def save_block(canvas_id):
     """Save one of the 9 Business Model Canvas blocks.
 

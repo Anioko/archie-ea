@@ -10,6 +10,11 @@ import logging
 from flask import Blueprint, jsonify, render_template, request
 from flask_login import login_required
 
+# Destructive and mutating routes were guarded by @login_required only, so any
+# authenticated user could delete another user's records. Matches the gating
+# already used by app/modules/capabilities/routes/enterprise_crud_routes.py.
+from app.decorators import require_roles
+
 from app.models.organization_model import RACI_VALUES, STAKEHOLDER_TYPES
 from app.utils.api_response import error_response, not_found_response, success_response
 
@@ -75,6 +80,7 @@ def raci_data():
 
 @organization_bp.route("/raci/api/cell", methods=["POST"])
 @login_required
+@require_roles("admin", "architect", "business_architect")
 def raci_cell_save():
     """Upsert one RACI matrix cell.
 
@@ -112,6 +118,7 @@ def raci_cell_save():
 
 @organization_bp.route("/raci/api/cell", methods=["DELETE"])
 @login_required
+@require_roles("admin")
 def raci_cell_delete():
     """Clear one RACI matrix cell.
 
