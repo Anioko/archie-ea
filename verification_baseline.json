@@ -2,9 +2,9 @@
   "_comment": "Ratchet baselines for scripts/verify.py. Lowering a number is routine (run --update-baseline after a cleanup). Raising one is a deliberate regression and must be justified in review.",
   "_note": "updated 2026-07-30",
   "ratchets": {
-    "undefined_names": 86,
+    "undefined_names": 72,
     "redefinitions": 73,
-    "lint_core": 4265,
+    "lint_core": 4252,
     "design_tokens": 1255,
     "air_gap": 0
   }

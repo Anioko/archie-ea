@@ -27,6 +27,26 @@ from app.modules.codegen.stack_registry import STACK_REGISTRY, SUPPORTED_LANGUAG
 
 
 
+def _snake(name):
+    """snake_case a name.
+
+    Hoisted from a nested definition. It was defined inside one function but
+    referenced from six call sites in *other* functions, so each of those raised
+    NameError. The body is unchanged, and it closes over nothing beyond the
+    module-level `re` import, so hoisting is behaviour-preserving.
+
+    Note there are three near-duplicates of this in the codebase (`_snake_name` in
+    preview_routes.py, `_snake_case` in aabl_compiler.py, and this one). They should
+    converge on a single implementation.
+    """
+    s = (name or "unknown").strip()
+    # Split PascalCase/camelCase into words before snake_casing
+    s = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", s)
+    s = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", s)
+    s = re.sub(r"[^a-zA-Z0-9]", "_", s)
+    return re.sub(r"_+", "_", s).strip("_").lower()
+
+
 def _check_access(solution):
     """Verify current user can access this solution's workbench."""
     if not current_user.is_authenticated:
@@ -5496,13 +5516,9 @@ def _uml_to_product_spec_bundle(uml, config, solution, business_rules: list = No
         stripped = _ARCHIMATE_SUFFIXES_RE.sub("", name).strip()
         return stripped if stripped else name
 
-    def _snake(name):
-        s = (name or "unknown").strip()
-        # Split PascalCase/camelCase into words before snake_casing
-        s = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", s)
-        s = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", s)
-        s = re.sub(r"[^a-zA-Z0-9]", "_", s)
-        return re.sub(r"_+", "_", s).strip("_").lower()
+    # _snake is now defined at module level (see near the top of this file): it was
+    # referenced from six call sites in OTHER functions, which all raised NameError
+    # while it lived only in this scope.
 
     def _pascal(name):
         sanitized = re.sub(r"[^a-zA-Z0-9\s_\-]", "", (name or "Unknown").strip())
