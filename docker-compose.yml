@@ -3,14 +3,21 @@ services:
   server:
     build:
       context: .
-    # Bring the schema up before starting the web server (both idempotent, non-destructive):
+    # Bring the schema up before starting the web server (all idempotent, non-destructive):
     #   init-db          — create any missing tables (create_all). Without it, gunicorn
     #                      boots against an empty DB and every request 500s ("relation does not exist").
     #   reconcile-schema — add any columns the models gained since this DB was created.
     #                      create_all never alters existing tables, so a long-lived DB drifts
     #                      and core pages 500 (e.g. arb_review_items.jira_issue_key). See
     #                      docs/known-issues/schema-drift-on-existing-databases.md
+    #   backfill-architect-role — normalise existing users onto the architect role.
     command: sh -c "flask --app manage init-db && flask --app manage reconcile-schema && flask --app manage backfill-architect-role && gunicorn -c gunicorn.conf.py manage:app"
+    # Guardrails added 2026-07-30. Previously restart=no and no mem_limit, so a
+    # memory spike triggered a GLOBAL OOM (22 Jul) and a wedged container stayed
+    # wedged for six days (24-30 Jul). The ceiling confines a spike to this
+    # container; unless-stopped brings it back by itself.
+    restart: unless-stopped
+    mem_limit: 2600m
     ports:
       - '5000:5000'
     volumes:
@@ -21,6 +28,21 @@ services:
       DEV_DATABASE_URL: postgresql://postgres:postgres@postgres:5432/archie
       TEST_DATABASE_URL: postgresql://postgres:postgres@postgres:5432/archie_test
       REDISTOGO_URL: redis://redis:6379
+      GUNICORN_WORKERS: "4"
+      # 4x8. Measured on this 2 vCPU box at concurrency 32: 4 workers gave
+      # 89 req/s p95 628ms vs 2 workers 51 req/s p95 1588ms. Threads are the
+      # cheap axis (~0 MB each); each extra worker costs ~355 MB.
+      GUNICORN_THREADS: "8"
+      GUNICORN_MAX_REQUESTS: "1000"
+      # 8+4 per process x 4 workers = 48 connections, under max_connections=100.
+      SQLALCHEMY_POOL_SIZE: "8"
+      SQLALCHEMY_MAX_OVERFLOW: "4"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf --max-time 10 http://127.0.0.1:5000/health || exit 1"]
+      interval: 30s
+      timeout: 12s
+      retries: 3
+      start_period: 150s
     depends_on:
       postgres:
         condition: service_healthy
@@ -28,9 +50,16 @@ services:
         condition: service_started
 
   worker:
+    # Disabled 2026-07-30. Its only job is sending email, but no MAIL_/SMTP
+    # settings exist anywhere, so it could not send - it only logged messages,
+    # while holding ~1 GB (25% of RAM). Parked behind a profile, not deleted:
+    #   re-enable with:  docker compose --profile email up -d worker
+    profiles: ['email']
     build:
       dockerfile: Dockerfile.worker
       context: .
+    restart: unless-stopped
+    mem_limit: 1200m
     volumes:
       - './:/app'
     environment:
@@ -39,6 +68,9 @@ services:
       DEV_DATABASE_URL: postgresql://postgres:postgres@postgres:5432/archie
       TEST_DATABASE_URL: postgresql://postgres:postgres@postgres:5432/archie_test
       REDISTOGO_URL: redis://redis:6379
+      # The RQ worker opens its own pool too; it only sends email, so keep it small.
+      SQLALCHEMY_POOL_SIZE: "4"
+      SQLALCHEMY_MAX_OVERFLOW: "2"
     depends_on:
       postgres:
         condition: service_healthy
@@ -47,6 +79,8 @@ services:
 
   postgres:
     image: pgvector/pgvector:pg15
+    restart: unless-stopped
+    mem_limit: 448m
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -68,7 +102,8 @@ services:
 
   adminer:
     image: adminer
-    restart: always
+    restart: unless-stopped
+    mem_limit: 64m
     ports:
       # Adminer is a DB admin UI — loopback only (reach it via an SSH tunnel), never public.
       - '127.0.0.1:8080:8080'
@@ -77,6 +112,14 @@ services:
 
   redis:
     image: redis:6-alpine
+    restart: unless-stopped
+    mem_limit: 160m
+    # noeviction is deliberate: Redis is the RQ broker, so evicting keys would
+    # silently drop queued jobs. maxmemory is a guard rail, not a cache policy.
+    # Do NOT add --save here: any --save argument overrides the compiled-in
+    # defaults and yielded an EMPTY save policy (verified), silently disabling
+    # RDB snapshots. Omitting it keeps the default 3600/1, 300/100, 60/10000.
+    command: redis-server --maxmemory 128mb --maxmemory-policy noeviction
     ports:
       # Loopback only — the app uses Redis over the Docker network (host 'redis').
       # Publishing on 0.0.0.0 left Redis open to the internet on 6379 (the security finding).
