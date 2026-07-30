@@ -44,16 +44,9 @@ paths = [
   # Documentation showing users how to test their OWN key. The literal text is
   #   -H "Authorization: Bearer YOUR_OPENAI_API_KEY"
   '''.*\.md''',
-]
-
-[[rules]]
-id = "curl-auth-user"
-[rules.allowlist]
-paths = [
-  # A usage example in this script briefly read `curl -u admin:PASSWORD`. The
-  # value was the literal word PASSWORD, never a credential, and the current
-  # file uses a bearer token instead. It stays allowlisted because gitleaks
-  # scans ALL history and commit fa7e259 cannot be reworded away - the same
-  # reason docs/REPOSITORIES.md is listed above.
+  # A usage example in this script briefly read `curl -u admin:PASSWORD` - the
+  # literal word PASSWORD, never a credential; it now uses a bearer token.
+  # Listed because gitleaks scans ALL history and commit fa7e259 cannot be
+  # reworded away.
   '''scripts/ci/sonar-scan\.sh''',
 ]
