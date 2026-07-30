@@ -7,7 +7,27 @@ they otherwise exist on exactly one machine with no version history.
 |---|---|---|
 | `archie-watchdog.sh` | `/usr/local/bin/` | Restarts `archie-ea-server-1` when `/health` stops answering |
 | `archie-watchdog.{service,timer}` | `/etc/systemd/system/` | Runs the watchdog every 60s |
-| `Caddyfile.proxy` | `/etc/caddy/Caddyfile` on the **proxy** droplet (165.22.125.156) | TLS termination, timeouts, upstream health checks |
+| `Caddyfile.proxy` | `/etc/caddy/Caddyfile` on the **proxy** droplet (165.22.125.156) | TLS termination, timeouts, HSTS, upstream health checks; proxies to the app over the VPC address 10.106.0.6 |
+| `caddy/caddy-restart-override.conf` | `/etc/systemd/system/caddy.service.d/override.conf` on the **proxy** droplet | `Restart=on-failure`. The unit shipped with no `Restart=` at all, so systemd's default of `Restart=no` applied to the single ingress point |
+| `archie-backup.sh` | `/usr/local/bin/` | Verified 6-hourly `pg_dump` with retention and a success marker |
+| `archie-backup.{service,timer}` | `/etc/systemd/system/` | Schedules the backup |
+
+## Backups
+
+`archie-backup.sh` runs every 6 hours. It verifies each dump is restorable
+(`pg_restore --list`) rather than merely present, prunes at 14 days, and writes
+`/var/backups/archie/LAST_SUCCESS`. The watchdog warns if that marker is more
+than 18 hours old, because a backup that stops silently looks exactly like one
+that works.
+
+These dumps are on the SAME DISK as the database. That survives a bad query, not
+a lost droplet. Shipping them off-box needs object-storage credentials.
+
+Install:
+
+    cp archie-backup.sh /usr/local/bin/ && chmod +x /usr/local/bin/archie-backup.sh
+    cp archie-backup.service archie-backup.timer /etc/systemd/system/
+    systemctl daemon-reload && systemctl enable --now archie-backup.timer
 
 ## Why the watchdog exists
 

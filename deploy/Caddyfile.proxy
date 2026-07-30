@@ -16,7 +16,17 @@
 }
 
 165-22-125-156.sslip.io {
-	reverse_proxy 134.122.105.56:5000 {
+	# HSTS was absent. CSP, X-Content-Type-Options, X-Frame-Options and
+	# Referrer-Policy were already present; this closes the remaining gap by
+	# stopping a browser downgrading to HTTP after its first visit.
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+
+	# Private network, not the public IP. Routing over 134.122.105.56 required the
+	# backend to publish port 5000 on 0.0.0.0, which left the app reachable from
+	# the open internet with no TLS, no timeouts and none of the headers set above
+	# (verified 2026-07-30: arbitrary scanner IPs held connections directly to it).
+	# Both droplets sit on the same DigitalOcean VPC, so this hop never leaves it.
+	reverse_proxy 10.106.0.6:5000 {
 		transport http {
 			dial_timeout            10s
 			response_header_timeout 120s
