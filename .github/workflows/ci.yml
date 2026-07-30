@@ -17,6 +17,9 @@ jobs:
   secret-scan:
     name: Secret scan (gitleaks)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read   # gitleaks enumerates PR commits via the API
     steps:
       - uses: actions/checkout@v4
         with:
@@ -24,6 +27,13 @@ jobs:
       - name: gitleaks
         uses: gitleaks/gitleaks-action@v2
         env:
+          # Required since gitleaks-action v2's breaking change: without it the
+          # job aborts with "GITHUB_TOKEN is now required to scan pull requests"
+          # WITHOUT scanning anything. Every run has been red since mid-June for
+          # this reason alone - not because a secret was found - which made real
+          # failures indistinguishable from this one. Uses the automatically
+          # provided token; no new secret needs creating.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
 
   tests:
