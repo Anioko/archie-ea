@@ -20,6 +20,12 @@ permissions:
 
 env:
   PYTHON_VERSION: "3.12"
+  # Pinned deliberately. The ratchet baselines in verification_baseline.json are a
+  # measurement made with a specific Ruff version; a floating install can report more
+  # findings for the same code and fail the ratchet for a reason unrelated to the
+  # change under review. Bump this and re-run `scripts/verify.py --update-baseline`
+  # in the same commit. Keep in step with .pre-commit-config.yaml.
+  RUFF_VERSION: "0.16.0"
 
 jobs:
   secret-scan:
@@ -46,7 +52,9 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
       - name: Install gate tooling
-        run: python -m pip install --upgrade pip ruff
+        # Only Ruff is needed: scripts/verify.py and check_design_tokens.py are
+        # stdlib-only, so the static gates run in seconds without app dependencies.
+        run: python -m pip install --upgrade pip "ruff==${RUFF_VERSION}"
       - name: Compile + lint ratchets + design tokens
         run: python scripts/verify.py --tag static
 
