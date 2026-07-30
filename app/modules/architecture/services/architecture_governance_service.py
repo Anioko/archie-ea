@@ -610,6 +610,15 @@ class ArchitectureGovernanceService:
                 WHERE id = :elem_id
             """
             _eq_params = {"elem_id": element_id}
+            # The execute for this query was missing: `element_query` and `_eq_params`
+            # were built but never run, so `element` was unbound and every call to
+            # check_compliance() raised NameError at the guard below. Restored using the
+            # same pattern as the standards query that follows. fetchone() because the
+            # guard expects a single row, and the SELECT's column order (name, type,
+            # layer, technology_stack) matches the element[0..3] indexing used later.
+            element = db.session.execute(  # tenant-exempt: architecture_elements has no organization_id
+                text(element_query), _eq_params
+            ).fetchone()
 
             if not element:
                 return {"error": "Element not found"}

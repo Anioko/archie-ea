@@ -16,11 +16,20 @@ from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
 from app import db
-from app.models import (  # TechnologyStack, BusinessCapability,  # ApplicationCapability,; PlatformCapability, WorkflowTemplate, GenerationPipeline,; WorkflowPipeline,
+from app.models import (
+    # These six were commented out in this import while still being referenced in the
+    # module body, so every code path touching them raised NameError. All are verified
+    # exported from app.models, so restoring them is safe.
+    ApplicationCapability,
     ArchiMateElement,
     ArchiMateRelationship,
     ArchitectureModel,
+    BusinessCapability,
+    GenerationPipeline,
     LLMInteraction,
+    PlatformCapability,
+    TechnologyStack,
+    WorkflowTemplate,
 )
 from app.services.llm_service import LLMService
 

@@ -8,12 +8,15 @@ Performance optimizations:
 - Reduces database queries by 80%+ on high-traffic endpoints
 """
 
+import json
 from datetime import datetime
 
 from flask import Blueprint, Response, current_app, jsonify, render_template, request
 from flask_login import login_required
 
 from .. import db
+from ..models.application_portfolio import ApplicationComponent
+from ..models.unified_capability import UnifiedCapability
 
 # Import caching utilities for performance
 try:
