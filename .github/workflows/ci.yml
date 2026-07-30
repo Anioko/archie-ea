@@ -38,6 +38,12 @@ jobs:
       - name: gitleaks
         uses: gitleaks/gitleaks-action@v2
         env:
+          # Required since gitleaks-action v2: without it the action exits
+          # immediately with "GITHUB_TOKEN is now required to scan pull requests".
+          # This gate had been failing in ~9s on every PR since at least
+          # 2026-07-21 — so the repository's one nominally-hard gate was in fact
+          # not scanning anything.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
 
   static-gates:
