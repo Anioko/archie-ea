@@ -69,8 +69,14 @@ class EnterpriseExportService:
             # own @page rules, cover gradient, and table styling).
             from weasyprint import HTML
             return HTML(string=html).write_pdf()
-            
-        except ImportError:
+
+        except (ImportError, OSError):
+            # OSError as well as ImportError: WeasyPrint is a CFFI binding over
+            # native GTK/Pango. When the wheel is installed but libgobject et al.
+            # are absent — normal on Windows, and on slim container images — the
+            # import raises OSError("cannot load library 'libgobject-2.0-0'"),
+            # not ImportError. Catching only ImportError let that propagate, so
+            # PDF export 500'd on exactly the hosts the fallback exists for.
             # Fallback to pdfkit (wkhtmltopdf)
             try:
                 import pdfkit
