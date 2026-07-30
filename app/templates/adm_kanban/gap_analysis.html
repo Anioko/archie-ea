@@ -27,11 +27,11 @@
             </div>
             <div class="text-center">
                 <div class="text-2xl font-bold {% if unclosed_count > 0 %}text-destructive{% else %}text-emerald-600{% endif %}">
-<<<<<<< HEAD
+                    {# Includes computed_gap_count so the three tiles agree:
+                       Total Gaps = gaps + computed, Covered = gaps - unclosed,
+                       so Unclosed must be unclosed + computed for
+                       Total = Covered + Unclosed to hold. #}
                     {{ unclosed_count + computed_gap_count }}
-=======
-                    {{ unclosed_count }}
->>>>>>> wip/AIC-312
                 </div>
                 <div class="text-xs text-muted-foreground">Unclosed</div>
             </div>
