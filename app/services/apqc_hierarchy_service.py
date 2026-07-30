@@ -20,6 +20,7 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy import and_  # dead-code-ok
 
 from app import db
+from app.models.apqc_process import APQCProcess
 
 logger = logging.getLogger(__name__)
 

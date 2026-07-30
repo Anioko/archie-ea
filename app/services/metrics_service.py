@@ -18,6 +18,8 @@ from app.models.business_capabilities import BusinessCapability
 from app.models.business_layer import BusinessService
 from app.models.compliance_models import ComplianceRequirement
 from app.models.cost_intelligence import CapabilityCostAllocation
+from app.models.enterprise_intelligence import ApplicationCost, ApplicationROI
+from app.models.missing_capability_models import ApplicationCapability
 from app.models.vendor import VendorOrganization, VendorProduct
 from app.services.decorators import transactional
 
@@ -643,15 +645,20 @@ class MetricsService:
             total_interfaces = sum(r["interface_count"] for r in performance_metrics)
             total_calls = sum(r["total_calls"] for r in performance_metrics)
 
+            # NB: the local is `portfolio_avg_response` (computed above); the response
+            # KEY is "portfolio_avg_response_time". These three sites referenced the key
+            # name as a variable, so this function raised NameError on every call, was
+            # swallowed by the except below, and always returned the empty fallback —
+            # meaning these metrics were never actually reported.
             return {
                 "by_type": performance_metrics,
-                "portfolio_avg_response_time": round(portfolio_avg_response_time, 2),
+                "portfolio_avg_response_time": round(portfolio_avg_response, 2),
                 "total_interfaces": total_interfaces,
                 "total_monthly_calls": total_calls,
                 "performance_grade": "EXCELLENT"
-                if portfolio_avg_response_time < 100
+                if portfolio_avg_response < 100
                 else "GOOD"
-                if portfolio_avg_response_time < 500
+                if portfolio_avg_response < 500
                 else "POOR",
             }
         except Exception as e:

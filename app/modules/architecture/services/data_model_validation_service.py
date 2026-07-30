@@ -654,7 +654,7 @@ class DataModelValidationService:
 
                 if id_column and id_column.type.python_type != int:
                     issues.append(f"{model_class.__name__} id field should be Integer")
-                    recommendations.append(f"Change id field to Integer in {model_class__name__}")
+                    recommendations.append(f"Change id field to Integer in {model_class.__name__}")
 
                 # Check name field
                 name_column = next((col for col in columns if col.name == 'name'), None)
@@ -745,7 +745,7 @@ class DataModelValidationService:
 
                 if not classification_col:
                     issues.append(f"{model_class.__name__} missing data classification field")
-                    recommendations.append(f"Add data classification field to {model_class__name__}")
+                    recommendations.append(f"Add data classification field to {model_class.__name__}")
 
             except Exception as e:
                 issues.append(f"Error checking data classification for {model_class.__name__}: {str(e)}")
@@ -770,11 +770,11 @@ class DataModelValidationService:
 
                 if not pii_fields and not contains_pii:
                     issues.append(f"{model_class.__name__} missing PII tracking")
-                    recommendations.append(f"Add PII tracking to {model_class__name__}")
+                    recommendations.append(f"Add PII tracking to {model_class.__name__}")
 
             except Exception as e:
                 issues.append(f"Error checking PII compliance for {model_class.__name__}: {str(e)}")
-                recommendations.append(f"Fix PII compliance in {model_class__name__}")
+                recommendations.append(f"Fix PII compliance in {model_class.__name__}")
 
         score = 100 - (len(issues) * 4)
         return {'score': max(0, score), 'issues': issues, 'recommendations': recommendations}
@@ -798,7 +798,7 @@ class DataModelValidationService:
 
             except Exception as e:
                 issues.append(f"Error checking access control for {model_class.__name__}: {str(e)}")
-                recommendations.append(f"Fix access control in {model_class__name__}")
+                recommendations.append(f"Fix access control in {model_class.__name__}")
 
         score = 100 - (len(issues) * 3)
         return {'score': max(0, score), 'issues': issues, 'recommendations': recommendations}
@@ -824,11 +824,11 @@ class DataModelValidationService:
 
                 if missing_audit_fields:
                     issues.append(f"{model_class.__name__} missing audit fields: {', '.join(missing_audit_fields)}")
-                    recommendations.append(f"Add missing audit fields to {model_class__name__}")
+                    recommendations.append(f"Add missing audit fields to {model_class.__name__}")
 
             except Exception as e:
                 issues.append(f"Error checking audit trail for {model_class.__name__}: {str(e)}")
-                recommendations.append(f"Fix audit trail in {model_class__name__}")
+                recommendations.append(f"Fix audit trail in {model_class.__name__}")
 
         score = 100 - (len(issues) * 2)
         return {'score': max(0, score), 'issues': issues, 'recommendations': recommendations}
@@ -852,7 +852,7 @@ class DataModelValidationService:
 
             except Exception as e:
                 issues.append(f"Error checking retention policy for {model_class.__name__}: {str(e)}")
-                recommendations.append(f"Fix retention policy in {model_class__name__}")
+                recommendations.append(f"Fix retention policy in {model_class.__name__}")
 
         score = 100 - (len(issues) * 3)
         return {'score': max(0, score), 'issues': issues, 'recommendations': recommendations}
