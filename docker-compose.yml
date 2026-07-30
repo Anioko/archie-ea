@@ -7,6 +7,12 @@ services:
     # Without this, `docker compose up` boots gunicorn against an empty database and
     # every request fails with "relation does not exist".
     command: sh -c "flask --app manage init-db && gunicorn -c gunicorn.conf.py manage:app"
+    # Guardrails added 2026-07-30. Previously restart=no and no mem_limit, so a
+    # memory spike triggered a GLOBAL OOM (22 Jul) and a wedged container stayed
+    # wedged for six days (24-30 Jul). The ceiling confines a spike to this
+    # container; unless-stopped brings it back by itself.
+    restart: unless-stopped
+    mem_limit: 2600m
     ports:
       - '5000:5000'
     volumes:
@@ -17,6 +23,20 @@ services:
       DEV_DATABASE_URL: postgresql://postgres:postgres@postgres:5432/archie
       TEST_DATABASE_URL: postgresql://postgres:postgres@postgres:5432/archie_test
       REDISTOGO_URL: redis://redis:6379
+      GUNICORN_WORKERS: "4"
+      # 2 workers matches the 2 vCPUs; concurrency comes from threads, which
+      # share the interpreter (~0 MB each) instead of ~355 MB per extra worker.
+      GUNICORN_THREADS: "8"
+      GUNICORN_MAX_REQUESTS: "1000"
+      # 8+4 per process x 2 workers = 24 connections, well under max_connections=100.
+      SQLALCHEMY_POOL_SIZE: "8"
+      SQLALCHEMY_MAX_OVERFLOW: "4"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf --max-time 10 http://127.0.0.1:5000/health || exit 1"]
+      interval: 30s
+      timeout: 12s
+      retries: 3
+      start_period: 150s
     depends_on:
       postgres:
         condition: service_healthy
@@ -24,9 +44,16 @@ services:
         condition: service_started
 
   worker:
+    # Disabled 2026-07-30. Its only job is sending email, but no MAIL_/SMTP
+    # settings exist anywhere, so it could not send - it only logged messages,
+    # while holding ~1 GB (25% of RAM). Parked behind a profile, not deleted:
+    #   re-enable with:  docker compose --profile email up -d worker
+    profiles: ['email']
     build:
       dockerfile: Dockerfile.worker
       context: .
+    restart: unless-stopped
+    mem_limit: 1200m
     volumes:
       - './:/app'
     environment:
@@ -35,6 +62,9 @@ services:
       DEV_DATABASE_URL: postgresql://postgres:postgres@postgres:5432/archie
       TEST_DATABASE_URL: postgresql://postgres:postgres@postgres:5432/archie_test
       REDISTOGO_URL: redis://redis:6379
+      # The RQ worker opens its own pool too; it only sends email, so keep it small.
+      SQLALCHEMY_POOL_SIZE: "4"
+      SQLALCHEMY_MAX_OVERFLOW: "2"
     depends_on:
       postgres:
         condition: service_healthy
@@ -43,6 +73,8 @@ services:
 
   postgres:
     image: pgvector/pgvector:pg15
+    restart: unless-stopped
+    mem_limit: 448m
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -52,7 +84,9 @@ services:
       # Init script creates flask_dev and flask_test databases on startup
       - ./scripts/database/init-databases.sh:/docker-entrypoint-initdb.d/init-databases.sh:ro
     ports:
-      - '5432:5432'
+      # Loopback only: this was reachable on 0.0.0.0 with postgres/postgres
+      # credentials and ufw inactive. Reach it with: ssh -L 5432:localhost:5432
+      - '127.0.0.1:5432:5432'
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -61,16 +95,26 @@ services:
 
   adminer:
     image: adminer
-    restart: always
+    restart: unless-stopped
+    mem_limit: 64m
     ports:
-      - 8080:8080
+      # Loopback only. Reach it with: ssh -L 8080:localhost:8080 root@<host>
+      - '127.0.0.1:8080:8080'
     depends_on:
       - postgres
 
   redis:
     image: redis:6-alpine
+    restart: unless-stopped
+    mem_limit: 160m
+    # noeviction is deliberate: Redis is the RQ broker, so evicting keys would
+    # silently drop queued jobs. maxmemory is a guard rail, not a cache policy.
+    # Do NOT add --save here: any --save argument overrides the compiled-in
+    # defaults and yielded an EMPTY save policy (verified), silently disabling
+    # RDB snapshots. Omitting it keeps the default 3600/1, 300/100, 60/10000.
+    command: redis-server --maxmemory 128mb --maxmemory-policy noeviction
     ports:
-      - '6379:6379'
+      - '127.0.0.1:6379:6379'
 
 volumes:
   db-data:
