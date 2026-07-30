@@ -54,6 +54,11 @@ ARGS=(
 if [ -f "$COVERAGE_XML" ]; then
     ARGS+=("-Dsonar.python.coverage.reportPaths=${COVERAGE_XML}")
     echo "including coverage from ${COVERAGE_XML}"
+    # The report must match the source being scanned. SonarQube discards the
+    # WHOLE report - reporting 0% rather than partial data - if a single line
+    # reference is out of range, e.g.
+    #   Cannot read coverage report ... Line 1304 is out of range ... (lines: 1303)
+    # Regenerate it against the current tree; do not reuse one from before an edit.
 else
     # Without this the dashboard reports 0.0% coverage, which reads as "no tests"
     # when it actually means "no report was supplied". Say so explicitly.
