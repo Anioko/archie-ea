@@ -44,9 +44,16 @@ paths = [
   # Documentation showing users how to test their OWN key. The literal text is
   #   -H "Authorization: Bearer YOUR_OPENAI_API_KEY"
   '''.*\.md''',
-  # A usage example in this script briefly read `curl -u admin:PASSWORD` - the
-  # literal word PASSWORD, never a credential; it now uses a bearer token.
-  # Listed because gitleaks scans ALL history and commit fa7e259 cannot be
-  # reworded away.
+]
+
+[[rules]]
+id = "curl-auth-user"
+[rules.allowlist]
+paths = [
+  # A usage example in this script briefly read `curl -u admin:PASSWORD`. The
+  # value was the literal word PASSWORD, never a credential, and the file now
+  # uses a bearer token. Listed because gitleaks scans ALL history, so commit
+  # fa7e259 cannot be reworded away. Distinct from the curl-auth-HEADER rule
+  # above, which covers the Bearer example in the markdown docs.
   '''scripts/ci/sonar-scan\.sh''',
 ]
