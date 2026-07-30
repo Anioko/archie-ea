@@ -145,9 +145,26 @@ class TestBizbokGridWithSeededData:
             # after_insert event on ValueStream in app/models/strategy_layer.py
             # references a column that does not exist on this DB's
             # `value_streams` table, so an ORM-level insert raises AttributeError.
-            vs = vs_service.create_value_stream(
-                {"name": f"Test Value Stream {suffix}", "code": f"TVS-{suffix}"}
-            )
+            # ValueStream is tenant-scoped (TenantMixin) as of 2026-07-30, so
+            # organization_id is NOT NULL. _default_org_id() deliberately
+            # refuses to guess when several organizations exist, so seeding
+            # outside a request would insert NULL and fail. Supply the tenant
+            # explicitly via a request context, exactly as a real request does.
+            from flask import g as _g
+
+            from app.models.organization import Organization
+
+            _org = Organization.query.order_by(Organization.id.asc()).first()
+            if _org is None:
+                _org = Organization(name=f"VS Test Org {suffix}")
+                db.session.add(_org)
+                db.session.commit()
+
+            with app.test_request_context():
+                _g.current_org_id = _org.id
+                vs = vs_service.create_value_stream(
+                    {"name": f"Test Value Stream {suffix}", "code": f"TVS-{suffix}"}
+                )
 
             stage1 = ValueStreamStage(
                 name="Identify", value_stream_id=vs.id, stage_order=1

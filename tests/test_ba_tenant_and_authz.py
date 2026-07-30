@@ -93,7 +93,7 @@ def _make_org_id(db, label):
     return org.id
 
 
-def _make_user_id(db, org_id, label, enterprise_role=None):
+def _make_user_id(db, org_id, label, enterprise_role=None, role_name="Administrator"):
     """A real User row pinned to *org_id* via an explicit organization_id (the
     User.before_insert listener otherwise silently reassigns unset
     organization_id to the shared 'default' org — see app/models/user.py
@@ -120,6 +120,17 @@ def _make_user_id(db, org_id, label, enterprise_role=None):
     )
     db.session.add(user)
     db.session.flush()
+
+    if role_name is not None:
+        from app.models.user import Role
+
+        role = Role.query.filter_by(name=role_name).first()
+        if role is None:
+            role = Role(name=role_name)
+            db.session.add(role)
+            db.session.flush()
+        user.role = role
+
     db.session.commit()
     return user.id
 
@@ -594,7 +605,9 @@ class TestRoleGateOnDestructiveRoutes:
 
         with app.app_context():
             org_id = _make_org_id(db, "RbacGate")
-            user_id = _make_user_id(db, org_id, "ViewerRole", enterprise_role="procurement")
+            user_id = _make_user_id(
+                db, org_id, "ViewerRole", enterprise_role="procurement", role_name=None
+            )
 
             from app.models.business_case import BusinessCase
 
