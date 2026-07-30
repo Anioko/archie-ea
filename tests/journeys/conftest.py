@@ -38,11 +38,20 @@ def client(app):
 
 
 def make_org(db, label):
-    """A real Organization row."""
+    """A real Organization row.
+
+    slug is NOT NULL and has no default, so it must be supplied explicitly -
+    omitting it raises NotNullViolation on commit rather than at construction.
+    """
     from app.models.organization import Organization
 
-    org = Organization(name="%s %s" % (label, uuid.uuid4().hex[:8]))
+    suffix = uuid.uuid4().hex[:8]
+    org = Organization(
+        name="%s Org %s" % (label, suffix),
+        slug="%s-org-%s" % (label.lower().replace(" ", "-"), suffix),
+    )
     db.session.add(org)
+    db.session.flush()
     db.session.commit()
     return org.id
 
