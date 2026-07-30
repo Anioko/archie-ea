@@ -3012,7 +3012,7 @@
 <script src="{{ url_for('static', filename='js/capability_map/index_inline.js') }}"></script>
 {# Business Architect visuals: Chart.js — same CDN/version already used by arb/dashboard.html
    and applications/rationalization/dashboard.html. No new external library is introduced. #}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
 <script src="{{ url_for('static', filename='js/capability_map/nested_map.js') }}"></script>
 <script src="{{ url_for('static', filename='js/capability_map/maturity_radar.js') }}"></script>
 {% endblock %}

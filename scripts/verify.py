@@ -212,6 +212,33 @@ def gate_air_gap(baseline: int) -> Result:
     return Result("air-gap", PASS if count <= baseline else FAIL, "", count, baseline)
 
 
+def gate_dependency_cves() -> Result:
+    """No known CVEs in the production dependency set.
+
+    This is the scan an enterprise security review runs before granting network
+    admission, so it is better to run it ourselves first. Scoped to
+    requirements.txt deliberately: test tooling is not shipped, so a CVE in pytest
+    is not part of the deployed attack surface.
+    """
+    proc = _run([sys.executable, "-m", "pip_audit", "-r", "requirements.txt",
+                 "--progress-spinner", "off"], timeout=600)
+    output = (proc.stdout + proc.stderr).strip()
+    if "No known vulnerabilities found" in output:
+        return Result("dependency-cves", PASS, "no known vulnerabilities", 0, 0)
+    if proc.returncode != 0 and ("Failed to install" in output or "internal pip failure" in output):
+        # A resolution failure is a real problem, not a scanner hiccup: it means
+        # requirements.txt cannot be installed as written.
+        return Result("dependency-cves", FAIL,
+                      "requirements.txt does not resolve:\n" + output[-1200:],
+                      remediation="fix the conflicting pins")
+    if "urlopen error" in output or "Temporary failure in name resolution" in output:
+        return Result("dependency-cves", SKIP, "no network access to the advisory database")
+    rows = [ln for ln in output.splitlines() if re.match(r"^\S+\s+\S+\s+(PYSEC|CVE|GHSA)", ln)]
+    return Result("dependency-cves", FAIL if rows else PASS,
+                  "\n".join(rows[:15]), len(rows), 0,
+                  remediation="bump the affected package; check for a blocking upper bound")
+
+
 def gate_boot_health() -> Result:
     """Boot + wiring. Database-free by design — see tests/test_boot_health.py."""
     proc = _run([sys.executable, "-m", "pytest", "tests/test_boot_health.py", "-q", "-p", "no:cacheprovider"])
@@ -295,6 +322,10 @@ def build_gates(baseline: dict) -> list[Gate]:
              lambda: gate_air_gap(baseline["air_gap"]),
              remediation="vendor the asset into app/static/ and use url_for('static', ...)",
              tags=["static", "ui", "airgap"]),
+        Gate("dependency-cves", "No known CVEs in shipped dependencies", "zero",
+             gate_dependency_cves,
+             remediation="bump the affected package (watch for blocking upper bounds)",
+             tags=["deps", "security"]),
         Gate("boot-health", "App boots; every url_for endpoint resolves", "command",
              gate_boot_health,
              remediation="see the failure message in tests/test_boot_health.py",

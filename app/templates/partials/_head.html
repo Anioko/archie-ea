@@ -16,12 +16,12 @@
 {% endif %}
 
 <!-- Lucide Icons (pinned) -->
-<script src="https://unpkg.com/lucide@0.344.0"
+<script src="{{ url_for('static', filename='vendor/lucide.min.js') }}"
         integrity="sha384-tTkFttkBclaU1cloKwOi9xk3pbao3VZxTjLNBt8iFABWDBQibbAbWpVmO28zMuxq"
         crossorigin="anonymous"></script>
 
 <!-- DOMPurify for XSS prevention -->
-<script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.8/dist/purify.min.js"
+<script src="{{ url_for('static', filename='vendor/purify.min.js') }}"
         integrity="sha384-vdScihEZCfbPnBQf+lc7LgXUdJVYyhC3yWHUW5C5P5GpHRqVnaM6HJELJxT6IqwM"
         crossorigin="anonymous"></script>
 <script>
@@ -47,14 +47,14 @@
 {# extra_head_js block moved to admin_base.html — blocks inside {% include %} don't inherit #}
 
 <!-- Alpine.js plugins (must appear BEFORE Alpine in DOM order for defer scripts) -->
-<script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/focus@3.14.3/dist/cdn.min.js"
+<script defer src="{{ url_for('static', filename='vendor/alpine-focus.min.js') }}"
         crossorigin="anonymous"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/intersect@3.14.3/dist/cdn.min.js"
+<script defer src="{{ url_for('static', filename='vendor/alpine-intersect.min.js') }}"
         crossorigin="anonymous"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/collapse@3.14.3/dist/cdn.min.js"
+<script defer src="{{ url_for('static', filename='vendor/alpine-collapse.min.js') }}"
         crossorigin="anonymous"></script>
 <!-- Alpine.js (pinned) -->
-<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.3/dist/cdn.min.js"
+<script defer src="{{ url_for('static', filename='vendor/alpine.min.js') }}"
         integrity="sha384-iZD2X8o1Zdq0HR5H/7oa8W30WS4No+zWCKUPD7fHRay9I1Gf+C4F8sVmw7zec1wW"
         crossorigin="anonymous"></script>
 <!-- Alpine.js $screen plugin -->

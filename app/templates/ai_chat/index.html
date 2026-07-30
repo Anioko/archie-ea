@@ -2,7 +2,7 @@
 
 {% block extra_css %}
 <!-- Marked.js for Markdown rendering in AI Chat -->
-<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="{{ url_for('static', filename='vendor/marked.min.js') }}"></script>
 <!-- DOMPurify loaded globally via _head.html (v3.0.8 with SRI) — no duplicate needed -->
 <!-- Custom Styles for Chat Elements -->
 <style>

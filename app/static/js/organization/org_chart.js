@@ -5,7 +5,7 @@
  * Alpine.js component: orgChart()
  * Mirrors app/static/js/capability_map/tree.js's use of D3 v7 (loaded via
  * the same CDN tag as the capability network view,
- * https://d3js.org/d3.v7.min.js) but builds a dendrogram (d3.tree) instead
+ * /static/vendor/d3.min.js) but builds a dendrogram (d3.tree) instead
  * of a force simulation, since org charts are strict hierarchies.
  */
 document.addEventListener('alpine:init', () => {

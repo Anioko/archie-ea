@@ -580,8 +580,8 @@
 {% endblock %}
 
 {% block extra_head_js %}
-<script src="https://cdn.jsdelivr.net/npm/jointjs@3.7.7/dist/joint.min.js" crossorigin="anonymous"></script>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jointjs@3.7.7/dist/joint.min.css" crossorigin="anonymous">
+<script src="{{ url_for('static', filename='vendor/joint.min.js') }}" crossorigin="anonymous"></script>
+<link rel="stylesheet" href="{{ url_for('static', filename='vendor/joint.min.css') }}" crossorigin="anonymous">
 <script src="{{ url_for('static', filename='js/archimate/composer_renderer.js') }}"></script>
 <script>
 function unmappedCapabilitiesPanel() {

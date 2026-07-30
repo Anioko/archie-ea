@@ -126,7 +126,7 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"
+<script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"
         integrity="sha384-eSAy1CNbEqo36QVKWe3yV2yHVQXMJzpPrm4iMZ4K4A/IaM5LOKMzXHfMBbFG02k"
         crossorigin="anonymous"></script>
 <script>

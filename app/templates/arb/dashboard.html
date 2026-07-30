@@ -449,7 +449,7 @@
   window.__ARB_CONFIG__.formDataUrl = '{{ url_for("arb.api_form_data") }}';
 </script>
 <script src="{{ url_for('static', filename='js/arb/dashboard.js') }}"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
 <script>
 (function () {
   // Status breakdown donut chart (PH-011-06)

@@ -58,11 +58,14 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
       - name: Install gate tooling
-        # Only Ruff is needed: scripts/verify.py and check_design_tokens.py are
-        # stdlib-only, so the static gates run in seconds without app dependencies.
-        run: python -m pip install --upgrade pip "ruff==${RUFF_VERSION}"
-      - name: Compile + lint ratchets + design tokens
+        # Ruff plus pip-audit: scripts/verify.py and the check_* scripts are
+        # stdlib-only, so these gates run without installing app dependencies.
+        run: python -m pip install --upgrade pip "ruff==${RUFF_VERSION}" pip-audit
+      - name: Compile + lint ratchets + design tokens + air-gap
         run: python scripts/verify.py --tag static
+      - name: Dependency CVE gate
+        # Run the scan an enterprise security review would run, before they do.
+        run: python scripts/verify.py --gate dependency-cves
 
   boot-health:
     name: Boot health (no database)

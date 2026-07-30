@@ -31,7 +31,13 @@ MATURITY_RADAR_JS = REPO_ROOT / "app" / "static" / "js" / "capability_map" / "ma
 INVESTMENT_BUBBLE_JS = REPO_ROOT / "app" / "static" / "js" / "capability_map" / "investment_bubble.js"
 
 REUSED_ENDPOINT = "/capability-map/api/unified-capabilities"
-CHART_JS_CDN = "cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"
+# Chart.js is now served from this origin, not a CDN. These assertions previously
+# required `cdn.jsdelivr.net/npm/chart.js@4.4.1/...`, which encoded the external
+# dependency as a requirement — so vendoring for air-gapped enterprise deployment
+# correctly failed them. The intent of the checks is unchanged: the page must load
+# Chart.js, and must load the SAME Chart.js as the rest of the app (there were
+# three different pins before vendoring collapsed them).
+CHART_JS_ASSET = "vendor/chart.umd.min.js"
 
 
 @pytest.fixture(scope="module")
@@ -150,12 +156,12 @@ class TestIndexHtmlNewTabs:
         assert "js/capability_map/nested_map.js" in index_html_text
         assert "js/capability_map/maturity_radar.js" in index_html_text
 
-    def test_chartjs_cdn_matches_existing_usage_elsewhere_in_app(self, index_html_text):
-        # Same CDN + version already used by app/templates/arb/dashboard.html —
-        # not a new external library.
-        assert CHART_JS_CDN in index_html_text
+    def test_chartjs_matches_existing_usage_elsewhere_in_app(self, index_html_text):
+        # Same vendored asset already used by app/templates/arb/dashboard.html —
+        # not a new library, and not a second copy at a different version.
+        assert CHART_JS_ASSET in index_html_text
         arb_dashboard = (REPO_ROOT / "app" / "templates" / "arb" / "dashboard.html").read_text(encoding="utf-8")
-        assert CHART_JS_CDN in arb_dashboard
+        assert CHART_JS_ASSET in arb_dashboard
 
     def test_no_unrelated_new_cdn_libraries_added(self, index_html_text):
         # D3 was not needed for these three visuals (CSS grid + Chart.js only) —
@@ -178,8 +184,8 @@ class TestInvestmentMatrixBubbleChart:
         assert "window.__investmentBubbleData" in investment_matrix_text
         assert "capabilities|default([])" in investment_matrix_text
 
-    def test_chartjs_cdn_present(self, investment_matrix_text):
-        assert CHART_JS_CDN in investment_matrix_text
+    def test_chartjs_present(self, investment_matrix_text):
+        assert CHART_JS_ASSET in investment_matrix_text
 
     def test_has_quadrant_legend(self, investment_matrix_text):
         for label in ("Invest", "Migrate", "Tolerate", "Eliminate"):
