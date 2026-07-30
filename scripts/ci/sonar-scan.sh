@@ -71,7 +71,7 @@ Analysis submitted. The scanner only UPLOADS a report; the server processes it
 asynchronously afterwards, so the dashboard shows 0 issues until the Compute
 Engine finishes. Poll it:
 
-  curl -s -u admin:PASSWORD "${SONAR_HOST_URL}/api/ce/component?component=${PROJECT_KEY}"
+  curl -s -H "Authorization: Bearer \$SONAR_TOKEN" \n       "${SONAR_HOST_URL}/api/ce/component?component=${PROJECT_KEY}"
 
 Results: ${SONAR_HOST_URL}/dashboard?id=${PROJECT_KEY}
 EOF
