@@ -8292,7 +8292,10 @@ def create_with_draft():
     try:
         from app.modules.solutions_strategic.v2.services.solution_ai_orchestrator import SolutionAIOrchestrator
         orchestrator = SolutionAIOrchestrator()
-        orchestrator.generate_draft_architecture(solution.id, brief=brief)
+        # user_id is required by the orchestrator; omitting it raised TypeError.
+        orchestrator.generate_draft_architecture(
+            solution.id, brief=brief, user_id=current_user.id
+        )
     except Exception as e:
         current_app.logger.warning(f"A95-004 generate_draft failed: {e}")
 
@@ -11535,7 +11538,10 @@ def api_create_from_template():
     try:
         from app.services.solution_template_service import create_solution_from_template
         data = request.get_json()
-        result = create_solution_from_template(data["template_id"], data.get("name"))
+        # created_by is a required third argument; omitting it raised TypeError.
+        result = create_solution_from_template(
+            data["template_id"], data.get("name"), current_user.id
+        )
         return jsonify(result)
     except Exception as e:
         current_app.logger.error(f"Template create error: {e}")

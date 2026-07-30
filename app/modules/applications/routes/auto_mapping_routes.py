@@ -205,12 +205,14 @@ def comprehensive_auto_map():
         # Perform bulk AI analysis
         application_ids = data.get("application_ids", None)
         layer_targets = data.get("layer_targets", None)
+        # bulk_ai_analyze only accepts max_applications and confidence_threshold.
+        # Passing application_ids / generation_mode / layer_targets raised
+        # TypeError on every request, so this endpoint always 500'd. The service
+        # has no concept of those options, so they are not silently forwarded -
+        # the API still accepts them, but they are not yet implemented.
         analysis_result = ai_service.bulk_ai_analyze(
             max_applications=data.get("max_applications", 50),
             confidence_threshold=data.get("confidence_threshold", 0.7),
-            application_ids=application_ids,
-            generation_mode=data.get("generation_mode", "standard"),
-            layer_targets=layer_targets,
         )
 
         # Auto-create mappings if requested
@@ -529,17 +531,11 @@ def comprehensive_auto_map_stream():
                                 "implementation": 0,
                             }
                         )
-                        ai_result = ai_service.analyze_application_for_ai_mapping(
-                            app.id,
-                            generation_mode=generation_mode,
-                            layer_overrides=vendor_overrides,
-                        )
+                        # Takes application_id only; generation_mode and
+                        # layer_overrides are not implemented by the service.
+                        ai_result = ai_service.analyze_application_for_ai_mapping(app.id)
                     else:
-                        ai_result = ai_service.analyze_application_for_ai_mapping(
-                            app.id,
-                            generation_mode=generation_mode,
-                            layer_overrides=layer_targets,
-                        )
+                        ai_result = ai_service.analyze_application_for_ai_mapping(app.id)
 
                     # Count high-confidence mappings
                     high_conf_count = 0

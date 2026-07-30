@@ -616,8 +616,11 @@ def design_solution():
             requirements=requirements,
             constraints=constraints,
             include_vendor_analysis=include_vendor_analysis,
-            rag_context=rag_context,
         )
+        # rag_context is deliberately not passed: design_solution does not declare
+        # it, so doing so raised TypeError and the endpoint always 500'd. The RAG
+        # context is still retrieved above but the service cannot consume it yet -
+        # a real feature gap, tracked separately from this crash fix.
 
         _log_ai_call(
             action="design_solution",
@@ -1830,8 +1833,9 @@ def analyze_gap():
             capability_ids=capability_ids,
             target_coverage=target_coverage,
             include_solutions=include_solutions,
-            rag_context=rag_context,
         )
+        # rag_context not passed: analyze_gap does not declare it, so this raised
+        # TypeError on every call. Retrieved above but not yet consumable.
 
         _log_ai_call(
             action="analyze_gap",

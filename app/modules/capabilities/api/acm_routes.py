@@ -258,10 +258,10 @@ def auto_map_application(application_id):
 
     try:
         # Analyze single application with AI
+        # Takes application_id only - confidence_threshold and created_by were
+        # never declared on it, so this raised TypeError on every call.
         analysis = ai_service.analyze_application_for_ai_mapping(
             application_id=application_id,
-            confidence_threshold=0.7,
-            created_by=current_user.email if current_user.is_authenticated else "api_auto",
         )
 
         # Convert AI result to legacy format for backward compatibility
