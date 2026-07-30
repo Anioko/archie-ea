@@ -86,7 +86,7 @@ class TechnologyLayerService:
 
             nodes = []
             for node_info in nodes_data.get("nodes", []):
-                node = self._create_technology_element(node_info, architecture_id, type="Node")
+                node = self._create_technology_element(node_info, architecture_id, element_type="Node")
                 nodes.append(node)
 
             db.session.commit()
@@ -170,7 +170,7 @@ class TechnologyLayerService:
             devices = []
             for device_info in devices_data.get("devices", []):
                 device = self._create_technology_element(
-                    device_info, architecture_id, type="Device"
+                    device_info, architecture_id, element_type="Device"
                 )
                 devices.append(device)
 
@@ -211,7 +211,7 @@ class TechnologyLayerService:
             software_list = []
             for sw_info in software_data.get("system_software", []):
                 sw = self._create_technology_element(
-                    sw_info, architecture_id, type="SystemSoftware"
+                    sw_info, architecture_id, element_type="SystemSoftware"
                 )
 
                 # If node specified, create assignment relationship
@@ -269,7 +269,7 @@ class TechnologyLayerService:
             services = []
             for service_info in services_data.get("services", []):
                 service = self._create_technology_element(
-                    service_info, system_software.architecture_id, type="TechnologyService"
+                    service_info, system_software.architecture_id, element_type="TechnologyService"
                 )
 
                 # SystemSoftware realizes TechnologyService
@@ -352,7 +352,7 @@ class TechnologyLayerService:
             networks = []
             for net_info in network_data.get("networks", []):
                 network = self._create_technology_element(
-                    net_info, architecture_id, type="CommunicationNetwork"
+                    net_info, architecture_id, element_type="CommunicationNetwork"
                 )
                 networks.append(network)
 
@@ -409,7 +409,7 @@ class TechnologyLayerService:
             artifacts = []
             for artifact_info in artifacts_data.get("artifacts", []):
                 artifact = self._create_technology_element(
-                    artifact_info, architecture_id, type="Artifact"
+                    artifact_info, architecture_id, element_type="Artifact"
                 )
 
                 # If node specified, create assignment relationship

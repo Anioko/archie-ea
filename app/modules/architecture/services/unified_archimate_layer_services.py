@@ -91,7 +91,7 @@ class ApplicationLayerService:
             components = []
             for comp_info in components_data.get("components", []):
                 component = self._create_application_element(
-                    comp_info, architecture_id, type="ApplicationComponent"
+                    comp_info, architecture_id, element_type="ApplicationComponent"
                 )
                 components.append(component)
 
@@ -178,7 +178,7 @@ class ApplicationLayerService:
             services = []
             for service_info in services_data.get("services", []):
                 service = self._create_application_element(
-                    service_info, component.architecture_id, type="ApplicationService"
+                    service_info, component.architecture_id, element_type="ApplicationService"
                 )
 
                 # Component realizes Service
@@ -229,7 +229,7 @@ class ApplicationLayerService:
             data_objects = []
             for obj_info in data_objects_data.get("data_objects", []):
                 data_obj = self._create_application_element(
-                    obj_info, architecture_id, type="DataObject"
+                    obj_info, architecture_id, element_type="DataObject"
                 )
 
                 # If component specified, create composition relationship
@@ -337,7 +337,7 @@ class ApplicationLayerService:
             interface_data = json.loads(response)
 
             interface = self._create_application_element(
-                interface_data, component.architecture_id, type="ApplicationInterface"
+                interface_data, component.architecture_id, element_type="ApplicationInterface"
             )
 
             # Component assigned to Interface
@@ -770,7 +770,7 @@ class BusinessLayerService:
             processes = []
             for process_info in processes_data.get("processes", []):
                 process = self._create_business_element(
-                    process_info, architecture_id, type="BusinessProcess"
+                    process_info, architecture_id, element_type="BusinessProcess"
                 )
                 processes.append(process)
 
@@ -857,7 +857,7 @@ class BusinessLayerService:
             actors = []
             for actor_info in actors_data.get("actors", []):
                 actor = self._create_business_element(
-                    actor_info, architecture_id, type="BusinessActor"
+                    actor_info, architecture_id, element_type="BusinessActor"
                 )
                 actors.append(actor)
 
@@ -896,7 +896,7 @@ class BusinessLayerService:
             roles = []
             for role_info in roles_data.get("roles", []):
                 role = self._create_business_element(
-                    role_info, actor.architecture_id, type="BusinessRole"
+                    role_info, actor.architecture_id, element_type="BusinessRole"
                 )
 
                 # Create assignment relationship (Actor assigned to Role)
@@ -946,7 +946,7 @@ class BusinessLayerService:
             services = []
             for service_info in services_data.get("services", []):
                 service = self._create_business_element(
-                    service_info, architecture_id, type="BusinessService"
+                    service_info, architecture_id, element_type="BusinessService"
                 )
                 services.append(service)
 
@@ -1024,7 +1024,7 @@ class BusinessLayerService:
             business_objects = []
             for obj_info in objects_data.get("business_objects", []):
                 obj = self._create_business_element(
-                    obj_info, architecture_id, type="BusinessObject"
+                    obj_info, architecture_id, element_type="BusinessObject"
                 )
                 business_objects.append(obj)
 
@@ -1416,7 +1416,7 @@ class TechnologyLayerService:
 
             nodes = []
             for node_info in nodes_data.get("nodes", []):
-                node = self._create_technology_element(node_info, architecture_id, type="Node")
+                node = self._create_technology_element(node_info, architecture_id, element_type="Node")
                 nodes.append(node)
 
             db.session.commit()
@@ -1500,7 +1500,7 @@ class TechnologyLayerService:
             devices = []
             for device_info in devices_data.get("devices", []):
                 device = self._create_technology_element(
-                    device_info, architecture_id, type="Device"
+                    device_info, architecture_id, element_type="Device"
                 )
                 devices.append(device)
 
@@ -1541,7 +1541,7 @@ class TechnologyLayerService:
             software_list = []
             for sw_info in software_data.get("system_software", []):
                 sw = self._create_technology_element(
-                    sw_info, architecture_id, type="SystemSoftware"
+                    sw_info, architecture_id, element_type="SystemSoftware"
                 )
 
                 # If node specified, create assignment relationship
@@ -1599,7 +1599,7 @@ class TechnologyLayerService:
             services = []
             for service_info in services_data.get("services", []):
                 service = self._create_technology_element(
-                    service_info, system_software.architecture_id, type="TechnologyService"
+                    service_info, system_software.architecture_id, element_type="TechnologyService"
                 )
 
                 # SystemSoftware realizes TechnologyService
@@ -1682,7 +1682,7 @@ class TechnologyLayerService:
             networks = []
             for net_info in network_data.get("networks", []):
                 network = self._create_technology_element(
-                    net_info, architecture_id, type="CommunicationNetwork"
+                    net_info, architecture_id, element_type="CommunicationNetwork"
                 )
                 networks.append(network)
 
@@ -1739,7 +1739,7 @@ class TechnologyLayerService:
             artifacts = []
             for artifact_info in artifacts_data.get("artifacts", []):
                 artifact = self._create_technology_element(
-                    artifact_info, architecture_id, type="Artifact"
+                    artifact_info, architecture_id, element_type="Artifact"
                 )
 
                 # If node specified, create assignment relationship

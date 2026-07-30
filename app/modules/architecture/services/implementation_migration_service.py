@@ -85,7 +85,7 @@ class ImplementationMigrationService:
             work_packages = []
             for pkg_info in packages_data.get("work_packages", []):
                 package = self._create_implementation_element(
-                    pkg_info, architecture_id, type="WorkPackage"
+                    pkg_info, architecture_id, element_type="WorkPackage"
                 )
                 work_packages.append(package)
 
@@ -212,7 +212,7 @@ class ImplementationMigrationService:
             deliverables = []
             for deliv_info in deliverables_data.get("deliverables", []):
                 deliverable = self._create_implementation_element(
-                    deliv_info, work_package.architecture_id, type="Deliverable"
+                    deliv_info, work_package.architecture_id, element_type="Deliverable"
                 )
 
                 # WorkPackage realizes Deliverable
@@ -307,7 +307,7 @@ class ImplementationMigrationService:
             gaps = []
             for gap_info in gaps_data.get("gaps", []):
                 gap = self._create_implementation_element(
-                    gap_info, current_plateau.architecture_id, type="Gap"
+                    gap_info, current_plateau.architecture_id, element_type="Gap"
                 )
 
                 # Gap associates current and target plateaus
@@ -536,7 +536,7 @@ class ImplementationMigrationService:
             work_packages = []
             for pkg_info in roadmap_data.get("work_packages", []):
                 package = self._create_implementation_element(
-                    pkg_info, current_plateau.architecture_id, type="WorkPackage"
+                    pkg_info, current_plateau.architecture_id, element_type="WorkPackage"
                 )
                 work_packages.append(package)
 

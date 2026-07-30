@@ -229,3 +229,9 @@ uploads/
 instance/
 *.backup
 *.bak
+
+# Static-analysis and coverage artefacts (added 2026-07-30)
+# SonarQube scanner working dir (huge, vendored licence files exceed Windows path limits)
+.scannerwork/
+# junit report - generated
+test-results.xml

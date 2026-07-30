@@ -88,7 +88,7 @@ class BusinessLayerService:
             processes = []
             for process_info in processes_data.get("processes", []):
                 process = self._create_business_element(
-                    process_info, architecture_id, type="BusinessProcess"
+                    process_info, architecture_id, element_type="BusinessProcess"
                 )
                 processes.append(process)
 
@@ -175,7 +175,7 @@ class BusinessLayerService:
             actors = []
             for actor_info in actors_data.get("actors", []):
                 actor = self._create_business_element(
-                    actor_info, architecture_id, type="BusinessActor"
+                    actor_info, architecture_id, element_type="BusinessActor"
                 )
                 actors.append(actor)
 
@@ -214,7 +214,7 @@ class BusinessLayerService:
             roles = []
             for role_info in roles_data.get("roles", []):
                 role = self._create_business_element(
-                    role_info, actor.architecture_id, type="BusinessRole"
+                    role_info, actor.architecture_id, element_type="BusinessRole"
                 )
 
                 # Create assignment relationship (Actor assigned to Role)
@@ -264,7 +264,7 @@ class BusinessLayerService:
             services = []
             for service_info in services_data.get("services", []):
                 service = self._create_business_element(
-                    service_info, architecture_id, type="BusinessService"
+                    service_info, architecture_id, element_type="BusinessService"
                 )
                 services.append(service)
 
@@ -342,7 +342,7 @@ class BusinessLayerService:
             business_objects = []
             for obj_info in objects_data.get("business_objects", []):
                 obj = self._create_business_element(
-                    obj_info, architecture_id, type="BusinessObject"
+                    obj_info, architecture_id, element_type="BusinessObject"
                 )
                 business_objects.append(obj)
 
