@@ -3,6 +3,7 @@ Transaction Manager with rollback/compensation support.
 Ensures pipeline failures don't leave orphaned data.
 """
 import logging
+import sys
 from contextlib import contextmanager
 from typing import Any, Callable, List, Tuple
 
@@ -211,10 +212,24 @@ def pipeline_transaction(pipeline):
             # If any exception occurs, everything is rolled back
     """
     context = PipelineTransactionContext(pipeline)
+    # __exit__ decides commit vs rollback from exc_type, so the real exception
+    # info has to reach it. Two bugs lived here:
+    #   1. `context.__exit__(*None, None, None)` - unpacking None raises
+    #      "TypeError: argument after * must be an iterable", on EVERY exit,
+    #      including the success path.
+    #   2. calling it from `finally` with (None, None, None) would report "no
+    #      exception" even when the body raised, so a FAILED pipeline would be
+    #      COMMITTED instead of rolled back. That is silent data corruption,
+    #      strictly worse than the TypeError, so the obvious fix is the wrong one.
     try:
         yield context.__enter__()
-    finally:
-        context.__exit__(*None, None, None)
+    except BaseException:
+        # A truthy return from __exit__ means "exception handled", matching the
+        # context-manager protocol.
+        if not context.__exit__(*sys.exc_info()):
+            raise
+    else:
+        context.__exit__(None, None, None)
 
 
 # Decorator for transactional functions

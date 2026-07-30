@@ -162,6 +162,7 @@ function capabilityRoadmapManager() {
 
             if (this.timelineDisplay === 'months') {
                 let current = new Date(start);
+                current.setDate(1);
                 while (current <= end) {
                     this.timelinePeriods.push({
                         label: current.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
