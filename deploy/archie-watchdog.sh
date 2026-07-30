@@ -28,6 +28,22 @@ mkdir -p "$STATE_DIR"
 [ -f "$FAIL_FILE" ] || echo 0 > "$FAIL_FILE"
 [ -f "$LAST_ACTION_FILE" ] || echo 0 > "$LAST_ACTION_FILE"
 
+# Crash-looping is a DIFFERENT failure from wedging, and the startup grace hides
+# it: a container that dies and restarts every 30s is always "recently started",
+# so the grace check spares it forever while it never serves a request. Docker's
+# RestartCount climbing is the signal. Learned on 2026-07-30, when a chmod 600
+# on a bind-mounted .env locked out the container's non-root user and it
+# restarted 16 times while the watchdog stood down each cycle.
+RESTART_FILE="$STATE_DIR/last_restart_count"
+current_restarts=$(docker inspect -f '{{.RestartCount}}' "$CONTAINER" 2>/dev/null || echo "")
+if [ -n "$current_restarts" ]; then
+    previous_restarts=$(cat "$RESTART_FILE" 2>/dev/null || echo "$current_restarts")
+    if [ "$current_restarts" -gt "$previous_restarts" ]; then
+        log "WARNING: $CONTAINER is crash-looping - Docker restart count rose $previous_restarts -> $current_restarts. This is a boot failure, not a wedge; restarting it will not help. Check: docker logs $CONTAINER --tail 40"
+    fi
+    echo "$current_restarts" > "$RESTART_FILE"
+fi
+
 # Backups fail silently by nature: nothing breaks when they stop, so nobody
 # notices until a restore is needed. Surface staleness on the same cadence as
 # the liveness check. Threshold is 3x the 6-hourly schedule.
