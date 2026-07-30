@@ -17,9 +17,25 @@ services:
     # wedged for six days (24-30 Jul). The ceiling confines a spike to this
     # container; unless-stopped brings it back by itself.
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
     mem_limit: 2600m
+    memswap_limit: 2600m   # == mem_limit: no swap allowance
     ports:
-      - '5000:5000'
+      # NOT 0.0.0.0. Publishing on all interfaces left the app reachable from the
+      # open internet on :5000, bypassing Caddy entirely - no TLS, no request
+      # timeouts, none of the security headers (verified 2026-07-30: arbitrary
+      # scanner IPs held established connections straight to gunicorn).
+      #   127.0.0.1  - host-side healthcheck and the archie-watchdog timer
+      #   10.106.0.6 - this droplet's DigitalOcean VPC address, which is where
+      #                the Caddy droplet (10.106.0.2) now proxies to. If the
+      #                droplet's private IP ever changes, update both this and
+      #                the proxy's Caddyfile.
+      - '127.0.0.1:5000:5000'
+      - '10.106.0.6:5000:5000'
     volumes:
       - './:/app'
     environment:
@@ -59,7 +75,13 @@ services:
       dockerfile: Dockerfile.worker
       context: .
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
     mem_limit: 1200m
+    memswap_limit: 1200m   # == mem_limit: no swap allowance
     volumes:
       - './:/app'
     environment:
@@ -80,7 +102,13 @@ services:
   postgres:
     image: pgvector/pgvector:pg15
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
     mem_limit: 448m
+    memswap_limit: 448m   # == mem_limit: no swap allowance
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -103,7 +131,13 @@ services:
   adminer:
     image: adminer
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
     mem_limit: 64m
+    memswap_limit: 64m   # == mem_limit: no swap allowance
     ports:
       # Adminer is a DB admin UI — loopback only (reach it via an SSH tunnel), never public.
       - '127.0.0.1:8080:8080'
@@ -113,7 +147,13 @@ services:
   redis:
     image: redis:6-alpine
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
     mem_limit: 160m
+    memswap_limit: 160m   # == mem_limit: no swap allowance
     # noeviction is deliberate: Redis is the RQ broker, so evicting keys would
     # silently drop queued jobs. maxmemory is a guard rail, not a cache policy.
     # Do NOT add --save here: any --save argument overrides the compiled-in

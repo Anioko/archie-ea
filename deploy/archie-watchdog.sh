@@ -28,6 +28,27 @@ mkdir -p "$STATE_DIR"
 [ -f "$FAIL_FILE" ] || echo 0 > "$FAIL_FILE"
 [ -f "$LAST_ACTION_FILE" ] || echo 0 > "$LAST_ACTION_FILE"
 
+# Backups fail silently by nature: nothing breaks when they stop, so nobody
+# notices until a restore is needed. Surface staleness on the same cadence as
+# the liveness check. Threshold is 3x the 6-hourly schedule.
+BACKUP_MARKER=/var/backups/archie/LAST_SUCCESS
+BACKUP_MAX_AGE=$((18 * 3600))
+if [ -f "$BACKUP_MARKER" ]; then
+    age=$(( $(date +%s) - $(stat -c %Y "$BACKUP_MARKER") ))
+    if [ "$age" -gt "$BACKUP_MAX_AGE" ]; then
+        # once an hour, not every 60s
+        if [ ! -f "$STATE_DIR/backup_warned" ] || [ $(( $(date +%s) - $(stat -c %Y "$STATE_DIR/backup_warned") )) -gt 3600 ]; then
+            log "WARNING: last successful database backup was $((age/3600))h ago (threshold $((BACKUP_MAX_AGE/3600))h)"
+            touch "$STATE_DIR/backup_warned"
+        fi
+    fi
+else
+    if [ ! -f "$STATE_DIR/backup_warned" ]; then
+        log "WARNING: no successful database backup has ever been recorded"
+        touch "$STATE_DIR/backup_warned"
+    fi
+fi
+
 if curl -sf --max-time 10 -o /dev/null "$URL"; then
     prev=$(cat "$FAIL_FILE")
     if [ "$prev" -ne 0 ]; then
