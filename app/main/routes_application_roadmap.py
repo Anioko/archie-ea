@@ -137,7 +137,7 @@ def application_roadmap(id):
             months=months,
         )
 
-    except Exception as e:
+    except Exception:
         flash("Error loading application roadmap. Please try again.", "error")
         return redirect(url_for("unified_applications.application_detail", id=id))
 
@@ -245,7 +245,7 @@ def create_application_work_package(id):
             }
         )
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return jsonify({"error": "An internal error occurred"}), 500
 
@@ -361,7 +361,7 @@ def update_application_work_package(id, wp_id):
             }
         )
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return jsonify({"error": "An internal error occurred"}), 500
 
@@ -386,6 +386,6 @@ def delete_application_work_package(id, wp_id):
             {"success": True, "message": f"Application work package {wp_id} deleted"}
         )
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return jsonify({"error": "An internal error occurred"}), 500

@@ -462,7 +462,7 @@ def api_unified_capabilities():
             current_app.logger.info(
                 "ManufacturingCapability model not found; manufacturing capabilities will be skipped."
             )
-        except Exception as e:
+        except Exception:
             current_app.logger.exception(
                 "Error importing or querying ManufacturingCapability; manufacturing capabilities will be skipped."
             )
@@ -555,7 +555,7 @@ def api_unified_capabilities():
                         "coverage_percentage": 100 if app_mapped else 0,
                     }
                 )
-            except Exception as e:
+            except Exception:
                 # Skip problematic capability
                 continue
 
@@ -678,7 +678,7 @@ def api_unified_capabilities():
                         "coverage_percentage": 100 if mfg_mapped else 0,
                     }
                 )
-            except Exception as e:
+            except Exception:
                 # Skip problematic manufacturing capability
                 continue
 
@@ -735,7 +735,7 @@ def api_unified_capabilities():
                 },
             }
         )
-    except Exception as e:
+    except Exception:
         return (
             jsonify(
                 {
@@ -1156,7 +1156,7 @@ def api_create_mapping():
         # Convert string ID to int for database query
         try:
             capability_id_int = int(capability_id)
-        except (ValueError, TypeError) as e:
+        except (ValueError, TypeError):
             current_app.logger.error(f"Invalid capability_id format: {capability_id}")
             return jsonify({"error": f"Invalid capability_id format: {capability_id}"}), 400
 

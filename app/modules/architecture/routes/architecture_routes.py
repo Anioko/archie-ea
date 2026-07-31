@@ -83,7 +83,7 @@ def api_solutions():
                 for s in solutions
             ]
         )
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -111,7 +111,7 @@ def api_solution_patterns():
                 for p in patterns
             ]
         )
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -144,7 +144,7 @@ def api_contracts():
                 for c in contracts
             ]
         )
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -181,7 +181,7 @@ def api_software_modules():
                 for m in modules
             ]
         )
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -211,7 +211,7 @@ def api_design_patterns():
                 for p in patterns
             ]
         )
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -248,7 +248,7 @@ def api_software_dependencies():
                 for d in dependencies
             ]
         )
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -295,7 +295,7 @@ def create_solution():
             201,
         )
 
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -341,7 +341,7 @@ def create_software_module():
             201,
         )
 
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 

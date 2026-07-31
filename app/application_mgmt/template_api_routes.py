@@ -567,7 +567,7 @@ def instantiate_template(app_id):
         db.session.rollback()
         current_app.logger.error(f"Database error: {str(e)}")
         return jsonify({"error": "Database error occurred"}), 500
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         current_app.logger.exception("Unexpected error instantiating template")
         return jsonify({"error": "Internal server error"}), 500
@@ -806,7 +806,7 @@ def link_template_elements(app_id):
         db.session.rollback()
         current_app.logger.error(f"Database operational error in link operation: {str(e)}")
         return jsonify({"error": "Database operation failed. Please try again."}), 503
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         current_app.logger.exception("Unexpected error linking templates")
         return jsonify({"error": "An internal error occurred"}), 500
@@ -866,7 +866,7 @@ def remove_template(app_id, template_id):
 
         return jsonify({"success": True, "message": "Successfully removed template usage"})
 
-    except ValueError as e:
+    except ValueError:
         return jsonify({"error": "Resource not found"}), 404
     except Exception as e:
         current_app.logger.error(f"Error removing template: {str(e)}")
@@ -909,7 +909,7 @@ def add_from_template_page(app_id):
         else:
             flash("No templates were instantiated", "warning")
 
-    except Exception as e:
+    except Exception:
         flash("Error adding templates. Please try again.", "error")
 
     return redirect(url_for("unified_applications.application_detail", id=app_id))
@@ -1101,7 +1101,7 @@ def instantiate_bulk_enterprise(app_id):
 
     except RateLimitExceeded as e:
         return jsonify({"error": "Rate limit exceeded", "retry_after": e.retry_after}), 429
-    except Exception as e:
+    except Exception:
         current_app.logger.exception("Error in bulk instantiation")
         return jsonify({"error": "An internal error occurred"}), 500
 
@@ -1174,13 +1174,13 @@ def rollback_session(session_id):
 
         return jsonify(result)
 
-    except ValueError as e:
+    except ValueError:
         return jsonify({"success": False, "error": "Invalid request parameters"}), 400
-    except PermissionError as e:
+    except PermissionError:
         return jsonify({"success": False, "error": "Forbidden"}), 403
-    except RuntimeError as e:
+    except RuntimeError:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
-    except Exception as e:
+    except Exception:
         current_app.logger.exception("Unexpected error in rollback")
         return jsonify({"success": False, "error": "Internal server error"}), 500
 
@@ -2049,7 +2049,7 @@ def instantiate_template_with_hierarchy(app_id):
             }
         )
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         current_app.logger.exception("Error instantiating hierarchy")
         return jsonify({"error": "An internal error occurred"}), 500

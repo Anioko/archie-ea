@@ -116,7 +116,7 @@ def get_capabilities():
             }
         )
 
-    except Exception as e:
+    except Exception:
         return error_response(
             message="Failed to retrieve capabilities",
             code="CAPABILITIES_RETRIEVAL_ERROR",
@@ -187,7 +187,7 @@ def get_capability(capability_id):
 
         return success_response(capability_data)
 
-    except Exception as e:
+    except Exception:
         return error_response(
             message="Failed to retrieve capability",
             code="CAPABILITY_RETRIEVAL_ERROR",
@@ -265,7 +265,7 @@ def get_manufacturing_capabilities():
             }
         )
 
-    except Exception as e:
+    except Exception:
         return error_response(
             message="Failed to retrieve manufacturing capabilities",
             code="MANUFACTURING_CAPABILITIES_RETRIEVAL_ERROR",
@@ -294,7 +294,7 @@ def get_capability_domains():
 
         return success_response({"domains": sorted(domain_list)})
 
-    except Exception as e:
+    except Exception:
         return error_response(
             message="Failed to retrieve capability domains",
             code="DOMAINS_RETRIEVAL_ERROR",
@@ -323,7 +323,7 @@ def get_capability_levels():
 
         return success_response({"levels": sorted(level_list)})
 
-    except Exception as e:
+    except Exception:
         return error_response(
             message="Failed to retrieve capability levels",
             code="LEVELS_RETRIEVAL_ERROR",

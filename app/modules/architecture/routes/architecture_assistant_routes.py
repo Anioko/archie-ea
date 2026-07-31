@@ -2357,7 +2357,7 @@ def add_business_driver(context_id):
             201,
         )
 
-    except ValueError as e:
+    except ValueError:
         return jsonify({"success": False, "error": "Resource not found"}), 404
     except Exception as e:
         logger.error(f"Error adding business driver: {e}")
@@ -2474,7 +2474,7 @@ def add_strategic_objective(context_id):
             201,
         )
 
-    except ValueError as e:
+    except ValueError:
         return jsonify({"success": False, "error": "Resource not found"}), 404
     except Exception as e:
         logger.error(f"Error adding strategic objective: {e}")
@@ -2612,7 +2612,7 @@ def add_business_capability(context_id):
             201,
         )
 
-    except ValueError as e:
+    except ValueError:
         return jsonify({"success": False, "error": "Resource not found"}), 404
     except Exception as e:
         logger.error(f"Error adding business capability: {e}")
@@ -2653,7 +2653,7 @@ def generate_capability_heatmap(context_id):
 
         return jsonify({"success": True, "data": heatmap}), 200
 
-    except ValueError as e:
+    except ValueError:
         return jsonify({"success": False, "error": "Resource not found"}), 404
     except Exception as e:
         logger.error(f"Error generating capability heatmap: {e}")
@@ -2695,7 +2695,7 @@ def generate_problem_statement(context_id):
 
         return jsonify({"success": True, "data": {"problem_statement": problem_statement}}), 200
 
-    except ValueError as e:
+    except ValueError:
         return jsonify({"success": False, "error": "Resource not found"}), 404
     except Exception as e:
         logger.error(f"Error generating problem statement: {e}")
@@ -2736,7 +2736,7 @@ def generate_scope_definition(context_id):
 
         return jsonify({"success": True, "data": {"scope_definition": scope_definition}}), 200
 
-    except ValueError as e:
+    except ValueError:
         return jsonify({"success": False, "error": "Resource not found"}), 404
     except Exception as e:
         logger.error(f"Error generating scope definition: {e}")

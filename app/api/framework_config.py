@@ -101,7 +101,7 @@ def get_configurations():
             }
         )
 
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -180,7 +180,7 @@ def create_configuration():
             201,
         )
 
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -220,7 +220,7 @@ def get_configuration(config_id):
 
         return jsonify({"success": True, "data": configuration.to_dict()})
 
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -279,7 +279,7 @@ def update_configuration(config_id):
             }
         )
 
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -325,7 +325,7 @@ def delete_configuration(config_id):
 
         return jsonify({"success": True, "message": "Framework configuration deleted successfully"})
 
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -360,7 +360,7 @@ def validate_configuration(config_id):
 
         return jsonify({"success": True, "data": validation_result})
 
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -401,7 +401,7 @@ def get_active_configuration():
 
         return jsonify({"success": True, "data": configuration.to_dict()})
 
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -457,7 +457,7 @@ def get_available_extensions():
             }
         )
 
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -527,7 +527,7 @@ def get_extension_details(extension_code):
             }
         )
 
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -585,7 +585,7 @@ def install_extension(config_id, extension_code):
             {"success": True, "message": f"Extension {extension_code} installed successfully"}
         )
 
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -679,7 +679,7 @@ def get_configuration_templates():
             }
         )
 
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -759,7 +759,7 @@ def deploy_template(template_id):
             }
         )
 
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -844,7 +844,7 @@ def create_migration_mapping():
             201,
         )
 
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -889,7 +889,7 @@ def execute_migration(migration_id):
             }
         )
 
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -975,7 +975,7 @@ def get_framework_instances():
             }
         )
 
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -1078,7 +1078,7 @@ def create_framework_instance():
             201,
         )
 
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -1147,7 +1147,7 @@ def health_check():
             "response_time_ms": round(db_time, 2),
             "connection_pool": pool_size,
         }
-    except Exception as e:
+    except Exception:
         overall_healthy = False
         health_status["checks"]["database"] = {"status": "unhealthy", "error": "See server logs for details"}
 
@@ -1162,7 +1162,7 @@ def health_check():
             "status": "healthy",
             "configured_providers": api_count,
         }
-    except Exception as e:
+    except Exception:
         overall_healthy = False
         health_status["checks"]["api_config"] = {"status": "unhealthy", "error": "See server logs for details"}
 
@@ -1185,7 +1185,7 @@ def health_check():
             "process_usage_mb": round(memory_mb, 2),
             "note": "Basic memory check - install psutil for detailed monitoring",
         }
-    except Exception as e:
+    except Exception:
         health_status["checks"]["memory"] = {
             "status": "unknown",
             "error": "See server logs for details",

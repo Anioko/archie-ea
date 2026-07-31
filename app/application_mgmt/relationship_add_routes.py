@@ -743,7 +743,7 @@ def business_actor_edit(id, actor_id):
 
         db.session.commit()
         flash(f'Business actor "{actor.name}" updated successfully!', "success")
-    except ValueError as e:
+    except ValueError:
         db.session.rollback()
         flash("Invalid input. Please try again.", "error")
     except Exception as e:

@@ -73,7 +73,7 @@ class SalesforceCodeGenerator:
 
         try:
             template = self.template_env.get_template(template_name)
-        except Exception as e:
+        except Exception:
             logger.warning(f"Template {template_name} not found, using LLM generation")
             return self._generate_apex_with_llm(uml_element, class_type)
 

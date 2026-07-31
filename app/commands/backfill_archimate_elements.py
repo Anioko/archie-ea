@@ -204,7 +204,7 @@ def backfill_archimate_elements_command(dry_run, motivation_only):
                         layer=ae_layer,
                     ))
                     db.session.commit()
-                except Exception as exc:
+                except Exception:
                     db.session.rollback()
                     errors += 1
                     continue

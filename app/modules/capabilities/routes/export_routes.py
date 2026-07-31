@@ -442,7 +442,7 @@ def _export_image(capabilities, mappings, mapped_capability_ids, format_type, ap
 
         return response
 
-    except Exception as e:
+    except Exception:
         # Fallback to error response if PIL is not available
         return (
             jsonify(

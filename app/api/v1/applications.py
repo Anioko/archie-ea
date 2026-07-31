@@ -147,7 +147,7 @@ def get_applications():
 
         raise
 
-    except Exception as e:
+    except Exception:
         return error_response(
             message="Failed to retrieve applications",
             code="APPLICATIONS_RETRIEVAL_ERROR",
@@ -229,7 +229,7 @@ def get_application(application_id):
 
         raise
 
-    except Exception as e:
+    except Exception:
         return error_response(
             message="Failed to retrieve application",
             code="APPLICATION_RETRIEVAL_ERROR",
@@ -325,7 +325,7 @@ def create_application():
 
         raise
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return error_response(
             message="Failed to create application",
@@ -430,7 +430,7 @@ def update_application(application_id):
 
         raise
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return error_response(
             message="Failed to update application",
@@ -492,7 +492,7 @@ def delete_application(application_id):
 
         raise
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return error_response(
             message="Failed to delete application",
@@ -661,7 +661,7 @@ def get_application_acm(application_id):
 
         raise
 
-    except Exception as e:
+    except Exception:
         return error_response(
             message="Failed to retrieve ACM data",
             code="ACM_RETRIEVAL_ERROR",
@@ -728,7 +728,7 @@ def delete_application_acm_mapping(application_id, mapping_id):
 
         raise
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return error_response(
             message="Failed to delete ACM mapping",
@@ -843,7 +843,7 @@ def add_application_acm_mapping(application_id):
 
         raise
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return error_response(
             message="Failed to create ACM mapping",

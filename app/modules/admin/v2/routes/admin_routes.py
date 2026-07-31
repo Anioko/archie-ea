@@ -721,7 +721,7 @@ def test_api_settings(settings_id):
     try:
         result = test_api_key(settings.api_key, settings.api_provider)
         flash(f"API test successful: {result}", "success")
-    except Exception as e:
+    except Exception:
         flash("API test failed. Please try again.", "error")
 
     return redirect(url_for("admin.api_settings"))
@@ -1140,7 +1140,7 @@ def feature_flag_new():
             flash(f"Feature flag '{feature.name}' created successfully", "success")
             return redirect(url_for("admin.feature_flags"))
 
-        except Exception as e:
+        except Exception:
             db.session.rollback()
             flash("Error creating feature flag. Please try again.", "error")
 
@@ -1190,7 +1190,7 @@ def feature_flag_edit(id):
             flash(f"Feature flag '{feature.name}' updated successfully", "success")
             return redirect(url_for("admin.feature_flags"))
 
-        except Exception as e:
+        except Exception:
             db.session.rollback()
             flash("Error updating feature flag. Please try again.", "error")
 
@@ -1226,7 +1226,7 @@ def feature_flag_toggle(id):
                 "message": f"Feature {status}",
             }
         )
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
@@ -1244,7 +1244,7 @@ def feature_flag_delete(id):
         db.session.delete(feature)
         db.session.commit()
         flash(f"Feature flag '{feature.name}' deleted successfully", "success")
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         flash("Error deleting feature flag. Please try again.", "error")
 
@@ -1290,7 +1290,7 @@ def feature_flags_discover_sidebar():
             parser_data=parser.to_dict(),
         )
 
-    except Exception as e:
+    except Exception:
         flash("Error parsing sidebar. Please try again.", "error")
         return redirect(url_for("admin.feature_flags"))
 
@@ -1367,7 +1367,7 @@ def feature_flags_create_from_sidebar():
         flash(message, "success")
         return redirect(url_for("admin.feature_flags"))
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         flash("Error creating feature flags. Please try again.", "error")
         return redirect(url_for("admin.feature_flags_discover_sidebar"))
@@ -1728,7 +1728,7 @@ def trigger_abacus_sync():
             "info",
         )
 
-    except Exception as e:
+    except Exception:
         flash("Failed to create sync job. Please try again.", "error")
 
     return redirect(url_for("admin.abacus_settings"))

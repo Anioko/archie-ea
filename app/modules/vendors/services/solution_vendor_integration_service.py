@@ -483,7 +483,7 @@ class SolutionVendorIntegrationService:
 
             return products
 
-        except SQLAlchemyError as e:
+        except SQLAlchemyError:
             return []
-        except Exception as e:
+        except Exception:
             return []

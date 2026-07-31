@@ -65,7 +65,7 @@ def capabilities_overview():
             classified_count=classified_count,
         )
 
-    except Exception as e:
+    except Exception:
         flash("Error loading capabilities overview. Please try again.", "error")
         return render_template(
             "business_capability/overview.html",
@@ -119,7 +119,7 @@ def groupings_overview():
             grouping_stats=grouping_stats,
         )
 
-    except Exception as e:
+    except Exception:
         flash("Error loading groupings overview. Please try again.", "error")
         return redirect(url_for("capability_map.simple_view"))
 
@@ -177,7 +177,7 @@ def grouping_detail(grouping_key):
             total_capabilities=len(grouping_capabilities),
         )
 
-    except Exception as e:
+    except Exception:
         flash("Error loading grouping detail. Please try again.", "error")
         return redirect(url_for("capability_map.simple_view"))
 
@@ -245,7 +245,7 @@ def capability_taxonomy():
             capability_levels=capability_levels,
         )
 
-    except Exception as e:
+    except Exception:
         flash("Error loading capability taxonomy. Please try again.", "error")
         return redirect(url_for("capability_map.simple_view"))
 
@@ -336,7 +336,7 @@ def search_capabilities():
             selected_importance=strategic_importance,
         )
 
-    except Exception as e:
+    except Exception:
         flash("Error searching capabilities. Please try again.", "error")
         return render_template(
             "business_capability/overview.html",
@@ -395,7 +395,7 @@ def capability_detail(capability_id):
             related_capabilities=related_capabilities,
         )
 
-    except Exception as e:
+    except Exception:
         flash("Error loading capability detail. Please try again.", "error")
         return redirect(url_for("capability_map.simple_view"))
 
@@ -495,6 +495,6 @@ def capability_analytics():
             grouping_distribution=grouping_distribution,
         )
 
-    except Exception as e:
+    except Exception:
         flash("Error loading capability analytics. Please try again.", "error")
         return redirect(url_for("capability_map.simple_view"))

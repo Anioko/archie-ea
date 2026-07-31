@@ -269,7 +269,7 @@ class ArchiMateExchangeService:
                     relationship, element_mapping
                 )
                 relationships_container.append(xml_relationship)
-            except Exception as e:
+            except Exception:
                 # Skip relationships with missing mappings
                 continue
 

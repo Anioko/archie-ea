@@ -94,7 +94,7 @@ def get_vendor_dataset():
 
     except FileNotFoundError:
         return jsonify({"success": False, "error": "Vendor dataset file not found"}), 404
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -146,7 +146,7 @@ def get_domain_analysis():
 
     except FileNotFoundError:
         return jsonify({"success": False, "error": "Vendor dataset file not found"}), 404
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -239,7 +239,7 @@ def compare_dataset_vs_database():
 
     except FileNotFoundError:
         return jsonify({"success": False, "error": "Vendor dataset file not found"}), 404
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -325,7 +325,7 @@ def search_vendor_products():
             }
         )
 
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -411,5 +411,5 @@ def get_quality_report():
             }
         )
 
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500

@@ -323,7 +323,7 @@ def register_ea_workflow_routes(main_blueprint):
                 phase_counts=phase_counts,
                 togaf_phases=engine.TOGAF_PHASES,
             )
-        except Exception as e:
+        except Exception:
             return jsonify({"error": "An internal error occurred"}), 500
 
     @main_blueprint.route("/ea-workflows/definitions/<workflow_code>")
@@ -375,7 +375,7 @@ def register_ea_workflow_routes(main_blueprint):
                 instances=instances,
                 applications=applications,
             )
-        except Exception as e:
+        except Exception:
             return jsonify({"error": "An internal error occurred"}), 500
 
     @main_blueprint.route("/ea-workflows/deliverables/vision")
@@ -704,7 +704,7 @@ def register_ea_workflow_routes(main_blueprint):
                 per_page=per_page,
                 now=datetime.utcnow(),
             )
-        except Exception as e:
+        except Exception:
             return jsonify({"error": "An internal error occurred"}), 500
 
     @main_blueprint.route("/ea-workflows/schedules")
@@ -736,7 +736,7 @@ def register_ea_workflow_routes(main_blueprint):
                 per_page=per_page,
                 definitions=definitions,
             )
-        except Exception as e:
+        except Exception:
             return jsonify({"error": "An internal error occurred"}), 500
 
     @main_blueprint.route("/ea-workflows/journeys")
@@ -822,7 +822,7 @@ def register_ea_workflow_routes(main_blueprint):
                     "total": len(definitions),
                 }
             )
-        except Exception as e:
+        except Exception:
             return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
     @main_blueprint.route("/api/ea-workflows/phase-counts")
@@ -839,7 +839,7 @@ def register_ea_workflow_routes(main_blueprint):
                 for p, n in engine.TOGAF_PHASES
             ]
             return jsonify({"success": True, "phase_counts": counts, "phases": phases})
-        except Exception as e:
+        except Exception:
             return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
     @main_blueprint.route("/api/ea-workflows/definitions/<workflow_code>")
@@ -856,7 +856,7 @@ def register_ea_workflow_routes(main_blueprint):
                 return jsonify({"success": False, "error": "Workflow not found"}), 404
 
             return jsonify({"success": True, "definition": definition.to_dict()})
-        except Exception as e:
+        except Exception:
             return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
     @main_blueprint.route("/api/ea-workflows/definitions", methods=["POST"])
@@ -883,7 +883,7 @@ def register_ea_workflow_routes(main_blueprint):
             return jsonify({"success": True, "definition": definition.to_dict()})
         except KeyError as e:
             return jsonify({"success": False, "error": f"Missing required field: {e}"}), 400
-        except Exception as e:
+        except Exception:
             return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
     @main_blueprint.route("/api/ea-workflows/seed-defaults", methods=["POST"])
@@ -906,7 +906,7 @@ def register_ea_workflow_routes(main_blueprint):
                     "total_created": len(created),
                 }
             )
-        except Exception as e:
+        except Exception:
             return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
     # =========================================================================
@@ -999,7 +999,7 @@ def register_ea_workflow_routes(main_blueprint):
             )
 
             return jsonify({"success": True, "instance": instance.to_dict()})
-        except ValueError as e:
+        except ValueError:
             return jsonify({"success": False, "error": "Invalid request parameters"}), 400
         except Exception as e:
             import traceback
@@ -1026,7 +1026,7 @@ def register_ea_workflow_routes(main_blueprint):
             ).first() is not None
 
             return jsonify({"success": True, "is_watched": is_watched, **status})
-        except Exception as e:
+        except Exception:
             return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
     @main_blueprint.route("/api/ea-workflows/instances/<int:instance_id>/resume", methods=["POST"])
@@ -1045,9 +1045,9 @@ def register_ea_workflow_routes(main_blueprint):
             )
 
             return jsonify({"success": True, "instance": instance.to_dict()})
-        except ValueError as e:
+        except ValueError:
             return jsonify({"success": False, "error": "Invalid request parameters"}), 400
-        except Exception as e:
+        except Exception:
             return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
     @main_blueprint.route("/api/ea-workflows/instances/<int:instance_id>/cancel", methods=["POST"])
@@ -1064,9 +1064,9 @@ def register_ea_workflow_routes(main_blueprint):
             instance = engine.cancel_workflow(instance_id=instance_id, reason=reason)
 
             return jsonify({"success": True, "instance": instance.to_dict()})
-        except ValueError as e:
+        except ValueError:
             return jsonify({"success": False, "error": "Invalid request parameters"}), 400
-        except Exception as e:
+        except Exception:
             return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
     @main_blueprint.route("/api/ea-workflows/instances/<int:instance_id>/reject", methods=["POST"])
@@ -1110,7 +1110,7 @@ def register_ea_workflow_routes(main_blueprint):
             db.session.commit()
 
             return jsonify({"success": True, "instance": instance.to_dict()})
-        except Exception as e:
+        except Exception:
             return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
     @main_blueprint.route("/api/ea-workflows/instances/<int:instance_id>/artifacts")
@@ -1150,7 +1150,7 @@ def register_ea_workflow_routes(main_blueprint):
 
             all_artifacts.sort(key=lambda a: (a.get("created_at") or "")[:19])
             return jsonify({"success": True, "artifacts": all_artifacts, "total": len(all_artifacts)})
-        except Exception as e:
+        except Exception:
             return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
     @main_blueprint.route("/api/ea-workflows/instances/<int:instance_id>/artifacts/export")
@@ -1258,7 +1258,7 @@ def register_ea_workflow_routes(main_blueprint):
                 "approved_count": approved_count,
                 "errors": errors,
             })
-        except Exception as e:
+        except Exception:
             return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
     @main_blueprint.route("/api/ea-workflows/instances/<int:instance_id>/retry", methods=["POST"])
@@ -1285,7 +1285,7 @@ def register_ea_workflow_routes(main_blueprint):
             engine._execute_workflow(instance)
 
             return jsonify({"success": True, "instance": instance.to_dict()})
-        except Exception as e:
+        except Exception:
             return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
     @main_blueprint.route("/api/ea-workflows/instances")
@@ -1345,7 +1345,7 @@ def register_ea_workflow_routes(main_blueprint):
                 "per_page": per_page,
                 "pages": (total + per_page - 1) // per_page,
             })
-        except Exception as e:
+        except Exception:
             return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
     # =========================================================================
@@ -1378,7 +1378,7 @@ def register_ea_workflow_routes(main_blueprint):
             return jsonify({"success": True, "schedule": schedule.to_dict()})
         except KeyError as e:
             return jsonify({"success": False, "error": f"Missing required field: {e}"}), 400
-        except Exception as e:
+        except Exception:
             return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
     @main_blueprint.route("/api/ea-workflows/schedules")
@@ -1397,7 +1397,7 @@ def register_ea_workflow_routes(main_blueprint):
                     "total": len(schedules),
                 }
             )
-        except Exception as e:
+        except Exception:
             return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
     @main_blueprint.route("/api/ea-workflows/schedules/<int:schedule_id>/toggle", methods=["POST"])
@@ -1416,7 +1416,7 @@ def register_ea_workflow_routes(main_blueprint):
             db.session.commit()
 
             return jsonify({"success": True, "schedule": schedule.to_dict()})
-        except Exception as e:
+        except Exception:
             return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
     # =========================================================================
@@ -1528,7 +1528,7 @@ def register_ea_workflow_routes(main_blueprint):
                     "avg_approval_hours": avg_approval_time,
                 },
             })
-        except Exception as e:
+        except Exception:
             return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
     @main_blueprint.route("/api/ea-workflows/instances/<int:instance_id>/watch", methods=["POST", "DELETE"])
@@ -1649,7 +1649,7 @@ def register_ea_workflow_routes(main_blueprint):
                 mimetype="text/csv",
                 headers={"Content-Disposition": "attachment; filename=ea_workflow_instances.csv"},
             )
-        except Exception as e:
+        except Exception:
             return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
     @main_blueprint.route("/api/ea-workflows/notifications")
@@ -1675,7 +1675,7 @@ def register_ea_workflow_routes(main_blueprint):
                 "notifications": [n.to_dict() for n in notifications],
                 "unread_count": unread_count,
             })
-        except Exception as e:
+        except Exception:
             return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
     @main_blueprint.route("/api/ea-workflows/notifications/<int:notif_id>/read", methods=["POST"])
@@ -1696,7 +1696,7 @@ def register_ea_workflow_routes(main_blueprint):
             db.session.commit()
 
             return jsonify({"success": True})
-        except Exception as e:
+        except Exception:
             return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
     @main_blueprint.route("/api/ea/workflow-adm-lifecycle")
@@ -1767,7 +1767,7 @@ def register_ea_workflow_routes(main_blueprint):
             engine = EAWorkflowEngine()
             result = engine.run_due_schedules()
             return jsonify({"success": True, **result})
-        except Exception as e:
+        except Exception:
             return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
     @main_blueprint.route("/api/ea/phases/archimate-summary", methods=["GET"])

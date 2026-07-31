@@ -332,7 +332,7 @@ def build_viewpoint():
             }
         )
 
-    except ValueError as e:
+    except ValueError:
         return jsonify({"error": "Invalid request parameters"}), 400
     except Exception as e:
         return handle_error(e, "build_viewpoint")
@@ -386,7 +386,7 @@ def build_viewpoint_get(viewpoint_code: str):
 
         return jsonify({"viewpoint": viewpoint.to_dict()})
 
-    except ValueError as e:
+    except ValueError:
         return jsonify({"error": "Invalid request parameters"}), 400
     except Exception as e:
         return handle_error(e, "build_viewpoint_get")
@@ -643,7 +643,7 @@ def export_viewpoint_svg():
             headers={"Content-Disposition": f"attachment; filename=viewpoint_{viewpoint.code}.svg"},
         )
 
-    except ValueError as e:
+    except ValueError:
         return jsonify({"error": "Invalid request parameters"}), 400
     except Exception as e:
         return handle_error(e, "export_viewpoint_svg")
@@ -708,7 +708,7 @@ def export_viewpoint_json():
             }
         )
 
-    except ValueError as e:
+    except ValueError:
         return jsonify({"error": "Invalid request parameters"}), 400
     except Exception as e:
         return handle_error(e, "export_viewpoint_json")

@@ -32,13 +32,13 @@ def handle_errors(f):
                 "message": "See server logs for details",
                 "type": "database_error",
             }, 500
-        except ValueError as e:
+        except ValueError:
             return {
                 "error": "Invalid data provided",
                 "message": "Invalid request parameters",
                 "type": "validation_error",
             }, 400
-        except KeyError as e:
+        except KeyError:
             return {
                 "error": "Missing required field",
                 "message": "A required field is missing",

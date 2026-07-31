@@ -93,7 +93,7 @@ def create_job():
         # Security: validate MIME type (IMP-001: File upload security)
         try:
             mime_type = validate_mime_type(file, file.filename)
-        except InvalidFileTypeError as e:
+        except InvalidFileTypeError:
             # IMP-002: Audit failed upload
             AuditLog.log_file_upload(
                 user_id=current_user.id,
@@ -477,9 +477,9 @@ def start_job(job_id):
             }
         )
 
-    except PermissionError as e:
+    except PermissionError:
         return jsonify({"success": False, "error": "Access denied"}), 403
-    except ValueError as e:
+    except ValueError:
         return jsonify({"success": False, "error": "Invalid request parameters"}), 400
     except HTTPException:
         raise
@@ -1085,9 +1085,9 @@ def pause_job(job_id):
             }
         )
 
-    except PermissionError as e:
+    except PermissionError:
         return jsonify({"success": False, "error": "Access denied"}), 403
-    except ValueError as e:
+    except ValueError:
         return jsonify({"success": False, "error": "Invalid request parameters"}), 400
     except HTTPException:
         raise
@@ -1120,9 +1120,9 @@ def resume_job(job_id):
             }
         )
 
-    except PermissionError as e:
+    except PermissionError:
         return jsonify({"success": False, "error": "Access denied"}), 403
-    except ValueError as e:
+    except ValueError:
         return jsonify({"success": False, "error": "Invalid request parameters"}), 400
     except HTTPException:
         raise
@@ -1158,9 +1158,9 @@ def cancel_job(job_id):
             }
         )
 
-    except PermissionError as e:
+    except PermissionError:
         return jsonify({"success": False, "error": "Access denied"}), 403
-    except ValueError as e:
+    except ValueError:
         return jsonify({"success": False, "error": "Invalid request parameters"}), 400
     except HTTPException:
         raise
@@ -1192,7 +1192,7 @@ def delete_job(job_id):
             }
         )
 
-    except PermissionError as e:
+    except PermissionError:
         return jsonify({"success": False, "error": "Access denied"}), 403
     except HTTPException:
         raise
@@ -1347,7 +1347,7 @@ def approve_batch(batch_id):
             }
         )
 
-    except ValueError as e:
+    except ValueError:
         return jsonify({"success": False, "error": "Invalid request parameters"}), 400
     except HTTPException:
         raise
@@ -1384,7 +1384,7 @@ def reject_batch(batch_id):
             }
         )
 
-    except ValueError as e:
+    except ValueError:
         return jsonify({"success": False, "error": "Invalid request parameters"}), 400
     except HTTPException:
         raise
@@ -1417,7 +1417,7 @@ def commit_batch(batch_id):
             }
         )
 
-    except ValueError as e:
+    except ValueError:
         return jsonify({"success": False, "error": "Invalid request parameters"}), 400
     except HTTPException:
         raise
@@ -1447,7 +1447,7 @@ def retry_batch(batch_id):
             }
         )
 
-    except ValueError as e:
+    except ValueError:
         return jsonify({"success": False, "error": "Invalid request parameters"}), 400
     except HTTPException:
         raise
@@ -1583,7 +1583,7 @@ def approve_element(element_id):
             }
         )
 
-    except ValueError as e:
+    except ValueError:
         return jsonify({"success": False, "error": "Invalid request parameters"}), 400
     except HTTPException:
         raise
@@ -1618,7 +1618,7 @@ def reject_element(element_id):
             }
         )
 
-    except ValueError as e:
+    except ValueError:
         return jsonify({"success": False, "error": "Invalid request parameters"}), 400
     except HTTPException:
         raise

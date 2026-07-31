@@ -69,7 +69,7 @@ def transform_output():
 
         return jsonify({"success": True, "transformed_output": transformed})
 
-    except Exception as e:
+    except Exception:
         return jsonify(
             {"error": "Transformation failed", "details": "See server logs for details"}
         ), 500
@@ -85,7 +85,7 @@ def get_available_roles():
 
         return jsonify({"success": True, "roles": roles})
 
-    except Exception as e:
+    except Exception:
         return jsonify(
             {"error": "Failed to get roles", "details": "See server logs for details"}
         ), 500
@@ -113,7 +113,7 @@ def get_role_info(role_value):
 
         return jsonify({"success": True, "role_info": role_info})
 
-    except Exception as e:
+    except Exception:
         return jsonify(
             {
                 "error": "Failed to get role info",
@@ -186,7 +186,7 @@ def batch_transform_outputs():
 
         return jsonify({"success": True, "results": results})
 
-    except Exception as e:
+    except Exception:
         return jsonify(
             {
                 "error": "Batch transformation failed",
@@ -244,7 +244,7 @@ def get_entity_types():
 
         return jsonify({"success": True, "entity_types": entity_types})
 
-    except Exception as e:
+    except Exception:
         return jsonify(
             {
                 "error": "Failed to get entity types",
@@ -299,7 +299,7 @@ def generate_architecture():
             }
         )
 
-    except Exception as e:
+    except Exception:
         return jsonify(
             {
                 "error": "Architecture generation failed",
@@ -338,7 +338,7 @@ def validate_architecture():
             }
         )
 
-    except Exception as e:
+    except Exception:
         return jsonify(
             {
                 "error": "Architecture validation failed",

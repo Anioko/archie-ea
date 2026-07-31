@@ -1076,7 +1076,7 @@ def submit_to_arb():
                 },
             }
         )
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return jsonify({"success": False, "error": "Failed to submit to ARB"}), 500
 
@@ -1256,7 +1256,7 @@ def create_canvas_from_adm_workflow(workflow_instance_id: int):
             }
         )
 
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "Failed to create canvas"}), 500
 
 
@@ -1345,9 +1345,9 @@ def import_adm_to_existing_canvas(canvas_id: int, workflow_instance_id: int):
             }
         )
 
-    except ValueError as e:
+    except ValueError:
         return jsonify({"success": False, "error": "Resource not found"}), 404
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "Failed to import"}), 500
 
 

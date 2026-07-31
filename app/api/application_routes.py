@@ -932,7 +932,7 @@ def api_bulk_consolidate():
                         "message": f"Consolidated {secondary.name} into {primary.name}",
                     }
                 )
-            except Exception as e:
+            except Exception:
                 results.append(
                     {
                         "pair": {

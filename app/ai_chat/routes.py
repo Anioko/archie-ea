@@ -217,7 +217,7 @@ def get_domain_context(domain):
         context_data = chat_service.get_domain_context(domain)
         return jsonify(context_data)
 
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 

@@ -200,7 +200,7 @@ def universal_dashboard(model_slug):
 
         # Render with the new beautiful dashboard template
         return render_template("dashboards/model_dashboard.html", config=config)
-    except (OperationalError, ProgrammingError) as e:
+    except (OperationalError, ProgrammingError):
         # Table doesn't exist in database
         abort(
             404,
@@ -249,7 +249,7 @@ def universal_detail(model_slug, record_id):
         # Render with detail template
         return render_template("dashboards/generic_detail.html", config=detail_config)
 
-    except (OperationalError, ProgrammingError) as e:
+    except (OperationalError, ProgrammingError):
         # Table doesn't exist in database
         abort(
             404,

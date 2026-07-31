@@ -157,7 +157,7 @@ def vendor_archimate_analysis():
             unmapped_products=unmapped_products,
         )
 
-    except Exception as e:
+    except Exception:
         flash("Error loading vendor-ArchiMate analysis. Please try again.", "error")
         return render_template(
             "vendor_analysis/archimate_mapping.html",
@@ -244,5 +244,5 @@ def export_vendor_archimate_analysis():
 
         return jsonify(export_data)
 
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500

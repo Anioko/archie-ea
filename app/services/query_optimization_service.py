@@ -182,7 +182,7 @@ class BatchQueryExecutor:
                 # Execute query with filter
                 result = model.query.filter_by(**filters).all()
                 self._results[name] = result
-            except Exception as e:
+            except Exception:
                 self._results[query_def["name"]] = []
 
         return self._results

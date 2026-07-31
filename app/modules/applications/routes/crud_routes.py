@@ -709,7 +709,7 @@ def application_edit(id):
 
         return render_template("applications/edit.html", application=app)
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         flash("Error updating application. Please try again.", "error")
         return redirect(url_for("unified_applications.application_detail", id=id))
@@ -739,7 +739,7 @@ def application_delete(id):
         flash("Application deleted successfully!", "success")
         return redirect(url_for("unified_applications.application_list"))
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         if is_ajax:
             return jsonify(

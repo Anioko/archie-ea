@@ -256,7 +256,7 @@ def ai_analyze():
                 }
             )
 
-    except ValueError as e:
+    except ValueError:
         return jsonify({"available": False, "error": "Invalid request parameters"}), 400
     except Exception as e:
         current_app.logger.error(f"AI analysis failed: {e}", exc_info=True)

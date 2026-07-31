@@ -266,7 +266,7 @@ def get_applications():
 
         return jsonify({"applications": result})
 
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -307,7 +307,7 @@ def get_systems():
 
         return jsonify({"systems": result})
 
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -350,7 +350,7 @@ def get_initiatives():
 
         return jsonify({"initiatives": result})
 
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -394,7 +394,7 @@ def get_projects():
 
         return jsonify({"projects": result})
 
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -866,7 +866,7 @@ def get_all_entities():
 
         return jsonify(result)
 
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 

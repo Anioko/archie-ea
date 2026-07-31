@@ -200,7 +200,7 @@ def batch_calculate_tco():
                 )
                 successful += 1
 
-            except Exception as e:
+            except Exception:
                 calculations.append(
                     {"vendor_product_id": vendor_product_id, "error": "An internal error occurred", "success": False}
                 )
@@ -646,7 +646,7 @@ def export_tco():
                 }
             )
 
-        except ImportError as e:
+        except ImportError:
             return (
                 jsonify(
                     {

@@ -271,7 +271,7 @@ class StakeholderService:
             db.session.commit()
             return mapped_requirements
 
-        except Exception as e:
+        except Exception:
             db.session.rollback()
             return []
 

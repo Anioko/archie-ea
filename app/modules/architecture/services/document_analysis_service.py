@@ -2269,7 +2269,7 @@ create a relationship: ApplicationInterface "Salesforce API" → ApplicationServ
                                             "properties": {},
                                         }
                                     )
-                        except (json.JSONDecodeError, ValueError) as parse_err:
+                        except (json.JSONDecodeError, ValueError):
                             # Create minimal element as fallback
                             try:
                                 element_objects.append(

@@ -561,7 +561,7 @@ def api_list():
                 "per_page": pagination.per_page,
             }
         )
-    except Exception as e:
+    except Exception:
         try:
             db.session.rollback()
         except Exception as rollback_error:

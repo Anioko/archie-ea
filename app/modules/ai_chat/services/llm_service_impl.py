@@ -480,7 +480,7 @@ class LLMService:
             for settings in enabled_providers:
                 if settings.has_key() and settings.default_model and settings.default_model.strip():
                     valid_providers.append(settings.provider)
-        except Exception as e:
+        except Exception:
             # Database might not be available, continue to env fallback
             logger.debug("Failed to query API settings from database", exc_info=True)
 

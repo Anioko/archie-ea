@@ -84,7 +84,7 @@ def _compute_solution_maturity(solution, db) -> int:
                     db.session.query(SolutionRecommendation)
                     .filter_by(session_id=sess_id).limit(1).count() > 0
                 )
-            except Exception as exc:
+            except Exception:
                 has_recommendations = _has_in_problems(SolutionRecommendation)
     except Exception as exc:
         # `exc` was referenced here but bound only by an INNER except block, and

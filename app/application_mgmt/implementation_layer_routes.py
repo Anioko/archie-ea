@@ -63,7 +63,7 @@ def get_application_work_packages(id):
             )
 
         return jsonify({"work_packages": wp_data})
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 

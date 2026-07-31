@@ -462,7 +462,7 @@ def api_unified_capabilities():
                         "coverage_percentage": 100 if mfg_mapped else 0,
                     }
                 )
-            except Exception as e:
+            except Exception:
                 # Skip problematic manufacturing capability
                 continue
 

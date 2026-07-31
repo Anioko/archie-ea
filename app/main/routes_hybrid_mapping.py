@@ -38,7 +38,7 @@ def hybrid_mapping_dashboard():
             unmapped_archimate=unmapped_archimate,
         )
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()  # clear any aborted txn so later queries don't cascade
         flash("Error loading hybrid mapping dashboard. Please try again.", "error")
         empty_stats = {
@@ -285,7 +285,7 @@ def get_application_mappings():
             for row in result
         ]
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()  # clear any aborted txn so later queries don't cascade
         return []
 
@@ -346,7 +346,7 @@ def get_product_mappings():
             for row in result
         ]
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()  # clear any aborted txn so later queries don't cascade
         return []
 
@@ -400,7 +400,7 @@ def get_archimate_mappings():
             for row in result
         ]
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()  # clear any aborted txn so later queries don't cascade
         return []
 
@@ -437,7 +437,7 @@ def get_unmapped_capabilities():
             dict(zip(["id", "name", "strategic_importance", "domain_name"], row)) for row in result
         ]
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()  # clear any aborted txn so later queries don't cascade
         return []
 
@@ -471,7 +471,7 @@ def get_unmapped_vendor_products():
             for row in result
         ]
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()  # clear any aborted txn so later queries don't cascade
         return []
 
@@ -502,7 +502,7 @@ def get_unmapped_archimate_elements():
 
         return [dict(zip(["id", "name", "type", "layer", "description"], row)) for row in result]
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()  # clear any aborted txn so later queries don't cascade
         return []
 
@@ -526,6 +526,6 @@ def export_hybrid_mapping():
             }
         )
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()  # clear any aborted txn so later queries don't cascade
         return jsonify({"error": "An internal error occurred"}), 500

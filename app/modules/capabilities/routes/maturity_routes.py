@@ -107,7 +107,7 @@ def search_capabilities():
             selected_importance=strategic_importance,
         )
 
-    except Exception as e:
+    except Exception:
         flash("Error searching capabilities. Please try again.", "error")
         return render_template(
             "capability_maturity/search.html", capabilities=[], domains=[], total_count=0
@@ -223,7 +223,7 @@ def edit_capability_maturity(capability_id):
 
         return render_template("capability_maturity/edit.html", capability=capability)
 
-    except Exception as e:
+    except Exception:
         flash("Error updating capability. Please try again.", "error")
         return redirect(url_for("maturity_management.search_capabilities"))
 
@@ -352,7 +352,7 @@ def batch_update_maturity():
             selected_importance=strategic_importance,
         )
 
-    except Exception as e:
+    except Exception:
         flash("Error in batch update. Please try again.", "error")
         return redirect(url_for("maturity_management.frameworks_overview"))
 
@@ -394,7 +394,7 @@ def get_capability_api(capability_id):
             }
         )
 
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -499,7 +499,7 @@ def framework_dashboard(framework_key):
             attention_needed=attention_needed,
         )
 
-    except Exception as e:
+    except Exception:
         flash("Error loading framework dashboard. Please try again.", "error")
         return redirect(url_for("maturity_management.frameworks_overview"))
 
@@ -598,7 +598,7 @@ def domain_dashboard(framework_key, domain_key):
             attention_needed=attention_needed,
         )
 
-    except Exception as e:
+    except Exception:
         flash("Error loading domain dashboard. Please try again.", "error")
         return redirect(
             url_for("maturity_management.framework_dashboard", framework_key=framework_key)
@@ -643,7 +643,7 @@ def frameworks_overview():
             framework_stats=framework_stats,
         )
 
-    except Exception as e:
+    except Exception:
         flash("Error loading frameworks overview. Please try again.", "error")
         return redirect(url_for("capability_map.index"))
 

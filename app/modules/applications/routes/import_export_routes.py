@@ -2229,7 +2229,7 @@ def application_import():
     except ValueError as exc:
         db.session.rollback()
         flash(f"Invalid import data: {exc}", "error")
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         flash("Error importing file. Please try again.", "error")
 

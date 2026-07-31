@@ -96,7 +96,7 @@ def update_overview(id):
                 )
             )
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         if request.headers.get("X-Requested-With") == "XMLHttpRequest":
             return {
@@ -166,7 +166,7 @@ def update_health_quality(id):
                 )
             )
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         if request.headers.get("X-Requested-With") == "XMLHttpRequest":
             return {

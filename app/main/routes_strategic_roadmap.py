@@ -167,7 +167,7 @@ def strategic_roadmap():
             selected_importance=selected_importance or "",  # Ensure always defined
         )
 
-    except Exception as e:
+    except Exception:
         flash("Error loading strategic roadmap. Please try again.", "error")
         # Provide default timeline dates even in error case (use current year)
         current_year = datetime.now().year
@@ -254,7 +254,7 @@ def get_strategic_work_packages():
             )
 
         return jsonify({"work_packages": work_packages_list})
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -317,7 +317,7 @@ def create_strategic_work_package():
             }
         )
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return jsonify({"error": "An internal error occurred"}), 500
 
@@ -387,7 +387,7 @@ def update_strategic_work_package(wp_id):
             }
         )
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return jsonify({"error": "An internal error occurred"}), 500
 
@@ -406,6 +406,6 @@ def delete_strategic_work_package(wp_id):
 
         return jsonify({"success": True, "message": f"Strategic work package {wp_id} deleted"})
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return jsonify({"error": "An internal error occurred"}), 500

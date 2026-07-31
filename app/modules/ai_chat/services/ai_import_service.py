@@ -1798,7 +1798,7 @@ Provide analysis in JSON format:
                             )
                             db.session.add(new_mapping)
                             results["capability_mappings_created"] += 1
-                    except Exception as e:
+                    except Exception:
                         results["errors"].append("Capability mapping failed. Please check data format.")
 
             # Create process mappings
@@ -1821,7 +1821,7 @@ Provide analysis in JSON format:
                             )
                             db.session.add(new_mapping)
                             results["process_mappings_created"] += 1
-                    except Exception as e:
+                    except Exception:
                         results["errors"].append("Process mapping failed. Please check data format.")
 
             # Create ArchiMate elements
@@ -1836,7 +1836,7 @@ Provide analysis in JSON format:
                         )
                         if element:
                             results["archimate_elements_created"] += 1
-                    except Exception as e:
+                    except Exception:
                         results["errors"].append("ArchiMate element creation failed. Please check data format.")
 
             # Commit all changes
@@ -2374,7 +2374,7 @@ Provide analysis in JSON format:
 
                 results["total_analyzed"] += 1
 
-            except Exception as e:
+            except Exception:
                 app_result["error"] = "Application analysis failed. Please try again later."
 
             end_time = time.time()

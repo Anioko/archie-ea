@@ -396,7 +396,7 @@ class DriverService:
             db.session.commit()
             return linked_reqs
 
-        except Exception as e:
+        except Exception:
             db.session.rollback()
             return []
 

@@ -6179,7 +6179,7 @@ def api_update_solution(solution_id: int):
                 "solution_id": solution.id,
             }
         )
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
@@ -9915,7 +9915,7 @@ def api_generate_section_narrative(solution_id, section_id):
     try:
         from app.services.llm_service import LLMService
         narrative = LLMService.generate_from_prompt(prompt, use_cache=False)
-    except ValueError as e:
+    except ValueError:
         return jsonify({
             "success": False,
             "error": "No LLM provider configured. Add an API key in Admin → API Settings.",

@@ -72,7 +72,7 @@ def get_grouped_capabilities():
 
         raise
 
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -100,7 +100,7 @@ def get_capability_domains():
 
         raise
 
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -142,7 +142,7 @@ def check_capability_duplicate():
 
         raise
 
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -163,7 +163,7 @@ def list_users_for_assignment():
         )
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -187,7 +187,7 @@ def list_capabilities():
         )
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -558,7 +558,7 @@ def get_capability_work_packages():
         return jsonify({"work_packages": work_packages_list})
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -641,7 +641,7 @@ def create_capability_work_package():
 
         raise
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return jsonify({"error": "An internal error occurred"}), 500
 
@@ -728,7 +728,7 @@ def update_capability_work_package(wp_id):
 
         raise
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return jsonify({"error": "An internal error occurred"}), 500
 
@@ -751,7 +751,7 @@ def delete_capability_work_package(wp_id):
 
         raise
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return jsonify({"error": "An internal error occurred"}), 500
 
@@ -790,7 +790,7 @@ def get_work_package_tasks(wp_id):
 
         raise
 
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -838,7 +838,7 @@ def create_work_package_task(wp_id):
 
         raise
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return jsonify({"error": "An internal error occurred"}), 500
 
@@ -891,7 +891,7 @@ def update_work_package_task(wp_id, task_id):
 
         raise
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return jsonify({"error": "An internal error occurred"}), 500
 
@@ -914,7 +914,7 @@ def delete_work_package_task(wp_id, task_id):
 
         raise
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return jsonify({"error": "An internal error occurred"}), 500
 
@@ -953,7 +953,7 @@ def get_work_package_deliverables(wp_id):
 
         raise
 
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -994,7 +994,7 @@ def create_work_package_deliverable(wp_id):
 
         raise
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return jsonify({"error": "An internal error occurred"}), 500
 
@@ -1049,7 +1049,7 @@ def update_work_package_deliverable(wp_id, deliverable_id):
 
         raise
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return jsonify({"error": "An internal error occurred"}), 500
 
@@ -1077,7 +1077,7 @@ def delete_work_package_deliverable(wp_id, deliverable_id):
 
         raise
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return jsonify({"error": "An internal error occurred"}), 500
 
@@ -1192,5 +1192,5 @@ def get_work_package_details(wp_id):
 
         raise
 
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
