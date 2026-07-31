@@ -57,7 +57,7 @@ services:
     container_name: {name}-db
     environment:
       POSTGRES_USER: ${{POSTGRES_USER:-archie}}
-      POSTGRES_PASSWORD: ${{POSTGRES_PASSWORD:-changeme}}
+      POSTGRES_PASSWORD: ${{POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}}
       POSTGRES_DB: {name.replace('-', '_')}
     volumes:
       - pgdata:/var/lib/postgresql/data

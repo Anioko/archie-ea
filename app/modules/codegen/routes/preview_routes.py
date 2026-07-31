@@ -13,6 +13,7 @@ Imported at the bottom of codegen_routes.py so routes attach automatically.
 import hashlib
 import logging
 import re
+import secrets
 
 from flask import abort, jsonify, request
 from flask_login import login_required
@@ -751,20 +752,49 @@ def _write_preview_files(files, target_dir):
             f.write(content)
 
 
-def _compose_env(solution_id, api_port, fe_port):
+PREVIEW_ADMIN_EMAIL = "admin@archie.demo"
+
+
+def _preview_secrets(gen):
+    """Per-preview secrets, generated once and persisted on the generation row.
+
+    These used to be four hardcoded constants - POSTGRES_PASSWORD "archie-preview",
+    ADMIN_PASSWORD "Admin2026!", and two "not-for-production" signing keys. Preview
+    stacks are published through _register_nginx_proxy() under /apps/<id>/, so those
+    were reachable credentials, and this repository is public: the admin password of
+    every deployed preview was in the open-source tree. Naming them
+    "not-for-production" documented the risk without removing it.
+
+    Generated once and stored under config["_docker_preview"]["secrets"] rather than
+    minted per call, because _compose_env() is called twice per deploy - once to write
+    .env and once to build the subprocess environment. Fresh randoms at each call site
+    would hand docker compose a different password than the one in .env, and the stack
+    would fail to start.
+    """
+    meta = (gen.config or {}).get("_docker_preview", {}) if gen else {}
+    existing = meta.get("secrets")
+    if existing:
+        return existing
+    return {
+        "POSTGRES_PASSWORD": secrets.token_urlsafe(24),
+        "JWT_SECRET": secrets.token_urlsafe(48),
+        "SECRET_KEY": secrets.token_urlsafe(48),
+        # Typed by a human into the preview's login form, so keep it transcribable.
+        "ADMIN_PASSWORD": secrets.token_urlsafe(12),
+    }
+
+
+def _compose_env(solution_id, api_port, fe_port, preview_secrets):
     """Return environment dict to pass to docker compose so ports are correct."""
     return {
         "API_PORT": str(api_port),
         "FRONTEND_PORT": str(fe_port),
-        "POSTGRES_PASSWORD": "archie-preview",
         "POSTGRES_DB": f"solution_{solution_id}",
         "POSTGRES_USER": "app",
-        "JWT_SECRET": "archie-preview-jwt-not-for-production",
-        "SECRET_KEY": "archie-preview-key-not-for-production",
         "ENV": "development",
         # Seeded admin credentials — auto-created on first startup if users table is empty
-        "ADMIN_EMAIL": "admin@archie.demo",
-        "ADMIN_PASSWORD": "Admin2026!",
+        "ADMIN_EMAIL": PREVIEW_ADMIN_EMAIL,
+        **preview_secrets,
     }
 
 
@@ -936,13 +966,19 @@ def docker_preview_start(solution_id):
     with open(os.path.join(pdir, "docker-compose.override.yml"), "w") as f:
         f.write(override_yml)
 
+    # Resolve once: .env and the subprocess environment must agree, and a redeploy of
+    # a still-running stack must not rotate the password out from under its database.
+    preview_secrets = _preview_secrets(gen)
+    compose_env = _compose_env(solution_id, api_port, fe_port, preview_secrets)
+
     # Write .env so docker compose picks up database credentials etc.
-    env_content = "\n".join(f"{k}={v}" for k, v in _compose_env(solution_id, api_port, fe_port).items())
+    env_content = "\n".join(f"{k}={v}" for k, v in compose_env.items())
     with open(os.path.join(pdir, ".env"), "w") as f:
         f.write(env_content + "\n")
+    os.chmod(os.path.join(pdir, ".env"), 0o600)
 
     # Launch docker compose in background (--build triggers rebuild only if files changed)
-    env = {**os.environ, **_compose_env(solution_id, api_port, fe_port)}
+    env = {**os.environ, **compose_env}
     log_path = os.path.join(pdir, "compose.log")
     with open(log_path, "w") as log_f:
         proc = subprocess.Popen(
@@ -971,6 +1007,7 @@ def docker_preview_start(solution_id):
         "preview_dir": pdir,
         "app_url": app_url,
         "api_url": api_url,
+        "secrets": preview_secrets,
     }
     gen.config = config
     flag_modified(gen, "config")
@@ -982,6 +1019,11 @@ def docker_preview_start(solution_id):
         "api_url": api_url,
         "api_port": api_port,
         "fe_port": fe_port,
+        # The seeded login is now random per preview, so it has to be reported back or
+        # the stack is unusable. It was never displayed before - the only copy of
+        # "Admin2026!" lived in this source file, so the only way in was to read it.
+        "admin_email": PREVIEW_ADMIN_EMAIL,
+        "admin_password": preview_secrets["ADMIN_PASSWORD"],
     })
 
 
@@ -1021,11 +1063,17 @@ def docker_preview_status(solution_id):
     server_host = request.host.split(":")[0]
     app_url = meta.get("app_url") or (f"http://{server_host}:{fe_port}" if running else None)
     api_url = meta.get("api_url") or (f"http://{server_host}:{api_port}" if running else None)
+    # Re-report the seeded login while the stack is up. The password is random per
+    # preview now, so a user who navigated away after deploying has no other way to
+    # recover it. Withheld once the stack is down, since there is nothing to log into.
+    stack_secrets = meta.get("secrets") or {}
     return jsonify({
         "running": running,
         "app_url": app_url,
         "api_url": api_url,
         "services": [s.get("Service", "") for s in services],
+        "admin_email": PREVIEW_ADMIN_EMAIL if (running and stack_secrets) else None,
+        "admin_password": stack_secrets.get("ADMIN_PASSWORD") if running else None,
     })
 
 
