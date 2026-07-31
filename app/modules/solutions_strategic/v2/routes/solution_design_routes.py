@@ -3678,9 +3678,35 @@ def runtime_health_report():
         "uptime_pct": float
     }
     """
+    import hmac
+
     from app.models.solution_models import Solution
     from app.models.published_api_spec import PublishedAPISpec
     from app.models.compliance_check import RuntimeComplianceCheck
+
+    # Authenticate the reporter. Being CSRF-exempt removes the browser-origin
+    # check, and there was nothing behind it: any caller could POST a report for
+    # any solution_id, in any tenant, and have it written as a compliance record.
+    # For a governance product, forged compliance evidence is not a small thing -
+    # the records are the deliverable.
+    #
+    # Fails closed when unconfigured rather than accepting anonymous reports,
+    # which is affordable here because nothing posts to this endpoint yet: no
+    # client, generated service, test or document references it. An operator
+    # enabling it sets the token on both ends at once.
+    expected = current_app.config.get("RUNTIME_REPORT_TOKEN") or os.environ.get("RUNTIME_REPORT_TOKEN")
+    if not expected:
+        return jsonify({
+            "received": False,
+            "error": "Runtime reporting is not enabled. Set RUNTIME_REPORT_TOKEN to enable it.",
+        }), 503
+    supplied = request.headers.get("X-Runtime-Report-Token", "")
+    if not supplied or not hmac.compare_digest(supplied, expected):
+        current_app.logger.warning(
+            "Rejected runtime health report with bad/missing token from IP %s",
+            request.remote_addr,
+        )
+        return jsonify({"received": False, "error": "Unauthorized"}), 401
 
     body = request.get_json(silent=True) or {}
 
