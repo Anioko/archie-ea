@@ -6,6 +6,7 @@ Provides event-driven notifications and integrations
 import hashlib
 import hmac
 import json
+import secrets
 from collections import defaultdict
 from datetime import datetime
 
@@ -44,9 +45,16 @@ _webhook_rate_limiter = _WebhookRateLimiter(max_requests=30, window_seconds=60)
 
 
 def verify_webhook_signature(payload, signature, secret):
-    """Verify webhook signature for security"""
-    if not secret:
-        return True  # No secret configured
+    """Verify webhook signature for security.
+
+    Fails closed. This previously returned True when no secret was configured,
+    so "I have no way to check this" and "this checked out" were the same answer
+    - the failure mode a signature check exists to prevent. The one caller
+    happens to guard with `if subscription.secret:` first, so the old branch was
+    unreachable from there, but it left the helper unsafe for the next caller.
+    """
+    if not secret or not signature:
+        return False
 
     expected_signature = hmac.new(secret.encode(), payload, hashlib.sha256).hexdigest()
 
@@ -93,17 +101,36 @@ def create_subscription():
                 ), 400
 
         service = WebhookService()
+        # Generate one when the caller supplies none. The receiver only enforces
+        # signatures when the subscription has a secret, so a secretless
+        # subscription was an unauthenticated write endpoint that anyone knowing
+        # its id could post to - rate-limited by IP and nothing else. Making the
+        # field effectively mandatory is what closes that, rather than asking
+        # callers to remember.
+        supplied_secret = data.get("secret")
+        secret = supplied_secret or secrets.token_hex(32)
         subscription = service.create_subscription(
             user_id=user_id,
             url=data["url"],
             events=data["events"],
-            secret=data.get("secret"),
+            secret=secret,
             description=data.get("description"),
             filters=data.get("filters", {}),
             headers=data.get("headers", {}),
         )
 
-        return jsonify({"success": True, "data": subscription.to_dict()}), 201
+        payload = subscription.to_dict()
+        if not supplied_secret:
+            # to_dict() deliberately withholds the secret, so a generated one has
+            # to be returned here or the caller could never sign anything. Shown
+            # once, at creation, and never retrievable again.
+            payload["secret"] = secret
+            payload["secret_notice"] = (
+                "Generated because none was supplied. Store it now - it is not "
+                "retrievable later. Sign payloads as "
+                "HMAC-SHA256(body, secret) in the X-Webhook-Signature header."
+            )
+        return jsonify({"success": True, "data": payload}), 201
 
     except Exception as e:
         current_app.logger.error(f"Error creating webhook subscription: {str(e)}")
@@ -301,7 +328,18 @@ def receive_webhook(subscription_id):
             )
             return jsonify({"success": False, "error": "Unauthorized"}), 401
 
-        # Enforce signature verification when a secret is configured
+        # Enforce signature verification when a secret is configured.
+        #
+        # Subscriptions created before secrets were mandatory can still have none,
+        # and those stay accepted rather than breaking a live integration on
+        # deploy. They are unauthenticated, so say so on every request instead of
+        # letting them look identical to a verified one in the log.
+        if not subscription.secret:
+            current_app.logger.warning(
+                "Webhook accepted WITHOUT signature verification: subscription %s "
+                "has no secret (from IP %s). Recreate it to get one.",
+                subscription_id, client_ip
+            )
         if subscription.secret:
             if not signature:
                 current_app.logger.warning(
