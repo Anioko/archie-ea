@@ -34,7 +34,11 @@ SIGNATURE_SECTION = {
     "solution_architect": ("/solutions", "solutions"),
     "portfolio_manager": ("/applications", "portfolio"),
     "application_manager": ("/my-applications", "my_applications"),
-    "procurement": ("/procurement", "procurement"),
+    # /procurement itself has no index route - the blueprint's routes all sit
+    # one level down (/contracts, /renewals, /licenses, /compliance, /spend).
+    # Contracts is the natural entry point. Worth noting as a UX gap: a user who
+    # navigates to the section root gets a 404 rather than a landing page.
+    "procurement": ("/procurement/contracts", "procurement"),
 }
 
 # Emptied 2026-07-31: both modules were re-enabled after verifying their

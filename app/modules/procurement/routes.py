@@ -21,6 +21,33 @@ from app.models.vendor.vendor_organization import VendorOrganization
 
 from . import procurement_bp
 
+# As in my_applications, services.py held the summary shapes these templates
+# read and was never imported, so every dashboard raised jinja2.UndefinedError.
+from .services import get_renewal_summary, get_spend_summary
+
+
+def _compliance_summary(licenses):
+    """Shape compliance_dashboard.html reads: compliant, warning, violation,
+    total, total_entitled, total_consumed, utilization.
+
+    Unlike renewals and spend there is no service equivalent, so this derives
+    from the same LicenseEntitlement rows the page already renders rather than
+    re-querying - one source of truth per request.
+    """
+    total_entitled = sum(l.quantity_entitled or 0 for l in licenses)
+    total_consumed = sum(l.quantity_deployed or 0 for l in licenses)
+    return {
+        "total": len(licenses),
+        "compliant": sum(1 for l in licenses if l.compliance_status == "compliant"),
+        "warning": sum(1 for l in licenses if l.compliance_status == "under_utilized"),
+        "violation": sum(1 for l in licenses if l.compliance_status == "over_deployed"),
+        "total_entitled": total_entitled,
+        "total_consumed": total_consumed,
+        # Guarded: an empty tenant has nothing entitled, and a ZeroDivisionError
+        # on day one is the same class of failure this whole exercise is fixing.
+        "utilization": round(total_consumed / total_entitled * 100, 1) if total_entitled else 0.0,
+    }
+
 
 @procurement_bp.route("/contracts")
 @login_required
@@ -96,6 +123,9 @@ def renewals_dashboard():
         expiring_90=expiring_90,
         expired=expired,
         today=today,
+        # Template reads summary.{critical,warning,ok,unknown,upcoming,total} -
+        # precisely get_renewal_summary()'s return shape.
+        summary=get_renewal_summary(),
     )
 
 
@@ -185,6 +215,7 @@ def compliance_dashboard():
         by_status=by_status,
         risk_exposure=risk_exposure,
         shelfware_value=shelfware_value,
+        summary=_compliance_summary(licenses),
     )
 
 
@@ -227,4 +258,7 @@ def spend_analytics():
         annual_spend=annual_spend,
         spend_by_vendor=spend_by_vendor,
         spend_by_category=spend_by_category,
+        # Template reads summary.{total_value,total_annual_cost,total_contracts,
+        # by_type,top_vendors} - exactly get_spend_summary()'s return shape.
+        summary=get_spend_summary(),
     )

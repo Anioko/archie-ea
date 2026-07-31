@@ -20,6 +20,13 @@ from app.models.solution_models import Solution
 
 from . import my_applications_bp
 
+# routes.py never imported services.py at all - get_owned_apps is defined inline
+# below, so the whole services module was dead code despite containing exactly
+# the summary functions these templates require. Every page that reads a summary
+# raised jinja2.UndefinedError, which is almost certainly the real cause of the
+# "every page route returned 500" that got this module disabled on 2026-06-11.
+from .services import get_application_health_summary, get_ownership_summary
+
 
 def get_owned_apps():
     """Get applications owned by current user."""
@@ -75,6 +82,9 @@ def app_list():
     return render_template(
         "my_applications/app_list.html",
         apps=apps,
+        # Template reads ownership_summary.{primary,backup,technical,business,
+        # total} - the exact shape get_ownership_summary() has always returned.
+        ownership_summary=get_ownership_summary(current_user.id),
     )
 
 
@@ -128,6 +138,7 @@ def health_overview():
         "my_applications/health_overview.html",
         apps=apps,
         by_health=by_health,
+        health_summary=get_application_health_summary(current_user.id),
     )
 
 
@@ -157,4 +168,5 @@ def roadmap_impact():
         apps=apps,
         upcoming_changes=upcoming_changes,
         today=date.today(),
+        ownership_summary=get_ownership_summary(current_user.id),
     )
