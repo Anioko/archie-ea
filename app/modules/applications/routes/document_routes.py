@@ -301,6 +301,23 @@ def delete_document_file(doc_id):
     doc = ApplicationDocument.query.get_or_404(doc_id)
     app_id = doc.application_component_id
 
+    # Tenant isolation: verify the parent app belongs to the caller's org.
+    #
+    # ApplicationDocument carries organization_id but not TenantMixin, so no filter
+    # is injected and .get_or_404() returns any tenant's row. Without this, any
+    # authenticated user could destroy any tenant's document - the row and the file
+    # on disk - by walking integer ids, and deletion is not recoverable.
+    #
+    # Both this route and the legacy /dashboard/documents/<id>/delete in
+    # app/application_mgmt/documents_routes.py are registered, so the check has to
+    # exist in both. Fixing only one leaves the door open under a different URL.
+    from app.middleware.tenant_files import verify_file_access
+    from app.models.application_portfolio import ApplicationComponent
+    parent_app = ApplicationComponent.query.get(app_id)
+    if parent_app and not verify_file_access(getattr(parent_app, "organization_id", None)):
+        flash("Access denied.", "danger")
+        return redirect(url_for("unified_applications.application_list"))
+
     # Validate CSRF token manually (consistent with other doc routes in this file)
     try:
         token = request.form.get("csrf_token")

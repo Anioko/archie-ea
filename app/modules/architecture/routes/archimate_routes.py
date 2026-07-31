@@ -304,6 +304,23 @@ def link_capability_to_application():
     app = db.session.get(ApplicationComponent, int(application_id))
     if not cap or not app:
         return jsonify({"error": "Capability or Application not found"}), 404
+
+    # Both ends must belong to the caller's organisation, checked explicitly.
+    #
+    # Two reasons not to rely on the ambient tenant filter here. It is applied to
+    # ORM SELECTs, and Session.get() can satisfy a primary-key lookup straight from
+    # the identity map without emitting one - so the guarantee is not one to lean on
+    # for a write. And even with both ends scoped, nothing here required them to be
+    # scoped to the SAME organisation: this creates an ApplicationCapabilityMapping,
+    # a model with no TenantMixin of its own, so a mismatched pair would produce a
+    # row that belongs to neither tenant cleanly and is invisible to both.
+    org_id = getattr(current_user, "organization_id", None)
+    if org_id is not None:
+        for obj, label in ((cap, "Capability"), (app, "Application")):
+            obj_org = getattr(obj, "organization_id", None)
+            if obj_org is not None and obj_org != org_id:
+                # Same body as "not found" - do not confirm the row exists.
+                return jsonify({"error": "Capability or Application not found"}), 404
     existing = ApplicationCapabilityMapping.query.filter_by(
         business_capability_id=cap.id,
         application_component_id=app.id,
