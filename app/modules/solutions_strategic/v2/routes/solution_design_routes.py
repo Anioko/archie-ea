@@ -2474,8 +2474,8 @@ def api_phase_summary(solution_id: int):
         (stk_count, "stakeholders"),
     ]
     phases["sec-2"] = _phase(
-        [f"{c} {l}" for c, l in sec2_items if c > 0],
-        [l for c, l in sec2_items if c == 0],
+        [f"{c} {item}" for c, item in sec2_items if c > 0],
+        [item for c, item in sec2_items if c == 0],
         len(sec2_items), sum(1 for c, _ in sec2_items if c > 0),
     )
 
@@ -2485,8 +2485,8 @@ def api_phase_summary(solution_id: int):
         (len(vendors), "vendor products"), (len(procs), "APQC processes"),
     ]
     phases["sec-3"] = _phase(
-        [f"{c} {l}" for c, l in sec3_items if c > 0],
-        [l for c, l in sec3_items if c == 0],
+        [f"{c} {item}" for c, item in sec3_items if c > 0],
+        [item for c, item in sec3_items if c == 0],
         len(sec3_items), sum(1 for c, _ in sec3_items if c > 0),
     )
 
@@ -2495,8 +2495,8 @@ def api_phase_summary(solution_id: int):
     tech_elems = len([e for e in archimate if (e.get("layer") or getattr(e, "layer", "")) == "technology"])
     sec4_items = [(app_elems, "app elements"), (tech_elems, "tech elements"), (len(apps), "applications")]
     phases["sec-4"] = _phase(
-        [f"{c} {l}" for c, l in sec4_items if c > 0],
-        [l for c, l in sec4_items if c == 0],
+        [f"{c} {item}" for c, item in sec4_items if c > 0],
+        [item for c, item in sec4_items if c == 0],
         len(sec4_items), sum(1 for c, _ in sec4_items if c > 0),
     )
 
@@ -2504,16 +2504,16 @@ def api_phase_summary(solution_id: int):
     selected = len([r for r in recs if r.get("is_recommended") or r.get("selected")])
     sec5_items = [(len(recs), "options"), (selected, "selected options"), (len(tco), "TCO items")]
     phases["sec-5"] = _phase(
-        [f"{c} {l}" for c, l in sec5_items if c > 0],
-        [l for c, l in sec5_items if c == 0],
+        [f"{c} {item}" for c, item in sec5_items if c > 0],
+        [item for c, item in sec5_items if c == 0],
         len(sec5_items), sum(1 for c, _ in sec5_items if c > 0),
     )
 
     # sec-6: Delivery (Phase F)
     sec6_items = [(len(plateaus), "plateaus"), (len(tco), "TCO items")]
     phases["sec-6"] = _phase(
-        [f"{c} {l}" for c, l in sec6_items if c > 0],
-        [l for c, l in sec6_items if c == 0],
+        [f"{c} {item}" for c, item in sec6_items if c > 0],
+        [item for c, item in sec6_items if c == 0],
         len(sec6_items), sum(1 for c, _ in sec6_items if c > 0),
     )
 
@@ -2528,16 +2528,16 @@ def api_phase_summary(solution_id: int):
     # sec-8: Risks & Decisions
     sec8_items = [(len(risks), "risks"), (len(adrs), "ADRs")]
     phases["sec-8"] = _phase(
-        [f"{c} {l}" for c, l in sec8_items if c > 0],
-        [l for c, l in sec8_items if c == 0],
+        [f"{c} {item}" for c, item in sec8_items if c > 0],
+        [item for c, item in sec8_items if c == 0],
         len(sec8_items), sum(1 for c, _ in sec8_items if c > 0),
     )
 
     # sec-9: Operational Readiness (Phase H)
     sec9_items = [(len(metrics), "metrics")]
     phases["sec-9"] = _phase(
-        [f"{c} {l}" for c, l in sec9_items if c > 0],
-        [l for c, l in sec9_items if c == 0],
+        [f"{c} {item}" for c, item in sec9_items if c > 0],
+        [item for c, item in sec9_items if c == 0],
         len(sec9_items), sum(1 for c, _ in sec9_items if c > 0),
     )
 
@@ -2547,8 +2547,8 @@ def api_phase_summary(solution_id: int):
         (len(requirements), "requirements"), (len(caps), "capabilities"),
     ]
     phases["sec-10"] = _phase(
-        [f"{c} {l}" for c, l in sec10_items if c > 0],
-        [l for c, l in sec10_items if c == 0],
+        [f"{c} {item}" for c, item in sec10_items if c > 0],
+        [item for c, item in sec10_items if c == 0],
         len(sec10_items), sum(1 for c, _ in sec10_items if c > 0),
     )
 
@@ -6281,7 +6281,7 @@ def get_motivation_elements(solution_id):
         from app.models.solution_archimate_element import SolutionArchiMateElement as SAE
         from app.models.archimate_core import ArchiMateElement as AE
         links = SAE.query.filter_by(solution_id=solution_id, layer_type='motivation').all()
-        elem_ids = [l.element_id for l in links if l.element_id]
+        elem_ids = [item.element_id for item in links if item.element_id]
         if elem_ids:
             aes = AE.query.filter(AE.id.in_(elem_ids), AE.type.in_(['Outcome', 'Value'])).all()
             for ae in aes:

@@ -308,9 +308,9 @@ def create_application_element(app_id):
             "Grouping": "other",
             "Junction": "other",
         }
-        for prefix, l in type_to_layer.items():
+        for prefix, item in type_to_layer.items():
             if data["type"].startswith(prefix):
-                layer = l
+                layer = item
                 break
         if not layer:
             layer = "application"

@@ -575,7 +575,7 @@ def elements_by_viewpoint(viewpoint_key):
     vp = service.get_viewpoint(viewpoint_key)
     query = ArchiMateElement.query
     if vp.get("layers"):
-        lower_layers = [l.lower() for l in vp["layers"]]
+        lower_layers = [item.lower() for item in vp["layers"]]
         query = query.filter(db.func.lower(ArchiMateElement.layer).in_(lower_layers))
     if vp.get("element_types"):
         query = query.filter(ArchiMateElement.type.in_(vp["element_types"]))

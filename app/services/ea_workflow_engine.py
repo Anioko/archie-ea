@@ -3636,7 +3636,7 @@ provides foundation for subsequent architecture development phases.
 
         total = len(elements_detail)
         layers_present = sorted(layer_counts.keys())
-        layers_missing = [l for l in ALL_LAYERS if l not in layers_present]
+        layers_missing = [item for item in ALL_LAYERS if item not in layers_present]
         elements_with_issues = sum(1 for e in elements_detail if e["issues"])
         healthy = total - elements_with_issues
 
@@ -3975,7 +3975,7 @@ provides foundation for subsequent architecture development phases.
 
         if raw_text:
             lines = raw_text.split("\n")
-            extracted["application_name"] = next((l.strip() for l in lines if l.strip()), "Unknown Application")
+            extracted["application_name"] = next((item.strip() for item in lines if item.strip()), "Unknown Application")
             extracted["description"] = raw_text[:500]
             extracted["word_count"] = len(raw_text.split())
             extracted["extraction_method"] = "text_parsing"

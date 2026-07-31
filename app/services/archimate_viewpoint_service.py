@@ -217,7 +217,7 @@ class ArchiMateViewpointService:
 
     def filter_elements_by_viewpoint(self, elements: list, viewpoint_key: str) -> list:
         vp = self.get_viewpoint(viewpoint_key)
-        layers = [l.lower() for l in vp.get('layers', [])]
+        layers = [item.lower() for item in vp.get('layers', [])]
         types = vp.get('element_types', [])
         return [e for e in elements
                 if (not layers or (e.get('layer') or '').lower() in layers)

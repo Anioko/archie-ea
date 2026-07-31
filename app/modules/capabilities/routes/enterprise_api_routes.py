@@ -2775,7 +2775,7 @@ def solution_readiness_report(solution_id):
     coverage_score = round(len(present_layers) / len(required_layers) * 100)
 
     # --- DIMENSION 2: Requirements Quality ---
-    classified = sum(layer_counts.get(l, 0) for l in required_layers)
+    classified = sum(layer_counts.get(item, 0) for item in required_layers)
     with_ac = sum(1 for r in reqs if r.acceptance_criteria and len(r.acceptance_criteria) > 20)
     quality_score = round((classified / total * 50 + with_ac / max(total, 1) * 50)) if total > 0 else 0
 

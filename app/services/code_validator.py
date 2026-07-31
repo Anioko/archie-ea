@@ -192,9 +192,9 @@ class CodeValidator:
 
         metrics = {
             "total_lines": len(lines),
-            "code_lines": len([l for l in lines if l.strip() and not l.strip().startswith("#")]),
-            "comment_lines": len([l for l in lines if l.strip().startswith("#")]),
-            "blank_lines": len([l for l in lines if not l.strip()]),
+            "code_lines": len([item for item in lines if item.strip() and not item.strip().startswith("#")]),
+            "comment_lines": len([item for item in lines if item.strip().startswith("#")]),
+            "blank_lines": len([item for item in lines if not item.strip()]),
         }
 
         if language.lower() == "python":

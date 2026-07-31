@@ -404,7 +404,7 @@ class DataModelValidationService:
                     hierarchy_violations.append(f"LogicalDataModel {logical.name} references non-existent ConceptualDataModel")
 
             for physical in physical_models:
-                if physical.logical_model_id and not any(l.id == physical.logical_model_id for l in logical_models):
+                if physical.logical_model_id and not any(item.id == physical.logical_model_id for item in logical_models):
                     hierarchy_violations.append(f"PhysicalDataModel {physical.name} references non-existent LogicalDataModel")
 
         except Exception as e:

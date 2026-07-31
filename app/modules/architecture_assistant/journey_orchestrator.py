@@ -1684,7 +1684,7 @@ class JourneyOrchestrator:
         }
 
         name_to_id = {}
-        elements_by_layer = {l: [] for l in ["motivation", "strategy", "business", "application", "technology", "implementation"]}
+        elements_by_layer = {item: [] for item in ["motivation", "strategy", "business", "application", "technology", "implementation"]}
 
         for j in junctions:
             el = ArchiMateElement.query.get(j.element_id)
@@ -2258,8 +2258,8 @@ class JourneyOrchestrator:
             layer_counts[layer] = layer_counts.get(layer, 0) + 1
 
         required_layers = ("motivation", "strategy", "business", "application", "technology")
-        layers_covered = sum(1 for l in required_layers if layer_counts.get(l, 0) >= 1)
-        layers_with_depth = sum(1 for l in required_layers if layer_counts.get(l, 0) >= 3)
+        layers_covered = sum(1 for item in required_layers if layer_counts.get(item, 0) >= 1)
+        layers_with_depth = sum(1 for item in required_layers if layer_counts.get(item, 0) >= 3)
 
         return {
             "solution": {

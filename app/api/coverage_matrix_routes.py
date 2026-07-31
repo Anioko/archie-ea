@@ -333,7 +333,7 @@ def get_capabilities():
                     "capabilities": capability_list,
                     "total": total,
                     "domains": [d[0] for d in domains if d[0]],
-                    "levels": [l[0] for l in levels if l[0]],
+                    "levels": [item[0] for item in levels if item[0]],
                 },
             }
         )

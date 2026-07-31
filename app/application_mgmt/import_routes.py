@@ -2968,7 +2968,7 @@ def upload_excel_applications():
         else None
     )
     if archimate_layers:
-        archimate_layers = [l.strip() for l in archimate_layers if l.strip()]
+        archimate_layers = [item.strip() for item in archimate_layers if item.strip()]
     current_app.logger.info(
         f"Import: ArchiMate generation: {generate_archimate}, layers: {archimate_layers}"
     )

@@ -106,14 +106,14 @@ def licenses_list():
     licenses = LicenseEntitlement.query.filter_by(organization_id=org_id).all()
 
     # Summary stats
-    total_entitled = sum(l.quantity_entitled or 0 for l in licenses)
-    total_deployed = sum(l.quantity_deployed or 0 for l in licenses)
-    total_used = sum(l.quantity_used or 0 for l in licenses)
+    total_entitled = sum(item.quantity_entitled or 0 for item in licenses)
+    total_deployed = sum(item.quantity_deployed or 0 for item in licenses)
+    total_used = sum(item.quantity_used or 0 for item in licenses)
 
     # Compliance breakdown
-    compliant = sum(1 for l in licenses if l.compliance_status == "compliant")
-    over_deployed = sum(1 for l in licenses if l.compliance_status == "over_deployed")
-    under_utilized = sum(1 for l in licenses if l.compliance_status == "under_utilized")
+    compliant = sum(1 for item in licenses if item.compliance_status == "compliant")
+    over_deployed = sum(1 for item in licenses if item.compliance_status == "over_deployed")
+    under_utilized = sum(1 for item in licenses if item.compliance_status == "under_utilized")
 
     return render_template(
         "procurement/licenses_list.html",
@@ -156,24 +156,24 @@ def compliance_dashboard():
 
     # Group by compliance status
     by_status = {}
-    for l in licenses:
-        status = l.compliance_status or "unknown"
+    for item in licenses:
+        status = item.compliance_status or "unknown"
         if status not in by_status:
             by_status[status] = []
-        by_status[status].append(l)
+        by_status[status].append(item)
 
     # Calculate risk exposure (over-deployed licenses)
     risk_exposure = sum(
-        (l.quantity_deployed - l.quantity_entitled) * float(l.unit_cost or 0)
-        for l in licenses
-        if l.compliance_status == "over_deployed" and l.quantity_deployed and l.quantity_entitled
+        (item.quantity_deployed - item.quantity_entitled) * float(item.unit_cost or 0)
+        for item in licenses
+        if item.compliance_status == "over_deployed" and item.quantity_deployed and item.quantity_entitled
     )
 
     # Shelfware (entitled but not used)
     shelfware_value = sum(
-        (l.quantity_entitled - l.quantity_used) * float(l.unit_cost or 0)
-        for l in licenses
-        if l.quantity_entitled and l.quantity_used and l.quantity_entitled > l.quantity_used
+        (item.quantity_entitled - item.quantity_used) * float(item.unit_cost or 0)
+        for item in licenses
+        if item.quantity_entitled and item.quantity_used and item.quantity_entitled > item.quantity_used
     )
 
     return render_template(

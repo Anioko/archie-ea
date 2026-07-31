@@ -4209,9 +4209,9 @@ with a real, working implementation.
                     if bl.strip() and not bl.strip().startswith("#") and '"""' not in bl
                 ]
                 is_stub = all(
-                    l in ("pass", "raise NotImplementedError", "return")
-                    or l.startswith("raise NotImplementedError")
-                    for l in non_empty
+                    item in ("pass", "raise NotImplementedError", "return")
+                    or item.startswith("raise NotImplementedError")
+                    for item in non_empty
                 ) if non_empty else True
 
                 if is_stub:

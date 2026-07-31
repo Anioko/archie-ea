@@ -858,7 +858,7 @@ class ArchitectureGenerationService:
             combined_parsed = _run_combined_call(capabilities)
             if combined_parsed:
                 _ingest_parsed(combined_parsed, len(capabilities))
-                logger.info("Combined expansion: %d elements", sum(len(merged[l]) for l in ALL_LAYERS))
+                logger.info("Combined expansion: %d elements", sum(len(merged[item]) for item in ALL_LAYERS))
             else:
                 logger.warning("Combined call failed — parallel batch fallback")
                 errors.append("Combined expansion failed; used parallel batch fallback")
@@ -893,7 +893,7 @@ class ArchitectureGenerationService:
         # layers end up empty depends on ordering in the LLM response.  Cover all 5
         # non-trivial layers so Pass 1B fires regardless of which layers were cut.
         _required_layers = ("motivation", "strategy", "business", "application", "technology", "implementation")
-        _empty_required = [l for l in _required_layers if not merged.get(l)]
+        _empty_required = [item for item in _required_layers if not merged.get(item)]
         if _empty_required:
             logger.warning(
                 "Pass 1B: layers %s empty after batched expansion — running per-capability fill",

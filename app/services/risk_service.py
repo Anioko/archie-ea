@@ -16,11 +16,11 @@ def get_heat_map_data(solution_id=None):
     all_risks = q.all()
 
     # Build 5×5 grid indexed [likelihood 1-5][impact 1-5]
-    grid = {l: {i: [] for i in range(1, 6)} for l in range(1, 6)}
+    grid = {item: {i: [] for i in range(1, 6)} for item in range(1, 6)}
     for risk in all_risks:
-        l = max(1, min(5, risk.likelihood))
+        item = max(1, min(5, risk.likelihood))
         i = max(1, min(5, risk.impact))
-        grid[l][i].append(risk.to_dict())
+        grid[item][i].append(risk.to_dict())
 
     # Convert to list-of-lists (row 0 = likelihood 5 at top)
     grid_list = []

@@ -186,8 +186,8 @@ class ValidationEngineService:
             })
 
         all_layers = list(required_layers) + list(recommended_layers)
-        total = sum(completeness.get(l, 0) for l in all_layers)
-        target = sum(min_per_layer.get(l, 3) for l in all_layers)
+        total = sum(completeness.get(item, 0) for item in all_layers)
+        target = sum(min_per_layer.get(item, 3) for item in all_layers)
         score = min(100, round(total / max(target, 1) * 100))
 
         return {

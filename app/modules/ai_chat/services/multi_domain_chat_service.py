@@ -4359,7 +4359,7 @@ Use enterprise architecture terminology appropriate for this role."""
             summary = {
                 "total_elements": total_elements,
                 "by_layer": {layer: count for layer, count in layer_counts if layer},
-                "by_type": [{"type": t, "layer": l, "count": c} for t, l, c in type_counts if t],
+                "by_type": [{"type": t, "layer": item, "count": c} for t, item, c in type_counts if t],
             }
 
             # Step 2: Load relationship counts per element (batch query)

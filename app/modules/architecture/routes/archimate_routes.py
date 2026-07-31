@@ -3204,7 +3204,7 @@ def api_composer_explain():
             "across {} layer{}: {}.".format(
                 el_count, rel_count,
                 len(layers_present), "s" if len(layers_present) != 1 else "",
-                ", ".join(_LAYER_DISPLAY.get(l, l) for l in layers_present),
+                ", ".join(_LAYER_DISPLAY.get(item, item) for item in layers_present),
             )
         )
 

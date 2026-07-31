@@ -448,7 +448,7 @@ def trace_element_chain(solution_id, element_id):
     linked = SolutionArchiMateElement.query.filter_by(
         solution_id=solution_id
     ).all()
-    solution_el_ids = {l.element_id for l in linked}
+    solution_el_ids = {item.element_id for item in linked}
 
     # BFS backward: follow relationships where this element is the TARGET
     # (i.e., something realizes/serves/influences this element)
@@ -1061,7 +1061,7 @@ def propagate_stale(solution_id, element_id):
     linked = SolutionArchiMateElement.query.filter_by(
         solution_id=solution_id
     ).all()
-    solution_element_ids = {l.element_id for l in linked}
+    solution_element_ids = {item.element_id for item in linked}
 
     if element_id not in solution_element_ids:
         return jsonify({"stale_ids": [], "message": "Element not in solution"}), 200
@@ -1207,7 +1207,7 @@ def capability_reuse_map():
     results = []
     for el in elements:
         links = SolutionArchiMateElement.query.filter_by(element_id=el.id).all()
-        sol_ids = list({l.solution_id for l in links})
+        sol_ids = list({item.solution_id for item in links})
         solutions = Solution.query.filter(Solution.id.in_(sol_ids)).all() if sol_ids else []
 
         results.append({
@@ -1619,7 +1619,7 @@ def get_traceability_view(solution_id):
 
     # Group by layer
     layer_order = ["motivation", "strategy", "business", "application", "technology"]
-    layers = {l: [] for l in layer_order}
+    layers = {item: [] for item in layer_order}
 
     for el in elements:
         layer = (el.layer or "application").lower()
@@ -1659,5 +1659,5 @@ def get_traceability_view(solution_id):
         "solution_id": solution_id,
         "layers": layers,
         "relationships": relationships,
-        "layer_order": [l for l in layer_order if l in layers],
+        "layer_order": [item for item in layer_order if item in layers],
     })

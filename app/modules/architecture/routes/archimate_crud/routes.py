@@ -1398,8 +1398,8 @@ def _build_traceability_sankey_response():
     # Layer counts
     layer_counts = {}
     for node in nodes_map.values():
-        l = node["layer"]
-        layer_counts[l] = layer_counts.get(l, 0) + 1
+        item = node["layer"]
+        layer_counts[item] = layer_counts.get(item, 0) + 1
 
     return jsonify({
         "nodes": list(nodes_map.values()),
