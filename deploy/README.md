@@ -41,3 +41,30 @@ Install:
     cp archie-watchdog.sh /usr/local/bin/ && chmod +x /usr/local/bin/archie-watchdog.sh
     cp archie-watchdog.service archie-watchdog.timer /etc/systemd/system/
     systemctl daemon-reload && systemctl enable --now archie-watchdog.timer
+
+## Deploying code changes — read this first
+
+`gunicorn.conf.py` sets `preload_app = True`. The application is imported once in
+the gunicorn MASTER process, and workers are forked from it.
+
+**`SIGHUP` does NOT reload Python code under preload.** It reloads configuration
+and gracefully re-forks workers — from a master still holding the old modules.
+Worker PIDs change, the site stays up, and every check looks like a successful
+deploy while the running code is unchanged.
+
+This was discovered on 2026-07-31: the master had been running since 13:14 the
+previous day while the tree on disk was hours newer, so several Python fixes
+appeared deployed and were not.
+
+    Python code (.py)          -> docker restart archie-ea-server-1   (~180s)
+    New blueprints/routes      -> docker restart archie-ea-server-1
+    Templates (.html), static  -> SIGHUP is sufficient; Jinja reads from disk
+                                  and a worker re-fork clears its cache
+
+Verify a Python deploy actually landed rather than assuming — compare the master
+process start time against the file you changed:
+
+    docker exec archie-ea-server-1 sh -c 'stat -c %y /proc/<master_pid>'
+    stat -c %y /root/archie-ea/<changed_file>
+
+If the master predates the file, the change is not running.
