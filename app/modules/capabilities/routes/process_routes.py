@@ -114,15 +114,10 @@ def api_process_gaps():
                     process_name = process.apqc_process.process_name
                     process_description = process.apqc_process.process_description
                     process_code = process.apqc_process.process_code
-                    process_type = process.apqc_process.process_type or process.process_type
-                    process_category = (
-                        process.apqc_process.process_category or process.process_category
-                    )
                     process_owner = process.apqc_process.process_owner or process.process_owner
                     maturity_level = process.apqc_process.process_maturity or process.maturity_level
                 else:
-                    process_type = process.process_type
-                    process_category = process.process_category
+                    pass
 
             else:  # APQCProcess (unmapped APQC processes)
                 process_name = process.process_name

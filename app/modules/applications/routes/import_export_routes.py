@@ -2322,7 +2322,6 @@ def import_with_ai_review():
     import_mode = request.form.get("import_mode", "skip")
 
     # Get custom field mappings if provided
-    field_mappings = {}
     field_mappings_json = request.form.get("field_mappings")
     if field_mappings_json:
         try:

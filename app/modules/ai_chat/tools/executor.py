@@ -1267,7 +1267,6 @@ class ToolExecutor:
         if fmt == "ddl":
             result = SchemaInferenceService.infer_from_ddl(input_text)
             count = result.get("table_count", 0)
-            key = "table_count"
         else:
             result = SchemaInferenceService.infer_from_openapi(input_text)
             count = result.get("schema_count", 0)

@@ -2033,9 +2033,7 @@ CRITICAL -- TRACEABILITY:
         if solution.analysis_session_id:
             session = SolutionAnalysisSession.query.get(solution.analysis_session_id)
 
-        drivers = []
         goals = []
-        requirements = []
 
         if session:
             pd = SolutionProblemDefinition.query.filter_by(session_id=session.id).first()

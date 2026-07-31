@@ -1031,7 +1031,6 @@ def _req_to_dict(req):
     # Motivation layer name resolution (lazy — use ORM relationship if loaded)
     driver_name = req.driver.name if req.driver_id and req.driver else None
     goal_name = req.goal.name if req.goal_id and req.goal else None
-    stakeholder_name = req.stakeholder.name if req.stakeholder_id and req.stakeholder else None
     return {
         "id": req.id,
         "reference_id": f"REQ-{req.id:04d}",

@@ -4174,9 +4174,7 @@ with a real, working implementation.
                 body_lines = []
                 i += 1
                 # Consume optional docstring
-                in_docstring = False
                 if i < len(lines) and '"""' in lines[i]:
-                    in_docstring = True
                     body_lines.append(lines[i])
                     if lines[i].count('"""') >= 2 and lines[i].strip() != '"""':
                         # single-line docstring
@@ -5123,7 +5121,11 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
             entity_sections = ""
             for ent in ui_ctx["entities"]:
                 ent_ctx = dict(ui_ctx, ent=ent)
-                sn, dn = ent["name_snake"], ent["name_display"]
+                # Only name_snake is used below; name_display was unpacked and never
+                # read. Unpacking a single value rather than a pair, since dropping
+                # one name from a tuple target is the one F841 shape that cannot be
+                # rewritten mechanically.
+                sn = ent["name_snake"]
                 entity_sections += (
                     f'\n            <div x-show="currentRoute === \'/{sn}s\'" x-cloak>{list_tpl.render(**ent_ctx)}</div>\n'
                     f'            <div x-show="currentRoute.match(/^\\/{sn}s\\/\\d+$/)" x-cloak>{detail_tpl.render(**ent_ctx)}</div>\n'

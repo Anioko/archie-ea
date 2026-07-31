@@ -267,16 +267,7 @@ class DocumentAnalysisService:
         """Analyze image file for ArchiMate elements."""
         # Use specialized prompt based on context
         if context == "application":
-            prompt_addition = """
-Focus on extracting Application Layer elements:
-- ApplicationComponent (applications, systems, modules)
-- ApplicationInterface (APIs, integration points)
-- ApplicationService (services exposed by applications)
-- ApplicationFunction (functions performed by applications)
-- DataObject (data entities managed by applications)
-
-Also extract related Business and Technology layer elements that interact with applications.
-"""
+            pass
         else:  # vendor
             pass
 

@@ -1002,9 +1002,9 @@ Return the COMPLETE enhanced architecture in the same JSON format:
             for component in app_components:
                 try:
                     # Analyze dependencies (upstream/downstream)
-                    deps = application_service.analyze_application_dependencies(
+                    (application_service.analyze_application_dependencies(
                         component.id, technical_context=component.description
-                    )
+                    ))
                     logger.info(f"  ✓ Analyzed dependencies for: {component.name}")
                 except Exception as e:
                     logger.info(f"  ✗ Dependency analysis failed for {component.name}: {str(e)}")

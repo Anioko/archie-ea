@@ -3488,7 +3488,6 @@ def report_builder():
     apps = []
     total = 0
     lifecycle_options = []
-    vendor_options = []
 
     try:
         from app.models.application_portfolio import ApplicationComponent

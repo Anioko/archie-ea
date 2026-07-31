@@ -476,7 +476,6 @@ class UnifiedTimelineEngine:
             ):
                 # Move initiative 2
                 new_start = result[0].end_date + timedelta(days=1)
-                new_end = new_start + (result[1].end_date - result[1].start_date)
 
                 conflict.description += (
                     f" - Suggested: Move {result[1].name} to start {new_start.strftime('%Y-%m-%d')}"

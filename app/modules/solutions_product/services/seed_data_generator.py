@@ -236,7 +236,6 @@ class SeedDataGenerator:
             # Separate PK, FK, and regular fields
             columns = []
             generators = []
-            has_pk = False
 
             for fdef in field_defs:
                 fname = fdef.get("name", "")

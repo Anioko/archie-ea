@@ -1189,7 +1189,7 @@ class GreenfieldWorkflow:
         """Execute a specific greenfield workflow step."""
         workspace_id = wf.get("workspace_id")
         accumulated = wf.get("accumulated", {})
-        brief = accumulated.get("brief", "")
+        accumulated.get("brief", "")
 
         step_handlers = {
             "SCOPE": self._execute_scope_step,
