@@ -14,7 +14,20 @@ def unmapped_capabilities():
     """Dedicated page for viewing capabilities with no applications mapped"""
 
     try:
-        # Get unmapped capabilities with detailed information
+        # Get unmapped capabilities with detailed information.
+        #
+        # `org_filter` is interpolated into the four queries below but was never
+        # assigned, so this route raised NameError on every request. It is defined
+        # here as an empty fragment rather than a tenant predicate because
+        # `unified_capabilities` has no organization_id column — there is nothing on
+        # this table to scope by. (One call site does
+        # `org_filter.replace('AND uc.', 'AND uc.')`, a no-op, which is consistent
+        # with the fragment having been empty.)
+        #
+        # If these views need tenant scoping later it has to come through a joined
+        # table that does carry organization_id; that is a design change, not a
+        # NameError fix, so it is deliberately not attempted here.
+        org_filter = ""
         org_params = {}
 
         # Get summary statistics

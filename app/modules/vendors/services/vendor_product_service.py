@@ -23,6 +23,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from sqlalchemy import and_, func, or_
 
 from app import db
+from app.models.vendor.vendor_organization import VendorOrganization
 
 logger = logging.getLogger(__name__)
 

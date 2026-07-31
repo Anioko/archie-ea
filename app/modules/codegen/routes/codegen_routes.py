@@ -15,7 +15,16 @@ import logging
 import re
 import time
 import zipfile
-from flask import Blueprint, Response, abort, jsonify, render_template, request, send_file
+from flask import (
+    Blueprint,
+    Response,
+    abort,
+    jsonify,
+    render_template,
+    request,
+    send_file,
+    stream_with_context,
+)
 from flask_login import current_user, login_required
 from app.utils.csrf_helper import require_csrf
 from app.extensions import db
@@ -843,6 +852,13 @@ def generate_code(solution_id):
 
     payload = request.get_json(silent=True) or {}
     gen = CodegenGeneration.query.filter_by(solution_id=solution_id).first()
+
+    # Non-fatal warnings raised during generation. This accumulator had been removed
+    # while a later `syntax_warnings.append(...)` remained, so the genome-quality
+    # branch raised NameError instead of recording its warning. Note the success
+    # responses in this function still emit a literal "syntax_warnings": [] — wiring
+    # them to this list is a behaviour change, so it is deliberately left alone.
+    syntax_warnings = []
 
     if gen and payload.get("version") and payload["version"] != gen.version:
         return jsonify({"error": "Version conflict. Refresh the page."}), 409
@@ -3541,8 +3557,14 @@ def verify_code(solution_id):
         elif "docker-compose.yml" not in _files:
             _preflight_error = "No docker-compose.yml in bundle — re-generate first"
 
-    # Alias: used throughout stream() below
+    # Aliases: used throughout stream() below
     files = _files or {}
+    # `preflight_smoke` is read inside stream() but its alias assignment had been
+    # removed, so verify_code raised NameError as soon as the setup event was
+    # emitted. `_smoke` is only bound in the else-branch above (it is not computed
+    # when there are no generated files), hence the locals() guard rather than a
+    # bare reference.
+    preflight_smoke = locals().get("_smoke") or {}
 
     def _sse(data):
         return f"data: {json.dumps(data)}\n\n"
@@ -4838,7 +4860,9 @@ def download_zip(solution_id):
 
         if config.get("include_frontend"):
             frontend_files = _generate_refine_frontend(
-                _stream_solution.name or f"Solution {solution_id}",
+                # was `_stream_solution`, a variable belonging to the streaming
+                # handler — copy-pasted here where only `solution` exists.
+                solution.name or f"Solution {solution_id}",
                 gen.uml_snapshot or {},
             )
             for filepath, content in frontend_files.items():
