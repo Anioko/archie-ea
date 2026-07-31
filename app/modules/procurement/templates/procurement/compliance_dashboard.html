@@ -89,8 +89,14 @@
     </div>
 
     <!-- License List with Compliance Issues -->
-    {% set violations = licenses | selectattr('compliance_status', 'equalto', 'violation') | list %}
-    {% set warnings = licenses | selectattr('compliance_status', 'equalto', 'warning') | list %}
+    {# LicenseEntitlement.COMPLIANCE_STATUSES is
+       ["compliant", "over_deployed", "under_utilized"] - there is no "violation"
+       or "warning" value and never has been, so both of these lists matched
+       nothing and the two panels below rendered empty on every load. The summary
+       cards above kept reporting the right counts, which made the page look like
+       it simply had no violations rather than like it was broken. #}
+    {% set violations = licenses | selectattr('compliance_status', 'equalto', 'over_deployed') | list %}
+    {% set warnings = licenses | selectattr('compliance_status', 'equalto', 'under_utilized') | list %}
 
     {% if violations %}
     <div class="bg-card border border-red-500/50 rounded-lg p-6 mb-6">

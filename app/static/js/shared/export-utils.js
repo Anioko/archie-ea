@@ -23,7 +23,7 @@ class ExportManager {
         return new Promise((resolve, reject) => {
             const script = document.createElement('script');
             script.src = '/static/vendor/html2canvas.min.js';
-            script.integrity = 'sha512-BNaRQnYJYiPSqHHDb58B0yaPfCu+Wgds8Gp/gU33kqBtgNS4tSPHuGibyoeqMV/TJlSKda6FXzoEyYGjTe+vXA==';
+            script.integrity = 'sha512-F0kuCZV8qeCHFhvHIdC/5Fuxh1FpN0huJVAXVi1wBDZwj2qBOugCvmZ959nrazXX+nO4zLhNpVK2bzoV8DYiDw==';
             script.crossOrigin = 'anonymous';
             script.onload = () => {
                 this.isHtml2CanvasLoaded = true;

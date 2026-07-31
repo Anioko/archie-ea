@@ -66,9 +66,36 @@ def contracts_list():
         if c.end_date and c.end_date <= date.today() + timedelta(days=90)
     )
 
+    # contracts_list.html iterates item.contract.* plus item.days_until_renewal
+    # and item.urgency - it wants each contract wrapped with its renewal state,
+    # not the bare row. Passing the rows directly raised UndefinedError on
+    # item.contract for every line, so the page 500'd the moment a single
+    # contract existed. An empty portfolio never enters the loop, which is why it
+    # looked healthy until the first record was created.
+    today = date.today()
+
+    def _wrap(contract):
+        days = (contract.end_date - today).days if contract.end_date else None
+        if days is None:
+            urgency = "unknown"
+        elif days < 0:
+            urgency = "expired"
+        elif days <= 30:
+            urgency = "critical"
+        elif days <= 90:
+            urgency = "warning"
+        else:
+            urgency = "ok"
+        return {"contract": contract, "days_until_renewal": days, "urgency": urgency}
+
     return render_template(
         "procurement/contracts_list.html",
-        contracts=contracts,
+        contracts=[_wrap(c) for c in contracts],
+        # The pagination footer reads both. It is guarded by `total > 20`, so on a
+        # small portfolio the block never renders and their absence went unnoticed
+        # until a real dataset existed.
+        total=len(contracts),
+        page=1,
         total_value=total_value,
         active_count=active_count,
         expiring_soon=expiring_soon,

@@ -96,6 +96,18 @@ class ApplicationOwner(db.Model):
     # Valid ownership types
     OWNERSHIP_TYPES = ["primary", "backup", "technical", "business"]
 
+    @property
+    def is_primary(self):
+        """True when this row records the main accountable owner.
+
+        services.py has always read `ownership.is_primary` - in get_owned_apps'
+        summary and in the ownership breakdown - but no such attribute existed, so
+        both raised AttributeError and returned a 500 the moment a user actually
+        owned something. An empty portfolio skipped the loop entirely, which is
+        why the pages looked healthy until the first ownership row was created.
+        """
+        return self.ownership_type == "primary"
+
     def __repr__(self):
         return f"<ApplicationOwner app={self.application_id} user={self.user_id} type={self.ownership_type}>"
 

@@ -25,7 +25,11 @@ from . import my_applications_bp
 # the summary functions these templates require. Every page that reads a summary
 # raised jinja2.UndefinedError, which is almost certainly the real cause of the
 # "every page route returned 500" that got this module disabled on 2026-06-11.
-from .services import get_application_health_summary, get_ownership_summary
+from .services import (
+    get_application_health_summary,
+    get_ownership_summary,
+    get_user_applications,
+)
 
 
 def get_owned_apps():
@@ -86,11 +90,21 @@ def dashboard():
 @requires_application_owner
 def app_list():
     """List applications owned by current user."""
-    apps = get_owned_apps()
+    # app_list.html iterates item.application.name / item.ownership_type /
+    # item.is_primary - it wants ownership records joined to their application,
+    # not bare applications. get_user_applications() returns exactly that shape
+    # and was written for this template; the inline get_owned_apps() above returns
+    # ApplicationComponent rows, so every card raised UndefinedError on
+    # item.application and the page 500'd as soon as the user owned anything.
+    apps, total = get_user_applications(current_user.id)
 
     return render_template(
         "my_applications/app_list.html",
         apps=apps,
+        # The template renders a count alongside the cards. get_user_applications
+        # returns it as the second element precisely so the page does not have to
+        # re-count a paginated result.
+        total=total,
         # Template reads ownership_summary.{primary,backup,technical,business,
         # total} - the exact shape get_ownership_summary() has always returned.
         ownership_summary=get_ownership_summary(current_user.id),

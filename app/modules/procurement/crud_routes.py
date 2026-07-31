@@ -20,6 +20,7 @@ from datetime import date, datetime
 
 from flask import flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
+from sqlalchemy.exc import IntegrityError
 
 from app.decorators import requires_procurement
 from app.extensions import db
@@ -136,6 +137,17 @@ def contract_create():
         except ValueError:
             db.session.rollback()
             flash("Check the contract name, dates (YYYY-MM-DD) and amounts.", "danger")
+            return render_template(
+                "procurement/contract_form.html",
+                **_contract_form_context(None, request.form)
+            ), 400
+        except IntegrityError:
+            # contract_number is globally unique. Without this the duplicate
+            # surfaces as a 500 and the user is told nothing about which field
+            # was at fault - browser testing hit it on the second submission of
+            # the same reference.
+            db.session.rollback()
+            flash("That contract number is already in use.", "danger")
             return render_template(
                 "procurement/contract_form.html",
                 **_contract_form_context(None, request.form)
