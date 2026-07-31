@@ -69,6 +69,7 @@ def dashboard():
         healthy=healthy,
         at_risk=at_risk,
         critical=critical,
+        ownership_summary=get_ownership_summary(current_user.id),
     )
 
 
