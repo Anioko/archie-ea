@@ -1781,7 +1781,7 @@
           {% for chain in chains %}
           <div class="px-5 py-3 {% if chain.pct < 100 %}bg-red-500/5{% endif %}">
             <div class="flex items-center justify-between mb-1.5">
-              <span class="text-sm">{{ chain.label | safe }}</span>
+              <span class="text-sm">{{ chain.label }}</span>
               <span class="text-xs font-medium {% if chain.pct == 100 %}text-emerald-400{% elif chain.pct >= 50 %}text-amber-400{% else %}text-red-400{% endif %}">{{ chain.pct }}%</span>
             </div>
             <div class="w-full bg-muted rounded-full h-1.5">

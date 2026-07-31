@@ -47,7 +47,7 @@
             {% if icon %}
                 <i data-lucide="{{ icon }}" class="{% if mobile %}mr-3{% else %}mr-2{% endif %} h-4 w-4"></i>
             {% endif %}
-            {{ name | safe }}
+            {{ name }}
         </a>
     {% endfor %}
 {% endmacro %}

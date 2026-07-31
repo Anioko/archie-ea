@@ -65,7 +65,7 @@
                 {% if messages %}
                     <ul class="list-disc list-inside text-sm text-destructive space-y-1">
                         {% for message in messages %}
-                            <li>{{ message | safe }}</li>
+                            <li>{{ message }}</li>
                         {% endfor %}
                     </ul>
                 {% endif %}
@@ -78,7 +78,7 @@
                 {% if messages %}
                     <ul class="list-disc list-inside text-sm text-warning space-y-1">
                         {% for message in messages %}
-                            <li>{{ message | safe }}</li>
+                            <li>{{ message }}</li>
                         {% endfor %}
                     </ul>
                 {% endif %}
@@ -91,7 +91,7 @@
                 {% if messages %}
                     <ul class="list-disc list-inside text-sm text-primary space-y-1">
                         {% for message in messages %}
-                            <li>{{ message | safe }}</li>
+                            <li>{{ message }}</li>
                         {% endfor %}
                     </ul>
                 {% endif %}
@@ -104,7 +104,7 @@
                 {% if messages %}
                     <ul class="list-disc list-inside text-sm text-success space-y-1">
                         {% for message in messages %}
-                            <li>{{ message | safe }}</li>
+                            <li>{{ message }}</li>
                         {% endfor %}
                     </ul>
                 {% endif %}
@@ -137,7 +137,7 @@
         {{ render_form_input(field) }}
         {% if field.errors %}
             <p id="{{ field.id }}-error" class="text-sm font-medium text-destructive" role="alert">
-                {{ field.errors[0] | safe }}
+                {{ field.errors[0] }}
             </p>
         {% endif %}
     </div>

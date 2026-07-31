@@ -336,9 +336,21 @@ class MermaidDiagramGenerator:
             return f'["{label}"]'  # Rectangle (default)
 
     def _escape_label(self, label: str) -> str:
-        """Escape special characters in labels for Mermaid."""
+        """Escape special characters in labels for Mermaid.
+
+        Strips angle brackets as well as the Mermaid syntax characters. The
+        generated source is rendered with `{{ diagram | safe }}` into
+        `<div class="mermaid">`, so the browser parses it as HTML before Mermaid
+        ever sees it - an element named `<img src=x onerror=...>` would execute.
+        Labels come from user-named ArchiMate elements, so they are untrusted.
+
+        No route currently feeds these templates a populated diagram, so this is
+        defence for when one does rather than a live hole.
+        """
         if not label:
             return "Unnamed"
+        # Angle brackets first: these are the HTML-injection vector, not a Mermaid one.
+        label = label.replace("<", "(").replace(">", ")")
         # Escape quotes and special chars
         label = label.replace('"', "'")
         label = label.replace("[", "(")

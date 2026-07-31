@@ -35,7 +35,7 @@
                     <label for="{{ form.first_name.id }}" class="text-sm font-medium leading-none block mb-2">{{ form.first_name.label.text }}</label>
                     {% if form.first_name.errors %}
                         {{ form.first_name(class="flex h-10 w-full rounded-md border border-destructive bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive focus-visible:ring-offset-2", placeholder=form.first_name.label.text, autofocus='', **{'aria-invalid': 'true', 'aria-describedby': form.first_name.id ~ '-error'}) }}
-                        <p id="{{ form.first_name.id }}-error" class="text-sm font-medium text-destructive" role="alert">{{ form.first_name.errors[0] | safe }}</p>
+                        <p id="{{ form.first_name.id }}-error" class="text-sm font-medium text-destructive" role="alert">{{ form.first_name.errors[0] }}</p>
                     {% else %}
                         {{ form.first_name(class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2", placeholder=form.first_name.label.text, autofocus='') }}
                     {% endif %}

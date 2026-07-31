@@ -548,7 +548,7 @@
       </div>
       <div class="p-6 pt-0">
         {% if impact_analysis.diagram %}
-        <div class="mermaid text-sm">{{ impact_analysis.diagram | safe }}</div>
+        <div class="mermaid text-sm">{{ impact_analysis.diagram }}</div>
         {% else %}
         <p class="text-sm text-muted-foreground">No impact diagram available.</p>
         {% endif %}
@@ -573,7 +573,7 @@
           {% endif %}
         </div>
         <div class="p-6 pt-0 overflow-x-auto">
-          <div class="mermaid text-xs">{{ diagram_src | safe }}</div>
+          <div class="mermaid text-xs">{{ diagram_src }}</div>
         </div>
       </div>
       {% endif %}

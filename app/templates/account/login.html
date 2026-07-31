@@ -126,7 +126,7 @@
                                     }) }}
                                 <p id="{{ form.email.id }}-error" class="text-sm font-medium text-destructive mt-1" role="alert">
                                     <i data-lucide="alert-circle" class="inline h-4 w-4 mr-1" aria-hidden="true"></i>
-                                    {{ form.email.errors[0] | safe }}
+                                    {{ form.email.errors[0] }}
                                 </p>
                             {% else %}
                                 {{ form.email(
