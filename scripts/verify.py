@@ -308,17 +308,30 @@ def gate_schema_drift() -> Result:
     if tables:
         absent_tables = int(tables.group(1))
 
-    if drifted_columns or absent_tables:
+    # Reverse drift: columns the DATABASE has that the models do not, NOT NULL and
+    # undefaulted. This gate previously reported clean against a database whose
+    # value_streams.organization_id was NOT NULL while the model omitted the column
+    # entirely, so every INSERT failed — the check only ever ran model -> database.
+    blocking = 0
+    rev = re.search(r"(\d+)\s+column\(s\) present in the DATABASE", output)
+    if rev:
+        blocking = int(rev.group(1))
+
+    if drifted_columns or absent_tables or blocking:
         detail_lines = [
             ln for ln in output.splitlines()
-            if ln.startswith("  + ") or "table(s) absent" in ln
+            if ln.startswith(("  + ", "  ! ")) or "table(s) absent" in ln
+            or "present in the DATABASE" in ln
         ][:20]
         return Result(
             "schema-drift", FAIL,
-            f"{drifted_columns} drifted column(s), {absent_tables} absent table(s):\n"
-            + "\n".join(detail_lines),
-            measured=drifted_columns + absent_tables, baseline=0,
-            remediation="run: flask --app manage init-db && flask --app manage reconcile-schema",
+            f"{drifted_columns} drifted column(s), {absent_tables} absent table(s), "
+            f"{blocking} model-missing NOT NULL column(s):\n" + "\n".join(detail_lines),
+            measured=drifted_columns + absent_tables + blocking, baseline=0,
+            remediation=(
+                "run: flask --app manage init-db && flask --app manage reconcile-schema; "
+                "for model-missing columns, declare them on the model instead"
+            ),
         )
     return Result("schema-drift", PASS, "no drift detected", measured=0, baseline=0)
 

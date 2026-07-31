@@ -27,13 +27,38 @@ from app import db
 
 
 def _reconcile(dry_run=False):
-    """Return (added, failed) lists of "table.column" strings."""
+    """Return (added, failed, missing_tables, blocking) lists of "table.column".
+
+    `blocking` is the REVERSE direction: columns the live database has that the
+    models do not declare, restricted to NOT NULL columns with no server default.
+    Those are the ones that break writes — the ORM omits the column from its INSERT
+    and Postgres rejects the row.
+
+    This direction was previously invisible. `value_streams.organization_id` was
+    NOT NULL in production while the ValueStream model did not declare the column
+    at all, so every attempt to create a value stream failed with NotNullViolation,
+    and this command still reported "0 column(s) would add" because it only ever
+    compared model -> database.
+    """
     from sqlalchemy import inspect, text
 
     insp = inspect(db.engine)
     existing_tables = set(insp.get_table_names())
     dialect = db.engine.dialect
-    added, failed, missing_tables = [], [], []
+    added, failed, missing_tables, blocking = [], [], [], []
+
+    for table in db.metadata.tables.values():
+        if table.name not in existing_tables:
+            continue
+        model_cols = {c.name for c in table.columns}
+        for live in insp.get_columns(table.name):
+            if live["name"] in model_cols:
+                continue
+            if live.get("nullable", True):
+                continue  # extra but harmless: the ORM simply never writes it
+            if live.get("default") is not None or live.get("autoincrement"):
+                continue  # the database fills it
+            blocking.append(f"{table.name}.{live['name']} :: NOT NULL, no default")
 
     # .tables.values() (not sorted_tables) so FK-cycle tables are still checked.
     for table in db.metadata.tables.values():
@@ -64,7 +89,7 @@ def _reconcile(dry_run=False):
                 db.session.rollback()
                 failed.append(f"{label}: {str(exc)[:120]}")
 
-    return added, failed, missing_tables
+    return added, failed, missing_tables, blocking
 
 
 @click.command("reconcile-schema")
@@ -72,7 +97,7 @@ def _reconcile(dry_run=False):
 @with_appcontext
 def reconcile_schema(dry_run):
     """Add columns the models declare but existing tables lack (safe, idempotent)."""
-    added, failed, missing_tables = _reconcile(dry_run=dry_run)
+    added, failed, missing_tables, blocking = _reconcile(dry_run=dry_run)
 
     verb = "would add" if dry_run else "added"
     click.echo(f"reconcile-schema: {len(added)} column(s) {verb}.")
@@ -84,6 +109,14 @@ def reconcile_schema(dry_run):
             f"create them: {', '.join(sorted(missing_tables)[:10])}"
             + (" ..." if len(missing_tables) > 10 else "")
         )
+    if blocking:
+        click.echo(
+            f"\n{len(blocking)} column(s) present in the DATABASE but absent from the "
+            "models, NOT NULL with no default — INSERTs into these tables will fail:"
+        )
+        for b in blocking:
+            click.echo(f"  ! {b}")
+
     if failed:
         click.echo(f"\n{len(failed)} column(s) FAILED:")
         for f in failed:
