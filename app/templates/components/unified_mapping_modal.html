@@ -271,14 +271,14 @@
                         </select>
                     </div>
                     <div class="flex-1 min-w-[150px]">
-                        <select id="unified-filter-status" class="w-full px-3 py-2 text-sm border border-border rounded-md" @change="filterUnifiedApplications()">
+                        <select id="unified-filter-status" aria-label="Filter applications by status" class="w-full px-3 py-2 text-sm border border-border rounded-md" @change="filterUnifiedApplications()">
                             <option value="all">All Applications</option>
                             <option value="mapped">Mapped Only</option>
                             <option value="unmapped">Unmapped Only</option>
                         </select>
                     </div>
                     <div class="flex-1 min-w-[150px]">
-                        <select id="unified-sort" class="w-full px-3 py-2 text-sm border border-border rounded-md" @change="filterUnifiedApplications()">
+                        <select id="unified-sort" aria-label="Sort applications" class="w-full px-3 py-2 text-sm border border-border rounded-md" @change="filterUnifiedApplications()">
                             <option value="name-asc">Name (A-Z)</option>
                             <option value="name-desc">Name (Z-A)</option>
                             <option value="type-asc">Type (A-Z)</option>

@@ -12,12 +12,22 @@
 <div class="bg-card rounded-lg shadow p-4 mb-6">
     <div class="flex flex-wrap gap-4 items-center">
         {% for filter in filters %}
+        {#- Pluralise properly. "All {{ label }}s" produced "All Statuss" and
+            "All Prioritys" on screen. -#}
+        {%- set _l = filter.label -%}
+        {%- if _l.endswith('y') -%}{% set _plural = _l[:-1] ~ 'ies' %}
+        {%- elif _l.endswith(('s', 'x', 'ch', 'sh')) -%}{% set _plural = _l ~ 'es' %}
+        {%- else -%}{% set _plural = _l ~ 's' %}{%- endif -%}
         <div class="flex items-center space-x-2">
-            <label class="text-sm font-medium text-muted-foreground">{{ filter.label }}:</label>
-            <select id="{{ context_id }}-{{ filter.id }}" 
+            {#- for= makes this existing visible label the select's accessible name
+                and restores click-the-label-to-focus. The id is computed, so the
+                label has to compute the same one; without it these selects were
+                the largest remaining block of unlabelled controls in the product. -#}
+            <label for="{{ context_id }}-{{ filter.id }}" class="text-sm font-medium text-muted-foreground">{{ filter.label }}:</label>
+            <select id="{{ context_id }}-{{ filter.id }}"
                     {% if filter.alpine %}@change="{{ filter.handler }}"{% else %}@change="{{ filter.handler }}"{% endif %}
                     class="px-3 py-2 border border-input rounded-md text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                <option value="">All {{ filter.label }}s</option>
+                <option value="">All {{ _plural }}</option>
                 {% for opt in filter.options %}
                 <option value="{{ opt.value }}">{{ opt.label }}</option>
                 {% endfor %}
@@ -2320,7 +2330,7 @@
                                         <option value="4">Level 4</option>
                                         <option value="5">Level 5</option>
                                     </select>
-                                    <select id="wp-children-sort" @change="filterWPChildren()" class="px-4 py-2 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                                    <select id="wp-children-sort" aria-label="Sort child capabilities" @change="filterWPChildren()" class="px-4 py-2 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                                         <option value="name-asc">Name (A-Z)</option>
                                         <option value="name-desc">Name (Z-A)</option>
                                         <option value="status-asc">Status</option>
@@ -2667,7 +2677,7 @@
                         <!-- Filter by Status -->
                         <div class="flex-1 min-w-[150px]">
                             <select
-                                id="acm-filter-status"
+                                id="acm-filter-status" aria-label="Filter applications by status"
                                 class="w-full px-3 py-2 text-sm border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                                 @change="filterACMApplications()"
                             >
@@ -2680,7 +2690,7 @@
                         <!-- Sort Options -->
                         <div class="flex-1 min-w-[150px]">
                             <select
-                                id="acm-sort-applications"
+                                id="acm-sort-applications" aria-label="Sort applications"
                                 class="w-full px-3 py-2 text-sm border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                                 @change="filterACMApplications()"
                             >
@@ -2796,7 +2806,7 @@
                         <!-- Filter by Status -->
                         <div class="flex-1 min-w-[150px]">
                             <select
-                                id="process-filter-status"
+                                id="process-filter-status" aria-label="Filter applications by status"
                                 class="w-full px-3 py-2 text-sm border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                                 @change="filterProcessApplications()"
                             >
@@ -2809,7 +2819,7 @@
                         <!-- Sort Options -->
                         <div class="flex-1 min-w-[150px]">
                             <select
-                                id="process-sort-applications"
+                                id="process-sort-applications" aria-label="Sort applications"
                                 class="w-full px-3 py-2 text-sm border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                                 @change="filterProcessApplications()"
                             >
@@ -2929,7 +2939,7 @@
                     <!-- Filter by Status -->
                     <div class="flex-1 min-w-[150px]">
                         <select
-                            id="filter-status"
+                            id="filter-status" aria-label="Filter applications by status"
                             class="w-full px-3 py-2 text-sm border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                             @change="filterApplications()"
                         >
@@ -2942,7 +2952,7 @@
                     <!-- Sort Options -->
                     <div class="flex-1 min-w-[150px]">
                         <select
-                            id="sort-applications"
+                            id="sort-applications" aria-label="Sort applications"
                             class="w-full px-3 py-2 text-sm border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                             @change="filterApplications()"
                         >
