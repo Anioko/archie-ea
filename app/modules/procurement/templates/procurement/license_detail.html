@@ -13,6 +13,10 @@
         <div>
             <div class="flex items-center gap-3 mb-2">
                 <h1 class="text-2xl font-bold">{{ license.product_name }}</h1>
+                <a href="{{ url_for('procurement.license_edit', license_id=license.id) }}"
+                   class="inline-flex items-center gap-2 px-3 py-1.5 mt-2 rounded-md border border-border text-sm hover:bg-accent transition-colors">
+                    <i data-lucide="pencil" class="w-4 h-4"></i> Edit licence
+                </a>
                 <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium
                     {% if license.compliance_status == 'compliant' %}bg-green-100 text-green-800
                     {% elif license.compliance_status == 'warning' %}bg-amber-100 text-amber-800

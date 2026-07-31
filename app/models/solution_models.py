@@ -104,6 +104,13 @@ class Solution(TenantMixin, db.Model, OptimisticLockMixin):
     # Solution status
     status = Column(db.String(30), default="planned")  # planned, in_progress, deployed, deprecated
     deployment_status = Column(db.String(30))  # design, development, testing, production
+    # healthy, at_risk, critical. Read by my_applications' dashboard and health
+    # overview, which called getattr(app, "health_status", None) against a column
+    # that did not exist - so every owned application reported "unknown" and the
+    # health page could never show anything else. Nullable, since reconcile-schema
+    # only adds nullable columns and existing rows have nothing to backfill from;
+    # None continues to mean "not assessed".
+    health_status = Column(db.String(20))
 
     # Governance
     solution_owner = Column(db.String(255))

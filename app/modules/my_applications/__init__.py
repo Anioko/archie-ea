@@ -17,3 +17,4 @@ my_applications_bp = Blueprint(
 )
 
 from . import routes  # noqa: F401, E402
+from . import crud_routes  # noqa: F401, E402

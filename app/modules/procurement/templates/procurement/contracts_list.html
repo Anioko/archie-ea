@@ -10,6 +10,11 @@
             <p class="text-muted-foreground">Manage vendor contracts and agreements</p>
         </div>
         <div class="flex items-center gap-2">
+            <a href="{{ url_for('procurement.contract_create') }}"
+               class="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+                <i data-lucide="plus" class="w-4 h-4"></i>
+                New Contract
+            </a>
             <a href="{{ url_for('procurement.renewals_dashboard') }}"
                class="inline-flex items-center gap-2 px-4 py-2 rounded-md border border-border hover:bg-accent transition-colors">
                 <i data-lucide="calendar-clock" class="w-4 h-4"></i>

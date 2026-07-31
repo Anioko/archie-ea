@@ -1,0 +1,140 @@
+{% extends 'layouts/admin_base.html' %}
+{% block title %}{{ 'Edit Licence' if license else 'New Licence' }}{% endblock %}
+
+{% macro current(field, fallback='') -%}
+  {{ form.get(field) if form and form.get(field) is not none else (fallback if fallback is not none else '') }}
+{%- endmacro %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-6 max-w-3xl">
+
+  <div class="mb-6">
+    <a href="{{ url_for('procurement.licenses_list') }}"
+       class="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5">
+      <i data-lucide="arrow-left" class="w-4 h-4"></i> All Licences
+    </a>
+    <h1 class="text-2xl font-bold mt-2">{{ 'Edit Licence' if license else 'New Licence' }}</h1>
+    <p class="text-muted-foreground">
+      Entitlement and deployment counts drive the compliance dashboard.
+    </p>
+  </div>
+
+  <form method="POST"
+        action="{{ url_for('procurement.license_edit', license_id=license.id) if license else url_for('procurement.license_create') }}"
+        class="space-y-6">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="bg-card border border-border rounded-lg p-6 space-y-4">
+      <h2 class="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Licence</h2>
+
+      <div>
+        <label for="contract_id" class="block text-sm font-medium mb-1.5">
+          Contract <span class="text-destructive" aria-hidden="true">*</span>
+        </label>
+        <select id="contract_id" name="contract_id" required
+                class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring">
+          <option value="">Select a contract</option>
+          {% for contract in contracts %}
+          <option value="{{ contract.id }}"
+            {% if (form.get('contract_id') | int if form.get('contract_id') else (license.contract_id if license else 0)) == contract.id %}selected{% endif %}>
+            {{ contract.contract_name }}{% if contract.contract_number %} — {{ contract.contract_number }}{% endif %}
+          </option>
+          {% endfor %}
+        </select>
+        {% if not contracts %}
+        <p class="text-xs text-muted-foreground mt-1">
+          No contracts yet — <a href="{{ url_for('procurement.contract_create') }}" class="text-primary hover:underline">create one first</a>.
+        </p>
+        {% endif %}
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label for="product_name" class="block text-sm font-medium mb-1.5">Product name</label>
+          <input type="text" id="product_name" name="product_name" maxlength="200"
+                 value="{{ current('product_name', license.product_name if license else '') | trim }}"
+                 class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring">
+        </div>
+        <div>
+          <label for="license_type" class="block text-sm font-medium mb-1.5">Licence type</label>
+          <select id="license_type" name="license_type"
+                  class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring">
+            {% for value in license_types %}
+            <option value="{{ value }}"
+              {% if current('license_type', license.license_type if license else 'named_user') | trim == value %}selected{% endif %}>
+              {{ value | replace('_', ' ') | title }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <div>
+        <label for="license_metric" class="block text-sm font-medium mb-1.5">Metric</label>
+        <input type="text" id="license_metric" name="license_metric" maxlength="50"
+               value="{{ current('license_metric', license.license_metric if license else '') | trim }}"
+               class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring">
+        <p class="text-xs text-muted-foreground mt-1">How the vendor counts usage, e.g. per seat, per core.</p>
+      </div>
+    </div>
+
+    <div class="bg-card border border-border rounded-lg p-6 space-y-4">
+      <h2 class="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Quantities</h2>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div>
+          <label for="quantity_entitled" class="block text-sm font-medium mb-1.5">Entitled</label>
+          <input type="number" min="0" step="1" id="quantity_entitled" name="quantity_entitled"
+                 value="{{ current('quantity_entitled', license.quantity_entitled if license else 0) | trim }}"
+                 class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring">
+        </div>
+        <div>
+          <label for="quantity_deployed" class="block text-sm font-medium mb-1.5">Deployed</label>
+          <input type="number" min="0" step="1" id="quantity_deployed" name="quantity_deployed"
+                 value="{{ current('quantity_deployed', license.quantity_deployed if license else 0) | trim }}"
+                 class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring">
+        </div>
+        <div>
+          <label for="quantity_used" class="block text-sm font-medium mb-1.5">Actually used</label>
+          <input type="number" min="0" step="1" id="quantity_used" name="quantity_used"
+                 value="{{ current('quantity_used', license.quantity_used if license else 0) | trim }}"
+                 class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring">
+        </div>
+      </div>
+      <div>
+        <label for="unit_cost" class="block text-sm font-medium mb-1.5">Unit cost</label>
+        <input type="number" step="0.01" min="0" id="unit_cost" name="unit_cost"
+               value="{{ current('unit_cost', license.unit_cost if license else '') | trim }}"
+               class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring">
+      </div>
+      <p class="text-xs text-muted-foreground">
+        Compliance status is calculated from these figures when you save — deployed above
+        entitled is a violation, below half is under-utilised. It is not entered directly.
+      </p>
+    </div>
+
+    <div class="flex items-center justify-between">
+      <button type="submit"
+              class="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors">
+        <i data-lucide="save" class="w-4 h-4"></i>
+        {{ 'Save changes' if license else 'Record licence' }}
+      </button>
+      <a href="{{ url_for('procurement.licenses_list') }}"
+         class="text-sm text-muted-foreground hover:text-foreground">Cancel</a>
+    </div>
+  </form>
+
+  {% if license %}
+  <form method="POST" action="{{ url_for('procurement.license_delete', license_id=license.id) }}"
+        class="mt-8 pt-6 border-t border-border"
+        onsubmit="return confirm('Delete this licence entitlement? This cannot be undone.');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit"
+            class="inline-flex items-center gap-2 px-3 py-2 rounded-md border border-destructive/40 text-destructive text-sm hover:bg-destructive/10 transition-colors">
+      <i data-lucide="trash-2" class="w-4 h-4"></i> Delete licence
+    </button>
+  </form>
+  {% endif %}
+
+</div>
+<script>if (typeof lucide !== 'undefined') lucide.createIcons();</script>
+{% endblock %}
