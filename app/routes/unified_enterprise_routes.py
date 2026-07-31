@@ -12,8 +12,13 @@ URL Structure:
 /enterprise/implementation/* - Implementation Planning
 """
 
+# Side-effect import, NOT dead code: this is the only module that imports
+# app/models/metrics.py, and that import is what registers the
+# `application_metrics_snapshots` table on db.metadata. Removing it (as
+# `ruff --fix --select F401` did) silently drops the table from the ORM —
+# caught by comparing db.metadata.tables before and after.
+from ..models.metrics import ApplicationMetricsSnapshot  # noqa: F401
 import logging
-from datetime import datetime  # dead-code-ok
 
 from flask import (
     Blueprint,
@@ -26,26 +31,18 @@ from flask import (
     url_for,
 )
 from flask_login import current_user, login_required  # dead-code-ok
-from sqlalchemy import func, or_, select, text  # dead-code-ok
-from sqlalchemy.exc import IntegrityError as SQLIntegrityError  # dead-code-ok
+from sqlalchemy import or_  # dead-code-ok
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import joinedload  # dead-code-ok
 
 from .. import db
 from ..security.audit import audit_logger, AuditEventType, AuditEventSeverity
 from ..exceptions import (  # dead-code-ok
-    BusinessRuleError,
     DatabaseError,
-    IntegrityError,
-    NotFoundError,
-    ValidationError,
 )
 from ..utils.api_helpers import api_error
 from ..models import (  # dead-code-ok
     ConceptualDataModel,
     Contract,
-    DataLineage,
-    DataTransformation,
     DesignPattern,
     LogicalDataModel,
     PhysicalDataModel,
@@ -56,14 +53,11 @@ from ..models import (  # dead-code-ok
 )
 from ..models.business_capabilities import (  # dead-code-ok
     BusinessCapability,
-    BusinessFunction,
-    Capability,
 )
 from ..models.archimate_core import ArchiMateElement
 from ..models.implementation_migration import Gap
 from ..models.implementation_migration import Plateau
 from ..models.implementation_migration import WorkPackage
-from ..models.metrics import ApplicationMetricsSnapshot  # dead-code-ok
 
 logger = logging.getLogger(__name__)
 
@@ -747,7 +741,6 @@ def ai_architecture_analysis():
         from app.models.ai_recommendations import AIRecommendation
         from app.models.implementation_migration import Gap
         from app.models.application_portfolio import ApplicationComponent
-        from sqlalchemy import func
 
         # Fetch recent AI recommendations
         ai_recommendations = (
@@ -888,7 +881,6 @@ def process_optimization():
     try:
         from app.models.process_data import BusinessProcess
         from app.models.industry_apqc import IndustryProcessRecommendation
-        from app.models.business_capabilities import BusinessCapability
         from sqlalchemy import func
 
         # Total process count

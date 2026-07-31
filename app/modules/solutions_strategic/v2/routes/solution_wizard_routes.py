@@ -6,7 +6,7 @@ creation.  Routes are attached to ``solution_design_bp`` (url_prefix=/solutions)
 
 import logging
 
-from flask import jsonify, redirect, render_template, request, url_for
+from flask import jsonify, render_template, request, url_for
 from flask_login import current_user, login_required
 
 from app import db

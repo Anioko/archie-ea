@@ -14,7 +14,6 @@ Pipeline position:
   Source Documents → BehavioralExtractor → BehavioralContext
   BehavioralContext + ArchiMate → AABL Compiler → enriched Genome
 """
-import io
 import json
 import logging
 import os

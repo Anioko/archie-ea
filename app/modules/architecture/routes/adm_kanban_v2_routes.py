@@ -299,7 +299,6 @@ def get_card_artifacts(card_ref):
     if card_type != "solution":
         return jsonify({"success": True, "artifacts": {}, "phase_gate": {}})
 
-    from app import db
     from app.models.solution_models import Solution, SolutionArchiMateElement
 
     solution = Solution.query.get(entity_id)

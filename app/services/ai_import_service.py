@@ -15,12 +15,11 @@ import json
 import logging
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple  # dead-code-ok
+from typing import Any, Dict, List, Optional  # dead-code-ok
 
 from app import db
 from app.models.application_portfolio import ApplicationComponent
-from app.models.apqc_process import APQCProcess, ProcessApplicationMapping  # dead-code-ok
-from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship, ArchitectureModel  # dead-code-ok
+from app.models.apqc_process import ProcessApplicationMapping  # dead-code-ok
 from app.models.unified_application_capability_mapping import UnifiedApplicationCapabilityMapping
 from app.models.unified_capability import UnifiedCapability
 from app.services.apqc_hierarchy_service import APQCHierarchyService
@@ -32,7 +31,7 @@ from app.services.batch_processing_service import BatchJobConfig, BatchProcessin
 from app.services.capability_taxonomy_service import CapabilityTaxonomyService
 from app.services.confidence_review_service import ConfidenceReviewService, ReviewQueueItemData
 from app.services.llm_service import LLMService
-from app.services.unified_apqc_service import UnifiedAPQCService, get_unified_apqc_service  # dead-code-ok
+from app.services.unified_apqc_service import get_unified_apqc_service  # dead-code-ok
 from app.services.vector_embedding_service import VectorEmbeddingService
 from app.services.vendor_product_service import VendorProductService
 

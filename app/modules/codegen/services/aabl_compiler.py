@@ -903,7 +903,6 @@ def compile_genome(
     Returns:
         Genome dict ready for validation and code generation.
     """
-    from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship
     from app.models.solution_models import Solution, SolutionArchiMateElement
 
     config = config or {}
@@ -1442,9 +1441,7 @@ def compile_genome(
     try:
         from app.models.solution_architect_models import (
             SolutionAnalysisSession,
-            SolutionProblemDefinition,
             SolutionRequirement,
-            RequirementType,
         )
         _session = SolutionAnalysisSession.query.filter(
             SolutionAnalysisSession.name.like(f"%Solution {solution_id}%")

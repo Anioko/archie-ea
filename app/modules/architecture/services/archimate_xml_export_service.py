@@ -14,7 +14,6 @@ from datetime import datetime  # dead-code-ok: kept for class methods below
 from typing import Dict, Optional
 from xml.dom import minidom
 
-from app import db  # dead-code-ok: used by existing class methods
 from app.models import (
     ArchiMateElement,
     ArchiMateRelationship,

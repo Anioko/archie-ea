@@ -6,7 +6,6 @@ rchitecture validation and integrity checking."""
 import logging
 from typing import Dict, List, Tuple
 
-from app.extensions import db
 from app.models.archimate_core import ArchiMateElement as ArchitectureElement, ArchiMateRelationship as Relationship
 
 logger = logging.getLogger(__name__)

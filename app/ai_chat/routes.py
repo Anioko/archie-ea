@@ -1,8 +1,6 @@
-import asyncio  # dead-code-ok
 import json
 import logging
 import os
-import time  # dead-code-ok
 from datetime import datetime  # dead-code-ok
 
 from flask import Blueprint, current_app, jsonify, render_template, request
@@ -421,7 +419,7 @@ def upload_document():
     try:
         from werkzeug.utils import secure_filename
 
-        from app.archimate_crud.routes import LAYER_CONFIG, MODEL_REGISTRY
+        from app.archimate_crud.routes import MODEL_REGISTRY
         from app.services.archimate.document_analysis_service import DocumentAnalysisService
 
         if "file" not in request.files:
@@ -1070,7 +1068,6 @@ Return ONLY JSON, no other text.
                 errors.append(f"Failed to commit created elements: {str(commit_error)}")
 
         # Update upload record with results
-        import time  # dead-code-ok
 
         # Helper function to safely serialize JSON
         def safe_json_dumps(data):
@@ -1235,7 +1232,6 @@ def get_document_history():
         from app.models.ai_chat_document import AIChatDocumentUpload
 
         # Get query parameters with pagination bounds checking
-        from app.utils.pagination import get_pagination_params
 
         # Note: get_pagination_params uses page/per_page, but this endpoint uses limit/offset
         # So we'll use a similar pattern for consistency
@@ -1290,7 +1286,6 @@ def get_document_history():
 def delete_document(doc_id):
     """Delete an uploaded document record."""
     try:
-        from werkzeug.exceptions import NotFound
 
         from app.models.ai_chat_document import AIChatDocumentUpload
 

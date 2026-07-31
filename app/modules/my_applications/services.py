@@ -9,10 +9,8 @@ ADR Reference: docs/adr/0011-application-manager-persona.md
 
 from typing import Dict, List, Optional, Tuple
 
-from flask_login import current_user
-from sqlalchemy import and_, or_
+from sqlalchemy import or_
 
-from app.extensions import db
 from app.models.application_owner import ApplicationOwner
 from app.models.application_portfolio import ApplicationComponent
 

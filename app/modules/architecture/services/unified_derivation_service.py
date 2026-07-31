@@ -33,7 +33,7 @@ import logging
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional
 
 from app import db
 from app.models import ArchiMateElement, ArchiMateRelationship, ArchitectureModel

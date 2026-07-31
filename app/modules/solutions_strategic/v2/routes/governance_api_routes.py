@@ -3,7 +3,7 @@ Phase 5A & 5B API Routes: Governance, execution tracking, issues, learning.
 """
 
 import logging
-from datetime import datetime, date
+from datetime import datetime
 from flask import Blueprint, request, jsonify
 from flask_login import current_user, login_required
 from functools import wraps

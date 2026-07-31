@@ -10,12 +10,11 @@ Implements CRUD operations and analytics for:
 All methods return dictionaries for easy JSON serialization.
 """
 
-import json
 import logging
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
-from sqlalchemy import and_, func, or_
+from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
 
 from .. import db

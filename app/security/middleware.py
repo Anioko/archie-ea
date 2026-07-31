@@ -5,13 +5,11 @@ Runtime security monitoring and enforcement for Flask-ShadCN platform.
 This middleware provides real-time security monitoring and blocks malicious requests.
 """
 
-import hashlib
 import logging
 import re
 import threading
 import time
 from typing import Dict, List, Set
-from urllib.parse import urlparse
 
 from flask import abort, current_app, g, request
 

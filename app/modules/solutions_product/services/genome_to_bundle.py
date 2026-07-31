@@ -17,7 +17,6 @@ import hashlib
 import json
 import logging
 import re
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -111,15 +110,9 @@ def genome_to_bundle(genome: dict) -> "ProductSpecBundle":
         ProductSpecBundle ready for DeterministicCodeGenerator.generate().
     """
     from app.modules.solutions_product.services.product_spec_bundle import (
-        BusinessRuleDef,
         DeploymentDef,
-        EventDef,
-        FieldDef,
         InfraContext,
-        PathDef,
         ProductSpecBundle,
-        ServiceDef,
-        StateMachineDef,
     )
 
     modules = genome.get("modules", {})

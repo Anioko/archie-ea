@@ -76,7 +76,7 @@ class RationalizationExportService:
     def generate_excel(scope=None):
         """Generate Excel workbook with multiple sheets."""
         from openpyxl import Workbook
-        from openpyxl.styles import Font, PatternFill, Alignment
+        from openpyxl.styles import Font, PatternFill
 
         wb = Workbook()
 

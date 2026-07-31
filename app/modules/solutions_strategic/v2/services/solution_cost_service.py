@@ -12,9 +12,8 @@ Service for managing solution cost models with:
 import logging
 from datetime import datetime
 from decimal import Decimal
-from typing import Dict, List, Optional, Tuple  # dead-code-ok
+from typing import Dict, List  # dead-code-ok
 
-from sqlalchemy import func  # dead-code-ok
 
 from app import db
 from app.models.solution_cost_model import (

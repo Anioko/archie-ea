@@ -24,18 +24,17 @@ ArchiMate Application Layer Elements Generated:
 import json
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
 from difflib import SequenceMatcher
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
-from sqlalchemy import and_, func, or_
+from sqlalchemy import func
 
 from app import db
 from app.models.application_portfolio import ApplicationCapabilityMapping, ApplicationComponent
 from app.models.apqc_process import APQCProcess, CapabilityProcessMapping, ProcessApplicationMapping
 from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship
-from app.models.vendor.vendor_organization import VendorProduct, VendorProductCapability
-from app.services.application_architecture_mapper import APQC_KEYWORD_MAP, PRODUCT_TO_VENDOR_MAP
+from app.models.vendor.vendor_organization import VendorProduct
+from app.services.application_architecture_mapper import APQC_KEYWORD_MAP
 
 logger = logging.getLogger(__name__)
 

@@ -4,7 +4,6 @@ Implements XML-based interchange compatible with ArchiMate 3.0 OEF specification
 """
 
 import xml.etree.ElementTree as ET
-from datetime import datetime  # dead-code-ok
 
 from app import db
 from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship, ArchitectureModel

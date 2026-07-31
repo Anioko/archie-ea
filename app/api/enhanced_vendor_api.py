@@ -11,7 +11,7 @@ from flask_login import login_required
 from sqlalchemy.orm import joinedload
 
 from app import db
-from app.models.vendor import VendorOrganization, VendorProduct
+from app.models.vendor import VendorProduct
 
 # Create blueprint
 enhanced_vendor_bp = Blueprint("enhanced_vendor", __name__, url_prefix="/api/enhanced-vendors")

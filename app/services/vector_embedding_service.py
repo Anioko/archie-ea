@@ -11,7 +11,7 @@ import logging
 import os
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple  # dead-code-ok
+from typing import Any, Dict, List, Optional  # dead-code-ok
 
 import numpy as np
 from sqlalchemy import text

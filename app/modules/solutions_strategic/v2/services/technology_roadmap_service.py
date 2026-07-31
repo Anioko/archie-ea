@@ -9,12 +9,10 @@ Plans and manages technology evolution and modernization:
 - Technology investment planning
 """
 
-from datetime import date, datetime
-from typing import Dict, List, Optional, Tuple
+from datetime import datetime
+from typing import Dict, List
 
-from sqlalchemy import and_, func, or_
 
-from app import db
 from .decorators import transactional
 
 

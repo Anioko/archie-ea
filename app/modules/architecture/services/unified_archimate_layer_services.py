@@ -23,10 +23,10 @@ All original classes and methods are preserved exactly as they were.
 import json
 import logging
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 from app import db
-from app.models import ArchiMateElement, ArchiMateRelationship, ArchitectureModel
+from app.models import ArchiMateElement, ArchiMateRelationship
 from app.services.llm_service import LLMService
 
 logger = logging.getLogger(__name__)

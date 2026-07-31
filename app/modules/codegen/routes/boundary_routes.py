@@ -29,7 +29,6 @@ from app.models.solution_models import Solution
 from app.utils.csrf_helper import require_csrf
 
 from .codegen_routes import codegen_bp
-from ._helpers import _check_access
 
 logger = logging.getLogger(__name__)
 

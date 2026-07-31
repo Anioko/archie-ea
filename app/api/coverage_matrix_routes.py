@@ -6,7 +6,6 @@ gap analysis modal, and AI-powered coverage estimation.
 """
 
 import logging
-from datetime import datetime
 
 from flask import Blueprint, jsonify, request
 from flask_login import login_required
@@ -19,7 +18,6 @@ from app.models.business_capabilities import BusinessCapability
 from app.models.vendor.vendor_organization import VendorProduct
 from app.services.interactive_coverage_matrix import (
     InteractiveCoverageMatrix,
-    generate_coverage_matrix,
 )
 
 logger = logging.getLogger(__name__)

@@ -7,11 +7,10 @@ and inferring new connections based on graph structure.
 
 import logging
 from collections import defaultdict, deque
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional
 
-from sqlalchemy import and_, or_
+from sqlalchemy import or_
 
-from app import db
 from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship
 
 logger = logging.getLogger(__name__)

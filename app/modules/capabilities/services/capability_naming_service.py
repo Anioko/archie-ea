@@ -11,9 +11,8 @@ duplicate detection, and data cleanup functionality.
 import logging
 import re
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List
 
-from sqlalchemy import text
 
 from app.models.unified_capability import BusinessDomain, UnifiedCapability
 

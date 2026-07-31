@@ -5,7 +5,7 @@ Converts ArchiMate viewpoint data structures into Mermaid.js diagram syntax.
 Supports flowcharts and graph diagrams with ArchiMate-inspired styling.
 """
 
-from typing import Dict, List
+from typing import Dict
 
 
 class MermaidDiagramGenerator:

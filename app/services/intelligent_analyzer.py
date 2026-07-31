@@ -11,15 +11,12 @@ This service provides truly intelligent analysis by:
 import json
 import logging
 import re
-import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, Dict, List, Optional
-from urllib.parse import urljoin, urlparse
+from typing import Any, Dict, List
 
 import requests
 from bs4 import BeautifulSoup
 
-from app.models import APISettings
 from app.services.llm_service import LLMService
 
 logger = logging.getLogger(__name__)

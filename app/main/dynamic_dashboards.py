@@ -6,7 +6,7 @@ dashboards for ANY SQLAlchemy model without requiring manual route creation.
 """
 from datetime import datetime
 
-from flask import Blueprint, abort, current_app, render_template, request, url_for  # dead-code-ok
+from flask import Blueprint, abort, current_app, render_template, url_for  # dead-code-ok
 
 from app.models.application_layer import (
     ApplicationEvent,
@@ -22,7 +22,7 @@ from app.models.business_capabilities import BusinessCapability
 
 # Import models from implementation planning (avoid conflicts with implementation_migration)
 from app.models.implementation_planning import ImplementationPlateau as Plateau
-from app.models.project_models import Milestone, Project, ProjectNote, ProjectResource, Task  # dead-code-ok
+from app.models.project_models import Milestone, Project, Task  # dead-code-ok
 from app.services.api_dashboard_generator import APIDashboardGenerator
 from flask_login import login_required
 

@@ -20,8 +20,6 @@ NOTE: This module is kept for backward compatibility but should not be used dire
 The UnifiedAPQCService automatically delegates to this service when appropriate.
 """
 
-import asyncio
-import json
 import logging
 from dataclasses import dataclass
 from datetime import datetime

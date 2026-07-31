@@ -3,9 +3,8 @@ Business Process Knowledge Base
 Domain-specific understanding of APQC processes and their relationships
 """
 
-import re
 from dataclasses import dataclass
-from typing import Dict, List, Set, Tuple
+from typing import List, Set, Tuple
 
 
 @dataclass

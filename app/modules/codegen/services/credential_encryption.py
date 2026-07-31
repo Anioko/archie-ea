@@ -7,7 +7,6 @@ Used by:
 Key is sourced from app.config["CREDENTIAL_ENCRYPTION_KEY"].
 Generate a key: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 """
-import base64
 import logging
 
 from cryptography.fernet import Fernet, InvalidToken

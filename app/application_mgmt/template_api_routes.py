@@ -172,7 +172,7 @@ def search_templates_advanced():
     # Fuzzy search across multiple fields
     if data.get("fuzzy", False):
         # PostgreSQL-compatible fuzzy search using similarity
-        from sqlalchemy import func, or_
+        from sqlalchemy import or_
 
         search_pattern = f"%{query}%"
         base_query = base_query.filter(
@@ -216,7 +216,7 @@ def search_templates_advanced():
         # Boost recent templates (if requested)
         if data.get("boost_recent", False) and hasattr(template, "last_used_at"):
             if template.last_used_at:
-                from datetime import datetime, timedelta
+                from datetime import datetime
 
                 days_old = (datetime.utcnow() - template.last_used_at).days
                 if days_old < 30:
@@ -247,7 +247,6 @@ def get_all_tags():
     if not hasattr(ElementTemplate, "tags"):
         return jsonify([])
 
-    from sqlalchemy import func
 
     # Get all unique tags with counts
     # Note: This assumes tags are stored as JSON array or comma-separated

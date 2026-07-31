@@ -23,10 +23,8 @@ Complies with:
 import json
 import logging
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
-from flask import current_app
-from sqlalchemy import and_, func, or_, text
 
 from app.models.business_capabilities import BusinessCapability
 
@@ -34,11 +32,8 @@ from .. import db
 from ..models.application_portfolio import ApplicationComponent
 from ..models.implementation_migration import (
     Gap as ImplementationGap,
-    Plateau as ImplementationPlateau,
-    WorkPackage as ImplementationWorkPackage,
 )
-from ..models.models import ArchiMateElement, ArchitectureModel
-from ..models.vendor.vendor_organization import VendorProduct
+from ..models.models import ArchiMateElement
 
 logger = logging.getLogger(__name__)
 

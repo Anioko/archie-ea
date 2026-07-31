@@ -10,7 +10,7 @@ Provides:
 """
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from app.config.archimate_relationship_matrix import (
     ALL_ELEMENTS,
@@ -27,9 +27,7 @@ from app.config.archimate_relationship_matrix import (
     get_all_valid_sources_for_target,
     get_all_valid_targets_for_source,
     get_cardinality,
-    get_element_layer,
     get_valid_relationships,
-    is_valid_relationship,
 )
 
 logger = logging.getLogger(__name__)

@@ -19,8 +19,7 @@ from app.models.solution_models import Solution
 from app.models.solution_governance import SolutionAIBacktesting
 from app.modules.solutions_strategic.v2.services.solution_backtesting_service import (
     SolutionBacktestingService,
-    get_accuracy_report,
-    backtest_single_recommendation
+    get_accuracy_report
 )
 
 logger = logging.getLogger(__name__)

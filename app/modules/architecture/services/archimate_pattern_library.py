@@ -6,7 +6,7 @@ Reusable architecture patterns for common enterprise scenarios
 """
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from app.models.application_portfolio import ApplicationComponent
 

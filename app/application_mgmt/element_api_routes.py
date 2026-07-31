@@ -7,7 +7,7 @@ These routes provide API endpoints for:
 """
 
 from flask import current_app, jsonify, request
-from flask_login import current_user, login_required  # dead-code-ok
+from flask_login import login_required  # dead-code-ok
 from sqlalchemy.exc import IntegrityError
 
 from app import db
@@ -367,7 +367,7 @@ def get_application_element(app_id, element_id):
     Returns:
         JSON with element details including relationships.
     """
-    from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship, ArchitectureModel
+    from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship
 
     app_obj = ApplicationComponent.query.get_or_404(app_id)
 

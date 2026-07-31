@@ -13,15 +13,13 @@ Provides intelligent, context-aware assistance throughout the application:
 
 import logging
 import re
-from datetime import datetime, timedelta  # dead-code-ok
+from datetime import datetime  # dead-code-ok
 from typing import Any, Dict, List, Optional, Tuple
 
-from flask import current_app, g, has_request_context  # dead-code-ok
-from sqlalchemy import func, or_  # dead-code-ok
+from sqlalchemy import func  # dead-code-ok
 
 from app import db
 from app.models.application_portfolio import ApplicationComponent
-from app.models.business_capabilities import BusinessCapability  # dead-code-ok
 from app.models.unified_capability import UnifiedCapability
 from app.models.vendor.vendor_organization import VendorOrganization
 from app.services.llm_service import LLMService

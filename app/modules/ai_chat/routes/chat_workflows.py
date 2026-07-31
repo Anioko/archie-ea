@@ -16,8 +16,6 @@ from app import db
 from app.decorators import audit_log
 from app.services.rate_limiter import rate_limit
 from app.models.application_portfolio import ApplicationComponent
-from app.models.unified_capability import UnifiedCapability
-from app.models.vendor.vendor_organization import VendorOrganization
 from . import unified_ai_chat_bp
 
 # Baseline annual infrastructure cost used for rough vendor TCO estimates when
@@ -624,7 +622,6 @@ def discover_vendors_for_capability():
             VendorOrganization,
             VendorProduct,
         )
-        from app.services.vendor_discovery_engine import VendorDiscoveryEngine
 
         data = request.json or {}
         capability_name = data.get("capability_name", "")

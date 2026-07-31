@@ -11,8 +11,6 @@ from dataclasses import dataclass
 from enum import Enum
 import threading
 
-from flask import current_app, g
-from app import db
 from app.models import APISettings
 
 logger = logging.getLogger(__name__)

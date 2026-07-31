@@ -8,7 +8,7 @@ import io
 import json
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Optional  # dead-code-ok
+from typing import Dict, List, Optional  # dead-code-ok
 from urllib.parse import urljoin, urlparse
 
 import requests
@@ -750,9 +750,7 @@ Return ONLY valid JSON in this format:
         Returns:
             DashboardConfig with LIVE calculated metrics
         """
-        from sqlalchemy import inspect
 
-        from app import db
 
         logger.info(f"Generating dashboard for {model_class.__name__} with LIVE data")
 
@@ -802,7 +800,7 @@ Return ONLY valid JSON in this format:
         """Generate time-series chart from model data"""
         from datetime import datetime, timedelta
 
-        from sqlalchemy import extract, func
+        from sqlalchemy import func
 
         from app import db
 
@@ -1328,7 +1326,6 @@ Return ONLY valid JSON in this format:
         Note: This is called BEFORE value conversion to string,
         so we can inspect the original value type.
         """
-        from datetime import datetime
 
         column_type = str(column.type).upper()
 

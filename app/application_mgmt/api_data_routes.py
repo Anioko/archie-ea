@@ -8,7 +8,7 @@ import json
 import os
 from datetime import datetime
 
-from flask import current_app, flash, jsonify, redirect, request  # dead-code-ok
+from flask import current_app, flash, jsonify, request  # dead-code-ok
 from flask_login import current_user, login_required
 from werkzeug.utils import secure_filename
 
@@ -397,7 +397,7 @@ def test_api():
 def get_applications_table_data():
     """API endpoint for server-side paginated table data"""
     try:
-        from app.utils.api_response import error_response, success_response
+        from app.utils.api_response import success_response
         from sqlalchemy import inspect
 
         # Get query parameters with pagination bounds checking

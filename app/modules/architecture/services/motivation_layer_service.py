@@ -22,15 +22,13 @@ The Motivation Layer in ArchiMate 3.2 includes:
 
 import json
 import logging
-from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 from app import db
 from app.models import (
     AcceptanceCriteria,
     ArchiMateElement,
     ArchiMateRelationship,
-    ArchitectureModel,
     Requirement,
 )
 from app.models.business_capabilities import BusinessFunction

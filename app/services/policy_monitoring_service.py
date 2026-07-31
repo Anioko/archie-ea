@@ -18,7 +18,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import Integer, and_, desc, func, or_
+from sqlalchemy import Integer, desc, func
 
 from .. import db
 from ..models.application_portfolio import ApplicationComponent

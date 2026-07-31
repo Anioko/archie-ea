@@ -130,7 +130,7 @@ class CapabilityRequirementGeneratorService:
         Returns list of created KanbanCard.id values.
         If ADMPhase REQ does not exist, logs warning and returns [].
         """
-        from app.models.adm_kanban import ADMPhase, KanbanBoard, KanbanCard
+        from app.models.adm_kanban import ADMPhase, KanbanCard
 
         req_phase = ADMPhase.query.filter_by(code="REQ").first()
         if req_phase is None:

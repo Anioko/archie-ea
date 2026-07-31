@@ -6,7 +6,7 @@ This service enforces the API documentation standards.
 """
 
 import re
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
 from flask import current_app
 

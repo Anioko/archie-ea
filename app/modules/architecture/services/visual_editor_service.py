@@ -4,10 +4,9 @@ Provides real-time AI assistance during architecture editing
 """
 import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
-from app import db
-from app.models import ArchiMateElement, ArchiMateRelationship, ArchitectureModel, LLMInteraction
+from app.models import ArchiMateElement, ArchiMateRelationship, ArchitectureModel
 from app.services.archimate.archimate_validator import ArchiMateValidator
 from app.services.llm_service import LLMService
 

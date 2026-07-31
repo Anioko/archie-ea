@@ -13,9 +13,8 @@ from decimal import Decimal
 from typing import Any, Dict, List, Optional, Tuple
 
 from app import db
-from app.models import APISettings, LLMInteraction
+from app.models import APISettings
 from app.models.application_consolidation import (
-    ApplicationConsolidationRecommendation,
     ApplicationSimilarityAnalysis,
 )
 from app.models.application_layer import ApplicationComponent

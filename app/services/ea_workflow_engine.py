@@ -33,7 +33,7 @@ import logging
 import traceback
 import uuid
 from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional  # dead-code-ok
+from typing import Any, Dict, List, Optional  # dead-code-ok
 
 from flask import current_app
 
@@ -4909,7 +4909,6 @@ provides foundation for subsequent architecture development phases.
 
     def _handle_business_case_calc(self, instance, step_def, input_data) -> Dict:
         """APP_DISPOSITION step 6: estimate 3-year business case from dispositions."""
-        from app.models import ApplicationComponent
 
         dispositions_input = input_data.get("dispositions") or {}
         raw = dispositions_input.get("dispositions", []) if isinstance(dispositions_input, dict) else []
@@ -5384,7 +5383,6 @@ provides foundation for subsequent architecture development phases.
         No hardcoded costs — cost guidance derived from vendor tier in catalog.
         """
         from app.models.models import Vendor
-        from app.models.application import ApplicationCapabilityLink
         from app.models import ApplicationComponent
 
         capability_gaps = input_data.get("capability_gaps") or {}

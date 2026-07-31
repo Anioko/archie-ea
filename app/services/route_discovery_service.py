@@ -19,10 +19,9 @@ Category: services/navigation
 import re
 from collections import defaultdict
 from dataclasses import dataclass
-from functools import lru_cache
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
-from flask import current_app, request, url_for
+from flask import url_for
 
 
 @dataclass

@@ -14,11 +14,9 @@ Phase 5: Medium priority consolidations with full preservation
 import logging
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
-from flask import current_app
 
-from app import db
 
 # Import gap services
 try:

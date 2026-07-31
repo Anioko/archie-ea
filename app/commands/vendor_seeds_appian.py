@@ -15,7 +15,7 @@ Run with: python manage.py seed-vendor-appian
 import json
 
 from app import create_app, db
-from app.models import User, VendorStackTemplate
+from app.models import VendorStackTemplate
 from config import DevelopmentConfig
 
 

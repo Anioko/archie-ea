@@ -1,7 +1,7 @@
 import logging
 from flask import abort, jsonify, request, url_for
 from flask_login import current_user, login_required
-from sqlalchemy import distinct, or_
+from sqlalchemy import or_
 from sqlalchemy.orm import joinedload
 from app import db
 from app.models.application_portfolio import ApplicationComponent

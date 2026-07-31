@@ -176,7 +176,6 @@ def _match_capability_to_catalog(solution_id: int, element_name: str) -> list:
     try:
         from app.models.business_capabilities import BusinessCapability
         from app.models.solution_capability import SolutionCapability
-        from app import db as _db
 
         # Exact match first, then partial ILIKE, then word fragments
         name_lower = element_name.strip().lower()

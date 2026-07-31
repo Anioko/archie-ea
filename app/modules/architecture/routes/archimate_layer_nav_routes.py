@@ -16,7 +16,7 @@ Routes:
 - /architecture/implementation/* → Implementation Layer elements
 """
 
-from flask import Blueprint, redirect, url_for, request
+from flask import Blueprint, redirect, url_for
 from flask_login import login_required
 
 archimate_layer_nav_bp = Blueprint('archimate_layers', __name__, url_prefix='/architecture')

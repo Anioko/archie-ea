@@ -16,15 +16,12 @@ Reuses existing AI services:
 - DocumentProcessor for document analysis
 """
 
-import asyncio  # dead-code-ok
-import json  # dead-code-ok
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple  # dead-code-ok
+from typing import Any, Dict, List  # dead-code-ok
 
 from flask import current_app
 
-from app import db  # dead-code-ok
 from app.services.ai_suggestion_service import AISuggestionService
 from app.services.archimate.document_processor import DocumentProcessor
 from app.services.llm_service import LLMService

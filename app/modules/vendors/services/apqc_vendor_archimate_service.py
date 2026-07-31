@@ -18,7 +18,7 @@ and gap assessment.
 import json
 import logging
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 from app import db
 from app.models.application_portfolio import ApplicationComponent
@@ -26,7 +26,6 @@ from app.models.apqc_process import APQCProcess, ProcessApplicationMapping
 from app.models.archimate_core import ArchiMateElement, ArchitectureModel
 from app.models.vendor.vendor_organization import VendorProduct
 from app.models.vendor_product_apqc_mapping import VendorProductAPQCMapping
-from app.models.vendor_stack_template import VendorStackTemplate
 
 logger = logging.getLogger(__name__)
 

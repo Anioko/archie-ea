@@ -114,7 +114,6 @@ def get_velocity_data(board_id: int = None) -> dict:
             "average_velocity": float
         }
     """
-    from app.models.adm_kanban import KanbanCard
 
     query = Sprint.query.filter_by(status=SprintStatus.CLOSED)
     if board_id:
@@ -182,7 +181,6 @@ def get_sprint_analytics(sprint_id: int):
       - cycle_time: {"average_days": float, "data_points": [...]}
       - cfd: daily snapshot list of {"date": "YYYY-MM-DD", "backlog": int, "todo": int, "in_progress": int, "review": int, "done": int}
     """
-    from app.models.adm_kanban import KanbanCard
 
     sprint = Sprint.query.get(sprint_id)
     if sprint is None:

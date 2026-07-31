@@ -546,7 +546,6 @@ def api_mappings():
     """API endpoint to get application-capability mappings with gap analysis and filtering"""
     try:
         from app.models.application_layer import ApplicationComponent
-        from app.models.business_capabilities import BusinessCapability
         from app.models.unified_application_capability_mapping import (
             UnifiedApplicationCapabilityMapping,
         )
@@ -1310,12 +1309,7 @@ def api_manufacturing_capabilities():
 def api_export_mappings():
     """Export capability mappings and gap analysis to multiple formats"""
     try:
-        import csv
-        import json
-        from datetime import datetime
-        from io import StringIO
 
-        from flask import Response
 
         # Get format parameter
         export_format = request.args.get("format", "csv").lower()

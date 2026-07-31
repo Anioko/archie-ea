@@ -116,8 +116,7 @@ class EnterpriseExportService:
         """
         from app.models import Solution
         from pptx import Presentation
-        from pptx.util import Inches, Pt
-        from pptx.enum.text import PP_ALIGN
+        from pptx.util import Inches
         
         solution = Solution.query.get_or_404(solution_id)
         prs = Presentation()
@@ -226,7 +225,7 @@ class EnterpriseExportService:
         
         Uses: openpyxl
         """
-        from app.models import Application, Vendor
+        from app.models import Application
         from openpyxl import Workbook
         from openpyxl.styles import Font, PatternFill, Alignment
         

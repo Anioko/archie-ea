@@ -882,7 +882,6 @@ def api_roadmap_convert_gaps():
 
         # Optionally create work packages
         if create_wps and result["created"] > 0:
-            from app.models.implementation_migration import Gap
 
             for gap_data in gaps_data:
                 gap = gap_archimate_service.find_existing_gap(

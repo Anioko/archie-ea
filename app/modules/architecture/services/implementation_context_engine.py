@@ -12,7 +12,6 @@ This enables one-click code generation from architecture.
 """
 
 import json
-from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
 from app import db

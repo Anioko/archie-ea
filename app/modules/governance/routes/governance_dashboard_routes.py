@@ -5,11 +5,11 @@ Provides central governance oversight, ARB reviews, ADRs, risk register, and ent
 import logging
 from datetime import datetime, timedelta
 
-from flask import Blueprint, jsonify, render_template, request
-from flask_login import login_required, current_user
+from flask import Blueprint, jsonify, render_template
+from flask_login import login_required
 
 from app import db
-from app.decorators import audit_log, require_roles
+from app.decorators import require_roles
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +29,6 @@ def api_metrics():
     """API endpoint to get governance metrics."""
     try:
         from app.models.solution_governance import SolutionGovernance
-        from app.models.governance_gates import GovernanceGate
         
         # Count pending ARB reviews
         pending_reviews = db.session.query(SolutionGovernance).filter(

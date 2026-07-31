@@ -9,7 +9,7 @@ from flask import Blueprint, request
 from flask_login import login_required
 
 from app.decorators import audit_log
-from sqlalchemy import func, or_
+from sqlalchemy import or_
 
 from app import db
 from app.models.application_layer import ApplicationProcess, ApplicationService

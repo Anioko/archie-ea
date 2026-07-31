@@ -5506,7 +5506,6 @@ def api_composer_element_metrics():
     from app.models.archimate_core import ArchiMateElement
     from app.models.application_portfolio import ApplicationComponent
     from app.models.business_capabilities import BusinessCapability
-    from app.models.solution_archimate_element import SolutionArchiMateElement
 
     raw_ids = request.args.get("element_ids", "")
     if not raw_ids:

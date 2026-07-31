@@ -20,16 +20,13 @@ Usage:
     analysis = service.get_capability_process_vendor_analysis("customer-relationship-management")
 """
 
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List
 
-from flask import current_app
-from sqlalchemy import and_, func, or_
 
 from app import db
 from app.models.apqc_process import APQCProcess
 from app.models.business_capability import BusinessCapability
 from app.models.capability_process_mapping import CapabilityProcessMapping
-from app.models.unified_capability import UnifiedCapability
 from app.models.vendor.vendor_organization import VendorOrganization
 from app.models.vendor.vendor_product import VendorProduct
 from app.models.vendor_product_apqc_mapping import VendorProductAPQCMapping

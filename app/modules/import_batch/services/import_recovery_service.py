@@ -21,7 +21,6 @@ from typing import Any, Dict, List
 
 from app.models.import_session import CheckpointType, ImportStatus, StagingElementType
 from app.modules.import_batch.v2.services.ai_import_service_v2 import (
-    AIImportService,
     get_ai_import_service,
 )
 from app.modules.import_batch.v2.services.import_staging_service_v2 import (

@@ -91,7 +91,6 @@ class RationalizationProposalService:
         try:
             from app.models.application_rationalization import ApplicationRationalizationScore
             from app.models.application_portfolio import ApplicationComponent
-            from sqlalchemy import func
             from app import db
 
             eliminate_ids = db.session.query(
@@ -141,7 +140,6 @@ class RationalizationProposalService:
         proposals = []
         try:
             from app.models.application_capability import ApplicationCapabilityMapping
-            from app.models.application_portfolio import ApplicationComponent
             from app import db
             from sqlalchemy import func
 

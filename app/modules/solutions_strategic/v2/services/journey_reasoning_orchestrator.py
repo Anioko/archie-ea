@@ -1504,7 +1504,6 @@ Do not use placeholder text or generic language.
         # Also link DataObject elements related to the confirmed capabilities
         # The Code Workbench needs DataObjects for class diagram generation
         try:
-            from app.models.archimate_core import ArchiMateElement as AE
             from sqlalchemy import text as sa_text
 
             confirmed = self._get_journey_data().get("confirmed_capabilities", [])

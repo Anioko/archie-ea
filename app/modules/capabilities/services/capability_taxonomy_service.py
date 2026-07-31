@@ -19,9 +19,9 @@ import json
 from datetime import datetime
 import logging
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
-from sqlalchemy import and_, func, or_
+from sqlalchemy import func
 
 from app import db
 
@@ -497,7 +497,6 @@ class CapabilityTaxonomyService:
         user_id: int,
     ) -> Dict[str, Any]:
         """Create audit entry for taxonomy action."""
-        from app.models.application_capability import CapabilityTaxonomyAudit
 
         audit_entry = {
             "audit_type": "validation",

@@ -27,10 +27,9 @@ def vendors_redirect():
 @login_required
 def vendors_dashboard():
     """Display all vendor organizations with their product portfolios."""
-    from app.models.vendor.vendor_organization import VendorOrganization, VendorProduct
+    from app.models.vendor.vendor_organization import VendorOrganization
     from app.models.solution_models import solution_vendor_products
     from sqlalchemy.orm import joinedload
-    from sqlalchemy import func
 
     # Get query parameters
     vendor_type_filter = request.args.get('vendor_type', 'all')
@@ -131,7 +130,6 @@ def create_vendor():
     from app.models.vendor.vendor_organization import VendorOrganization
     from app.modules.vendors.forms import CreateVendorForm
     from flask_login import current_user
-    from datetime import datetime
 
     form = CreateVendorForm()
 
@@ -438,8 +436,6 @@ def vendor_applications_portfolio(vendor_id):
     from app.models.vendor.vendor_organization import application_vendor_products
     from app.models.models import ArchiMateElement
     from app.models.application_layer import ApplicationComponent
-    from sqlalchemy.orm import joinedload
-    from sqlalchemy import and_
 
     # Get vendor
     vendor = VendorOrganization.query.get_or_404(vendor_id)

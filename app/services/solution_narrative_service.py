@@ -52,8 +52,6 @@ def generate_sad(solution_id: int) -> dict:
         SolutionRequirement,
         SolutionConstraint,
     )
-    from app.models.archimate_core import ArchiMateElement
-    from app.models.solution_element import SolutionElement
     from app.services.archimate_traceability_service import get_traceability_chain
 
     solution = _safe(lambda: db.session.get(Solution, solution_id))
@@ -251,7 +249,6 @@ def generate_sad(solution_id: int) -> dict:
 
 def get_sad_html(solution_id: int) -> str:
     """Render the SAD dict to an HTML string using Jinja2 render_template_string."""
-    from flask import render_template_string
     sad = generate_sad(solution_id)
     template_path = "solutions/sad_document.html"
     try:

@@ -7,7 +7,7 @@ Provides comprehensive health check endpoints for monitoring system status.
 from app.monitoring.alerting_service import AlertingService
 import logging
 import time
-from datetime import datetime, timedelta  # dead-code-ok
+from datetime import datetime  # dead-code-ok
 from flask import Blueprint, jsonify, current_app
 
 from app import db

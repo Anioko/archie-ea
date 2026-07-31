@@ -15,15 +15,13 @@ Integrates with:
 import logging
 from datetime import date, datetime, timedelta
 from decimal import Decimal
-from typing import Any, Dict, List, Optional, Tuple
+from typing import List, Optional
 
-from sqlalchemy import and_, func, or_
-from sqlalchemy.orm import joinedload
+from sqlalchemy import func, or_
 
 from app import db
 from app.models.solution_outcomes import (
     OutcomeType,
-    RealizationStatus,
     SolutionOutcome,
     SolutionOutcomeMeasurement,
     TrackingStatus,

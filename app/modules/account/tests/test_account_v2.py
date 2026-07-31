@@ -10,7 +10,6 @@ Verifies:
 6. Schemas validate correctly
 7. Utils work as expected
 """
-import pytest
 
 
 class TestAccountV2Imports:
@@ -245,7 +244,6 @@ class TestAccountCompatWrapper:
         """Compat module imports without error."""
         with app.app_context():
             from app.compat.account import (
-                AccountCompatStats,
                 LEGACY_ROUTE_MAP,
                 wrap_legacy_account_bp,
             )

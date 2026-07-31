@@ -10,11 +10,9 @@ Features:
 """
 
 import logging
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional
 
-from sqlalchemy import and_, or_
 
-from app import db
 from app.models.application_layer import ApplicationComponent
 from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship
 from app.models.vendor.vendor_organization import VendorOrganization

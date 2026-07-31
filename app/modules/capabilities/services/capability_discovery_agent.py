@@ -8,10 +8,8 @@ semantic search and LLM analysis.
 import json
 import logging
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from app import db
 from app.models.business_capabilities import BusinessCapability
 from app.models.constants import ArchiMateLayer, CapabilityType
 from app.services.llm_service import LLMService

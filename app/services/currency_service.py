@@ -5,7 +5,6 @@ This service provides a unified way to handle currency formatting,
 symbol display, and currency conversion across the application.
 """
 
-import locale
 from typing import Optional, Union
 
 from flask import current_app

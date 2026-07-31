@@ -4,7 +4,7 @@ Admin v2 utility helpers.
 Shared helpers for the admin v2 module routes.
 """
 import logging
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 

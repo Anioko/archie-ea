@@ -8,7 +8,6 @@ strategy, and advisory services.
 Run with: python manage.py seed-consulting-partners
 """
 
-import json
 
 from app import create_app, db
 from app.models.consulting_partner import ConsultingPartner

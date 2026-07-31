@@ -6,7 +6,7 @@ Standardized capability management API endpoints following PRD - 003.
 
 from flask import Blueprint, request
 from flask_login import login_required
-from sqlalchemy import func, or_
+from sqlalchemy import or_
 
 from app import db
 from app.models.manufacturing_capability import ManufacturingCapability
@@ -15,7 +15,6 @@ from app.utils.api_response import (
     error_response,
     not_found_response,
     success_response,
-    validation_error_response,
 )
 
 capabilities_bp = Blueprint("capabilities_v1", __name__)

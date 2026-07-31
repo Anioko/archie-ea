@@ -12,14 +12,13 @@ Features:
 
 import json
 import logging
-from typing import Dict, List, Optional, Tuple  # dead-code-ok
+from typing import Dict, List, Optional  # dead-code-ok
 
 from app.services.archimate.archimate_prompts import GENERATE_ARCHIMATE_FROM_REQUIREMENTS
 from app.services.core.cache_service import cache_service
 from app.services.core.error_handler import (  # dead-code-ok
     ArchiMateValidationError,
     ErrorSeverity,
-    LLMServiceError,
     handle_service_errors,
     log_performance,
 )

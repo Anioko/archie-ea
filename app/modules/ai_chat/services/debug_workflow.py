@@ -9,11 +9,9 @@ AIC-319: Code-Level Debugging Workflow
 
 import logging
 import re
-import traceback
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
-from app import db
 
 logger = logging.getLogger(__name__)
 

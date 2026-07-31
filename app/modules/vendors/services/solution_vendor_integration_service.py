@@ -14,17 +14,14 @@ ArchiMate 3.2 Compliance:
 
 from datetime import datetime
 from decimal import Decimal
-from typing import Any, Dict, List, Optional, Tuple  # dead-code-ok
+from typing import Any, Dict, List, Optional  # dead-code-ok
 
-from sqlalchemy import and_, func, text  # dead-code-ok
+from sqlalchemy import text  # dead-code-ok
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import joinedload  # dead-code-ok
 
 from app import db
-from app.models.application_portfolio import ApplicationComponent  # dead-code-ok
-from app.models.models import ArchiMateElement  # dead-code-ok
 from app.models.truly_missing_models import Solution
-from app.models.vendor.vendor_organization import VendorOrganization, VendorProduct  # dead-code-ok
+from app.models.vendor.vendor_organization import VendorProduct  # dead-code-ok
 
 
 class SolutionVendorIntegrationService:

@@ -11,24 +11,17 @@ This service validates:
 - Data governance (100% target)
 """
 
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List
 
-from sqlalchemy import inspect, text
-from sqlalchemy.orm import joinedload, sessionmaker
+from sqlalchemy import inspect
 
 from app.models import (
-    ApplicationComponent,
-    ArchiMateElement,
-    ArchiMateRelationship,
-    BusinessCapability,
     BusinessObject,
-    BusinessProcess,
     CommunicationNetwork,
     ConceptualDataModel,
     DataEntity,
     DataLineage,
     DataObject,
-    DataObjectStorage,
     DataTransformation,
     LogicalDataModel,
     Meaning,

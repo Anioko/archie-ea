@@ -18,7 +18,7 @@ from ..models.business_layer import (
     BusinessService,
 )
 from ..models.implementation_migration import Deliverable, Plateau, WorkPackage
-from ..models.models import ArchiMateElement, ArchiMateRelationship, Requirement
+from ..models.models import Requirement
 from ..models.motivation import Driver, Goal
 from ..models.physical_layer import (
     PhysicalDistributionNetwork,

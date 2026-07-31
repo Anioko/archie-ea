@@ -242,7 +242,6 @@ def auto_map_application(application_id):
     This endpoint is kept for backward compatibility but now routes to the
     AI-powered mapping system for better results with confidence scoring.
     """
-    import warnings
     from flask import current_app
 
     # Log deprecation warning

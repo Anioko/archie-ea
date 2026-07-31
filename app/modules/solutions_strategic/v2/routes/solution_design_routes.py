@@ -28,7 +28,6 @@ import logging
 import os
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
-from typing import List
 
 from flask import (
     Blueprint,
@@ -52,7 +51,6 @@ from app import csrf, db
 from app.decorators import audit_log, require_roles
 from app.models.application_portfolio import ApplicationComponent
 from app.models.apqc_process import APQCProcess, ProcessApplicationMapping
-from app.models.archimate_core import ArchitectureModel
 from app.models.solution_sad_models import SolutionADRDirect, SolutionAPQCProcess
 from app.models.solution_governance import SolutionNotification
 from app.models.solution_models import Solution
@@ -1760,8 +1758,7 @@ def _build_solution_detail_context(solution):
     analysis_data = {}
     try:
         from app.models.solution_architect_models import (
-            SolutionAnalysisSession, SolutionProblemDefinition,
-            SolutionDriver, SolutionGoal, SolutionRequirement,
+            SolutionAnalysisSession, SolutionDriver, SolutionGoal, SolutionRequirement,
             SolutionConstraint, SolutionRecommendation,
         )
         drivers_all = []
@@ -2611,8 +2608,7 @@ def _build_blueprint_context(solution):
     try:
         from app.models.solution_sad_models import (
             SolutionIntegrationFlow, SolutionComposition, RiskSnapshot,
-            SolutionQualityAttribute, SolutionSLA, MigrationDependency,
-            SolutionInvestmentPhase, SolutionGovernanceException,
+            SolutionQualityAttribute, SolutionSLA, SolutionInvestmentPhase, SolutionGovernanceException,
             SolutionComplianceMapping, SolutionChangeRequest,
             SolutionFeasibilityReview, SolutionBenefitRealization,
             SolutionOrgImpact, SolutionLessonLearned,
@@ -3885,7 +3881,6 @@ def export_solution_blueprint(solution_id: int):
         role_map = {link.element_id: getattr(link, "element_role", "supporting") for link in links}
 
         # Group by section based on element type → viewpoint mapping
-        from app.modules.architecture.services.element_type_normalizer import ElementTypeNormalizer
         section_elements = {}
         type_to_section = {}
         for sec_id, sec_def in ctx["section_definitions"].items():
@@ -6260,7 +6255,6 @@ def get_solution_capabilities(solution_id: int):
 @login_required
 def get_motivation_elements(solution_id):
     """Return Assessments, Principles, Outcomes, Values for a solution."""
-    import json as _json
     solution = Solution.query.get_or_404(solution_id)
     elements = []
     try:
@@ -8667,8 +8661,6 @@ def suggest_connections(solution_id: int):
         from app.models.solution_models import (
             SolutionArchiMateElement,
             SolutionCapabilityMapping,
-            solution_applications,
-            solution_vendor_products,
         )
         from app.models.vendor.vendor_organization import VendorProduct
 
@@ -10466,8 +10458,7 @@ def api_get_viewpoint_elements(solution_id, section_id):
 @login_required
 def api_get_viewpoint_diagram_data(solution_id, section_id):
     """Return JointJS-compatible graph data (elements + relationships between them)."""
-    from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship
-    from app.models.solution_archimate_element import SolutionArchiMateElement
+    from app.models.archimate_core import ArchiMateRelationship
     from app.modules.solutions_strategic.v2.services.blueprint_completeness_service import (
         BlueprintCompletenessService,
     )

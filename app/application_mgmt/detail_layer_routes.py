@@ -12,16 +12,6 @@ from flask_login import login_required
 from sqlalchemy import func, select
 
 from .. import db
-from ..models.application_layer import (
-    ApplicationCollaboration,
-    ApplicationEvent,
-    ApplicationFunction,
-    ApplicationInteraction,
-    ApplicationInterface,
-    ApplicationProcess,
-    ApplicationService,
-    DataObject,
-)
 from ..models.application_portfolio import ApplicationComponent
 from ..models.archimate_business import (
     BusinessCollaboration,
@@ -38,15 +28,11 @@ from ..models.archimate_technology import (
     TechnologyInteraction,
     TechnologyProcess,
 )
-from ..models.business_capabilities import BusinessCapability, BusinessFunction
+from ..models.business_capabilities import BusinessCapability
 from ..models.business_layer import (
-    BusinessActor,
     BusinessEvent,
-    BusinessObject,
-    BusinessRole,
-    BusinessService,
 )
-from ..models.motivation import Assessment, Driver, Goal, Meaning, Stakeholder, Value
+from ..models.motivation import Assessment, Meaning, Stakeholder, Value
 from ..models.technology_layer import (
     CommunicationNetwork,
     Device,

@@ -426,7 +426,6 @@ def manage_schedules():
 
 def _calculate_next_run(schedule_type: str, schedule_config: dict):
     """Calculate next run time based on schedule type."""
-    from typing import Optional
 
     now = datetime.utcnow()
 

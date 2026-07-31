@@ -5,20 +5,10 @@ Extracted from capability_map_routes.py (lines 3081-3417).
 Routes registered on the shared ``capability_map`` blueprint.
 """
 
-from flask import current_app, jsonify, request  # dead-code-ok
+from flask import current_app, jsonify  # dead-code-ok
 from flask_login import login_required
-from sqlalchemy.exc import SQLAlchemyError  # dead-code-ok
-from sqlalchemy.orm import joinedload  # dead-code-ok
 
 from app import db
-from app.exceptions import (  # dead-code-ok
-    BusinessRuleError,
-    DatabaseError,
-    ExternalServiceError,
-    IntegrityError,
-    NotFoundError,
-    ValidationError,
-)
 
 from . import capability_map
 

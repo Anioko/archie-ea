@@ -4283,7 +4283,6 @@ full file content here
     ).count()
     version_label = f"1.{history_count}.0"
 
-    from datetime import datetime as _dt_hist
     history = CodegenGenerationHistory(
         codegen_generation_id=gen.id,
         generated_by_id=current_user.id,

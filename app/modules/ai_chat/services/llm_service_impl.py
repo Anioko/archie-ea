@@ -67,7 +67,7 @@ import requests
 from flask import current_app
 
 from app import db
-from app.models import LLMInteraction, PipelineStage
+from app.models import LLMInteraction
 
 # from .llm_validator import LLMValidator  # Temporarily disabled
 from app.services.core.retry_handler import retry_on_transient_error

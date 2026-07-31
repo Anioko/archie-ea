@@ -23,7 +23,7 @@ import json
 import logging
 from dataclasses import asdict, dataclass
 from decimal import Decimal
-from typing import Any, Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 from app import db
 

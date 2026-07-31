@@ -14,12 +14,10 @@ import json
 import os
 import time
 from datetime import datetime
-from enum import Enum  # dead-code-ok: reserved for future role enum extension
 
 from flask import (  # dead-code-ok: flash/Enum reserved; blueprint aggregates many routes
     Blueprint,
     current_app,
-    flash,
     jsonify,
     redirect,
     render_template,
@@ -1479,7 +1477,7 @@ def upload_document():
     try:
         from werkzeug.utils import secure_filename
 
-        from app.archimate_crud.routes import LAYER_CONFIG, MODEL_REGISTRY
+        from app.archimate_crud.routes import MODEL_REGISTRY
         from app.services.archimate.document_analysis_service import DocumentAnalysisService
         from app.services.core.async_utils import get_or_create_event_loop
         from app.services.core.retry_handler import execute_with_db_retry

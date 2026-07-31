@@ -9,7 +9,7 @@ enterprise architecture data model and MDD's UML-based code generation.
 import logging
 from typing import Dict, List
 
-from app.models import ApplicationComponent, BusinessCapability
+from app.models import ApplicationComponent
 from app.services.mdd_code_generation_service import UMLElement
 
 logger = logging.getLogger(__name__)

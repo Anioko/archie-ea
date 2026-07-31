@@ -11,11 +11,9 @@ Features:
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime
 from difflib import SequenceMatcher
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Tuple
 
-from app import db
 from app.models.document_analysis import DocumentAnalysis
 
 logger = logging.getLogger(__name__)

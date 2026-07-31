@@ -43,7 +43,6 @@ from app import db
 from app.models import ArchiMateElement, ArchiMateRelationship, ArchitectureModel
 from app.models.application_layer import (  # dead-code-ok
     ApplicationComponent,
-    ApplicationEvent,
     ApplicationInterface,
 )
 from app.models.business_capabilities import BusinessCapability

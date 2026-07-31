@@ -1,6 +1,6 @@
 """Hybrid Multi-Path Mapping Dashboard Routes"""
 
-from flask import flash, g, jsonify, render_template, request  # dead-code-ok
+from flask import flash, jsonify, render_template  # dead-code-ok
 from flask_login import login_required
 from sqlalchemy import text
 

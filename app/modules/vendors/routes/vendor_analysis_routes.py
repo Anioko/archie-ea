@@ -5,7 +5,6 @@ Legacy file preserved at original location.
 """
 from flask import Blueprint, request, jsonify, current_app
 from flask_login import login_required
-from app import csrf
 from app.decorators import audit_log
 from app.extensions import db
 from app.modules.vendors.services.analysis_service import (

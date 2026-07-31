@@ -3,21 +3,18 @@
 from werkzeug.exceptions import HTTPException
 import logging
 import re
-from datetime import datetime, timedelta
+from datetime import datetime
 
-from flask import current_app, flash, jsonify, redirect, render_template, request, url_for
+from flask import current_app, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
-from sqlalchemy import func, text
+from sqlalchemy import func
 
 from app import db
 from app.main.views import main
-from app.models.implementation_migration import Gap, Plateau
 from app.models.roadmap import RoadmapTask
 from app.models.roadmap_models import RoadmapDeliverable
-from app.models.unified_application_capability_mapping import UnifiedApplicationCapabilityMapping
 from app.models.unified_capability import BusinessDomain, UnifiedCapability
 from app.models.unified_work_package import UnifiedWorkPackage
-from app.services.capability_roadmap_dashboard_service import CapabilityRoadmapDashboardService
 
 logger = logging.getLogger(__name__)
 

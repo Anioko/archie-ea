@@ -6,7 +6,6 @@ from collections import defaultdict
 from flask import render_template
 
 from app import db
-from app.models.application_portfolio import ApplicationComponent
 from app.models.archimate_core import ArchiMateElement
 
 logger = logging.getLogger(__name__)

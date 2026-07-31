@@ -1866,7 +1866,6 @@ def rationalization_portfolio_workbench():
 
         if include_unscored:
             # Left outer join: show ALL apps, scored or not
-            from sqlalchemy.orm import outerjoin
             query = (
                 db.session.query(ApplicationComponent, ApplicationRationalizationScore)
                 .outerjoin(
@@ -2552,7 +2551,6 @@ def rationalization_decision_dossier(app_id):
     from app.models.application_rationalization import (
         ApplicationDependency,
         ApplicationRationalizationScore,
-        ReplacementPlan,
     )
 
     try:
@@ -3376,7 +3374,6 @@ def rationalization_executive_summary():
 def rationalization_score_app(app_id):
     """RATA-002/REQ-RAT-102: Score a single application."""
     from app.models.application_rationalization import (
-        ApplicationRationalizationScore,
         RationalizationBenefitsTracker,
     )
     from app.services.rationalization_scoring_service import (

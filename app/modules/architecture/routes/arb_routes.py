@@ -10,7 +10,6 @@ Integrates with existing platform workflows and provides TOGAF-aligned governanc
 """
 
 from datetime import datetime, timedelta
-from typing import List
 
 from flask import (
     Blueprint,

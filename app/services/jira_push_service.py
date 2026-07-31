@@ -103,7 +103,6 @@ class JiraPushService:
                                 "project_keys": [env_project],
                             }
 
-                    from app.services.connector_framework import ConnectorConfig
                     self.connector = JiraALMConnector(TempConfig())
                     return True
                 else:

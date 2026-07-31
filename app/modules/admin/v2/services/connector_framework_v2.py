@@ -11,17 +11,14 @@ Templated adapter framework for enterprise system integration with:
 Priority Connectors: ServiceNow CMDB, Jira ALM, Datadog APM
 """
 
-import asyncio
-import json
 import logging
 import uuid
 from abc import ABC, abstractmethod
-from datetime import datetime, timedelta
+from datetime import datetime
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Type, Union
+from typing import Any, Callable, Dict, List, Optional
 
-from flask import current_app
-from sqlalchemy import JSON, Boolean, Column, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, Column, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 

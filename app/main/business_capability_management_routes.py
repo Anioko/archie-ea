@@ -8,7 +8,7 @@ Provides routes for managing business capability lists, taxonomy,
 and organization separate from maturity management.
 """
 
-from flask import Blueprint, flash, g, redirect, render_template, request, url_for
+from flask import Blueprint, flash, redirect, render_template, request, url_for
 from flask_login import login_required
 from sqlalchemy import text
 

@@ -253,7 +253,6 @@ def get_viewpoint_counts(solution_id: int) -> dict:
     try:
         from app.models.archimate_core import ArchiMateElement
         from app.models.solution_models import SolutionArchiMateElement
-        from app import db
 
         # Get all element IDs for this solution
         junctions = SolutionArchiMateElement.query.filter_by(solution_id=solution_id).all()
@@ -323,7 +322,6 @@ def get_viewpoint_data(viewpoint_id: str, solution_id: int = None) -> dict:
 
     try:
         from app.models.archimate_core import ArchiMateElement
-        from app import db
 
         # Get solution's element IDs (junction + fallback)
         from app.models.solution_models import SolutionArchiMateElement

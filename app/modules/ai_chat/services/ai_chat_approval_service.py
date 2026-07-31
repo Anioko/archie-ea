@@ -12,7 +12,6 @@ import logging
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
-from flask import current_app  # dead-code-ok: used in exception logging via self.logger which is app-context-aware
 
 from app import db
 from app.models.ai_chat_crud_approval import AIChatCRUDApproval, ApprovalStatus

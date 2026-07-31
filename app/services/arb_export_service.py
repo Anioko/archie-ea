@@ -11,7 +11,7 @@ import csv
 import io
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import List
 
 try:
     import pandas as pd
@@ -33,7 +33,6 @@ except ImportError:
     REPORTLAB_AVAILABLE = False
     logging.warning("ReportLab not available - PDF export functionality limited")
 
-from app import db
 from app.models.architecture_review_board import (
     ARBAuditLog,
     ARBException,

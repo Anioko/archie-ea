@@ -27,7 +27,6 @@ from app.config.archimate_viewpoints import (
     get_viewpoints_for_stakeholder,
 )
 from app.services.archimate.viewpoint_builder import (
-    Viewpoint,
     get_viewpoint_builder,
 )
 

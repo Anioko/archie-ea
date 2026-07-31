@@ -16,7 +16,6 @@ from datetime import datetime
 
 from flask import current_app, jsonify, request, send_file
 from flask_login import current_user, login_required
-from werkzeug.utils import secure_filename
 
 from app import db
 from app.modules.architecture.routes.arb_routes import arb_bp

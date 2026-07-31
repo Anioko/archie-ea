@@ -1505,7 +1505,6 @@ def _register_late_apis(app, csrf, **flags):
 
             if os.environ.get("USE_IMPORT_BATCH_COMPAT", "true").lower() != "false":
                 try:
-                    from app.compat.import_batch import wrap_legacy_import_batch_bp
 
                     # Note: register_batch_processing_routes is a function, not a blueprint
                     # Compat wrapper would need to be applied differently if needed

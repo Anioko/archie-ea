@@ -36,7 +36,7 @@ def upload_document():
     try:
         from werkzeug.utils import secure_filename
 
-        from app.archimate_crud.routes import LAYER_CONFIG, MODEL_REGISTRY
+        from app.archimate_crud.routes import MODEL_REGISTRY
         from app.services.archimate.document_analysis_service import (
             DocumentAnalysisService,
         )

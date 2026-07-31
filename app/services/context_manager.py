@@ -5,13 +5,11 @@ Provides intelligent context enhancement, persistence, and management
 for multi-domain AI conversations.
 """
 
-import asyncio  # dead-code-ok
 import json
 import logging
-from datetime import datetime, timedelta  # dead-code-ok
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple  # dead-code-ok
+from datetime import datetime  # dead-code-ok
+from typing import TYPE_CHECKING, Any, Dict, List, Optional  # dead-code-ok
 
-from flask import current_app  # dead-code-ok
 from sqlalchemy import text
 
 from app import db

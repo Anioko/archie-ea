@@ -3,10 +3,8 @@ UI Pattern Guardrails - Unified Modal Enforcement
 ZERO TOLERANCE for UI pattern violations
 """
 
-import os
 import re
 import sys
-from pathlib import Path
 from typing import Any, Dict, List
 
 

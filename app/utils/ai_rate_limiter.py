@@ -7,11 +7,9 @@ Prevents cost explosion from excessive LLM API calls.
 
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, Optional
+from typing import Dict
 
-from flask import current_app
 
-from app import db
 
 logger = logging.getLogger(__name__)
 

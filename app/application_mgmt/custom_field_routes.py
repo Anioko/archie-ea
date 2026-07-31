@@ -73,7 +73,6 @@ def _validate_custom_field(form_data):
 @require_roles("admin")
 def custom_fields_list():
     """List all custom field definitions with filtering and search"""
-    from ..models.custom_fields import ApplicationCustomFieldValue
 
     # Get query parameters
     status_filter = request.args.get("status", "all")

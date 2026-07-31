@@ -16,17 +16,13 @@ Key Features:
 - TCO benchmark population
 """
 
-import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
 from decimal import Decimal
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import joinedload
 
 from app import db
-from app.models.business_capabilities import BusinessCapability
 from app.models.vendor.vendor_organization import (
     TCOCalculation,
     VendorOrganization,
@@ -38,7 +34,6 @@ from app.models.vendor.vendor_organization import (
 
 # Import comprehensive dataset
 from scripts.vendor_seeds.comprehensive_vendor_dataset import (
-    COMPREHENSIVE_VENDOR_DATA,
     RISK_BENCHMARKS,
     TCO_BENCHMARKS,
     get_products_by_category,

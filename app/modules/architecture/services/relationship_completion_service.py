@@ -5,12 +5,9 @@ Completes all bidirectional relationships to achieve 100% relationship integrity
 This service adds missing back_populates to existing models.
 """
 
-from typing import Dict, List, Set
+from typing import Dict
 
-from sqlalchemy import text
-from sqlalchemy.orm import relationship
 
-from app.models import BusinessCapability, BusinessProcess, Node, SystemSoftware, TechnologyArtifact
 
 
 class RelationshipCompletionService:

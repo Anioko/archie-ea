@@ -3,9 +3,8 @@ Context Handlers for Code Generation
 
 Provides context-aware data loading for different code generation modes.
 """
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
-from app import db
 from app.models.application_portfolio import ApplicationComponent
 
 try:
@@ -15,7 +14,7 @@ except ImportError:
     Application = None
 import logging
 
-from app.services.mdd_code_generation_service import TechnologyStack, UMLElement
+from app.services.mdd_code_generation_service import UMLElement
 
 logger = logging.getLogger(__name__)
 

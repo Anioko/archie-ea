@@ -4,7 +4,7 @@ Admin User Service - Business logic for admin user management.
 Extracted from: app/admin/views.py (user CRUD, invitations, role changes)
 """
 import logging
-from typing import Optional, Tuple
+from typing import Tuple
 
 from flask import url_for
 from sqlalchemy import func

@@ -2,9 +2,8 @@
 Conversation History Service with Vector Search
 Persistent chat threads with semantic search capabilities
 """
-import json  # dead-code-ok
 import uuid
-from dataclasses import asdict, dataclass  # dead-code-ok
+from dataclasses import dataclass  # dead-code-ok
 from datetime import datetime
 from typing import Dict, List, Optional
 

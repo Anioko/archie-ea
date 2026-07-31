@@ -4,7 +4,6 @@ Wraps all file operations with automatic policy checking
 """
 
 import logging
-import os
 from datetime import datetime
 from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -13,7 +12,6 @@ from app.utils.policy_aware_tools import safe_create_file, safe_delete_file, saf
 from app.utils.policy_enforcer import (
     PolicySeverity,
     PolicyViolation,
-    block_if_violation,
     validate_operation,
 )
 

@@ -10,7 +10,6 @@ Phase 2: Service consolidation (2 → 1) with full preservation
 """
 
 import hashlib
-import json  # dead-code-ok
 import logging
 from dataclasses import dataclass
 from datetime import datetime

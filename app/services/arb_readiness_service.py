@@ -8,7 +8,7 @@ compliance before allowing submission to ARB.
 
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from app import db
 from app.models.architecture_review_board import (

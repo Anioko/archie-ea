@@ -13,7 +13,7 @@ from typing import Optional
 from pptx import Presentation
 from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN
-from pptx.util import Cm, Inches, Pt
+from pptx.util import Inches, Pt
 
 logger = logging.getLogger(__name__)
 

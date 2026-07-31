@@ -11,9 +11,8 @@ Generates visual representations from AI Chat queries including:
 
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
-from app import db
 
 logger = logging.getLogger(__name__)
 

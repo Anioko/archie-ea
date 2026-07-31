@@ -4,7 +4,7 @@ API endpoints for transforming AI chat outputs into business-friendly insights
 """
 
 from flask import Blueprint, jsonify, request
-from flask_login import current_user, login_required
+from flask_login import login_required
 
 from app.services.business_output_service import BusinessOutputService, StakeholderRole
 

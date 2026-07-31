@@ -415,9 +415,6 @@ def api_arch_elements(id):
                 ApplicationService,
                 DataObject,
             )
-            from app.models.business_layer import BusinessService
-            from app.models.process_data import BusinessProcess
-            from app.models.technology_layer import TechnologyService
 
             # Collect all elements
             processes = ApplicationProcess.query.filter_by(
@@ -1253,12 +1250,8 @@ def api_bulk_process_link():
         confidence_threshold: float - minimum confidence (0-1)
         dry_run: bool - only return suggestions without creating links
     """
-    import re
-    from difflib import SequenceMatcher
 
-    from sqlalchemy import or_
 
-    from app.models.process_data import BusinessProcess
     from app.models.relationship_tables import ApplicationProcessSupport
 
     data = request.get_json() or {}

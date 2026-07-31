@@ -3,10 +3,9 @@ Unified Timeline Engine
 Synchronizes and manages timelines across all roadmap systems
 """
 
-import json  # dead-code-ok
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple  # dead-code-ok
+from typing import Dict, List, Optional  # dead-code-ok
 
 from sqlalchemy import text
 

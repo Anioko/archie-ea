@@ -18,9 +18,7 @@ Score: 0–100 (100 = fully clean-core compliant)
 """
 
 import logging
-import re
 from dataclasses import dataclass, field
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -195,8 +193,6 @@ class SAPCleanCoreService:
 
     @classmethod
     def _detect_sap_footprint(cls, solution) -> dict:
-        from app import db
-        from sqlalchemy import text
 
         sap_apps, sap_elements, btp_elements, classic_patterns, clean_patterns = [], [], [], [], []
 

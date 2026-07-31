@@ -1,7 +1,6 @@
 import csv
 import io
 import logging
-from datetime import date
 from flask import abort, jsonify, request, url_for
 from flask_login import current_user, login_required
 from app import db
@@ -1411,7 +1410,6 @@ def get_solution_options(solution_id):
     """List all solution options/recommendations."""
     solution = Solution.query.get_or_404(solution_id)
     from app.models.solution_architect_models import (
-        SolutionAnalysisSession,
         SolutionRecommendation,
     )
 
@@ -2229,7 +2227,6 @@ def get_solution_stakeholder_concerns(solution_id):
     Solution.query.get_or_404(solution_id)
     try:
         from app.models.solution_stakeholder import (
-            SolutionStakeholder,
             SolutionStakeholderMapping,
         )
 

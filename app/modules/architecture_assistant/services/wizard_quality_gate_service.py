@@ -11,9 +11,8 @@ if deterministic score already passes or already fails catastrophically.
 
 import json
 import logging
-import uuid
-from dataclasses import asdict, dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from dataclasses import asdict, dataclass
+from typing import List, Optional, Tuple
 
 from app import db
 
@@ -428,7 +427,7 @@ class WizardQualityGateService:
             return int((len(connected) / max(len(elements), 1)) * 100)
 
         try:
-            from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship
+            from app.models.archimate_core import ArchiMateRelationship
 
             element_ids = set()
             rows = db.session.execute(db.text(  # tenant-filtered: scoped via solution_id FK

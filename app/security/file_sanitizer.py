@@ -8,14 +8,11 @@ import logging
 import tempfile
 import os
 import zipfile
-import tarfile
-import gzip
 import shutil
 from datetime import datetime
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 from enum import Enum
-import hashlib
 import re
 
 from flask import current_app

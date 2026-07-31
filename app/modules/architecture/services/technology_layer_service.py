@@ -26,10 +26,10 @@ ArchiMate 3.2 Technology Layer Elements:
 
 import json
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 from app import db
-from app.models import ArchiMateElement, ArchiMateRelationship, ArchitectureModel
+from app.models import ArchiMateElement, ArchiMateRelationship
 from app.services.llm_service import LLMService
 
 

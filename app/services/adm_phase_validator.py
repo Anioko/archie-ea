@@ -8,11 +8,10 @@ Replaces the arbitrary '2-phase backward limit' with methodology-compliant rules
 - Proper dependency validation including external dependencies
 """
 
-from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List
 
 from app import db
-from app.models.adm_kanban import ADMPhase, KanbanCard, KanbanBoard
+from app.models.adm_kanban import ADMPhase, KanbanCard
 from app.models.adm_phase_approval import ADMPhaseApproval, ADMComplianceCheckpoint, ApprovalStatus
 from app.models.adm_kanban_junctions import CardDependency
 from app.services.adm_audit_service import ADMAuditAction, adm_audit_service

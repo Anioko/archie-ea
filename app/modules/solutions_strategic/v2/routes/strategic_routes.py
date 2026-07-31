@@ -935,7 +935,6 @@ def api_get_health_override(override_id):
 def api_update_health_override(override_id):
     """Update an existing capability health override."""
     try:
-        from flask_login import current_user
         
         override = CapabilityHealthOverride.query.get(override_id)
         

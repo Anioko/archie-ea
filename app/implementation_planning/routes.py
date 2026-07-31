@@ -14,25 +14,20 @@ Complies with:
 - Flask best practices
 """
 
-import json  # dead-code-ok
-from datetime import datetime, timedelta  # dead-code-ok
+from datetime import datetime  # dead-code-ok
 
 from flask import current_app, flash, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
-from sqlalchemy import and_, func, or_, text  # dead-code-ok
+from sqlalchemy import or_, text  # dead-code-ok
 from sqlalchemy.orm import joinedload  # dead-code-ok
 
-from .. import csrf, db  # dead-code-ok
+from .. import db  # dead-code-ok
 from ..models.implementation_migration import (
     Deliverable,
     ImplementationEvent,
     Gap as ImplementationGap,
     Plateau as ImplementationPlateau,
     WorkPackage as ImplementationWorkPackage,
-)
-from ..models.models import ArchitectureModel  # dead-code-ok
-from ..models.unified_application_capability_mapping import (  # dead-code-ok
-    UnifiedApplicationCapabilityMapping,
 )
 from ..models.unified_capability import UnifiedCapability
 from ..services.gap_discovery_service import GapDiscoveryService

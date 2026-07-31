@@ -5,7 +5,7 @@ REST API endpoints for ACM Technical Capability management using hybrid approach
 Provides comprehensive CRUD operations with validation and performance optimization.
 """
 
-from flask import Blueprint, g, jsonify, request
+from flask import Blueprint, jsonify, request
 from flask_login import login_required
 
 from app import db

@@ -11,17 +11,12 @@ PERFORMANCE OPTIMIZED:
 """
 
 import logging
-from typing import Any, Dict, List, Optional, Set  # dead-code-ok
+from typing import Any, Dict, List, Optional  # dead-code-ok
 
-from flask import current_app  # dead-code-ok
-from sqlalchemy.orm import joinedload  # dead-code-ok
 
-from app import db  # dead-code-ok
 from app.extensions.cache import cache_manager
 from app.models.application_portfolio import ApplicationComponent
 from app.models.business_capabilities import BusinessCapability
-from app.models.compliance_models import ComplianceGap, ComplianceRequirement  # dead-code-ok
-from app.models.relationship_tables import application_compliance_realization  # dead-code-ok
 from app.models.unified_application_capability_mapping import (
     UnifiedApplicationCapabilityMapping,
 )

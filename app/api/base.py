@@ -6,9 +6,9 @@ Provides base resource classes and common functionality for Flask-RESTful APIs.
 
 from functools import wraps
 
-from flask import current_app, jsonify, request
+from flask import current_app, request
 from flask_restful import Resource, abort
-from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy.exc import SQLAlchemyError
 
 from app import db
 

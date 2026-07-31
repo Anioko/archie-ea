@@ -8,7 +8,6 @@ This script:
 """
 
 import logging
-from typing import List, Tuple  # dead-code-ok
 
 from sqlalchemy import text
 
@@ -93,7 +92,6 @@ def migrate_chromadb_to_pgvector(db_session, chromadb_client=None) -> int:
         return 0
 
     try:
-        from app.models.vector_embeddings import VendorProductEmbedding
         from app.services.pgvector_embedding_service import get_pgvector_service
 
         migrated = 0

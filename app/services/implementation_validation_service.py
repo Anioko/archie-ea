@@ -21,13 +21,10 @@ Complies with:
 """
 
 import logging
-from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Set, Tuple
+from datetime import datetime
+from typing import Any, Dict, List, Optional
 
-from flask import current_app
-from sqlalchemy import and_, or_
 
-from .. import db
 from ..models.implementation_migration import (
     Deliverable,
     ImplementationEvent,
@@ -35,7 +32,7 @@ from ..models.implementation_migration import (
     Plateau as ImplementationPlateau,
     WorkPackage as ImplementationWorkPackage,
 )
-from ..models.models import ArchiMateElement, ArchiMateRelationship, ArchitectureModel
+from ..models.models import ArchiMateElement, ArchiMateRelationship
 
 logger = logging.getLogger(__name__)
 

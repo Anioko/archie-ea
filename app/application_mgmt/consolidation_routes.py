@@ -23,7 +23,6 @@ logger = logging.getLogger(__name__)
 
 from .. import db
 from ..models.application_portfolio import ApplicationComponent
-from ..models.models import ArchiMateElement
 from app.utils.deprecation import deprecated_route
 from . import application_mgmt
 
@@ -164,9 +163,7 @@ def find_duplicate_applications():
     Returns:
         JSON with duplicate groups, similarity scores, and consolidation recommendations.
     """
-    import asyncio
 
-    from sqlalchemy import and_, func, or_
 
     from ..models.application_consolidation import ApplicationSimilarityAnalysis
     from ..models.application_layer import ApplicationComponent
@@ -426,7 +423,6 @@ def analyze_application_similarity():
     Returns:
         JSON with analysis results and statistics
     """
-    import asyncio
 
     from ..services.application_similarity_service import ApplicationSimilarityService
     from ..services.llm_service import LLMService
@@ -621,7 +617,6 @@ def match_applications_to_vendors():
         from ..models.vendor.vendor_organization import (
             VendorOrganization,
             VendorProduct,
-            application_vendor_products,
         )
 
         # Get all applications
@@ -719,7 +714,6 @@ def confirm_vendor_matches():
         from ..models.models import ArchiMateElement
         from ..models.vendor.vendor_organization import (
             VendorProduct,
-            application_vendor_products,
         )
 
         confirmed_count = 0

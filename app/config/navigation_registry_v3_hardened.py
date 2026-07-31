@@ -22,7 +22,6 @@ import logging
 import time
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 from enum import Enum
-from functools import lru_cache  # dead-code-ok
 from urllib.parse import urlparse
 
 from pydantic import BaseModel, Field, field_validator, ConfigDict
@@ -408,7 +407,6 @@ class NavigationRegistryV3:
         items = []
         
         try:
-            from flask import current_app
             from app import db
             
             # ✅ FIX: Validate database is available

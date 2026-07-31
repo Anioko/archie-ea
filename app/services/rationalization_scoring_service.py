@@ -104,9 +104,7 @@ class RationalizationScoringService:
         """
         from app.models.application_rationalization import (
             RationalizationBenefitsTracker,
-            ApplicationRationalizationScore,
         )
-        from app import db
 
         query = RationalizationBenefitsTracker.query.filter(
             RationalizationBenefitsTracker.tracking_status.in_(["measured", "validated"])

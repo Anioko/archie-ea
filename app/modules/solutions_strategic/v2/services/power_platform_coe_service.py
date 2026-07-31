@@ -9,13 +9,11 @@ Credentials are stored in APISettings using:
   jira_email       → client_id
   custom_endpoint_url → environment URL
 """
-import json
 import logging
 import time
 from datetime import datetime
 
 import requests
-from flask import current_app
 
 from app import db
 

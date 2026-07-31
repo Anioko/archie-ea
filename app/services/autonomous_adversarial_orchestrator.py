@@ -11,12 +11,12 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Dict, List, Optional, Any, Callable
+from typing import Dict, List, Optional, Any
 from pathlib import Path
 
 from app.services.adversarial_scope_service import ScopeDetectionService, EnforcementLevel
-from app.services.lightweight_adversarial_validator import LightweightAdversarialValidator, ValidationResult
-from app.services.dual_agent_orchestrator import DualAgentOrchestrator, AgentContext
+from app.services.lightweight_adversarial_validator import LightweightAdversarialValidator
+from app.services.dual_agent_orchestrator import DualAgentOrchestrator
 from app.services.critique_verification_service import CritiqueVerificationService
 
 logger = logging.getLogger(__name__)

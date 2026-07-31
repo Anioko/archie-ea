@@ -7,7 +7,7 @@ Includes both rule-based pattern detection and AI-powered pattern analysis.
 
 import logging
 from collections import defaultdict
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 from app.models import ArchiMateElement, ArchiMateRelationship, ArchitectureModel
 

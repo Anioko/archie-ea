@@ -635,7 +635,6 @@ def api_get_architecture_documents(id):
 def api_upload_architecture_document(id):
     """Upload new architecture document."""
     import os
-    import traceback
 
     from werkzeug.utils import secure_filename
 

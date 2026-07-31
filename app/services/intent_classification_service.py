@@ -5,19 +5,15 @@ Provides production-grade intent classification using machine learning models
 with confidence scoring and entity extraction.
 """
 
-import asyncio
-import json
 import logging
 import pickle
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List
 
 import numpy as np
-from flask import current_app
 
-from app import db
 
 logger = logging.getLogger(__name__)
 

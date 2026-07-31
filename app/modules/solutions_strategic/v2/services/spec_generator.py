@@ -12,7 +12,6 @@ Every generated artifact includes x-archimate-source traceability linking
 back to the governed architecture element in A.R.C.H.I.E.
 """
 import hashlib
-import json
 import logging
 import re
 from collections import OrderedDict
@@ -403,7 +402,7 @@ class SolutionSpecGenerator:
             return  # Already have explicit flows
 
         try:
-            from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship
+            from app.models.archimate_core import ArchiMateRelationship
 
             element_ids = {ae.element_id for ae in self._archimate_elements if ae.element_id}
             if len(element_ids) < 2:

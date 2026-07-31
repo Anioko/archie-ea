@@ -660,7 +660,7 @@ def refine_names(solution_id):
     Response: {"refined": [{"id": 1, "type": "Goal", "before": "...", "after": "..."}], ...}
     """
     from app.models.archimate_core import ArchiMateElement
-    from app.modules.architecture.services.inference_providers import PROVIDER_REGISTRY, _llm_refine_element
+    from app.modules.architecture.services.inference_providers import _llm_refine_element
 
     solution = Solution.query.get(solution_id)
     if not solution:

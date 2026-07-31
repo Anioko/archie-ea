@@ -16,11 +16,9 @@ Components:
 import json
 import time
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
-import requests
 from flask import current_app
-from sqlalchemy.orm import joinedload
 
 from app import db
 from app.models.ai_service import AIInteractionLog, AIPromptTemplate, AIServiceConfig

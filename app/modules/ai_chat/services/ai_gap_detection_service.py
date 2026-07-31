@@ -26,26 +26,21 @@ Usage:
     legacy_only = service.find_capabilities_with_only_legacy_apps()
 """
 
-import json  # dead-code-ok
 import logging
 import re
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from flask import current_app
-from sqlalchemy import and_, func, or_, text  # dead-code-ok
+from sqlalchemy import func, or_  # dead-code-ok
 
 from app import db
 from app.models.application_portfolio import ApplicationComponent
-from app.models.business_capabilities import BusinessCapability  # dead-code-ok
 from app.models.capability_gap_analysis import (  # dead-code-ok
-    CapabilityGapAnalysis,
     CapabilityGapDetail,
-    GapAnalysisRecommendation,
-    GapSolutionOption,
 )
 from app.models.unified_application_capability_mapping import UnifiedApplicationCapabilityMapping
-from app.models.unified_capability import BusinessDomain, UnifiedCapability  # dead-code-ok
+from app.models.unified_capability import UnifiedCapability  # dead-code-ok
 
 logger = logging.getLogger(__name__)
 
@@ -586,7 +581,6 @@ class AIGapDetectionService:
         results = []
 
         try:
-            from app.models.vendor.vendor_organization import VendorOrganization, VendorProduct
             from app.models.vendor.vendor_product import VendorProductDetail
 
             # Check for EOL dates in the near future (18 months)

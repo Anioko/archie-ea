@@ -22,7 +22,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
-from sqlalchemy import and_, or_
+from sqlalchemy import or_
 from sqlalchemy.orm import joinedload
 
 from app import db
@@ -31,7 +31,6 @@ from app.models import (
     ADRCapabilityLink,
     ArchiMateElement,
     ArchiMateRelationship,
-    ArchitectureModel,
     BusinessCapability,
     ComplianceGap,
     ComplianceRequirement,

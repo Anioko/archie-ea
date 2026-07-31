@@ -8,9 +8,9 @@ Provides role-based access control for Architecture Board, stakeholder, and admi
 import functools
 import logging
 from enum import Enum
-from typing import Any, Callable, List, Optional
+from typing import Callable, List
 
-from flask import abort, current_app, g, jsonify, request
+from flask import abort, g, jsonify, request
 from flask_login import current_user, login_required
 
 from app.utils.adm_rate_limiter import ADMRateLimitExceeded, adm_rate_limiter

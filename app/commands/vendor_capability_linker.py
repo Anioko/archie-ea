@@ -19,7 +19,7 @@ Usage:
 
 import json
 from difflib import SequenceMatcher
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 from app import db
 from app.models.business_capabilities import BusinessCapability

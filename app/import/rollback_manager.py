@@ -5,10 +5,8 @@ Provides comprehensive rollback capabilities for import workflows.
 """
 
 import logging
-import json
-import shutil
 from datetime import datetime, timedelta
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, asdict
 from enum import Enum
 import threading

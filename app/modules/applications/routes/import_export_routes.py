@@ -824,7 +824,6 @@ def rollback_import(history_id):
         # AUDIT-IMP-006: Create audit log entry for the rollback action.
         # This provides accountability for destructive rollback operations.
         try:
-            from datetime import datetime
             from app.models.batch_import import ImportAuditLog
 
             rollback_audit = ImportAuditLog(

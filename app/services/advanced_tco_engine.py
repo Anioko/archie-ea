@@ -18,11 +18,10 @@ import io
 import json
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from decimal import Decimal
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
-import numpy as np
 
 # Excel export dependencies
 try:
@@ -35,13 +34,10 @@ try:
 except ImportError:
     EXCEL_AVAILABLE = False
 
-from sqlalchemy import func
 
 from app import db
-from app.models.business_capabilities import BusinessCapability
 from app.models.vendor.vendor_organization import (
     TCOCalculation,
-    VendorOrganization,
     VendorProduct,
     VendorProductPricing,
 )

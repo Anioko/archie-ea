@@ -8,7 +8,6 @@ Uses Flask before/after request hooks and signals.
 import logging
 
 from flask import request, g
-from flask.signals import request_started, request_finished
 
 from app.services.audit_service import AuditService
 
@@ -60,7 +59,6 @@ class AuditIntegration:
             if not self._should_audit_request():
                 return response
 
-            import time
 
             # Determine action type
             action = self._determine_action()

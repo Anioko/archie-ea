@@ -11,7 +11,7 @@ Consolidated API endpoints for vendor operations.
 All endpoints return standardized JSON responses.
 """
 
-from flask import jsonify, request, current_app, Blueprint, redirect, url_for
+from flask import jsonify, request, current_app, Blueprint, url_for
 from flask_login import login_required, current_user
 from sqlalchemy import func
 
@@ -267,7 +267,6 @@ def create_vendor():
 def update_vendor(vendor_id):
     """Update vendor organization with allowlist protection and audit logging. PROD-009"""
     from datetime import datetime
-    from sqlalchemy.orm import with_for_update
 
     data = request.get_json() or {}
 
@@ -698,7 +697,6 @@ def get_recommendations():
 @require_roles("admin", "architect")
 def create_analysis():
     """Create vendor analysis."""
-    from flask_login import current_user
 
     data = request.get_json()
     if not data:

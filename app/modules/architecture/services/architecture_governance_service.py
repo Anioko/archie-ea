@@ -11,11 +11,11 @@ Manages architecture reviews, standards compliance, and governance metrics:
 - Quality assurance processes
 """
 
-from datetime import date, datetime
-from typing import Dict, List, Optional, Tuple  # dead-code-ok
+from datetime import datetime
+from typing import Dict, List  # dead-code-ok
 
 from flask import g
-from sqlalchemy import and_, func, or_, text  # dead-code-ok
+from sqlalchemy import func, text  # dead-code-ok
 
 from app import db
 from app.services.decorators import transactional

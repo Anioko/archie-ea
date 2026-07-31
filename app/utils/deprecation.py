@@ -262,7 +262,7 @@ APQC_UNIFIED_GETTER = "app.services.unified_apqc_service.get_unified_apqc_servic
 # ROUTE DEPRECATION UTILITIES (for safe route migration)
 # ============================================================================
 
-from flask import current_app, jsonify, redirect, request, url_for
+from flask import jsonify, redirect, request, url_for
 
 
 class RouteDeprecationWarning:

@@ -5,14 +5,13 @@ ent-05 Gantt Chart Export API Routes
 - POST /api/solutions/<id>/gantt-export/png (async)
 """
 
-from flask import Blueprint, jsonify, request, current_app, send_file
-from flask_login import login_required, current_user
+from flask import Blueprint, jsonify, send_file
+from flask_login import login_required
 from werkzeug.exceptions import HTTPException
 import logging
 import io
 from datetime import datetime
 
-from app import db
 from app.models.solution_models import Solution
 from app.models.roadmap_models import RoadmapWorkPackage
 from app.modules.solutions_strategic.v2.services.gantt_enhancement_service import (

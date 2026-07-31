@@ -572,7 +572,6 @@ def bulk_process_link():
         "dry_run": false  // if true, only return suggestions without creating links
     }
     """
-    from ..models.process_data import BusinessProcess
     from ..models.relationship_tables import ApplicationProcessSupport
 
     data = request.get_json() or {}

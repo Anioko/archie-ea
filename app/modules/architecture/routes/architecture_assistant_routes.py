@@ -28,7 +28,6 @@ from flask import Blueprint, Response, current_app, jsonify, render_template, re
 from flask_login import current_user, login_required
 
 from app.decorators import require_roles
-from app.models.archimate import ArchitectureElement  # dead-code-ok
 from app.models.archimate_motivation import (
     MotivationAssessment,
     MotivationConstraint,
@@ -3565,7 +3564,6 @@ def export_arb_document(solution_id):
     """Export ARB submission as a printable HTML document."""
     from app.models.solution_models import Solution
     from app.models.solution_element import SolutionElement
-    from app.models.archimate_core import ArchiMateElement
 
     solution = Solution.query.get(solution_id)
     if not solution:

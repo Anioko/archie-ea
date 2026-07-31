@@ -15,22 +15,15 @@ Helpers:
 import csv
 import json
 from datetime import datetime
-from io import BytesIO, StringIO
+from io import StringIO
 
 from flask import Response, current_app, jsonify, request
 from flask_login import login_required
-from sqlalchemy.exc import IntegrityError as SQLIntegrityError  # dead-code-ok
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import joinedload, selectinload  # dead-code-ok
 
-from app import db  # dead-code-ok
 from app.exceptions import (  # dead-code-ok
     BusinessRuleError,
     DatabaseError,
-    ExternalServiceError,
-    IntegrityError,
-    NotFoundError,
-    ValidationError,
 )
 
 from . import capability_map
@@ -41,12 +34,7 @@ from . import capability_map
 def api_export_mappings():
     """Export capability mappings and gap analysis to multiple formats"""
     try:
-        import csv
-        import json
-        from datetime import datetime
-        from io import StringIO
 
-        from flask import Response
 
         # Get format parameter
         export_format = request.args.get("format", "csv").lower()

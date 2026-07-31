@@ -14,14 +14,12 @@ Complies with:
 - Multiple format support
 """
 
-import base64
 import csv
 import io
 import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from flask import current_app
 
 try:
     from PIL import Image, ImageDraw, ImageFont
@@ -210,7 +208,7 @@ class GanttExportService:
 
                 # Add conditional formatting for status
                 from openpyxl.formatting.rule import CellIsRule
-                from openpyxl.styles import Font, PatternFill
+                from openpyxl.styles import PatternFill
 
                 # Status colors
                 status_colors = {

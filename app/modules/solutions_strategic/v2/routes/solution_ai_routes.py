@@ -1,6 +1,5 @@
 import json
 import logging
-from datetime import datetime  # dead-code-ok
 from flask import jsonify, request
 from flask_login import current_user, login_required
 from sqlalchemy.orm import joinedload
@@ -920,7 +919,6 @@ def generate_blueprint_section(solution_id, section_id):
 
     try:
         from app.modules.solutions_strategic.v2.services.solution_ai_orchestrator import SolutionAIOrchestrator
-        from app.modules.solutions_strategic.v2.services.blueprint_completeness_service import BlueprintCompletenessService
 
         orch = SolutionAIOrchestrator()
         if section_id in _STRATEGY_SECTIONS:
@@ -1156,7 +1154,7 @@ def recalculate_impact(solution_id: int):
     if solution.created_by_id != current_user.id and not current_user.is_admin:
         return api_error("Forbidden", 403)
     try:
-        from app.models.solution_lifecycle_models import SolutionRisk, SolutionMetric, SolutionTCOItem, SolutionPlateau
+        from app.models.solution_lifecycle_models import SolutionRisk, SolutionMetric, SolutionPlateau
         from app.models.solution_architect_models import SolutionDriver, SolutionGoal, SolutionConstraint, SolutionRequirement
         from app.models.solution_architect_models import SolutionRecommendation
         from app.models.solution_architect_models import SolutionAnalysisSession

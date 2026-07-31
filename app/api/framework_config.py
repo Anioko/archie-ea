@@ -1117,7 +1117,6 @@ def health_check():
     import os
     from datetime import datetime
 
-    from flask import current_app
     from sqlalchemy import text
 
     health_status = {

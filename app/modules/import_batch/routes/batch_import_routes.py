@@ -12,7 +12,6 @@ Includes Server-Sent Events (SSE) for real-time progress streaming.
 import json
 import logging
 import time
-from functools import wraps  # dead-code-ok
 
 from flask import Blueprint, Response, jsonify, request, stream_with_context
 from flask_login import current_user, login_required
@@ -24,11 +23,10 @@ from app.models.audit_log import AuditLog
 from app.models.batch_import import BatchImportJob, BatchJobStatus
 from app.services.batch_approval_service import BatchApprovalService
 from app.services.batch_import_service import BatchImportService
-from app.services.import_audit_service import ImportAuditService, log_file_upload, log_batch_approval  # dead-code-ok
+from app.services.import_audit_service import log_batch_approval  # dead-code-ok
 from app.services.batch_processor_service import BatchProcessorService
 from app.utils.error_sanitizer import ErrorSanitizer, handle_import_error
 from app.utils.file_validation import validate_mime_type, InvalidFileTypeError, get_allowed_extensions_display
-from app.security.import_decorators import with_import_security  # dead-code-ok
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +34,7 @@ batch_import_bp = Blueprint(
     "batch_import_api", __name__, url_prefix="/api/batch-import"
 )
 
-from app.utils.import_rate_limiter import import_rate_limit, add_rate_limit_headers  # dead-code-ok
+from app.utils.import_rate_limiter import import_rate_limit  # dead-code-ok
 from app.schemas.api_schemas import BatchImportOptionsSchema, _load_and_validate
 
 

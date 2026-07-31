@@ -8,7 +8,6 @@ Tests cover:
 - Route accessibility (basic smoke tests)
 - Blueprint naming and URL prefix preservation
 """
-import pytest
 
 
 class TestAdminModuleImports:

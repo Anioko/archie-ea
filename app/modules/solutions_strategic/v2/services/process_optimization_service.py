@@ -9,12 +9,10 @@ Analyzes and optimizes business processes for operational excellence:
 - Continuous improvement recommendations
 """
 
-from datetime import date, datetime
-from typing import Dict, List, Optional, Tuple
+from datetime import datetime
+from typing import Dict, List
 
-from sqlalchemy import and_, func, or_
 
-from app import db
 from .decorators import transactional
 
 

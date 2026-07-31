@@ -5,7 +5,6 @@ Extracted from capability_map_routes.py (lines 3418-4073).
 Routes registered on the shared ``capability_map`` blueprint.
 """
 
-from datetime import datetime
 
 from flask import current_app, jsonify, request
 from flask_login import login_required

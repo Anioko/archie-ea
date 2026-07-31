@@ -6,7 +6,7 @@ with technology risk evaluation and business impact analysis.
 """
 
 import logging
-from typing import Any, Dict, List, Optional  # dead-code-ok
+from typing import Any, Dict, List  # dead-code-ok
 
 logger = logging.getLogger(__name__)
 

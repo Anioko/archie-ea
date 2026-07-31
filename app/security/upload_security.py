@@ -8,14 +8,14 @@ import logging
 import os
 import tempfile
 from datetime import datetime
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, Any, Optional
 from dataclasses import dataclass
 
 from flask import current_app
 from .content_validator import content_validator, ValidationStatus, ThreatLevel
 from .virus_scanner import virus_scanner, ScanStatus
 from .file_sanitizer import file_sanitizer, SanitizationStatus
-from .upload_monitoring import upload_monitoring_service, UploadStatus
+from .upload_monitoring import upload_monitoring_service
 
 logger = logging.getLogger(__name__)
 

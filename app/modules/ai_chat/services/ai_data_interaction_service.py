@@ -9,10 +9,8 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from flask import current_app  # dead-code-ok: imported for potential app-context use in audit/logging helpers
 
 from app import db
-from app.models.ai_service import AIPromptTemplate  # dead-code-ok: used by validate_operation for template lookup
 from app.models.application_portfolio import ApplicationComponent
 from app.models.business_capabilities import BusinessCapability
 from app.models.unified_application_capability_mapping import UnifiedApplicationCapabilityMapping

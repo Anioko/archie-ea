@@ -11,13 +11,10 @@ from datetime import date, timedelta
 
 from flask import render_template
 from flask_login import current_user, login_required
-from sqlalchemy import func
 
 from app.decorators import requires_procurement
-from app.extensions import db
 from app.models.application_portfolio import VendorContract
 from app.models.license_entitlement import LicenseEntitlement
-from app.models.vendor.vendor_organization import VendorOrganization
 
 from . import procurement_bp
 

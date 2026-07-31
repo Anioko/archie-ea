@@ -6,16 +6,13 @@ Extends the base code generation service with Salesforce-specific generation log
 Uses templates for deterministic structural code and LLM for complex business logic.
 """
 
-import json
 import logging
 import os
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 from flask import current_app
-from jinja2 import Environment, FileSystemLoader, Template
+from jinja2 import Environment, FileSystemLoader
 
-from app import db
-from app.services.decorators import transactional
 from app.services.llm_service import LLMService
 from app.services.mdd_code_generation_service import CodeArtifact, TechnologyStack, UMLElement
 from app.services.salesforce_validator import SalesforceValidator

@@ -9,7 +9,7 @@ from flask import Blueprint, jsonify, render_template, request
 from flask_login import current_user, login_required
 
 from app.decorators import audit_log
-from app.models import Application, ApplicationComponent
+from app.models import Application
 from app.services.mdd_code_generation_service import (
     MDDCodeGenerationService,
     TechnologyStack,

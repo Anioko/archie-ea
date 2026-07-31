@@ -9,10 +9,8 @@ Provides intelligent mapping recommendations for gap analysis.
 """
 
 import logging
-from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List
 
-from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import joinedload
 
 from app import db

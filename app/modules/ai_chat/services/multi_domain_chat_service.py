@@ -6334,7 +6334,7 @@ Instructions:
         """Build a side-by-side vendor comparison from DB data."""
         try:
             from sqlalchemy import text, func
-            from app.models.vendor.vendor_organization import VendorOrganization, VendorProduct
+            from app.models.vendor.vendor_organization import VendorProduct
 
             lines = [f"VENDOR COMPARISON: {vendor_a['name']} vs {vendor_b['name']}"]
             for v_info in [vendor_a, vendor_b]:

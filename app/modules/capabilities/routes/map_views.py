@@ -14,18 +14,10 @@ Helpers:
     - build_nodes_edges(catalog)   — used by mapping_routes.api_nodes_edges()
 """
 
-from flask import current_app, jsonify, render_template, request  # dead-code-ok
+from flask import current_app, render_template  # dead-code-ok
 from flask_login import login_required
 
 from app.extensions.cache import cached
-from app.exceptions import (  # dead-code-ok
-    BusinessRuleError,
-    DatabaseError,
-    ExternalServiceError,
-    IntegrityError,
-    NotFoundError,
-    ValidationError,
-)
 
 from . import capability_map
 

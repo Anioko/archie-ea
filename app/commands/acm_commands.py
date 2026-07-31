@@ -11,7 +11,6 @@ Flask CLI commands for managing ACM technical capabilities:
 import click
 from flask.cli import with_appcontext
 
-from ..models.technical_capability import ACMDomain
 from ..services.acm_technical_capability_service import ACMTechnicalCapabilityService
 
 

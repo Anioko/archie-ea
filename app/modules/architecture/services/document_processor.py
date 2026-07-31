@@ -32,7 +32,6 @@ from app.models import (
     ArchitectureModel,
     LLMInteraction,
     Requirement,
-    User,
 )
 from app.services.llm_service import LLMService
 from app.services.progress_service import get_progress_tracker

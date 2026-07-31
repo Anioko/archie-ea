@@ -12,7 +12,6 @@ Plans and manages technology evolution and modernization:
 from datetime import date, datetime
 from typing import Dict, List
 
-from app import db
 from app.services.decorators import transactional
 
 

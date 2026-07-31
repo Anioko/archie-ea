@@ -6,8 +6,6 @@ Provides virus scanning integration for document uploads.
 
 import logging
 import subprocess
-import tempfile
-import os
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 from dataclasses import dataclass

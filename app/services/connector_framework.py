@@ -19,7 +19,6 @@ from enum import Enum
 from typing import Any, Callable, Dict, List, Optional
 
 from sqlalchemy import JSON, Column, DateTime, ForeignKey, Integer, String, Text
-from sqlalchemy.orm import relationship
 
 from app import db
 

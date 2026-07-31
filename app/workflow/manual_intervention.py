@@ -5,14 +5,12 @@ Provides comprehensive manual intervention capabilities for workflow executions.
 """
 
 import logging
-import json  # dead-code-ok
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, asdict
 from enum import Enum
 import threading
 
-from flask import current_app  # dead-code-ok
 from app import db
 from app.monitoring.alerting_service import alerting_service, AlertSeverity
 

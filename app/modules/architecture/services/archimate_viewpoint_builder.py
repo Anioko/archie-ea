@@ -24,7 +24,7 @@ from sqlalchemy.orm import joinedload
 from app.models.business_capabilities import BusinessCapability
 
 from app import db
-from app.models.application_layer import ApplicationEvent, ApplicationInterface
+from app.models.application_layer import ApplicationInterface
 from app.models.application_portfolio import ApplicationComponent
 from app.models.models import ArchiMateElement, ArchiMateRelationship
 from app.models.vendor.vendor_organization import VendorProduct, application_vendor_products

@@ -5,28 +5,17 @@ Provides validation and analysis services for data architecture models
 according to ArchiMate 3.2 specifications and relationship rules.
 """
 
-from typing import Dict, List, Optional, Set, Tuple  # dead-code-ok
+from typing import Dict, List  # dead-code-ok
 
 from sqlalchemy.orm import joinedload
 
 from app.models import (  # dead-code-ok
-    ApplicationComponent,
     ArchiMateElement,
     ArchiMateRelationship,
-    BusinessCapability,
-    BusinessEvent,
-    BusinessObject,
-    BusinessProcess,
     ConceptualDataModel,
     DataLineage,
-    DataObject,
-    DataTransformation,
     LogicalDataModel,
-    Meaning,
-    Node,
     PhysicalDataModel,
-    Representation,
-    SystemSoftware,
 )
 
 

@@ -744,7 +744,6 @@ def register_ea_workflow_routes(main_blueprint):
     def ea_workflows_journeys():
         """Cross-workflow journey view grouping instances by ADM iteration cycle."""
         try:
-            from sqlalchemy import func
             from sqlalchemy.orm import joinedload
 
             from app.models.workflow_models import EAWorkflowDefinition, EAWorkflowInstance
@@ -1294,7 +1293,6 @@ def register_ea_workflow_routes(main_blueprint):
     def api_list_workflow_instances():
         """API: List workflow instances with filtering, sorting, and pagination."""
         try:
-            from sqlalchemy import func
             from sqlalchemy.orm import joinedload
 
             from app.models.workflow_models import EAWorkflowDefinition, EAWorkflowInstance
@@ -1438,7 +1436,6 @@ def register_ea_workflow_routes(main_blueprint):
             from app.models.workflow_models import (
                 EAWorkflowDefinition,
                 EAWorkflowInstance,
-                EAWorkflowStepExecution,
             )
 
             status_counts = (

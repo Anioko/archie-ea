@@ -18,7 +18,7 @@ from flask import (
 from flask_login import login_required, current_user
 from sqlalchemy import func
 
-from app.decorators import admin_required, audit_log, require_roles  # dead-code-ok
+from app.decorators import audit_log, require_roles  # dead-code-ok
 from app.extensions import db
 from app.models.vendor_organization import VendorOrganization
 

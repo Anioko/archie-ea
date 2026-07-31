@@ -19,7 +19,6 @@ from flask_wtf.csrf import CSRFError, validate_csrf
 
 from app import db
 from app.decorators import audit_log
-from app.extensions import csrf
 from app.models.application_portfolio import ApplicationComponent
 
 from . import unified_applications_bp

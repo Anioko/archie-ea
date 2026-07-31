@@ -21,7 +21,7 @@ BizBok Standard:
 
 import re
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List
 
 from app.models.unified_capability import BusinessDomain, UnifiedCapability
 

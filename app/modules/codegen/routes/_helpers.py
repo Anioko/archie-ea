@@ -6,7 +6,6 @@ import os
 import re
 from datetime import datetime
 
-from flask import request
 from flask_login import current_user
 
 from app.extensions import db
@@ -3022,7 +3021,7 @@ def _ensure_archimate_elements_from_journey(solution_id: int) -> int:
             desc = (solution.description or "") if solution else ""
             if desc and len(desc) > 20:
                 from app.modules.codegen.services.aabl_compiler import (
-                    _strip_archimate_suffix, _DOMAIN_ARCHETYPES,
+                    _DOMAIN_ARCHETYPES,
                 )
                 # Extract entity candidates from description
                 desc_lower = desc.lower()
@@ -5443,8 +5442,7 @@ def _uml_to_product_spec_bundle(uml, config, solution, business_rules: list = No
     """
     import re
     from app.modules.solutions_product.services.product_spec_bundle import (
-        ProductSpecBundle, ServiceDef, PathDef, InfraContext, EventDef,
-        DeploymentDef, FieldDef, IntegrationDef,
+        ProductSpecBundle, ServiceDef, PathDef, InfraContext, DeploymentDef, IntegrationDef,
     )
 
     classes = uml.get("class_diagram", {}).get("classes", [])
@@ -6554,7 +6552,6 @@ def _generate_azure_bicep(solution, config: dict, uml: dict) -> dict:
     All output is deterministic — same solution + UML always produces byte-identical files.
     Every generated file is provenance-tagged with solution ID and blueprint version.
     """
-    import json as _json
     import re as _re
 
     sol_id = solution.id

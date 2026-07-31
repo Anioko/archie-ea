@@ -7,7 +7,6 @@ Covers:
 - Utility functions (severity_badge, compliance_score, priority_sort_key, maturity_label, safe_page_params)
 - Compat wrapper infrastructure (stats tracking)
 """
-import pytest
 
 
 # ============================================================================
@@ -25,21 +24,12 @@ class TestGovernanceV2Imports:
     def test_v2_schemas_importable(self):
         from app.modules.governance.v2.schemas import (
             PolicyCheckSchema,
-            ConsolidationEntrySchema,
-            ConsolidationBulkSchema,
-            CapabilityGovernanceSchema,
-            PolicyCreateSchema,
-            CapabilityManagementSchema,
         )
         assert callable(PolicyCheckSchema.validate)
 
     def test_v2_utils_importable(self):
         from app.modules.governance.v2.utils import (
             severity_badge,
-            compliance_score,
-            priority_sort_key,
-            maturity_label,
-            safe_page_params,
         )
         assert callable(severity_badge)
 
@@ -209,7 +199,6 @@ class TestGovernanceCompatWrappers:
 
     def test_compat_module_imports(self):
         from app.compat.governance import (
-            GovernanceCompatStats,
             wrap_legacy_governance_bp,
         )
         assert callable(wrap_legacy_governance_bp)

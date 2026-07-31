@@ -26,7 +26,7 @@ All routes maintain backward compatibility and include proper error handling.
 import logging
 from datetime import datetime
 
-from flask import flash, g, jsonify, redirect, render_template, request, url_for  # dead-code-ok
+from flask import flash, jsonify, redirect, render_template, request, url_for  # dead-code-ok
 from flask_login import login_required
 from sqlalchemy import text
 
@@ -34,7 +34,6 @@ from app import db
 
 # Import main blueprint
 from app.main.views import main
-from app.models.implementation_migration import Gap
 
 logger = logging.getLogger(__name__)
 

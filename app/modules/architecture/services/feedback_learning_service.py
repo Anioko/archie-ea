@@ -9,12 +9,10 @@ Features:
 - Adaptive prompt refinement
 """
 
-import json
 import logging
 from datetime import datetime
 from typing import Dict, List, Optional
 
-from sqlalchemy import Column, DateTime, Float, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSON
 
 from app import db

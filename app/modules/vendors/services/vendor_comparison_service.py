@@ -32,16 +32,13 @@ import io
 import json
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from flask import current_app
-from sqlalchemy import and_, func, or_
 
 from app import db
 from app.models.vendor_analysis import (
-    AnalysisRecommendation,
     OptionsAnalysis,
-    VendorComparisonCriteria,
     VendorOption,
 )
 

@@ -1765,7 +1765,6 @@ CRITICAL -- TRACEABILITY:
         """
         try:
             from app.models.solution_architect_models import (
-                SolutionAnalysisSession,
                 SolutionRecommendation,
                 RecommendationOptionType,
             )
@@ -3538,7 +3537,6 @@ CRITICAL -- TRACEABILITY:
         stacks, business processes, and rationalization scores to ground the LLM
         in organizational reality instead of generic patterns.
         """
-        import json as _json
         ctx = {
             'app_capability_map': '',
             'tech_standards': '',
@@ -3623,7 +3621,6 @@ CRITICAL -- TRACEABILITY:
             from app.models.process_data import BusinessProcess
 
             if cap_ids:
-                from app.models.business_capability import BusinessCapability
                 # Find processes linked to selected capabilities
                 processes = BusinessProcess.query.filter(
                     BusinessProcess.primary_capability_id.in_(cap_ids)
@@ -3796,7 +3793,6 @@ CRITICAL -- TRACEABILITY:
         Without this, the Sankey, traceability, and dashboard show empty data.
         """
         from app.models.archimate_core import ArchiMateElement
-        from app.models.solution_archimate_element import SolutionArchiMateElement as SAE
 
         if not name or not name.strip():
             return None
@@ -4418,15 +4414,11 @@ CRITICAL -- TRACEABILITY:
         Returns:
             (created_counts, failed_types) -- e.g. ({'drivers': 4, 'goals': 3, ...}, {'options': 'error msg'})
         """
-        from flask_login import current_user
         from app.models.solution_architect_models import (
-            SolutionAnalysisSession,
-            SolutionProblemDefinition,
             SolutionDriver,
             SolutionGoal,
             SolutionConstraint,
             SolutionRequirement,
-            SolutionRecommendation,
             SolutionPrinciple,
             SolutionAssessment,
             DriverType,

@@ -8,7 +8,7 @@ import logging
 import csv
 import io
 from datetime import datetime
-from typing import Dict, List, Any, Optional, Tuple, Union
+from typing import Dict, List, Any, Optional, Union
 from dataclasses import dataclass
 from enum import Enum
 import re

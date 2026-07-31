@@ -351,7 +351,7 @@ def _sso_enabled():
 @account_bp.route("/sso/<provider>")
 def sso_login(provider):
     """Initiate SSO login flow for the given provider."""
-    from flask import abort, current_app
+    from flask import abort
 
     if not _sso_enabled():
         abort(404)

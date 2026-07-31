@@ -10,23 +10,18 @@ from dataclasses import dataclass
 from enum import Enum
 
 from app.services.adversarial_scope_service import (
-    get_scope_service, 
     get_scope_enforcer,
-    EnforcementLevel,
-    RequestCharacteristics
+    EnforcementLevel
 )
 from app.services.lightweight_adversarial_validator import (
-    get_lightweight_validator,
-    LightweightValidationResult
+    get_lightweight_validator
 )
 from app.services.critique_verification_service import (
     get_critique_service,
-    CritiqueSession,
     CritiqueFinding
 )
 from app.services.dual_agent_orchestrator import (
     get_dual_agent_orchestrator,
-    DualAgentOrchestrator,
     AgentContext
 )
 

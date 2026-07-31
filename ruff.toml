@@ -51,3 +51,23 @@ ignore = [
 [lint.per-file-ignores]
 # Test modules legitimately import fixtures for side effects and shadow names.
 "tests/*" = ["F811", "F401"]
+
+# Package __init__ files re-export their subpackages' names so callers can write
+# `from app.utils import sanitize_html`. Those imports are "unused" only within the
+# __init__ itself; removing them — which is what `ruff --fix` would do — breaks
+# every consumer. 54 of the F401 findings were in files of this shape.
+"__init__.py" = ["F401"]
+"*/__init__.py" = ["F401"]
+
+# app/models/** is a re-export web, not a set of leaf modules. models.py does
+#     from .unified_capability import BusinessFunction
+# to surface names other modules then import from app.models. An import that looks
+# unused inside unified_capability.py is therefore load-bearing for a consumer two
+# hops away, and Ruff cannot see that.
+#
+# This is not hypothetical: running `ruff --fix --select F401` across the tree
+# removed exactly that import and the application stopped booting with
+#     ImportError: cannot import name 'BusinessFunction' from app.models.unified_capability
+# Verified by snapshotting registered routes and ORM tables before and after.
+"app/models/*" = ["F401"]
+"app/models/**/*" = ["F401"]

@@ -15,16 +15,13 @@ Features:
 
 import logging
 from difflib import SequenceMatcher
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
-from sqlalchemy import func, or_
 
-from app import db
-from app.models.application_layer import ApplicationInterface
 from app.models.application_portfolio import ApplicationComponent
 from app.models.archimate_core import ArchiMateElement
 from app.models.business_capabilities import BusinessCapability
-from app.models.vendor.vendor_organization import VendorOrganization, VendorProduct
+from app.models.vendor.vendor_organization import VendorOrganization
 
 logger = logging.getLogger(__name__)
 

@@ -15,17 +15,15 @@ Features:
 
 import logging
 from collections import defaultdict
-from datetime import datetime, timedelta  # dead-code-ok: used in contract expiry check
-from typing import Any, Dict, List, Optional
+from datetime import datetime  # dead-code-ok: used in contract expiry check
+from typing import Any, Dict, List
 
-from sqlalchemy import and_, func, or_  # dead-code-ok: used in scan methods
+from sqlalchemy import func, or_  # dead-code-ok: used in scan methods
 
 from app import db
 from app.models.application_portfolio import ApplicationComponent
-from app.models.archimate_core import ArchiMateElement  # dead-code-ok: used in cross-domain analysis
 from app.models.business_capabilities import BusinessCapability
-from app.models.unified_capability import UnifiedCapability  # dead-code-ok: used in capability scanning
-from app.models.vendor.vendor_organization import VendorOrganization, VendorProduct  # dead-code-ok: used in vendor scanning
+from app.models.vendor.vendor_organization import VendorOrganization  # dead-code-ok: used in vendor scanning
 
 logger = logging.getLogger(__name__)
 

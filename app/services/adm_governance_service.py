@@ -7,10 +7,10 @@ Replaces drag-and-drop with governed transitions requiring explicit approval.
 
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from app import db
-from app.models.adm_kanban import ADMPhase, KanbanBoard, KanbanCard
+from app.models.adm_kanban import ADMPhase, KanbanCard
 from app.models.adm_phase_approval import (
     ADMComplianceCheckpoint,
     ADMPhaseApproval,

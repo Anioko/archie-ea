@@ -25,7 +25,6 @@ from datetime import datetime
 from flask import (  # dead-code-ok
     Blueprint,
     current_app,
-    flash,
     jsonify,
     redirect,
     render_template,
@@ -36,7 +35,6 @@ from flask_login import login_required
 
 from .. import db
 from ..models.application_duplicate_detection import (  # dead-code-ok
-    DuplicateAnalysis,
     DuplicateDetectionRun,
     DuplicateGroup,
 )

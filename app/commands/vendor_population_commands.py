@@ -251,7 +251,6 @@ def list_vendors(category, tier, limit):
     click.echo("=" * 50)
 
     try:
-        from sqlalchemy import and_
 
         query = VendorOrganization.query
 

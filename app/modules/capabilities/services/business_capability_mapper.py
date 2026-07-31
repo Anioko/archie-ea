@@ -11,11 +11,10 @@ Maps applications to business capabilities using multiple analysis methods:
 4. AI-powered capability detection
 """
 
-import json
 import logging
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
-from sqlalchemy import and_, func, or_
+from sqlalchemy import and_
 
 from app import db
 from app.models.application_layer import ApplicationComponent

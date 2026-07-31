@@ -17,7 +17,7 @@ from datetime import date, timedelta
 from typing import Dict, List, Optional, Tuple
 
 from app import db
-from app.models.implementation_migration import Deliverable, Gap, WorkPackage
+from app.models.implementation_migration import Gap, WorkPackage
 
 # Gap type color mapping (consistent with UI)
 GAP_TYPE_COLORS = {

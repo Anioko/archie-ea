@@ -8,7 +8,6 @@ Supports multi-stage pipeline progress tracking.
 import json
 import threading
 import time
-from collections import defaultdict
 from datetime import datetime
 from typing import Dict, Generator, Optional
 

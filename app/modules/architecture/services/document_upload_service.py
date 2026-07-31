@@ -14,8 +14,6 @@ from typing import Dict, Optional, Tuple
 from werkzeug.datastructures import FileStorage
 from werkzeug.utils import secure_filename
 
-from app import db
-from app.models import User
 
 # Allowed file extensions
 ALLOWED_EXTENSIONS = {

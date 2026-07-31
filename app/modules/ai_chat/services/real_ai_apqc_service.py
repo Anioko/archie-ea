@@ -22,9 +22,8 @@ Use the unified_apqc_service module instead.
 import asyncio
 import logging
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
-from flask import current_app
 
 from app import db
 from app.utils.deprecation import deprecated_function
