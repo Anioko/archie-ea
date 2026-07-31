@@ -233,7 +233,7 @@ class JiraPushService:
                 return
 
             resolved_fields = self._resolve_custom_fields(jira_fields)
-            component_field = resolved_fields.pop("_component", None)
+            resolved_fields.pop("_component", None)
 
             loop = asyncio.new_event_loop()
             try:

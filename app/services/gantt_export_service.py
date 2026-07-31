@@ -190,7 +190,6 @@ class GanttExportService:
                 df.to_excel(writer, sheet_name="Work Packages", index=False)
 
                 # Get the workbook and worksheet for formatting
-                workbook = writer.book
                 worksheet = writer.sheets["Work Packages"]
 
                 # Auto-adjust column widths
@@ -289,7 +288,7 @@ class GanttExportService:
                 valid_packages.sort(key=lambda x: x["start_date_obj"])
 
                 # Create Gantt chart
-                y_pos = range(len(valid_packages))
+                range(len(valid_packages))
 
                 for i, wp in enumerate(valid_packages):
                     # Get color based on status
@@ -533,7 +532,7 @@ class GanttExportService:
                 valid_packages.sort(key=lambda x: x["start_date_obj"])
 
                 # Create Gantt chart
-                y_pos = range(len(valid_packages))
+                range(len(valid_packages))
 
                 for i, wp in enumerate(valid_packages):
                     # Get color based on status

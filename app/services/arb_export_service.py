@@ -357,7 +357,6 @@ class ARBExportService:
                 df_summary.to_excel(writer, sheet_name="Summary", index=False)
 
             # Apply formatting
-            workbook = writer.book
             for sheet_name in writer.sheets:
                 worksheet = writer.sheets[sheet_name]
                 for column in worksheet.columns:
@@ -452,7 +451,6 @@ class ARBExportService:
                 df_agenda.to_excel(writer, sheet_name="Agenda", index=False)
 
             # Format worksheets
-            workbook = writer.book
             for sheet_name in writer.sheets:
                 worksheet = writer.sheets[sheet_name]
                 for column in worksheet.columns:

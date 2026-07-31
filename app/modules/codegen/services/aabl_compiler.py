@@ -2592,7 +2592,7 @@ def _extract_state_machine(
     # Many domain models use verification_status, account_status, kyc_status, etc.
     # rather than a plain "status" column.
     status_field = "status"
-    comp_name_lower = (component.name or "").lower().replace(" ", "_")
+    (component.name or "").lower().replace(" ", "_")
     for entity_elem in (elements_by_id.get(eid) for eid in elements_by_id):
         if entity_elem is None:
             continue

@@ -219,7 +219,6 @@ def _match_against_catalog(suggestions, catalog_caps, problem_brief=""):
         dict with 'suggestions' (enriched list) and 'gap_summary' counts
     """
     cap_by_name = {c.name.lower(): c for c in catalog_caps}
-    catalog_names = [c.name for c in catalog_caps]
 
     seen_names = set()
     enriched = []
@@ -1301,7 +1300,7 @@ def accept_archimate_suggestion(solution_id: int):
     and links it to the solution via SolutionArchiMateElement with
     element_role='ai_derived'.
     """
-    solution = Solution.query.get_or_404(solution_id)
+    Solution.query.get_or_404(solution_id)
     data = request.get_json(silent=True) or {}
 
     name = (data.get("name") or "").strip()
@@ -1557,7 +1556,7 @@ def bulk_accept_archimate_suggestions(solution_id: int):
 
     Body: {"suggestions": [{"name":"...", "type":"...", "layer":"...", ...}, ...]}
     """
-    solution = Solution.query.get_or_404(solution_id)
+    Solution.query.get_or_404(solution_id)
     data = request.get_json(silent=True) or {}
     suggestions = data.get("suggestions", [])
 

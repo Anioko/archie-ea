@@ -1043,9 +1043,9 @@ Return the COMPLETE enhanced architecture in the same JSON format:
             for node in nodes:
                 try:
                     # Analyze infrastructure dependencies
-                    deps = technology_service.analyze_technology_dependencies(
+                    (technology_service.analyze_technology_dependencies(
                         node.id, infrastructure_context=node.description
-                    )
+                    ))
                     logger.info(f"  ✓ Analyzed tech dependencies for: {node.name}")
                 except Exception as e:
                     logger.info(f"  ✗ Tech dependency analysis failed for {node.name}: {str(e)}")

@@ -394,7 +394,6 @@ class VendorComparisonService:
 
         sorted_scores = sorted(scores, reverse=True)
         gap_to_second = sorted_scores[0] - sorted_scores[1]
-        score_range = sorted_scores[0] - sorted_scores[-1]
 
         # Calculate relative gap
         relative_gap = gap_to_second / sorted_scores[0] if sorted_scores[0] > 0 else 0

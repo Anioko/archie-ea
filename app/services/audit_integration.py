@@ -134,7 +134,6 @@ class AuditIntegration:
     def _determine_action(self):
         """Determine action type from request."""
         method = request.method
-        endpoint = request.endpoint or ""
 
         # Map methods to actions
         if method == "POST":
@@ -148,7 +147,6 @@ class AuditIntegration:
 
     def _get_entity_type(self):
         """Determine entity type from request."""
-        endpoint = request.endpoint or ""
         blueprint = request.blueprint or ""
 
         # Map blueprints/endpoints to entity types

@@ -3747,7 +3747,7 @@ def verify_code(solution_id):
                     yield _sse({"phase": "test", "status": "running", "line": line[-180:]})
             test_proc.wait(timeout=30)
 
-            full_output = "\n".join(test_lines)
+            "\n".join(test_lines)
             summary = {"passed": 0, "failed": 0, "errors": 0}
             for tl in reversed(test_lines):
                 m = re.search(r'(\d+) passed(?:[^\d]+(\d+) failed)?(?:[^\d]+(\d+) error)?', tl)

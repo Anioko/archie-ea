@@ -1271,7 +1271,6 @@ class ToolExecutor:
         else:
             result = SchemaInferenceService.infer_from_openapi(input_text)
             count = result.get("schema_count", 0)
-            key = "schema_count"
 
         if result.get("success"):
             result["message"] = (

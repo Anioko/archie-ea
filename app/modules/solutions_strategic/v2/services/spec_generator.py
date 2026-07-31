@@ -678,7 +678,6 @@ class SolutionSpecGenerator:
 
     def _add_confirmed_api_paths(self, spec, app_elem, schema_name, api_contract):
         """Add paths from confirmed API contract instead of generic CRUD."""
-        schema_ref = f"#/components/schemas/{schema_name}"
         error_ref = "#/components/schemas/ErrorResponse"
         tag = app_elem.element_type or "resources"
 

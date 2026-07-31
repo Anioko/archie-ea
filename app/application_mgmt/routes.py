@@ -598,7 +598,7 @@ def _link_application_to_apqc_by_ids(app, apqc_matches):
             # Get the APQC process ID from the semantic match
             apqc_id = match.get("existing_id")
             process_code = match.get("process_code", "")
-            process_name = match.get("process_name", "")
+            match.get("process_name", "")
             similarity_score = match.get("similarity_score", 0)
             source = match.get("source", "semantic_similarity")
 

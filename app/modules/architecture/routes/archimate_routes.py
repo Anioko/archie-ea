@@ -2164,7 +2164,7 @@ def api_composer_generate_contextual():
     viewpoint_type = (data.get("viewpoint_type") or "").strip()
     business_domain = (data.get("business_domain") or "").strip() or None
     solution_id = data.get("solution_id")
-    options = data.get("options") or {}
+    data.get("options") or {}
 
     if phase not in _PHASE_ELEMENT_MAP:
         return jsonify({"error": "phase must be one of: A, B, C, D"}), 400
@@ -5302,13 +5302,12 @@ def api_import_document():
             extracted_data, interaction = loop.run_until_complete(
                 analysis_service._analyze_text_file(file_path, None, "architecture")
             )
-            interactions = [interaction] if interaction else []
 
         # Normalize element types
         from app.services.archimate.element_type_normalizer import ElementTypeNormalizer
         normalizer = ElementTypeNormalizer()
         elements = normalizer.normalize_elements(extracted_data.get("elements", []))
-        relationships = extracted_data.get("relationships", [])
+        extracted_data.get("relationships", [])
 
         if not elements:
             metadata = extracted_data.get("metadata", {})

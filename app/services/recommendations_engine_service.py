@@ -338,7 +338,6 @@ class RecommendationsEngineService:
 
             low_maturity_count = 0
             no_automation_count = 0
-            orphan_count = 0
 
             for cap in capabilities:
                 # Check maturity level

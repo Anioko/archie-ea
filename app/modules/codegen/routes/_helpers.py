@@ -1268,7 +1268,6 @@ def _synthesize_uml_from_elements(solution_id):
 
     element_ids = [link.element_id for link in links]
     elements = ArchiMateElement.query.filter(ArchiMateElement.id.in_(element_ids)).all()
-    elem_map = {e.id: e for e in elements}
     spec_map = {link.element_id: (link.spec_data or {}) for link in links}
 
     classes = []
@@ -2289,7 +2288,7 @@ def _build_sla_load_config(solution_id: int, services: list) -> dict:
         # Build endpoint list from services (same shape TestGenerator expects)
         endpoints = []
         for svc in (services or []):
-            svc_name = svc.get("name", "") if isinstance(svc, dict) else getattr(svc, "name", "")
+            svc.get("name", "") if isinstance(svc, dict) else getattr(svc, "name", "")
             for path in (svc.get("paths", []) if isinstance(svc, dict) else getattr(svc, "paths", [])):
                 if isinstance(path, dict):
                     endpoints.append(path)
@@ -5221,8 +5220,8 @@ def _generate_adr(solution, config: dict, gen_version: int) -> str:
 
     auth = config.get("auth", "none")
     language = config.get("language", "python-fastapi")
-    ui = config.get("ui_framework", "none")
-    deployment = config.get("deployment", "docker")
+    config.get("ui_framework", "none")
+    config.get("deployment", "docker")
 
     AUTH_LABELS = {
         "jwt-local": "JWT (symmetric HS256)",
@@ -7227,7 +7226,7 @@ def _generate_azure_logic_app(solution, config: dict, uml: dict) -> dict:
     import re as _re
 
     sol_id = solution.id
-    bp_version = getattr(solution, "blueprint_version", 1) or 1
+    getattr(solution, "blueprint_version", 1) or 1
     sol_name_raw = (solution.name or f"solution_{sol_id}").strip()
 
     # Derive safe identifiers

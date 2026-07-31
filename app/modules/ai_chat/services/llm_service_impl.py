@@ -2095,7 +2095,6 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
         # Normalize Gemini model names to correct API format
         # Try multiple model name formats if first fails
         model_normalized = model.lower().strip()
-        original_model = model_normalized
 
         # Try common model name variations
         model_variations = []
@@ -2368,7 +2367,7 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
                 )
 
                 # Calculate max length (input + output, but don't exceed model max)
-                max_length = min(prompt_length + output_tokens, model_max_length)
+                min(prompt_length + output_tokens, model_max_length)
 
                 # Generate text with proper truncation
                 result = generator(
@@ -2789,13 +2788,13 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
         """
         try:
             # Build the decision log entry
-            decision_log = {
+            ({
                 "decision_type": decision_type,
                 "context": context,
                 "decision": decision,
                 "rationale": rationale,
                 "timestamp": datetime.utcnow().isoformat(),
-            }
+            })
 
             # Create LLMInteraction record for audit
             interaction = LLMInteraction(

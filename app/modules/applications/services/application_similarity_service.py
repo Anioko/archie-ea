@@ -818,7 +818,7 @@ BE REALISTIC about consolidation complexity and savings. Don't recommend consoli
         capability_id = gap.get("capability_id")
         capability_name = gap.get("capability_name", "")
         gap_type = gap.get("gap_type", "unknown")
-        domain = gap.get("domain", "")
+        gap.get("domain", "")
 
         logger.info(f"Finding reuse candidates for gap: {capability_name} ({gap_type})")
 

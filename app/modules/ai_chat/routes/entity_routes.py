@@ -98,7 +98,7 @@ def get_role_info(role_value):
     try:
         # Validate role
         try:
-            role = StakeholderRole(role_value)
+            StakeholderRole(role_value)
         except ValueError:
             return jsonify({"error": f"Invalid role: {role_value}"}), 400
 

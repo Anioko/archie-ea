@@ -126,7 +126,6 @@ RESPOND WITH JSON:
 
     async def classify_capability(self, capability: BusinessCapability) -> CapabilityClassification:
         """Classify capability type and ArchiMate mapping using semantic matching."""
-        text = f"{capability.name} - {capability.description or ''}"
 
         prompt = f"""Classify this business capability:
 

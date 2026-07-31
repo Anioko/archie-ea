@@ -95,7 +95,7 @@ class AppStoreComplianceService:
         files = {f.path: f.content for f in bundle.files}
         app_json_content = files.get("mobile/app.json") or files.get("app.json", "")
         eas_json_content = files.get("mobile/eas.json") or files.get("eas.json", "")
-        package_json_content = files.get("mobile/package.json") or files.get("package.json", "")
+        files.get("mobile/package.json") or files.get("package.json", "")
 
         app_config = self._parse_json_safe(app_json_content)
         eas_config = self._parse_json_safe(eas_json_content)
@@ -277,7 +277,7 @@ class AppStoreComplianceService:
             ))
         else:
             prod = builds["production"]
-            ios_prod = prod.get("ios", {})
+            prod.get("ios", {})
             android_prod = prod.get("android", {})
             if android_prod.get("buildType") not in ("app-bundle", "apk", None):
                 findings.append(ComplianceFinding(

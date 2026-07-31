@@ -364,7 +364,7 @@ class PatternRecognitionAgent:
         relevant = {}
         description = context.get("solution_description", "").lower()
         solution_type = context.get("solution_type", "")
-        business_domain = context.get("business_domain", "")
+        context.get("business_domain", "")
         constraints = [c.lower() for c in context.get("constraints", [])]
 
         # Check each scenario for relevance

@@ -39,7 +39,7 @@ def list_capabilities():
         per_page = request.args.get("per_page", 20, type=int)
         search = request.args.get("search", "", type=str)
         filter_type = request.args.get("type", "", type=str)
-        filter_health = request.args.get("health", "", type=str)
+        request.args.get("health", "", type=str)
 
         query = BusinessCapability.query
 

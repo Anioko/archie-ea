@@ -989,7 +989,6 @@ class EAWorkflowEngine:
         subject = config.get("subject", f"Workflow notification: {instance.instance_code}")
 
         # Build notification payload from workflow context
-        context = instance.context or {}
         notification_payload = {
             "workflow_id": instance.id,
             "workflow_code": instance.instance_code,
@@ -1168,7 +1167,7 @@ class EAWorkflowEngine:
         """Handle ADM Phase A Step 2: Identify and Characterize Stakeholders."""
         from app.models import User
         
-        scope = input_data.get("scope", {})
+        input_data.get("scope", {})
         
         # Get potential stakeholders from user database
         stakeholders = []
@@ -1229,7 +1228,7 @@ class EAWorkflowEngine:
         """Handle ADM Phase A Step 3: Define Business Goals and Drivers."""
         from app.services.multi_domain_chat_service import MultiDomainChatService
         
-        stakeholder_map = input_data.get("stakeholders", [])
+        input_data.get("stakeholders", [])
         
         # Use AI to analyze business goals from stakeholder concerns
         llm = MultiDomainChatService(user_id=instance.triggered_by_user_id)

@@ -361,7 +361,7 @@ class TaskAutoGenerator:
         for phase in plan.get('phases', []):
             for task in phase.get('tasks', []):
                 # Check if this is an adversarial task
-                adversarial = task.get('adversarial_review', {})
+                task.get('adversarial_review', {})
                 if task.get('status') in ['todo', 'in_progress']:
                     if sidebar_item_id:
                         task_sidebar = task.get('adversarial_source', {}).get('sidebar_item_id')

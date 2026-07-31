@@ -404,7 +404,7 @@ def send_message():
 
     try:
         # Get multi-domain chat service
-        chat_service = get_chat_service()
+        get_chat_service()
 
         # Prepare context data
         context_data = {}

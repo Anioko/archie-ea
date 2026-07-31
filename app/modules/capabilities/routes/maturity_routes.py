@@ -629,12 +629,12 @@ def frameworks_overview():
 
             if framework_categories:
                 # Use parameterized query to prevent SQL injection
-                placeholders = ", ".join(
+                (", ".join(
                     [f":cat_{i}" for i in range(len(framework_categories))]
-                )
-                params = {
+                ))
+                ({
                     f"cat_{i}": cat for i, cat in enumerate(framework_categories)
-                }
+                })
 
 
         return render_template(

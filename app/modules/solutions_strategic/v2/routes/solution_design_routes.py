@@ -485,7 +485,6 @@ def _build_solution_worklist_summaries(solutions: list[Solution]) -> tuple[dict[
         )
         driver_count = drivers_by_problem.get(problem_id, 0)
         goal_count = goals_by_problem.get(problem_id, 0)
-        driver_goal_count = driver_count + goal_count
         constraint_count = constraints_by_problem.get(problem_id, 0)
         requirement_count = (
             requirements_by_problem.get(problem_id, 0)
@@ -2520,7 +2519,6 @@ def api_phase_summary(solution_id: int):
 
     # sec-7: Governance (Phase G)
     arb_submitted = solution.governance_status not in (None, "draft")
-    sec7_items = [(1 if arb_submitted else 0, "ARB submission")]
     phases["sec-7"] = _phase(
         ["ARB submitted"] if arb_submitted else [],
         ["ARB submission"] if not arb_submitted else [],
@@ -6297,7 +6295,7 @@ def get_motivation_elements(solution_id):
 @login_required
 def patch_motivation_entity(solution_id, entity_id):
     """Inline edit a motivation element."""
-    solution = Solution.query.get_or_404(solution_id)
+    Solution.query.get_or_404(solution_id)
     data = request.get_json(silent=True) or {}
     if not data:
         return jsonify({"error": "No data"}), 400
@@ -6449,7 +6447,7 @@ def delete_solution_capability(solution_id: int, mapping_id: int):
 @login_required
 def get_solution_archimate_elements(solution_id: int):
     """Get all ArchiMate elements mapped to a solution, grouped by layer."""
-    solution = Solution.query.get_or_404(solution_id)
+    Solution.query.get_or_404(solution_id)
 
     try:
         from app.models.solution_models import SolutionArchiMateElement
@@ -6500,7 +6498,7 @@ def get_solution_archimate_elements(solution_id: int):
 @audit_log("update_solution_archimate")
 def update_solution_archimate_elements(solution_id: int):
     """Add or update ArchiMate element mappings for a solution."""
-    solution = Solution.query.get_or_404(solution_id)
+    Solution.query.get_or_404(solution_id)
 
     try:
         from app.models.solution_models import SolutionArchiMateElement
@@ -7612,7 +7610,7 @@ _PHASE_LAYERS = {
 @login_required
 def generate_solution_viewpoint(solution_id: int, phase: str):
     """Return the solution's linked ArchiMate elements filtered by ADM phase layers."""
-    solution = Solution.query.get_or_404(solution_id)
+    Solution.query.get_or_404(solution_id)
     phase_upper = phase.upper()
     relevant_layers = _PHASE_LAYERS.get(phase_upper)
     if not relevant_layers:
@@ -7685,7 +7683,7 @@ def get_solution_viewpoint_elements(solution_id: int):
     Returns JSON compatible with ComposerRenderer.loadElements():
         {elements: [{id, name, type, layer}], relationships: [{id, source_id, target_id, type}]}
     """
-    solution = Solution.query.get_or_404(solution_id)
+    Solution.query.get_or_404(solution_id)
     viewpoint_id = request.args.get("viewpoint", "layered")
 
     try:
@@ -8156,7 +8154,7 @@ def add_solution_dependency():
 @login_required
 def linked_vendor_products(solution_id):
     """Return vendor products currently linked to this solution."""
-    solution = Solution.query.get_or_404(solution_id)
+    Solution.query.get_or_404(solution_id)
     try:
         from app.models.vendor.vendor_organization import VendorProduct
         tbl = db.metadata.tables.get("solution_vendor_products")
@@ -8188,7 +8186,7 @@ def linked_vendor_products(solution_id):
 @login_required
 def linked_apqc_processes(solution_id):
     """Return APQC processes currently linked to this solution."""
-    solution = Solution.query.get_or_404(solution_id)
+    Solution.query.get_or_404(solution_id)
     try:
         from app.models.apqc_process import APQCProcess as APQCModel
         from app.models.solution_sad_models import SolutionAPQCProcess
@@ -8223,7 +8221,7 @@ def linked_apqc_processes(solution_id):
 @login_required
 def linked_applications_api(solution_id):
     """Return applications currently linked to this solution."""
-    solution = Solution.query.get_or_404(solution_id)
+    Solution.query.get_or_404(solution_id)
     try:
         apps = _get_solution_applications(solution_id)
         return jsonify({
@@ -8870,7 +8868,7 @@ def link_capability(solution_id):
     from app.models.business_capabilities import BusinessCapability
     from app.models.solution_models import SolutionCapabilityMapping
 
-    solution = Solution.query.get_or_404(solution_id)
+    Solution.query.get_or_404(solution_id)
     data = request.get_json() or {}
     cap_id = data.get("capability_id")
     if not cap_id:
@@ -9417,7 +9415,7 @@ def api_accept_suggestions(solution_id):
     """
     from app.models.archimate_core import ArchiMateElement
 
-    solution = Solution.query.get_or_404(solution_id)
+    Solution.query.get_or_404(solution_id)
 
     data = request.get_json(silent=True) or {}
     accepted = data.get("accepted", [])
@@ -10382,7 +10380,7 @@ def api_get_viewpoint_elements(solution_id, section_id):
         .with_entities(_SAE.element_id).all()
         if r[0] is not None
     ]
-    sol_elem_ids_set = set(sol_elem_ids)
+    set(sol_elem_ids)
 
     if elem_ids:
         # Relationships where section element is source and target is anywhere in solution
@@ -10509,7 +10507,6 @@ def api_get_viewpoint_diagram_data(solution_id, section_id):
     # Grid layout: arrange elements in rows by layer
     x_offset = 50
     y_offset = 50
-    col = 0
     row_elements = {}
 
     for elem in elements:
@@ -10603,7 +10600,6 @@ def api_get_traceability_matrix(solution_id):
 
     elem_ids = [eid for (eid,) in element_ids_q]
     elements = ArchiMateElement.query.filter(ArchiMateElement.id.in_(elem_ids)).all()
-    elem_map = {e.id: e for e in elements}
 
     # Separate by role
     requirements = [e for e in elements if e.type in ("Requirement", "Constraint", "Goal")]

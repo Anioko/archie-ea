@@ -1014,7 +1014,7 @@ class CapabilityGapAnalysisService:
 
         for gap in gaps:
             props = json.loads(gap.properties) if gap.properties else {}
-            gap_type = props.get("gap_type")
+            props.get("gap_type")
 
             # Generate AI recommendation
             recommendation = self._generate_gap_recommendation(gap, props)

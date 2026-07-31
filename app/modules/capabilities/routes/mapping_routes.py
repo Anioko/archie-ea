@@ -198,7 +198,6 @@ def api_capabilities_tree():
         if not capabilities:
             return jsonify({"tree": [], "total": 0})
 
-        params = {}
 
         highlight_ids = set()
         highlight_param = request.args.get("highlight", "")

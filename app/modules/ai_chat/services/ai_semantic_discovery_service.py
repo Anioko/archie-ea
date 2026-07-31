@@ -164,7 +164,7 @@ class AISemanticDiscoveryService:
             import openai
             openai.api_key = api_key
             # Make a minimal request to check availability
-            response = openai.Model.list()
+            openai.Model.list()
             return True
         except Exception as e:
             logger.debug(f"LLM API not available: {e}")

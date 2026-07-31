@@ -403,7 +403,7 @@ def application_capability_mapping_delete(id, mapping_id):
 @login_required
 def update_motivation_layer(id):
     """Update Motivation Layer elements (Requirements, Stakeholders, Drivers, Goals)"""
-    app = ApplicationComponent.query.get_or_404(id)
+    ApplicationComponent.query.get_or_404(id)
 
     # csrf-ok: global CSRFProtect active
 
@@ -706,7 +706,7 @@ def update_motivation_layer(id):
 @login_required
 def update_strategy_layer(id):
     """Update Strategy Layer elements (Capabilities, Resources, Value Streams, Courses of Action)"""
-    app = ApplicationComponent.query.get_or_404(id)
+    ApplicationComponent.query.get_or_404(id)
 
     # csrf-ok: global CSRFProtect active
 
@@ -839,7 +839,7 @@ def update_strategy_layer(id):
 @login_required
 def update_business_layer(id):
     """Update Business Layer elements (Services, Processes, Actors, Roles)"""
-    app = ApplicationComponent.query.get_or_404(id)
+    ApplicationComponent.query.get_or_404(id)
     # csrf-ok: global CSRFProtect active
     try:
         form = BusinessLayerForm(request.form)
@@ -1234,7 +1234,7 @@ def update_business_layer(id):
 @login_required
 def update_application_layer(id):
     """Update Application Layer elements (Interfaces, Data Objects, Services)"""
-    app = ApplicationComponent.query.get_or_404(id)
+    ApplicationComponent.query.get_or_404(id)
     # csrf-ok: global CSRFProtect active
     try:
         form = ApplicationLayerForm(request.form)
@@ -1527,7 +1527,7 @@ def update_application_layer(id):
 @login_required
 def update_technology_layer(id):
     """Update Technology Layer elements (Nodes, SystemSoftware, TechnologyServices)"""
-    app = ApplicationComponent.query.get_or_404(id)
+    ApplicationComponent.query.get_or_404(id)
     # csrf-ok: global CSRFProtect active
     try:
         form = TechnologyLayerForm(request.form)

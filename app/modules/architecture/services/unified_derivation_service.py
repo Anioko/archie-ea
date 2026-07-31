@@ -863,8 +863,6 @@ class UnifiedDerivationService:
         Returns list of dicts with: name, description, confidence, services
         """
         # Build context for inference
-        process_names = [p.process_name for p in processes[:10]]
-        process_codes = [p.process_code for p in processes[:10]]
 
         # Use domain keywords to suggest typical applications
         domain_apps = self._get_domain_typical_applications(domain)
@@ -1194,7 +1192,7 @@ class UnifiedDerivationService:
 
     def _generate_business_layer_relationships(self):
         """Generate relationships within business layer."""
-        business_elements = self._derived_elements.get("business", [])
+        self._derived_elements.get("business", [])
 
         # Create composition relationships for parent-child APQC mappings
         for apqc_id, element in self._element_mapping.items():

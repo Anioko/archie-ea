@@ -432,7 +432,6 @@ def bootstrap_architecture(solution_id):
             # Preview: show what would be created
             # Estimate the chain from a Goal
             preview = [{"type": "Goal", "name": goal_name, "direction": "root", "source": "solution"}]
-            downstream_types = []
             current_type = "Goal"
             for _ in range(10):  # max chain depth
                 required = engine.rules.required_downstream(current_type)

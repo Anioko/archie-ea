@@ -342,10 +342,10 @@ class RiskAssessmentService:
         compliance_count = len(
             [c for c in capability_risks if "COMPLIANCE_RISK" in c["risk_factors"]]
         )
-        dependency_count = len(
+        (len(
             [c for c in capability_risks if "DEPENDENCY_RISK" in c["risk_factors"]]
-        )
-        skill_gap_count = len([c for c in capability_risks if "SKILL_GAP" in c["risk_factors"]])
+        ))
+        len([c for c in capability_risks if "SKILL_GAP" in c["risk_factors"]])
 
         # Average risk scores
         avg_spof_risk = (

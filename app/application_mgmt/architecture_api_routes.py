@@ -374,7 +374,7 @@ def api_update_architecture_element(id, element_id):
     """
     Update existing ArchiMate element (inline editing support).
     """
-    app_obj = ApplicationComponent.query.get_or_404(id)
+    ApplicationComponent.query.get_or_404(id)
     data = request.get_json()
 
     if not data:
@@ -430,7 +430,7 @@ def api_delete_architecture_element(id, element_id):
     """
     Delete ArchiMate element and all its relationships.
     """
-    app_obj = ApplicationComponent.query.get_or_404(id)
+    ApplicationComponent.query.get_or_404(id)
 
     try:
         element = ArchiMateElement.query.get(element_id)
@@ -613,7 +613,7 @@ def api_get_architecture_documents(id):
     """Get all architecture documents for an application."""
     from ..models.miscellaneous import ArchitectureDocument
 
-    app_obj = ApplicationComponent.query.get_or_404(id)
+    ApplicationComponent.query.get_or_404(id)
     documents = (
         ArchitectureDocument.query.filter_by(application_id=id)
         .order_by(ArchitectureDocument.created_at.desc())
@@ -640,7 +640,7 @@ def api_upload_architecture_document(id):
 
     from ..models.miscellaneous import ArchitectureDocument
 
-    app_obj = ApplicationComponent.query.get_or_404(id)
+    ApplicationComponent.query.get_or_404(id)
 
     if "file" not in request.files:
         return jsonify({"error": "No file provided"}), 400

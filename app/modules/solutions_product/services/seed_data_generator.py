@@ -249,7 +249,6 @@ class SeedDataGenerator:
 
                 # Skip auto-increment PKs (id field)
                 if fname == "id" and not self._is_foreign_key(fname, fdef):
-                    has_pk = True
                     columns.append(fname)
                     generators.append(("pk", fdef_copy))
                     continue

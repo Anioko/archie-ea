@@ -86,7 +86,7 @@ class APIDashboardGenerator:
         fields = schema.get("fields", [])
         dashboard_config = schema.get("dashboard", {})
         title = dashboard_config.get("title", "Generated Dashboard")
-        sections = dashboard_config.get("sections", [])
+        dashboard_config.get("sections", [])
 
         config = DashboardConfig(
             title=title,

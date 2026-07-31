@@ -407,15 +407,15 @@ def get_capability_work_packages():
     try:
         # Get filter parameters
         selected_levels = request.args.getlist("levels") or ["L1", "L2", "L3"]
-        selected_domain = request.args.get("domain", "")
-        selected_importance = request.args.get("importance", "")
+        request.args.get("domain", "")
+        request.args.get("importance", "")
 
         # Convert level strings to integers
-        level_ints = [
+        ([
             int(level[1])
             for level in selected_levels
             if level.startswith("L") and level[1:].isdigit()
-        ]
+        ])
 
         # Use ORM without backend filtering (let frontend handle filtering)
         work_packages_query = UnifiedWorkPackage.query.filter(
@@ -800,7 +800,7 @@ def create_work_package_task(wp_id):
     """Create a new task for a work package"""
     try:
         # Verify work package exists
-        work_package = UnifiedWorkPackage.query.get_or_404(wp_id)
+        UnifiedWorkPackage.query.get_or_404(wp_id)
 
         data = request.get_json()
 
@@ -849,7 +849,7 @@ def update_work_package_task(wp_id, task_id):
     """Update a task"""
     try:
         # Verify work package and task exist
-        work_package = UnifiedWorkPackage.query.get_or_404(wp_id)
+        UnifiedWorkPackage.query.get_or_404(wp_id)
         task = RoadmapTask.query.filter_by(id=task_id, unified_work_package_id=wp_id).first_or_404()
 
         data = request.get_json()
@@ -902,7 +902,7 @@ def delete_work_package_task(wp_id, task_id):
     """Delete a task"""
     try:
         # Verify work package and task exist
-        work_package = UnifiedWorkPackage.query.get_or_404(wp_id)
+        UnifiedWorkPackage.query.get_or_404(wp_id)
         task = RoadmapTask.query.filter_by(id=task_id, unified_work_package_id=wp_id).first_or_404()
 
         db.session.delete(task)
@@ -963,7 +963,7 @@ def create_work_package_deliverable(wp_id):
     """Create a new deliverable for a work package"""
     try:
         # Verify work package exists
-        work_package = UnifiedWorkPackage.query.get_or_404(wp_id)
+        UnifiedWorkPackage.query.get_or_404(wp_id)
 
         data = request.get_json()
 
@@ -1007,7 +1007,7 @@ def update_work_package_deliverable(wp_id, deliverable_id):
     """Update a deliverable"""
     try:
         # Verify work package and deliverable exist
-        work_package = UnifiedWorkPackage.query.get_or_404(wp_id)
+        UnifiedWorkPackage.query.get_or_404(wp_id)
         deliverable = RoadmapDeliverable.query.filter_by(
             id=deliverable_id, unified_work_package_id=wp_id
         ).first_or_404()
@@ -1063,7 +1063,7 @@ def delete_work_package_deliverable(wp_id, deliverable_id):
     """Delete a deliverable"""
     try:
         # Verify work package and deliverable exist
-        work_package = UnifiedWorkPackage.query.get_or_404(wp_id)
+        UnifiedWorkPackage.query.get_or_404(wp_id)
         deliverable = RoadmapDeliverable.query.filter_by(
             id=deliverable_id, unified_work_package_id=wp_id
         ).first_or_404()

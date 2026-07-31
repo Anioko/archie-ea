@@ -43,7 +43,6 @@ def hierarchy():
         ).all()
 
         # Build parent lookup
-        by_id = {c.id: c for c in capabilities}
         children_by_parent = {}
         for c in capabilities:
             if c.parent_capability_id:

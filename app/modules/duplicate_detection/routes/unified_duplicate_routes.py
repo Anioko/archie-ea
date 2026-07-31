@@ -1324,7 +1324,7 @@ def api_feedback():
         duplicate_id = data.get("duplicate_id")
         action = data.get("action")
         confidence = data.get("confidence")
-        notes = data.get("notes", "")
+        data.get("notes", "")
 
         if not duplicate_id or not action or confidence is None:
             return (
@@ -2183,7 +2183,7 @@ def run_detection():
     """Run duplicate detection from the enterprise dashboard."""
     try:
         data = request.get_json() or {}
-        similarity_threshold = data.get("similarity_threshold", 0.70)
+        data.get("similarity_threshold", 0.70)
 
         result = unified_service.run_duplicate_detection()
 

@@ -278,18 +278,10 @@ Focus on extracting Application Layer elements:
 Also extract related Business and Technology layer elements that interact with applications.
 """
         else:  # vendor
-            prompt_addition = """
-Focus on extracting Business Layer elements related to vendors:
-- BusinessActor (vendor organizations, partners)
-- Product (vendor products, solutions)
-- Contract (vendor agreements, SLAs)
-- BusinessService (services provided by vendors)
-
-Also extract Application and Technology elements that represent vendor offerings.
-"""
+            pass
 
         # Use multi-modal service with enhanced prompt
-        base_prompt = await self.multi_modal_service.extract_archimate_from_diagram.__doc__
+        await self.multi_modal_service.extract_archimate_from_diagram.__doc__
 
         # For now, use the existing method and enhance results
         extracted_data, interaction = await self.multi_modal_service.extract_archimate_from_diagram(

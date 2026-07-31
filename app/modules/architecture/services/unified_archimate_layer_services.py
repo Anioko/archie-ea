@@ -284,11 +284,11 @@ class ApplicationLayerService:
         relationships.append(flow_rel)
 
         # Link data objects to flow (via properties)
-        flow_props = {
+        ({
             "data_objects": data_object_ids,
             "flow_type": "data_transfer",
             "created_at": datetime.utcnow().isoformat(),
-        }
+        })
 
         # Store data flow metadata
         for data_obj_id in data_object_ids:

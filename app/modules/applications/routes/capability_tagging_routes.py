@@ -26,7 +26,7 @@ def get_application_tags(app_id):
     """Get all capability tags for an application."""
     try:
         app = ApplicationComponent.query.get_or_404(app_id)
-        service = CapabilityTagService()
+        CapabilityTagService()
 
         # Get tags through the application's capability relationships
         tags = []

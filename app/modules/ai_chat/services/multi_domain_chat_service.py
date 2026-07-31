@@ -6413,7 +6413,6 @@ Instructions:
 
             # Create or find a solution to anchor the workflow
             solution_id = (context or {}).get("solution_id")
-            solution_name = target
 
             # Load current state data for the target area
             resolved = self._resolve_entities_from_message(message)
@@ -7967,7 +7966,7 @@ End with: "Type **'next'** to complete the design workflow."
         elif step == "GENERATE":
             if msg_lower in ("generate", "yes", "proceed", "go"):
                 solution_id = wf.get("solution_id")
-                accepted_ids = wf.get("accepted_ids", [])
+                wf.get("accepted_ids", [])
                 solution_name = wf.get("solution_name", "the solution")
 
                 # Call generation
@@ -8147,8 +8146,8 @@ End with: "Type **'next'** to complete the design workflow."
             if "generate roadmap" in msg_lower or "generate plateaus" in msg_lower:
                 if workspace_id:
                     planner = DeliveryPlanningService(kernel, user_id=self.user_id)
-                    wp_result = planner.generate_work_packages(workspace_id, solution_id)
-                    pl_result = planner.generate_plateaus(workspace_id, solution_id)
+                    planner.generate_work_packages(workspace_id, solution_id)
+                    planner.generate_plateaus(workspace_id, solution_id)
                     summary = planner.generate_planner_summary(workspace_id)
                     return {"success": True, "response": summary.get("message", "Roadmap generated.")}
                 return None

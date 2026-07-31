@@ -212,7 +212,7 @@ def api_get_comments(solution_id: int):
     """Get comments for a solution, optionally filtered by section."""
     from app.models.solution_models import SolutionComment
 
-    solution = Solution.query.get_or_404(solution_id)
+    Solution.query.get_or_404(solution_id)
     section = request.args.get("section", "").strip()
 
     query = SolutionComment.query.filter_by(solution_id=solution_id)
@@ -790,18 +790,18 @@ def all_apqc_processes(solution_id):
 def sync_applications(solution_id):
     """Replace all application links with the given set of IDs."""
     # tenant-filtered: scoped via parent FK (solution_applications junction)
-    solution = Solution.query.get_or_404(solution_id)
+    Solution.query.get_or_404(solution_id)
     data = request.get_json() or {}
     selected_ids = set(data.get("ids", []))
     try:
         tbl = db.metadata.tables.get("solution_applications")
         if tbl is None:
             return jsonify({"success": False, "error": "Junction table not found"}), 500
-        current = set(
+        (set(
             r[0] for r in db.session.execute(  # tenant-filtered: scoped via solution_id FK
                 tbl.select().where(tbl.c.solution_id == solution_id)
             ).fetchall()
-        )
+        ))
         # The first column after solution_id is application_component_id
         current_rows = db.session.execute(  # tenant-filtered: scoped via solution_id FK
             tbl.select().where(tbl.c.solution_id == solution_id)
@@ -828,7 +828,7 @@ def sync_applications(solution_id):
 def sync_vendor_products(solution_id):
     """Replace all vendor product links with the given set of IDs."""
     # tenant-filtered: scoped via parent FK (solution_vendor_products junction)
-    solution = Solution.query.get_or_404(solution_id)
+    Solution.query.get_or_404(solution_id)
     data = request.get_json() or {}
     selected_ids = set(data.get("ids", []))
     try:
@@ -860,7 +860,7 @@ def sync_vendor_products(solution_id):
 def sync_adrs(solution_id):
     """Replace all direct ADR links with the given set of IDs."""
     # tenant-filtered: scoped via parent FK (solution ADR junction)
-    solution = Solution.query.get_or_404(solution_id)
+    Solution.query.get_or_404(solution_id)
     data = request.get_json() or {}
     selected_ids = set(data.get("ids", []))
     try:
@@ -887,7 +887,7 @@ def sync_adrs(solution_id):
 def sync_apqc_processes(solution_id):
     """Replace all direct APQC process links with the given set of IDs."""
     # tenant-filtered: scoped via parent FK (solution APQC junction)
-    solution = Solution.query.get_or_404(solution_id)
+    Solution.query.get_or_404(solution_id)
     data = request.get_json() or {}
     selected_ids = set(data.get("ids", []))
     try:
@@ -1127,7 +1127,7 @@ def generate_from_capabilities(solution_id):
     """Generate ArchiMate elements from this solution's linked capabilities."""
     from app.models.solution_models import SolutionArchiMateElement, SolutionCapabilityMapping
 
-    solution = Solution.query.get_or_404(solution_id)
+    Solution.query.get_or_404(solution_id)
     data = request.get_json() or {}
     capability_ids = data.get("capability_ids", [])
 
@@ -1447,7 +1447,7 @@ def delete_fit_gap_entry(solution_id, entry_id):
 @login_required
 def export_fit_gap_csv(solution_id):
     """Export fit-gap entries as CSV for SI handoff."""
-    solution = Solution.query.get_or_404(solution_id)
+    Solution.query.get_or_404(solution_id)
     try:
         from app.models.solution_models import SolutionFitGapEntry
         import csv

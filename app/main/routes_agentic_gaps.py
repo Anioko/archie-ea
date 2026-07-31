@@ -518,9 +518,9 @@ def get_agent_recommendations():
     try:
         architecture_id = request.args.get("architecture_id", 1, type=int)
 
-        service = AgenticGapImplementationService(
+        (AgenticGapImplementationService(
             user_id=current_user.id if current_user.is_authenticated else None
-        )
+        ))
 
         # Analyze architecture to recommend agents
         recommendations = []

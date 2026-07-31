@@ -117,7 +117,6 @@ class MultiModelChatService:
         if HAS_LLAMA:
             try:
                 # Check if model is locally available
-                model_name = "meta-llama/Meta-Llama - 3 - 8B-Instruct"
                 # This would download the model on first run
                 # In production, pre-download models to persistent storage
                 logger.info("Llama - 3 tokenizer/model available (but not loaded to save memory)")

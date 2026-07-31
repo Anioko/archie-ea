@@ -348,7 +348,6 @@ class AIGapDetectionService:
                 mappings = mappings_by_cap.get(cap_id, [])
 
                 apps_info = []
-                total_cost = 0
 
                 for mapping in mappings:
                     app = app_lookup.get(mapping.application_component_id)

@@ -1284,7 +1284,6 @@ class TCOCalculation(db.Model):
             return []
 
         yearly_data = []
-        remaining_tco = self.total_tco
 
         for year in range(1, self.tco_period_years + 1):
             year_cost = {

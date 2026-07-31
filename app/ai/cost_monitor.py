@@ -290,7 +290,7 @@ class AICostMonitor:
         try:
             from app.monitoring.alerting_service import alerting_service, AlertSeverity
             
-            alert = alerting_service.create_manual_alert(
+            (alerting_service.create_manual_alert(
                 name=f"budget_alert_{budget_type}",
                 severity=AlertSeverity.WARNING if percentage_used < 0.95 else AlertSeverity.CRITICAL,
                 message=f"Budget alert: {entity_id} has used {percentage_used:.1%} of {budget_type} budget (${current_usage:.2f}/${budget_limit:.2f})",
@@ -302,7 +302,7 @@ class AICostMonitor:
                     'budget_limit': budget_limit,
                     'percentage_used': percentage_used
                 }
-            )
+            ))
             
             logger.warning(f"Budget alert triggered for {entity_id}: {percentage_used:.1%} of {budget_type} budget used")
             

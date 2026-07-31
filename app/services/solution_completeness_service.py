@@ -259,8 +259,8 @@ def _score_cross_layer(
                         for j in range(i + 1, len(present_layers))}
 
     expected_pairs = {"Business↔Application", "Application↔Technology", "Motivation↔Business"}
-    found = [p for p in linked_pairs if p in expected_pairs or
-             any(p == f"{b}↔{a}" for b, a in [p.split("↔")] for _ in [None])]
+    ([p for p in linked_pairs if p in expected_pairs or
+             any(p == f"{b}↔{a}" for b, a in [p.split("↔")] for _ in [None])])
     # Simpler: just count distinct cross-layer pairs
     found_list = list(linked_pairs)[:3]
     missing_list = [p for p in expected_pairs if p not in linked_pairs]

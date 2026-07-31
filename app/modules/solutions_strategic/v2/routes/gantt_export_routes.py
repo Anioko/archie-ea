@@ -132,7 +132,7 @@ def export_gantt_svg(solution_id: int):
 def export_gantt_png(solution_id: int):
     """Export Gantt chart to PNG format (async)."""
     try:
-        solution = Solution.query.get_or_404(solution_id)
+        Solution.query.get_or_404(solution_id)
         
         # This would normally trigger an async job
         # For now, return a message that this feature is in progress
@@ -154,7 +154,7 @@ def export_gantt_png(solution_id: int):
 def get_gantt_risk_analysis(solution_id: int):
     """Get risk analysis for Gantt chart tasks."""
     try:
-        solution = Solution.query.get_or_404(solution_id)
+        Solution.query.get_or_404(solution_id)
         
         # Get work packages
         work_packages = RoadmapWorkPackage.query.filter_by(
@@ -213,7 +213,7 @@ def get_gantt_risk_analysis(solution_id: int):
 def get_gantt_critical_path(solution_id: int):
     """Get critical path analysis for Gantt chart."""
     try:
-        solution = Solution.query.get_or_404(solution_id)
+        Solution.query.get_or_404(solution_id)
         
         # Get work packages
         work_packages = RoadmapWorkPackage.query.filter_by(

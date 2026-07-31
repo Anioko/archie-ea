@@ -261,7 +261,6 @@ class ImportRecoveryService:
         )
 
         # Get original import data from checkpoint
-        checkpoint_data = session.checkpoint_data or {}
 
         # Determine which step to resume from
         if resume_checkpoint == CheckpointType.FILE_PARSED.value:

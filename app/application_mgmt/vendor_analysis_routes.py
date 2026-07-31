@@ -1314,7 +1314,7 @@ def api_export_vendor_analysis(analysis_id):
         denied = _check_analysis_access(analysis)
         if denied:
             return denied
-        export_service = ExportService()
+        ExportService()
 
         if format_type == "csv":
             # CSV Export

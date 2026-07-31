@@ -486,7 +486,6 @@ Provide accurate, research-backed information. If specific details weren't found
 
     def _extract_api_versions(self, soup: BeautifulSoup) -> List[str]:
         """Extract API versions from documentation."""
-        versions = []
         text = soup.get_text()
 
         # Look for API version patterns

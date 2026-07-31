@@ -1461,7 +1461,7 @@ unified_duplicate_bp = Blueprint("unified_duplicate", __name__, url_prefix="/dup
 def status():
     """Get status of unified duplicate detection service."""
     try:
-        service = UnifiedDuplicateDetectionService()
+        UnifiedDuplicateDetectionService()
         return {
             "status": "active",
             "service": "unified_duplicate_detection",

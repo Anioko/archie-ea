@@ -456,7 +456,7 @@ def analyze_application_similarity():
         # Run analysis using shared event loop utility
         from app.services.core.async_utils import get_or_create_event_loop
 
-        loop = get_or_create_event_loop()
+        get_or_create_event_loop()
         results = similarity_service.analyze_portfolio(
             application_ids=application_ids,
             provider=provider,

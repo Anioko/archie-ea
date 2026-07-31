@@ -13,7 +13,7 @@ from app.extensions import db
 def link_decision_capability(decision_id):
     """ARB-002: Link a capability to an architecture decision."""
     from app.models.architecture_decision import ArchitectureDecision, DecisionCapabilityLink
-    decision = ArchitectureDecision.query.get_or_404(decision_id)
+    ArchitectureDecision.query.get_or_404(decision_id)
     data = request.get_json() or {}
     capability_id = data.get('capability_id')
     if not capability_id:

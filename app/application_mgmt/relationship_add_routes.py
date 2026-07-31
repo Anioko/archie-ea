@@ -587,7 +587,7 @@ def system_software_delete(id, software_id):
 @login_required
 def goal_delete(id, goal_id):
     """Delete a goal from application"""
-    app = ApplicationComponent.query.get_or_404(id)
+    ApplicationComponent.query.get_or_404(id)
     goal = Goal.query.get_or_404(goal_id)
 
     try:
@@ -608,7 +608,7 @@ def goal_delete(id, goal_id):
 @login_required
 def driver_delete(id, driver_id):
     """Delete a driver from application"""
-    app = ApplicationComponent.query.get_or_404(id)
+    ApplicationComponent.query.get_or_404(id)
     driver = Driver.query.get_or_404(driver_id)
 
     try:
@@ -629,7 +629,7 @@ def driver_delete(id, driver_id):
 @login_required
 def application_requirement_delete(id, requirement_id):
     """Delete a requirement from application"""
-    app = ApplicationComponent.query.get_or_404(id)
+    ApplicationComponent.query.get_or_404(id)
     requirement = Requirement.query.get_or_404(requirement_id)
 
     try:
@@ -724,7 +724,7 @@ def value_stream_delete(id, stream_id):
 @login_required
 def business_actor_edit(id, actor_id):
     """Update Business Actor properties"""
-    app = ApplicationComponent.query.get_or_404(id)
+    ApplicationComponent.query.get_or_404(id)
     actor = BusinessActor.query.get_or_404(actor_id)
 
     try:
@@ -760,7 +760,7 @@ def business_actor_edit(id, actor_id):
 @login_required
 def business_process_edit(id, process_id):
     """Update Business Process properties"""
-    app = ApplicationComponent.query.get_or_404(id)
+    ApplicationComponent.query.get_or_404(id)
     process = BusinessProcess.query.get_or_404(process_id)
 
     try:
@@ -787,7 +787,7 @@ def business_process_edit(id, process_id):
 @login_required
 def business_service_edit(id, service_id):
     """Update Business Service properties"""
-    app = ApplicationComponent.query.get_or_404(id)
+    ApplicationComponent.query.get_or_404(id)
     service = BusinessService.query.get_or_404(service_id)
 
     try:
@@ -814,7 +814,7 @@ def business_service_edit(id, service_id):
 @login_required
 def application_interface_edit(id, interface_id):
     """Update Application Interface properties"""
-    app = ApplicationComponent.query.get_or_404(id)
+    ApplicationComponent.query.get_or_404(id)
     interface = ApplicationInterface.query.get_or_404(interface_id)
 
     try:
@@ -849,7 +849,7 @@ def application_interface_edit(id, interface_id):
 @login_required
 def application_service_edit(id, service_id):
     """Update Application Service properties"""
-    app = ApplicationComponent.query.get_or_404(id)
+    ApplicationComponent.query.get_or_404(id)
     service = ApplicationService.query.get_or_404(service_id)
 
     try:
@@ -880,7 +880,7 @@ def application_service_edit(id, service_id):
 @login_required
 def technology_node_edit(id, node_id):
     """Update Technology Node properties"""
-    app = ApplicationComponent.query.get_or_404(id)
+    ApplicationComponent.query.get_or_404(id)
     node = Node.query.get_or_404(node_id)
 
     try:
@@ -911,7 +911,7 @@ def technology_node_edit(id, node_id):
 @login_required
 def technology_device_edit(id, device_id):
     """Update Technology Device properties"""
-    app = ApplicationComponent.query.get_or_404(id)
+    ApplicationComponent.query.get_or_404(id)
     device = Device.query.get_or_404(device_id)
 
     try:
@@ -940,7 +940,7 @@ def technology_device_edit(id, device_id):
 @login_required
 def goal_edit(id, goal_id):
     """Update Goal properties"""
-    app = ApplicationComponent.query.get_or_404(id)
+    ApplicationComponent.query.get_or_404(id)
     goal = Goal.query.get_or_404(goal_id)
 
     try:
@@ -971,7 +971,7 @@ def goal_edit(id, goal_id):
 @login_required
 def driver_edit(id, driver_id):
     """Update Driver properties"""
-    app = ApplicationComponent.query.get_or_404(id)
+    ApplicationComponent.query.get_or_404(id)
     driver = Driver.query.get_or_404(driver_id)
 
     try:
@@ -1000,7 +1000,7 @@ def driver_edit(id, driver_id):
 @login_required
 def course_of_action_edit(id, coa_id):
     """Update Course of Action properties"""
-    app = ApplicationComponent.query.get_or_404(id)
+    ApplicationComponent.query.get_or_404(id)
     coa = CourseOfAction.query.get_or_404(coa_id)
 
     try:
@@ -1027,7 +1027,7 @@ def course_of_action_edit(id, coa_id):
 @login_required
 def value_stream_edit(id, stream_id):
     """Update Value Stream properties"""
-    app = ApplicationComponent.query.get_or_404(id)
+    ApplicationComponent.query.get_or_404(id)
     stream = ValueStream.query.get_or_404(stream_id)
 
     try:
@@ -1548,7 +1548,7 @@ def bulk_unlink_elements(id):
 @login_required
 def bulk_update_elements(id):
     """Update properties on multiple elements at once"""
-    app = ApplicationComponent.query.get_or_404(id)
+    ApplicationComponent.query.get_or_404(id)
 
     # Get element type, IDs, and update data from form or JSON
     element_type = request.form.get("element_type") or (

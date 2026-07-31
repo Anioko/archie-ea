@@ -274,7 +274,6 @@ class AIRecommendationEngine:
         """Predict vendor performance using AI analysis."""
 
         vendor = candidate["vendor"]
-        product = candidate["product"]
         scores = candidate["scores"]
 
         prediction = {

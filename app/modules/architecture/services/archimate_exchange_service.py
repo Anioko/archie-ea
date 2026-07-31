@@ -559,7 +559,7 @@ class ArchiMateExchangeService:
             model_name = root.get(
                 "name", f'Imported Model {datetime.utcnow().strftime("%Y%m%d_%H%M%S")}'
             )
-            model_identifier = root.get("identifier", str(uuid.uuid4()))
+            root.get("identifier", str(uuid.uuid4()))
 
             # Create ArchitectureModel
             arch_model = ArchitectureModel(name=model_name, version="1.0", model_data=xml_content)

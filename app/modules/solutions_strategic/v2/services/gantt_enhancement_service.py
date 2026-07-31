@@ -162,7 +162,6 @@ class CriticalPathAnalyzer:
             return [], 0
         
         # Build dependency graph
-        task_map = {t['id']: t for t in tasks}
         
         # Find tasks with no predecessors (start tasks)
         all_deps = set()
@@ -230,7 +229,7 @@ class CriticalPathAnalyzer:
             es = earliest_start.get(task['id'], 0)
             ef = earliest_finish.get(task['id'], es + duration)
             ls = latest_start.get(task['id'], es)
-            lf = latest_finish.get(task['id'], ef)
+            latest_finish.get(task['id'], ef)
             
             slack = ls - es
             

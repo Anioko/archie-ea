@@ -823,7 +823,7 @@ def _process_batch_with_events(batch, job):
             start_time = time.time()
             
             # Create savepoint for this application processing
-            app_savepoint = db.session.begin_nested()
+            db.session.begin_nested()
             
             try:
                 # Set processing status

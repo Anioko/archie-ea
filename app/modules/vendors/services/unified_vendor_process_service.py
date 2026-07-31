@@ -135,7 +135,7 @@ class UnifiedVendorProcessService:
             return []
 
         # Get all products for this vendor
-        products = VendorProduct.query.filter_by(vendor_id=vendor_id).all()
+        VendorProduct.query.filter_by(vendor_id=vendor_id).all()
 
         # Get all mappings for this vendor's products
         mappings = (

@@ -258,9 +258,6 @@ class AdaptiveLearningEngine:
         accepted_confidences = [
             f["original_confidence"] for f in feedback_data if f["action"] == "accept"
         ]
-        rejected_confidences = [
-            f["original_confidence"] for f in feedback_data if f["action"] == "reject"
-        ]
 
         if not accepted_confidences:
             return 0.65

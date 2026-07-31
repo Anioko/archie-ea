@@ -245,7 +245,7 @@ class TestHealthService:
             }
         
         # Get most recent run
-        latest = max(metrics, key=lambda x: x['timestamp'])
+        max(metrics, key=lambda x: x['timestamp'])
         
         # Calculate trend (compare to previous run)
         sorted_metrics = sorted(metrics, key=lambda x: x['timestamp'], reverse=True)
@@ -371,7 +371,6 @@ class TestHealthService:
             return []
         
         # Track test stability across runs
-        test_history = {}
         
         for run in metrics:
             # This is a simplified version - in production you'd track individual test results

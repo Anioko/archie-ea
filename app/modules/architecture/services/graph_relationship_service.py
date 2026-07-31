@@ -204,7 +204,7 @@ class GraphRelationshipService:
         - If element type matches pattern (e.g., all ApplicationComponents connect to same interface)
         """
         relationships = []
-        elem_name = extracted_elem.get("name", "").lower()
+        extracted_elem.get("name", "").lower()
         elem_type = extracted_elem.get("type", "")
 
         # Pattern 1: Find elements that connect to similar targets

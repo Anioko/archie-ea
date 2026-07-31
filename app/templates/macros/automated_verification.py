@@ -95,9 +95,9 @@ class AutomatedVerificationSystem:
             # STEP 6: Final Success Confirmation
             print("\n[STEP 6] FINAL VERIFICATION")
             if compliance_check["compliance_status"] == "COMPLIANT":
-                success_confirmation = self.enforcer.mandatory_success_confirmation(
+                (self.enforcer.mandatory_success_confirmation(
                     verification_report
-                )
+                ))
                 verification_report["steps_completed"].append("success_confirmation")
                 verification_report["final_result"] = "SUCCESS"
                 verification_report["verification_status"] = "COMPLETED"

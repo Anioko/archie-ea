@@ -187,7 +187,7 @@ class NavigationRegistryV3:
         
         # Validate Pydantic model (automatic)
         try:
-            section_dict = section.model_validate(section)
+            section.model_validate(section)
         except Exception as e:
             logger.error(f"❌ Section validation failed: {e}")
             return False

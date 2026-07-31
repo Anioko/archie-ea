@@ -506,7 +506,7 @@ class FileSanitizer:
             # In a real implementation, this would convert to PDF using libraries like
             # reportlab, pdfkit, or external tools
             
-            converted_filename = os.path.splitext(file_path)[0] + '.pdf'
+            os.path.splitext(file_path)[0] + '.pdf'
             converted_file = file_path + '_converted.pdf'
             
             # Simulate conversion

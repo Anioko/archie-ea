@@ -3775,7 +3775,7 @@ class RationalizationScoringService:
             criticality = (getattr(app, "criticality", "") or "").lower()  # model-safety-ok
             business_criticality = (getattr(app, "business_criticality", "") or "").lower()  # model-safety-ok
             pii_processed = getattr(app, "pii_data_processed", False) or False  # model-safety-ok
-            gdpr_compliant = getattr(app, "gdpr_compliant", False) or False  # model-safety-ok
+            getattr(app, "gdpr_compliant", False) or False
 
             # Compliance tags — stored as JSON text
             compliance_tags_raw = getattr(app, "compliance_tags", None)  # model-safety-ok

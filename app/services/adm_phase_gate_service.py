@@ -190,5 +190,4 @@ class ADMPhaseGateService:
                 "gate_message": gate.message,
                 "missing_phases": gate.missing_phases,
             })
-            prev_result = gate
         return results

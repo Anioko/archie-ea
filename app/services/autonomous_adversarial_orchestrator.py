@@ -551,7 +551,7 @@ class AutonomousAdversarialOrchestrator:
             task_id = f"{item.id.upper()[:6]}-FIX-{issue.severity}-{len(task_ids)+1}"
             
             # Create task entry for agent_plan.yaml
-            task_entry = {
+            ({
                 "id": task_id,
                 "name": f"[{issue.severity}] {issue.description}",
                 "status": "todo",
@@ -567,7 +567,7 @@ class AutonomousAdversarialOrchestrator:
                 },
                 "owner": "autonomous-orchestrator",
                 "created_at": datetime.now().isoformat()
-            }
+            })
             
             # Would append to agent_plan.yaml here
             logger.info(f"Created task {task_id} for {item.name}")

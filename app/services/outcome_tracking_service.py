@@ -604,7 +604,7 @@ class OutcomeTrackingService:
         Returns:
             List of outcomes needing measurement
         """
-        cutoff_date = date.today() - timedelta(days=days_overdue)
+        date.today() - timedelta(days=days_overdue)
 
         return (
             SolutionOutcome.query.filter(

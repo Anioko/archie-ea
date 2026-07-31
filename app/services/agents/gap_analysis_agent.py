@@ -269,7 +269,6 @@ RESPOND WITH JSON:
     ) -> ImpactAnalysisResult:
         """Analyze impact of a proposed change."""
         # Get element details
-        element_name = f"{element_type}:{element_id}"
 
         prompt = f"""Analyze the impact of this change.
 

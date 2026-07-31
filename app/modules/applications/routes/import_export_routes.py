@@ -996,7 +996,7 @@ def application_import():
     generate_archimate = (
         request.form.get("generate_archimate", "false").lower() == "true"
     )
-    clone_vendor = request.form.get("clone_vendor_archimate", "false").lower() == "true"
+    request.form.get("clone_vendor_archimate", "false").lower() == "true"
     confidence_threshold = float(request.form.get("confidence_threshold", "0.7"))
 
     # Quick import mode: skip AI to prevent timeout (for E2E tests and fast imports)
@@ -2326,7 +2326,7 @@ def import_with_ai_review():
     field_mappings_json = request.form.get("field_mappings")
     if field_mappings_json:
         try:
-            field_mappings = json.loads(field_mappings_json)
+            json.loads(field_mappings_json)
         except json.JSONDecodeError:
             logger.exception("Failed to JSON parsing")
             pass
@@ -2346,7 +2346,6 @@ def import_with_ai_review():
         count = 0
         updated = 0
         skipped = 0
-        errors = []
 
         if filename.endswith(".csv"):
             import csv

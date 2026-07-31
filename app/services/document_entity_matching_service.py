@@ -171,7 +171,7 @@ class DocumentEntityMatchingService:
 
         # Extract application name and alternatives
         app_name = app_data.get("name", "")
-        app_description = app_data.get("description", "")
+        app_data.get("description", "")
         tech_stack = app_data.get("technology_stack", [])
         business_domain = app_data.get("business_domain", "")
 

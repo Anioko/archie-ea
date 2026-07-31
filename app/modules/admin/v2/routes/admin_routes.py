@@ -2209,7 +2209,6 @@ def sso_settings():
             from app.auth.sso import sso_service
 
             sso_users = User.query.filter(User.sso_provider.isnot(None)).all()
-            updated = 0
             for user in sso_users:
                 # Re-evaluate via sso_service which now reads DB mappings.
                 # We pass the user's stored external groups claim if available;
@@ -2353,7 +2352,7 @@ def jira_settings():
     # Any non-empty JIRA_BASE_URL indicates env-based config; JIRA_API_TOKEN may load at boot
     env_jira_url = os.environ.get("JIRA_BASE_URL", "").strip()
     env_jira_user = os.environ.get("JIRA_USERNAME", "").strip()
-    env_jira_token = os.environ.get("JIRA_API_TOKEN", "").strip()
+    os.environ.get("JIRA_API_TOKEN", "").strip()
     env_jira_project = os.environ.get("JIRA_PROJECT_KEY", "").strip()
     # Fallback: check if the connector can initialize (handles .env loading internally)
     env_configured = bool(env_jira_url and env_jira_user and env_jira_project)
@@ -3533,7 +3532,6 @@ def report_builder():
                 ApplicationComponent.lifecycle_status
             ).all() if r[0]
         ]
-        vendor_options = []  # Populated from VendorOrganization if needed
 
         if export_csv:
             import csv
@@ -4142,10 +4140,10 @@ def export_portfolio_pptx():
 
     BRAND_BLUE = RGBColor(0x1E, 0x3A, 0x5F)
     ACCENT_BLUE = RGBColor(0x3B, 0x82, 0xF6)
-    WHITE = RGBColor(0xFF, 0xFF, 0xFF)
-    DARK = RGBColor(0x1A, 0x1A, 0x2E)
+    RGBColor(0xFF, 0xFF, 0xFF)
+    RGBColor(0x1A, 0x1A, 0x2E)
     GRAY = RGBColor(0x6B, 0x72, 0x80)
-    HEADER_BG = RGBColor(0xF1, 0xF5, 0xF9)
+    RGBColor(0xF1, 0xF5, 0xF9)
 
     prs = Presentation()
     prs.slide_width = Inches(13.333)

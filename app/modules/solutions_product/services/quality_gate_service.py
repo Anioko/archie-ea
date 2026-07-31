@@ -256,8 +256,8 @@ class QualityGateService:
         all_content = "\n".join(files.values())
 
         if "python" in language:
-            has_jwt_dep = any("python-jose" in c or "PyJWT" in c or "jwt" in c.lower()
-                              for p, c in files.items() if "requirements" in p)
+            (any("python-jose" in c or "PyJWT" in c or "jwt" in c.lower()
+                              for p, c in files.items() if "requirements" in p))
             has_auth_middleware = any(
                 "get_current_user" in c or "oauth2_scheme" in c or "verify_token" in c
                 for c in files.values()
@@ -554,10 +554,10 @@ class QualityGateService:
             recs.append("Add tests/load/k6_smoke.js with 10 VU smoke test and tests/load/k6_load.js with 100 VU sustained load.")
 
         if "python" in language:
-            has_health_check = any(
+            (any(
                 "health" in c.lower() and "endpoint" not in p.lower()
                 for p, c in files.items() if "Dockerfile" in p
-            )
+            ))
             docker_files = {p: c for p, c in files.items() if "Dockerfile" in p}
             for path, content in docker_files.items():
                 if "HEALTHCHECK" not in content:

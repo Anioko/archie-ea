@@ -1534,7 +1534,7 @@ def compare_document_versions(doc_id):
         if not document:
             return jsonify({"success": False, "error": "Document not found"}), 404
 
-        version1_id = request.args.get("version1_id", type=int)
+        request.args.get("version1_id", type=int)
         version2_id = request.args.get("version2_id", type=int)
 
         comparison_service = DocumentComparisonService()
@@ -1557,7 +1557,7 @@ def compare_document_versions(doc_id):
             analysis2 = analysis1.copy()
 
         comparison = comparison_service.compare_analyses(analysis1, analysis2)
-        diff_report = comparison_service.generate_diff_report(comparison)
+        comparison_service.generate_diff_report(comparison)
 
         return jsonify(
             {

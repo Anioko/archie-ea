@@ -1190,7 +1190,6 @@ class GreenfieldWorkflow:
         workspace_id = wf.get("workspace_id")
         accumulated = wf.get("accumulated", {})
         brief = accumulated.get("brief", "")
-        target = brief[:80]
 
         step_handlers = {
             "SCOPE": self._execute_scope_step,
@@ -1442,7 +1441,7 @@ class GreenfieldWorkflow:
         """Step 4: Options analysis with real portfolio data."""
         brief = wf["accumulated"].get("brief", "")
         apps = wf["accumulated"].get("resolved_apps", [])
-        caps = wf["accumulated"].get("resolved_caps", [])
+        wf["accumulated"].get("resolved_caps", [])
 
         # Load real vendor data
         vendor_ctx = ""
@@ -1486,7 +1485,7 @@ class GreenfieldWorkflow:
         brief = wf["accumulated"].get("brief", "")
         feedback = wf["accumulated"].get("user_feedback", {})
         workspace_id = wf.get("workspace_id")
-        solution_id = wf.get("accumulated", {}).get("solution_id")
+        wf.get("accumulated", {}).get("solution_id")
 
         # Try StructuredDeliverableService first (AC-313-3)
         rec_count = 0
@@ -1978,7 +1977,7 @@ class BrownfieldWorkflow:
     def _execute_gap_analysis(self, wf: Dict, requested_model: str = None) -> Dict:
         """Step 3: Gap analysis + AI gap detection service integration."""
         target = wf["accumulated"].get("target_domain", "")
-        portfolio = wf["accumulated"].get("portfolio", {})
+        wf["accumulated"].get("portfolio", {})
         workspace_id = wf.get("workspace_id")
 
         # Call AIGapDetectionService for real gap data (AIC-314)

@@ -51,24 +51,6 @@ class LLMEnforcementSystem:
             return True  # File doesn't exist, no issue
 
         # FORBIDDEN PATTERNS FOR FILE DELETION
-        forbidden_patterns = [
-            r"del.*\.py",
-            r"remove.*\.py",
-            r"delete.*\.py",
-            r"rm.*\.py",
-            r"unlink.*\.py",
-            r"os\.remove",
-            r"os\.unlink",
-            r"pathlib.*unlink",
-            r"Path.*unlink",
-            "rmdir",
-            r"shutil\.rmtree",
-            r"shutil\.move",
-            r"shutil\.copy",
-            r"write_to_file.*delete",
-            r"edit.*delete",
-            r"multi_edit.*delete",
-        ]
 
         # Check if this is a Python file
         if file_path.endswith(".py"):

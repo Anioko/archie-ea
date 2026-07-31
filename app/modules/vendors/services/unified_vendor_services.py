@@ -901,7 +901,7 @@ class VendorResearchService:
         """Perform LLM-based vendor research."""
         try:
             # Use technology stack analyzer for basic analysis
-            tech_analysis = self.tech_analyzer.analyze_technology_stack(tech_stack.stack_data)
+            self.tech_analyzer.analyze_technology_stack(tech_stack.stack_data)
 
             # Use intelligent analyzer for deeper insights
             intelligent_analysis = self.intelligent_analyzer.analyze_technology(

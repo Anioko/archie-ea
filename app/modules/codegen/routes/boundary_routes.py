@@ -145,7 +145,7 @@ def _generate_nginx_conf(solutions_data):
 
 def _generate_client_sdk(consumer_name, producer_name, contracts):
     """Generate a minimal Python SDK stub for inter-service calls."""
-    consumer_slug = re.sub(r"[^a-zA-Z0-9]", "_", consumer_name).lower()
+    re.sub(r"[^a-zA-Z0-9]", "_", consumer_name).lower()
     producer_slug = re.sub(r"[^a-zA-Z0-9]", "_", producer_name).lower()
     class_name = "".join(w.capitalize() for w in producer_slug.split("_")) + "Client"
 

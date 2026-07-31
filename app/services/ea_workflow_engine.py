@@ -2639,7 +2639,7 @@ class EAWorkflowEngine:
         from app.models.solution_models import Solution
         from app.models.architecture_review_board import ARBReviewItem
 
-        scope = input_data.get("scope", {})
+        input_data.get("scope", {})
         app_id = (instance.context or {}).get("application_component_id")
 
         stakeholders = []
@@ -4238,11 +4238,11 @@ provides foundation for subsequent architecture development phases.
         for schedule in due:
             try:
                 context = schedule.default_context or {}
-                instance = self.start_workflow(
+                (self.start_workflow(
                     workflow_code=schedule.definition.workflow_code,
                     context=context,
                     triggered_by="scheduled",
-                )
+                ))
                 # Update next_run_at based on schedule_type
                 now = datetime.utcnow()
                 schedule_type = getattr(schedule, "schedule_type", "daily")
@@ -4656,7 +4656,7 @@ provides foundation for subsequent architecture development phases.
             weights = context.get("strategic_weights_input") or {}
             gaps_data = context.get("capability_gaps") or {}
             options = context.get("investment_options") or {}
-            adjustments = context.get("roadmap_adjustments_input") or {}
+            context.get("roadmap_adjustments_input") or {}
 
             total_investment = options.get("estimated_total_3yr_usd", 0.0) if isinstance(options, dict) else 0.0
             caps_addressed = gaps_data.get("total_gaps", 0) if isinstance(gaps_data, dict) else 0
@@ -4837,7 +4837,7 @@ provides foundation for subsequent architecture development phases.
                 raw = []
 
         dependency_graph = input_data.get("dependency_graph") or {}
-        edges = dependency_graph.get("edges", [])
+        dependency_graph.get("edges", [])
         nodes = dependency_graph.get("nodes", [])
 
         # Build coupling score: number of inbound + outbound edges per app
@@ -5210,7 +5210,7 @@ provides foundation for subsequent architecture development phases.
 
     def _handle_arb_impact_assessment(self, instance, step_def, input_data) -> Dict:
         """ARB_PACK_GENERATION step 4: derive impact assessment from proposed changes."""
-        current_state = input_data.get("current_state") or {}
+        input_data.get("current_state") or {}
         proposed_changes = input_data.get("proposed_changes") or {}
         if isinstance(proposed_changes, dict):
             changes_data = proposed_changes.get("proposed_changes", {})

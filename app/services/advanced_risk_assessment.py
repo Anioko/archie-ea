@@ -732,7 +732,6 @@ class AdvancedRiskAssessmentService:
                 continue
 
             category_score = score_data["score"]
-            identified_factors = score_data["identified_factors"]
 
             if category_score >= 6:  # High risk
                 # Get mitigation strategies from library

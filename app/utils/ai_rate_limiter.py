@@ -52,8 +52,8 @@ class AIUsageTracker:
         """
         # Get recent usage (simplified - in production, query from database)
         now = datetime.utcnow()
-        hour_ago = now - timedelta(hours=1)
-        day_ago = now - timedelta(days=1)
+        now - timedelta(hours=1)
+        now - timedelta(days=1)
         
         # For now, return generous limits (implementation would track actual usage)
         return {

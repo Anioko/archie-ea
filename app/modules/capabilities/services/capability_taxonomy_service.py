@@ -466,7 +466,7 @@ class CapabilityTaxonomyService:
 
     def _generate_naming_correction(self, name: str, rule: Dict) -> str:
         """Generate corrected name based on naming rule."""
-        level = rule.get("capability_level", "")
+        rule.get("capability_level", "")
         prefix = rule.get("naming_prefix", "")
         suffix = rule.get("naming_suffix", "")
 

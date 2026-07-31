@@ -38,7 +38,7 @@ from .routes import _add_archimate_element, _delete_archimate_element
 def get_application_work_packages(id):
     """API endpoint for application work packages"""
     try:
-        app = ApplicationComponent.query.get_or_404(id)
+        ApplicationComponent.query.get_or_404(id)
 
         # Get work packages for this application
         work_packages = WorkPackage.query.filter_by(application_component_id=id).all()
@@ -73,7 +73,7 @@ def get_application_work_packages(id):
 @login_required
 def update_implementation_layer(id):
     """Update Implementation & Migration Layer elements (WorkPackages, Deliverables, Plateaus)"""
-    app = ApplicationComponent.query.get_or_404(id)
+    ApplicationComponent.query.get_or_404(id)
 
     # csrf-ok: global CSRFProtect active
 
@@ -311,7 +311,7 @@ def delete_plateau(app_id, id):
 @login_required
 def work_package_delete(id, work_package_id):
     """Delete a work package from an application"""
-    app = ApplicationComponent.query.get_or_404(id)
+    ApplicationComponent.query.get_or_404(id)
     work_package = WorkPackage.query.get_or_404(work_package_id)
 
     try:
@@ -334,7 +334,7 @@ def work_package_delete(id, work_package_id):
 @login_required
 def deliverable_delete(id, deliverable_id):
     """Delete a deliverable from an application"""
-    app = ApplicationComponent.query.get_or_404(id)
+    ApplicationComponent.query.get_or_404(id)
     deliverable = Deliverable.query.get_or_404(deliverable_id)
 
     try:
@@ -357,7 +357,7 @@ def deliverable_delete(id, deliverable_id):
 @login_required
 def plateau_delete(id, plateau_id):
     """Delete a plateau from an application"""
-    app = ApplicationComponent.query.get_or_404(id)
+    ApplicationComponent.query.get_or_404(id)
     plateau = Plateau.query.get_or_404(plateau_id)
 
     try:
@@ -378,7 +378,7 @@ def plateau_delete(id, plateau_id):
 @login_required
 def work_package_edit(id, work_package_id):
     """Update Work Package properties"""
-    app = ApplicationComponent.query.get_or_404(id)
+    ApplicationComponent.query.get_or_404(id)
     work_package = WorkPackage.query.get_or_404(work_package_id)
 
     try:
@@ -407,7 +407,7 @@ def work_package_edit(id, work_package_id):
 @login_required
 def deliverable_edit(id, deliverable_id):
     """Update Deliverable properties"""
-    app = ApplicationComponent.query.get_or_404(id)
+    ApplicationComponent.query.get_or_404(id)
     deliverable = Deliverable.query.get_or_404(deliverable_id)
 
     try:

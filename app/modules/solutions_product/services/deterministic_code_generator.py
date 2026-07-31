@@ -788,7 +788,6 @@ class DeterministicCodeGenerator:
         # 4c. Resolve architecture style
         arch_style = self._get_arch_style(bundle)
         is_serverless = arch_style == "serverless"
-        is_event_driven = arch_style == "event_driven"
         arch_config = self._get_arch_config(bundle)
 
         # 5. Generate infrastructure files (skip Dockerfile/K8s for serverless)
@@ -1602,7 +1601,7 @@ class DeterministicCodeGenerator:
         _state_machines = getattr(bundle, "state_machines", {}) or {}
         _biz_rules = getattr(bundle, "business_rules", {}) or {}
         _validation_rules = self._extract_validation_rules(_biz_rules)
-        bp_flows = getattr(bundle, "business_process_flows", {}) or {}
+        getattr(bundle, "business_process_flows", {}) or {}
 
         ctx = {
             "solution_id": bundle.solution_id,
@@ -1638,7 +1637,7 @@ class DeterministicCodeGenerator:
         ctx["has_kafka"] = bool(async_integ)
         ctx["has_grpc"] = bool(grpc_integ)
         arch_style = self._get_arch_style(bundle)
-        arch_config = self._get_arch_config(bundle)
+        self._get_arch_config(bundle)
         is_serverless = arch_style == "serverless"
 
         # 1. App factory + WSGI entry point
@@ -1648,7 +1647,7 @@ class DeterministicCodeGenerator:
         files.append(self._render_simple("database.py.j2", "database.py", ctx))
 
         # 2. Blueprint + model + schema per service
-        has_handlers = bool(_biz_rules)
+        bool(_biz_rules)
         for svc in (bundle.services or []):
             tag_snake = svc.tag.lower().replace(" ", "_") if svc.tag else svc.name.lower().replace(" ", "_")
             entity_name = tag_snake
@@ -3215,7 +3214,7 @@ class DeterministicCodeGenerator:
         trigger = pipeline.get("trigger", "api_call")
 
         # Quality constraints from behavioral context
-        behavioral = getattr(bundle, "_genome_modules", {})
+        getattr(bundle, "_genome_modules", {})
         quality_constraints = []
         # Try to get from the genome's _behavioral section
         genome_behavioral = ctx.get("genome_behavioral", {})
@@ -3961,13 +3960,13 @@ with a real, working implementation.
                 sm = model_def.get("state_machine")
                 if sm and sm.get("transitions"):
                     sm_transitions = sm["transitions"]
-                ctrl_ctx = dict(ctx,
+                (dict(ctx,
                     entity_name=model_name,
                     endpoint_path=ep,
                     archimate_ids=["N/A"],
                     state_machine_transitions=sm_transitions,
                     models=single,
-                )
+                ))
                 files.extend(_safe(
                     "dto/CreateRequest.java.j2",
                     f"{java_base}/dto/{model_name}CreateRequest.java",
@@ -4181,7 +4180,7 @@ with a real, working implementation.
                     body_lines.append(lines[i])
                     if lines[i].count('"""') >= 2 and lines[i].strip() != '"""':
                         # single-line docstring
-                        in_docstring = False
+                        pass
                     else:
                         i += 1
                         while i < len(lines) and '"""' not in lines[i]:
@@ -4204,7 +4203,7 @@ with a real, working implementation.
                     i += 1
 
                 # Check if body is a stub (only pass / raise NotImplementedError)
-                body_text = "".join(body_lines)
+                "".join(body_lines)
                 non_empty = [
                     bl.strip() for bl in body_lines
                     if bl.strip() and not bl.strip().startswith("#") and '"""' not in bl
@@ -4260,7 +4259,7 @@ with a real, working implementation.
                         # Back out: remove the body_lines we just added
                         del output[-len(body_lines):]
                         # Re-add docstring lines only
-                        docstring_lines = [
+                        ([
                             bl for bl in body_lines if '"""' in bl or (
                                 body_lines and '"""' in body_lines[0] and
                                 body_lines.index(bl) <= next(
@@ -4268,7 +4267,7 @@ with a real, working implementation.
                                     len(body_lines),
                                 )
                             )
-                        ]
+                        ])
                         # Simpler docstring detection: take lines up through closing """
                         doc_end = 0
                         if body_lines and '"""' in body_lines[0]:
@@ -5767,8 +5766,8 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
         app_class = _pascal(bundle.solution_name)
         idp = getattr(bundle, "identity_provider", None) or {}
         integrations = getattr(bundle, "integrations", {}) or {}
-        confirmed_fields = getattr(bundle, "confirmed_fields", {}) or {}
-        business_rules = getattr(bundle, "business_rules", {}) or {}
+        getattr(bundle, "confirmed_fields", {}) or {}
+        getattr(bundle, "business_rules", {}) or {}
 
         _, grpc_integ, async_integ = self._classify_integrations(integrations)
 
@@ -7106,12 +7105,6 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
             logger.warning("flask-nextjs: Next.js frontend generation failed (non-fatal): %s", _fe_err)
 
         # Flask-specific CORS config so Next.js dev server can reach the API
-        cors_content = (
-            "# Flask CORS configuration for Next.js frontend\n"
-            "# Install: pip install Flask-Cors\n"
-            "# Add to app/__init__.py: from flask_cors import CORS; CORS(app, origins=['http://localhost:3000'])\n"
-            "CORS_ORIGINS=http://localhost:3000\n"
-        )
         files.append(GeneratedFile(path="CORS_SETUP.md", content=(
             "# CORS Setup for Flask + Next.js\n\n"
             "Flask needs CORS enabled for the Next.js dev server (`localhost:3000`) to call the API.\n\n"
@@ -7320,9 +7313,9 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
         ))
 
         # ── tailwind.config.js ──
-        entity_content_paths = ", ".join([
+        (", ".join([
             f'"./src/pages/{e["pascal"]}/**/*.{{ts,tsx}}"' for e in entities
-        ]) if entities else ""
+        ]) if entities else "")
         files.append(GeneratedFile(
             path="frontend/tailwind.config.js",
             content=(
@@ -7616,8 +7609,8 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
 
         files = []
         idp = getattr(bundle, "identity_provider", None) or {}
-        confirmed_fields = getattr(bundle, "confirmed_fields", {}) or {}
-        business_rules = getattr(bundle, "business_rules", {}) or {}
+        getattr(bundle, "confirmed_fields", {}) or {}
+        getattr(bundle, "business_rules", {}) or {}
         mobile_config = getattr(bundle, "mobile_config", {}) or {}
 
         auth_type = idp.get("type", "jwt-local")
@@ -7942,7 +7935,7 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
         """
         classes = []
         confirmed_fields = getattr(bundle, "confirmed_fields", {}) or {}
-        business_rules = getattr(bundle, "business_rules", {}) or {}
+        getattr(bundle, "business_rules", {}) or {}
 
         if confirmed_fields:
             for name, field_defs in confirmed_fields.items():
@@ -8386,7 +8379,7 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
 
         files = []
         confirmed = getattr(bundle, "confirmed_fields", {}) or {}
-        business_rules = getattr(bundle, "business_rules", {}) or {}
+        getattr(bundle, "business_rules", {}) or {}
 
         sol_snake = _snake(bundle.solution_name)
         sol_pascal = _pascal(bundle.solution_name)

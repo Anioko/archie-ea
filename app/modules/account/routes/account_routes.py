@@ -107,12 +107,12 @@ def register():
     """Register a new user, and send them a confirmation email."""
     form = RegistrationForm()
     if form.validate_on_submit():
-        user = _svc.register_user(
+        (_svc.register_user(
             first_name=form.first_name.data,
             last_name=form.last_name.data,
             email=form.email.data,
             password=form.password.data,
-        )
+        ))
         flash("Account created successfully. Welcome to A.R.C.H.I.E.!", "success")
         return redirect(url_for("main.index"))
     return render_template("account/register.html", form=form)

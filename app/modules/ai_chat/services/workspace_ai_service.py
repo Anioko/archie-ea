@@ -285,7 +285,7 @@ class WorkspaceAIService:
 
         # Boost confidence based on text similarity and completeness
         suggestion_text = suggestion.get("text", "").lower()
-        partial_lower = partial_text.lower()
+        partial_text.lower()
 
         # Length bonus - longer suggestions are more complete
         length_ratio = len(suggestion_text) / max(len(partial_text), 50)
@@ -328,20 +328,8 @@ class WorkspaceAIService:
         }
 
         # Extract budget information
-        budget_patterns = [
-            r"budget.*?£?(\d+(?:,\d{3})*(?:\.\d{2})?)k?",
-            r"£?(\d+(?:,\d{3})*(?:\.\d{2})?)k?.*?budget",
-            r"cost.*?£?(\d+(?:,\d{3})*(?:\.\d{2})?)k?",
-            r"investment.*?£?(\d+(?:,\d{3})*(?:\.\d{2})?)k?",
-        ]
 
         # Extract timeline information
-        timeline_patterns = [
-            r"(\d+).*?months?",
-            r"(\d+).*?weeks?",
-            r"(\d+).*?years?",
-            r"within.*?(\d+).*?months?",
-        ]
 
         # Budget and timeline extraction uses motivational elements below
 

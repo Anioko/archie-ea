@@ -267,16 +267,16 @@ class TechnologySelectionAgent:
             Dictionary with technology recommendations and rationale
         """
         try:
-            solution_description = context.get("solution_description", "")
-            solution_type = context.get("solution_type", "")
-            business_domain = context.get("business_domain", "")
-            constraints = context.get("constraints", [])
-            compliance_requirements = context.get("compliance_requirements", [])
-            organization_size = context.get("organization_size", "midmarket")
-            budget_range = context.get("budget_range", {})
-            timeline_months = context.get("timeline_months", 12)
-            user_count = context.get("user_count", 100)
-            is_critical = context.get("is_critical", False)
+            context.get("solution_description", "")
+            context.get("solution_type", "")
+            context.get("business_domain", "")
+            context.get("constraints", [])
+            context.get("compliance_requirements", [])
+            context.get("organization_size", "midmarket")
+            context.get("budget_range", {})
+            context.get("timeline_months", 12)
+            context.get("user_count", 100)
+            context.get("is_critical", False)
 
             # Analyze requirements
             requirements_analysis = self._analyze_requirements(context)
@@ -330,12 +330,12 @@ class TechnologySelectionAgent:
     def _analyze_requirements(self, context: Dict) -> Dict[str, Any]:
         """Analyze solution requirements to determine technology needs."""
         description = context.get("solution_description", "").lower()
-        solution_type = context.get("solution_type", "").lower()
+        context.get("solution_type", "").lower()
         user_count = context.get("user_count", 0)
         timeline_months = context.get("timeline_months", 12)
         is_critical = context.get("is_critical", False)
         compliance_requirements = context.get("compliance_requirements", [])
-        constraints = [c.lower() for c in context.get("constraints", [])]
+        [c.lower() for c in context.get("constraints", [])]
 
         requirements = {
             "performance": {

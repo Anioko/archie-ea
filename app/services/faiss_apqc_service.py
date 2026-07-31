@@ -102,7 +102,6 @@ class FAISSAPQCService:
 
             # Create vectors for all processes
             vectors = []
-            metadata = []
 
             for i, process in enumerate(processes):
                 text_parts = [

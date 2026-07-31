@@ -835,7 +835,6 @@ def get_import_fields():
             )
 
     # Build auto-mapping aliases based on field names
-    aliases = {}
     alias_patterns = {
         "name": ["name", "application name", "app name", "appname", "app_name"],
         "application_code": [
@@ -1114,7 +1113,7 @@ def analyze_import():
         return jsonify({"error": "No file selected"}), 400
 
     filename = (file.filename or "").lower()
-    duplicate_mode = request.form.get("duplicate_mode", "merge")
+    request.form.get("duplicate_mode", "merge")
 
     # Get custom field mappings from frontend
     custom_mappings = {}
@@ -1350,9 +1349,9 @@ def analyze_import():
             }
             _all_apqc = APQCProcess.query.all()
             existing_apqc = {p.process_code: p for p in _all_apqc}
-            existing_apqc_by_name = {
+            ({
                 p.process_name.lower(): p for p in _all_apqc
-            }
+            })
             existing_vendors = {}
             if VendorOrganization:
                 existing_vendors = {
@@ -4395,7 +4394,7 @@ def import_manual_applications():
     for idx, app_data in enumerate(applications, start=1):
         try:
             name = app_data.get("name", "").strip()
-            app_id = app_data.get("app_id", "").strip() or None
+            app_data.get("app_id", "").strip() or None
 
             if not name:
                 records_failed += 1

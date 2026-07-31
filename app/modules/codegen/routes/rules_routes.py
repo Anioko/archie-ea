@@ -158,7 +158,7 @@ def suggest_rule_templates(solution_id):
     """Suggest templates based on the solution's data model."""
     from app.modules.codegen.services.rule_template_engine import RuleTemplateEngine
 
-    solution = Solution.query.get_or_404(solution_id)
+    Solution.query.get_or_404(solution_id)
     gen = CodegenGeneration.query.filter_by(solution_id=solution_id).first()
     if not gen or not gen.uml_snapshot:
         return jsonify({"success": True, "suggestions": [], "reason": "No UML snapshot available"})

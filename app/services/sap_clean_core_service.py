@@ -305,7 +305,6 @@ class SAPCleanCoreService:
     @classmethod
     def _check_modification_signals(cls, solution, footprint: dict) -> list:
         findings = []
-        all_elements = footprint["sap_elements"]
         # Scan ArchiMate element names/descriptions for modification keywords
         try:
             from app.models.solution_models import SolutionArchiMateElement
@@ -391,7 +390,6 @@ class SAPCleanCoreService:
     def _check_missing_btp_layer(cls, solution, footprint: dict, btp_present: bool) -> list:
         findings = []
         has_sap = (footprint["sap_app_count"] + footprint["sap_element_count"]) > 0
-        has_custom = footprint["classic_pattern_count"] > 0
 
         if has_sap and not btp_present:
             sap_names = [a["name"] for a in footprint["sap_apps"][:3]]
@@ -428,10 +426,10 @@ class SAPCleanCoreService:
             if not rows:
                 return []
             ids = [r.pattern_id for r in rows]
-            blocked = IntegrationPattern.query.filter(
+            (IntegrationPattern.query.filter(
                 IntegrationPattern.id.in_(ids),
                 IntegrationPattern.approval_status == "blocked",
-            ).all()
+            ).all())
             # Already reported in _check_classic_integration; avoid double-counting
         except Exception:
             pass

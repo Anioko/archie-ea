@@ -165,7 +165,6 @@ class ArchiMateOEFService:
             result["errors"].append(f"XML parse error: {exc}")
             return result
 
-        ns = {"a": self.ARCHIMATE_NS, "xsi": self.XSI_NS}
 
         # Resolve default namespace from root tag if present
         def _ns_tag(tag: str) -> str:

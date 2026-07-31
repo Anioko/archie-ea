@@ -440,12 +440,12 @@ class WizardQualityGateService:
 
             # Count elements with at least one relationship (source or target)
             from sqlalchemy import or_
-            rel_count = ArchiMateRelationship.query.filter(
+            (ArchiMateRelationship.query.filter(
                 or_(
                     ArchiMateRelationship.source_id.in_(element_ids),
                     ArchiMateRelationship.target_id.in_(element_ids),
                 )
-            ).count()
+            ).count())
 
             # Chain completeness = connected elements / total elements
             connected = set()

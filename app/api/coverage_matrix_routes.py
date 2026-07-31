@@ -466,7 +466,7 @@ def get_matrix_data():
     try:
         # Get query parameters
         matrix_type = request.args.get("matrix_type", "overview")
-        force_refresh = request.args.get("refresh", "false").lower() == "true"
+        request.args.get("refresh", "false").lower() == "true"
 
         # Initialize coverage matrix service
         service = InteractiveCoverageMatrix()
@@ -534,9 +534,9 @@ def export_matrix():
             return jsonify({"success": False, "error": "No request data provided"}), 400
 
         matrix_data = data.get("matrix_data")
-        export_format = data.get("format", "excel")
-        include_charts = data.get("include_charts", True)
-        include_gap_analysis = data.get("include_gap_analysis", False)
+        data.get("format", "excel")
+        data.get("include_charts", True)
+        data.get("include_gap_analysis", False)
 
         if not matrix_data:
             return jsonify({"success": False, "error": "matrix_data is required"}), 400

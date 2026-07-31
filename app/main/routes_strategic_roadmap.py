@@ -199,15 +199,15 @@ def get_strategic_work_packages():
     try:
         # Get filter parameters
         selected_levels = request.args.getlist("levels") or ["L1", "L2", "L3"]
-        selected_domain = request.args.get("domain", "")
-        selected_importance = request.args.get("importance", "")
+        request.args.get("domain", "")
+        request.args.get("importance", "")
 
         # Convert level strings to integers
-        level_ints = [
+        ([
             int(level[1])
             for level in selected_levels
             if level.startswith("L") and level[1:].isdigit()
-        ]
+        ])
 
         # Use ORM without backend filtering (let frontend handle filtering)
         work_packages_query = UnifiedWorkPackage.query.filter(

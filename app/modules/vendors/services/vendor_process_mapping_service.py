@@ -914,11 +914,11 @@ class VendorProcessMappingService:
                     level = process_info.get("level", 1)
                     parts = process_code.split(".")
                     category_l1 = parts[0] + ".0" if len(parts) >= 1 else None
-                    category_l2 = ".".join(parts[:2]) if len(parts) >= 2 else None
-                    category_l3 = ".".join(parts[:3]) if len(parts) >= 3 else None
+                    ".".join(parts[:2]) if len(parts) >= 2 else None
+                    ".".join(parts[:3]) if len(parts) >= 3 else None
 
                     # Get parent code
-                    parent_code = process_info.get("parent")
+                    process_info.get("parent")
 
                     # Get category name
                     category_name = APQC_CATEGORIES.get(category_l1, "")
@@ -1036,7 +1036,7 @@ class VendorProcessMappingService:
                 # Get category mapping info
                 category_mapping = VENDOR_CATEGORY_APQC_MAPPING.get(category, {})
                 coverage_level = category_mapping.get("coverage_level", "partial")
-                arch_domains = category_mapping.get("architecture_domains", [])
+                category_mapping.get("architecture_domains", [])
 
                 # Create mappings for each APQC process
                 for apqc_code in apqc_codes:

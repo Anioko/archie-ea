@@ -392,7 +392,6 @@ class EnhancedArchiMateExtractor:
         Perform targeted extraction to fill gaps
         """
 
-        gaps = quality_report["gaps"]
         metrics = quality_report["metrics"]
 
         elements = initial_extraction.get("elements", [])

@@ -1098,7 +1098,7 @@ def accept_capability_suggestion(id):
     """Accept an AI-suggested capability mapping — creates the ApplicationCapabilityMapping record."""
     from flask_login import current_user
 
-    app_obj = ApplicationComponent.query.get_or_404(id)
+    ApplicationComponent.query.get_or_404(id)
     data = request.get_json() or {}
     cap_id = data.get("capability_id")
     confidence = data.get("confidence", 0)

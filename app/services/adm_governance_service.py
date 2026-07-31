@@ -325,7 +325,6 @@ class ADMGovernanceService:
             raise ValueError(f"Cannot execute transition: approval status is {approval.status}")
 
         card = approval.card
-        old_phase_id = card.adm_phase_id
 
         # Update card phase
         card.adm_phase_id = approval.target_phase_id

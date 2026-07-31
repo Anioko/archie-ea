@@ -277,7 +277,6 @@ def import_vendors():
 
                 if existing:
                     # Update existing (use allowlist to prevent mass assignment)
-                    old_name = existing.name
                     for key in VENDOR_UPDATE_ALLOWLIST:
                         if key in vendor_data and vendor_data[key]:
                             setattr(existing, key, vendor_data[key])

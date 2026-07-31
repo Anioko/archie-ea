@@ -115,7 +115,7 @@ def analyze_document_for_application(application_id):
     from ..services.archimate.document_analysis_service import DocumentAnalysisService
     from ..services.archimate.document_upload_service import DocumentUploadService
 
-    app = ApplicationComponent.query.get_or_404(application_id)
+    ApplicationComponent.query.get_or_404(application_id)
 
     try:
         analysis_service = DocumentAnalysisService()
@@ -289,7 +289,7 @@ def apply_analysis_to_application(application_id):
     """
     from ..services.archimate.document_analysis_service import DocumentAnalysisService
 
-    app = ApplicationComponent.query.get_or_404(application_id)
+    ApplicationComponent.query.get_or_404(application_id)
 
     try:
         data = request.get_json()
@@ -361,7 +361,7 @@ def get_analysis_history(application_id):
     """Get analysis history for an application."""
     from ..models.document_analysis import DocumentAnalysis
 
-    app = ApplicationComponent.query.get_or_404(application_id)
+    ApplicationComponent.query.get_or_404(application_id)
 
     analyses = (
         DocumentAnalysis.query.filter_by(

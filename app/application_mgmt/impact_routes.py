@@ -208,7 +208,7 @@ def ai_analyze():
         data = request.get_json()
         app_id = data.get("app_id")
         scenario = data.get("scenario", "custom")
-        context = data.get("context", {})  # Additional context from frontend
+        data.get("context", {})
 
         if not app_id:
             return jsonify({"error": "Application ID is required"}), 400

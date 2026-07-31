@@ -458,7 +458,6 @@ def capability_analytics():
         category_distribution = result.fetchall()
 
         # Get business grouping distribution
-        all_capabilities = []
         result = db.session.execute(  # tenant-filtered
             text(
                 f"""

@@ -2975,7 +2975,7 @@ def get_requirement_dependencies(req_id):
     """PRQ-001: Get dependency graph for a requirement."""
     from app.models.solution_architect_models import SolutionRequirement, RequirementDependency
 
-    req = SolutionRequirement.query.get_or_404(req_id)
+    SolutionRequirement.query.get_or_404(req_id)
 
     outgoing = RequirementDependency.query.filter_by(req_id=req_id).all()
     incoming = RequirementDependency.query.filter_by(depends_on_id=req_id).all()
@@ -3006,7 +3006,7 @@ def add_requirement_dependency(req_id):
     """PRQ-001: Add a dependency between two requirements."""
     from app.models.solution_architect_models import SolutionRequirement, RequirementDependency
 
-    req = SolutionRequirement.query.get_or_404(req_id)
+    SolutionRequirement.query.get_or_404(req_id)
     data = request.get_json() or {}
 
     depends_on_id = data.get('depends_on_id')
@@ -3023,7 +3023,7 @@ def add_requirement_dependency(req_id):
     if existing:
         return jsonify({'error': 'Circular dependency detected'}), 400
 
-    target = SolutionRequirement.query.get_or_404(depends_on_id)
+    SolutionRequirement.query.get_or_404(depends_on_id)
 
     dep = RequirementDependency(
         req_id=req_id,

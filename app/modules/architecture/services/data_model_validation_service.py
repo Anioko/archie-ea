@@ -668,11 +668,6 @@ class DataModelValidationService:
         recommendations = []
 
         # Check nullable constraints
-        nullable_fields = [
-            ('archimate_element_id', 'should be nullable=True'),
-            ('business_domain', 'should be nullable=True'),
-            ('data_classification', 'should be nullable=True')
-        ]
 
         score = 100 - (len(issues) * 2)
         return {'score': max(0, score), 'issues': issues, 'recommendations': recommendations}
@@ -683,9 +678,6 @@ class DataModelValidationService:
         recommendations = []
 
         # Check for indexes on frequently queried fields
-        indexed_fields = [
-            'name', 'archimate_element_id', 'created_at'
-        ]
 
         score = 100 - (len(issues) * 2)
         return {'score': max(0, score), 'issues': issues, 'recommendations': recommendations}

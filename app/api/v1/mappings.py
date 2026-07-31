@@ -38,7 +38,6 @@ mappings_bp = Blueprint("mappings_v1", __name__, url_prefix="/api/v1/mappings")
 def _build_filter_query(query, filters):
     """Build query with common filters."""
     if filters.get("search"):
-        search = f"%{filters['search']}%"
         # Search across name fields if available
         query = query.filter(
             or_(

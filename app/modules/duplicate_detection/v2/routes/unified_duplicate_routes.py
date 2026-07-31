@@ -1031,7 +1031,7 @@ def api_detection_runs():
 def run_detection():
     """Run duplicate detection from the enterprise dashboard."""
     try:
-        data = request.get_json() or {}
+        request.get_json() or {}
         result = unified_service.run_duplicate_detection()
         if result.get("success"):
             return jsonify(result), 200

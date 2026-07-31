@@ -103,7 +103,6 @@ class ApplicationToUMLAdapter:
     @staticmethod
     def _add_standard_methods(uml_element: UMLElement, application: ApplicationComponent):
         """Add standard CRUD methods to UML element."""
-        class_name = uml_element.name
 
         uml_element.add_method(
             name="__init__",

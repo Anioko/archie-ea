@@ -123,7 +123,7 @@ class UploadSecurityService:
             sanitization_result = self._sanitize_file(file_path, filename, validation_result.mime_type if validation_result else "application/octet-stream")
             
             # Step 5: Final security check
-            final_check = self._final_security_check(validation_result, scan_result, sanitization_result)
+            self._final_security_check(validation_result, scan_result, sanitization_result)
             
             # Step 6: Determine final file path
             final_file_path = self._get_final_file_path(file_path, sanitization_result)

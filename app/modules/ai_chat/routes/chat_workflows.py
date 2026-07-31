@@ -404,7 +404,7 @@ def bulk_process_applications():
         )
 
         data = request.json or {}
-        application_ids = data.get("application_ids")
+        data.get("application_ids")
         max_applications = data.get("max_applications", 50)
 
         result = ApplicationArchitectureMapperService.bulk_auto_map(
@@ -458,7 +458,7 @@ def actionable_gap_analysis():
     try:
         data = request.json or {}
         analysis_type = data.get("analysis_type", "capability")
-        create_roadmap = data.get("create_roadmap_items", False)
+        data.get("create_roadmap_items", False)
 
         gaps = []
 
@@ -626,7 +626,7 @@ def discover_vendors_for_capability():
         data = request.json or {}
         capability_name = data.get("capability_name", "")
         capability_id = data.get("capability_id")
-        organization_size = data.get("organization_size", "medium")
+        data.get("organization_size", "medium")
         calculate_tco = data.get("calculate_tco", False)
 
         if not capability_name and not capability_id:

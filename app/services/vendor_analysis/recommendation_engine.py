@@ -547,7 +547,7 @@ Be specific, data-driven, and actionable. Focus on business value and risk-aware
         Uses template data and scoring to create readable recommendation.
         """
         top_vendor = sorted_vendors[0]
-        weights = analysis.get_criteria_weights()
+        analysis.get_criteria_weights()
 
         # Determine why this vendor won
         score_breakdown = {

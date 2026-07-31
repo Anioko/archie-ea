@@ -1136,7 +1136,7 @@ class RoadmapAutomationEngine:
     ) -> List[Dict[str, Any]]:
         """Generate sub work packages for a roadmap item."""
         work_packages = []
-        capability_name = gap.get("capability_name", "Capability")
+        gap.get("capability_name", "Capability")
         app_name = recommendation.get("recommended_application_name", "Application")
 
         if action_type == "reuse_existing":

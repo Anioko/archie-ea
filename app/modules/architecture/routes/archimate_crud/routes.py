@@ -1483,8 +1483,7 @@ def api_health_scorecard():
         semantic_rels = sum(v for k, v in rel_by_type.items() if (k or "").lower() not in STRUCTURAL_TYPES)
 
         # Cross-layer relationship pairs (excluding composition/aggregation within same layer)
-        cross_layer_raw = (
-            db.session.query(
+        (db.session.query(
                 ArchiMateElement.layer.label("src_layer"),
                 func.count(ArchiMateRelationship.id).label("cnt"),
             )
@@ -1498,8 +1497,7 @@ def api_health_scorecard():
                 ArchiMateRelationship.type.notin_(["composition", "aggregation"]),
             )
             .group_by(ArchiMateElement.layer)
-            .all()
-        )
+            .all())
         # Fallback: count relationships crossing layers via raw SQL for reliability
         try:
             _cross_sql = """

@@ -281,9 +281,9 @@ class LLMRouter:
                 # Make request
                 provider_start = datetime.utcnow()
                 response = await self._call_provider(provider, context)
-                provider_time = int(
+                (int(
                     (datetime.utcnow() - provider_start).total_seconds() * 1000
-                )
+                ))
 
                 # Cache successful response
                 await self._cache_response(

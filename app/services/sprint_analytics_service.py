@@ -67,7 +67,7 @@ def _build_actual_line(sprint: Sprint, start: date, end: date, total_points: int
     from app.models.adm_kanban import KanbanCard
 
     duration = (end - start).days + 1
-    today = date.today()
+    date.today()
 
     cards = (
         KanbanCard.query

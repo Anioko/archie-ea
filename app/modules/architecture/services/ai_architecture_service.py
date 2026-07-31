@@ -166,21 +166,11 @@ class CognitiveArchitectureService:
             # Simulation Mode if no URL configured
             return self._simulate_response(user_prompt)
 
-        headers = {
+        ({
             "Authorization": f"Bearer {current_app.config.get('OPENAI_API_KEY', 'placeholder')}",
             "Content-Type": "application/json",
-        }
+        })
 
-        payload = {
-            "model": config.model_version,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            "temperature": config.temperature,
-            "max_tokens": config.max_tokens,
-            "response_format": {"type": "json_object"},  # Enforcing JSON mode
-        }
 
         try:
             # NOTE: This runs the actual request if URL is present.

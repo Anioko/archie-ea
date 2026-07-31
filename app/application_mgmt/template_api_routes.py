@@ -1265,7 +1265,7 @@ def preview_template_instantiation(template_id):
         return jsonify({"error": "application_id required"}), 400
 
     template = ElementTemplate.query.get_or_404(template_id)
-    application = ApplicationComponent.query.get_or_404(app_id)
+    ApplicationComponent.query.get_or_404(app_id)
 
     # Build preview
     preview = {

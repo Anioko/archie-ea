@@ -134,8 +134,6 @@ def api_process_gaps():
                 else:
                     process_level = 2  # Default to Process level
                 process_code = process.process_code
-                process_type = process.process_type
-                process_category = process.process_category
                 process_owner = process.process_owner
                 business_unit = None
                 is_automated = False  # APQC processes don't have this field by default

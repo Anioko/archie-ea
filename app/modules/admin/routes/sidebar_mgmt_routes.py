@@ -68,7 +68,6 @@ def list_sidebar_items():
 def toggle_sidebar_item(item_id):
     """Toggle a sidebar item on/off."""
     item = SidebarMenuItem.query.get_or_404(item_id)
-    old_state = item.is_enabled
     item.is_enabled = not item.is_enabled
     db.session.commit()
 
