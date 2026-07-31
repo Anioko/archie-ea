@@ -1,23 +1,82 @@
+# Build context exclusions.
+#
+# Both Dockerfiles do `COPY . /app`, so anything reachable here is baked into the
+# image and survives in a layer even if a later step deletes it. The previous
+# list excluded `.env` exactly, which does not cover `.env.production`,
+# `.env.local`, a stray key, or a database dump - and this repo root is where
+# scratch files accumulate (CONTRIBUTING warns against `git add -A` for the same
+# reason). Untracked files are the risk: they are invisible to gitleaks, which
+# scans git history, but fully visible to the Docker build.
+#
+# Verified before tightening: of everything tracked, only .env.example matches
+# the new patterns, and it is re-included below.
+
+# --- secrets and credentials ---------------------------------------------
+.env*
+!.env.example
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+*.token
+*token.txt
+*.secret
+secrets.json
+.ssh/
+.aws/
+.gnupg/
+# Deliberately NOT using catch-alls like *secret* or *credential*: they match
+# real source modules (credential_vault.py, credential_encryption.py,
+# named_credential.xml.j2) and would silently drop them from the image, turning a
+# hardening change into an ImportError at boot.
+
+# --- data dumps -----------------------------------------------------------
+*.sql
+*.dump
+*.sqlite
+*.sqlite3
+*.db
+*.bak
+
+# --- vcs, caches, build junk ---------------------------------------------
 .git
-.env
+.gitignore
 *.pyc
 __pycache__
 venv/
 .venv/
 node_modules/
 *.tar.gz
+*.zip
+*.7z
 *.log
 *.jsonl
+*.bundle
+
+# --- test / analysis artefacts -------------------------------------------
 tests/
+coverage.xml
+htmlcov/
+.coverage*
+.pytest_cache/
+.scannerwork/
+.ruff_cache/
+.mypy_cache/
+sa_test_screenshots/
+audit/
+
+# --- not needed at runtime ------------------------------------------------
 docs/
 agents/
 scripts/guardrails/
-audit/
-sa_test_screenshots/
 migrations/versions/
 .claude/
 .serena/
 .cursor/
+.github/
 *.bat
 *.ps1
 -w
