@@ -824,13 +824,17 @@ def api_group_merge_preview(group_id):
                 primary_val = get_field_val(primary, field_name)
                 dup_val = get_field_val(dup_app, field_name)
                 if primary_val == dup_val:
-                    status = "match"; fields_matching += 1
+                    status = "match"
+                    fields_matching += 1
                 elif primary_val and not dup_val:
-                    status = "primary_only"; fields_missing += 1
+                    status = "primary_only"
+                    fields_missing += 1
                 elif not primary_val and dup_val:
-                    status = "duplicate_only"; fields_missing += 1
+                    status = "duplicate_only"
+                    fields_missing += 1
                 else:
-                    status = "conflict"; fields_conflicting += 1
+                    status = "conflict"
+                    fields_conflicting += 1
                 if status == "conflict":
                     p_len = len(str(primary_val)) if primary_val else 0
                     d_len = len(str(dup_val)) if dup_val else 0

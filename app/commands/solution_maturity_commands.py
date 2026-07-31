@@ -157,18 +157,28 @@ def _compute_solution_maturity(solution, db) -> int:
         logger.debug("suppressed error in _compute_solution_maturity (app/commands/solution_maturity_commands.py): %s", exc)
 
     earned = 0
-    if has_drivers:          earned += 8
-    if has_goals:            earned += 7
-    if has_constraints:      earned += 5
-    if has_requirements:     earned += 10
-    if has_archimate:        earned += 8
-    if has_risks:            earned += 7
-    if has_recommendations:  earned += 10
-    if has_plateaus:         earned += 5
+    if has_drivers:
+        earned += 8
+    if has_goals:
+        earned += 7
+    if has_constraints:
+        earned += 5
+    if has_requirements:
+        earned += 10
+    if has_archimate:
+        earned += 8
+    if has_risks:
+        earned += 7
+    if has_recommendations:
+        earned += 10
+    if has_plateaus:
+        earned += 5
     if (solution.governance_status or "draft") not in (None, "draft"):
                              earned += 7
-    if has_metrics:          earned += 5
-    if cross_layer_ok:       earned += 7
+    if has_metrics:
+        earned += 5
+    if cross_layer_ok:
+        earned += 7
 
     return round((earned / TOTAL_WEIGHT) * 100)
 
