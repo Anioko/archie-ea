@@ -4,23 +4,20 @@ ENTERPRISE_ROLE_SECTION_MAP grants each of the nine archetypes a set of
 sections. This asserts the promise is keepable - that every granted section
 resolves to something the application actually serves.
 
-Two archetypes fail that today, and the cause is documented in the codebase
-itself. app/_bootstrap/blueprints.py::_register_persona_modules:
+Two archetypes failed that until 2026-07-31. app/_bootstrap/blueprints.py had
+disabled the procurement and my_applications modules on 2026-06-11 because every
+page route returned 500 - so procurement was promised 3 sections with 1 missing,
+and application_manager was promised 5 with its DEFINING section missing.
 
-    North Star persona modules - REGISTRATION DISABLED 2026-06-11.
-    procurement (7 page routes) and my_applications (5 page routes) were
-    registered with ZERO templates ... every page route returned 500 for any
-    user with the matching role.
+The earlier version of this file asserted that broken state deliberately, so
+that re-enabling the modules would break the test and force the model and the
+runtime to be reconciled rather than drift apart again. That is exactly what
+happened: the modules were re-enabled once their templates were found to exist
+all along, in each blueprint's own template_folder rather than app/templates/,
+and this file had to be updated in the same change.
 
-Disabling them was correct - 500s are worse than absence. The defect is that
-the persona model was never updated to match, so:
-
-  * procurement is granted 3 sections and one of them does not exist
-  * application_manager is granted 5 and its DEFINING section does not exist
-
-The tests below encode that as fact rather than aspiration. When the modules
-are re-enabled with templates, the xfail turns into an unexpected pass and this
-file must be updated - which is the point.
+All nine archetypes now reach the section they exist to use. Whether those pages
+render is asserted separately, in test_journey_persona_modules.py.
 """
 
 import pytest
@@ -40,7 +37,9 @@ SIGNATURE_SECTION = {
     "procurement": ("/procurement", "procurement"),
 }
 
-DISABLED_MODULES = {"my_applications", "procurement"}
+# Emptied 2026-07-31: both modules were re-enabled after verifying their
+# templates existed all along, in each blueprint's own template_folder.
+DISABLED_MODULES = set()
 
 
 @pytest.mark.parametrize(
@@ -63,30 +62,24 @@ def test_archetype_can_reach_its_signature_section(app, client, archetype):
     )
 
 
-@pytest.mark.parametrize(
-    "archetype",
-    [a for a, (_, s) in SIGNATURE_SECTION.items() if s in DISABLED_MODULES],
-)
-def test_disabled_persona_modules_are_still_advertised(app, client, archetype):
-    """These archetypes are promised a section the app does not serve.
+def test_no_archetype_is_promised_a_section_the_app_does_not_serve():
+    """The persona model and the runtime must agree.
 
-    Deliberately asserts the BROKEN state, so the gap is visible in CI rather
-    than living only in a docstring. Re-enabling the module should break this
-    test.
+    Until 2026-07-31 they did not: ENTERPRISE_ROLE_SECTION_MAP granted
+    procurement and application_manager a section whose module was
+    registration-disabled, so two of nine archetypes were advertised a product
+    that returned 404. The previous version of this file asserted that broken
+    state deliberately, so that re-enabling the modules would break the test and
+    force this reconciliation. It did.
+
+    DISABLED_MODULES is now empty. If a module is ever disabled again, add it
+    back here AND remove the matching grant from ENTERPRISE_ROLE_SECTION_MAP -
+    the two must move together.
     """
-    from app import db
-
-    path, section = SIGNATURE_SECTION[archetype]
-    with app.app_context():
-        org_id = make_org(db, "Journey")
-        user_id = make_user(db, org_id, archetype[:12], enterprise_role=archetype)
-
-    login(client, user_id)
-    ok, status = reachable(client, path)
-    assert not ok, (
-        "%s now resolves (status %s). The %s module appears to be registered "
-        "again - remove this archetype from DISABLED_MODULES and move it to the "
-        "positive test above." % (path, status, section)
+    assert not DISABLED_MODULES, (
+        "Modules are disabled again: %s. Remove the matching sections from "
+        "ENTERPRISE_ROLE_SECTION_MAP so the product stops advertising them."
+        % sorted(DISABLED_MODULES)
     )
 
 

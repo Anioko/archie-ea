@@ -1181,18 +1181,53 @@ def _register_solution_product(app):
 
 
 def _register_persona_modules(app):
-    """North Star persona modules — REGISTRATION DISABLED 2026-06-11.
+    """North Star persona modules — RE-ENABLED 2026-07-31.
 
-    procurement (7 page routes) and my_applications (5 page routes) were
-    registered with ZERO templates in app/templates/ — every page route
-    returned 500 for any user with the matching role. Routes are not
-    linked from any sidebar. Re-enable only after the templates are
-    built and browser-verified (see DONE_CRITERIA protocol). The route
-    files remain at app/modules/{procurement,my_applications}/ as the
-    spec for that future feature work.
+    Disabled on 2026-06-11 on the grounds that both modules had "ZERO templates
+    in app/templates/" and returned 500 for any user holding the matching role.
+    Disabling was the right call at the time; a 500 is worse than an absent page.
+
+    The premise was incomplete, though. Both blueprints declare
+    template_folder="templates" and ship 12 substantive templates (1,919 lines)
+    at app/modules/{procurement,my_applications}/templates/, all extending
+    layouts/admin_base.html. Flask resolves those through the blueprint's own
+    loader, not app/templates/ — so looking only in app/templates/ found nothing
+    while the templates were present all along.
+
+    Every dependency was verified before re-enabling: the ApplicationOwner,
+    VendorContract and LicenseEntitlement models exist, their tables
+    (application_owners, vendor_contracts, license_entitlements) exist in the
+    production database, and requires_procurement / requires_application_owner
+    are exported from app.decorators.
+
+    The cost of leaving them off was not neutral. ENTERPRISE_ROLE_SECTION_MAP
+    grants the procurement archetype 3 sections and application_manager 5 — and
+    the missing module is the DEFINING section of each. Two of nine archetypes
+    were promised a product that returned 404.
+
+    Registration is guarded: a failure here must not take down the rest of the
+    application, and is loud rather than silent.
+
+    tests/journeys/ asserts these pages actually render, so this cannot regress
+    to a 500 unnoticed.
     """
-    logger.info("[Blueprint] Persona MVP modules (procurement, my_applications) "
-                "not registered — templates missing, see _register_persona_modules docstring")
+    try:
+        from app.modules.my_applications import my_applications_bp
+        from app.modules.my_applications import routes as _my_app_routes  # noqa: F401
+
+        app.register_blueprint(my_applications_bp)
+        logger.info("[Blueprint] my_applications registered (/my-applications)")
+    except Exception as e:  # noqa: BLE001
+        logger.error("[Blueprint] my_applications FAILED to register: %s", e)
+
+    try:
+        from app.modules.procurement import procurement_bp
+        from app.modules.procurement import routes as _proc_routes  # noqa: F401
+
+        app.register_blueprint(procurement_bp)
+        logger.info("[Blueprint] procurement registered (/procurement)")
+    except Exception as e:  # noqa: BLE001
+        logger.error("[Blueprint] procurement FAILED to register: %s", e)
 
 
 # ---------------------------------------------------------------------------
