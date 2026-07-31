@@ -94,7 +94,7 @@
       <div class="rounded-xl border border-border bg-card p-4">
         <textarea x-model="form.description" rows="5"
                   class="w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground resize-none focus:outline-none leading-relaxed"
-                  placeholder="Describe the business problem, strategic goal, and any known constraints..."></textarea>
+                  placeholder="Describe the business problem, strategic goal, and any known constraints..." aria-label="Programme brief"></textarea>
       </div>
     </div>
 
@@ -104,11 +104,11 @@
         <label class="block text-sm font-medium text-foreground mb-1.5">Programme name *</label>
         <input type="text" x-model="form.name"
                class="w-full text-sm border border-input rounded-lg px-3 py-2.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-               placeholder="e.g. Digital Finance Transformation">
+               placeholder="e.g. Digital Finance Transformation" aria-label="Programme name">
       </div>
       <div>
         <label class="block text-sm font-medium text-foreground mb-1.5">Business domain *</label>
-        <select x-model="form.business_domain" class="w-full text-sm border border-input rounded-lg px-3 py-2.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary">
+        <select x-model="form.business_domain" class="w-full text-sm border border-input rounded-lg px-3 py-2.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary" aria-label="Business domain">
           <option value="">Select domain...</option>
           <option>Finance</option><option>Supply Chain</option><option>Customer</option>
           <option>HR</option><option>IT Operations</option><option>Risk &amp; Compliance</option>
@@ -117,7 +117,7 @@
       </div>
       <div>
         <label class="block text-sm font-medium text-foreground mb-1.5">Programme type</label>
-        <select x-model="form.solution_type" class="w-full text-sm border border-input rounded-lg px-3 py-2.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary">
+        <select x-model="form.solution_type" class="w-full text-sm border border-input rounded-lg px-3 py-2.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary" aria-label="Programme type">
           <option>Platform</option><option>Product</option><option>Service</option>
           <option>Integration</option><option>Analytics</option><option>Infrastructure</option>
         </select>
@@ -126,12 +126,12 @@
         <div>
           <label class="block text-sm font-medium text-foreground mb-1.5">Start year</label>
           <input type="number" x-model.number="form.programme_start_year" min="2024" max="2035"
-                 class="w-full text-sm border border-input rounded-lg px-3 py-2.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary">
+                 class="w-full text-sm border border-input rounded-lg px-3 py-2.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary" aria-label="Start year">
         </div>
         <div>
           <label class="block text-sm font-medium text-foreground mb-1.5">End year</label>
           <input type="number" x-model.number="form.programme_end_year" min="2024" max="2040"
-                 class="w-full text-sm border border-input rounded-lg px-3 py-2.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary">
+                 class="w-full text-sm border border-input rounded-lg px-3 py-2.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary" aria-label="End year">
         </div>
       </div>
     </div>
@@ -184,11 +184,11 @@
                   <label class="block text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Driver name *</label>
                   <input type="text" x-model="driver.name"
                          class="w-full text-sm border border-input rounded-lg px-3 py-2 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-                         placeholder="e.g. SAP ECC 6.0 End-of-Life">
+                         placeholder="e.g. SAP ECC 6.0 End-of-Life" aria-label="Driver name">
                 </div>
                 <div>
                   <label class="block text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Type</label>
-                  <select x-model="driver.type" class="w-full text-sm border border-input rounded-lg px-3 py-2 bg-background focus:outline-none focus:ring-1 focus:ring-primary">
+                  <select x-model="driver.type" class="w-full text-sm border border-input rounded-lg px-3 py-2 bg-background focus:outline-none focus:ring-1 focus:ring-primary" aria-label="Type">
                     <option value="internal">Internal</option>
                     <option value="external">External</option>
                     <option value="technology">Technology</option>
@@ -201,11 +201,11 @@
                   <label class="block text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1">KPI / Measurable target</label>
                   <input type="text" x-model="driver.kpi"
                          class="w-full text-sm border border-input rounded-lg px-3 py-2 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-                         placeholder="e.g. Migrate before Q4 2027, reduce close cycle to 3 days">
+                         placeholder="e.g. Migrate before Q4 2027, reduce close cycle to 3 days" aria-label="KPI / Measurable target">
                 </div>
                 <div>
                   <label class="block text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Urgency</label>
-                  <select x-model="driver.urgency" class="w-full text-sm border border-input rounded-lg px-3 py-2 bg-background focus:outline-none focus:ring-1 focus:ring-primary">
+                  <select x-model="driver.urgency" class="w-full text-sm border border-input rounded-lg px-3 py-2 bg-background focus:outline-none focus:ring-1 focus:ring-primary" aria-label="Urgency">
                     <option value="critical">Critical</option>
                     <option value="high">High</option>
                     <option value="medium">Medium</option>
@@ -218,13 +218,13 @@
                   <label class="block text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Benefit owner</label>
                   <input type="text" x-model="driver.owner"
                          class="w-full text-sm border border-input rounded-lg px-3 py-2 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-                         placeholder="Role or name (e.g. Group CFO)">
+                         placeholder="Role or name (e.g. Group CFO)" aria-label="Benefit owner">
                 </div>
                 <div>
                   <label class="block text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1">Quantified benefit</label>
                   <input type="text" x-model="driver.benefit"
                          class="w-full text-sm border border-input rounded-lg px-3 py-2 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-                         placeholder="e.g. £1.1M risk avoidance, £800K efficiency">
+                         placeholder="e.g. £1.1M risk avoidance, £800K efficiency" aria-label="Quantified benefit">
                 </div>
               </div>
             </div>

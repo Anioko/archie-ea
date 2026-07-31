@@ -293,13 +293,13 @@
       <div>
         <label class="mb-1 block text-sm font-medium text-foreground">Gap Name <span class="text-destructive">*</span></label>
         <input type="text" x-model="form.name" required
-          class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+          class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Gap Name">
       </div>
       <div class="grid gap-4 sm:grid-cols-2">
         <div>
           <label class="mb-1 block text-sm font-medium text-foreground">Gap Type</label>
           <select x-model="form.gap_type"
-            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" aria-label="Gap Type">
             <option value="coverage">Coverage</option>
             <option value="quality">Quality</option>
             <option value="retirement">Retirement</option>
@@ -310,7 +310,7 @@
         <div>
           <label class="mb-1 block text-sm font-medium text-foreground">Priority</label>
           <select x-model="form.priority"
-            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" aria-label="Priority">
             <option value="low">Low</option>
             <option value="medium">Medium</option>
             <option value="high">High</option>
@@ -321,7 +321,7 @@
       <div>
         <label class="mb-1 block text-sm font-medium text-foreground">Description</label>
         <textarea x-model="form.description" rows="3"
-          class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"></textarea>
+          class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Description"></textarea>
       </div>
       <div class="flex items-center justify-end gap-2 border-t pt-4">
         <button type="button"
@@ -357,24 +357,24 @@
         <label class="mb-1 block text-sm font-medium text-foreground">Plateau Name <span class="text-destructive">*</span></label>
         <input type="text" x-model="form.name" required
           placeholder="e.g. Plateau 1 — Foundation"
-          class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+          class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Plateau Name">
       </div>
       <div class="grid gap-4 sm:grid-cols-2">
         <div>
           <label class="mb-1 block text-sm font-medium text-foreground">Sequence Order <span class="text-destructive">*</span></label>
           <input type="number" min="1" x-model.number="form.sequence_order" required
-            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" aria-label="Sequence Order">
         </div>
         <div>
           <label class="mb-1 block text-sm font-medium text-foreground">Target Date</label>
           <input type="date" x-model="form.target_date"
-            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" aria-label="Target Date">
         </div>
       </div>
       <div>
         <label class="mb-1 block text-sm font-medium text-foreground">Description</label>
         <textarea x-model="form.description" rows="2"
-          class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"></textarea>
+          class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" aria-label="Description"></textarea>
       </div>
       <div class="flex items-center justify-end gap-2 border-t pt-4">
         <button type="button"
@@ -410,13 +410,13 @@
       <div>
         <label class="mb-1 block text-sm font-medium text-foreground">Name <span class="text-destructive">*</span></label>
         <input type="text" x-model="form.name" required
-          class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+          class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Name">
       </div>
       <div class="grid gap-4 sm:grid-cols-2">
         <div>
           <label class="mb-1 block text-sm font-medium text-foreground">Status</label>
           <select x-model="form.status"
-            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" aria-label="Status">
             <option value="planned">Planned</option>
             <option value="in_progress">In Progress</option>
             <option value="completed">Completed</option>
@@ -427,7 +427,7 @@
         <div>
           <label class="mb-1 block text-sm font-medium text-foreground">Priority</label>
           <select x-model="form.priority"
-            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" aria-label="Priority">
             <option value="low">Low</option>
             <option value="medium">Medium</option>
             <option value="high">High</option>
@@ -437,17 +437,17 @@
         <div>
           <label class="mb-1 block text-sm font-medium text-foreground">Start Date <span class="text-destructive">*</span></label>
           <input type="date" x-model="form.start_date" required
-            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" aria-label="Start Date">
         </div>
         <div>
           <label class="mb-1 block text-sm font-medium text-foreground">Target Date <span class="text-destructive">*</span></label>
           <input type="date" x-model="form.target_date" required
-            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" aria-label="Target Date">
         </div>
         <div>
           <label class="mb-1 block text-sm font-medium text-foreground">Linked Gap</label>
           <select x-model.number="form.gap_id"
-            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" aria-label="Linked Gap">
             <option :value="null">— None —</option>
             <template x-for="gap in $store.rdm.gaps" :key="gap.id">
               <option :value="gap.id" x-text="gap.name"></option>
@@ -457,7 +457,7 @@
         <div>
           <label class="mb-1 block text-sm font-medium text-foreground">Target Plateau</label>
           <select x-model.number="form.plateau_id"
-            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" aria-label="Target Plateau">
             <option :value="null">— None —</option>
             <template x-for="p in $store.rdm.plateaus" :key="p.id">
               <option :value="p.id" x-text="p.name"></option>
@@ -468,7 +468,7 @@
       <div>
         <label class="mb-1 block text-sm font-medium text-foreground">Description</label>
         <textarea x-model="form.description" rows="3"
-          class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"></textarea>
+          class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" aria-label="Description"></textarea>
       </div>
       <div class="flex items-center justify-end gap-2 border-t pt-4">
         <button type="button"

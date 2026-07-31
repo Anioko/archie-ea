@@ -215,19 +215,19 @@
         <label class="block text-sm font-medium mb-1">Name <span class="text-destructive">*</span></label>
         <input type="text" x-model="editForm.name" required
                class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-               placeholder="Work package name">
+               placeholder="Work package name" aria-label="Name">
       </div>
       <div>
         <label class="block text-sm font-medium mb-1">Summary</label>
         <textarea x-model="editForm.summary" rows="2"
                   class="flex min-h-[64px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  placeholder="Brief summary"></textarea>
+                  placeholder="Brief summary" aria-label="Summary"></textarea>
       </div>
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label class="block text-sm font-medium mb-1">Status</label>
           <select x-model="editForm.status"
-                  class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Status">
             <option value="Planned">Planned</option>
             <option value="In Progress">In Progress</option>
             <option value="Completed">Completed</option>
@@ -238,7 +238,7 @@
         <div>
           <label class="block text-sm font-medium mb-1">Priority</label>
           <select x-model="editForm.priority"
-                  class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Priority">
             <option value="Critical">Critical</option>
             <option value="High">High</option>
             <option value="Normal">Normal</option>
@@ -251,12 +251,12 @@
           <label class="block text-sm font-medium mb-1">Progress %</label>
           <input type="number" x-model="editForm.percent_complete" min="0" max="100"
                  class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                 placeholder="0">
+                 placeholder="0" aria-label="Progress %">
         </div>
         <div>
           <label class="block text-sm font-medium mb-1">Due Date</label>
           <input type="date" x-model="editForm.target_date"
-                 class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                 class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Due Date">
         </div>
       </div>
       <div x-show="editError" x-cloak class="rounded-md bg-destructive/10 border border-destructive/20 px-3 py-2 text-sm text-destructive" x-text="editError"></div>
@@ -279,19 +279,19 @@
         <label class="block text-sm font-medium mb-1">Name <span class="text-destructive">*</span></label>
         <input type="text" x-model="createForm.name" required
                class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-               placeholder="Work package name">
+               placeholder="Work package name" aria-label="Name">
       </div>
       <div>
         <label class="block text-sm font-medium mb-1">Summary</label>
         <textarea x-model="createForm.summary" rows="2"
                   class="flex min-h-[64px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  placeholder="Brief summary"></textarea>
+                  placeholder="Brief summary" aria-label="Summary"></textarea>
       </div>
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label class="block text-sm font-medium mb-1">Status</label>
           <select x-model="createForm.status"
-                  class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Status">
             <option value="Planned">Planned</option>
             <option value="In Progress">In Progress</option>
             <option value="Completed">Completed</option>
@@ -302,7 +302,7 @@
         <div>
           <label class="block text-sm font-medium mb-1">Priority</label>
           <select x-model="createForm.priority"
-                  class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Priority">
             <option value="Critical">Critical</option>
             <option value="High">High</option>
             <option value="Normal" selected>Normal</option>
@@ -315,12 +315,12 @@
           <label class="block text-sm font-medium mb-1">Progress %</label>
           <input type="number" x-model="createForm.percent_complete" min="0" max="100"
                  class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                 placeholder="0">
+                 placeholder="0" aria-label="Progress %">
         </div>
         <div>
           <label class="block text-sm font-medium mb-1">Due Date</label>
           <input type="date" x-model="createForm.target_date"
-                 class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                 class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Due Date">
         </div>
       </div>
       <div x-show="createError" x-cloak class="rounded-md bg-destructive/10 border border-destructive/20 px-3 py-2 text-sm text-destructive" x-text="createError"></div>

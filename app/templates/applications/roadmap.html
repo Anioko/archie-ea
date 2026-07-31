@@ -155,11 +155,11 @@
         <div class="grid gap-4 sm:grid-cols-2">
           <div class="sm:col-span-2">
             <label class="mb-1 block text-sm font-medium">Name</label>
-            <input type="text" x-model="form.name" required class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+            <input type="text" x-model="form.name" required class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" aria-label="Name">
           </div>
           <div>
             <label class="mb-1 block text-sm font-medium">Transformation Type</label>
-            <select x-model="form.transformation_type" required class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+            <select x-model="form.transformation_type" required class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" aria-label="Transformation Type">
               <option value="Modernization">Modernization</option>
               <option value="Integration">Integration</option>
               <option value="Migration">Migration</option>
@@ -168,7 +168,7 @@
           </div>
           <div>
             <label class="mb-1 block text-sm font-medium">Status</label>
-            <select x-model="form.status" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+            <select x-model="form.status" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" aria-label="Status">
               <option value="planned">Planned</option>
               <option value="in_progress">In Progress</option>
               <option value="blocked">Blocked</option>
@@ -177,7 +177,7 @@
           </div>
           <div>
             <label class="mb-1 block text-sm font-medium">Priority</label>
-            <select x-model="form.priority" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+            <select x-model="form.priority" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" aria-label="Priority">
               <option value="low">Low</option>
               <option value="medium">Medium</option>
               <option value="high">High</option>
@@ -186,11 +186,11 @@
           </div>
           <div>
             <label class="mb-1 block text-sm font-medium">Application Phase</label>
-            <input type="text" x-model="form.application_phase" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+            <input type="text" x-model="form.application_phase" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" aria-label="Application Phase">
           </div>
           <div>
             <label class="mb-1 block text-sm font-medium">Target Plateau</label>
-            <select x-model.number="form.plateau_id" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+            <select x-model.number="form.plateau_id" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" aria-label="Target Plateau">
               <option :value="null">— None —</option>
               <template x-for="p in plateaus" :key="p.id">
                 <option :value="p.id" x-text="p.name"></option>
@@ -199,7 +199,7 @@
           </div>
           <div>
             <label class="mb-1 block text-sm font-medium">Linked Capability</label>
-            <select x-model.number="form.capability_id" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+            <select x-model.number="form.capability_id" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" aria-label="Linked Capability">
               <option :value="null">— None —</option>
               <template x-for="c in capabilities" :key="c.id">
                 <option :value="c.id" x-text="c.name"></option>
@@ -208,7 +208,7 @@
           </div>
           <div class="sm:col-span-2">
             <label class="mb-1 block text-sm font-medium">Target Architecture Element</label>
-            <select x-model.number="form.archimate_element_id" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+            <select x-model.number="form.archimate_element_id" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" aria-label="Target Architecture Element">
               <option :value="null">-- Auto (ApplicationComponent) --</option>
               <template x-for="el in archiElements" :key="el.id">
                 <option :value="el.id" x-text="el.name + ' (' + el.type + ')'"></option>
@@ -217,19 +217,19 @@
           </div>
           <div>
             <label class="mb-1 block text-sm font-medium">Start Date</label>
-            <input type="date" x-model="form.start_date" required class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+            <input type="date" x-model="form.start_date" required class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" aria-label="Start Date">
           </div>
           <div>
             <label class="mb-1 block text-sm font-medium">Target Date</label>
-            <input type="date" x-model="form.target_date" required class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+            <input type="date" x-model="form.target_date" required class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" aria-label="Target Date">
           </div>
           <div>
             <label class="mb-1 block text-sm font-medium">Estimated Effort Hours</label>
-            <input type="number" min="0" step="1" x-model.number="form.estimated_effort_hours" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+            <input type="number" min="0" step="1" x-model.number="form.estimated_effort_hours" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" aria-label="Estimated Effort Hours">
           </div>
           <div class="sm:col-span-2">
             <label class="mb-1 block text-sm font-medium">Description</label>
-            <textarea x-model="form.description" rows="3" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"></textarea>
+            <textarea x-model="form.description" rows="3" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" aria-label="Description"></textarea>
           </div>
         </div>
         <div class="flex items-center justify-end gap-2 border-t pt-4">

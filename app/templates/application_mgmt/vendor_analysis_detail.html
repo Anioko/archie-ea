@@ -102,7 +102,7 @@
           </div>
           <div>
             <label class="block text-sm font-medium text-foreground/80 mb-1">Strategic Priority</label>
-            <select x-model="form.priority" class="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary">
+            <select x-model="form.priority" class="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary" aria-label="Strategic Priority">
               <option value="critical">Mission Critical</option>
               <option value="high">High Priority</option>
               <option value="medium">Medium Priority</option>
@@ -126,7 +126,7 @@
           <div class="grid grid-cols-2 gap-4">
             <div>
               <label class="block text-sm font-medium text-foreground/80 mb-1">Organization Size</label>
-              <select x-model="form.orgSize" class="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground">
+              <select x-model="form.orgSize" class="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground" aria-label="Organization Size">
                 <option value="smb">SMB</option>
                 <option value="midmarket">Mid-Market</option>
                 <option value="enterprise">Enterprise</option>
@@ -134,7 +134,7 @@
             </div>
             <div>
               <label class="block text-sm font-medium text-foreground/80 mb-1">Industry Vertical</label>
-              <select x-model="form.industry" class="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground">
+              <select x-model="form.industry" class="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground" aria-label="Industry Vertical">
                 <option value="">-- Select --</option>
                 <option value="financial">Financial Services</option>
                 <option value="healthcare">Healthcare</option>
@@ -149,7 +149,7 @@
             </div>
             <div>
               <label class="block text-sm font-medium text-foreground/80 mb-1">Evaluation Horizon</label>
-              <select x-model="form.timeHorizon" class="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground">
+              <select x-model="form.timeHorizon" class="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground" aria-label="Evaluation Horizon">
                 <option value="12months">12 months</option>
                 <option value="24months">24 months</option>
                 <option value="36months">36 months</option>
@@ -158,7 +158,7 @@
             </div>
             <div>
               <label class="block text-sm font-medium text-foreground/80 mb-1">Deployment Scope</label>
-              <select x-model="form.scope" class="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground">
+              <select x-model="form.scope" class="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground" aria-label="Deployment Scope">
                 <option value="enterprise">Enterprise-wide</option>
                 <option value="division">Division Level</option>
                 <option value="department">Department Level</option>
@@ -495,7 +495,7 @@
             <div>
               <label class="block text-sm font-medium text-foreground/80 mb-1">Business Domain</label>
               <select x-model="vsFilterDomain" @change="loadValueStreamOptions()"
-                class="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary">
+                class="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary" aria-label="Business Domain">
                 <option value="">-- All Domains --</option>
                 <template x-for="d in domains" :key="d.id">
                   <option :value="d.id" x-text="d.name"></option>
@@ -505,7 +505,7 @@
             <div>
               <label class="block text-sm font-medium text-foreground/80 mb-1">Value Stream <span class="text-destructive">*</span></label>
               <select x-model="vsSelectedStream" @change="onValueStreamSelected()" multiple size="5"
-                class="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary">
+                class="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary" aria-label="Value Stream">
                 <template x-for="vs in vsOptions" :key="vs.id">
                   <option :value="vs.id" x-text="vs.name"></option>
                 </template>
@@ -900,12 +900,12 @@
                 <label class="block text-xs font-medium text-muted-foreground mb-1">Requirement Name</label>
                 <input type="text" x-model="newReqName" placeholder="e.g. SSO Support"
                   class="w-full px-3 py-1.5 text-sm border border-border rounded-md bg-background text-foreground"
-                  @keydown.enter="addRequirement()">
+                  @keydown.enter="addRequirement()" aria-label="Requirement Name">
               </div>
               <div class="w-32">
                 <label class="block text-xs font-medium text-muted-foreground mb-1">Importance</label>
                 <select x-model="newReqImportance"
-                  class="w-full px-2 py-1.5 text-sm border border-border rounded-md bg-background text-foreground">
+                  class="w-full px-2 py-1.5 text-sm border border-border rounded-md bg-background text-foreground" aria-label="Importance">
                   <option value="critical">Critical</option>
                   <option value="high">High</option>
                   <option value="medium" selected>Medium</option>
@@ -1048,7 +1048,7 @@
               <div class="flex-1 min-w-[200px] max-w-xs">
                 <label class="text-xs font-medium text-muted-foreground mb-1 block">Save Current Weights as Scenario</label>
                 <div class="flex gap-2">
-                  <input type="text" x-model="saveScenarioName" placeholder="e.g. Baseline" class="flex-1 px-3 py-1.5 text-sm border border-border rounded-md bg-background text-foreground">
+                  <input type="text" x-model="saveScenarioName" placeholder="e.g. Baseline" class="flex-1 px-3 py-1.5 text-sm border border-border rounded-md bg-background text-foreground" aria-label="Save Current Weights as Scenario">
                   <button @click="saveCurrentAsScenario()" :disabled="!saveScenarioName.trim()" class="px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed">
                     <i data-lucide="save" class="h-3.5 w-3.5 inline mr-1"></i>Save
                   </button>
@@ -1063,7 +1063,7 @@
             <div x-show="showNewScenarioForm" x-cloak class="rounded-lg border border-dashed border-border p-4 space-y-3 bg-muted/20">
               <div>
                 <label class="text-xs font-medium text-muted-foreground mb-1 block">Scenario Name</label>
-                <input type="text" x-model="newScenarioName" placeholder="e.g. Cost Focus" class="w-full max-w-xs px-3 py-1.5 text-sm border border-border rounded-md bg-background text-foreground">
+                <input type="text" x-model="newScenarioName" placeholder="e.g. Cost Focus" class="w-full max-w-xs px-3 py-1.5 text-sm border border-border rounded-md bg-background text-foreground" aria-label="Scenario Name">
               </div>
               <div class="space-y-2">
                 <label class="text-xs font-medium text-muted-foreground block">
@@ -1245,7 +1245,7 @@
           </div>
           <div>
             <label class="block text-sm font-medium text-foreground/80 mb-1">Decision <span class="text-destructive">*</span></label>
-            <select x-model="decision.status" aria-required="true" class="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground">
+            <select x-model="decision.status" aria-required="true" class="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground" aria-label="Decision">
               <option value="">-- Select Decision --</option>
               <option value="approved">Approve -- proceed with selected vendor</option>
               <option value="rejected">Reject -- none of the options are suitable</option>
@@ -1256,7 +1256,7 @@
             <label class="block text-sm font-medium text-foreground/80 mb-1">Rationale <span class="text-destructive">*</span></label>
             <textarea x-model="decision.rationale" rows="4" aria-required="true"
               class="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground text-sm"
-              placeholder="Explain the reasoning behind this decision..."></textarea>
+              placeholder="Explain the reasoning behind this decision..." aria-label="Rationale"></textarea>
           </div>
           <div class="flex gap-3">
             <button @click="confirmDecision()" :disabled="!decision.status || !decision.rationale.trim()"
@@ -1297,11 +1297,11 @@
           <div>
             <label class="text-xs text-muted-foreground">User ID</label>
             <input type="number" x-model="inviteUserId" placeholder="User ID"
-                   class="mt-1 w-24 rounded-md border border-input bg-transparent px-2 py-1 text-sm">
+                   class="mt-1 w-24 rounded-md border border-input bg-transparent px-2 py-1 text-sm" aria-label="User ID">
           </div>
           <div>
             <label class="text-xs text-muted-foreground">Role</label>
-            <select x-model="inviteRole" class="mt-1 rounded-md border border-input bg-transparent px-2 py-1 text-sm">
+            <select x-model="inviteRole" class="mt-1 rounded-md border border-input bg-transparent px-2 py-1 text-sm" aria-label="Role">
               <option>IT</option><option>Finance</option><option>Business</option>
               <option>Legal</option><option>Security</option><option>Executive</option>
             </select>

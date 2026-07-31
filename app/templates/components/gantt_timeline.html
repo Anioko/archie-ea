@@ -591,13 +591,13 @@
                     <label class="block text-xs font-medium text-foreground mb-1">Name *</label>
                     <input type="text" x-model="crudForm.name" required
                            class="w-full h-8 px-2 text-xs bg-background border border-border rounded text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-                           placeholder="Item name">
+                           placeholder="Item name" aria-label="Name">
                 </div>
                 <div class="grid grid-cols-2 gap-3">
                     <div>
                         <label class="block text-xs font-medium text-foreground mb-1">Status</label>
                         <select x-model="crudForm.status"
-                                class="w-full h-8 px-2 text-xs bg-background border border-border rounded text-foreground">
+                                class="w-full h-8 px-2 text-xs bg-background border border-border rounded text-foreground" aria-label="Status">
                             <template x-for="s in getAvailableStatuses()" :key="s">
                                 <option :value="s" x-text="formatStatus(s)"></option>
                             </template>
@@ -606,7 +606,7 @@
                     <div>
                         <label class="block text-xs font-medium text-foreground mb-1">Priority</label>
                         <select x-model="crudForm.priority"
-                                class="w-full h-8 px-2 text-xs bg-background border border-border rounded text-foreground">
+                                class="w-full h-8 px-2 text-xs bg-background border border-border rounded text-foreground" aria-label="Priority">
                             <option value="low">Low</option>
                             <option value="medium">Medium</option>
                             <option value="high">High</option>
@@ -618,19 +618,19 @@
                     <div>
                         <label class="block text-xs font-medium text-foreground mb-1">Start Date</label>
                         <input type="date" x-model="crudForm.start_date"
-                               class="w-full h-8 px-2 text-xs bg-background border border-border rounded text-foreground">
+                               class="w-full h-8 px-2 text-xs bg-background border border-border rounded text-foreground" aria-label="Start Date">
                     </div>
                     <div>
                         <label class="block text-xs font-medium text-foreground mb-1">End Date</label>
                         <input type="date" x-model="crudForm.end_date"
-                               class="w-full h-8 px-2 text-xs bg-background border border-border rounded text-foreground">
+                               class="w-full h-8 px-2 text-xs bg-background border border-border rounded text-foreground" aria-label="End Date">
                     </div>
                 </div>
                 <div>
                     <label class="block text-xs font-medium text-foreground mb-1">Description</label>
                     <textarea x-model="crudForm.description" rows="2"
                               class="w-full px-2 py-1.5 text-xs bg-background border border-border rounded text-foreground resize-none focus:outline-none focus:ring-1 focus:ring-primary"
-                              placeholder="Optional description"></textarea>
+                              placeholder="Optional description" aria-label="Description"></textarea>
                 </div>
             </div>
             <div class="flex justify-end gap-2 pt-2 border-t border-border">

@@ -563,44 +563,44 @@
                                         <div class="grid grid-cols-2 gap-2">
                                             <div>
                                                 <label class="block text-xs font-medium text-muted-foreground mb-1">Application Server Host</label>
-                                                <input type="text" x-model="sapImport.ashost" placeholder="sap-host.example.com" class="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring">
+                                                <input type="text" x-model="sapImport.ashost" placeholder="sap-host.example.com" class="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Application Server Host">
                                             </div>
                                             <div>
                                                 <label class="block text-xs font-medium text-muted-foreground mb-1">System Number</label>
-                                                <input type="text" x-model="sapImport.sysnr" placeholder="00" class="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring">
+                                                <input type="text" x-model="sapImport.sysnr" placeholder="00" class="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring" aria-label="System Number">
                                             </div>
                                         </div>
                                         <div class="grid grid-cols-2 gap-2">
                                             <div>
                                                 <label class="block text-xs font-medium text-muted-foreground mb-1">Client</label>
-                                                <input type="text" x-model="sapImport.client" placeholder="100" class="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring">
+                                                <input type="text" x-model="sapImport.client" placeholder="100" class="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Client">
                                             </div>
                                             <div>
                                                 <label class="block text-xs font-medium text-muted-foreground mb-1">Username</label>
-                                                <input type="text" x-model="sapImport.user" placeholder="RFCUSER" class="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring">
+                                                <input type="text" x-model="sapImport.user" placeholder="RFCUSER" class="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Username">
                                             </div>
                                         </div>
                                         <div>
                                             <label class="block text-xs font-medium text-muted-foreground mb-1">Password</label>
-                                            <input type="password" x-model="sapImport.passwd" placeholder="••••••••" class="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring">
+                                            <input type="password" x-model="sapImport.passwd" placeholder="••••••••" class="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Password">
                                         </div>
                                     </div>
                                     <div>
                                         <label class="block text-xs font-medium text-muted-foreground mb-1">Package Filter <span class="font-normal">(optional — e.g. MM, SD, FI)</span></label>
-                                        <input type="text" x-model="sapImport.packageFilter" placeholder="Leave blank for all packages" class="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring">
+                                        <input type="text" x-model="sapImport.packageFilter" placeholder="Leave blank for all packages" class="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Package Filter (optional — e.g. MM, SD, FI)">
                                     </div>
                                     <div class="grid grid-cols-3 gap-2">
                                         <div>
                                             <label class="block text-xs font-medium text-muted-foreground mb-1">Table limit</label>
-                                            <input type="number" x-model="sapImport.tableLimit" min="10" max="2000" class="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring">
+                                            <input type="number" x-model="sapImport.tableLimit" min="10" max="2000" class="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Table limit">
                                         </div>
                                         <div>
                                             <label class="block text-xs font-medium text-muted-foreground mb-1">T-code limit</label>
-                                            <input type="number" x-model="sapImport.tcodeLimit" min="10" max="2000" class="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring">
+                                            <input type="number" x-model="sapImport.tcodeLimit" min="10" max="2000" class="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring" aria-label="T-code limit">
                                         </div>
                                         <div>
                                             <label class="block text-xs font-medium text-muted-foreground mb-1">Role limit</label>
-                                            <input type="number" x-model="sapImport.roleLimit" min="10" max="500" class="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring">
+                                            <input type="number" x-model="sapImport.roleLimit" min="10" max="500" class="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Role limit">
                                         </div>
                                     </div>
                                     <!-- Import button + status -->
@@ -649,7 +649,7 @@
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-foreground mb-1.5">Authentication</label>
-                            <select x-model="config.auth" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring">
+                            <select x-model="config.auth" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Authentication">
                                 <option value="none">None</option>
                                 <option value="jwt-local">JWT (local)</option>
                                 <option value="oauth2">OAuth2 / OIDC</option>
@@ -696,8 +696,8 @@
                                 </div>
                             </div>
                         </div>
-                        <div><label class="block text-sm font-medium text-foreground mb-1.5">GitHub Org / User <span class="text-xs text-muted-foreground font-normal">(optional)</span></label><input type="text" x-model="config.github_org" placeholder="your-org" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"></div>
-                        <div><label class="block text-sm font-medium text-foreground mb-1.5">Repository Name</label><input type="text" x-model="config.repo_name" placeholder="my-service" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"></div>
+                        <div><label class="block text-sm font-medium text-foreground mb-1.5">GitHub Org / User <span class="text-xs text-muted-foreground font-normal">(optional)</span></label><input type="text" x-model="config.github_org" placeholder="your-org" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring" aria-label="GitHub Org / User (optional)"></div>
+                        <div><label class="block text-sm font-medium text-foreground mb-1.5">Repository Name</label><input type="text" x-model="config.repo_name" placeholder="my-service" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Repository Name"></div>
                         <div>
                             <label class="block text-sm font-medium text-foreground mb-1.5">Visibility</label>
                             <div class="flex gap-4">

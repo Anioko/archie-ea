@@ -452,12 +452,12 @@
                                 <div>
                                     <label class="text-xs font-medium text-muted-foreground">Name</label>
                                     <input type="text" x-model="archEditName"
-                                           class="mt-0.5 w-full h-8 px-2 rounded-md border border-input bg-background text-sm text-foreground focus:ring-1 focus:ring-primary" />
+                                           class="mt-0.5 w-full h-8 px-2 rounded-md border border-input bg-background text-sm text-foreground focus:ring-1 focus:ring-primary"  aria-label="Name"/>
                                 </div>
                                 <div>
                                     <label class="text-xs font-medium text-muted-foreground">Description</label>
                                     <textarea x-model="archEditDesc" rows="2"
-                                              class="mt-0.5 w-full px-2 py-1 rounded-md border border-input bg-background text-sm text-foreground focus:ring-1 focus:ring-primary resize-none"></textarea>
+                                              class="mt-0.5 w-full px-2 py-1 rounded-md border border-input bg-background text-sm text-foreground focus:ring-1 focus:ring-primary resize-none" aria-label="Description"></textarea>
                                 </div>
                                 <div class="flex items-center gap-2">
                                     <button type="button" @click="acceptOne(i)"
@@ -579,7 +579,7 @@
                         <input type="text" x-model="relChatMsg"
                                @keydown.enter="extractRelationships()"
                                placeholder="e.g. The web frontend calls the order service which accesses the order database"
-                               class="flex-1 text-sm rounded-md border border-input bg-background px-3 py-1.5">
+                               class="flex-1 text-sm rounded-md border border-input bg-background px-3 py-1.5" aria-label="Describe architecture relationships in natural language">
                         <button @click="extractRelationships()" :disabled="relChatLoading || !relChatMsg.trim()"
                                 class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors">
                             <template x-if="relChatLoading">

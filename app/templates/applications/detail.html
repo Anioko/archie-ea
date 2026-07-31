@@ -2179,7 +2179,7 @@
                 (Optional)</label>
               <textarea name="description" rows="3"
                 class="w-full px-2 py-2 border border-border rounded-md text-sm"
-                placeholder="Brief description of the document..."></textarea>
+                placeholder="Brief description of the document..." aria-label="Description (Optional)"></textarea>
             </div>
           </div>
           <div class="px-6 py-4 bg-muted rounded-b-lg flex justify-end gap-3">
@@ -2215,7 +2215,7 @@
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
           <div class="p-6">
             <div class="mb-4">
-              <label
+              <label for="edit-document-description"
                 class="block text-sm font-medium text-foreground/80 mb-2">Description</label>
               <textarea id="edit-document-description" name="description" rows="4"
                 class="w-full px-2 py-2 border border-border rounded-md text-sm"
@@ -2437,7 +2437,7 @@
           <label
             class="block text-sm font-medium text-foreground/80 mb-2">Capability</label>
           <select name="capability_id" required
-            class="w-full px-2 py-2 border border-border rounded-md">
+            class="w-full px-2 py-2 border border-border rounded-md" aria-label="Capability">
             <option value="">Select capability…</option>
             {% for opt in capability_form_config.capability_options %}
             <option value="{{ opt.id }}" {% if opt.disabled %}disabled{% endif %}>{{ opt.label }}</option>
@@ -2451,7 +2451,7 @@
               class="block text-sm font-medium text-foreground/80 mb-2">Support
               Level</label>
             <select name="support_level"
-              class="w-full px-2 py-2 border border-border rounded-md">
+              class="w-full px-2 py-2 border border-border rounded-md" aria-label="Support Level">
               <option value="">None</option>
               {% for value, label in capability_form_config.support_levels %}
               <option value="{{ value }}">{{ label }}</option>
@@ -2473,7 +2473,7 @@
               class="block text-sm font-medium text-foreground/80 mb-2">Maturity
               Level</label>
             <select name="maturity_level"
-              class="w-full px-2 py-2 border border-border rounded-md">
+              class="w-full px-2 py-2 border border-border rounded-md" aria-label="Maturity Level">
               <option value="">None</option>
               {% for value, label in capability_form_config.maturity_levels %}
               <option value="{{ value }}">{{ label }}</option>
@@ -2490,7 +2490,7 @@
           <label
             class="block text-sm font-medium text-foreground/80 mb-2">Notes</label>
           <textarea name="notes" rows="3"
-            class="w-full px-2 py-2 border border-border rounded-md"></textarea>
+            class="w-full px-2 py-2 border border-border rounded-md" aria-label="Notes"></textarea>
         </div>
       </div>
 
@@ -2531,7 +2531,7 @@
 
         <div class="grid grid-cols-2 gap-4 mb-4">
           <div>
-            <label
+            <label for="capability-edit-support"
               class="block text-sm font-medium text-foreground/80 mb-2">Support
               Level</label>
             <select id="capability-edit-support" name="support_level"
@@ -2543,7 +2543,7 @@
             </select>
           </div>
           <div>
-            <label
+            <label for="capability-edit-coverage"
               class="block text-sm font-medium text-foreground/80 mb-2">Coverage
               %</label>
             <input id="capability-edit-coverage" type="number" name="coverage_percentage" min="0" max="100"
@@ -2553,7 +2553,7 @@
 
         <div class="grid grid-cols-2 gap-4 mb-4">
           <div>
-            <label
+            <label for="capability-edit-maturity"
               class="block text-sm font-medium text-foreground/80 mb-2">Maturity
               Level</label>
             <select id="capability-edit-maturity" name="maturity_level"
@@ -2571,7 +2571,7 @@
         </div>
 
         <div>
-          <label
+          <label for="capability-edit-notes"
             class="block text-sm font-medium text-foreground/80 mb-2">Notes</label>
           <textarea id="capability-edit-notes" name="notes" rows="3"
             class="w-full px-2 py-2 border border-border rounded-md"></textarea>
@@ -2971,7 +2971,7 @@
             </div>
             <div class="form-field">
               <label class="text-xs text-slate-500">Status</label>
-              <select name="${prefix}-${nextIndex}-status" class="form-control">
+              <select name="${prefix}-${nextIndex}-status" class="form-control" aria-label="Status">
                 <option value="planned" selected>Planned</option>
                 <option value="in_progress">In Progress</option>
                 <option value="completed">Completed</option>
@@ -2990,7 +2990,7 @@
             </div>
             <div class="form-field">
               <label class="text-xs text-slate-500">Type</label>
-              <select name="${prefix}-${nextIndex}-deliverable_type" class="form-control">
+              <select name="${prefix}-${nextIndex}-deliverable_type" class="form-control" aria-label="Type">
                 <option value="artifact" selected>Artifact</option>
                 <option value="document">Document</option>
                 <option value="software">Software</option>
@@ -2999,7 +2999,7 @@
             </div>
             <div class="form-field">
               <label class="text-xs text-slate-500">Status</label>
-              <select name="${prefix}-${nextIndex}-delivery_status" class="form-control">
+              <select name="${prefix}-${nextIndex}-delivery_status" class="form-control" aria-label="Status">
                 <option value="pending" selected>Pending</option>
                 <option value="in_progress">In Progress</option>
                 <option value="completed">Completed</option>
@@ -3368,7 +3368,7 @@
     <form id="dependency-form" @submit.prevent="submitDependency(event)">
       <div class="p-6">
         <div class="mb-4">
-          <label
+          <label for="dependency-other-system-id"
             class="block text-sm font-medium text-foreground/80 mb-2">Other
             System ID</label>
           <input type="number" id="dependency-other-system-id" name="other_system_id" required
@@ -3378,7 +3378,7 @@
         </div>
 
         <div class="mb-4">
-          <label
+          <label for="dependency-type"
             class="block text-sm font-medium text-foreground/80 mb-2">Dependency
             Type</label>
           <input type="text" id="dependency-type" name="dependency_type" required
@@ -3387,7 +3387,7 @@
         </div>
 
         <div class="mb-4">
-          <label
+          <label for="dependency-criticality"
             class="block text-sm font-medium text-foreground/80 mb-2">Criticality</label>
           <select id="dependency-criticality" name="criticality"
             class="w-full px-2 py-2 border border-border rounded-md">
@@ -3399,7 +3399,7 @@
         </div>
 
         <div class="mb-0">
-          <label
+          <label for="dependency-description"
             class="block text-sm font-medium text-foreground/80 mb-2">Description</label>
           <textarea id="dependency-description" name="description" rows="3"
             class="w-full px-2 py-2 border border-border rounded-md"></textarea>
@@ -3577,7 +3577,7 @@
     <form id="integration-mapping-form" @submit.prevent="submitIntegrationMapping(event)">
       <div class="p-6">
         <div class="mb-4">
-          <label
+          <label for="integration-mapping-interface-select"
             class="block text-sm font-medium text-foreground/80 mb-2">Interface</label>
           <select id="integration-mapping-interface-select"
             class="w-full px-2 py-2 border border-border rounded-md mb-2">
@@ -3592,7 +3592,7 @@
         </div>
 
         <div class="mb-4">
-          <label
+          <label for="integration-mapping-relationship-type"
             class="block text-sm font-medium text-foreground/80 mb-2">Relationship</label>
           <select id="integration-mapping-relationship-type" name="relationship_type"
             class="w-full px-2 py-2 border border-border rounded-md">
@@ -3603,7 +3603,7 @@
         </div>
 
         <div class="mb-0">
-          <label
+          <label for="integration-mapping-notes"
             class="block text-sm font-medium text-foreground/80 mb-2">Notes</label>
           <textarea id="integration-mapping-notes" name="notes" rows="3"
             class="w-full px-2 py-2 border border-border rounded-md"></textarea>
@@ -3643,7 +3643,7 @@
       <div class="p-6">
         <div class="grid grid-cols-2 gap-4">
           <div>
-            <label
+            <label for="technology-mapping-ref-type"
               class="block text-sm font-medium text-foreground/80 mb-2">Reference
               Type</label>
             <select id="technology-mapping-ref-type"
@@ -3654,7 +3654,7 @@
             </select>
           </div>
           <div>
-            <label
+            <label for="technology-mapping-usage-type"
               class="block text-sm font-medium text-foreground/80 mb-2">Usage
               Type</label>
             <input id="technology-mapping-usage-type" type="text" placeholder="Deployment, Platform, ..."
@@ -3663,7 +3663,7 @@
         </div>
 
         <div id="technology-mapping-ref-stack" class="mt-4">
-          <label
+          <label for="technology-mapping-stack-id"
             class="block text-sm font-medium text-foreground/80 mb-2">Technology
             Stack</label>
           <select id="technology-mapping-stack-id"
@@ -3676,7 +3676,7 @@
         </div>
 
         <div id="technology-mapping-ref-node" class="mt-4 hidden">
-          <label
+          <label for="technology-mapping-node-id"
             class="block text-sm font-medium text-foreground/80 mb-2">Technology
             Node ID</label>
           <input id="technology-mapping-node-id" type="number" min="1"
@@ -3684,7 +3684,7 @@
         </div>
 
         <div id="technology-mapping-ref-software" class="mt-4 hidden">
-          <label
+          <label for="technology-mapping-software-id"
             class="block text-sm font-medium text-foreground/80 mb-2">System
             Software ID</label>
           <input id="technology-mapping-software-id" type="number" min="1"
@@ -3693,7 +3693,7 @@
 
         <div class="grid grid-cols-2 gap-4 mt-4">
           <div>
-            <label
+            <label for="technology-mapping-dependency-level"
               class="block text-sm font-medium text-foreground/80 mb-2">Dependency
               Level</label>
             <select id="technology-mapping-dependency-level"
@@ -3706,7 +3706,7 @@
             </select>
           </div>
           <div>
-            <label
+            <label for="technology-mapping-version"
               class="block text-sm font-medium text-foreground/80 mb-2">Technology
               Version</label>
             <input id="technology-mapping-version" type="text" placeholder="e.g. 17, 14.2"
@@ -3727,7 +3727,7 @@
         </div>
 
         <div class="mt-4">
-          <label
+          <label for="technology-mapping-compatibility-notes"
             class="block text-sm font-medium text-foreground/80 mb-2">Compatibility
             Notes</label>
           <textarea id="technology-mapping-compatibility-notes" rows="2"
@@ -3735,7 +3735,7 @@
         </div>
 
         <div class="mt-4">
-          <label
+          <label for="technology-mapping-notes"
             class="block text-sm font-medium text-foreground/80 mb-2">Notes</label>
           <textarea id="technology-mapping-notes" rows="2"
             class="w-full px-2 py-2 border border-border rounded-md"></textarea>
@@ -3774,7 +3774,7 @@
     <form id="business-actor-mapping-form" @submit.prevent="submitBusinessActorMapping(event)">
       <div class="p-6">
         <div class="mb-4">
-          <label
+          <label for="business-actor-mapping-actor-id"
             class="block text-sm font-medium text-foreground/80 mb-2">Business
             Actor</label>
           <select id="business-actor-mapping-actor-id"
@@ -3788,7 +3788,7 @@
 
         <div class="grid grid-cols-2 gap-4">
           <div>
-            <label
+            <label for="business-actor-mapping-relationship"
               class="block text-sm font-medium text-foreground/80 mb-2">Relationship
               Type</label>
             <select id="business-actor-mapping-relationship"
@@ -3802,14 +3802,14 @@
             </select>
           </div>
           <div>
-            <label
+            <label for="business-actor-mapping-user-count"
               class="block text-sm font-medium text-foreground/80 mb-2">User
               Count</label>
             <input id="business-actor-mapping-user-count" type="number" min="0"
               class="w-full px-2 py-2 border border-border rounded-md">
           </div>
           <div>
-            <label
+            <label for="business-actor-mapping-usage-frequency"
               class="block text-sm font-medium text-foreground/80 mb-2">Usage
               Frequency</label>
             <select id="business-actor-mapping-usage-frequency"
@@ -3822,14 +3822,14 @@
             </select>
           </div>
           <div>
-            <label
+            <label for="business-actor-mapping-hours"
               class="block text-sm font-medium text-foreground/80 mb-2">Avg
               Hours / Week</label>
             <input id="business-actor-mapping-hours" type="number" min="0"
               class="w-full px-2 py-2 border border-border rounded-md">
           </div>
           <div>
-            <label
+            <label for="business-actor-mapping-access-level"
               class="block text-sm font-medium text-foreground/80 mb-2">Access
               Level</label>
             <select id="business-actor-mapping-access-level"
@@ -3862,7 +3862,7 @@
         </div>
 
         <div class="mt-4">
-          <label
+          <label for="business-actor-mapping-notes"
             class="block text-sm font-medium text-foreground/80 mb-2">Notes</label>
           <textarea id="business-actor-mapping-notes" rows="2"
             class="w-full px-2 py-2 border border-border rounded-md"></textarea>
@@ -4350,13 +4350,13 @@
     <form id="add-element-form" @submit.prevent="submitAddElement(event)">
       <div class="p-6">
         <div class="mb-4">
-          <label
+          <label for="add-element-name"
             class="block text-sm font-medium text-foreground/80 mb-2">Name</label>
           <input type="text" id="add-element-name" name="name" required
             class="w-full px-2 py-2 border border-border rounded-md">
         </div>
         <div class="mb-4">
-          <label
+          <label for="add-element-description"
             class="block text-sm font-medium text-foreground/80 mb-2">Description</label>
           <textarea id="add-element-description" name="description" rows="3"
             class="w-full px-2 py-2 border border-border rounded-md"></textarea>
@@ -5197,7 +5197,7 @@
         <div class="p-6 border-b border-border bg-muted">
           <!-- Relationship Type Selector (hidden by default, shown in link mode) -->
           <div id="relationship-type-container" class="hidden mb-4">
-            <label class="block text-sm font-medium mb-2">Relationship Type</label>
+            <label for="relationship-type" class="block text-sm font-medium mb-2">Relationship Type</label>
             <select id="relationship-type" class="w-full max-w-[300px] px-2 py-2 border border-border rounded-md">
               <option value="realization">Realizes (implements/provides)</option>
               <option value="serving">Serves (provides service to)</option>
@@ -5213,13 +5213,13 @@
           <!-- Filter Grid Row 1: Framework, Layer, Element Type -->
           <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
             <div>
-              <label class="block text-sm font-medium mb-1">Framework</label>
+              <label for="template-framework" class="block text-sm font-medium mb-1">Framework</label>
               <select id="template-framework" @change="loadTemplateCategories()" class="w-full px-2 py-2 border border-border rounded-md">
                 <option value="">Loading...</option>
               </select>
             </div>
             <div>
-              <label class="block text-sm font-medium mb-1">
+              <label for="template-layer" class="block text-sm font-medium mb-1">
                 ArchiMate Layer
                 <span class="text-primary cursor-help ml-1" title="Filter by ArchiMate 3.2 architectural layer">ⓘ</span>
               </label>
@@ -5235,7 +5235,7 @@
               </select>
             </div>
             <div>
-              <label class="block text-sm font-medium mb-1">
+              <label for="template-element-type" class="block text-sm font-medium mb-1">
                 Element Type
                 <span class="text-primary cursor-help ml-1" title="Filter by specific ArchiMate element type">ⓘ</span>
               </label>
@@ -5248,13 +5248,13 @@
           <!-- Filter Grid Row 2: Category and Search -->
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label class="block text-sm font-medium mb-1">Category</label>
+              <label for="template-category" class="block text-sm font-medium mb-1">Category</label>
               <select id="template-category" @change="loadTemplates()" class="w-full px-2 py-2 border border-border rounded-md">
                 <option value="">All Categories</option>
               </select>
             </div>
             <div>
-              <label class="block text-sm font-medium mb-1">Search</label>
+              <label for="template-search" class="block text-sm font-medium mb-1">Search</label>
               <input type="text" id="template-search" placeholder="Search templates..." @input="loadTemplates()" class="w-full px-2 py-2 border border-border rounded-md">
             </div>
           </div>
@@ -5581,7 +5581,7 @@
                       ${t.layer ? `<span class="bg-warning/10 text-warning px-2 py-1 rounded text-xs font-medium">${t.layer} Layer</span>` : ''}
                     </div>
                     <div class="mb-3">
-                      <label class="block text-xs font-medium text-foreground mb-1">Element Name *</label>
+                      <label for="preview-name-${t.id}" class="block text-xs font-medium text-foreground mb-1">Element Name *</label>
                       <input type="text"
                         id="preview-name-${t.id}"
                         value="${t.name}"
@@ -5596,7 +5596,7 @@
                     </div>
                     ${t.description ? `
                       <div>
-                        <label class="block text-xs font-medium text-foreground mb-1">Description (Optional)</label>
+                        <label for="preview-desc-${t.id}" class="block text-xs font-medium text-foreground mb-1">Description (Optional)</label>
                         <textarea id="preview-desc-${t.id}"
                           class="w-full px-2 py-2 border border-border rounded-md text-sm resize-y min-h-[60px]"
                           placeholder="Customize description...">${t.description || ''}</textarea>

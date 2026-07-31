@@ -48,7 +48,7 @@
                 <div>
                     <label class="block text-sm font-medium text-muted-foreground mb-1">Horizon</label>
                     <select x-model="filterHorizon"
-                            class="rounded-md border border-input bg-background px-3 py-2 text-sm min-w-[140px]">
+                            class="rounded-md border border-input bg-background px-3 py-2 text-sm min-w-[140px]" aria-label="Horizon">
                         <option value="">All Horizons</option>
                         {% for h in valid_horizons %}
                         <option value="{{ h }}">{{ h | replace('_', ' ') | title }}</option>
@@ -58,7 +58,7 @@
                 <div>
                     <label class="block text-sm font-medium text-muted-foreground mb-1">Authority Level</label>
                     <select x-model="filterAuthority"
-                            class="rounded-md border border-input bg-background px-3 py-2 text-sm min-w-[160px]">
+                            class="rounded-md border border-input bg-background px-3 py-2 text-sm min-w-[160px]" aria-label="Authority Level">
                         <option value="">All Authority Levels</option>
                         {% for a in valid_authority_levels %}
                         <option value="{{ a }}">{{ a | replace('_', ' ') | title }}</option>
@@ -68,7 +68,7 @@
                 <div>
                     <label class="block text-sm font-medium text-muted-foreground mb-1">Status</label>
                     <select x-model="filterStatus"
-                            class="rounded-md border border-input bg-background px-3 py-2 text-sm min-w-[140px]">
+                            class="rounded-md border border-input bg-background px-3 py-2 text-sm min-w-[140px]" aria-label="Status">
                         <option value="">All Statuses</option>
                         {% for s in valid_statuses %}
                         <option value="{{ s }}">{{ s | replace('_', ' ') | title }}</option>

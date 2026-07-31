@@ -41,7 +41,7 @@
             <!-- Domain Filter -->
             <div>
                 <label class="block text-sm font-medium text-foreground/80 mb-2">Domain</label>
-                <select x-model="selectedDomain" class="w-full p-2 border border-border rounded-md">
+                <select x-model="selectedDomain" class="w-full p-2 border border-border rounded-md" aria-label="Domain">
                     <option value="">All Domains</option>
                     <template x-for="domain in availableDomains" :key="domain">
                         <option :value="domain" x-text="domain"></option>
@@ -52,7 +52,7 @@
             <!-- Strategic Importance Filter -->
             <div>
                 <label class="block text-sm font-medium text-foreground/80 mb-2">Strategic Importance</label>
-                <select x-model="selectedImportance" class="w-full p-2 border border-border rounded-md">
+                <select x-model="selectedImportance" class="w-full p-2 border border-border rounded-md" aria-label="Strategic Importance">
                     <option value="">All Levels</option>
                     <option value="High">High</option>
                     <option value="Medium">Medium</option>
@@ -63,7 +63,7 @@
             <!-- Timeline View Mode -->
             <div>
                 <label class="block text-sm font-medium text-foreground/80 mb-2">Timeline View</label>
-                <select x-model="timelineMode" class="w-full p-2 border border-border rounded-md">
+                <select x-model="timelineMode" class="w-full p-2 border border-border rounded-md" aria-label="Timeline View">
                     <option value="quarters">Quarters</option>
                     <option value="years">Years</option>
                     <option value="compact">Compact</option>
@@ -299,7 +299,7 @@
                         <div>
                             <label class="block text-sm font-medium text-foreground/80 mb-1">Capability</label>
                             <select x-model="workPackageForm.capability_id" required
-                                    class="w-full p-2 border border-border rounded-md">
+                                    class="w-full p-2 border border-border rounded-md" aria-label="Capability">
                                 <option value="">Select Capability</option>
                                 <template x-for="capability in availableCapabilities" :key="capability.id">
                                     <option :value="capability.id" x-text="capability.name"></option>
@@ -319,7 +319,7 @@
                         <div>
                             <label class="block text-sm font-medium text-foreground/80 mb-1">Status</label>
                             <select x-model="workPackageForm.status" required
-                                    class="w-full p-2 border border-border rounded-md">
+                                    class="w-full p-2 border border-border rounded-md" aria-label="Status">
                                 <option value="Planned">Planned</option>
                                 <option value="In Progress">In Progress</option>
                                 <option value="Completed">Completed</option>
@@ -335,7 +335,7 @@
                         <div>
                             <label class="block text-sm font-medium text-foreground/80 mb-1">Assigned To</label>
                             <select x-model="workPackageForm.assigned_to"
-                                    class="w-full p-2 border border-border rounded-md">
+                                    class="w-full p-2 border border-border rounded-md" aria-label="Assigned To">
                                 <option value="">Unassigned</option>
                                 <template x-for="user in availableUsers" :key="user.id">
                                     <option :value="user.id" x-text="user.email"></option>
@@ -345,7 +345,7 @@
                         <div>
                             <label class="block text-sm font-medium text-foreground/80 mb-1">Strategic Importance</label>
                             <select x-model="workPackageForm.strategic_importance"
-                                    class="w-full p-2 border border-border rounded-md">
+                                    class="w-full p-2 border border-border rounded-md" aria-label="Strategic Importance">
                                 <option value="">Not Set</option>
                                 <option value="High">High</option>
                                 <option value="Medium">Medium</option>
@@ -356,7 +356,7 @@
                     <div class="mt-4">
                         <label class="block text-sm font-medium text-foreground/80 mb-1">Description</label>
                         <textarea x-model="workPackageForm.description" rows="3"
-                                  class="w-full p-2 border border-border rounded-md"></textarea>
+                                  class="w-full p-2 border border-border rounded-md" aria-label="Description"></textarea>
                     </div>
                     <div class="mt-6 flex justify-end space-x-4">
                         <button type="button" @click="closeWorkPackageModal()"

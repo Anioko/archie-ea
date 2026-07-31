@@ -113,7 +113,7 @@ x-effect="document.getElementById('arb-submission') && document.getElementById('
                 rows="4"
                 class="w-full rounded-lg border border-input bg-background px-4 py-2 text-sm resize-none focus:ring-2 focus:ring-primary"
                 placeholder="Add any additional context or justification for this ARB submission..."
-            ></textarea>
+             aria-label="Additional Justification (optional)"></textarea>
             <p class="text-xs text-muted-foreground">
                 This will be appended to the auto-generated business case.
             </p>
@@ -130,7 +130,7 @@ x-effect="document.getElementById('arb-submission') && document.getElementById('
                 <select
                     x-model="formData.priority_override"
                     class="w-full rounded-lg border border-input bg-background px-4 py-2 text-sm"
-                >
+                 aria-label="Override Priority (optional)">
                     <option value="">Use capability priority</option>
                     <option value="critical">Critical</option>
                     <option value="high">High</option>

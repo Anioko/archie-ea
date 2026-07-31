@@ -81,7 +81,7 @@
                     <input type="text" x-model="solutionName" placeholder="e.g. Claims Processing Modernisation"
                            @blur="saveSolutionName()"
                            @keydown.enter.prevent="saveSolutionName()"
-                           class="flex-1 px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                           class="flex-1 px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Solution Name">
                     <span x-show="solutionNameSaving" x-cloak class="flex items-center text-xs text-muted-foreground gap-1">
                         <span class="animate-spin h-3 w-3 border-2 border-muted-foreground border-t-transparent rounded-full"></span>
                         Saving
@@ -112,7 +112,7 @@
             <div class="space-y-1">
                 <label class="text-sm font-medium">Timeline</label>
                 <input type="number" x-model.number="structuredIntake.timeline_months" min="1" max="60" placeholder="Duration in months"
-                       class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                       class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Timeline">
             </div>
 
             {# Budget Range #}
@@ -120,7 +120,7 @@
                 <label class="text-sm font-medium">Budget Range</label>
                 <div class="grid grid-cols-2 gap-4">
                     <input type="number" x-model.number="structuredIntake.budget_min" placeholder="Min budget (&pound;)"
-                           class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                           class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Budget Range">
                     <input type="number" x-model.number="structuredIntake.budget_max" placeholder="Max budget (&pound;)"
                            class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
                 </div>
@@ -158,7 +158,7 @@
                 <div class="grid grid-cols-3 gap-4">
                     <!-- entity-picker-ok -->
                     <input type="number" x-model.number="structuredIntake.user_count" placeholder="End users"
-                           class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                           class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Scale Indicators">
                     <input type="number" x-model.number="structuredIntake.transaction_volume" placeholder="Daily transactions"
                            class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
                     <input type="number" x-model.number="structuredIntake.data_volume_gb" placeholder="Data volume (GB)"
@@ -561,7 +561,7 @@
                         <div class="grid grid-cols-12 gap-2 items-center">
                             <div class="col-span-4">
                                 <input type="text" x-model="driver.name" placeholder="Driver name"
-                                       class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                                       class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Business Drivers">
                             </div>
                             <div class="col-span-4">
                                 <select x-model="driver.type" aria-label="Driver type"
@@ -621,7 +621,7 @@
                 <p class="text-xs text-muted-foreground">Select existing applications affected by this solution</p>
                 <input type="text" x-model="appSearchQuery" @input.debounce.300ms="searchApps()"
                        placeholder="Search applications..."
-                       class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                       class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Applications in Scope">
                 {# Search results dropdown #}
                 <div x-show="appSearchResults.length > 0" x-cloak
                      class="border border-border rounded-md max-h-40 overflow-y-auto bg-background shadow-md">
@@ -650,7 +650,7 @@
                 <label class="text-sm font-medium">Systems to Integrate With</label>
                 <input type="text" x-model="integrationSearchQuery" @input.debounce.300ms="searchIntegrations()"
                        placeholder="Search systems..."
-                       class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                       class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Systems to Integrate With">
                 <div x-show="integrationSearchResults.length > 0" x-cloak
                      class="border border-border rounded-md max-h-40 overflow-y-auto bg-background shadow-md">
                     <template x-for="sys in integrationSearchResults" :key="sys.id">
@@ -678,7 +678,7 @@
                     <template x-for="(pain, idx) in structuredIntake.pain_points" :key="idx">
                         <div class="flex gap-2">
                             <input type="text" x-model="structuredIntake.pain_points[idx]" placeholder="Describe a pain point"
-                                   class="flex-1 px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                                   class="flex-1 px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Current Pain Points">
                             <button @click="structuredIntake.pain_points.splice(idx, 1)" type="button"
                                     class="text-muted-foreground hover:text-destructive">&times;</button>
                         </div>

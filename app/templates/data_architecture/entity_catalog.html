@@ -54,11 +54,11 @@
                 <label class="text-xs font-medium text-muted-foreground mb-1 block">Search</label>
                 <input type="text" name="search" value="{{ search }}"
                     class="w-full h-9 px-3 text-sm rounded-md border border-input bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                    placeholder="Search entities...">
+                    placeholder="Search entities..." aria-label="Search">
             </div>
             <div>
                 <label class="text-xs font-medium text-muted-foreground mb-1 block">Classification</label>
-                <select name="classification" class="h-9 px-3 text-sm rounded-md border border-input bg-background text-foreground">
+                <select name="classification" class="h-9 px-3 text-sm rounded-md border border-input bg-background text-foreground" aria-label="Classification">
                     <option value="">All</option>
                     <option value="public" {{ 'selected' if classification == 'public' }}>Public</option>
                     <option value="internal" {{ 'selected' if classification == 'internal' }}>Internal</option>
@@ -68,7 +68,7 @@
             </div>
             <div>
                 <label class="text-xs font-medium text-muted-foreground mb-1 block">Type</label>
-                <select name="entity_type" class="h-9 px-3 text-sm rounded-md border border-input bg-background text-foreground">
+                <select name="entity_type" class="h-9 px-3 text-sm rounded-md border border-input bg-background text-foreground" aria-label="Type">
                     <option value="">All</option>
                     <option value="master" {{ 'selected' if entity_type == 'master' }}>Master</option>
                     <option value="transactional" {{ 'selected' if entity_type == 'transactional' }}>Transactional</option>
@@ -78,7 +78,7 @@
             </div>
             <div>
                 <label class="text-xs font-medium text-muted-foreground mb-1 block">Domain</label>
-                <select name="domain_id" class="h-9 px-3 text-sm rounded-md border border-input bg-background text-foreground">
+                <select name="domain_id" class="h-9 px-3 text-sm rounded-md border border-input bg-background text-foreground" aria-label="Domain">
                     <option value="">All Domains</option>
                     {% for d in domains %}
                     <option value="{{ d.id }}" {{ 'selected' if domain_id == d.id|string }}>{{ d.name }}</option>

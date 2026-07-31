@@ -163,13 +163,13 @@
         <label class="block text-sm font-medium mb-1">Vendor Name <span class="text-destructive">*</span></label>
         <input type="text" x-model="editForm.name" required maxlength="200"
                class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-               placeholder="Vendor name">
+               placeholder="Vendor name" aria-label="Vendor Name">
       </div>
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label class="block text-sm font-medium mb-1">Vendor Type</label>
           <select x-model="editForm.vendor_type"
-                  class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Vendor Type">
             <option value="">Select type...</option>
             <option value="software_vendor">Software Vendor</option>
             <option value="saas_platform">SaaS Platform</option>
@@ -183,19 +183,19 @@
           <label class="block text-sm font-medium mb-1">Country</label>
           <input type="text" x-model="editForm.country"
                  class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                 placeholder="e.g. United Kingdom">
+                 placeholder="e.g. United Kingdom" aria-label="Country">
         </div>
       </div>
       <div>
         <label class="block text-sm font-medium mb-1">Website</label>
         <input type="url" x-model="editForm.website"
                class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-               placeholder="https://example.com">
+               placeholder="https://example.com" aria-label="Website">
       </div>
       <div>
         <label class="block text-sm font-medium mb-1">Status</label>
         <select x-model="editForm.status"
-                class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Status">
           <option value="active">Active</option>
           <option value="inactive">Inactive</option>
           <option value="catalog">Catalog</option>
@@ -207,7 +207,7 @@
         <label class="block text-sm font-medium mb-1">Description</label>
         <textarea x-model="editForm.description" rows="3"
                   class="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  placeholder="Brief description"></textarea>
+                  placeholder="Brief description" aria-label="Description"></textarea>
       </div>
       <div x-show="editError" x-cloak class="rounded-md bg-destructive/10 border border-destructive/20 px-3 py-2 text-sm text-destructive" x-text="editError"></div>
     </div>

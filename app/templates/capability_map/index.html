@@ -401,7 +401,7 @@
                         </div>
                         <div class="flex items-center justify-between">
                             <div class="flex items-center space-x-2">
-                                <label class="text-sm text-muted-foreground">Rows per page:</label>
+                                <label for="unified-page-size" class="text-sm text-muted-foreground">Rows per page:</label>
                                 <select id="unified-page-size" @change="changePageSize('unified')" class="px-3 py-1 border border-input rounded-md text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                                     <option value="10">10</option>
                                     <option value="25">25</option>
@@ -678,7 +678,7 @@
                     <!-- Pagination -->
                     <div class="px-6 py-4 border-t border-border flex items-center justify-between">
                         <div class="flex items-center space-x-2">
-                            <label class="text-sm text-muted-foreground">Rows per page:</label>
+                            <label for="manufacturing-page-size" class="text-sm text-muted-foreground">Rows per page:</label>
                             <select id="manufacturing-page-size" @change="changePageSize('manufacturing')" class="px-3 py-1 border border-input rounded-md text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                                 <option value="10">10</option>
                                 <option value="25">25</option>
@@ -820,7 +820,7 @@
                     <!-- Pagination -->
                     <div class="px-6 py-4 border-t border-border flex items-center justify-between">
                         <div class="flex items-center space-x-2">
-                            <label class="text-sm text-muted-foreground">Rows per page:</label>
+                            <label for="application-page-size" class="text-sm text-muted-foreground">Rows per page:</label>
                             <select id="application-page-size" @change="changePageSize('application')" class="px-3 py-1 border border-input rounded-md text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                                 <option value="10">10</option>
                                 <option value="25">25</option>
@@ -961,7 +961,7 @@
                     <!-- Pagination -->
                     <div class="px-6 py-4 border-t border-border flex items-center justify-between">
                         <div class="flex items-center space-x-2">
-                            <label class="text-sm text-muted-foreground">Rows per page:</label>
+                            <label for="gap-page-size" class="text-sm text-muted-foreground">Rows per page:</label>
                             <select id="gap-page-size" @change="changePageSize('gap')" class="px-3 py-1 border border-input rounded-md text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                                 <option value="10">10</option>
                                 <option value="25">25</option>
@@ -1042,7 +1042,7 @@
                     <div class="bg-card rounded-lg shadow p-4 mb-6">
                         <div class="flex flex-wrap gap-4 items-center">
                             <div class="flex items-center space-x-2">
-                                <label class="text-sm font-medium text-muted-foreground">Domain:</label>
+                                <label for="acm-gap-domain-filter" class="text-sm font-medium text-muted-foreground">Domain:</label>
                                 <select id="acm-gap-domain-filter" @change="filterACMGapTable()" class="px-3 py-2 border border-input rounded-md text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                                     <option value="">All Domains</option>
                                     <option value="USER-EXPERIENCE">User Experience</option>
@@ -1055,7 +1055,7 @@
                                 </select>
                             </div>
                             <div class="flex items-center space-x-2">
-                                <label class="text-sm font-medium text-muted-foreground">Level:</label>
+                                <label for="acm-gap-level-filter" class="text-sm font-medium text-muted-foreground">Level:</label>
                                 <select id="acm-gap-level-filter" @change="filterACMGapTable()" class="px-3 py-2 border border-input rounded-md text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                                     <option value="">All Levels</option>
                                     <option value="L1">L1 - Area</option>
@@ -1065,7 +1065,7 @@
                                 </select>
                             </div>
                             <div class="flex items-center space-x-2">
-                                <label class="text-sm font-medium text-muted-foreground">Status:</label>
+                                <label for="acm-gap-status-filter" class="text-sm font-medium text-muted-foreground">Status:</label>
                                 <select id="acm-gap-status-filter" @change="filterACMGapTable()" class="px-3 py-2 border border-input rounded-md text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                                     <option value="">All Status</option>
                                     <option value="gap">Gap (No Apps)</option>
@@ -1341,7 +1341,7 @@
                 <div class="bg-card rounded-lg shadow p-4 mb-6">
                     <div class="flex flex-wrap gap-4 items-center">
                         <div class="flex items-center space-x-2">
-                            <label class="text-sm font-medium text-muted-foreground">Category:</label>
+                            <label for="process-category-filter" class="text-sm font-medium text-muted-foreground">Category:</label>
                             <select id="process-category-filter" @change="filterProcessGapTable()" class="px-3 py-2 border border-input rounded-md text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                                 <option value="">All Categories</option>
                                 <option value="1.0">1.0 - Vision & Strategy</option>
@@ -1360,7 +1360,7 @@
                             </select>
                         </div>
                         <div class="flex items-center space-x-2">
-                            <label class="text-sm font-medium text-muted-foreground">Level:</label>
+                            <label for="process-level-filter" class="text-sm font-medium text-muted-foreground">Level:</label>
                             <select id="process-level-filter" @change="filterProcessGapTable()" class="px-3 py-2 border border-input rounded-md text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                                 <option value="">All Levels</option>
                                 <option value="0">L0 - Value Chain</option>
@@ -1371,7 +1371,7 @@
                             </select>
                         </div>
                         <div class="flex items-center space-x-2">
-                            <label class="text-sm font-medium text-muted-foreground">Gap Status:</label>
+                            <label for="process-gap-status-filter" class="text-sm font-medium text-muted-foreground">Gap Status:</label>
                             <select id="process-gap-status-filter" @change="filterProcessGapTable()" class="px-3 py-2 border border-input rounded-md text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                                 <option value="">All Statuses</option>
                                 <option value="no_coverage">No App Coverage</option>
@@ -1454,7 +1454,7 @@
                     <!-- Pagination -->
                     <div class="px-6 py-4 border-t border-border flex items-center justify-between">
                         <div class="flex items-center space-x-2">
-                            <label class="text-sm text-muted-foreground">Rows per page:</label>
+                            <label for="process-gap-page-size" class="text-sm text-muted-foreground">Rows per page:</label>
                             <select id="process-gap-page-size" @change="changeProcessGapPageSize()" class="px-3 py-1 border border-input rounded-md text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                                 <option value="10">10</option>
                                 <option value="25">25</option>
@@ -1527,7 +1527,7 @@
                             <button type="button" id="heatmap-view-matrix" @click="setHeatmapView('matrix')" class="px-2.5 py-1 rounded text-xs font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80">Matrix</button>
                         </div>
                         <div class="flex items-center gap-2">
-                            <label class="text-xs font-medium text-muted-foreground">Show:</label>
+                            <label for="heatmap-coverage-filter" class="text-xs font-medium text-muted-foreground">Show:</label>
                             <select id="heatmap-coverage-filter" @change="filterHeatmapCoverage($event.target.value)" class="px-2 py-1 border border-input rounded text-xs">
                                 <option value="all">All</option>
                                 <option value="gaps">Gaps Only (0 apps)</option>
@@ -1752,7 +1752,7 @@
                     <!-- Pagination -->
                     <div class="px-6 py-4 border-t border-border flex items-center justify-between">
                         <div class="flex items-center space-x-2">
-                            <label class="text-sm text-muted-foreground">Rows per page:</label>
+                            <label for="acm-page-size" class="text-sm text-muted-foreground">Rows per page:</label>
                             <select id="acm-page-size" @change="changeACMPageSize()" class="px-3 py-1 border border-input rounded-md text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                                 <option value="10">10</option>
                                 <option value="25" selected>25</option>
@@ -1872,7 +1872,7 @@
 
                                 <!-- Work Package Template -->
                                 <div id="convert-template-section">
-                                    <label class="block text-sm font-medium text-muted-foreground mb-2">Work Package Template</label>
+                                    <label for="convert-wp-template" class="block text-sm font-medium text-muted-foreground mb-2">Work Package Template</label>
                                     <select id="convert-wp-template" class="w-full px-4 py-2.5 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                                         <option value="auto">Auto-select based on gap type</option>
                                         <option value="default">Default (Requirements → Design → Implementation → Testing → Deploy)</option>
@@ -1958,7 +1958,7 @@
     <input type="text" id="edit-gap-name" class="w-full px-3 py-2 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                             </div>
                             <div class="col-span-2">
-                                <label class="block text-sm font-medium text-muted-foreground mb-1">Description</label>
+                                <label for="edit-gap-description" class="block text-sm font-medium text-muted-foreground mb-1">Description</label>
                                 <textarea id="edit-gap-description" rows="3" class="w-full px-3 py-2 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"></textarea>
                             </div>
                         </div>
@@ -1966,7 +1966,7 @@
                         <!-- Classification -->
                         <div class="grid grid-cols-3 gap-4 mb-6">
                             <div>
-                                <label class="block text-sm font-medium text-muted-foreground mb-1">Gap Type</label>
+                                <label for="edit-gap-type" class="block text-sm font-medium text-muted-foreground mb-1">Gap Type</label>
                                 <select id="edit-gap-type" class="w-full px-3 py-2 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                                     <option value="coverage">Coverage</option>
                                     <option value="quality">Quality</option>
@@ -1976,7 +1976,7 @@
                                 </select>
                             </div>
                             <div>
-                                <label class="block text-sm font-medium text-muted-foreground mb-1">Priority</label>
+                                <label for="edit-gap-priority" class="block text-sm font-medium text-muted-foreground mb-1">Priority</label>
                                 <select id="edit-gap-priority" class="w-full px-3 py-2 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                                     <option value="critical">Critical</option>
                                     <option value="high">High</option>
@@ -1985,7 +1985,7 @@
                                 </select>
                             </div>
                             <div>
-                                <label class="block text-sm font-medium text-muted-foreground mb-1">Status</label>
+                                <label for="edit-gap-status" class="block text-sm font-medium text-muted-foreground mb-1">Status</label>
                                 <select id="edit-gap-status" class="w-full px-3 py-2 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                                     <option value="identified">Identified</option>
                                     <option value="in_progress">In Progress</option>
@@ -2181,7 +2181,7 @@
     <input type="text" id="edit-wp-name" placeholder="Enter work package name..." class="w-full px-4 py-2.5 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus:border-transparent">
                                     </div>
                                     <div>
-                                        <label class="block text-sm font-medium text-muted-foreground mb-1">Description</label>
+                                        <label for="edit-wp-description" class="block text-sm font-medium text-muted-foreground mb-1">Description</label>
                                         <textarea id="edit-wp-description" rows="3" placeholder="Describe the work package objectives and scope..." class="w-full px-4 py-2.5 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus:border-transparent"></textarea>
                                     </div>
                                 </div>
@@ -2195,7 +2195,7 @@
                                 </h4>
                                 <div class="grid grid-cols-3 gap-4">
                                     <div>
-                                        <label class="block text-sm font-medium text-muted-foreground mb-1">Status</label>
+                                        <label for="edit-wp-status" class="block text-sm font-medium text-muted-foreground mb-1">Status</label>
                                         <select id="edit-wp-status" class="w-full px-4 py-2.5 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                                             <option value="planned">Planned</option>
                                             <option value="in_progress">In Progress</option>
@@ -2205,7 +2205,7 @@
                                         </select>
                                     </div>
                                     <div>
-                                        <label class="block text-sm font-medium text-muted-foreground mb-1">Priority</label>
+                                        <label for="edit-wp-priority" class="block text-sm font-medium text-muted-foreground mb-1">Priority</label>
                                         <select id="edit-wp-priority" class="w-full px-4 py-2.5 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                                             <option value="critical">Critical</option>
                                             <option value="high">High</option>
@@ -2479,7 +2479,7 @@
                 <!-- Gap Details -->
                 <div class="space-y-4">
                     <div>
-                        <label class="block text-sm font-medium text-muted-foreground mb-1">Gap Type</label>
+                        <label for="add-roadmap-gap-type" class="block text-sm font-medium text-muted-foreground mb-1">Gap Type</label>
                         <select id="add-roadmap-gap-type" class="w-full px-3 py-2 border border-input rounded-md">
                             <option value="coverage">Coverage Gap</option>
                             <option value="quality">Quality Gap</option>
@@ -2489,7 +2489,7 @@
                     </div>
 
                     <div>
-                        <label class="block text-sm font-medium text-muted-foreground mb-1">Priority</label>
+                        <label for="add-roadmap-priority" class="block text-sm font-medium text-muted-foreground mb-1">Priority</label>
                         <select id="add-roadmap-priority" class="w-full px-3 py-2 border border-input rounded-md">
                             <option value="critical">Critical</option>
                             <option value="high">High</option>
@@ -2572,7 +2572,7 @@
                     </div>
                     <div class="grid grid-cols-2 gap-3">
                         <div>
-                            <label class="block text-sm font-medium text-muted-foreground mb-1">Type</label>
+                            <label for="quick-add-type-filter" class="block text-sm font-medium text-muted-foreground mb-1">Type</label>
                             <select id="quick-add-type-filter" @change="loadQuickAddCapabilities()"
                                     class="w-full px-3 py-2 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                                 <option value="">All Types</option>
@@ -2582,7 +2582,7 @@
                             </select>
                         </div>
                         <div>
-                            <label class="block text-sm font-medium text-muted-foreground mb-1">Level</label>
+                            <label for="quick-add-level-filter" class="block text-sm font-medium text-muted-foreground mb-1">Level</label>
                             <select id="quick-add-level-filter" @change="loadQuickAddCapabilities()"
                                     class="w-full px-3 py-2 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                                 <option value="">All Levels</option>

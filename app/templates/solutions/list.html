@@ -334,7 +334,7 @@
             <div class="flex items-center gap-2">
               <div class="flex items-center gap-2 mr-4">
                 <label class="text-xs text-muted-foreground">Per page:</label>
-                <select @change="changeSolPerPage($event.target.value)" class="h-8 w-16 rounded-lg border border-border/50 bg-card px-2 py-1 text-xs font-medium">
+                <select @change="changeSolPerPage($event.target.value)" class="h-8 w-16 rounded-lg border border-border/50 bg-card px-2 py-1 text-xs font-medium" aria-label="Per page">
                   {% for size in [10, 20, 50, 100] %}
                   <option value="{{ size }}" {{ 'selected' if (per_page|default(20)) == size else '' }}>{{ size }}</option>
                   {% endfor %}

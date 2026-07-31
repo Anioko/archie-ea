@@ -45,29 +45,29 @@
             <label class="block text-sm font-medium mb-1.5">Problem / Requirement <span class="text-destructive">*</span></label>
             <textarea x-model="form.problem" rows="4"
                 placeholder="e.g. We need a document management platform to replace SharePoint 2013, supporting 3,000 users, integrating with SAP ECC and meeting UK GDPR requirements..."
-                class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none"></textarea>
+                class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none" aria-label="Problem / Requirement"></textarea>
         </div>
 
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
                 <label class="block text-sm font-medium mb-1.5">Budget Min (£)</label>
                 <input x-model="form.budget_min" type="number" placeholder="e.g. 50000"
-                    class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                    class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Budget Min (£)">
             </div>
             <div>
                 <label class="block text-sm font-medium mb-1.5">Budget Max (£)</label>
                 <input x-model="form.budget_max" type="number" placeholder="e.g. 500000"
-                    class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                    class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Budget Max (£)">
             </div>
             <div>
                 <label class="block text-sm font-medium mb-1.5">Timeline (months)</label>
                 <input x-model="form.timeline_months" type="number" placeholder="e.g. 12"
-                    class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                    class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Timeline (months)">
             </div>
             <div>
                 <label class="block text-sm font-medium mb-1.5">Number of Users</label>
                 <input x-model="form.user_count" type="number" placeholder="e.g. 500"
-                    class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                    class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Number of Users">
             </div>
         </div>
 
@@ -88,7 +88,7 @@
                 <label class="block text-sm font-medium mb-1.5">Integration Constraints</label>
                 <input x-model="form.constraints" type="text"
                     placeholder="e.g. Must integrate with SAP ECC 6.0, Azure AD"
-                    class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                    class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Integration Constraints">
             </div>
         </div>
 

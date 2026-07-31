@@ -232,19 +232,19 @@
             <div>
                 <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Support Level (1-5)</label>
                 <input type="range" min="1" max="5" step="1" x-model.number="cellForm.support_level"
-                       class="mt-2 w-full">
+                       class="mt-2 w-full" aria-label="Support Level (1-5)">
                 <div class="text-center text-sm font-semibold mt-1" x-text="cellForm.support_level"></div>
             </div>
             <div>
                 <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Contribution (%)</label>
                 <input type="number" min="0" max="100" x-model.number="cellForm.capability_contribution"
-                       class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                       class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" aria-label="Contribution (%)">
             </div>
             <div class="grid grid-cols-2 gap-4">
                 <div>
                     <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Support Type</label>
                     <select x-model="cellForm.support_type"
-                            class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                            class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" aria-label="Support Type">
                         <option value="primary">Primary</option>
                         <option value="secondary">Secondary</option>
                         <option value="supporting">Supporting</option>
@@ -253,7 +253,7 @@
                 <div>
                     <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Impact Level</label>
                     <select x-model="cellForm.impact_level"
-                            class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                            class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" aria-label="Impact Level">
                         <option value="critical">Critical</option>
                         <option value="high">High</option>
                         <option value="medium">Medium</option>
@@ -342,18 +342,18 @@
         <div>
             <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Name</label>
             <input type="text" name="name" x-model="stageEditForm.name" required
-                   class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                   class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" aria-label="Name">
         </div>
         <div>
             <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Description</label>
             <textarea name="description" x-model="stageEditForm.description" rows="2"
-                      class="mt-1 flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"></textarea>
+                      class="mt-1 flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" aria-label="Description"></textarea>
         </div>
         <div class="grid grid-cols-2 gap-4">
             <div>
                 <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Stage Type</label>
                 <select name="stage_type" x-model="stageEditForm.stage_type"
-                        class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                        class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" aria-label="Stage Type">
                     <option value="operational">Operational</option>
                     <option value="strategic">Strategic</option>
                     <option value="supporting">Supporting</option>
@@ -362,7 +362,7 @@
             <div>
                 <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Order</label>
                 <input type="number" name="stage_order" min="1" x-model.number="stageEditForm.stage_order"
-                       class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                       class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" aria-label="Order">
             </div>
         </div>
         <div class="flex items-center gap-6">
@@ -416,23 +416,23 @@
         <div>
             <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Name</label>
             <input type="text" name="name" value="{{ value_stream.name }}" required
-                   class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                   class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" aria-label="Name">
         </div>
         <div>
             <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Description</label>
             <textarea name="description" rows="3"
-                      class="mt-1 flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">{{ value_stream.description or '' }}</textarea>
+                      class="mt-1 flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" aria-label="Description">{{ value_stream.description or '' }}</textarea>
         </div>
         <div class="grid grid-cols-2 gap-4">
             <div>
                 <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Target Cycle Time (days)</label>
                 <input type="number" name="target_cycle_time" value="{{ value_stream.target_cycle_time if value_stream.target_cycle_time is not none else '' }}"
-                       class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                       class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" aria-label="Target Cycle Time (days)">
             </div>
             <div>
                 <label class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Current Cycle Time (days)</label>
                 <input type="number" name="current_cycle_time" value="{{ value_stream.current_cycle_time if value_stream.current_cycle_time is not none else '' }}"
-                       class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                       class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" aria-label="Current Cycle Time (days)">
             </div>
         </div>
         <div class="flex justify-end gap-2 pt-2">

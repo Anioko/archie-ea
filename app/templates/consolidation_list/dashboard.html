@@ -549,7 +549,7 @@
             </p>
             <div class="flex items-center gap-2">
                 <label class="text-sm text-muted-foreground">Show:</label>
-                <select :value="pageSize" @change="setPerPage($event.target.value)" class="h-8 w-16 rounded-md border border-input bg-background px-2 py-1 text-sm">
+                <select :value="pageSize" @change="setPerPage($event.target.value)" class="h-8 w-16 rounded-md border border-input bg-background px-2 py-1 text-sm" aria-label="Show">
                     <option value="10">10</option>
                     <option value="25">25</option>
                     <option value="50">50</option>

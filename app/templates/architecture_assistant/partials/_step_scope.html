@@ -12,12 +12,12 @@
       <label class="block text-sm font-medium text-foreground mb-1.5">Solution Name <span class="text-destructive">*</span></label>
       <input type="text" x-model="scope.name" required
         class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-        placeholder="e.g. Enterprise CRM Consolidation">
+        placeholder="e.g. Enterprise CRM Consolidation" aria-label="Solution Name">
     </div>
     <div>
       <label class="block text-sm font-medium text-foreground mb-1.5">Business Domain <span class="text-destructive">*</span></label>
       <select x-model="scope.business_domain"
-        class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+        class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" aria-label="Business Domain">
         <option value="">Select domain...</option>
         <option value="Customer Management">Customer Management</option>
         <option value="Finance">Finance</option>
@@ -41,7 +41,7 @@
     <div class="relative">
       <input type="text" x-model="appSearch" @input.debounce.300ms="searchApplications()"
         class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-        placeholder="Search applications...">
+        placeholder="Search applications..." aria-label="Linked Applications (link existing apps for brownfield redesign)">
       <div x-show="appSearchResults.length > 0" x-cloak
         class="absolute z-10 mt-1 w-full rounded-md border border-border bg-background shadow-lg max-h-48 overflow-y-auto">
         <template x-for="app in appSearchResults" :key="app.id">
@@ -123,7 +123,7 @@
     <div class="relative">
       <input type="text" x-model="driverSearch" @input.debounce.300ms="searchMotivationElements('Driver')"
         class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-        placeholder="Search existing drivers or type to create...">
+        placeholder="Search existing drivers or type to create..." aria-label="Drivers ArchiMate: Driver">
       <div x-show="driverResults.length > 0" x-cloak
         class="absolute z-10 mt-1 w-full rounded-md border border-border bg-background shadow-lg max-h-48 overflow-y-auto">
         <template x-for="el in driverResults" :key="el.id">
@@ -160,7 +160,7 @@
     <div class="relative">
       <input type="text" x-model="goalSearch" @input.debounce.300ms="searchMotivationElements('Goal')"
         class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-        placeholder="Search existing goals or type to create...">
+        placeholder="Search existing goals or type to create..." aria-label="Goals ArchiMate: Goal">
       <div x-show="goalResults.length > 0" x-cloak
         class="absolute z-10 mt-1 w-full rounded-md border border-border bg-background shadow-lg max-h-48 overflow-y-auto">
         <template x-for="el in goalResults" :key="el.id">
@@ -194,7 +194,7 @@
     <div class="relative">
       <input type="text" x-model="constraintSearch" @input.debounce.300ms="searchMotivationElements('Constraint')"
         class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-        placeholder="Search existing constraints or type to create...">
+        placeholder="Search existing constraints or type to create..." aria-label="Constraints ArchiMate: Constraint">
       <div x-show="constraintResults.length > 0" x-cloak
         class="absolute z-10 mt-1 w-full rounded-md border border-border bg-background shadow-lg max-h-48 overflow-y-auto">
         <template x-for="el in constraintResults" :key="el.id">
@@ -228,7 +228,7 @@
     <div class="relative">
       <input type="text" x-model="stakeholderSearch" @input.debounce.300ms="searchMotivationElements('Stakeholder')"
         class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-        placeholder="Search existing stakeholders or type to create...">
+        placeholder="Search existing stakeholders or type to create..." aria-label="Stakeholders ArchiMate: Stakeholder">
       <div x-show="stakeholderResults.length > 0" x-cloak
         class="absolute z-10 mt-1 w-full rounded-md border border-border bg-background shadow-lg max-h-48 overflow-y-auto">
         <template x-for="el in stakeholderResults" :key="el.id">

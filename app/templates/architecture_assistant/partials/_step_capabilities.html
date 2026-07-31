@@ -16,7 +16,7 @@
     <div class="flex gap-2">
       <input type="text" x-model="capabilitySearch" @input.debounce.300ms="searchCapabilities()"
         class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-        placeholder="Search business capabilities...">
+        placeholder="Search business capabilities..." aria-label="Add Capabilities">
       <button @click="openCapabilityModal()" type="button"
         class="inline-flex items-center gap-1 h-9 px-3 rounded-md text-sm font-medium border border-input bg-background hover:bg-accent whitespace-nowrap">
         <i data-lucide="layout-grid" class="h-4 w-4"></i> Browse

@@ -45,7 +45,7 @@
                 <div>
                     <label class="block text-sm font-medium text-foreground/80 mb-2">ArchiMate Layer</label>
                     <select x-model="selectedLayer" @change="onLayerChange()" 
-                            class="w-full px-4 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-ring">
+                            class="w-full px-4 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-ring" aria-label="ArchiMate Layer">
                         <option value="">Select a layer...</option>
                         <option value="strategy">Strategy</option>
                         <option value="business">Business</option>
@@ -60,7 +60,7 @@
                     <label class="block text-sm font-medium text-foreground/80 mb-2">Element Type</label>
                     <select x-model="selectedElementType" @change="loadElements()" 
                             :disabled="!selectedLayer"
-                            class="w-full px-4 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-ring disabled:bg-muted">
+                            class="w-full px-4 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-ring disabled:bg-muted" aria-label="Element Type">
                         <option value="">All Types</option>
                         <template x-for="type in elementTypes" :key="type">
                             <option :value="type" x-text="type"></option>
@@ -189,7 +189,7 @@
                 <div>
                     <label class="block text-xs font-medium text-foreground/80 mb-1">Relationship Type</label>
                     <select x-model="relationshipType" 
-                            class="w-full px-3 py-2 text-sm border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-ring">
+                            class="w-full px-3 py-2 text-sm border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Relationship Type">
                         <option value="realization">Realization</option>
                         <option value="assignment">Assignment</option>
                         <option value="serving">Serving</option>
@@ -201,7 +201,7 @@
                 <div>
                     <label class="block text-xs font-medium text-foreground/80 mb-1">Mapping Confidence</label>
                     <select x-model="confidence" 
-                            class="w-full px-3 py-2 text-sm border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-ring">
+                            class="w-full px-3 py-2 text-sm border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Mapping Confidence">
                         <option value="1.0">High (100%)</option>
                         <option value="0.8">Good (80%)</option>
                         <option value="0.6">Medium (60%)</option>

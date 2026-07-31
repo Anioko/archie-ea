@@ -136,7 +136,7 @@
             <div class="px-3 py-1.5 border-t border-border bg-muted/30">
                 <label class="text-[10px] text-muted-foreground font-semibold uppercase tracking-wide block mb-1">Flow label (what is transferred)</label>
                 <input type="text" x-model="flowLabel" placeholder="e.g. Order data, Payment request"
-                       class="w-full text-xs px-2 py-1 border border-border rounded bg-background text-foreground">
+                       class="w-full text-xs px-2 py-1 border border-border rounded bg-background text-foreground" aria-label="Flow label (what is transferred)">
             </div>
         </template>
         {# Association warning — inline prompt instead of confirm() #}
@@ -719,7 +719,7 @@
                 <div>
                     <label class="text-xs font-medium text-foreground">Pattern</label>
                     <select x-model="selectedPatternId"
-                        class="w-full mt-1 text-sm border border-border rounded-lg px-3 py-2 bg-background text-foreground focus:ring-1 focus:ring-primary outline-none">
+                        class="w-full mt-1 text-sm border border-border rounded-lg px-3 py-2 bg-background text-foreground focus:ring-1 focus:ring-primary outline-none" aria-label="Pattern">
                         <option value="">Select a pattern...</option>
                         <template x-for="pat in patterns" :key="pat.id">
                             <option :value="pat.id">
@@ -736,7 +736,7 @@
                 <div>
                     <label class="text-xs font-medium text-foreground">Context (e.g., "Order Processing")</label>
                     <input x-model="patternContext" type="text" placeholder="Enter context name..."
-                        class="w-full mt-1 text-sm border border-border rounded-lg px-3 py-2 bg-background text-foreground focus:ring-1 focus:ring-primary outline-none">
+                        class="w-full mt-1 text-sm border border-border rounded-lg px-3 py-2 bg-background text-foreground focus:ring-1 focus:ring-primary outline-none" aria-label="Context (e.g., &quot;Order Processing&quot;)">
                 </div>
                 <button @click="applyPattern()" :disabled="!selectedPatternId || !patternContext.trim() || patternLoading"
                     class="w-full px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
@@ -796,7 +796,7 @@
                        placeholder="e.g., Application Layer – Salesforce Replacement"
                        @keydown.enter.prevent="confirmSaveName()"
                        @keydown.escape.prevent="cancelSaveName()"
-                       x-init="$nextTick(() => { if (saveNameOpen && $el) $el.focus(); })">
+                       x-init="$nextTick(() = aria-label="Viewpoint name"> { if (saveNameOpen && $el) $el.focus(); })">
                 <div class="flex gap-2 justify-end mt-1">
                     <button @click="cancelSaveName()"
                             class="px-3 py-1.5 text-xs rounded-lg border border-border text-muted-foreground hover:bg-muted transition-colors">
@@ -828,12 +828,12 @@
                 <div>
                     <label class="text-xs font-medium text-foreground">Pattern Name</label>
                     <input x-model="savePatternName" type="text" placeholder="e.g., My Integration Pattern"
-                        class="w-full mt-1 text-sm border border-border rounded-lg px-3 py-2 bg-background text-foreground focus:ring-1 focus:ring-primary outline-none">
+                        class="w-full mt-1 text-sm border border-border rounded-lg px-3 py-2 bg-background text-foreground focus:ring-1 focus:ring-primary outline-none" aria-label="Pattern Name">
                 </div>
                 <div>
                     <label class="text-xs font-medium text-foreground">Description (optional)</label>
                     <textarea x-model="savePatternDescription" rows="2" placeholder="Brief description..."
-                        class="w-full mt-1 text-sm border border-border rounded-lg p-3 bg-background text-foreground resize-none focus:ring-1 focus:ring-primary outline-none"></textarea>
+                        class="w-full mt-1 text-sm border border-border rounded-lg p-3 bg-background text-foreground resize-none focus:ring-1 focus:ring-primary outline-none" aria-label="Description (optional)"></textarea>
                 </div>
                 <button @click="saveSelectionAsPattern()" :disabled="!savePatternName.trim()"
                     class="w-full px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
@@ -858,7 +858,7 @@
                 </p>
                 <label class="text-xs font-medium text-foreground">Baseline diagram</label>
                 <select x-model="deltaCompareVpId"
-                        class="mt-1 w-full text-sm bg-background border border-border rounded-md px-3 py-2 text-foreground">
+                        class="mt-1 w-full text-sm bg-background border border-border rounded-md px-3 py-2 text-foreground" aria-label="Baseline diagram">
                     <option value="">-- Select baseline --</option>
                     <template x-for="vp in deltaCompareVpList" :key="vp.id">
                         <option :value="vp.id" x-text="vp.name + ' (' + (vp.element_count || 0) + ' elements)'"></option>
@@ -1029,7 +1029,7 @@
                     <div>
                         <label class="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Version A (Baseline)</label>
                         <select x-model="versionCompareA"
-                                class="w-full text-xs bg-background border border-border rounded-lg px-3 py-2 text-foreground focus:border-primary outline-none transition-colors">
+                                class="w-full text-xs bg-background border border-border rounded-lg px-3 py-2 text-foreground focus:border-primary outline-none transition-colors" aria-label="Version A (Baseline)">
                             <option :value="null" disabled>Select version…</option>
                             <template x-for="snap in snapshots" :key="'a-' + snap.id">
                                 <option :value="snap.id" x-text="snap.name + (snap.created_at ? ' (' + new Date(snap.created_at).toLocaleDateString() + ')' : '')"></option>
@@ -1039,7 +1039,7 @@
                     <div>
                         <label class="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Version B (Newer)</label>
                         <select x-model="versionCompareB"
-                                class="w-full text-xs bg-background border border-border rounded-lg px-3 py-2 text-foreground focus:border-primary outline-none transition-colors">
+                                class="w-full text-xs bg-background border border-border rounded-lg px-3 py-2 text-foreground focus:border-primary outline-none transition-colors" aria-label="Version B (Newer)">
                             <option :value="null" disabled>Select version…</option>
                             <template x-for="snap in snapshots" :key="'b-' + snap.id">
                                 <option :value="snap.id" x-text="snap.name + (snap.created_at ? ' (' + new Date(snap.created_at).toLocaleDateString() + ')' : '')"></option>

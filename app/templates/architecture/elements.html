@@ -518,7 +518,7 @@
                 <div>
                     <label class="text-sm font-medium">Layer</label>
                     <select x-model="createForm.layer" @change="updateTypeOptions()"
-                            class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm">
+                            class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm" aria-label="Layer">
                         <option value="">Select layer...</option>
                         <option value="motivation">Motivation</option>
                         <option value="strategy">Strategy</option>
@@ -531,7 +531,7 @@
                 <div>
                     <label class="text-sm font-medium">Type</label>
                     <select x-model="createForm.element_type"
-                            class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm">
+                            class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm" aria-label="Type">
                         <option value="">Select type...</option>
                         <template x-for="t in createTypeOptions" :key="t">
                             <option :value="t" x-text="t.replace(/_/g, ' ')"></option>
@@ -542,12 +542,12 @@
                     <label class="text-sm font-medium">Name</label>
                     <!-- entity-picker-ok: this IS the create form for a new ArchiMate element, name is genuinely free-text -->
                     <input type="text" x-model="createForm.name" placeholder="Element name"
-                           class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                           class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" aria-label="Name">
                 </div>
                 <div>
                     <label class="text-sm font-medium">Description</label>
                     <textarea x-model="createForm.description" rows="3" placeholder="Optional description"
-                              class="mt-1 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none"></textarea>
+                              class="mt-1 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none" aria-label="Description"></textarea>
                 </div>
                 <div x-show="createError" x-cloak class="text-sm text-destructive" x-text="createError"></div>
             </div>

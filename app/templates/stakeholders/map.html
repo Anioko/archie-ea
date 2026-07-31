@@ -176,7 +176,7 @@
         <div class="relative">
           <input x-model="personSearch" @input.debounce.300ms="searchPeople()" type="text"
                  placeholder="Search people, teams, departments..."
-                 class="w-full border border-border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-ring outline-none"/>
+                 class="w-full border border-border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-ring outline-none" aria-label="Person or Team"/>
           <div x-show="personResults.length > 0" class="absolute z-10 mt-1 w-full border border-border rounded-lg bg-background shadow-lg max-h-40 overflow-y-auto">
             <template x-for="p in personResults" :key="p.source + '-' + p.id">
               <div @click="selectPerson(p)" class="px-3 py-2 hover:bg-muted cursor-pointer text-sm flex items-center justify-between">
@@ -231,7 +231,7 @@
       <div>
         <label class="block text-sm font-medium text-foreground mb-1">Type</label>
         <select x-model="form.stakeholder_type"
-                class="w-full border border-border rounded-lg px-3 py-2 text-sm outline-none">
+                class="w-full border border-border rounded-lg px-3 py-2 text-sm outline-none" aria-label="Type">
           <option value="individual">Individual</option>
           <option value="group">Group</option>
           <option value="organization">Organization</option>
@@ -241,7 +241,7 @@
       <div>
         <label class="block text-sm font-medium text-foreground mb-1">Attitude</label>
         <select x-model="form.attitude"
-                class="w-full border border-border rounded-lg px-3 py-2 text-sm outline-none">
+                class="w-full border border-border rounded-lg px-3 py-2 text-sm outline-none" aria-label="Attitude">
           <option value="champion">Champion</option>
           <option value="supporter">Supporter</option>
           <option value="neutral">Neutral</option>

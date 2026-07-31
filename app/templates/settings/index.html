@@ -245,7 +245,7 @@ input:checked + .slider:before {
             <div class="settings-content">
                 <div class="setting-item">
                     <div class="setting-label">
-                        <label class="block text-sm font-medium text-foreground">Application Name</label>
+                        <label for="app-name" class="block text-sm font-medium text-foreground">Application Name</label>
                         <p class="setting-description">The name displayed in the application header</p>
                     </div>
                     <div class="setting-control">
@@ -255,7 +255,7 @@ input:checked + .slider:before {
 
                 <div class="setting-item">
                     <div class="setting-label">
-                        <label class="block text-sm font-medium text-foreground">Default Language</label>
+                        <label for="default-language" class="block text-sm font-medium text-foreground">Default Language</label>
                         <p class="setting-description">The default language for new users</p>
                     </div>
                     <div class="setting-control">
@@ -270,7 +270,7 @@ input:checked + .slider:before {
 
                 <div class="setting-item">
                     <div class="setting-label">
-                        <label class="block text-sm font-medium text-foreground">Timezone</label>
+                        <label for="timezone" class="block text-sm font-medium text-foreground">Timezone</label>
                         <p class="setting-description">The default timezone for date/time display</p>
                     </div>
                     <div class="setting-control">
@@ -286,7 +286,7 @@ input:checked + .slider:before {
 
                 <div class="setting-item">
                     <div class="setting-label">
-                        <label class="block text-sm font-medium text-foreground">Items Per Page</label>
+                        <label for="items-per-page" class="block text-sm font-medium text-foreground">Items Per Page</label>
                         <p class="setting-description">Number of items to display per page in lists</p>
                     </div>
                     <div class="setting-control">
@@ -330,7 +330,7 @@ input:checked + .slider:before {
             <div class="settings-content">
                 <div class="setting-item">
                     <div class="setting-label">
-                        <label class="block text-sm font-medium text-foreground">Password Policy</label>
+                        <label for="password-policy" class="block text-sm font-medium text-foreground">Password Policy</label>
                         <p class="setting-description">Minimum password requirements for all users</p>
                     </div>
                     <div class="setting-control">
@@ -344,7 +344,7 @@ input:checked + .slider:before {
 
                 <div class="setting-item">
                     <div class="setting-label">
-                        <label class="block text-sm font-medium text-foreground">Session Timeout</label>
+                        <label for="session-timeout" class="block text-sm font-medium text-foreground">Session Timeout</label>
                         <p class="setting-description">Automatically log out inactive users after this time</p>
                     </div>
                     <div class="setting-control">
@@ -498,7 +498,7 @@ input:checked + .slider:before {
             <div class="settings-content">
                 <div class="setting-item">
                     <div class="setting-label">
-                        <label class="block text-sm font-medium text-foreground">Auto-sync Interval</label>
+                        <label for="sync-interval" class="block text-sm font-medium text-foreground">Auto-sync Interval</label>
                         <p class="setting-description">How often to automatically sync with integrations</p>
                     </div>
                     <div class="setting-control">
@@ -514,7 +514,7 @@ input:checked + .slider:before {
 
                 <div class="setting-item">
                     <div class="setting-label">
-                        <label class="block text-sm font-medium text-foreground">Error Retry Attempts</label>
+                        <label for="retry-attempts" class="block text-sm font-medium text-foreground">Error Retry Attempts</label>
                         <p class="setting-description">Number of times to retry failed integration calls</p>
                     </div>
                     <div class="setting-control">
@@ -567,7 +567,7 @@ input:checked + .slider:before {
                     <h3 class="text-lg font-medium text-foreground mb-4">Automated Backups</h3>
                     <div class="form-grid">
                         <div>
-                            <label class="block text-sm font-medium text-foreground/80 mb-1">Backup Frequency</label>
+                            <label for="backup-frequency" class="block text-sm font-medium text-foreground/80 mb-1">Backup Frequency</label>
                             <select id="backup-frequency" class="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary" data-testid="backup-frequency">
                                 <option value="daily">Daily</option>
                                 <option value="weekly" selected>Weekly</option>
@@ -575,7 +575,7 @@ input:checked + .slider:before {
                             </select>
                         </div>
                         <div>
-                            <label class="block text-sm font-medium text-foreground/80 mb-1">Retention Period</label>
+                            <label for="retention-period" class="block text-sm font-medium text-foreground/80 mb-1">Retention Period</label>
                             <select id="retention-period" class="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary" data-testid="retention-period">
                                 <option value="30">30 days</option>
                                 <option value="90" selected>90 days</option>

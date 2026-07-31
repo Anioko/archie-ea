@@ -87,7 +87,7 @@
     <div class="flex items-center gap-3 py-2">
         <label class="text-sm font-medium text-muted-foreground whitespace-nowrap">Viewpoint:</label>
         <select x-model="viewpointKey" @change="applyViewpoint()"
-                class="h-9 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                class="h-9 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Viewpoint">
             <option value="basic">All Elements</option>
             <template x-for="(vp, key) in availableViewpoints" :key="key">
                 <option :value="key" x-text="vp.name"></option>
@@ -257,7 +257,7 @@
         <div>
             <label class="block text-xs font-medium text-muted-foreground mb-1">Scope</label>
             <select x-model="filterScope" @change="currentPage = 1; loadElements()"
-                    class="w-full px-2 py-1.5 border rounded text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                    class="w-full px-2 py-1.5 border rounded text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Scope">
                 <option value="">Any</option>
                 <option value="core">Core</option>
                 <option value="composite">Composite</option>
@@ -267,7 +267,7 @@
         <div>
             <label class="block text-xs font-medium text-muted-foreground mb-1">Building Block</label>
             <select x-model="filterBuildingBlock" @change="currentPage = 1; loadElements()"
-                    class="w-full px-2 py-1.5 border rounded text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                    class="w-full px-2 py-1.5 border rounded text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Building Block">
                 <option value="">Any</option>
                 <option value="SBB">SBB</option>
                 <option value="ABB">ABB</option>
@@ -276,7 +276,7 @@
         <div>
             <label class="block text-xs font-medium text-muted-foreground mb-1">Plateau</label>
             <select x-model="filterPlateau" @change="currentPage = 1; loadElements()"
-                    class="w-full px-2 py-1.5 border rounded text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                    class="w-full px-2 py-1.5 border rounded text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Plateau">
                 <option value="">Any</option>
                 <option value="current">Current</option>
                 <option value="transitional">Transitional</option>
@@ -286,7 +286,7 @@
         <div>
             <label class="block text-xs font-medium text-muted-foreground mb-1">Has Relationships</label>
             <select x-model="filterHasRels" @change="currentPage = 1; loadElements()"
-                    class="w-full px-2 py-1.5 border rounded text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                    class="w-full px-2 py-1.5 border rounded text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Has Relationships">
                 <option value="">Any</option>
                 <option value="yes">Yes</option>
                 <option value="no">No (orphaned)</option>
@@ -295,7 +295,7 @@
         <div>
             <label class="block text-xs font-medium text-muted-foreground mb-1">Linked to Solution</label>
             <select x-model="filterHasSolutions" @change="currentPage = 1; loadElements()"
-                    class="w-full px-2 py-1.5 border rounded text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                    class="w-full px-2 py-1.5 border rounded text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Linked to Solution">
                 <option value="">Any</option>
                 <option value="yes">Yes</option>
                 <option value="no">Unlinked</option>
@@ -605,7 +605,7 @@
                 <div>
                     <label class="block text-xs font-medium text-muted-foreground mb-1">Layer</label>
                     <select data-testid="detail-layer-select" x-model="detailForm.layer" @change="onDetailLayerChange()"
-                            class="w-full px-3 py-2 border rounded-md text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                            class="w-full px-3 py-2 border rounded-md text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Layer">
                         <template x-for="[key, cfg] in Object.entries(layerConfig)" :key="key">
                             <option :value="key" x-text="cfg.name"></option>
                         </template>
@@ -614,7 +614,7 @@
                 <div>
                     <label class="block text-xs font-medium text-muted-foreground mb-1">Type</label>
                     <select data-testid="detail-type-select" x-model="detailForm.element_type"
-                            class="w-full px-3 py-2 border rounded-md text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                            class="w-full px-3 py-2 border rounded-md text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Type">
                         <template x-for="et in detailFormLayerTypes" :key="et">
                             <option :value="et" x-text="formatTypeName(et)"></option>
                         </template>
@@ -624,7 +624,7 @@
                     <label class="block text-xs font-medium text-muted-foreground mb-1">Description</label>
                     <textarea x-model="detailForm.description" rows="3"
                               class="w-full px-3 py-2 border rounded-md text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                              placeholder="Optional description"></textarea>
+                              placeholder="Optional description" aria-label="Description"></textarea>
                 </div>
                 <div class="flex gap-2">
                     <button data-testid="detail-save-btn" @click="saveDetailEdit()" :disabled="detailSaving"
@@ -726,7 +726,7 @@
                 <div x-cloak x-show="!editingElement">
                     <label class="block text-sm font-medium mb-2">Element Type <span class="text-destructive">*</span></label>
                     <select x-model="formData.element_type"
-                        class="w-full px-3 py-2 border rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                        class="w-full px-3 py-2 border rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Element Type">
                         <option value="">Select type...</option>
                         <template x-for="et in currentLayerTypes" :key="et">
                             <option :value="et" x-text="formatTypeName(et)"></option>
@@ -746,7 +746,7 @@
                     <label class="block text-sm font-medium mb-2">Description</label>
                     <textarea x-model="formData.description" rows="3"
                         class="w-full px-3 py-2 border rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        placeholder="Optional description"></textarea>
+                        placeholder="Optional description" aria-label="Description"></textarea>
                 </div>
                 <div class="flex gap-2 pt-4 border-t">
                     <button type="submit" :disabled="saving"

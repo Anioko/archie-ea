@@ -789,18 +789,18 @@ nav[aria-label="Composer toolbar"] { margin-bottom: 0 !important; }
                         <div>
                             <label class="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Description</label>
                             <textarea x-model="diagramDescription" rows="3" placeholder="Diagram purpose…"
-                                      class="w-full mt-1 px-2.5 py-1.5 rounded-lg border border-border bg-muted/30 text-xs focus:outline-none focus:ring-2 focus:ring-primary/30"></textarea>
+                                      class="w-full mt-1 px-2.5 py-1.5 rounded-lg border border-border bg-muted/30 text-xs focus:outline-none focus:ring-2 focus:ring-primary/30" aria-label="Description"></textarea>
                         </div>
                         <div class="flex gap-2">
                             <div class="flex-1">
                                 <label class="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Version</label>
                                 <input type="text" x-model="diagramVersion"
-                                       class="w-full mt-1 px-2.5 py-1.5 rounded-lg border border-border bg-muted/30 text-xs focus:outline-none focus:ring-2 focus:ring-primary/30">
+                                       class="w-full mt-1 px-2.5 py-1.5 rounded-lg border border-border bg-muted/30 text-xs focus:outline-none focus:ring-2 focus:ring-primary/30" aria-label="Version">
                             </div>
                             <div class="flex-1">
                                 <label class="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Audience</label>
                                 <select x-model="diagramAudience"
-                                        class="w-full mt-1 px-2.5 py-1.5 rounded-lg border border-border bg-muted/30 text-xs focus:outline-none focus:ring-2 focus:ring-primary/30">
+                                        class="w-full mt-1 px-2.5 py-1.5 rounded-lg border border-border bg-muted/30 text-xs focus:outline-none focus:ring-2 focus:ring-primary/30" aria-label="Audience">
                                     <option>Technical</option>
                                     <option>Business</option>
                                     <option>Executive</option>
@@ -1096,7 +1096,7 @@ nav[aria-label="Composer toolbar"] { margin-bottom: 0 !important; }
                         <div class="px-3 pt-2 pb-1">
                             <label class="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Phase Gate</label>
                             <select x-model="validationPhase" @change="runValidation()"
-                                    class="mt-1 w-full text-xs bg-background border border-border rounded px-2 py-1 text-foreground">
+                                    class="mt-1 w-full text-xs bg-background border border-border rounded px-2 py-1 text-foreground" aria-label="Phase Gate">
                                 <option value="">No phase filter</option>
                                 <option value="A">Phase A — Architecture Vision</option>
                                 <option value="B">Phase B — Business Architecture</option>
@@ -1890,13 +1890,13 @@ nav[aria-label="Composer toolbar"] { margin-bottom: 0 !important; }
                                 <input type="text" x-model="selectedEdge._connSpec.data_name"
                                        @blur="updateConnectionSpec()"
                                        placeholder="e.g. GL Payroll Posting Data"
-                                       class="w-full text-xs bg-muted/30 border border-border rounded px-2 py-1 focus:border-primary outline-none text-foreground">
+                                       class="w-full text-xs bg-muted/30 border border-border rounded px-2 py-1 focus:border-primary outline-none text-foreground" aria-label="Data">
                             </div>
                             <div class="grid grid-cols-2 gap-1.5">
                                 <div>
                                     <label class="text-[10px] text-muted-foreground">Transfer Strategy</label>
                                     <select x-model="selectedEdge._connSpec.transfer_strategy" @change="updateConnectionSpec()"
-                                            class="w-full text-xs bg-background border border-border rounded px-2 py-1 text-foreground">
+                                            class="w-full text-xs bg-background border border-border rounded px-2 py-1 text-foreground" aria-label="Transfer Strategy">
                                         <option value="">—</option>
                                         <option value="PUSH">PUSH</option>
                                         <option value="PULL">PULL</option>
@@ -1907,7 +1907,7 @@ nav[aria-label="Composer toolbar"] { margin-bottom: 0 !important; }
                                 <div>
                                     <label class="text-[10px] text-muted-foreground">Protocol</label>
                                     <select x-model="selectedEdge._connSpec.protocol" @change="updateConnectionSpec()"
-                                            class="w-full text-xs bg-background border border-border rounded px-2 py-1 text-foreground">
+                                            class="w-full text-xs bg-background border border-border rounded px-2 py-1 text-foreground" aria-label="Protocol">
                                         <option value="">—</option>
                                         <option value="HTTPS">HTTPS</option>
                                         <option value="SFTP">SFTP</option>
@@ -1925,13 +1925,13 @@ nav[aria-label="Composer toolbar"] { margin-bottom: 0 !important; }
                                 <input type="text" x-model="selectedEdge._connSpec.interface_type"
                                        @blur="updateConnectionSpec()"
                                        placeholder="e.g. File Transfer over SFTP"
-                                       class="w-full text-xs bg-muted/30 border border-border rounded px-2 py-1 focus:border-primary outline-none text-foreground">
+                                       class="w-full text-xs bg-muted/30 border border-border rounded px-2 py-1 focus:border-primary outline-none text-foreground" aria-label="Interface Type">
                             </div>
                             <div class="grid grid-cols-2 gap-1.5">
                                 <div>
                                     <label class="text-[10px] text-muted-foreground">IAM / Auth</label>
                                     <select x-model="selectedEdge._connSpec.iam_method" @change="updateConnectionSpec()"
-                                            class="w-full text-xs bg-background border border-border rounded px-2 py-1 text-foreground">
+                                            class="w-full text-xs bg-background border border-border rounded px-2 py-1 text-foreground" aria-label="IAM / Auth">
                                         <option value="">—</option>
                                         <option value="oAuth2.0">oAuth2.0</option>
                                         <option value="SSH Key">SSH Key</option>
@@ -1946,7 +1946,7 @@ nav[aria-label="Composer toolbar"] { margin-bottom: 0 !important; }
                                 <div>
                                     <label class="text-[10px] text-muted-foreground">File Format</label>
                                     <select x-model="selectedEdge._connSpec.file_format" @change="updateConnectionSpec()"
-                                            class="w-full text-xs bg-background border border-border rounded px-2 py-1 text-foreground">
+                                            class="w-full text-xs bg-background border border-border rounded px-2 py-1 text-foreground" aria-label="File Format">
                                         <option value="">—</option>
                                         <option value="JSON">JSON</option>
                                         <option value="XML">XML</option>
@@ -1964,7 +1964,7 @@ nav[aria-label="Composer toolbar"] { margin-bottom: 0 !important; }
                                 <input type="text" x-model="selectedEdge._connSpec.file_name_pattern"
                                        @blur="updateConnectionSpec()"
                                        placeholder="e.g. SAPGLPostingParams_YYYYMMDD.csv"
-                                       class="w-full text-xs bg-muted/30 border border-border rounded px-2 py-1 focus:border-primary outline-none text-foreground">
+                                       class="w-full text-xs bg-muted/30 border border-border rounded px-2 py-1 focus:border-primary outline-none text-foreground" aria-label="File Name Pattern">
                             </div>
                         </dd>
                     </div>

@@ -78,7 +78,7 @@
             <div class="flex items-center gap-1.5">
                 <label class="text-xs text-muted-foreground">Phase:</label>
                 <select x-model="selectedPhase" @change="refreshChart()"
-                        class="px-2 py-1 rounded-md border border-border bg-background text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring">
+                        class="px-2 py-1 rounded-md border border-border bg-background text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Phase">
                     <option value="">All Phases</option>
                     <template x-for="phase in phases" :key="phase">
                         <option :value="phase" x-text="phase"></option>

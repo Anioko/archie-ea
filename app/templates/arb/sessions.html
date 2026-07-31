@@ -41,7 +41,7 @@
         <form method="GET" class="flex flex-wrap gap-4">
             <div>
                 <label class="block text-sm font-medium text-muted-foreground mb-1">Status</label>
-                <select name="status" class="rounded-md border border-input bg-background px-3 py-2 text-sm" @change="$el.form.submit()">
+                <select name="status" class="rounded-md border border-input bg-background px-3 py-2 text-sm" @change="$el.form.submit()" aria-label="Status">
                     <option value="all" {% if status == 'all' %}selected{% endif %}>All Statuses</option>
                     {% if is_reviews_view %}
                     <option value="submitted" {% if status == 'submitted' %}selected{% endif %}>Submitted</option>
@@ -61,7 +61,7 @@
             {% if is_reviews_view %}
             <div>
                 <label class="block text-sm font-medium text-muted-foreground mb-1">Review Type</label>
-                <select name="review_type" class="rounded-md border border-input bg-background px-3 py-2 text-sm" @change="$el.form.submit()">
+                <select name="review_type" class="rounded-md border border-input bg-background px-3 py-2 text-sm" @change="$el.form.submit()" aria-label="Review Type">
                     <option value="all" {% if review_type == 'all' %}selected{% endif %}>All Types</option>
                     <option value="solution" {% if review_type == 'solution' %}selected{% endif %}>Solution</option>
                     <option value="architecture" {% if review_type == 'architecture' %}selected{% endif %}>Architecture</option>

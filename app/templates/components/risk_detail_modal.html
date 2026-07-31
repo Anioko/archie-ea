@@ -303,7 +303,7 @@
                     <select
                         x-model="status"
                         class="w-full px-3 py-2 border border-input rounded-lg bg-background focus:ring-2 focus:ring-ring focus:border-transparent"
-                    >
+                     aria-label="Status">
                         <option value="identified">Identified</option>
                         <option value="analyzing">Analyzing</option>
                         <option value="planning">Planning</option>
@@ -319,7 +319,7 @@
                     <select
                         x-model="response_strategy"
                         class="w-full px-3 py-2 border border-input rounded-lg bg-background focus:ring-2 focus:ring-ring focus:border-transparent"
-                    >
+                     aria-label="Response Strategy">
                         <option value="avoid">Avoid</option>
                         <option value="mitigate">Mitigate</option>
                         <option value="transfer">Transfer</option>
@@ -334,7 +334,7 @@
                         rows="4"
                         class="w-full px-3 py-2 border border-input rounded-lg bg-background focus:ring-2 focus:ring-ring focus:border-transparent"
                         placeholder="Describe how to reduce probability or impact..."
-                    ></textarea>
+                     aria-label="Mitigation Strategy"></textarea>
                 </div>
 
                 <div class="col-span-2">
@@ -344,7 +344,7 @@
                         rows="3"
                         class="w-full px-3 py-2 border border-input rounded-lg bg-background focus:ring-2 focus:ring-ring focus:border-transparent"
                         placeholder="Plan B if risk materializes..."
-                    ></textarea>
+                     aria-label="Contingency Plan"></textarea>
                 </div>
 
                 <div>
@@ -364,7 +364,7 @@
                     <select
                         x-model="mitigation_effort"
                         class="w-full px-3 py-2 border border-input rounded-lg bg-background focus:ring-2 focus:ring-ring focus:border-transparent"
-                    >
+                     aria-label="Mitigation Effort">
                         <option value="low">Low</option>
                         <option value="medium">Medium</option>
                         <option value="high">High</option>

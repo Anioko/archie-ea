@@ -169,13 +169,13 @@
                     <label class="text-xs font-medium text-muted-foreground">Name</label>
                     <input type="text" x-model="newName" @keydown.enter="createBoundary()"
                            placeholder="e.g. Claims Processing Platform"
-                           class="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring">
+                           class="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Name">
                 </div>
                 <div>
                     <label class="text-xs font-medium text-muted-foreground">Description (optional)</label>
                     <textarea x-model="newDesc" rows="2"
                               placeholder="What system does this boundary represent?"
-                              class="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none"></textarea>
+                              class="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none" aria-label="Description (optional)"></textarea>
                 </div>
             </div>
             <div class="flex items-center justify-end gap-2 mt-4">
@@ -295,12 +295,12 @@
                         <div class="flex items-center gap-2">
                             <label class="text-xs font-medium text-muted-foreground">Region</label>
                             <input type="text" x-model="tfRegion" placeholder="eu-west-1"
-                                   class="rounded-md border border-input bg-background px-2 py-1 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring w-32">
+                                   class="rounded-md border border-input bg-background px-2 py-1 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring w-32" aria-label="Region">
                         </div>
                         <div class="flex items-center gap-2">
                             <label class="text-xs font-medium text-muted-foreground">Environment</label>
                             <select x-model="tfEnvironment"
-                                    class="rounded-md border border-input bg-background px-2 py-1 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring">
+                                    class="rounded-md border border-input bg-background px-2 py-1 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Environment">
                                 <option value="staging">staging</option>
                                 <option value="production">production</option>
                                 <option value="dev">dev</option>

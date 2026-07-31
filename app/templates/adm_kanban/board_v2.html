@@ -987,7 +987,7 @@
         <div class="flex items-center gap-1.5">
             <label class="text-xs text-muted-foreground">Move to:</label>
             <select x-model="bulkMoveTarget"
-                    class="h-7 px-2 text-xs bg-background border border-border rounded text-foreground">
+                    class="h-7 px-2 text-xs bg-background border border-border rounded text-foreground" aria-label="Move to">
                 <option value="">Choose...</option>
                 <template x-for="col in columns" :key="col.id">
                     <option :value="col.id" x-text="col.label"></option>
@@ -1599,18 +1599,18 @@
                         <div>
                             <label class="text-xs text-muted-foreground">Title</label>
                             <input x-model="editFields.title" type="text"
-                                   class="w-full mt-1 px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring"/>
+                                   class="w-full mt-1 px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Title"/>
                         </div>
                         <div>
                             <label class="text-xs text-muted-foreground">Description</label>
                             <textarea x-model="editFields.description" rows="3"
-                                      class="w-full mt-1 px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring resize-none"></textarea>
+                                      class="w-full mt-1 px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring resize-none" aria-label="Description"></textarea>
                         </div>
                         <div class="grid grid-cols-2 gap-3">
                             <div>
                                 <label class="text-xs text-muted-foreground">Priority</label>
                                 <select x-model="editFields.priority"
-                                        class="w-full mt-1 px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring">
+                                        class="w-full mt-1 px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Priority">
                                     <option value="critical">Critical</option>
                                     <option value="high">High</option>
                                     <option value="medium">Medium</option>
@@ -1620,7 +1620,7 @@
                             <div>
                                 <label class="text-xs text-muted-foreground">Phase</label>
                                 <select x-model="editFields.phase" @change="onEditPhaseChange()"
-                                        class="w-full mt-1 px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring">
+                                        class="w-full mt-1 px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Phase">
                                     <template x-for="ph in phases" :key="ph.code">
                                         <option :value="ph.code" x-text="ph.label"></option>
                                     </template>
@@ -1631,7 +1631,7 @@
                             <div>
                                 <label class="text-xs text-muted-foreground">Domain</label>
                                 <select x-model="editFields.arch_domain"
-                                        class="w-full mt-1 px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring">
+                                        class="w-full mt-1 px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Domain">
                                     <option value="Business">Business</option>
                                     <option value="Data">Data</option>
                                     <option value="Application">Application</option>
@@ -1642,7 +1642,7 @@
                             <div>
                                 <label class="text-xs text-muted-foreground">Issue Type</label>
                                 <select x-model="editFields.issue_type"
-                                        class="w-full mt-1 px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring">
+                                        class="w-full mt-1 px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Issue Type">
                                     <option value="Epic">Epic</option>
                                     <option value="Story">Story</option>
                                     <option value="Task">Task</option>
@@ -1681,23 +1681,23 @@
                             <div>
                                 <label class="text-xs text-muted-foreground">Points</label>
                                 <input x-model.number="editFields.story_points" type="number" min="0" max="100"
-                                       class="w-full mt-1 px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring"/>
+                                       class="w-full mt-1 px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Points"/>
                             </div>
                             <div>
                                 <label class="text-xs text-muted-foreground">Start</label>
                                 <input x-model="editFields.target_start_date" type="date"
-                                       class="w-full mt-1 px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring"/>
+                                       class="w-full mt-1 px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Start"/>
                             </div>
                             <div>
                                 <label class="text-xs text-muted-foreground">Due</label>
                                 <input x-model="editFields.target_end_date" type="date"
-                                       class="w-full mt-1 px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring"/>
+                                       class="w-full mt-1 px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Due"/>
                             </div>
                         </div>
                         <div>
                             <label class="text-xs text-muted-foreground">Acceptance Criteria</label>
                             <textarea x-model="editFields.acceptance_criteria" rows="2" placeholder="Definition of done..."
-                                      class="w-full mt-1 px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring resize-none"></textarea>
+                                      class="w-full mt-1 px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring resize-none" aria-label="Acceptance Criteria"></textarea>
                         </div>
                         <div>
                             <div class="flex items-center justify-between">
@@ -1705,7 +1705,7 @@
                                 <span class="text-xs tabular-nums text-muted-foreground" x-text="editFields.progress_pct + '%'"></span>
                             </div>
                             <input x-model.number="editFields.progress_pct" type="range" min="0" max="100"
-                                   class="w-full mt-1 accent-primary"/>
+                                   class="w-full mt-1 accent-primary" aria-label="Progress"/>
                         </div>
                     </div>
                 </template>
