@@ -18,7 +18,7 @@ ArchiMate 3.2 Compatible with 5-year timeline support
         <div class="flex items-center gap-2">
             <!-- Timeline Selector -->
             <select x-model="selectedTimeline" @change="updateTimeline()" 
-                    class="px-3 py-2 border border-input bg-background rounded-md text-sm">
+                    class="px-3 py-2 border border-input bg-background rounded-md text-sm" aria-label="Selected Timeline">
                 <option value="1">1 Year</option>
                 <option value="2">2 Years</option>
                 <option value="3" selected>3 Years</option>

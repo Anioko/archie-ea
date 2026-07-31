@@ -408,7 +408,7 @@
                               @keydown.tab.prevent="
                                   var s = $el.selectionStart, e = $el.selectionEnd;
                                   selectedContent = selectedContent.substring(0,s) + '    ' + selectedContent.substring(e);
-                                  $nextTick(() => { $el.selectionStart = $el.selectionEnd = s + 4; });
+                                  $nextTick(() = aria-label="Selected Content"> { $el.selectionStart = $el.selectionEnd = s + 4; });
                               "
                               class="absolute inset-0 w-full h-full font-mono text-xs bg-background text-foreground p-4 resize-none focus:outline-none border-0"
                               style="tab-size:4; z-index:1"
@@ -977,7 +977,7 @@
                         <!-- Config row -->
                         <div class="flex gap-2 mb-2">
                             <select x-model="iacRegion"
-                                    class="flex-1 h-7 px-2 rounded-md border border-border bg-background text-[11px] text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40">
+                                    class="flex-1 h-7 px-2 rounded-md border border-border bg-background text-[11px] text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40" aria-label="Iac Region">
                                 <option value="eu-west-1">EU West 1 (Ireland)</option>
                                 <option value="eu-west-2">EU West 2 (London)</option>
                                 <option value="eu-central-1">EU Central 1 (Frankfurt)</option>
@@ -986,7 +986,7 @@
                                 <option value="ap-southeast-1">AP Southeast 1 (Singapore)</option>
                             </select>
                             <select x-model="iacEnvironment"
-                                    class="w-28 h-7 px-2 rounded-md border border-border bg-background text-[11px] text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40">
+                                    class="w-28 h-7 px-2 rounded-md border border-border bg-background text-[11px] text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40" aria-label="Iac Environment">
                                 <option value="staging">staging</option>
                                 <option value="production">production</option>
                                 <option value="dev">dev</option>

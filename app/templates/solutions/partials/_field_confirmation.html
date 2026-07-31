@@ -260,12 +260,12 @@
                         <input type="text" x-model="field.name"
                                :disabled="el.fields_status === 'confirmed' && !el._editing"
                                class="w-full bg-transparent border-0 outline-none text-[11px] font-mono disabled:cursor-default focus:ring-0 focus:outline-none"
-                               :class="el.fields_status !== 'confirmed' || el._editing ? 'border-b border-dashed border-border/60 focus:border-primary/50' : ''"/>
+                               :class="el.fields_status !== 'confirmed' || el._editing ? 'border-b border-dashed border-border/60 focus:border-primary/50' : ''" aria-label="Name"/>
                       </td>
                       <td class="py-1 pr-2">
                         <select x-model="field.type"
                                 :disabled="el.fields_status === 'confirmed' && !el._editing"
-                                class="w-full bg-transparent border-0 outline-none text-[11px] font-mono disabled:cursor-default appearance-none">
+                                class="w-full bg-transparent border-0 outline-none text-[11px] font-mono disabled:cursor-default appearance-none" aria-label="Type">
                           <template x-for="t in fieldTypes" :key="t">
                             <option :value="t" x-text="t" :selected="field.type === t"></option>
                           </template>

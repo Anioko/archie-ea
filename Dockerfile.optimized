@@ -114,3 +114,19 @@ USER appuser
 # Development uses Flask dev server with auto-reload
 ENV FLASK_ENV=development
 CMD ["flask", "run", "--host=0.0.0.0", "--port=5000", "--reload"]
+
+# ============================================================================
+# Stage 4: Default target
+# ============================================================================
+# Docker builds the LAST stage when no --target is given, so with `development`
+# ending the file, a bare `docker build -f Dockerfile.optimized .` produced the
+# development image - Flask's development server, which is explicitly not for
+# production use, listening on 0.0.0.0 with auto-reload.
+#
+# docker-compose.optimized.yml always passes an explicit target, so the compose
+# path was never affected; this closes the manual-build path, where the unsafe
+# option was the default and the safe one had to be remembered.
+#
+# Keep this stage last. `development` cannot simply be moved above `runtime`
+# because it is built FROM it.
+FROM runtime AS default

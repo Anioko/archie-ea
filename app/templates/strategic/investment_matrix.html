@@ -88,7 +88,7 @@ const INVESTMENT_CAPABILITIES = {{ capability_scores | tojson }};
                     <option value="LOW">Low</option>
                 </select>
                 <select id="per-page-selector" data-testid="per-page-selector" x-model.number="perPage" @change="currentPage = 1; syncSelectAll()"
-                    class="px-3 py-2 border rounded-md text-sm">
+                    class="px-3 py-2 border rounded-md text-sm" aria-label="Per Page">
                     <option value="25">25 / page</option>
                     <option value="50">50 / page</option>
                     <option value="100">100 / page</option>

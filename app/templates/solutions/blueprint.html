@@ -1134,13 +1134,13 @@
                 <div>
                     <label class="block text-xs font-medium text-muted-foreground mb-1.5" x-text="field.label + (field.required ? ' *' : '')"></label>
                     <template x-if="field.type === 'textarea'">
-                        <textarea x-model="form[field.key]" rows="3"
+                        <textarea x-model="form[field.key]" rows="3" :aria-label="field.label"
                                   class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-none"
                                   :placeholder="'Enter ' + field.label.toLowerCase()"></textarea>
                     </template>
                     <template x-if="field.type === 'select'">
                         <select x-model="form[field.key]"
-                                class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Select...">
+                                class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring" :aria-label="field.label">
                             <option value="">Select...</option>
                             <template x-for="opt in field.options" :key="typeof opt === 'object' ? opt.v : opt">
                                 <option :value="typeof opt === 'object' ? opt.v : opt"
@@ -1149,11 +1149,11 @@
                         </select>
                     </template>
                     <template x-if="field.type === 'date'">
-                        <input type="date" x-model="form[field.key]"
+                        <input type="date" x-model="form[field.key]" :aria-label="field.label"
                                class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring">
                     </template>
                     <template x-if="!field.type || field.type === 'text'">
-                        <input type="text" x-model="form[field.key]"
+                        <input type="text" x-model="form[field.key]" :aria-label="field.label"
                                class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
                                :placeholder="'Enter ' + field.label.toLowerCase()"
                                :required="field.required">

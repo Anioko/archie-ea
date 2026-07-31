@@ -1500,7 +1500,7 @@ nav[aria-label="Composer toolbar"] { margin-bottom: 0 !important; }
                                 <input type="text" x-model="selectedNode.label"
                                        @blur="updateSelectedNodeName()"
                                        @keydown.enter="$event.target.blur()"
-                                       class="w-full text-sm font-semibold bg-transparent border-b border-transparent hover:border-border focus:border-primary outline-none py-0.5 text-foreground transition-colors">
+                                       class="w-full text-sm font-semibold bg-transparent border-b border-transparent hover:border-border focus:border-primary outline-none py-0.5 text-foreground transition-colors" aria-label="Label">
                             </dd>
                         </div>
                         <div class="flex items-center gap-2">
@@ -1546,7 +1546,7 @@ nav[aria-label="Composer toolbar"] { margin-bottom: 0 !important; }
                         <dd class="mt-1">
                             <select x-model="selectedNode._zoneType"
                                     @change="updateZoneType()"
-                                    class="w-full text-xs bg-background border border-border rounded px-2 py-1 text-foreground focus:border-primary outline-none transition-colors">
+                                    class="w-full text-xs bg-background border border-border rounded px-2 py-1 text-foreground focus:border-primary outline-none transition-colors" aria-label="Zone Type">
                                 <option value="default">Default</option>
                                 <option value="saas">SaaS</option>
                                 <option value="on_premises">On-Premises</option>

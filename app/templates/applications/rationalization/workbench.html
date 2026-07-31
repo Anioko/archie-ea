@@ -75,7 +75,7 @@
                 </template>
             </select>
             <select x-model="filters.sort" @change="load()"
-                    class="rounded-md border border-input bg-background px-3 py-2 text-sm">
+                    class="rounded-md border border-input bg-background px-3 py-2 text-sm" aria-label="Sort">
                 <option value="health_desc">Health (High → Low)</option>
                 <option value="health_asc">Health (Low → High)</option>
                 <option value="confidence_desc">Confidence (High → Low)</option>

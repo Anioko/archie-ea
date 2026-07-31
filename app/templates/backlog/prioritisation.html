@@ -99,10 +99,10 @@ input.score-input { width: 60px; border: 1px solid #d1d5db; border-radius: 4px;
           <template x-for="req in wsjfSorted" :key="req.id">
             <tr class="border-b hover:bg-muted/30">
               <td class="px-3 py-2" x-text="req.title || ('#' + req.id)"></td>
-              <td class="px-3 py-2"><input type="number" min="1" max="13" x-model.number="req.business_value" class="score-input" /></td>
-              <td class="px-3 py-2"><input type="number" min="1" max="13" x-model.number="req.time_criticality" class="score-input" /></td>
-              <td class="px-3 py-2"><input type="number" min="1" max="13" x-model.number="req.risk_reduction" class="score-input" /></td>
-              <td class="px-3 py-2"><input type="number" min="1" max="13" x-model.number="req.job_size" class="score-input" /></td>
+              <td class="px-3 py-2"><input type="number" min="1" max="13" x-model.number="req.business_value" class="score-input"  aria-label="Business value"/></td>
+              <td class="px-3 py-2"><input type="number" min="1" max="13" x-model.number="req.time_criticality" class="score-input"  aria-label="Time criticality"/></td>
+              <td class="px-3 py-2"><input type="number" min="1" max="13" x-model.number="req.risk_reduction" class="score-input"  aria-label="Risk reduction"/></td>
+              <td class="px-3 py-2"><input type="number" min="1" max="13" x-model.number="req.job_size" class="score-input"  aria-label="Job size"/></td>
               <td class="px-3 py-2 wsjf-score-cell" x-text="calcWsjf(req).toFixed(2)"></td>
               <td class="px-3 py-2">
                 <button @click="saveWsjf(req)"
@@ -134,9 +134,9 @@ input.score-input { width: 60px; border: 1px solid #d1d5db; border-radius: 4px;
           <template x-for="req in riceSorted" :key="req.id">
             <tr class="border-b hover:bg-muted/30">
               <td class="px-3 py-2" x-text="req.title || ('#' + req.id)"></td>
-              <td class="px-3 py-2"><input type="number" min="0" x-model.number="req.reach" class="score-input" /></td>
-              <td class="px-3 py-2"><input type="number" min="1" max="5" x-model.number="req.impact" class="score-input" /></td>
-              <td class="px-3 py-2"><input type="number" min="0" max="100" x-model.number="req.confidence" class="score-input" /></td>
+              <td class="px-3 py-2"><input type="number" min="0" x-model.number="req.reach" class="score-input"  aria-label="Reach"/></td>
+              <td class="px-3 py-2"><input type="number" min="1" max="5" x-model.number="req.impact" class="score-input"  aria-label="Impact"/></td>
+              <td class="px-3 py-2"><input type="number" min="0" max="100" x-model.number="req.confidence" class="score-input"  aria-label="Confidence"/></td>
               <td class="px-3 py-2 rice-score-cell" x-text="calcRice(req).toFixed(2)"></td>
               <td class="px-3 py-2">
                 <button @click="saveRice(req)"

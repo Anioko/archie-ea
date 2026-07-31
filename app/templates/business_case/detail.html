@@ -58,7 +58,7 @@
         <div class="flex items-center gap-2">
           <span class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Status</span>
           <select x-model="status" @change="saveMeta()" data-testid="bc-status-select"
-            class="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+            class="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" aria-label="Status">
             {% for s in statuses %}
             <option value="{{ s }}">{{ s | capitalize }}</option>
             {% endfor %}

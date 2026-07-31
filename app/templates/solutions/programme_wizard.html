@@ -381,7 +381,7 @@
           </div>
           <input type="text" x-model="stk.name"
                  class="flex-1 text-sm border border-input rounded-lg px-3 py-2 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-                 :placeholder="'Name or role (' + stk.role + ')'">
+                 :placeholder="'Name or role (' + stk.role + ')'" aria-label="Name">
           <span x-show="!stk.name.trim()"
                 class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20 shrink-0">Required</span>
           <span x-show="stk.name.trim()"

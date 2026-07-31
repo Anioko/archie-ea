@@ -80,7 +80,7 @@
       <option value="approved">Approved</option>
       <option value="rejected">Rejected</option>
     </select>
-    <select x-model="sortBy" @change="loadAnalyses(1)" class="px-3 py-2 border border-border rounded-md text-sm bg-card text-foreground">
+    <select x-model="sortBy" @change="loadAnalyses(1)" class="px-3 py-2 border border-border rounded-md text-sm bg-card text-foreground" aria-label="Sort By">
       <option value="created_at">Newest First</option>
       <option value="name">Name A-Z</option>
       <option value="updated_at">Recently Updated</option>

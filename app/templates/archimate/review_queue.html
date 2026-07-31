@@ -22,7 +22,7 @@
         <button @click="bulkAccept(0.8)" :disabled="processing" class="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">Accept all &gt; 80%</button>
         <button @click="bulkAccept(0.6)" :disabled="processing" class="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-md bg-secondary text-secondary-foreground hover:bg-secondary/80 disabled:opacity-50">Accept all &gt; 60%</button>
         <span class="text-xs text-muted-foreground ml-auto" x-text="suggestions.length + ' pending suggestions'"></span>
-        <select x-model="sortBy" @change="loadSuggestions()" class="h-8 px-2 text-xs rounded-md border border-input bg-background">
+        <select x-model="sortBy" @change="loadSuggestions()" class="h-8 px-2 text-xs rounded-md border border-input bg-background" aria-label="Sort By">
             <option value="confidence">Sort: Confidence</option>
             <option value="layer">Sort: Layer</option>
             <option value="type">Sort: Type</option>

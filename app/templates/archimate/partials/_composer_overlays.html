@@ -7,7 +7,7 @@
                    class="search-header-input"
                    @input.debounce.200ms="doSearch()"
                    :placeholder="'Search existing ' + (searchType || 'elements') + '...'"
-                   autofocus>
+                   autofocus aria-label="Search Query">
             <div class="flex items-center gap-2 px-3 py-1.5 border-b border-border bg-muted/30">
                 <span class="text-[10px] text-muted-foreground font-semibold uppercase tracking-wide">Layer:</span>
                 <select x-model="searchLayerFilter" @change="doSearch()"
@@ -63,7 +63,7 @@
                            class="search-create-input"
                            :placeholder="'Name for new ' + (searchType || 'element') + '...'"
                            @keydown.enter="createNewElement()"
-                           @input="checkReuseDebounced()">
+                           @input="checkReuseDebounced()" aria-label="New Element Name">
                     <button class="search-create-btn"
                             @click="createNewElement()"
                             :disabled="!newElementName || !newElementName.trim()">
@@ -902,7 +902,7 @@
                             <p class="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">Or create new element</p>
                             <div class="flex gap-2">
                                 <select x-model="_quickAddNewType"
-                                        class="flex-1 text-xs bg-background border border-border rounded px-2 py-1.5 text-foreground focus:border-primary outline-none">
+                                        class="flex-1 text-xs bg-background border border-border rounded px-2 py-1.5 text-foreground focus:border-primary outline-none" aria-label="Quick Add New Type">
                                     <option value="ApplicationComponent">Application</option>
                                     <option value="BusinessProcess">Business Process</option>
                                     <option value="BusinessService">Business Service</option>

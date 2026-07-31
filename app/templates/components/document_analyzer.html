@@ -268,7 +268,7 @@
                                 x-model="analysisResults.application_data.technology_stack"
                                 class="ml-2 px-2 py-1 rounded border border-input bg-background text-sm w-full"
                                 rows="2"
-                            ></textarea>
+                             aria-label="Technology stack"></textarea>
                             <span x-show="!editMode" x-cloak class="ml-2" x-text="analysisResults.application_data?.technology_stack"></span>
                         </div>
                         <div x-show="analysisResults.application_data?.deployment_model" x-cloak>
@@ -356,7 +356,7 @@
                                             x-show="editMode" x-cloak
                                             x-model="element.type"
                                             class="px-2 py-1 rounded border border-input bg-background text-xs"
-                                        >
+                                         aria-label="Type">
                                             <option value="ApplicationComponent">ApplicationComponent</option>
                                             <option value="ApplicationInterface">ApplicationInterface</option>
                                             <option value="ApplicationService">ApplicationService</option>

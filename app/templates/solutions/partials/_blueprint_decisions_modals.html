@@ -121,7 +121,7 @@
                             <input type="text"
                                    x-model="alt.name"
                                    :placeholder="'Option ' + (idx + 1) + ' name'"
-                                   class="flex-1 rounded-md border border-input bg-background px-2 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring">
+                                   class="flex-1 rounded-md border border-input bg-background px-2 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Name">
                             <button type="button"
                                     @click="_s.removeAlternative(idx)"
                                     class="text-muted-foreground hover:text-destructive transition-colors">

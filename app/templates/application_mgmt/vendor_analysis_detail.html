@@ -948,7 +948,7 @@
                           <input x-show="editingReqId === req.id" type="text" x-model="editingReqName"
                             @keydown.enter="saveEditReq(req.id)" @keydown.escape="cancelEditReq()"
                             @blur="saveEditReq(req.id)"
-                            class="px-2 py-0.5 text-sm border border-primary rounded bg-background text-foreground w-full">
+                            class="px-2 py-0.5 text-sm border border-primary rounded bg-background text-foreground w-full" aria-label="Editing Req Name">
                           <span x-show="req.must_have" class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-destructive/10 text-destructive border border-destructive/30">MUST</span>
                         </div>
                       </td>

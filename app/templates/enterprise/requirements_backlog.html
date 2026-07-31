@@ -461,7 +461,7 @@
                                 x-model="activeReq.name"
                                 rows="2"
                                 class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none"
-                            ></textarea>
+                             aria-label="Name"></textarea>
                         </div>
 
                         <!-- Description -->
@@ -472,7 +472,7 @@
                                 x-model="activeReq.description"
                                 rows="3"
                                 class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none"
-                            ></textarea>
+                             aria-label="Description"></textarea>
                         </div>
 
                         <!-- MoSCoW + Status row -->
@@ -497,7 +497,7 @@
                                     :id="'req-status-' + activeReq.id"
                                     x-model="activeReq.status"
                                     class="w-full flex h-9 rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                                >
+                                 aria-label="Status">
                                     <option value="Draft">Draft</option>
                                     <option value="Refined">Refined</option>
                                     <option value="Approved">Approved</option>
@@ -625,7 +625,7 @@
                                         :id="'req-driver-' + activeReq.id"
                                         x-model="activeReq.driver_id"
                                         class="w-full flex h-8 rounded-md border border-input bg-background px-3 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                                    >
+                                     aria-label="Driver id">
                                         <option :value="null">— no driver linked —</option>
                                         <template x-for="d in motivationData.drivers" :key="d.id">
                                             <option :value="d.id" x-text="d.name"></option>
@@ -638,7 +638,7 @@
                                         :id="'req-goal-' + activeReq.id"
                                         x-model="activeReq.goal_id"
                                         class="w-full flex h-8 rounded-md border border-input bg-background px-3 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                                    >
+                                     aria-label="Goal id">
                                         <option :value="null">— no goal linked —</option>
                                         <template x-for="g in motivationData.goals" :key="g.id">
                                             <option :value="g.id" x-text="g.name"></option>
@@ -651,7 +651,7 @@
                                         :id="'req-stakeholder-' + activeReq.id"
                                         x-model="activeReq.stakeholder_id"
                                         class="w-full flex h-8 rounded-md border border-input bg-background px-3 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                                    >
+                                     aria-label="Stakeholder id">
                                         <option :value="null">— no stakeholder linked —</option>
                                         <template x-for="s in motivationData.stakeholders" :key="s.id">
                                             <option :value="s.id" x-text="s.name"></option>

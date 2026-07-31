@@ -20,7 +20,7 @@
   <!-- ENH-022: Filters with group-by toggle -->
   <div class="flex flex-wrap gap-3 mb-6">
     <select x-model="groupBy" @change="applyFilters()"
-            class="block rounded-md border-border shadow-sm text-sm focus:ring-ring focus:border-ring bg-background text-foreground">
+            class="block rounded-md border-border shadow-sm text-sm focus:ring-ring focus:border-ring bg-background text-foreground" aria-label="Group By">
       <option value="domain" {% if group_by != 'roadmap' %}selected{% endif %}>Group by Domain</option>
       <option value="roadmap" {% if group_by == 'roadmap' %}selected{% endif %}>Group by Roadmap Initiative</option>
     </select>
