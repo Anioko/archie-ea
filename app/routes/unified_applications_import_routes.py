@@ -3,6 +3,7 @@ SOPHISTICATED IMPORT ROUTES for unified_applications_bp
 These routes support the sophisticated import modal functionality
 """
 
+from app.modules.import_batch.services.import_audit_service import log_import_analysis
 import csv
 import hashlib
 import io

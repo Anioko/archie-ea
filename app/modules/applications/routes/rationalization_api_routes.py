@@ -2688,6 +2688,11 @@ def rationalization_bulk_review():
         app_ids = data.get("app_ids", [])
         action = (data.get("action") or "").strip().lower()
         notes = (data.get("notes") or "").strip()
+        # Read alongside action/notes from the same payload. Its extraction had been
+        # removed while the "set_disposition" branch below still used it, so that
+        # branch raised NameError after already having mutated earlier records in
+        # the batch.
+        disposition_value = (data.get("disposition") or "").strip()
 
         if not app_ids or not isinstance(app_ids, list):
             return jsonify({"success": False, "error": "app_ids must be a non-empty list"}), 400

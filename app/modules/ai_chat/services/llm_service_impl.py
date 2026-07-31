@@ -688,15 +688,32 @@ Generate the JSON object now:"""
             prompt=prompt, model=model, provider=provider, pipeline_stage_id=pipeline_stage_id
         )
 
-        # Validate and parse JSON response with schema validation
+        # Parse and shape-check the JSON response.
+        #
+        # This previously called LLMValidator.validate_architecture_response(), but
+        # that class is not importable: `from .llm_validator import LLMValidator` is
+        # commented out at the top of this module as "Temporarily disabled", and
+        # llm_validator.py does not exist. The except below catches only ValueError,
+        # so the resulting NameError escaped uncaught — every architecture-generation
+        # call 500'd here rather than degrading.
+        #
+        # Parsing directly keeps the documented contract: a dict with "elements" and
+        # "relationships", falling back to empty lists when the response is not
+        # usable. Restore the richer schema validation when llm_validator lands.
         try:
-            result = LLMValidator.validate_architecture_response(response_text)
+            parsed = json.loads(response_text)
+            if not isinstance(parsed, dict):
+                raise ValueError(f"expected a JSON object, got {type(parsed).__name__}")
+            result = {
+                "elements": parsed.get("elements") or [],
+                "relationships": parsed.get("relationships") or [],
+            }
             logger.info(
-                f"✓ Architecture response validation passed: {len(result.get('elements', []))} elements"
+                f"✓ Architecture response parsed: {len(result['elements'])} elements"
             )
             return result
 
-        except ValueError as e:
+        except (ValueError, TypeError) as e:
             logger.error(f"✗ Architecture response validation failed: {e}")
             logger.debug(f"Response was: {response_text[:500]}...")
             # Return empty structure on validation failure

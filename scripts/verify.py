@@ -158,15 +158,19 @@ def gate_compile() -> Result:
 
 
 def gate_undefined_names(baseline: int) -> Result:
-    """Ruff F821 — compiler-grade name resolution.
+    """Ruff F821 — compiler-grade name resolution. Gated at ZERO.
 
     This is the closest thing to a compiler's symbol check available for Python,
-    and it finds real defects: at the time of writing, 296 findings across 68
-    files, including a module using ``datetime`` it never imports (a guaranteed
-    NameError when that endpoint is called).
+    and it found real defects: 296 findings across 68 files when introduced,
+    including entire route handlers that raised NameError on every request.
+
+    All 296 are now resolved, so the gate is a hard zero rather than a ratchet —
+    there is no remaining debt for a ratchet to protect. The `baseline` argument is
+    kept for signature symmetry with the other gates but is deliberately ignored;
+    any new undefined name fails the build.
     """
     count, sample = _ruff_count("F821")
-    return Result("undefined-names", PASS if count <= baseline else FAIL, sample, count, baseline)
+    return Result("undefined-names", PASS if count == 0 else FAIL, sample, count, 0)
 
 
 def gate_redefinitions(baseline: int) -> Result:

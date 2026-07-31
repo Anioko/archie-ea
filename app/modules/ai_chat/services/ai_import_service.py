@@ -2202,6 +2202,9 @@ Provide analysis in JSON format:
         match_vendor_products: bool = True,
         confidence_threshold: float = 0.7,
         created_by: str = "ai_import",
+        # This method reads kwargs.get("clone_vendor_archimate") but its signature
+        # never accepted **kwargs, so that lookup raised NameError.
+        **kwargs,
     ) -> Dict[str, Any]:
         """
         Import single application with integrated AI analysis.

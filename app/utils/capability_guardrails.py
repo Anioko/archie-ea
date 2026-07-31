@@ -134,8 +134,6 @@ class CapabilityFrameworkGuardrails:
 
         return None
 
-        return violations
-
     def check_file_creation(self, file_path: str) -> Dict[str, str]:
         """Check if file creation is allowed"""
         file_path = Path(file_path)

@@ -10,6 +10,7 @@ Complex routes (API settings, feature flags, abacus, seed) retain inline logic
 for Phase 0.5 parity; service extraction planned for Phase 2.
 """
 
+from app.models.models import ExternalSystem
 import hashlib
 import hmac
 import json

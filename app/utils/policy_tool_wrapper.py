@@ -320,7 +320,7 @@ def get_policy_compliance_report() -> Dict[str, Any]:
                     v
                     for v in policy_tool_wrapper.violation_history
                     if any(
-                        viol.rule.severity in [PolicySeverity.CRITICAL, PolicySeverity.TERMINATION]
+                        violation.rule.severity in [PolicySeverity.CRITICAL, PolicySeverity.TERMINATION]
                         for violation in v["violations"]
                     )
                 ]
@@ -330,7 +330,7 @@ def get_policy_compliance_report() -> Dict[str, Any]:
                     v
                     for v in policy_tool_wrapper.violation_history
                     if any(
-                        viol.rule.rule.severity == PolicySeverity.WARNING
+                        violation.rule.severity == PolicySeverity.WARNING
                         for violation in v["violations"]
                     )
                 ]

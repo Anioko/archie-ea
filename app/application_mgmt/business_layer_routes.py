@@ -8,6 +8,7 @@ Handles ArchiMate business-layer element management:
   * Application-to-Process Linking API (CRUD + semantic matching)
 """
 
+from app.application_mgmt.routes import _link_application_to_processes
 import logging
 from datetime import datetime
 

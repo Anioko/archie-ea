@@ -4,6 +4,7 @@ Vendor Management Routes
 Vendor organization and product management for application portfolio.
 """
 
+from app.models.vendor.vendor_organization import VendorOrganization
 from flask import redirect, url_for, render_template, request, jsonify, current_app, flash
 from flask_login import login_required, current_user
 from . import application_mgmt

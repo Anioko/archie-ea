@@ -3,6 +3,7 @@ Roadmap Data Synchronization Services
 Real-time synchronization between roadmap entities and related systems
 """
 
+from app.models.roadmap_models import work_package_capabilities
 import json
 import logging
 from datetime import datetime, timedelta

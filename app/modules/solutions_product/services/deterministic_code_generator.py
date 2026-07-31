@@ -4,6 +4,7 @@ DeterministicCodeGenerator — Transform ProductSpecBundle into runnable code fi
 Wave 1: Pure Jinja2 template rendering. No LLM. No network. Deterministic.
 Wave 2: Renders confirmed specs (models, handlers, clients, k8s, helm, migrations).
 """
+from app.modules.solutions_product.services.product_spec_bundle import InfraContext
 import hashlib
 import logging
 import os

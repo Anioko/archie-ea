@@ -15,6 +15,7 @@ Features:
 - Violation management and reporting
 """
 
+import json
 from datetime import datetime
 import logging
 from dataclasses import dataclass

@@ -12,6 +12,7 @@ Advanced AI/ML implementation for intelligent duplicate detection with:
 Phase 1: Foundation Intelligence Implementation
 """
 
+import numpy as np
 import json
 import logging
 from datetime import datetime

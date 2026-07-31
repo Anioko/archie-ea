@@ -225,7 +225,7 @@ def list_events():
         service = WebhookService()
 
         # Only allow admins to list all events
-        if not hasattr(request, "user_roles") or "admin" not in current_user_roles:
+        if not hasattr(request, "user_roles") or "admin" not in request.user_roles:
             return jsonify({"success": False, "error": "Admin access required"}), 403
 
         events = service.get_events(
@@ -250,7 +250,7 @@ def retry_event(event_id):
         service = WebhookService()
 
         # Only allow admins to retry events
-        if not hasattr(request, "user_roles") or "admin" not in current_user_roles:
+        if not hasattr(request, "user_roles") or "admin" not in request.user_roles:
             return jsonify({"success": False, "error": "Admin access required"}), 403
 
         success = service.retry_event(event_id)

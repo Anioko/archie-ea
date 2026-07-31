@@ -19,7 +19,7 @@ Pages:
 import logging
 
 from flask import Blueprint, Response, current_app, flash, jsonify, redirect, render_template, request, url_for  # noqa: F401
-from flask_login import login_required
+from flask_login import current_user, login_required
 
 from app import db
 # ArchiMateHealthService import removed — architecture_health route deleted

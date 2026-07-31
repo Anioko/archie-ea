@@ -1940,8 +1940,6 @@ class ARBWorkflowService:
             "blocking_approval": blocking,
         }
 
-        return analytics  # dead-code-ok
-
     def _validate_probe_answers(
         self,
         probe_questions: List[Dict],

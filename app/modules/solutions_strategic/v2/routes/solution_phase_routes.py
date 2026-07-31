@@ -2799,5 +2799,5 @@ def create_roadmap_initiative():
         solution_id=data.get("solution_id"),
     )
     db.session.add(initiative)
-    _commit_with_retry()
+    db.session.commit()
     return jsonify({"success": True, "data": initiative.to_dict()}), 201

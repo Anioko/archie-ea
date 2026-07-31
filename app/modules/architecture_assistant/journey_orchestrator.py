@@ -1480,6 +1480,13 @@ class JourneyOrchestrator:
 
     def regenerate_layer(self, layer: str, problem_summary: str, capabilities: list) -> dict:
         """Regenerate a single thin layer without re-running the full pipeline."""
+        # Traceability id stamped onto every element this call derives. It was
+        # referenced in spec_data below but never created in this method — only in
+        # the full-pipeline path — so regenerating a layer raised NameError. Mirrors
+        # the id generation used there.
+        import uuid
+
+        engine_run_id = str(uuid.uuid4())
         from app.modules.architecture_assistant.architecture_generation import (
             ALL_LAYERS,
             ArchitectureGenerationService,

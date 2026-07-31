@@ -12,6 +12,7 @@ existing Jinja2 template rendering system. It translates genome concepts
 Pipeline position:
   Genome → GenomeToBundle → ProductSpecBundle → DeterministicCodeGenerator → Code
 """
+from app.modules.solutions_product.services.product_spec_bundle import ProductSpecBundle
 import hashlib
 import json
 import logging

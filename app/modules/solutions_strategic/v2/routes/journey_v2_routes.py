@@ -322,6 +322,12 @@ def patch_journey_state(solution_id):
 
         state = solution.journey_state or {}
         if not isinstance(state, dict):
+            # `_json` is imported as `import json as _json` inside a DIFFERENT
+            # function in this module, so it was never bound here. The except below
+            # catches Exception and would have swallowed the resulting NameError,
+            # silently discarding a valid string state as {}.
+            import json as _json
+
             try:
                 state = _json.loads(state) if isinstance(state, str) else {}
             except Exception:

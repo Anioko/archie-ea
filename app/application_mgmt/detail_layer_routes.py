@@ -624,21 +624,24 @@ def update_motivation_layer(id):
                             changed_fields.append(f"outcome_{outcome_id}")
                             db.session.add(outcome_obj)
 
-        # Process constraint updates and deletions
-        # Note: Constraint model not yet created in the codebase
+        # Process constraint updates and deletions.
+        # The Constraint model does not exist yet, so this block is switched off at
+        # `if False:` and is unreachable. The noqa markers below record that the
+        # undefined name is a known consequence of that, not an unfixed defect —
+        # remove them (and the `if False:`) when the model lands.
         if False:  # Disabled until Constraint model is created
             for constraint_data in form.constraints.data:
                 constraint_id = constraint_data.get("id")
                 constraint_delete = constraint_data.get("_delete")
                 if constraint_id and constraint_delete:
-                    constraint_obj = Constraint.query.get(int(constraint_id))
+                    constraint_obj = Constraint.query.get(int(constraint_id))  # noqa: F821 — model not yet created
                     if constraint_obj:
                         db.session.delete(constraint_obj)
                         changed_fields.append(f"constraint_{constraint_id}_deleted")
                 constraint_name = constraint_data.get("name")
                 constraint_description = constraint_data.get("description")
                 if constraint_id and constraint_name:
-                    constraint_obj = Constraint.query.get(int(constraint_id))
+                    constraint_obj = Constraint.query.get(int(constraint_id))  # noqa: F821 — model not yet created
                     if constraint_obj:
                         has_changed = False
                         if constraint_obj.name != constraint_name:

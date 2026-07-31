@@ -1,5 +1,6 @@
 """Sophisticated import routes: field mapping, duplicate analysis, Excel upload, AI preview, manual import, history, rollback, template download."""
 
+from app.modules.import_batch.services.import_audit_service import log_import_analysis
 import csv
 import hashlib
 import io

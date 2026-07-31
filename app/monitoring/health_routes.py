@@ -4,6 +4,7 @@ Health Check Routes
 Provides comprehensive health check endpoints for monitoring system status.
 """
 
+from app.monitoring.alerting_service import AlertingService
 import logging
 import time
 from datetime import datetime, timedelta  # dead-code-ok

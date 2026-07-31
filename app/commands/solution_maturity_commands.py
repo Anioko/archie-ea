@@ -86,7 +86,10 @@ def _compute_solution_maturity(solution, db) -> int:
                 )
             except Exception as exc:
                 has_recommendations = _has_in_problems(SolutionRecommendation)
-    except Exception:
+    except Exception as exc:
+        # `exc` was referenced here but bound only by an INNER except block, and
+        # Python deletes that name when the block exits — so this handler raised
+        # NameError while trying to log a suppressed error.
         logger.debug("suppressed error in _compute_solution_maturity (app/commands/solution_maturity_commands.py): %s", exc)
 
     try:

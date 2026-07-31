@@ -727,7 +727,7 @@ class AdvancedTCOEngine:
             },
             "cost_comparison": {
                 "total_tco_vs_benchmark": vs_industry_percentage,
-                "per_user_annual_vs_benchmark": vs_per_user_annual,
+                "per_user_annual_vs_benchmark": vs_per_user_percentage,
                 "assessment": self._assess_cost_performance(vs_industry_percentage),
             },
             "category_comparison": category_comparison,
