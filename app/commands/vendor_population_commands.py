@@ -55,7 +55,7 @@ def populate_vendors(force_update, batch_size, categories):
 
     # Get current statistics
     current_stats = population_service.get_population_status()
-    click.echo(f"📊 Current Database Status:")
+    click.echo("📊 Current Database Status:")
     click.echo(
         f"   - Vendors in DB: {current_stats.get('database_status', {}).get('vendors_in_db', 0)}"
     )
@@ -103,7 +103,7 @@ def populate_vendors(force_update, batch_size, categories):
 
     # Final statistics
     final_stats = population_service.get_population_status()
-    click.echo(f"\n📊 Final Database Status:")
+    click.echo("\n📊 Final Database Status:")
     click.echo(
         f"   - Vendors in DB: {final_stats.get('database_status', {}).get('vendors_in_db', 0)}"
     )
@@ -134,26 +134,26 @@ def validate_vendor_data(fix_issues):
     try:
         validation_results = population_service.validate_data_integrity()
 
-        click.echo(f"\n📊 Validation Results:")
+        click.echo("\n📊 Validation Results:")
         click.echo(f"   - Status: {validation_results['status']}")
         click.echo(f"   - Total issues: {validation_results['total_issues']}")
 
         if validation_results["issues"]:
-            click.echo(f"\n⚠️  Issues Found:")
+            click.echo("\n⚠️  Issues Found:")
             for issue in validation_results["issues"]:
                 click.echo(f"   - {issue['type']}: {issue['message']} (count: {issue['count']})")
 
         if validation_results["warnings"]:
-            click.echo(f"\n⚠️  Warnings:")
+            click.echo("\n⚠️  Warnings:")
             for warning in validation_results["warnings"]:
                 click.echo(
                     f"   - {warning['type']}: {warning['message']} (count: {warning['count']})"
                 )
 
         if fix_issues and validation_results.get("issues"):
-            click.echo(f"\n🔧 Attempting to fix issues...")
+            click.echo("\n🔧 Attempting to fix issues...")
             # Note: Auto-fix functionality would need to be implemented
-            click.echo(f"   Auto-fix not yet implemented")
+            click.echo("   Auto-fix not yet implemented")
 
         if validation_results["status"] == "passed":
             click.echo("\n✅ All validation checks passed!")
@@ -183,7 +183,7 @@ def vendor_population_status(include_details):
 
         # Database status
         db_status = status.get("database_status", {})
-        click.echo(f"🗄️  Database Status:")
+        click.echo("🗄️  Database Status:")
         click.echo(f"   - Vendors: {db_status.get('vendors_in_db', 0)}")
         click.echo(f"   - Products: {db_status.get('products_in_db', 0)}")
         click.echo(f"   - Capability mappings: {db_status.get('capability_mappings', 0)}")
@@ -192,7 +192,7 @@ def vendor_population_status(include_details):
         # Dataset info
         dataset_info = status.get("dataset_info", {})
         if dataset_info:
-            click.echo(f"\n📚 Dataset Information:")
+            click.echo("\n📚 Dataset Information:")
             click.echo(
                 f"   - Total vendors in dataset: {dataset_info.get('total_vendors_in_dataset', 0)}"
             )
@@ -205,14 +205,14 @@ def vendor_population_status(include_details):
         # Coverage percentages
         coverage = status.get("coverage_percentages", {})
         if coverage:
-            click.echo(f"\n📈 Coverage Analysis:")
+            click.echo("\n📈 Coverage Analysis:")
             click.echo(f"   - Vendor coverage: {coverage.get('vendor_coverage', 0):.1f}%")
             click.echo(f"   - Product coverage: {coverage.get('product_coverage', 0):.1f}%")
 
         # Vendor categories
         categories = status.get("vendor_categories", {})
         if categories and include_details:
-            click.echo(f"\n📂 Vendor Categories:")
+            click.echo("\n📂 Vendor Categories:")
             for category, count in sorted(categories.items()):
                 click.echo(f"   - {category}: {count} vendors")
 
@@ -221,11 +221,11 @@ def vendor_population_status(include_details):
         product_coverage = coverage.get("product_coverage", 0)
 
         if vendor_coverage >= 95 and product_coverage >= 95:
-            click.echo(f"\n✅ Status: COMPLETE - Excellent coverage achieved")
+            click.echo("\n✅ Status: COMPLETE - Excellent coverage achieved")
         elif vendor_coverage >= 80 and product_coverage >= 80:
-            click.echo(f"\n⚠️  Status: GOOD - Most data populated")
+            click.echo("\n⚠️  Status: GOOD - Most data populated")
         else:
-            click.echo(f"\n❌ Status: INCOMPLETE - Run 'python manage.py populate-vendors'")
+            click.echo("\n❌ Status: INCOMPLETE - Run 'python manage.py populate-vendors'")
 
     except Exception as e:
         click.echo(f"❌ Error getting status: {str(e)}")
@@ -242,7 +242,7 @@ def vendor_population_status(include_details):
 def list_vendors(category, tier, limit):
     """List vendors with optional filtering."""
 
-    click.echo(f"🏢 Vendor Listing")
+    click.echo("🏢 Vendor Listing")
     if category:
         click.echo(f"   Category: {category}")
     if tier:

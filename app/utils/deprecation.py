@@ -482,7 +482,7 @@ def create_deprecation_response(
 
 import threading
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Any, Dict, List, Optional
 
 

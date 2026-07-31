@@ -663,7 +663,8 @@ def import_maturity_csv():
 
     Returns JSON: {success, updated, skipped, errors:[{row, reason}]}
     """
-    import csv, io
+    import csv
+    import io
     from app.models.capability_models import BusinessCapability
 
     f = request.files.get("file")

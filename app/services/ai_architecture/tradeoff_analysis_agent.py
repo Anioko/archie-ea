@@ -431,7 +431,7 @@ class TradeoffAnalysisAgent:
                     "type": "primary_recommendation",
                     "option": best_option,
                     "score": overall_scores[best_option],
-                    "rationale": f"Highest overall score across all trade-off analyses",
+                    "rationale": "Highest overall score across all trade-off analyses",
                     "confidence": "high",
                 }
             )

@@ -29,6 +29,25 @@ exclude = [
 [lint]
 select = ["F", "E4", "E7", "E9"]
 
+ignore = [
+    # E711/E712 are WRONG for this codebase and must not be "fixed".
+    #
+    # SQLAlchemy builds SQL from operator overloading, so a filter is written
+    #     .filter(FeatureFlag.parent_id == None)
+    #     .filter(ElementTemplate.is_active == True)
+    # and `==` is what produces `IS NULL` / `= true` in the emitted SQL. Rewriting
+    # either to `is None` / `is True`, which is what these rules ask for and what
+    # `ruff --fix` would do, evaluates in Python instead and yields a plain bool —
+    # the predicate silently disappears from the query and the filter stops
+    # filtering. That is a data-correctness bug with no visible error.
+    #
+    # 114 of the findings under these two rules were SQLAlchemy expressions.
+    # Disabling them project-wide is the standard practice for SQLAlchemy projects
+    # and is preferred here over 114 individual noqa comments.
+    "E711",
+    "E712",
+]
+
 [lint.per-file-ignores]
 # Test modules legitimately import fixtures for side effects and shadow names.
 "tests/*" = ["F811", "F401"]

@@ -502,7 +502,7 @@ def _build_caps_detail(caps: list) -> str:
                     gline += f" [tech debt: {debt}/100]"
                 gap_lines.append(gline)
             if gaps[0].get("coverage_percentage", 100) < 50:
-                entry_lines.append(f"   ⚠ SIGNIFICANT GAP: generate NEW application components to fill this capability gap")
+                entry_lines.append("   ⚠ SIGNIFICANT GAP: generate NEW application components to fill this capability gap")
             entry_lines.extend(gap_lines)
         else:
             entry_lines.append("   Coverage: No existing applications mapped — generate full greenfield architecture")
@@ -604,7 +604,7 @@ def _build_caps_detail(caps: list) -> str:
                     gline += f" [tech debt: {debt}/100]"
                 gap_lines.append(gline)
             if gaps[0].get("coverage_percentage", 100) < 50:
-                entry_lines.append(f"   ⚠ SIGNIFICANT GAP: generate NEW application components to fill this capability gap")
+                entry_lines.append("   ⚠ SIGNIFICANT GAP: generate NEW application components to fill this capability gap")
             entry_lines.extend(gap_lines)
         else:
             entry_lines.append("   Coverage: No existing applications mapped — generate full greenfield architecture")

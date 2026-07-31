@@ -293,7 +293,7 @@ class WizardQualityGateService:
                 if cur < tgt:
                     consistency_ok += 1
                 else:
-                    issues.append(QualityIssue(f"capabilities[].maturity", f"Current maturity ({cur}) >= target ({tgt})", "warning", True, "Target must exceed current"))
+                    issues.append(QualityIssue("capabilities[].maturity", f"Current maturity ({cur}) >= target ({tgt})", "warning", True, "Target must exceed current"))
         consistency = int((consistency_ok / total) * 100) if capabilities else 50
 
         # Traceability: capabilities linked back to problem keywords

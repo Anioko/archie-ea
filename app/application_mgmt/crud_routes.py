@@ -550,7 +550,6 @@ def application_edit(id):
     requirements = Requirement.query.filter_by(application_component_id=app.id).all()
     drivers = Driver.query.filter_by(application_component_id=app.id).all()
     goals = Goal.query.filter_by(application_component_id=app.id).all()
-    from ..models.models import Outcome
 
     outcomes = (
         Outcome.query.filter_by(architecture_id=app.architecture_id).all()

@@ -51,7 +51,9 @@ from app.models.implementation_migration import (  # dead-code-ok
     WorkPackage,
 )
 from app.models.models import (  # dead-code-ok
-    ArchiMateElement,
+    # ArchiMateElement omitted deliberately: it is already imported from
+    # app.models.archimate_core above, and app.models.models re-exports the same
+    # object (verified identical), so importing it twice shadowed the first.
     ArchiMateRelationship,
     ArchitectureModel,
     Requirement,
@@ -994,8 +996,6 @@ def suggest_capabilities(id):
     Returns ranked suggestions with confidence scores and evidence.
     """
     from sqlalchemy import func
-    from app.models.application_capability import ApplicationCapabilityMapping
-    from app.models.business_capabilities import BusinessCapability
 
     app_obj = ApplicationComponent.query.get_or_404(id)
 
@@ -1141,7 +1141,6 @@ def suggest_capabilities(id):
 def accept_capability_suggestion(id):
     """Accept an AI-suggested capability mapping — creates the ApplicationCapabilityMapping record."""
     from flask_login import current_user
-    from app.models.application_capability import ApplicationCapabilityMapping
 
     app_obj = ApplicationComponent.query.get_or_404(id)
     data = request.get_json() or {}

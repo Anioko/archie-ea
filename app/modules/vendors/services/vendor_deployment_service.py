@@ -70,7 +70,7 @@ class VendorDeploymentService:
                 vendor_product_id, application_id, deployment_config
             )
 
-            logger.info(f"Step 4: Updated vendor footprint tracking")
+            logger.info("Step 4: Updated vendor footprint tracking")
 
             # Commit all changes
             db.session.commit()

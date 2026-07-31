@@ -448,8 +448,6 @@ class VendorOrganization(db.Model):
         Calculate overall capability coverage across all products.
         Returns dict with coverage stats.
         """
-        from app.models import BusinessCapability
-
         # Get all unique capabilities covered by vendor's products
         covered_capabilities = set()
         total_coverage = 0

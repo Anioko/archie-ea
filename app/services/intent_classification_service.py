@@ -16,7 +16,6 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 from flask import current_app
-from sqlalchemy import text
 
 from app import db
 

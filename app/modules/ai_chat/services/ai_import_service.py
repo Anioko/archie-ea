@@ -753,7 +753,7 @@ Note: capability_id should be null since these are suggestions for new capabilit
                 base_relationships = pattern_result.get("relationships", [])
 
                 # Enhance pattern with additional layer-specific elements
-                logger.info(f"🔧 Enhancing pattern with additional elements...")
+                logger.info("🔧 Enhancing pattern with additional elements...")
             else:
                 # No pattern match, start with empty base
                 base_elements = []
@@ -1407,181 +1407,11 @@ Note: capability_id should be null since these are suggestions for new capabilit
             logger.error(f"Error validating confidence thresholds for {app.name}: {e}")
             return []
 
-    def analyze_file_data_for_preview(
-        self, applications_data: List[Dict[str, Any]], confidence_threshold: float = 0.6
-    ) -> Dict[str, Any]:
-        """
-        Analyze file data for preview before import.
-
-        This method analyzes application data from files (Excel/CSV) without
-        requiring database records. Perfect for import preview functionality.
-
-        Args:
-            applications_data: List of application dictionaries from file
-            confidence_threshold: Minimum confidence for auto-creation
-
-        Returns:
-            Comprehensive results with file-based AI analysis
-        """
-        start_time = datetime.utcnow()
-
-        results = {
-            "total_analyzed": 0,
-            "capability_mappings_found": 0,
-            "process_mappings_found": 0,
-            "archimate_elements_generated": 0,
-            "high_confidence_mappings": 0,
-            "vendor_analysis_found": 0,
-            "applications": [],
-            "processing_stats": {"avg_processing_time_ms": 0, "ai_models_used": set()},
-            "file_preview_mode": True,
-        }
-
-        total_processing_time = 0
-
-        for app_data in applications_data:
-            try:
-                # Create temporary application context from file data
-                app_context = self._build_file_data_context(app_data)
-
-                # Initialize result for this application
-                app_result = {
-                    "application_name": app_data.get("name", "Unknown"),
-                    "capability_mappings": [],
-                    "process_mappings": [],
-                    "archimate_elements": [],
-                    "vendor_analysis": {},
-                    "avg_capability_confidence": 0.0,
-                    "avg_process_confidence": 0.0,
-                    "archimate_generation_success": False,
-                    "processing_time_ms": 0,
-                    "ai_models_used": [],
-                    "warnings": [],
-                    "file_data": True,
-                }
-
-                app_start_time = datetime.utcnow()
-
-                try:
-                    # 1. AI-powered business capability mapping
-                    app_result["capability_mappings"] = self._map_capabilities_with_ai_from_file(
-                        app_data, app_context
-                    )
-
-                    # 2. Semantic APQC process classification
-                    app_result["process_mappings"] = self._classify_processes_with_ai_from_file(
-                        app_data, app_context
-                    )
-
-                    # 3. ArchiMate element generation
-                    app_result["archimate_elements"] = self._generate_archimate_with_ai_from_file(
-                        app_data, app_context
-                    )
-
-                    # 4. Vendor analysis
-                    app_result["vendor_analysis"] = self._analyze_vendor_from_file(
-                        app_data, app_context
-                    )
-
-                    # Calculate confidence scores
-                    if app_result["capability_mappings"]:
-                        app_result["avg_capability_confidence"] = sum(
-                            m.get("confidence_score", 0) for m in app_result["capability_mappings"]
-                        ) / len(app_result["capability_mappings"])
-
-                    if app_result["process_mappings"]:
-                        app_result["avg_process_confidence"] = sum(
-                            m.get("similarity_score", 0) for m in app_result["process_mappings"]
-                        ) / len(app_result["process_mappings"])
-
-                    app_result["archimate_generation_success"] = (
-                        len(app_result["archimate_elements"]) > 0
-                    )
-
-                    # Track AI models used
-                    if app_result["capability_mappings"]:
-                        app_result["ai_models_used"].append("LLM-capability-analysis")
-                    if app_result["process_mappings"]:
-                        app_result["ai_models_used"].extend(["sentence-transformers", "FAISS"])
-                    if app_result["archimate_elements"]:
-                        app_result["ai_models_used"].append("LLM-ArchiMate-generation")
-                    if app_result["vendor_analysis"]:
-                        app_result["ai_models_used"].append("LLM-vendor-analysis")
-
-                except Exception as e:
-                    logger.error(
-                        f"File data AI analysis failed for {app_data.get('name', 'unknown')}: {e}"
-                    )
-                    app_result["warnings"].append("AI analysis failed. Please try again later.")
-
-                # Calculate processing time
-                app_end_time = datetime.utcnow()
-                app_result["processing_time_ms"] = int(
-                    (app_end_time - app_start_time).total_seconds() * 1000
-                )
-                total_processing_time += app_result["processing_time_ms"]
-
-                # Count high-confidence mappings
-                high_conf_count = 0
-                if app_result["capability_mappings"]:
-                    high_conf_count = sum(
-                        1
-                        for m in app_result["capability_mappings"]
-                        if m.get("confidence_score", 0) >= confidence_threshold
-                    )
-
-                # Update statistics
-                results["total_analyzed"] += 1
-                results["capability_mappings_found"] += len(app_result["capability_mappings"])
-                results["process_mappings_found"] += len(app_result["process_mappings"])
-                results["archimate_elements_generated"] += len(app_result["archimate_elements"])
-                results["high_confidence_mappings"] += high_conf_count
-
-                if app_result["vendor_analysis"]:
-                    results["vendor_analysis_found"] += 1
-
-                results["processing_stats"]["ai_models_used"].update(app_result["ai_models_used"])
-
-                # Store application result
-                results["applications"].append(app_result)
-
-            except Exception as e:
-                logger.error(f"Failed to process application data: {e}")
-                results["applications"].append(
-                    {
-                        "application_name": app_data.get("name", "Unknown"),
-                        "error": "Application processing failed. Please check data format.",
-                        "warnings": ["Processing failed. Please check data format."],
-                        "file_data": True,
-                    }
-                )
-
-        # Calculate averages
-        if results["total_analyzed"] > 0:
-            results["processing_stats"]["avg_processing_time_ms"] = (
-                total_processing_time // results["total_analyzed"]
-            )
-        results["processing_stats"]["ai_models_used"] = list(
-            results["processing_stats"]["ai_models_used"]
-        )
-
-        # Log comprehensive summary
-        logger.info(
-            f"""
-🤖 FILE DATA AI ANALYSIS COMPLETE:
-📊 Applications Analyzed: {results['total_analyzed']}
-🎯 Capability Mappings: {results['capability_mappings_found']}
-🔄 Process Mappings: {results['process_mappings_found']}
-🏗️  ArchiMate Elements: {results['archimate_elements_generated']}
-🏢 Vendor Analysis: {results['vendor_analysis_found']}
-⭐ High Confidence Mappings: {results['high_confidence_mappings']}
-⏱️  Avg Processing Time: {results['processing_stats']['avg_processing_time_ms']}ms
-🤖 AI Models Used: {', '.join(results['processing_stats']['ai_models_used'])}
-📁 File Preview Mode: ENABLED
-"""
-        )
-
-        return results
+        # NOTE: an older analyze_file_data_for_preview (176 lines, signature without
+        # archimate_mode and with confidence_threshold=0.6) was defined here. Python
+        # bound the name to the LATER definition below, so this one had been dead —
+        # every caller already got the newer version. Removed so the two cannot
+        # diverge further and so the wrong one is not edited by mistake.
 
     def _build_file_data_context(self, app_data: Dict[str, Any]) -> str:
         """Build comprehensive text context from file data for AI analysis."""

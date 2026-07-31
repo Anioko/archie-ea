@@ -381,7 +381,7 @@ class ComplianceCheckerService:
             ]
             if budget_issues:
                 recommendations.append(
-                    f"💰 Budget constraints violated. Reduce scope or request additional funding."
+                    "💰 Budget constraints violated. Reduce scope or request additional funding."
                 )
 
         return recommendations

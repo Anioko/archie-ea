@@ -1724,7 +1724,8 @@ class JourneyOrchestrator:
         # Parse the relationship response. _parse_json_response targets layer-keyed
         # responses; relationship responses use {"relationships": [...]}.
         # Try direct JSON parse first, then strip markdown fences + retry.
-        import json as _json, re as _re
+        import json as _json
+        import re as _re
         relationships_raw = []
         _text = raw_text.strip()
         _text = _re.sub(r'^```(?:json)?\s*', '', _text)

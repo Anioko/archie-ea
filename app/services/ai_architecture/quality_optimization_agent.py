@@ -454,7 +454,7 @@ class QualityOptimizationAgent:
         if strategy["impact"] == "high":
             rationale_parts.append(f"High-impact {strategy['name']} strategy")
         elif strategy["complexity"] == "low":
-            rationale_parts.append(f"Low-complexity implementation")
+            rationale_parts.append("Low-complexity implementation")
 
         # Context-based rationale
         if context.get("user_count", 0) > 1000 and attribute == "performance":

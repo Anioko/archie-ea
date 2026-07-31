@@ -159,8 +159,8 @@ class TechnologyRoadmapService:
 
         # Databases
         if any(
-            db in tech_lower
-            for db in ["mysql", "postgresql", "oracle", "sql server", "mongodb", "redis"]
+            db_name in tech_lower
+            for db_name in ["mysql", "postgresql", "oracle", "sql server", "mongodb", "redis"]
         ):
             return "Database"
 

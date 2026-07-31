@@ -321,7 +321,7 @@ class ArchiMateMetamodelValidator:
                 continue
 
             if not source_name or not target_name:
-                errors.append(f"Relationship missing source or target")
+                errors.append("Relationship missing source or target")
                 continue
 
             # Check if source and target elements exist

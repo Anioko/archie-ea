@@ -137,7 +137,7 @@ class UIPatternGuardrails:
                     {
                         "type": "UNIFIED_MODAL_VIOLATION",
                         "pattern": pattern,
-                        "description": f"Custom mapping modal pattern detected - MUST use unified_mapping_modal.html",
+                        "description": "Custom mapping modal pattern detected - MUST use unified_mapping_modal.html",
                         "file": file_path,
                         "severity": "CRITICAL",
                     }

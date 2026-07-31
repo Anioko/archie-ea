@@ -757,7 +757,7 @@ def _calculate_gap_priority(gap_types, apps, cap, today):
 
 def _get_gap_start_date(gap_types, apps, priority):
     """Get start date for gap resolution based on type and priority."""
-    from datetime import datetime, timedelta
+    from datetime import timedelta
 
     today = datetime.now().date()
 
@@ -778,7 +778,7 @@ def _get_gap_start_date(gap_types, apps, priority):
 
 def _get_gap_end_date(gap_types, apps, priority):
     """Get end date for gap resolution based on type and priority."""
-    from datetime import datetime, timedelta
+    from datetime import timedelta
 
     today = datetime.now().date()
 

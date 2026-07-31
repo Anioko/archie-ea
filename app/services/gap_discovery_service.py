@@ -331,13 +331,13 @@ class GapDiscoveryService:
                 "has_gaps": True,
                 "description": f"Business capability '{capability.name}' has insufficient support ({coverage_percentage}% coverage)",
                 "baseline": f"Current coverage: {supporting_apps} applications, {supporting_processes} processes",
-                "target": f"Target: Minimum 80% coverage with adequate application and process support",
+                "target": "Target: Minimum 80% coverage with adequate application and process support",
                 "severity": "high" if coverage_percentage < 50 else "medium",
                 "risk": "high" if capability.level == "strategic" else "medium",
                 "urgency": "high" if coverage_percentage < 50 else "medium",
                 "affected_elements": [f"Capability: {capability.name}"],
                 "solution": f"Develop or acquire applications to support {capability.name} capability",
-                "criteria": f"Achieve 80%+ coverage with measurable business outcomes",
+                "criteria": "Achieve 80%+ coverage with measurable business outcomes",
                 "coverage_percentage": coverage_percentage,
             }
 

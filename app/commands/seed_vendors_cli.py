@@ -66,7 +66,7 @@ def _perform_seeding(dry_run: bool):
         
         click.echo(f"\nVersion: {version}")
         click.echo(f"Vendors to seed: {len(vendors)}")
-        click.echo(f"\nVendors:")
+        click.echo("\nVendors:")
         for idx, v in enumerate(vendors[:10], 1):
             click.echo(f"  {idx}. {v.get('name', 'Unknown')}")
         if len(vendors) > 10:
@@ -94,7 +94,7 @@ def _perform_seeding(dry_run: bool):
     click.echo(f"\n{result['message']}")
     
     stats = result.get('stats', {})
-    click.echo(f"\nResults:")
+    click.echo("\nResults:")
     click.echo(f"  ✓ Created:  {stats.get('created', 0)} vendors")
     click.echo(f"  ✓ Updated:  {stats.get('updated', 0)} vendors")
     click.echo(f"  ⊘ Skipped:  {stats.get('skipped', 0)} vendors")
@@ -102,7 +102,7 @@ def _perform_seeding(dry_run: bool):
     
     errors = result.get('errors', [])
     if errors:
-        click.echo(f"\nErrors:")
+        click.echo("\nErrors:")
         for error in errors[:5]:
             click.echo(f"  - {error}")
         if len(errors) > 5:

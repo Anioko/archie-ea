@@ -246,7 +246,7 @@ class RelationshipValidator:
                 f"Current count: {existing_count}"
             )
             suggestions.append(
-                f"Consider using a different relationship type or restructuring the model"
+                "Consider using a different relationship type or restructuring the model"
             )
 
         # Warning for minimum cardinality (informational)
@@ -516,7 +516,7 @@ class RelationshipValidator:
         # Serving typically flows upward (lower serves higher)
         if relationship_type == "serving":
             if source_idx < target_idx:
-                return f"Note: 'serving' typically flows from lower layers to higher layers"
+                return "Note: 'serving' typically flows from lower layers to higher layers"
 
         # Realization typically flows upward (lower realizes higher)
         if relationship_type == "realization":

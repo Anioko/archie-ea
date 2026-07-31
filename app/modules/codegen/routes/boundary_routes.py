@@ -88,14 +88,14 @@ def _generate_docker_compose(solutions_data):
         lines += [
             f"  {slug}:",
             f"    build: ./{svc['repo_name']}",
-            f"    ports:",
+            "    ports:",
             f"      - \"{port}:8000\"",
-            f"    environment:",
+            "    environment:",
             f"      - DATABASE_URL=postgresql://postgres:${{POSTGRES_PASSWORD:-secret}}@db:5432/{slug}",
             f"      - SERVICE_NAME={slug}",
-            f"    depends_on:",
-            f"      - db",
-            f"    restart: unless-stopped",
+            "    depends_on:",
+            "      - db",
+            "    restart: unless-stopped",
             "",
         ]
     lines += [

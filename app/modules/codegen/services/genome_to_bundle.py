@@ -803,7 +803,7 @@ def _build_pipeline_paths(mod_key, mod_def, svc_name, resource_path, x_source):
     paths.append(PathDef(
         path=f"{resource_path}/{{id}}/status", method="GET",
         operation_id=f"get_{mod_key}_status",
-        summary=f"Get processing status",
+        summary="Get processing status",
         request_schema=None,
         response_schema=svc_name,
         archimate_source_id=x_source,
@@ -813,7 +813,7 @@ def _build_pipeline_paths(mod_key, mod_def, svc_name, resource_path, x_source):
     paths.append(PathDef(
         path=f"{resource_path}/{{id}}/result", method="GET",
         operation_id=f"get_{mod_key}_result",
-        summary=f"Get processing result",
+        summary="Get processing result",
         request_schema=None,
         response_schema=svc_name,
         archimate_source_id=x_source,

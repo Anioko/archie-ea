@@ -280,7 +280,7 @@ class LLMEnforcementSystem:
 
         with open(log_file, "a") as f:
             f.write(f"\n{'='*80}\n")
-            f.write(f"LLM ENFORCEMENT SYSTEM VIOLATION\n")
+            f.write("LLM ENFORCEMENT SYSTEM VIOLATION\n")
             f.write(f"Timestamp: {datetime.now().isoformat()}\n")
             f.write(f"{'='*80}\n")
 

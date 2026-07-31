@@ -1072,7 +1072,7 @@ def architect_viewpoints():
                     "type": vp_def["type"],
                     "name": vp_def["name"],
                     "viewpoint_view_id": None,
-                    "composer_url": f"/archimate/composer?viewpoint=0",
+                    "composer_url": "/archimate/composer?viewpoint=0",
                     "element_count": len(filtered_ids),
                 })
                 continue
@@ -1107,7 +1107,7 @@ def architect_viewpoints():
                     "type": vp_def["type"],
                     "name": vp_def["name"],
                     "viewpoint_view_id": None,
-                    "composer_url": f"/archimate/composer?viewpoint=0",
+                    "composer_url": "/archimate/composer?viewpoint=0",
                     "element_count": len(filtered_ids),
                 })
 

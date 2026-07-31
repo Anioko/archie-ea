@@ -290,7 +290,7 @@ class ARBGovernanceService:
             raise ValueError(f"Review item {review_item_id} not found")
 
         if item.status != "draft":
-            raise ValueError(f"Item must be in draft status to submit")
+            raise ValueError("Item must be in draft status to submit")
 
         item.status = "submitted"
         item.submitted_at = datetime.utcnow()

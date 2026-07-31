@@ -1033,7 +1033,7 @@ def submit_to_arb():
     description = data.get("description", "")
     if description:
         description += "\n\n"
-    description += f"Solution Composer Canvas Summary:\n"
+    description += "Solution Composer Canvas Summary:\n"
     description += f"- Canvas ID: {service.current_canvas.canvas_id}\n"
     description += f"- Canvas Name: {service.current_canvas.name}\n"
     description += f"- Elements: {node_count}\n"

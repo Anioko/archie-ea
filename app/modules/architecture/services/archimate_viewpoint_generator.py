@@ -605,7 +605,7 @@ class ArchiMateViewpointGenerator:
         Returns:
             XML string in ArchiMate Open Exchange format
         """
-        logger.info(f"Exporting viewpoint to Open Exchange format")
+        logger.info("Exporting viewpoint to Open Exchange format")
 
         # Create root element with namespaces
         root = ET.Element(

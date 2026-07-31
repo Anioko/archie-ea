@@ -445,7 +445,7 @@ def api_acm_capability_applications(capability_id):
             return jsonify({"error": "Technical capability not found"}), 404
 
         # Single SQL LEFT OUTER JOIN: fetch all non-retired applications with their
-        # mapping row for this capability (NULL columns when not mapped).  # noqa: raw-sql
+        # mapping row for this capability (NULL columns when not mapped).  # raw-sql
         atcm = application_technical_capability_mapping
         rows = (
             db.session.query(ApplicationComponent, atcm)

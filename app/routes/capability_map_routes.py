@@ -1399,7 +1399,6 @@ def _export_csv(capabilities, mappings, mapped_capability_ids, applications):
     from datetime import datetime
     from io import StringIO
 
-    from flask import Response
 
     output = StringIO()
     writer = csv.writer(output)
@@ -1597,7 +1596,6 @@ def _export_json(capabilities, mappings, mapped_capability_ids, applications):
     """Export to JSON format"""
     from datetime import datetime
 
-    from flask import Response
 
     # Build JSON structure
     export_data = {

@@ -416,7 +416,7 @@ Also extract Application and Technology elements that represent vendor offerings
                         error_type = extracted_data.get("metadata", {}).get("error_type", "")
                         raw_response = extracted_data.get("metadata", {}).get("raw_response", "")
 
-                        logger.warning(f"⚠️ Enhanced extraction returned 0 elements")
+                        logger.warning("⚠️ Enhanced extraction returned 0 elements")
                         logger.warning(f"Error: {error_msg}")
                         logger.warning(f"Error type: {error_type}")
                         if raw_response:
@@ -2570,7 +2570,7 @@ create a relationship: ApplicationInterface "Salesforce API" → ApplicationServ
                         {
                             "relationship": f"{source_name} -> {target_name}",
                             "type": "unknown_element",
-                            "error": f"Source or target element not found in extracted elements",
+                            "error": "Source or target element not found in extracted elements",
                             "severity": "warning",
                         }
                     )
@@ -2979,7 +2979,7 @@ create a relationship: ApplicationInterface "Salesforce API" → ApplicationServ
 
         This prevents token limit issues and improves reliability for large datasets.
         """
-        logger.info(f"Analyzing large spreadsheet using chunking strategy")
+        logger.info("Analyzing large spreadsheet using chunking strategy")
 
         records = structured_data.get("records", [])
         columns = structured_data.get("columns", []) or structured_data.get("headers", [])

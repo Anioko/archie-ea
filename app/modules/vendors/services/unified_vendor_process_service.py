@@ -527,7 +527,7 @@ class UnifiedVendorProcessService:
                     "type": "VENDOR_CONSOLIDATION",
                     "priority": "MEDIUM",
                     "title": "Consider Vendor Consolidation",
-                    "description": f"Multiple vendors support this capability. Consider consolidation for better integration and cost management.",
+                    "description": "Multiple vendors support this capability. Consider consolidation for better integration and cost management.",
                     "action_items": [
                         "Analyze vendor overlap",
                         "Evaluate consolidation benefits",

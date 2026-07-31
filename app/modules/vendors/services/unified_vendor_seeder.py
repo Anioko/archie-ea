@@ -255,7 +255,7 @@ class UnifiedVendorSeeder:
                 # Check if vendor data has changed
                 if existing_checksum and existing_checksum == new_checksum:
                     # No changes - skip update for true idempotency
-                    logger.info(f"    ✓ No changes needed (checksum match)")
+                    logger.info("    ✓ No changes needed (checksum match)")
                 else:
                     # Data changed - update vendor
                     logger.info(f"    → Updating existing vendor: {name}")

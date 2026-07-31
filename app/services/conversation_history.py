@@ -425,7 +425,7 @@ class ConversationHistoryService:
 
         # Invalidate cache
         invalidate_cache(f"thread:{thread_id}:*")
-        invalidate_cache(f"threads:user:*")
+        invalidate_cache("threads:user:*")
 
     def update_thread_title(self, thread_id: str, title: str):
         """Update thread title."""
@@ -441,4 +441,4 @@ class ConversationHistoryService:
         )
         db.session.commit()
 
-        invalidate_cache(f"threads:user:*")
+        invalidate_cache("threads:user:*")

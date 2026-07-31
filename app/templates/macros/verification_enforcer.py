@@ -242,14 +242,14 @@ class VerificationEnforcer:
             endpoint = error_analysis["actual_error"].split(": ")[-1]
             steps.append(
                 {
-                    "description": f"Find endpoint implementation in source routes",
+                    "description": "Find endpoint implementation in source routes",
                     "action": "search_endpoint",
                     "target": endpoint,
                 }
             )
             steps.append(
                 {
-                    "description": f"Copy endpoint to unified routes",
+                    "description": "Copy endpoint to unified routes",
                     "action": "copy_endpoint",
                     "target": endpoint,
                 }

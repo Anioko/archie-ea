@@ -456,25 +456,25 @@ resource "aws_iam_role_policy_attachment" "ecs_execution" {{
 }}
 """
 
-    files["terraform/variables.tf"] = f"""variable "aws_region" {{
+    files["terraform/variables.tf"] = """variable "aws_region" {
   default = "eu-west-1"
-}}
+}
 
-variable "db_password" {{
+variable "db_password" {
   sensitive = true
-}}
+}
 
-variable "db_instance_class" {{
+variable "db_instance_class" {
   default = "db.t3.micro"
-}}
+}
 
-variable "ecr_repository_url" {{
+variable "ecr_repository_url" {
   description = "ECR repository URL for the app image"
-}}
+}
 
-variable "certificate_arn" {{
+variable "certificate_arn" {
   description = "ACM certificate ARN for HTTPS"
-}}
+}
 """
 
     files["terraform/outputs.tf"] = f"""output "alb_dns_name" {{
@@ -609,21 +609,21 @@ resource "azurerm_cdn_frontdoor_profile" "main" {{
 }}
 """
 
-    files["terraform/variables.tf"] = f"""variable "location" {{
+    files["terraform/variables.tf"] = """variable "location" {
   default = "West Europe"
-}}
+}
 
-variable "db_admin_login" {{
+variable "db_admin_login" {
   default = "archie"
-}}
+}
 
-variable "db_admin_password" {{
+variable "db_admin_password" {
   sensitive = true
-}}
+}
 
-variable "secret_key" {{
+variable "secret_key" {
   sensitive = true
-}}
+}
 """
 
     files["DEPLOY.md"] = f"""# Deployment: Azure (App Service + PostgreSQL + Front Door)
@@ -738,17 +738,17 @@ resource "google_cloud_run_v2_service_iam_member" "public" {{
 }}
 """
 
-    files["terraform/variables.tf"] = f"""variable "project_id" {{
+    files["terraform/variables.tf"] = """variable "project_id" {
   description = "GCP project ID"
-}}
+}
 
-variable "region" {{
+variable "region" {
   default = "europe-west1"
-}}
+}
 
-variable "db_password" {{
+variable "db_password" {
   sensitive = true
-}}
+}
 """
 
     files["DEPLOY.md"] = f"""# Deployment: GCP (Cloud Run + Cloud SQL)

@@ -1558,7 +1558,7 @@ def create_from_wizard():
 
         session_record = SolutionAnalysisSession(
             name=f"Architecture Assistant: {title[:180]}",
-            description=f"Auto-created from Architecture Assistant wizard submission",
+            description="Auto-created from Architecture Assistant wizard submission",
             status=SolutionSessionStatus.COMPLETED,
             created_by_id=current_user.id,
         )
@@ -1638,7 +1638,7 @@ def create_from_wizard():
                     problem_id=problem_def.id,
                     capability_id=cap_id_int,
                     support_level="required",
-                    notes=f"Mapped via Architecture Assistant wizard",
+                    notes="Mapped via Architecture Assistant wizard",
                     created_by_id=current_user.id,
                 )
                 db.session.add(mapping)
@@ -3990,17 +3990,17 @@ def export_solution_markdown(solution_id: int):
     # Build markdown
     lines = [
         f"# {solution.name}",
-        f"",
+        "",
         f"**Type:** {solution.solution_type or 'N/A'}  ",
         f"**Domain:** {solution.business_domain or 'N/A'}  ",
         f"**Status:** {solution.status or 'N/A'}  ",
         f"**ADM Phase:** {solution.adm_phase or 'A'}  ",
         f"**Governance:** {solution.governance_status or 'draft'}  ",
-        f"",
-        f"## Description",
-        f"",
+        "",
+        "## Description",
+        "",
         solution.description or "_No description provided._",
-        f"",
+        "",
     ]
     # Add drivers/goals/constraints/requirements from DB
     try:
@@ -4067,7 +4067,7 @@ def export_solution_markdown(solution_id: int):
         logger.debug(f"Could not load lifecycle entities for export: {e}")
     lines += [
         "---",
-        f"_Exported from A.R.C.H.I.E. Enterprise Architecture Platform_",
+        "_Exported from A.R.C.H.I.E. Enterprise Architecture Platform_",
     ]
     content = "\n".join(lines)
     from flask import Response
@@ -9808,8 +9808,8 @@ def _build_section_narrative_prompt(
     ))
 
     prompt_parts = [
-        f"You are a senior enterprise architect writing a Solution Architecture Document (SAD) "
-        f"for a real production system. Your output will be reviewed by an Architecture Review Board.",
+        "You are a senior enterprise architect writing a Solution Architecture Document (SAD) "
+        "for a real production system. Your output will be reviewed by an Architecture Review Board.",
         "",
         f"Solution: {sol_name}",
     ]
@@ -9825,7 +9825,7 @@ def _build_section_narrative_prompt(
         f"Section to generate: '{section_title}' ({viewpoint} viewpoint)",
         f"Relevant ArchiMate element types: {', '.join(required_types) or 'All'}",
         "",
-        f"Architecture elements linked to this section:",
+        "Architecture elements linked to this section:",
         element_lines,
     ]
 

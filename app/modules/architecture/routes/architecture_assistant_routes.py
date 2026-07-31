@@ -1052,7 +1052,7 @@ def _build_arb_draft_from_solution(solution):
     cost = qb.get("cost_sustainability", {})
 
     # ── Business Justification ────────────────────────────────────────────────
-    bj = f"## Business Justification\n\n"
+    bj = "## Business Justification\n\n"
     bj += f"**Solution:** {solution.name}\n"
     if solution.business_domain:
         bj += f"**Domain:** {solution.business_domain}\n"

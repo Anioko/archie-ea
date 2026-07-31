@@ -484,7 +484,7 @@ def block_if_violation(
             if v.rule.severity in [PolicySeverity.CRITICAL, PolicySeverity.TERMINATION]
         ]
         if critical_violations:
-            logger.error(f"OPERATION BLOCKED - Critical Policy Violations:")
+            logger.error("OPERATION BLOCKED - Critical Policy Violations:")
             for violation in critical_violations:
                 logger.error(f"  - {violation.rule.name}: {violation.rule.description}")
                 logger.error(f"    Suggested: {violation.suggested_action}")

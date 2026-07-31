@@ -246,7 +246,7 @@ class DocumentProcessor:
             # Create a temporary architecture to get an ID for the extractor
             temp_arch = ArchitectureModel(
                 name=model_name,
-                description=f"Auto-generated from spreadsheet upload",
+                description="Auto-generated from spreadsheet upload",
                 created_by_id=user_id,
                 created_at=datetime.utcnow(),
             )
@@ -935,12 +935,12 @@ Return the COMPLETE enhanced architecture in the same JSON format:
         # - Requirements -> Drivers (association)
         # - Requirements -> Goals (realization)
         # - Requirements -> Parent Requirements (hierarchical decomposition)
-        logger.info(f"[INFO] Auto-linking requirements to Motivation Layer elements...")
+        logger.info("[INFO] Auto-linking requirements to Motivation Layer elements...")
         linking_results = motivation_service.auto_link_requirements_to_motivation_elements(
             architecture_id=architecture.id, use_ai=True  # Use AI for intelligent semantic matching
         )
 
-        logger.info(f"[SUCCESS] ArchiMate 3.2 linking complete:")
+        logger.info("[SUCCESS] ArchiMate 3.2 linking complete:")
         logger.info(f"  - Requirements processed: {linking_results['requirements_processed']}")
         logger.info(f"  - Stakeholder links: {linking_results['stakeholder_links_created']}")
         logger.info(f"  - Driver links: {linking_results['driver_links_created']}")
@@ -953,7 +953,7 @@ Return the COMPLETE enhanced architecture in the same JSON format:
         # ========================================================================
         # LAYER ENRICHMENT PIPELINE - Enhance extracted elements with AI-powered layer services
         # ========================================================================
-        logger.info(f"[INFO] Starting layer enrichment pipeline...")
+        logger.info("[INFO] Starting layer enrichment pipeline...")
 
         from app.services.archimate import (
             ApplicationLayerService,
@@ -969,7 +969,7 @@ Return the COMPLETE enhanced architecture in the same JSON format:
         relationship_service = RelationshipService()
 
         # ---- Business Layer Enrichment ----
-        logger.info(f"[INFO] Enriching Business Layer...")
+        logger.info("[INFO] Enriching Business Layer...")
         business_elements = ArchiMateElement.query.filter_by(
             architecture_id=architecture.id, layer="business"
         ).all()
@@ -992,7 +992,7 @@ Return the COMPLETE enhanced architecture in the same JSON format:
                     logger.info(f"  ✗ Flow modeling failed for {process.name}: {str(e)}")
 
         # ---- Application Layer Enrichment ----
-        logger.info(f"[INFO] Enriching Application Layer...")
+        logger.info("[INFO] Enriching Application Layer...")
         application_elements = ArchiMateElement.query.filter_by(
             architecture_id=architecture.id, layer="application"
         ).all()
@@ -1033,7 +1033,7 @@ Return the COMPLETE enhanced architecture in the same JSON format:
                             logger.info(f"  ✗ Linking failed: {str(e)}")
 
         # ---- Technology Layer Enrichment ----
-        logger.info(f"[INFO] Enriching Technology Layer...")
+        logger.info("[INFO] Enriching Technology Layer...")
         technology_elements = ArchiMateElement.query.filter_by(
             architecture_id=architecture.id, layer="technology"
         ).all()
@@ -1076,7 +1076,7 @@ Return the COMPLETE enhanced architecture in the same JSON format:
                             logger.info(f"  ✗ Deployment mapping failed: {str(e)}")
 
         # ---- Cross-Layer Relationship Discovery ----
-        logger.info(f"[INFO] Discovering cross-layer relationships...")
+        logger.info("[INFO] Discovering cross-layer relationships...")
         try:
             # Discover realization relationships across layers
             context = data.get("model_description", "") + "\n" + data.get("rationale", "")
@@ -1095,15 +1095,15 @@ Return the COMPLETE enhanced architecture in the same JSON format:
             logger.info(f"  ✗ Flow discovery failed: {str(e)}")
 
         # ---- Validate Relationship Consistency ----
-        logger.info(f"[INFO] Validating relationship consistency...")
+        logger.info("[INFO] Validating relationship consistency...")
         try:
             validation_results = relationship_service.validate_relationship_consistency(
                 architecture.id
             )
             if validation_results["valid"]:
-                logger.info(f"  ✓ All relationships valid")
+                logger.info("  ✓ All relationships valid")
             else:
-                logger.info(f"  ⚠ Validation warnings:")
+                logger.info("  ⚠ Validation warnings:")
                 for error in validation_results["errors"][:5]:  # Show first 5
                     logger.info(f"    - {error}")
                 for warning in validation_results["warnings"][:5]:
@@ -1113,6 +1113,6 @@ Return the COMPLETE enhanced architecture in the same JSON format:
 
         db.session.commit()
 
-        logger.info(f"[SUCCESS] Layer enrichment pipeline complete")
+        logger.info("[SUCCESS] Layer enrichment pipeline complete")
 
         return architecture

@@ -2014,14 +2014,14 @@ class DeterministicCodeGenerator:
         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
         lines = [
             f"# Architecture Traceability — {bundle.solution_name}",
-            f"",
+            "",
             f"> Generated: {now}  ",
             f"> Solution ID: {bundle.solution_id}  ",
             f"> Spec hash: `{bundle.spec_hash}`",
-            f"",
-            f"This document maps every ArchiMate element in the solution blueprint to the",
-            f"generated source files that implement it.",
-            f"",
+            "",
+            "This document maps every ArchiMate element in the solution blueprint to the",
+            "generated source files that implement it.",
+            "",
         ]
 
         # Section 0: Motivation & Decision Context (Stakeholders, Goals, Constraints, Decisions)
@@ -3596,7 +3596,7 @@ with a real, working implementation.
                 lines.append(f"    async def test_{action}_happy_path(self, client: AsyncClient):")
                 lines.append(f'        """Process step: {desc}"""')
                 lines.append(f"        # Business logic: {hint}" if hint else f"        # Step: {desc}")
-                lines.append(f"        # Scaffold: implement by creating prerequisite data, calling the endpoint, and asserting the outcome")
+                lines.append("        # Scaffold: implement by creating prerequisite data, calling the endpoint, and asserting the outcome")
                 lines.append("        response = await client.post(\"/api/placeholder\", json={{}})")
                 lines.append("        assert response.status_code in (200, 201, 204)")
                 lines.append("")

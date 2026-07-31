@@ -259,7 +259,7 @@ class KnowledgeGraphService:
                         "type": rel_info.get("type", "Association"),
                         "confidence": 0.7,
                         "source_method": "knowledge_graph",
-                        "description": f"Suggested from knowledge graph pattern",
+                        "description": "Suggested from knowledge graph pattern",
                     }
                 )
 

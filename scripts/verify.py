@@ -174,8 +174,17 @@ def gate_undefined_names(baseline: int) -> Result:
 
 
 def gate_redefinitions(baseline: int) -> Result:
+    """Ruff F811 — a name bound twice, where Python silently keeps the last one.
+
+    Gated at ZERO. All 73 findings are resolved, and they were not cosmetic: they
+    included two different implementations of analyze_file_data_for_preview (the
+    older one dead), two OverviewForm classes with different base classes, a
+    duplicated __repr__ that referenced fields its class did not have, and a `db`
+    loop variable shadowing the SQLAlchemy session. `baseline` is retained for
+    signature symmetry and deliberately ignored.
+    """
     count, sample = _ruff_count("F811")
-    return Result("redefinitions", PASS if count <= baseline else FAIL, sample, count, baseline)
+    return Result("redefinitions", PASS if count == 0 else FAIL, sample, count, 0)
 
 
 def gate_undefined_exports() -> Result:

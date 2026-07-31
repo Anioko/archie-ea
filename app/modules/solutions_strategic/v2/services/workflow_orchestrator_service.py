@@ -261,7 +261,7 @@ class WorkflowOrchestratorService:
         
         # Resolve
         if not self.dependency_resolver.resolve():
-            logger.warning(f"Circular dependency detected")
+            logger.warning("Circular dependency detected")
             return False
         
         # Copy calculated values back to tasks

@@ -184,7 +184,7 @@ class ADMPhaseValidator:
             # Skip more than one phase
             self.errors.append({
                 "code": "SKIP_PHASE",
-                "message": f"Cannot skip phases. Must progress through intermediate phases.",
+                "message": "Cannot skip phases. Must progress through intermediate phases.",
                 "required_path": self.PHASE_SEQUENCE[current_idx + 1:target_idx],
             })
 

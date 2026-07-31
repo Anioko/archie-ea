@@ -1878,7 +1878,7 @@ def compile_genome(
                             "data_format": integ.data_format,
                             "base_url": integ.base_url,
                             "operations": integ.operations,
-                            "description": f"Extracted from requirements via BFG",
+                            "description": "Extracted from requirements via BFG",
                         }
 
             if _behavioral_ctx and _behavioral_ctx.screens:

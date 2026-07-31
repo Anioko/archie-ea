@@ -383,7 +383,7 @@ class CSVValidator:
                     row_number=row_num,
                     column_name=column_name,
                     value=value,
-                    message=f"Required value cannot be empty",
+                    message="Required value cannot be empty",
                     details={'column': column_name}
                 ))
             return results
@@ -454,7 +454,7 @@ class CSVValidator:
                     row_number=row_num,
                     column_name=column_name,
                     value=value,
-                    message=f"Value does not match required pattern",
+                    message="Value does not match required pattern",
                     details={'pattern': column_def.pattern}
                 ))
         
@@ -465,7 +465,7 @@ class CSVValidator:
                 row_number=row_num,
                 column_name=column_name,
                 value=value,
-                message=f"Value not in allowed values",
+                message="Value not in allowed values",
                 details={'allowed_values': column_def.allowed_values, 'actual_value': value}
             ))
         
@@ -573,7 +573,7 @@ class CSVValidator:
                                     row_number=row_num,
                                     column_name=column_def.name,
                                     value=value,
-                                    message=f"Duplicate value in unique column",
+                                    message="Duplicate value in unique column",
                                     details={'first_occurrence': list(unique_values).index(value) + 1}
                                 ))
                             else:

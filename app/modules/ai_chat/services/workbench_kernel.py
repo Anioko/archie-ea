@@ -2195,7 +2195,7 @@ class BrownfieldWorkflow:
             return response_text or "Analysis generated."
         except Exception as e:
             logger.error("LLM call failed: %s", e)
-            return f"*AI analysis unavailable. Type 'next' to continue.*"
+            return "*AI analysis unavailable. Type 'next' to continue.*"
 
 
 # ============================================================================

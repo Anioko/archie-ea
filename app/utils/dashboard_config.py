@@ -490,7 +490,7 @@ class ExecutiveDashboardConfig:
             f"{health_score}%",
             health_trend,
             "up" if health_score > 70 else "down",
-            f"Composite score across 4 dimensions",
+            "Composite score across 4 dimensions",
             f'{tech_debt["total_apps"]} applications assessed',
         )
 
@@ -501,7 +501,7 @@ class ExecutiveDashboardConfig:
             f"{debt_index}",
             f'{tech_debt["high_debt_apps"]} apps',
             "down" if debt_index < 50 else "up",
-            f"High debt applications",
+            "High debt applications",
             f'Average: {tech_debt["avg_debt_hours"]}h per app',
         )
 
@@ -632,7 +632,7 @@ class ArchitectureDashboardConfig:
             f"{tech_debt.get('avg_debt_hours', 0)}h",
             f"{tech_debt.get('high_debt_apps', 0)} apps",
             "down" if tech_debt.get("avg_debt_hours", 0) < 100 else "up",
-            f"High debt applications need refactoring",
+            "High debt applications need refactoring",
             f'Total: {tech_debt.get("total_debt_hours", 0)} hours across portfolio',
         )
 
@@ -644,7 +644,7 @@ class ArchitectureDashboardConfig:
             str(high_complexity),
             f"{int_summary['very_high']} critical",
             "down",
-            f"Very high integration complexity",
+            "Very high integration complexity",
             f'{len(integration["applications"])} apps analyzed',
         )
 
@@ -897,7 +897,7 @@ class FinancialDashboardConfig:
             f"${optimization['total_savings']:,.0f}",
             f"{optimization['opportunity_count']} opportunities",
             "up",
-            f"Potential savings from consolidation",
+            "Potential savings from consolidation",
             f'{optimization["opportunity_count"]} app pairs identified',
         )
 
@@ -907,7 +907,7 @@ class FinancialDashboardConfig:
             str(vendor_risk["critical_risk_count"]),
             f"{vendor_risk['high_risk_count']} high risk",
             "down" if vendor_risk["critical_risk_count"] == 0 else "up",
-            f"Critical vendor dependencies",
+            "Critical vendor dependencies",
             f'Total vendor spend: ${vendor_risk["total_spend"]:,.0f}',
         )
 

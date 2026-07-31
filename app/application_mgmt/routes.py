@@ -416,7 +416,6 @@ def _find_process_by_name_enhanced(name):
     """
     import difflib
 
-    from ..models.process_data import BusinessProcess
 
     if not name:
         return None
@@ -484,7 +483,6 @@ def _link_application_to_processes(app, functional_capabilities_str):
     Returns:
         dict: {'linked': int, 'not_found': list, 'matched': list}
     """
-    from ..models.relationship_tables import ApplicationProcessSupport
 
     if not functional_capabilities_str or not app:
         return {"linked": 0, "not_found": [], "matched": []}
@@ -582,7 +580,6 @@ def _link_application_to_apqc_by_ids(app, apqc_matches):
 
     from app.models.apqc_process import APQCProcess
 
-    from ..models.process_data import BusinessProcess
     from ..models.relationship_tables import ApplicationProcessSupport
 
     if not apqc_matches or not app:
@@ -825,9 +822,6 @@ def _link_application_to_capabilities(app, capabilities_str):
     Returns:
         dict: {'linked': int, 'not_found': list, 'matched': list}
     """
-    from ..models.unified_application_capability_mapping import (
-        UnifiedApplicationCapabilityMapping,
-    )
 
     if not capabilities_str or not app:
         return {"linked": 0, "not_found": [], "matched": []}
@@ -896,7 +890,6 @@ def _suggest_process_links_semantic(app, confidence_threshold=0.5):
     """
     from difflib import SequenceMatcher
 
-    from ..models.process_data import BusinessProcess
 
     if not app:
         return []
@@ -1154,8 +1147,6 @@ from sqlalchemy.exc import SQLAlchemyError
 # Import statements (moved to proper location)
 from ..models.application_layer import (
     ApplicationCollaboration,
-    ApplicationEvent,
-    DataObject,
 )
 from ..models.business_capabilities import BusinessCapability, BusinessFunction
 from ..models.business_layer import (
@@ -1169,9 +1160,7 @@ from ..models.implementation_migration import Gap
 from ..models.implementation_migration import Plateau
 from ..models.implementation_migration import WorkPackage
 from ..models.miscellaneous import ApplicationDocument
-from ..models.models import ArchiMateElement, ArchiMateRelationship, ArchitectureModel  # dead-code-ok: ArchitectureModel
 from ..models.models import Principle, Requirement
-from ..models.motivation import Driver, Goal
 from ..models.physical_layer import (
     PhysicalDistributionNetwork,
     PhysicalEquipment,
@@ -1938,7 +1927,6 @@ def render_application_detail(id):
     Restored after BE-054 god-file decomposition dropped this shared handler.
     """
     from app.models.application_portfolio import ApplicationComponent
-    from app.models.business_capabilities import BusinessCapability
     from app.models.unified_application_capability_mapping import (
         UnifiedApplicationCapabilityMapping,
     )

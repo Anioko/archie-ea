@@ -449,7 +449,7 @@ class AIDataInteractionService:
                 "success": True,
                 "mapping_id": mapping.id,
                 "operation": "create_capability_mapping",
-                "message": f"Capability mapping created successfully",
+                "message": "Capability mapping created successfully",
             }
 
         except Exception as e:
@@ -503,7 +503,7 @@ class AIDataInteractionService:
                 "success": True,
                 "mapping_id": mapping.id,
                 "operation": "update_capability_mapping",
-                "message": f"Capability mapping updated successfully",
+                "message": "Capability mapping updated successfully",
             }
 
         except Exception as e:
@@ -959,7 +959,7 @@ class AIDataInteractionService:
                     source_id=req_element.id,
                     target_id=capability_id,
                     type="Association",
-                    name=f"supports",
+                    name="supports",
                 )
                 db.session.add(rel)
                 db.session.flush()

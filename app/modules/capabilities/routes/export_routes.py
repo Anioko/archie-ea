@@ -127,9 +127,6 @@ def api_export_mappings():
 
 def _export_csv(capabilities, mappings, mapped_capability_ids, applications):
     """Export to CSV format"""
-    import csv
-    from datetime import datetime
-    from io import StringIO
 
     from flask import Response
 
@@ -230,10 +227,7 @@ def _export_csv(capabilities, mappings, mapped_capability_ids, applications):
 
 def _export_json(capabilities, mappings, mapped_capability_ids, applications):
     """Export to JSON format"""
-    import json
-    from datetime import datetime
 
-    from flask import Response
 
     from app.models.application_layer import ApplicationComponent
     from app.models.business_capabilities import BusinessCapability

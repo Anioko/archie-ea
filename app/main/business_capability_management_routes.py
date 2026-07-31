@@ -29,7 +29,7 @@ def capabilities_overview():
         # unbound at the classification loop below.
         _org_params = {}
         capabilities = db.session.execute(  # tenant-filtered
-            text(f"SELECT id, name, description, category, business_domain FROM business_capability ORDER BY name"),
+            text("SELECT id, name, description, category, business_domain FROM business_capability ORDER BY name"),
             _org_params,
         ).fetchall()
 

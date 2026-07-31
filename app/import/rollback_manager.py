@@ -298,7 +298,7 @@ class ImportRollbackManager:
             table_name = rollback_op.metadata.get('table_name')
             
             if not row_id or not table_name:
-                logger.error(f"Row-level rollback requires row_id and table_name in metadata")
+                logger.error("Row-level rollback requires row_id and table_name in metadata")
                 return False
             
             # Delete specific record

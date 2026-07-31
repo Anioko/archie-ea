@@ -361,7 +361,7 @@ Return JSON with:
                 else:
                     result = json.loads(response)
             except json.JSONDecodeError:
-                logger.warning(f"Failed to parse JSON from LLM response")
+                logger.warning("Failed to parse JSON from LLM response")
                 result = {
                     "generated_elements": [],
                     "generated_relationships": [],

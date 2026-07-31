@@ -695,17 +695,17 @@ def upload_document():
                 )
                 try:
                     # Retry with a simpler, more direct prompt
-                    retry_prompt = f"""
+                    retry_prompt = """
 You are an ArchiMate 3.2 expert. Analyze this document and extract ALL architecture elements you can identify.
 
 Return ONLY valid JSON in this format:
-{{
+{
   "elements": [
-    {{"name": "Element Name", "type": "ElementType", "layer": "layer", "description": "Description"}}
+    {"name": "Element Name", "type": "ElementType", "layer": "layer", "description": "Description"}
   ],
   "relationships": [],
-  "metadata": {{"confidence": "medium"}}
-}}
+  "metadata": {"confidence": "medium"}
+}
 
 Extract ANY elements you see: applications, systems, processes, actors, services, interfaces, data objects, etc.
 Be liberal - if you see something that could be an ArchiMate element, include it.

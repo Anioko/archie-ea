@@ -810,7 +810,7 @@ class TechnologySelectionAgent:
                     "factor": "budget",
                     "value": f"${budget_range.get('min', 0):,} - ${budget_range.get('max', 0):,}",
                     "impact": "high",
-                    "description": f"Budget range affects technology choices and implementation approach",
+                    "description": "Budget range affects technology choices and implementation approach",
                 }
             )
 
@@ -821,7 +821,7 @@ class TechnologySelectionAgent:
                 "factor": "timeline",
                 "value": f"{timeline} months",
                 "impact": "medium",
-                "description": f"Timeline affects technology complexity and implementation approach",
+                "description": "Timeline affects technology complexity and implementation approach",
             }
         )
 

@@ -138,10 +138,10 @@ def get_matching_reason(application, vendor_product, method):
             return f"Name similarity between '{app_name}' and '{vendor_name}'"
 
     elif method == "capability":
-        return f"Capability overlap between application and vendor product offerings"
+        return "Capability overlap between application and vendor product offerings"
 
     elif method == "ai":
-        return f"AI-powered semantic analysis indicates strong relationship"
+        return "AI-powered semantic analysis indicates strong relationship"
 
     return "Matching based on available data"
 
@@ -837,7 +837,6 @@ def analyze_import_stream():
     import json
     import time
 
-    from flask import Response, stream_with_context
 
     def generate():
         try:

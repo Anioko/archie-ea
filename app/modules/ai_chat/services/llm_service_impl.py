@@ -412,7 +412,7 @@ class LLMService:
 
         if violations:
             raise RuntimeError(
-                f"NO HARDCODED DATA POLICY VIOLATION DETECTED:\n"
+                "NO HARDCODED DATA POLICY VIOLATION DETECTED:\n"
                 + "\n".join(violations)
                 + "\n\nAll models MUST be loaded from database APISettings table only."
             )
@@ -2004,7 +2004,7 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
             logger.info(f"Response length: {len(response_text)} characters")
             logger.info(f"Input tokens: {token_input}")
             logger.info(f"Output tokens: {token_output}")
-            logger.info(f"\nFirst 500 chars of response:")
+            logger.info("\nFirst 500 chars of response:")
             logger.info("-" * 80)
             logger.info(response_text[:500])
             logger.info("-" * 80)
@@ -2054,10 +2054,10 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
             logger.info(f"\n❌ ERROR: Anthropic API timeout: {str(e)}")
             logger.error(f"Anthropic API timeout after 120 seconds: {str(e)}")
             raise TimeoutError(
-                f"ArchiMate generation timed out. The complexity of your requirements may require simplification or breaking into smaller parts."
+                "ArchiMate generation timed out. The complexity of your requirements may require simplification or breaking into smaller parts."
             )
         except anthropic.AuthenticationError as e:
-            logger.info(f"\n❌ ERROR: Authentication failed - Invalid API key")
+            logger.info("\n❌ ERROR: Authentication failed - Invalid API key")
             logger.info(f"Error details: {str(e)}")
             logger.error(f"Anthropic authentication error: {str(e)}")
             raise ValueError(
@@ -2071,7 +2071,7 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
             # Check if this is a credit/balance error (400 with credit balance message)
             if "credit balance" in error_str.lower() or "insufficient credits" in error_str.lower():
                 logger.warning(
-                    f"⚠️ Anthropic API credits exhausted. Error will trigger automatic fallback."
+                    "⚠️ Anthropic API credits exhausted. Error will trigger automatic fallback."
                 )
             raise
         except anthropic.APIError as e:

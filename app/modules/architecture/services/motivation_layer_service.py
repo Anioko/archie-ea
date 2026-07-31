@@ -308,7 +308,7 @@ Focus on QUALITY over quantity - each requirement should be specific, measurable
                 source_id=business_func.archimate_element_id,
                 target_id=archimate_element.id,
                 type="realization",
-                description=f"Business function realizes requirement",
+                description="Business function realizes requirement",
             )
             db.session.add(rel)
 

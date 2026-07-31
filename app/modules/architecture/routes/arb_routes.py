@@ -853,7 +853,7 @@ def assign_to_session(id):
     try:
         data = request.form.to_dict()
         review = arb_service.assign_to_session(id, int(data.get("arb_session_id")))
-        flash(f"Review item assigned to ARB session", "success")
+        flash("Review item assigned to ARB session", "success")
         return redirect(url_for("arb.review_detail", id=id))
     except Exception as e:
         current_app.logger.error(f"Error assigning to session: {e}")

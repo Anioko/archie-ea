@@ -481,7 +481,7 @@ class SimpleDuplicateService:
                 logger.error(f"Invalid group_id or keep_app_id: group_id={group_id}, keep_app_id={keep_app_id}, error={e}")
                 return {
                     'success': False,
-                    'error': f'Invalid group ID or application ID. Please refresh the page and try again.'
+                    'error': 'Invalid group ID or application ID. Please refresh the page and try again.'
                 }
             
             # Check if tables exist first

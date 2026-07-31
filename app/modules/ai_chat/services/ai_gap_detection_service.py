@@ -871,12 +871,12 @@ class AIGapDetectionService:
     def _get_coverage_recommendation(self, coverage: float, capability: UnifiedCapability) -> str:
         """Generate coverage improvement recommendation."""
         if coverage == 0:
-            return f"Critical: No application coverage. Assess build vs buy options immediately."
+            return "Critical: No application coverage. Assess build vs buy options immediately."
         elif coverage < 25:
-            return f"High priority: Enhance existing applications or acquire new solution."
+            return "High priority: Enhance existing applications or acquire new solution."
         elif coverage < 50:
-            return f"Medium priority: Review coverage gaps and create improvement plan."
-        return f"Low priority: Minor coverage improvements possible."
+            return "Medium priority: Review coverage gaps and create improvement plan."
+        return "Low priority: Minor coverage improvements possible."
 
     def _get_eol_recommendation(self, product, days_until_eol: Optional[int]) -> str:
         """Generate EOL-related recommendation."""

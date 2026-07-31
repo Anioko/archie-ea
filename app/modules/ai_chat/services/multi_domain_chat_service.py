@@ -5320,7 +5320,7 @@ Instructions:
             return {
                 "success": False,
                 "domain": "architecture",
-                "response": f"I encountered an error processing your architecture question. Please try again or rephrase your question.",
+                "response": "I encountered an error processing your architecture question. Please try again or rephrase your question.",
                 "error": str(e),
                 "insights": [],
                 "context_used": context.get("architecture_elements", []),
@@ -5391,7 +5391,7 @@ Response should be practical, actionable, and based on current industry standard
             return {
                 "success": False,
                 "domain": "technology",
-                "response": f"I encountered an error processing your technology question. Please try again.",
+                "response": "I encountered an error processing your technology question. Please try again.",
                 "error": str(e),
                 "insights": [],
                 "context_used": context.get("technology_stacks", []),
@@ -5491,7 +5491,7 @@ Instructions:
             return {
                 "success": False,
                 "domain": "business_capability",
-                "response": f"I encountered an error processing your capability question. Please try again.",
+                "response": "I encountered an error processing your capability question. Please try again.",
                 "error": str(e),
                 "insights": [],
                 "context_used": context.get("business_capabilities", []),
@@ -5626,7 +5626,7 @@ Instructions:
             return {
                 "success": False,
                 "domain": "gap_analysis",
-                "response": f"I encountered an error processing your gap analysis question. Please try again.",
+                "response": "I encountered an error processing your gap analysis question. Please try again.",
                 "error": str(e),
                 "insights": [],
                 "context_used": context.get("capability_gaps", []),
@@ -5732,7 +5732,7 @@ Instructions:
             return {
                 "success": False,
                 "domain": "vendor_intelligence",
-                "response": f"I encountered an error processing your vendor question. Please try again.",
+                "response": "I encountered an error processing your vendor question. Please try again.",
                 "error": str(e),
                 "insights": [],
                 "context_used": context.get("vendor_organizations", []),
@@ -6173,7 +6173,7 @@ Instructions:
             return {
                 "success": False,
                 "domain": "general",
-                "response": f"I encountered an error processing your question. Please try again or rephrase.",
+                "response": "I encountered an error processing your question. Please try again or rephrase.",
                 "error": str(e),
                 "insights": [],
                 "context_used": list(context.keys()) if context else [],
@@ -6904,7 +6904,7 @@ End with: "Type **'next'** to complete the design workflow."
                 lines.append("  All supported capabilities have alternative supporting applications.")
 
             # List all supported capabilities
-            lines.append(f"  All supported capabilities:")
+            lines.append("  All supported capabilities:")
             for _, cap_name, cap_level, _ in cap_rows[:15]:
                 lines.append(f"    - {cap_name} (L{cap_level})")
 

@@ -1985,22 +1985,22 @@ def seed_mendix(link_capabilities: bool = True):
 
             print("✅ Mendix template seeded successfully!")
             print(f"   - Vendor: {template.vendor_name}")
-            print(f"   - Technology Layer: ✅ Complete")
-            print(f"   - Strategy Layer: ✅ Complete (20 capabilities, 6 value streams)")
+            print("   - Technology Layer: ✅ Complete")
+            print("   - Strategy Layer: ✅ Complete (20 capabilities, 6 value streams)")
             print(
-                f"   - Business Layer: ✅ Complete (10 services, 6 processes, 9 objects, 10 actors, 10 products)"
+                "   - Business Layer: ✅ Complete (10 services, 6 processes, 9 objects, 10 actors, 10 products)"
             )
             print(
-                f"   - Application Layer: ✅ Complete (14 components, 10 services, 8 interfaces, 9 data objects, 10 functions)"
+                "   - Application Layer: ✅ Complete (14 components, 10 services, 8 interfaces, 9 data objects, 10 functions)"
             )
             print(
-                f"   - Motivation Layer: ✅ Complete (10 stakeholders, 10 drivers, 9 goals, 8 outcomes, 10 principles, 13 requirements, 9 constraints, 5 assessments)"
+                "   - Motivation Layer: ✅ Complete (10 stakeholders, 10 drivers, 9 goals, 8 outcomes, 10 principles, 13 requirements, 9 constraints, 5 assessments)"
             )
             print(
-                f"   - Implementation Layer: ✅ Complete (9 events, 10 work packages, 8 deliverables, 4 plateaus)"
+                "   - Implementation Layer: ✅ Complete (9 events, 10 work packages, 8 deliverables, 4 plateaus)"
             )
-            print(f"   - Physical Layer: ✅ Complete (3 facilities, 5 equipment types, 4 networks)")
-            print(f"   - Total ArchiMate Coverage: 100%")
+            print("   - Physical Layer: ✅ Complete (3 facilities, 5 equipment types, 4 networks)")
+            print("   - Total ArchiMate Coverage: 100%")
             # Link capabilities to BusinessCapability records
             if link_capabilities:
                 print("\n🔗 Linking capabilities to BusinessCapability records...")

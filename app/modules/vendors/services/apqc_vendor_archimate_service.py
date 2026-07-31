@@ -288,7 +288,7 @@ class APQCVendorArchiMateService:
         if vendor_products:
             description_parts.extend(
                 [
-                    f"",
+                    "",
                     f"Vendor Support: {len(vendor_products)} vendor products",
                     f"Best Coverage: {best_vendor['vendor_name']} - {best_vendor['product_name']} ({max_coverage}%)",
                     f"Average Coverage: {avg_coverage:.1f}%",
@@ -306,8 +306,8 @@ class APQCVendorArchiMateService:
             description_parts.extend(
                 [
                     "",
-                    f"⚠️ NO VENDOR SUPPORT FOUND",
-                    f"This process may require custom development or manual implementation",
+                    "⚠️ NO VENDOR SUPPORT FOUND",
+                    "This process may require custom development or manual implementation",
                 ]
             )
 

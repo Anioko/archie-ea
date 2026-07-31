@@ -64,7 +64,6 @@ strategic_bp = Blueprint("strategic", __name__, url_prefix="/strategic")
 
 def _build_solution_impact_fallback(element_id: int, change_type: str = "MODIFY"):
     """Build a useful impact payload from application/solution relationships."""
-    from app.models.apqc_process import APQCProcess
     from app.models.solution_models import Solution
     from app.models.solution_sad_models import SolutionAPQCProcess
     from app.models.vendor.vendor_organization import VendorProduct

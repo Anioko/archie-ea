@@ -1028,7 +1028,6 @@ def analyze_import():
     import csv
     import io
     import json
-    import unicodedata
 
     import openpyxl
 
@@ -1306,7 +1305,7 @@ def analyze_import():
             pcf_column = capabilities_column
 
         # Debug logging for column detection
-        current_app.logger.info(f"Column detection results:")
+        current_app.logger.info("Column detection results:")
         current_app.logger.info(f"  - Headers found: {headers}")
         current_app.logger.info(f"  - Name: '{name_column}'")
         current_app.logger.info(f"  - App ID: '{app_id_column}'")

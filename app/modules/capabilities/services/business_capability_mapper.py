@@ -215,7 +215,7 @@ class BusinessCapabilityMapper:
                         "capability_name": capability.name,
                         "mapping_method": "semantic_matching",
                         "confidence_score": similarity,
-                        "reasoning": f"Semantic similarity between application and capability names/descriptions",
+                        "reasoning": "Semantic similarity between application and capability names/descriptions",
                     }
                 )
 

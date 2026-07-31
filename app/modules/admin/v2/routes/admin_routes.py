@@ -273,7 +273,8 @@ def index():
     except Exception:
         health["db"] = "error"
     try:
-        import redis as _redis, os as _os
+        import redis as _redis
+        import os as _os
         _r = _redis.from_url(_os.environ.get("REDIS_URL", "redis://localhost:6379/0"))
         _r.ping()
     except Exception:
@@ -1810,7 +1811,7 @@ def cancel_abacus_job(job_id):
 @admin_required
 def clear_stale_abacus_jobs():
     """Force-clear sync jobs stuck in_progress for more than 1 hour."""
-    from app.models import Job  # noqa: local import to match pattern
+    from app.models import Job  # local import to match pattern
 
     cutoff = datetime.utcnow() - timedelta(hours=1)
     stale_jobs = Job.query.filter(

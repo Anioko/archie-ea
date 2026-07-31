@@ -633,7 +633,7 @@ class SolutionCostService:
         # Create the cost model
         cost_model = self.create_cost_model(
             solution_id=solution_id,
-            name=name or f"Cost Model from Recommendation",
+            name=name or "Cost Model from Recommendation",
             description="Generated from AI recommendation estimates",
             created_by_id=created_by_id,
         )

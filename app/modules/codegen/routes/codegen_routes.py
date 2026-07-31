@@ -4813,7 +4813,7 @@ def export_openapi(solution_id):
         "info": {
             "title": f"{solution.name} API",
             "version": "1.0.0",
-            "description": f"Generated from ArchiMate architecture by A.R.C.H.I.E. Code Workbench",
+            "description": "Generated from ArchiMate architecture by A.R.C.H.I.E. Code Workbench",
         },
         "paths": paths,
         "components": {"schemas": schemas},
@@ -5029,10 +5029,10 @@ variable "db_storage_gb"     { type = number; default = 20 }
 variable "db_password"       { type = string; sensitive = true }
 """
 
-    outputs_tf = f"""\
-output "alb_dns_name"    {{ value = aws_lb.main.dns_name }}
-output "ecs_cluster_arn" {{ value = aws_ecs_cluster.main.arn }}
-output "vpc_id"          {{ value = module.vpc.vpc_id }}
+    outputs_tf = """\
+output "alb_dns_name"    { value = aws_lb.main.dns_name }
+output "ecs_cluster_arn" { value = aws_ecs_cluster.main.arn }
+output "vpc_id"          { value = module.vpc.vpc_id }
 """
     if has_db:
         outputs_tf += 'output "db_endpoint" { value = aws_db_instance.main.endpoint; sensitive = true }\n'

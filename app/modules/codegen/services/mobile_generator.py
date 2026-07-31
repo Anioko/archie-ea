@@ -319,7 +319,7 @@ def generate_mobile_from_genome(genome: dict, mobile_ui_framework: str = "native
     # ── Generate .env.example with mobile-specific vars ──
     env_lines = [
         f"# {solution_name} — Mobile App Environment",
-        f"EXPO_PUBLIC_API_URL=http://localhost:8000",
+        "EXPO_PUBLIC_API_URL=http://localhost:8000",
     ]
     if push_enabled:
         env_lines.append("# Firebase project ID for push notifications")

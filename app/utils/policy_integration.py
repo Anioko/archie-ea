@@ -168,7 +168,6 @@ patch_tools_with_policy()
 # Policy monitoring endpoint
 def get_policy_monitoring_data() -> Dict[str, Any]:
     """Get data for policy monitoring dashboard"""
-    from app.utils.policy_tool_wrapper import check_policy_health
 
     return {
         "health_status": "HEALTHY" if check_policy_health() else "VIOLATIONS_DETECTED",

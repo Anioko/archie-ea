@@ -100,7 +100,7 @@ class GanttExportService:
         svg_lines.append(f'<rect width="{width}" height="{height}" fill="#fff" stroke="#ccc" stroke-width="1"/>')
         
         # Add title
-        svg_lines.append(f'<text x="10" y="25" class="task-label" font-weight="bold">Gantt Chart Export</text>')
+        svg_lines.append('<text x="10" y="25" class="task-label" font-weight="bold">Gantt Chart Export</text>')
         svg_lines.append(f'<text x="10" y="45" class="task-label" font-size="10">Generated: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}</text>')
         
         # Add tasks (simplified SVG rendering)

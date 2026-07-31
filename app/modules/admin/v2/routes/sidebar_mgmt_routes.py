@@ -180,6 +180,6 @@ def reset_all_items():
         item.is_enabled = True
     db.session.commit()
 
-    logger.info(f"All sidebar items reset to enabled")
+    logger.info("All sidebar items reset to enabled")
 
     return jsonify({"status": "success", "message": f"Reset {len(items)} items to enabled"})

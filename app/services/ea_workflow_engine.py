@@ -5133,8 +5133,8 @@ provides foundation for subsequent architecture development phases.
                     if wave_num == 1 else
                     "AT_RISK or BREAKING integrations where a fallback exists — migrate after Wave 1 is stable."
                     if wave_num == 2 else
-                    f"BREAKING dependencies with NO fallback coverage. "
-                    f"DO NOT PROCEED until Wave 2 is proven stable and each blocker has a remediation plan."
+                    "BREAKING dependencies with NO fallback coverage. "
+                    "DO NOT PROCEED until Wave 2 is proven stable and each blocker has a remediation plan."
                 ),
             }
 
@@ -5144,7 +5144,7 @@ provides foundation for subsequent architecture development phases.
         if wave2:
             waves.append(_wave_summary(wave2, 2, "Core Migration — Moderate Risk", True))
         if wave3:
-            waves.append(_wave_summary(wave3, 3, f"Critical — Blockers Require Sign-Off", True))
+            waves.append(_wave_summary(wave3, 3, "Critical — Blockers Require Sign-Off", True))
 
         blocker_names = [a.get("app_name") for a in wave3]
         total_effort = sum(i.get("effort_days", 0) for i in integrations)

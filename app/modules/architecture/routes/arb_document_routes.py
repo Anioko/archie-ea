@@ -58,7 +58,7 @@ def _save_file(file_storage):
     # Read content to check size
     content = file_storage.read()
     if len(content) > MAX_FILE_BYTES:
-        raise ValueError(f"File exceeds 50 MB limit")
+        raise ValueError("File exceeds 50 MB limit")
     file_storage.seek(0)
 
     original_name = file_storage.filename

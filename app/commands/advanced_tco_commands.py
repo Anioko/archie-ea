@@ -110,7 +110,7 @@ def calculate_tco(
         # Sensitivity analysis
         if sensitivity and results.get("sensitivity_analysis"):
             sens = results["sensitivity_analysis"]
-            click.echo(f"\n📊 Sensitivity Analysis:")
+            click.echo("\n📊 Sensitivity Analysis:")
             click.echo(f"   Base TCO: ${sens.base_tco:,.2f}")
             click.echo(f"   Best Case: ${sens.best_case_tco:,.2f}")
             click.echo(f"   Worst Case: ${sens.worst_case_tco:,.2f}")
@@ -262,7 +262,7 @@ def batch_tco(vendor_ids, users, years, deployment, org_size, industry, export):
         results.sort(key=lambda x: x["total_tco"])
 
         # Display comparison
-        click.echo(f"\n📊 TCO Comparison Results:")
+        click.echo("\n📊 TCO Comparison Results:")
         click.echo(f"   Successful: {successful}")
         click.echo(f"   Failed: {failed}")
         click.echo()
@@ -367,7 +367,7 @@ def batch_tco(vendor_ids, users, years, deployment, org_size, industry, export):
             except Exception as e:
                 click.echo(f"   ❌ Export failed: {e}")
 
-        click.echo(f"\n🎉 Batch TCO calculation completed!")
+        click.echo("\n🎉 Batch TCO calculation completed!")
         return 0
 
     except Exception as e:
@@ -448,9 +448,9 @@ def tco_benchmarks(industry, org_size):
         # Initialize TCO engine
         engine = AdvancedTCOEngine()
 
-        click.echo(f"📈 Available Benchmarks:")
+        click.echo("📈 Available Benchmarks:")
         click.echo(f"   Industries: {len(engine.INDUSTRY_BENCHMARKS)}")
-        click.echo(f"   Organization Sizes: 3 per industry")
+        click.echo("   Organization Sizes: 3 per industry")
         click.echo()
 
         # Display benchmarks
@@ -466,7 +466,7 @@ def tco_benchmarks(industry, org_size):
                 click.echo(f"   📏 {org_size.title()}:")
                 click.echo(f"      Median TCO/User: ${benchmark.median_tco_per_user:,.2f}")
                 click.echo(f"      Implementation: {benchmark.implementation_months} months")
-                click.echo(f"      Cost Distribution:")
+                click.echo("      Cost Distribution:")
                 for category, percentage in benchmark.cost_distribution.items():
                     click.echo(f"        {category}: {percentage}%")
                 click.echo()

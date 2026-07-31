@@ -29,7 +29,7 @@ def seed_acm():
 
     result = ACMTechnicalCapabilityService.seed_capabilities()
 
-    click.echo(f"\nACM Seed Results:")
+    click.echo("\nACM Seed Results:")
     click.echo(f"  Created: {result['created']}")
     click.echo(f"  Updated: {result['updated']}")
     click.echo(f"  Total capabilities: {result['total']}")

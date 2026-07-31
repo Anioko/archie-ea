@@ -1313,9 +1313,9 @@ def seed_servicenow(link_capabilities: bool = True):
 
             print("✅ ServiceNow ITSM template seeded successfully!")
             print(f"   - Vendor: {template.vendor_name}")
-            print(f"   - IT Support Capabilities: 20")
-            print(f"   - Primary Focus: Incident, Change, Asset, CMDB, Knowledge Management")
-            print(f"   - Total ArchiMate Coverage: 100%")
+            print("   - IT Support Capabilities: 20")
+            print("   - Primary Focus: Incident, Change, Asset, CMDB, Knowledge Management")
+            print("   - Total ArchiMate Coverage: 100%")
 
         except Exception as e:
             db.session.rollback()

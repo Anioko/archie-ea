@@ -401,7 +401,7 @@ class EnhancedArchiMateExtractor:
 
         # Enhancement 1: Extract more stakeholders if needed
         if metrics["stakeholder_count"] < 5:
-            logger.info(f"[ENHANCE] Extracting implicit stakeholders...")
+            logger.info("[ENHANCE] Extracting implicit stakeholders...")
             additional_stakeholders = self._extract_implicit_stakeholders(
                 document_text, elements, provider
             )
@@ -410,21 +410,21 @@ class EnhancedArchiMateExtractor:
 
         # Enhancement 2: Extract hierarchical goals if needed
         if metrics["goal_count"] < 7:
-            logger.info(f"[ENHANCE] Extracting hierarchical goals...")
+            logger.info("[ENHANCE] Extracting hierarchical goals...")
             additional_goals = self._extract_hierarchical_goals(document_text, elements, provider)
             elements.extend(additional_goals)
             logger.info(f"  Added {len(additional_goals)} hierarchical goals")
 
         # Enhancement 3: Extract Course of Action if missing
         if metrics["course_of_action_count"] == 0:
-            logger.info(f"[ENHANCE] Extracting Course of Action elements...")
+            logger.info("[ENHANCE] Extracting Course of Action elements...")
             course_of_actions = self._extract_course_of_action(document_text, elements, provider)
             elements.extend(course_of_actions)
             logger.info(f"  Added {len(course_of_actions)} Course of Action elements")
 
         # Enhancement 4: Extract Principles and Constraints
         if metrics["principle_count"] < 3:
-            logger.info(f"[ENHANCE] Extracting Principles...")
+            logger.info("[ENHANCE] Extracting Principles...")
             principles = self._extract_principles(document_text, elements, provider)
             elements.extend(principles)
             logger.info(f"  Added {len(principles)} Principles")

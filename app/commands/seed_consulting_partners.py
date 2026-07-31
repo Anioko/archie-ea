@@ -74,9 +74,9 @@ def seed_consulting_partners():
 
             print("✅ Consulting partners seeded successfully!")
             print(f"   - Total Partners: {partners_created}")
-            print(f"   - Firm Types: CONSULTING, SYSTEM_INTEGRATOR")
-            print(f"   - APQC Expertise: Strategic, Operational, Risk Management")
-            print(f"   - Vendor Partnerships: SAP, Oracle, Microsoft, ServiceNow, Salesforce")
+            print("   - Firm Types: CONSULTING, SYSTEM_INTEGRATOR")
+            print("   - APQC Expertise: Strategic, Operational, Risk Management")
+            print("   - Vendor Partnerships: SAP, Oracle, Microsoft, ServiceNow, Salesforce")
 
             # Show summary by firm type
             consulting_partners = ConsultingPartner.query.filter_by(firm_type="CONSULTING").count()
@@ -84,7 +84,7 @@ def seed_consulting_partners():
                 firm_type="SYSTEM_INTEGRATOR"
             ).count()
 
-            print(f"\n📊 Partner Summary:")
+            print("\n📊 Partner Summary:")
             print(f"   - Consulting Firms: {consulting_partners}")
             print(f"   - System Integrators: {system_integrators}")
 
