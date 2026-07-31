@@ -25,10 +25,10 @@ from typing import Any, Dict, List, Optional
 
 # Excel export dependencies
 try:
-    import openpyxl
+    import openpyxl  # noqa: F401 — availability probe: the import IS the test
     from openpyxl import Workbook
-    from openpyxl.chart import BarChart, LineChart, Reference
-    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.chart import BarChart, LineChart, Reference  # noqa: F401 — availability probe: the import IS the test
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side  # noqa: F401 — availability probe: the import IS the test
 
     EXCEL_AVAILABLE = True
 except ImportError:

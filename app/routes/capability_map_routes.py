@@ -21,10 +21,10 @@ from ..models.unified_capability import UnifiedCapability
 # Import caching utilities for performance
 try:
     from app.services.core.data_cache import (  # dead-code-ok — conditional import for optional caching
-        get_all_applications,
-        get_all_capabilities,
-        get_application_filter_options,
-        get_capability_filter_options,
+        get_all_applications,  # noqa: F401 — availability probe: the import IS the test
+        get_all_capabilities,  # noqa: F401 — availability probe: the import IS the test
+        get_application_filter_options,  # noqa: F401 — availability probe: the import IS the test
+        get_capability_filter_options,  # noqa: F401 — availability probe: the import IS the test
     )
 
     CACHING_AVAILABLE = True

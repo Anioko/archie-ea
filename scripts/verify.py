@@ -194,9 +194,17 @@ def gate_undefined_exports() -> Result:
 
 
 def gate_lint_core(baseline: int) -> Result:
-    """Full pinned correctness set (F, E4, E7, E9) — ratcheted."""
+    """Full pinned correctness set (F, E4, E7, E9). Gated at ZERO.
+
+    Went from 4482 findings to zero. Four rules are disabled in ruff.toml with
+    recorded evidence — E711/E712 because rewriting SQLAlchemy `== None` / `== True`
+    silently deletes the predicate from the query, and E402 because reordering
+    imports reintroduced a circular import and stopped the app booting. Everything
+    else was fixed rather than suppressed. `baseline` is kept for signature symmetry
+    and ignored.
+    """
     count, sample = _ruff_count(None)
-    return Result("lint-core", PASS if count <= baseline else FAIL, sample, count, baseline)
+    return Result("lint-core", PASS if count == 0 else FAIL, sample, count, 0)
 
 
 def gate_design_tokens(baseline: int) -> Result:

@@ -50,12 +50,12 @@ unified_low_priority_bp = Blueprint(
 # Import individual route modules for consolidation
 try:
     # Import route functions from existing modules
-    from .architecture_routes import *
-    from .capability_map_routes import *
+    from .architecture_routes import *  # noqa: F403 — deliberate route aggregator
+    from .capability_map_routes import *  # noqa: F403 — deliberate route aggregator
 
     # from .consolidation_list_routes import *  # Removed: violates blueprints ban
-    from .policy_monitoring_routes import *
-    from .strategic_routes import *
+    from .policy_monitoring_routes import *  # noqa: F403 — deliberate route aggregator
+    from .strategic_routes import *  # noqa: F403 — deliberate route aggregator
 
     LOW_PRIORITY_ROUTES_AVAILABLE = True
 except ImportError:

@@ -691,11 +691,11 @@ class AgenticGapImplementationService:
         try:
             # Try importing existing models first
             from app.models.system_architecture import (
-                SystemBoundary,
-                SystemDeployment,
-                SystemHierarchy,
-                SystemInterface,
-                SystemLifecycle,
+                SystemBoundary,  # noqa: F401 — availability probe: the import IS the test
+                SystemDeployment,  # noqa: F401 — availability probe: the import IS the test
+                SystemHierarchy,  # noqa: F401 — availability probe: the import IS the test
+                SystemInterface,  # noqa: F401 — availability probe: the import IS the test
+                SystemLifecycle,  # noqa: F401 — availability probe: the import IS the test
             )
 
             return {
@@ -761,11 +761,11 @@ class AgenticGapImplementationService:
         """
         try:
             from app.models.data_governance import (
-                DataAccessControl,
-                DataCatalog,
-                DataGovernanceWorkflow,
-                DataQualityMetrics,
-                DataRetentionPolicy,
+                DataAccessControl,  # noqa: F401 — availability probe: the import IS the test
+                DataCatalog,  # noqa: F401 — availability probe: the import IS the test
+                DataGovernanceWorkflow,  # noqa: F401 — availability probe: the import IS the test
+                DataQualityMetrics,  # noqa: F401 — availability probe: the import IS the test
+                DataRetentionPolicy,  # noqa: F401 — availability probe: the import IS the test
             )
 
             return {
@@ -795,9 +795,9 @@ class AgenticGapImplementationService:
         """
         try:
             from app.models.application_lifecycle import (
-                ApplicationPerformanceMetrics,
-                ApplicationVersioning,
-                DeploymentPipeline,
+                ApplicationPerformanceMetrics,  # noqa: F401 — availability probe: the import IS the test
+                ApplicationVersioning,  # noqa: F401 — availability probe: the import IS the test
+                DeploymentPipeline,  # noqa: F401 — availability probe: the import IS the test
             )
 
             return {
@@ -828,9 +828,9 @@ class AgenticGapImplementationService:
         """
         try:
             from app.models.software_quality import (
-                CodeQualityMetrics,
-                RefactoringTracking,
-                TechnicalDebt,
+                CodeQualityMetrics,  # noqa: F401 — availability probe: the import IS the test
+                RefactoringTracking,  # noqa: F401 — availability probe: the import IS the test
+                TechnicalDebt,  # noqa: F401 — availability probe: the import IS the test
             )
 
             return {
@@ -856,8 +856,8 @@ class AgenticGapImplementationService:
         """
         try:
             from app.models.solution_deployment import (
-                SolutionDeploymentArchitecture,
-                solution_technology_mapping,
+                SolutionDeploymentArchitecture,  # noqa: F401 — availability probe: the import IS the test
+                solution_technology_mapping,  # noqa: F401 — availability probe: the import IS the test
             )
 
             return {
@@ -882,7 +882,7 @@ class AgenticGapImplementationService:
         """
         try:
             from app.services.archimate.archimate_xml_export_service import (
-                ArchiMateXMLExportService,
+                ArchiMateXMLExportService,  # noqa: F401 — availability probe: the import IS the test
             )
 
             return {

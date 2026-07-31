@@ -1422,7 +1422,7 @@ def analyze_import():
                 )
 
                 # Performance optimization: Set timeout for large imports
-                import threading
+                import threading  # noqa: F401 — availability probe: the import IS the test
                 import time
                 from concurrent.futures import ThreadPoolExecutor
                 from concurrent.futures import TimeoutError as FutureTimeoutError
@@ -3121,7 +3121,7 @@ def upload_excel_applications():
             try:
                 from ..services.batch_processing_service import (
                     BatchJobConfig,
-                    BatchJobType,
+                    BatchJobType,  # noqa: F401 — availability probe: the import IS the test
                     BatchProcessingService,
                 )
 

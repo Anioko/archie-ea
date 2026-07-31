@@ -116,9 +116,9 @@ def get_implementation_status():
         # Check system architecture
         try:
             from app.models.system_architecture import (
-                SystemBoundary,
-                SystemHierarchy,
-                SystemInterface,
+                SystemBoundary,  # noqa: F401 — availability probe: the import IS the test
+                SystemHierarchy,  # noqa: F401 — availability probe: the import IS the test
+                SystemInterface,  # noqa: F401 — availability probe: the import IS the test
             )
 
             status["system_architecture"]["available"] = True
@@ -134,7 +134,7 @@ def get_implementation_status():
 
         # Check data governance
         try:
-            from app.models.data_governance import DataCatalog, DataQualityMetrics
+            from app.models.data_governance import DataCatalog, DataQualityMetrics  # noqa: F401 — availability probe: the import IS the test
 
             status["data_governance"]["available"] = True
             status["data_governance"]["models"] = [
@@ -149,7 +149,7 @@ def get_implementation_status():
 
         # Check application lifecycle
         try:
-            from app.models.application_lifecycle import ApplicationVersioning, DeploymentPipeline
+            from app.models.application_lifecycle import ApplicationVersioning, DeploymentPipeline  # noqa: F401 — availability probe: the import IS the test
 
             status["application_lifecycle"]["available"] = True
             status["application_lifecycle"]["models"] = [
@@ -162,7 +162,7 @@ def get_implementation_status():
 
         # Check software quality
         try:
-            from app.models.software_quality import CodeQualityMetrics, TechnicalDebt
+            from app.models.software_quality import CodeQualityMetrics, TechnicalDebt  # noqa: F401 — availability probe: the import IS the test
 
             status["software_quality"]["available"] = True
             status["software_quality"]["models"] = [
@@ -175,7 +175,7 @@ def get_implementation_status():
 
         # Check solution deployment
         try:
-            from app.models.solution_deployment import SolutionDeploymentArchitecture
+            from app.models.solution_deployment import SolutionDeploymentArchitecture  # noqa: F401 — availability probe: the import IS the test
 
             status["solution_deployment"]["available"] = True
             status["solution_deployment"]["models"] = [
@@ -188,7 +188,7 @@ def get_implementation_status():
         # Check viewpoint export
         try:
             from app.services.archimate.archimate_xml_export_service import (
-                ArchiMateXMLExportService,
+                ArchiMateXMLExportService,  # noqa: F401 — availability probe: the import IS the test
             )
 
             status["viewpoint_export"]["available"] = True

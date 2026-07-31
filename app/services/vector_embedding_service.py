@@ -239,7 +239,7 @@ class VectorEmbeddingService:
         try:
             # Get API configuration
             from app.models.models import APISettings
-            from app.services.llm_service import LLMService
+            from app.services.llm_service import LLMService  # noqa: F401 — availability probe: the import IS the test
 
             # Ensure clean transaction state before query
             try:

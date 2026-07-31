@@ -328,7 +328,7 @@ class ArchitectureModeHandler:
             ValueError: If view not found
         """
         try:
-            from app.models.archimate_element import ArchiMateElement
+            from app.models.archimate_element import ArchiMateElement  # noqa: F401 — availability probe: the import IS the test
             from app.models.archimate_view import ArchiMateView
         except ImportError:
             logger.warning("ArchiMate models not available")

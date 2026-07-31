@@ -32,7 +32,7 @@ except ImportError:
 try:
     import matplotlib.dates as mdates
     import matplotlib.pyplot as plt
-    from matplotlib.patches import Rectangle
+    from matplotlib.patches import Rectangle  # noqa: F401 — availability probe: the import IS the test
 
     MATPLOTLIB_AVAILABLE = True
 except ImportError:

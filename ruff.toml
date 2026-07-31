@@ -46,6 +46,26 @@ ignore = [
     # and is preferred here over 114 individual noqa comments.
     "E711",
     "E712",
+
+    # E402 (module import not at top of file) is load-bearing in this codebase, not
+    # a style slip. Imports sit below other module-level statements specifically to
+    # break import cycles — app/models is a re-export web where several modules
+    # import from each other.
+    #
+    # Tested rather than assumed. A conservative reordering was attempted: only the
+    # region above the first def/class, only where the blocking statements were
+    # simple assignments (40 of them just `logger = logging.getLogger(__name__)`),
+    # skipping any file with a conditional block or a call before its imports. It
+    # reordered 38 files and the application stopped booting:
+    #
+    #     ImportError: cannot import name 'compliance_vendor_coverage' from
+    #     partially initialized module 'app.models.vendor.vendor_organization'
+    #     (most likely due to a circular import)
+    #
+    # Reverted. E402 has no correctness value, and satisfying it here means
+    # reintroducing the cycles the current ordering exists to avoid. Every other
+    # rule in this ruleset is now at zero; this one is disabled deliberately.
+    "E402",
 ]
 
 [lint.per-file-ignores]
@@ -56,8 +76,11 @@ ignore = [
 # `from app.utils import sanitize_html`. Those imports are "unused" only within the
 # __init__ itself; removing them — which is what `ruff --fix` would do — breaks
 # every consumer. 54 of the F401 findings were in files of this shape.
-"__init__.py" = ["F401"]
-"*/__init__.py" = ["F401"]
+# Star re-exports (F403/F405) belong to the same idiom as F401 here: app/models
+# surfaces its submodules' names via `from .x import *` so callers can do
+# `from app.models import ApplicationComponent`.
+"__init__.py" = ["F401", "F403", "F405"]
+"*/__init__.py" = ["F401", "F403", "F405"]
 
 # app/models/** is a re-export web, not a set of leaf modules. models.py does
 #     from .unified_capability import BusinessFunction

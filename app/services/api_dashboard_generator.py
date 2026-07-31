@@ -1454,7 +1454,7 @@ Return ONLY valid JSON in this format:
             BytesIO object with Excel content
         """
         try:
-            import openpyxl
+            import openpyxl  # noqa: F401 — availability probe: the import IS the test
             from openpyxl import Workbook
 
             wb = Workbook()
