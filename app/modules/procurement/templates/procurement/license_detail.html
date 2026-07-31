@@ -40,7 +40,7 @@
                             {% if util > 100 %}bg-red-500
                             {% elif util > 90 %}bg-amber-500
                             {% else %}bg-green-500{% endif %}"
-                             style="width: {{ min(util, 100) }}%"></div>
+                             style="width: {{ [util, 100]|min }}%"></div>
                     </div>
                 </div>
                 <div class="grid grid-cols-3 gap-4 text-center">

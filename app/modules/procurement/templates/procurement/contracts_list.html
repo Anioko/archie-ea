@@ -110,7 +110,7 @@
     {% if total > 20 %}
     <div class="flex items-center justify-between mt-4">
         <div class="text-sm text-muted-foreground">
-            Showing {{ (page - 1) * 20 + 1 }} - {{ min(page * 20, total) }} of {{ total }} contracts
+            Showing {{ (page - 1) * 20 + 1 }} - {{ [page * 20, total]|min }} of {{ total }} contracts
         </div>
         <div class="flex items-center gap-2">
             {% if page > 1 %}

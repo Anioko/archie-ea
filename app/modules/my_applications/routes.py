@@ -70,6 +70,7 @@ def dashboard():
         at_risk=at_risk,
         critical=critical,
         ownership_summary=get_ownership_summary(current_user.id),
+        health_summary=get_application_health_summary(current_user.id),
     )
 
 
