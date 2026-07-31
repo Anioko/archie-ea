@@ -116,7 +116,7 @@
     <div class="flex items-center gap-2">
       {# Solution filter #}
       <select x-model="selectedSolution" @change="loadData()"
-              class="text-sm border border-border rounded-lg px-3 py-2 bg-background focus:ring-2 focus:ring-indigo-400 outline-none">
+              class="text-sm border border-border rounded-lg px-3 py-2 bg-background focus:ring-2 focus:ring-indigo-400 outline-none" aria-label="Select a solution...">
         <option value="">Select a solution...</option>
         {% for sol in solutions %}
         <option value="{{ sol.id }}">{{ sol.name }}</option>

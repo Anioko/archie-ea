@@ -114,7 +114,7 @@
         {% call card.card_content() %}
           <textarea x-model="fields.problem_statement" @blur="saveField('problem_statement')"
             data-testid="bc-textarea-problem_statement" rows="5" placeholder="What business problem or opportunity is driving this case?"
-            class="w-full min-h-[120px] rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-y"></textarea>
+            class="w-full min-h-[120px] rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-y" aria-label="What business problem or opportunity is driving this case?"></textarea>
           <p class="mt-1 h-4 text-xs">
             <span x-show="savingField === 'problem_statement'" x-cloak class="text-muted-foreground inline-flex items-center gap-1"><i data-lucide="loader-2" class="h-3 w-3 animate-spin" aria-hidden="true"></i> Saving…</span>
             <span x-show="savedField === 'problem_statement'" x-cloak class="text-success">Saved</span>
@@ -131,7 +131,7 @@
         {% call card.card_content() %}
           <textarea x-model="fields.options_considered" @blur="saveField('options_considered')"
             data-testid="bc-textarea-options_considered" rows="5" placeholder="What alternatives were evaluated (including do-nothing)?"
-            class="w-full min-h-[120px] rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-y"></textarea>
+            class="w-full min-h-[120px] rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-y" aria-label="What alternatives were evaluated (including do-nothing)?"></textarea>
           <p class="mt-1 h-4 text-xs">
             <span x-show="savingField === 'options_considered'" x-cloak class="text-muted-foreground inline-flex items-center gap-1"><i data-lucide="loader-2" class="h-3 w-3 animate-spin" aria-hidden="true"></i> Saving…</span>
             <span x-show="savedField === 'options_considered'" x-cloak class="text-success">Saved</span>
@@ -149,7 +149,7 @@
       {% call card.card_content() %}
         <textarea x-model="fields.recommended_option" @blur="saveField('recommended_option')"
           data-testid="bc-textarea-recommended_option" rows="4" placeholder="Which option is recommended, and why?"
-          class="w-full min-h-[100px] rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-y"></textarea>
+          class="w-full min-h-[100px] rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-y" aria-label="Which option is recommended, and why?"></textarea>
         <p class="mt-1 h-4 text-xs">
           <span x-show="savingField === 'recommended_option'" x-cloak class="text-muted-foreground inline-flex items-center gap-1"><i data-lucide="loader-2" class="h-3 w-3 animate-spin" aria-hidden="true"></i> Saving…</span>
           <span x-show="savedField === 'recommended_option'" x-cloak class="text-success">Saved</span>
@@ -223,7 +223,7 @@
         {% call card.card_content() %}
           <textarea x-model="fields.expected_benefits" @blur="saveField('expected_benefits')"
             data-testid="bc-textarea-expected_benefits" rows="5" placeholder="Quantified and qualitative benefits expected"
-            class="w-full min-h-[120px] rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-y"></textarea>
+            class="w-full min-h-[120px] rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-y" aria-label="Quantified and qualitative benefits expected"></textarea>
           <p class="mt-1 h-4 text-xs">
             <span x-show="savingField === 'expected_benefits'" x-cloak class="text-muted-foreground inline-flex items-center gap-1"><i data-lucide="loader-2" class="h-3 w-3 animate-spin" aria-hidden="true"></i> Saving…</span>
             <span x-show="savedField === 'expected_benefits'" x-cloak class="text-success">Saved</span>
@@ -240,7 +240,7 @@
         {% call card.card_content() %}
           <textarea x-model="fields.key_risks" @blur="saveField('key_risks')"
             data-testid="bc-textarea-key_risks" rows="5" placeholder="Delivery, adoption, financial and technical risks"
-            class="w-full min-h-[120px] rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-y"></textarea>
+            class="w-full min-h-[120px] rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-y" aria-label="Delivery, adoption, financial and technical risks"></textarea>
           <p class="mt-1 h-4 text-xs">
             <span x-show="savingField === 'key_risks'" x-cloak class="text-muted-foreground inline-flex items-center gap-1"><i data-lucide="loader-2" class="h-3 w-3 animate-spin" aria-hidden="true"></i> Saving…</span>
             <span x-show="savedField === 'key_risks'" x-cloak class="text-success">Saved</span>

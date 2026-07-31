@@ -264,7 +264,7 @@ body:has([data-workbench]) #main-content > div {
                        @keydown.arrow-up.prevent="commandPaletteIndex = Math.max(commandPaletteIndex - 1, 0)"
                        @keydown.enter.prevent="executeCommandPaletteAtIndex()"
                        placeholder="Search commands…"
-                       class="flex-1 min-w-0 bg-transparent text-sm outline-none placeholder:text-muted-foreground/60" />
+                       class="flex-1 min-w-0 bg-transparent text-sm outline-none placeholder:text-muted-foreground/60"  aria-label="Search commands…"/>
             </div>
             <ul class="max-h-64 overflow-y-auto py-1 ide-scroll">
                 <template x-for="(cmd, idx) in filteredCommandPaletteList()" :key="cmd.id">

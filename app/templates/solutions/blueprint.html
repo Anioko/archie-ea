@@ -642,7 +642,7 @@
                                   @focus="narrativeSaving['{{ section_id }}'] = narrativeSaving['{{ section_id }}'] || 'idle'"
                                   rows="4"
                                   placeholder="Click to write architectural decisions and rationale for this viewpoint..."
-                                  class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring hover:ring-1 hover:ring-ring/30 hover:border-ring/50 transition-colors resize-y"></textarea>
+                                  class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring hover:ring-1 hover:ring-ring/30 hover:border-ring/50 transition-colors resize-y" aria-label="Click to write architectural decisions and rationale for this viewpoint..."></textarea>
                         <div class="flex items-center justify-end mt-1 h-4">
                             <span x-show="narrativeSaving['{{ section_id }}'] === 'saving'" x-cloak
                                   class="text-[10px] text-muted-foreground flex items-center gap-1">
@@ -835,7 +835,7 @@
                                   @focus="narrativeSaving['requirements_traceability'] = narrativeSaving['requirements_traceability'] || 'idle'"
                                   rows="4"
                                   placeholder="Describe the traceability approach, coverage methodology, and any known requirement gaps…"
-                                  class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring hover:ring-1 hover:ring-ring/30 hover:border-ring/50 transition-colors resize-y"></textarea>
+                                  class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring hover:ring-1 hover:ring-ring/30 hover:border-ring/50 transition-colors resize-y" aria-label="Describe the traceability approach, coverage methodology, and any known requirement gaps…"></textarea>
                         <div class="flex items-center justify-end mt-1 h-4">
                             <span x-show="narrativeSaving['requirements_traceability'] === 'saving'" x-cloak
                                   class="text-[10px] text-muted-foreground flex items-center gap-1">
@@ -1079,7 +1079,7 @@
                     placeholder="Add a driver, link an app, run inference…"
                     rows="2"
                     class="flex-1 resize-none rounded-lg border border-border px-3 py-2 text-xs
-                           focus:outline-none focus:ring-1 focus:ring-violet-400">
+                           focus:outline-none focus:ring-1 focus:ring-violet-400" aria-label="Add a driver, link an app, run inference…">
                 </textarea>
                 <button
                     @click="sendMessage()"
@@ -1140,7 +1140,7 @@
                     </template>
                     <template x-if="field.type === 'select'">
                         <select x-model="form[field.key]"
-                                class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring">
+                                class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Select...">
                             <option value="">Select...</option>
                             <template x-for="opt in field.options" :key="typeof opt === 'object' ? opt.v : opt">
                                 <option :value="typeof opt === 'object' ? opt.v : opt"
@@ -1464,7 +1464,7 @@ function codegenModal() {
                        @input="debouncedSearch()"
                        type="text"
                        placeholder="Search elements by name…"
-                       class="w-full pl-9 pr-4 py-2 text-sm bg-background border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-violet-500/50 placeholder:text-muted-foreground">
+                       class="w-full pl-9 pr-4 py-2 text-sm bg-background border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-violet-500/50 placeholder:text-muted-foreground" aria-label="Search elements by name…">
                 <div x-show="loading" class="absolute right-3 top-1/2 -translate-y-1/2">
                     <svg class="animate-spin h-4 w-4 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
                 </div>
@@ -1796,7 +1796,7 @@ document.addEventListener('click', function(e) {
         </div>
         <div class="p-4 space-y-3">
             <input type="search" x-model="query" @input="search()" placeholder="Search elements…"
-                   class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"/>
+                   class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30" aria-label="Search elements…"/>
             <div x-show="error" x-text="error" class="text-xs text-destructive" x-cloak></div>
             <div x-show="loading" x-cloak class="text-xs text-muted-foreground flex items-center gap-2">
                 <span class="animate-spin h-3 w-3 border-2 border-current border-t-transparent rounded-full inline-block"></span> Searching…

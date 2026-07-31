@@ -483,7 +483,7 @@
                                     :id="'req-moscow-' + activeReq.id"
                                     x-model="activeReq.moscow_priority"
                                     class="w-full flex h-9 rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                                >
+                                 aria-label="select">
                                     <option value="">— select —</option>
                                     <option value="MUST">MUST</option>
                                     <option value="SHOULD">SHOULD</option>
@@ -547,7 +547,7 @@
                                 rows="3"
                                 placeholder="Given… When… Then…"
                                 class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none"
-                            ></textarea>
+                             aria-label="Given… When… Then…"></textarea>
                         </div>
 
                         <!-- Generate Test Cases -->
@@ -586,7 +586,7 @@
                                 rows="2"
                                 placeholder="Key assumptions this requirement depends on…"
                                 class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none"
-                            ></textarea>
+                             aria-label="Key assumptions this requirement depends on…"></textarea>
                         </div>
 
                         <!-- Dependencies -->
@@ -598,7 +598,7 @@
                                 rows="2"
                                 placeholder="Other requirements or systems this depends on…"
                                 class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none"
-                            ></textarea>
+                             aria-label="Other requirements or systems this depends on…"></textarea>
                         </div>
 
                         <!-- Traceability info (read-only) -->
@@ -746,7 +746,7 @@
                                     x-model.number="activeReq.epic_parent_id"
                                     placeholder="Parent Epic ID (optional)"
                                     class="w-full flex h-8 rounded-md border border-input bg-background px-3 py-1 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                                >
+                                 aria-label="Parent Epic ID (optional)">
                             </div>
                         </div>
                         <div class="flex items-center gap-3">
@@ -779,7 +779,7 @@
                             <div class="flex gap-2">
                                 <input type="text" x-model="newDodItem" placeholder="Add DoD item..."
                                        class="flex-1 rounded-md border border-input bg-background px-2 py-1 text-sm"
-                                       @keydown.enter.prevent="addDodItem()">
+                                       @keydown.enter.prevent="addDodItem()" aria-label="Add DoD item...">
                                 <button @click="addDodItem()"
                                         class="rounded-md px-2 py-1 text-sm font-medium border border-input bg-background hover:bg-accent">
                                     Add

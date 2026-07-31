@@ -200,7 +200,7 @@
             </p>
             <textarea x-model="failureDescription" rows="3"
                       placeholder="e.g., When I enter an amount above 10,000 the order is not blocked as expected"
-                      class="w-full px-3 py-2 text-sm bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring"></textarea>
+                      class="w-full px-3 py-2 text-sm bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring" aria-label="e.g., When I enter an amount above 10,000 the order is not blocked as expected"></textarea>
             <button @click="requestAutoFix()"
                     :disabled="autoFixLoading || !failureDescription"
                     class="inline-flex items-center gap-2 px-4 py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600 disabled:opacity-50">

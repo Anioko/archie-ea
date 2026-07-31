@@ -37,23 +37,23 @@
             <div class="flex-1 min-w-[200px]">
                 <input type="text" placeholder="Search applications..."
                        x-model.debounce.300ms="filters.search" @input="load()"
-                       class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"><!-- entity-picker-ok -->
+                       class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Search applications..."><!-- entity-picker-ok -->
             </div>
             <select x-model="filters.readiness" @change="load()"
-                    class="rounded-md border border-input bg-background px-3 py-2 text-sm">
+                    class="rounded-md border border-input bg-background px-3 py-2 text-sm" aria-label="Filter by Readiness">
                 <option value="">All Readiness</option>
                 <option value="ready">Decision Ready</option>
                 <option value="not_ready">Not Ready</option>
             </select>
             <select x-model="filters.disposition" @change="load()"
-                    class="rounded-md border border-input bg-background px-3 py-2 text-sm">
+                    class="rounded-md border border-input bg-background px-3 py-2 text-sm" aria-label="Filter by Disposition">
                 <option value="">All Dispositions</option>
                 <template x-for="f in facets.dispositions" :key="f.value">
                     <option :value="f.value" x-text="f.label"></option>
                 </template>
             </select>
             <select x-model="filters.reviewStatus" @change="load()"
-                    class="rounded-md border border-input bg-background px-3 py-2 text-sm">
+                    class="rounded-md border border-input bg-background px-3 py-2 text-sm" aria-label="Filter by Review Status">
                 <option value="">All Review Status</option>
                 <option value="draft">Draft</option>
                 <option value="reviewed">Reviewed</option>
@@ -61,14 +61,14 @@
                 <option value="rejected">Rejected</option>
             </select>
             <select x-model="filters.lifecycle" @change="load()"
-                    class="rounded-md border border-input bg-background px-3 py-2 text-sm">
+                    class="rounded-md border border-input bg-background px-3 py-2 text-sm" aria-label="Filter by Lifecycle">
                 <option value="">All Lifecycle</option>
                 <template x-for="[ls, count] in Object.entries(facets.lifecycle_statuses || {})" :key="ls">
                     <option :value="ls" x-text="ls + ' (' + count + ')'"></option>
                 </template>
             </select>
             <select x-model="filters.businessUnit" @change="load()"
-                    class="rounded-md border border-input bg-background px-3 py-2 text-sm">
+                    class="rounded-md border border-input bg-background px-3 py-2 text-sm" aria-label="Filter by Business Unit">
                 <option value="">All Business Units</option>
                 <template x-for="bu in facets.business_units" :key="bu.value">
                     <option :value="bu.value" x-text="bu.label"></option>

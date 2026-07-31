@@ -113,7 +113,7 @@
                 <p class="text-xs text-muted-foreground mt-1">ArchiMate OEF XML files (.xml)</p>
                 <p class="text-xs text-primary mt-2" x-text="fileName"></p>
                 <input x-ref="oefFile" id="oef_file" name="oef_file" type="file" accept=".xml" class="sr-only"
-                    @change="fileName = $event.target.files[0]?.name || ''">
+                    @change="fileName = $event.target.files[0]?.name || ''" aria-label="Oef file">
             </div>
 
             <button type="submit"

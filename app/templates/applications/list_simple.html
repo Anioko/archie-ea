@@ -305,7 +305,7 @@
     <div x-data="{ selectedApps: [], bulkAction: '', bulkLoading: false }" class="mb-4" x-show="selectedApps.length > 0" x-cloak>
         <div class="flex items-center gap-3 p-3 rounded-lg border border-primary/20 bg-primary/5">
             <span class="text-sm font-medium text-foreground" x-text="selectedApps.length + ' selected'"></span>
-            <select x-model="bulkAction" class="h-8 rounded-md border border-input bg-background px-3 text-sm">
+            <select x-model="bulkAction" class="h-8 rounded-md border border-input bg-background px-3 text-sm" aria-label="Choose action...">
                 <option value="">Choose action...</option>
                 <option value="lifecycle">Change Lifecycle</option>
                 <option value="tag">Add Tag</option>

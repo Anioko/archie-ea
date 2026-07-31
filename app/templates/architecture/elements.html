@@ -236,13 +236,13 @@
                        x-model="searchQuery"
                        @input.debounce.300ms="page=1; fetchElements()"
                        placeholder="Search by name..."
-                       class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring pl-9">
+                       class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring pl-9" aria-label="Search by name...">
                 <svg class="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
             </div>
             {# Layer dropdown #}
             <select x-model="activeLayer" @change="onLayerSelect()"
                     data-testid="layer-select"
-                    class="h-9 rounded-md border border-input bg-transparent px-3 text-sm">
+                    class="h-9 rounded-md border border-input bg-transparent px-3 text-sm" aria-label="Filter by Layer">
                 <option value="">All Layers</option>
                 <option value="application">Application</option>
                 <option value="motivation">Motivation</option>
@@ -254,7 +254,7 @@
             {# Type dropdown — driven by selected layer #}
             <select x-model="filterType" @change="page=1; fetchElements()"
                     data-testid="type-select"
-                    class="h-9 rounded-md border border-input bg-transparent px-3 text-sm">
+                    class="h-9 rounded-md border border-input bg-transparent px-3 text-sm" aria-label="Filter by Type">
                 <option value="">All Types</option>
                 <template x-for="t in availableTypes" :key="t">
                     <option :value="t" x-text="t.replace(/_/g, ' ')"></option>
@@ -296,7 +296,7 @@
              data-testid="advanced-panel"
              class="mb-4 p-4 rounded-lg border border-border bg-muted/30 flex flex-wrap gap-3">
             <select x-model="filterScope" @change="page=1; fetchElements()"
-                    class="h-9 rounded-md border border-input bg-background px-3 text-sm">
+                    class="h-9 rounded-md border border-input bg-background px-3 text-sm" aria-label="Filter by Scope">
                 <option value="">All Scopes</option>
                 <option value="core">Core</option>
                 <option value="supporting">Supporting</option>
@@ -309,7 +309,7 @@
                 <option value="solution">Solution Building Block</option>
             </select>
             <select x-model="filterPlateau" @change="page=1; fetchElements()"
-                    class="h-9 rounded-md border border-input bg-background px-3 text-sm">
+                    class="h-9 rounded-md border border-input bg-background px-3 text-sm" aria-label="Filter by Plateaus">
                 <option value="">All Plateaus</option>
                 <option value="baseline">Baseline</option>
                 <option value="target">Target</option>

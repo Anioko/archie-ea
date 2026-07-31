@@ -42,7 +42,7 @@
       <div class="relative flex-1 max-w-sm">
         <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"></i>
         <input type="search" placeholder="Search work packages..." class="flex h-9 w-full rounded-md border border-input bg-background pl-9 pr-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            @input.debounce.300ms="setSearch($event.target.value)">
+            @input.debounce.300ms="setSearch($event.target.value)" aria-label="Search work packages...">
       </div>
       <div class="flex items-center gap-2 shrink-0">
         <select class="h-9 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -344,7 +344,7 @@
     </p>
     <input type="text" x-model="deleteConfirmText"
            class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring mb-4"
-           placeholder="DELETE" @keydown.enter="executeBulkDelete()">
+           placeholder="DELETE" @keydown.enter="executeBulkDelete()" aria-label="DELETE">
     <div class="flex justify-end gap-3">
       <button type="button" data-modal-close="bulk-delete-confirm-modal"
               class="inline-flex h-9 items-center justify-center rounded-md border border-input bg-background px-4 text-sm font-medium hover:bg-accent transition-colors">Cancel</button>

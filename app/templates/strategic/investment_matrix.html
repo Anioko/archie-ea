@@ -80,7 +80,7 @@ const INVESTMENT_CAPABILITIES = {{ capability_scores | tojson }};
                         aria-label="Search capabilities">
                 </div>
                 <select x-model="priorityFilter" @change="currentPage = 1; syncSelectAll()"
-                    class="px-3 py-2 border rounded-md text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                    class="px-3 py-2 border rounded-md text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Filter by Priority">
                     <option value="">All Priorities</option>
                     <option value="CRITICAL">Critical</option>
                     <option value="HIGH">High</option>

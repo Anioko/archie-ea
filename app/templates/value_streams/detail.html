@@ -132,7 +132,7 @@
                 <div class="relative">
                     <input type="text" x-model="capabilitySearch" @input.debounce.300ms="searchCapabilities()"
                            placeholder="Add capability to grid..."
-                           class="flex h-9 w-64 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                           class="flex h-9 w-64 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" aria-label="Add capability to grid...">
                     <div x-show="capabilityResults.length > 0" x-cloak @click.outside="capabilityResults = []"
                          class="absolute z-10 mt-1 w-full rounded-md border border-border bg-card shadow-lg max-h-64 overflow-y-auto">
                         <template x-for="cap in capabilityResults" :key="cap.id">

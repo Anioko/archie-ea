@@ -142,7 +142,7 @@
         placeholder="Ask about this code or request a change... (Enter to send, Shift+Enter for newline)"
         :disabled="isStreaming"
         x-ref="input"
-      ></textarea>
+       aria-label="Ask about this code or request a change... (Enter to send, Shift+Enter for newline)"></textarea>
       <button
         @click="send()"
         :disabled="!input.trim() || isStreaming"

@@ -102,12 +102,12 @@
                                     <input type="text" placeholder="Owner name" maxlength="100"
                                            class="w-full h-8 px-2 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-1 focus:ring-ring"
                                            :value="app.application_owner || ''"
-                                           @input="app.application_owner = $event.target.value; app._dirty = true; app._saved = false">
+                                           @input="app.application_owner = $event.target.value; app._dirty = true; app._saved = false" aria-label="Owner name">
                                 </td>
                                 <td class="px-4 py-3">
                                     <select class="w-full h-8 px-2 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-1 focus:ring-ring"
                                             :value="app.business_criticality || ''"
-                                            @change="app.business_criticality = $event.target.value; app._dirty = true; app._saved = false">
+                                            @change="app.business_criticality = $event.target.value; app._dirty = true; app._saved = false" aria-label="Select...">
                                         <option value="">Select...</option>
                                         <option value="Critical">Critical</option>
                                         <option value="High">High</option>

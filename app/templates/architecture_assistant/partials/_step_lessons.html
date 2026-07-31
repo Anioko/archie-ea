@@ -44,7 +44,7 @@
                     <input type="text"
                            class="w-full border border-border rounded px-2 py-1 bg-background text-foreground text-xs"
                            x-model="metric.metric_name"
-                           placeholder="e.g. Cost Reduction">
+                           placeholder="e.g. Cost Reduction" aria-label="e.g. Cost Reduction">
                   </td>
                   <td class="p-2">
                     <input type="text"
@@ -123,11 +123,11 @@
             <textarea class="w-full border border-border rounded px-2 py-1 bg-background text-foreground text-xs mb-2"
                       rows="2"
                       placeholder="What happened?"
-                      x-model="lesson.description"></textarea>
+                      x-model="lesson.description" aria-label="What happened?"></textarea>
             <input type="text"
                    class="w-full border border-border rounded px-2 py-1 bg-background text-foreground text-xs"
                    placeholder="Recommendation for future cycles..."
-                   x-model="lesson.recommendation">
+                   x-model="lesson.recommendation" aria-label="Recommendation for future cycles...">
           </div>
         </template>
       </div>

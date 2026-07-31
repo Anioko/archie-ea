@@ -32,7 +32,7 @@
                    id="{{ context_id }}-search-filter" 
                    {% if filters and filters[0].alpine %}@input="{{ filters[0].handler.replace('@change=', '').replace('filterTable', 'filterTable') }}"{% else %}@input="filterTable('{{ context_id }}')"{% endif %}
                    placeholder="Search capabilities..." 
-                   class="px-3 py-2 border border-input rounded-md text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                   class="px-3 py-2 border border-input rounded-md text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Search capabilities...">
         </div>
         {% endif %}
         
@@ -1702,7 +1702,7 @@
                             <p class="text-sm text-muted-foreground">L1-L4 capabilities with application mapping status</p>
                         </div>
                         <div class="flex items-center gap-4">
-                            <select id="acm-domain-filter" @change="filterACMCapabilities()" class="px-3 py-2 border border-input rounded-md text-sm">
+                            <select id="acm-domain-filter" @change="filterACMCapabilities()" class="px-3 py-2 border border-input rounded-md text-sm" aria-label="Filter by Domain">
                                 <option value="">All Domains</option>
                                 <option value="USER-EXPERIENCE">User Experience</option>
                                 <option value="APPLICATION-SERVICES">Application Services</option>
@@ -1712,13 +1712,13 @@
                                 <option value="AI-ANALYTICS">AI & Analytics</option>
                                 <option value="COMMUNICATION">Communication</option>
                             </select>
-                            <select id="acm-level-filter" @change="filterACMCapabilities()" class="px-3 py-2 border border-input rounded-md text-sm">
+                            <select id="acm-level-filter" @change="filterACMCapabilities()" class="px-3 py-2 border border-input rounded-md text-sm" aria-label="Filter by Level">
                                 <option value="">All Levels</option>
                                 <option value="L1">L1 - Capability Area</option>
                                 <option value="L2">L2 - Capability Group</option>
                                 <option value="L3">L3 - Specific Capability</option>
                             </select>
-                            <select id="acm-status-filter" @change="filterACMCapabilities()" class="px-3 py-2 border border-input rounded-md text-sm">
+                            <select id="acm-status-filter" @change="filterACMCapabilities()" class="px-3 py-2 border border-input rounded-md text-sm" aria-label="Filter by Status">
                                 <option value="">All Statuses</option>
                                 <option value="mapped">Mapped</option>
                                 <option value="unmapped">Unmapped (Gap)</option>
@@ -2298,21 +2298,21 @@
                                     </div>
                                 </div>
                                 <div class="grid grid-cols-4 gap-3">
-                                    <select id="wp-children-filter-status" @change="filterWPChildren()" class="px-4 py-2 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                                    <select id="wp-children-filter-status" @change="filterWPChildren()" class="px-4 py-2 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Filter by Status">
                                         <option value="">All Statuses</option>
                                         <option value="planned">Planned</option>
                                         <option value="in_progress">In Progress</option>
                                         <option value="completed">Completed</option>
                                         <option value="blocked">Blocked</option>
                                     </select>
-                                    <select id="wp-children-filter-priority" @change="filterWPChildren()" class="px-4 py-2 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                                    <select id="wp-children-filter-priority" @change="filterWPChildren()" class="px-4 py-2 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Filter by Priority">
                                         <option value="">All Priorities</option>
                                         <option value="critical">Critical</option>
                                         <option value="high">High</option>
                                         <option value="medium">Medium</option>
                                         <option value="low">Low</option>
                                     </select>
-                                    <select id="wp-children-filter-level" @change="filterWPChildren()" class="px-4 py-2 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                                    <select id="wp-children-filter-level" @change="filterWPChildren()" class="px-4 py-2 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Filter by Level">
                                         <option value="">All Levels</option>
                                         <option value="1">Level 1</option>
                                         <option value="2">Level 2</option>
@@ -2648,7 +2648,7 @@
                                 id="acm-filter-type"
                                 class="w-full px-3 py-2 text-sm border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                                 @change="filterACMApplications()"
-                            >
+                             aria-label="Filter by Type">
                                 <option value="">All Types</option>
                             </select>
                         </div>
@@ -2659,7 +2659,7 @@
                                 id="acm-filter-domain"
                                 class="w-full px-3 py-2 text-sm border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                                 @change="filterACMApplications()"
-                            >
+                             aria-label="Filter by Domain">
                                 <option value="">All Domains</option>
                             </select>
                         </div>
@@ -2777,7 +2777,7 @@
                                 id="process-filter-type"
                                 class="w-full px-3 py-2 text-sm border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                                 @change="filterProcessApplications()"
-                            >
+                             aria-label="Filter by Type">
                                 <option value="">All Types</option>
                             </select>
                         </div>
@@ -2788,7 +2788,7 @@
                                 id="process-filter-domain"
                                 class="w-full px-3 py-2 text-sm border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                                 @change="filterProcessApplications()"
-                            >
+                             aria-label="Filter by Domain">
                                 <option value="">All Domains</option>
                             </select>
                         </div>
@@ -2910,7 +2910,7 @@
                             id="filter-type"
                             class="w-full px-3 py-2 text-sm border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                             @change="filterApplications()"
-                        >
+                         aria-label="Filter by Type">
                             <option value="">All Types</option>
                         </select>
                     </div>
@@ -2921,7 +2921,7 @@
                             id="filter-domain"
                             class="w-full px-3 py-2 text-sm border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                             @change="filterApplications()"
-                        >
+                         aria-label="Filter by Domain">
                             <option value="">All Domains</option>
                         </select>
                     </div>

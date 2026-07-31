@@ -281,7 +281,7 @@
                                placeholder="describe this field…"
                                :disabled="el.fields_status === 'confirmed' && !el._editing"
                                class="w-full bg-transparent border-0 outline-none text-[11px] text-muted-foreground disabled:cursor-default focus:ring-0 focus:outline-none"
-                               :class="el.fields_status !== 'confirmed' || el._editing ? 'border-b border-dashed border-border/60 focus:border-primary/50' : ''"/>
+                               :class="el.fields_status !== 'confirmed' || el._editing ? 'border-b border-dashed border-border/60 focus:border-primary/50' : ''" aria-label="describe this field…"/>
                       </td>
                       <td class="py-1 text-center">
                         <button x-show="el._editing || el.fields_status !== 'confirmed'"

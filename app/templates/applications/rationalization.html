@@ -1163,7 +1163,7 @@
                            @input.debounce.300ms="usearch()"
                            placeholder="Search by name or email..."
                            class="w-full h-8 px-3 rounded-md border border-input bg-background text-xs focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent"
-                           :required="true" autocomplete="off">
+                           :required="true" autocomplete="off" aria-label="Search by name or email...">
                     <div x-show="ushow" x-cloak class="absolute z-20 mt-1 w-full bg-popover border border-border rounded-md shadow-lg max-h-40 overflow-y-auto">
                       <template x-for="u in ures" :key="u.id">
                         <button type="button" @click="uselect(u)" class="w-full px-3 py-1.5 text-left text-sm hover:bg-muted flex items-center justify-between">
@@ -1180,7 +1180,7 @@
                             x-model="transitionNotes"
                             rows="2"
                             placeholder="Add context for this decision…"
-                            class="w-full px-3 py-2 rounded-md border border-input bg-background text-xs focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent resize-none"></textarea>
+                            class="w-full px-3 py-2 rounded-md border border-input bg-background text-xs focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent resize-none" aria-label="Add context for this decision…"></textarea>
                 </div>
                 <div class="flex gap-2">
                   <button @click="submitTransition()"

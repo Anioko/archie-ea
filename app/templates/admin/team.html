@@ -78,7 +78,7 @@
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             <input type="hidden" name="user_id" value="{{ member.id }}">
                             <select name="role" onchange="this.form.submit()"
-                                class="rounded-md border-border shadow-sm focus:border-primary focus:ring-primary sm:text-sm">
+                                class="rounded-md border-border shadow-sm focus:border-primary focus:ring-primary sm:text-sm" aria-label="Role">
                                 {% for r in valid_roles %}
                                     <option value="{{ r }}" {% if role_map[member.id] == r %}selected{% endif %}>
                                         {{ r }}

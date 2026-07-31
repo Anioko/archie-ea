@@ -199,7 +199,7 @@ x-cloak>
                 <!-- Persona Selector -->
                 <div class="relative flex-1 min-w-[140px] max-w-[180px]">
                     <select id="persona-selector"
-                        class="h-9 w-full appearance-none rounded-lg border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring font-medium">
+                        class="h-9 w-full appearance-none rounded-lg border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring font-medium" aria-label="Select Role">
                         <option value="">Select Role</option>
                         <optgroup label="AI Architects (governed, live-data)">
                             <option value="enterprise_architect" selected>AI Enterprise Architect</option>
@@ -338,7 +338,7 @@ x-cloak>
                                                       x-model="rejectReason"
                                                       rows="2"
                                                       class="w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                                                      placeholder="Why are you rejecting this operation?"></textarea>
+                                                      placeholder="Why are you rejecting this operation?" aria-label="Why are you rejecting this operation?"></textarea>
                                             <div class="flex gap-2">
                                                 <button type="button" @click="confirmReject(item.id)"
                                                         :disabled="busyIds[item.id]"
@@ -769,7 +769,7 @@ x-cloak>
                                 rows="3"
                                 class="w-full resize-none rounded-2xl border-0 bg-transparent px-4 py-3 pr-14 text-sm placeholder:text-muted-foreground focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
                                 placeholder="Ask me about architecture, capabilities, gaps, or vendor analysis..."
-                                ></textarea>
+                                 aria-label="Ask me about architecture, capabilities, gaps, or vendor analysis..."></textarea>
                                 <button type="submit" id="send-btn"
                                     class="absolute bottom-2.5 right-2.5 inline-flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 shadow-sm"
                                     aria-label="Send message" title="Send message">

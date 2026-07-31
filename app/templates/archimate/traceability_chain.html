@@ -429,7 +429,7 @@
             <p class="text-sm text-muted-foreground mb-3" x-show="linkSource" x-cloak><span x-text="'Linking: ' + (linkSource && linkSource.name)"></span></p>
             <div class="mb-4">
                 <label class="block text-sm font-medium mb-1" x-text="linkType === 'driver-goal' ? 'Select Goal' : 'Select Application'"></label>
-                <select x-model="linkTargetId" class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                <select x-model="linkTargetId" class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" aria-label="Select">
                     <option value="">— Select —</option>
                     <template x-for="t in linkTargets" :key="t.id">
                         <option :value="t.id" x-text="t.name"></option>

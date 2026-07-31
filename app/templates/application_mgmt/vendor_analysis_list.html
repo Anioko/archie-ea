@@ -72,7 +72,7 @@
         class="w-full pl-9 pr-3 py-2 border border-border rounded-md text-sm bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
         aria-label="Search analyses">
     </div>
-    <select x-model="statusFilter" @change="loadAnalyses(1)" class="px-3 py-2 border border-border rounded-md text-sm bg-card text-foreground">
+    <select x-model="statusFilter" @change="loadAnalyses(1)" class="px-3 py-2 border border-border rounded-md text-sm bg-card text-foreground" aria-label="Filter by Status">
       <option value="">All Statuses</option>
       <option value="draft">Draft</option>
       <option value="running">Running</option>

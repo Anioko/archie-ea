@@ -119,9 +119,9 @@
                placeholder="Search tasks..."
                x-model="filterText"
                @input.debounce.300ms="_recompute()"
-               class="h-7 px-2 text-xs bg-card border border-border rounded text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary w-48">
+               class="h-7 px-2 text-xs bg-card border border-border rounded text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary w-48" aria-label="Search tasks...">
         <select x-model="filterStatus"
-                @change="$nextTick(() => _recompute())"
+                @change="$nextTick(() = aria-label="Filter by status"> _recompute())"
                 class="h-7 px-2 text-xs bg-card border border-border rounded text-foreground focus:outline-none focus:ring-1 focus:ring-primary">
             <option value="">All statuses</option>
             <template x-for="s in getDistinctStatuses()" :key="s">

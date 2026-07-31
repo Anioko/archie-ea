@@ -27,7 +27,7 @@
                    x-model="searchQuery"
                    @input.debounce.300ms="search()"
                    placeholder="Search applications by name…"
-                   class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring" />
+                   class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"  aria-label="Search applications by name…"/>
             <div x-show="searching" class="absolute right-2 top-2 text-muted-foreground text-xs">searching…</div>
         </div>
 

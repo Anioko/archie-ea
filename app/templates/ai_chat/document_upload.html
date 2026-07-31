@@ -77,7 +77,7 @@
                     <select
                         x-model="targetApplicationId"
                         class="w-full text-xs px-2 py-1.5 border rounded-md bg-background"
-                    >
+                     aria-label="Select application (optional)">
                         <option value="">Select application (optional)</option>
                         <template x-for="app in applicationsList" :key="app.id">
                             <option :value="app.id" x-text="app.name"></option>
@@ -100,7 +100,7 @@
                     <select
                         x-model="targetVendorId"
                         class="w-full text-xs px-2 py-1.5 border rounded-md bg-background"
-                    >
+                     aria-label="Select vendor (optional)">
                         <option value="">Select vendor (optional)</option>
                         <template x-for="vendor in vendorsList" :key="vendor.id">
                             <option :value="vendor.id" x-text="vendor.name"></option>

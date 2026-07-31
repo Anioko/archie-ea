@@ -227,7 +227,7 @@
                 <p class="text-xs text-muted-foreground">Decide how this change should be handled in the ADM.</p>
                 <select x-model="selectedDisposition"
                         id="select-disposition"
-                        class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                        class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" aria-label="Select disposition…">
                     <option value="">Select disposition…</option>
                     {% for d in valid_dispositions %}
                     <option value="{{ d }}" {% if cr.disposition == d %}selected{% endif %}>{{ d | replace('_', ' ') | title }}</option>
@@ -253,7 +253,7 @@
                           id="input-notice-text"
                           placeholder="Describe the scope and outcome of this change…"
                           rows="4"
-                          class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"></textarea>
+                          class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Describe the scope and outcome of this change…"></textarea>
                 <button @click="issueNotice()"
                         :disabled="noticeLoading"
                         id="btn-issue-notice"

@@ -198,7 +198,7 @@
             </template>
         </select>
         <select x-model="sourceFilter" @change="currentPage = 1; loadElements()"
-            class="px-3 py-2 border rounded-md text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            class="px-3 py-2 border rounded-md text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Filter by Source">
             <option value="">All Sources</option>
             <option value="portfolio">Portfolio</option>
             <option value="architecture">Architecture</option>

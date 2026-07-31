@@ -272,7 +272,7 @@
                         <input type="url" placeholder="Evidence URL" title="Evidence URL"
                                class="hidden sm:block text-xs border rounded px-2 py-1 bg-background w-32 focus:outline-none focus:ring-1 focus:ring-primary"
                                :value="cond.evidence_url || ''"
-                               @blur="patch(idx, 'evidence_url', $event.target.value)">
+                               @blur="patch(idx, 'evidence_url', $event.target.value)" aria-label="Evidence URL">
                     </div>
                 </div>
             </template>

@@ -54,7 +54,7 @@
         <div class="p-3 border-b border-border">
             <h2 class="text-sm font-semibold text-foreground">Steps</h2>
             <input type="text" x-model="paletteSearch" placeholder="Search steps..."
-                   class="mt-2 w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring">
+                   class="mt-2 w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Search steps...">
         </div>
         <template x-for="category in paletteCategories" :key="category">
             <div class="px-2 py-1">
@@ -89,7 +89,7 @@
         {# Toolbar #}
         <div class="flex items-center gap-2 px-3 py-2 border-b border-border bg-card">
             <input type="text" x-model="workflowName" placeholder="Workflow name..."
-                   class="rounded-md border border-input bg-background px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring w-64">
+                   class="rounded-md border border-input bg-background px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring w-64" aria-label="Workflow name...">
             <div class="flex-1"></div>
             <button @click="compileWorkflow()" class="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
                 <svg class="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 2l8 6-8 6z"/></svg>

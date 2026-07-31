@@ -288,7 +288,7 @@
                 <div class="relative">
                     <input type="text" x-model="roleSearch" @input.debounce.300ms="searchUsers()" @keydown.escape="cancelEditRole()"
                            class="w-full px-2 py-1 text-sm rounded-md border border-input bg-background text-foreground focus:ring-1 focus:ring-primary"
-                           placeholder="Search by name or email..." x-ref="roleInput_{{ role_field }}">
+                           placeholder="Search by name or email..." x-ref="roleInput_{{ role_field }}" aria-label="Search by name or email...">
                     <template x-if="roleResults.length > 0">
                         <div class="absolute z-20 mt-1 w-full bg-popover border border-border rounded-md shadow-lg max-h-40 overflow-y-auto">
                             <template x-for="u in roleResults" :key="u.id">

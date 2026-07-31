@@ -234,7 +234,7 @@
                                                 <template x-if="tmpl.property_type === 'enum'">
                                                     <select class="flex-1 text-xs border border-input rounded px-2 py-1 bg-background"
                                                             :value="getPropertyValue(code, el.id, tmpl.property_key)"
-                                                            @change="setPropertyValue(code, el.id, tmpl.property_key, $event.target.value)">
+                                                            @change="setPropertyValue(code, el.id, tmpl.property_key, $event.target.value)" aria-label="Select...">
                                                         <option value="">Select...</option>
                                                         <template x-for="opt in (tmpl.enum_options || [])" :key="opt">
                                                             <option :value="opt" :selected="getPropertyValue(code, el.id, tmpl.property_key) === opt" x-text="opt"></option>

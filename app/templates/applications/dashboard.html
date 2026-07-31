@@ -336,8 +336,8 @@
             </template>
             <template x-if="correcting">
               <div x-data="{ name: '{{ archimate_info.name | replace("'", "\\'") }}', type: '{{ archimate_info.type | replace("'", "\\'") }}' }" class="flex gap-2 items-center flex-wrap">
-                <input x-model="name" class="text-xs border rounded px-2 py-1 w-32 bg-background text-foreground border-border" placeholder="Name">
-                <input x-model="type" class="text-xs border rounded px-2 py-1 w-32 bg-background text-foreground border-border" placeholder="Type">
+                <input x-model="name" class="text-xs border rounded px-2 py-1 w-32 bg-background text-foreground border-border" placeholder="Name" aria-label="Name">
+                <input x-model="type" class="text-xs border rounded px-2 py-1 w-32 bg-background text-foreground border-border" placeholder="Type" aria-label="Type">
                 <button @click="fetch('/dashboard/api/archimate-elements/{{ archimate_info.id }}/correct', {method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken':'{{ csrf_token() }}'}, body:JSON.stringify({action:'correct', name, type})}).then(()=>{correcting=false; confirmed=true})"
                   class="text-xs bg-primary text-primary-foreground rounded px-2 py-1">Save</button>
                 <button @click="correcting=false"

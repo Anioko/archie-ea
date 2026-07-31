@@ -128,7 +128,7 @@
                 <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"></i>
                 <input type="text" x-model="searchQuery" @input.debounce.300ms="searchElements()"
                        placeholder="Search ArchiMate elements..."
-                       class="w-full pl-9 pr-3 py-2 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                       class="w-full pl-9 pr-3 py-2 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Search ArchiMate elements...">
             </div>
 
             <!-- Search results dropdown -->

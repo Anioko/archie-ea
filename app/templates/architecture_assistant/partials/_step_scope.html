@@ -85,7 +85,7 @@
     <div class="relative">
       <textarea x-model="scope.business_problem" rows="3" @input="onScopeEdited()"
         class="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-        placeholder="Describe the business problem this solution addresses..."></textarea>
+        placeholder="Describe the business problem this solution addresses..." aria-label="Describe the business problem this solution addresses..."></textarea>
       <button @click="generateProblemStatement()" type="button"
         :disabled="!llmAvailable || problemLoading"
         :title="llmAvailable ? 'Generate with AI' : 'Requires LLM configuration'"
@@ -262,7 +262,7 @@
     <div class="relative">
       <input type="text" x-model="archimateSearch" @input.debounce.300ms="searchArchimateElements()"
         class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-        placeholder="Search any ArchiMate element (e.g. ApplicationService, BusinessProcess, Node)...">
+        placeholder="Search any ArchiMate element (e.g. ApplicationService, BusinessProcess, Node)..." aria-label="Search any ArchiMate element (e.g. ApplicationService, BusinessProcess, Node)...">
       <div x-show="archimateSearchResults.length > 0 || (archimateSearch.trim().length >= 2 && !showCreateElementForm)" x-cloak
         class="absolute z-10 mt-1 w-full rounded-md border border-border bg-background shadow-lg max-h-60 overflow-y-auto">
         <template x-for="el in archimateSearchResults" :key="el.id">
@@ -296,7 +296,7 @@
         <div class="text-xs font-medium text-muted-foreground mb-1">Create new ArchiMate element</div>
         <input type="text" x-model="newElement.name"
           class="flex h-8 w-full rounded-md border border-input bg-transparent px-2 py-1 text-sm"
-          placeholder="Element name">
+          placeholder="Element name" aria-label="Element name">
         <div class="grid grid-cols-2 gap-2">
           <select x-model="newElement.layer" @change="onLayerChange()"
             class="flex h-8 w-full rounded-md border border-input bg-transparent px-2 py-1 text-xs">

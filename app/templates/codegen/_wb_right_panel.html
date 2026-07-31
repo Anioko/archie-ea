@@ -246,7 +246,7 @@
                                     </button>
                                     <div x-show="filesOpen" x-cloak class="mt-1.5 space-y-1">
                                         <input type="text" x-model="fileFilter" placeholder="Filter path…"
-                                               class="w-full text-[10px] border border-border rounded px-2 py-1 bg-background mb-1"/>
+                                               class="w-full text-[10px] border border-border rounded px-2 py-1 bg-background mb-1" aria-label="Filter path…"/>
                                         <div class="max-h-56 overflow-y-auto ide-scroll rounded border border-border divide-y divide-border">
                                             <template x-for="row in qualityDetails.artifact_file_signals.filter(r => !fileFilter || r.path.toLowerCase().includes(fileFilter.toLowerCase()))" :key="row.path">
                                                 <div class="flex items-center gap-2 px-2 py-1.5 text-[10px] hover:bg-muted/30">
@@ -536,11 +536,11 @@
                                     </template>
                                     <div x-show="iacShowForm && !iacDeployResult" x-cloak class="space-y-1.5 mt-1.5">
                                         <input type="text" x-model="iacOwner" placeholder="Owner (org or user)"
-                                               class="w-full text-[10px] border border-input rounded px-2 py-1 bg-background"/>
+                                               class="w-full text-[10px] border border-input rounded px-2 py-1 bg-background" aria-label="Owner (org or user)"/>
                                         <input type="text" x-model="iacRepo" placeholder="Repository name"
-                                               class="w-full text-[10px] border border-input rounded px-2 py-1 bg-background"/>
+                                               class="w-full text-[10px] border border-input rounded px-2 py-1 bg-background" aria-label="Repository name"/>
                                         <input type="text" x-model="iacBaseBranch" placeholder="Base branch (default: main)"
-                                               class="w-full text-[10px] border border-input rounded px-2 py-1 bg-background"/>
+                                               class="w-full text-[10px] border border-input rounded px-2 py-1 bg-background" aria-label="Base branch (default: main)"/>
                                         <button type="button" @click="deployIac()"
                                                 :disabled="iacDeploying || !iacOwner || !iacRepo"
                                                 class="w-full h-7 text-[10px] font-semibold bg-orange-600 hover:bg-orange-700 text-primary-foreground rounded transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5">
@@ -903,9 +903,9 @@ eas build --platform android --profile preview</pre>
                             </p>
                             <div class="grid grid-cols-1 gap-1.5">
                                 <input type="number" x-model="intelligenceTraceElementId" placeholder="ArchiMate source_element_id (for Traceability)"
-                                       class="w-full bg-background rounded border border-border px-2 py-1 text-[10px] text-foreground placeholder:text-muted-foreground"/>
+                                       class="w-full bg-background rounded border border-border px-2 py-1 text-[10px] text-foreground placeholder:text-muted-foreground" aria-label="ArchiMate source_element_id (for Traceability)"/>
                                 <textarea x-model="intelligenceFailureText" rows="2" placeholder="Paste failure log or error text (for Failure triage)"
-                                          class="w-full bg-background rounded border border-border px-2 py-1 text-[10px] text-foreground placeholder:text-muted-foreground resize-none"></textarea>
+                                          class="w-full bg-background rounded border border-border px-2 py-1 text-[10px] text-foreground placeholder:text-muted-foreground resize-none" aria-label="Paste failure log or error text (for Failure triage)"></textarea>
                             </div>
                             <div class="flex flex-wrap gap-1">
                                 <button type="button" @click="runCodegenIntelligence('journey_copilot_tips')" :disabled="intelligenceLoading"
@@ -954,7 +954,7 @@ eas build --platform android --profile preview</pre>
                         <div class="flex items-center gap-2">
                             <input x-model="intentInstruction" @keydown.enter="buildIntentPlan()" :disabled="intentPlanning"
                                    placeholder="Describe the change goal..."
-                                   class="flex-1 bg-input rounded-lg px-3 py-1.5 text-[11px] text-foreground placeholder:text-muted-foreground border border-border focus:outline-none focus:border-primary/50 transition-colors"/>
+                                   class="flex-1 bg-input rounded-lg px-3 py-1.5 text-[11px] text-foreground placeholder:text-muted-foreground border border-border focus:outline-none focus:border-primary/50 transition-colors" aria-label="Describe the change goal..."/>
                             <button @click="buildIntentPlan()" :disabled="intentPlanning || !intentInstruction.trim()"
                                     class="h-7 px-2.5 rounded-lg bg-violet-500/15 text-violet-600 border border-violet-500/30 hover:bg-violet-500/25 disabled:opacity-50 transition-colors text-[10px] font-semibold flex items-center gap-1.5">
                                 <svg x-show="intentPlanning" x-cloak class="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
@@ -1104,7 +1104,7 @@ eas build --platform android --profile preview</pre>
                             <p class="leading-relaxed" x-text="chatVerifyGateMessage()"></p>
                             <input x-model="chatOverrideReason"
                                    placeholder="Override reason (required, min 12 chars)"
-                                   class="w-full bg-background rounded border border-amber-500/30 px-2 py-1 text-[10px] text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-amber-500/60 transition-colors"/>
+                                   class="w-full bg-background rounded border border-amber-500/30 px-2 py-1 text-[10px] text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-amber-500/60 transition-colors" aria-label="Override reason (required, min 12 chars)"/>
                             <div class="flex items-center gap-2">
                                 <button @click="runIntentVerifyLoop()" :disabled="intentVerifyRunning"
                                         class="h-6 px-2 rounded border border-emerald-500/30 bg-emerald-500/10 text-emerald-600 text-[10px] font-semibold hover:bg-emerald-500/20 disabled:opacity-50 transition-colors">
@@ -1124,7 +1124,7 @@ eas build --platform android --profile preview</pre>
                                    placeholder="Describe the change… (Ctrl+Enter to send)"
                                    class="w-full bg-input rounded-lg px-3 py-2 text-[11px] text-foreground placeholder:text-muted-foreground border border-border focus:outline-none focus:border-primary/50 transition-colors resize-none leading-relaxed"
                                    x-ref="chatTextarea"
-                                   @input="$el.style.height='auto'; $el.style.height=Math.min($el.scrollHeight, 240)+'px'"></textarea>
+                                   @input="$el.style.height='auto'; $el.style.height=Math.min($el.scrollHeight, 240)+'px'" aria-label="Describe the change… (Ctrl+Enter to send)"></textarea>
                             <div class="flex items-center gap-2">
                             <button @click="chatRegenerate()" :disabled="chatSending || !chatInstruction.trim() || isChatBlockedByVerify()"
                                     class="h-7 px-3 flex items-center gap-1.5 rounded-lg bg-primary/15 text-primary border border-primary/30 hover:bg-primary/25 disabled:opacity-50 transition-colors text-[10px] font-semibold">

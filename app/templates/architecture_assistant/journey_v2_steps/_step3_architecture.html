@@ -701,7 +701,7 @@
                                                         <template x-if="tmpl.property_type === 'enum'">
                                                             <select class="flex-1 text-xs border border-input rounded px-2 py-1 bg-background"
                                                                     :value="getPropertyValue(el.acm_domain, el.id || el.name, tmpl.property_key)"
-                                                                    @change="setPropertyValue(el.acm_domain, el.id || el.name, tmpl.property_key, $event.target.value)">
+                                                                    @change="setPropertyValue(el.acm_domain, el.id || el.name, tmpl.property_key, $event.target.value)" aria-label="Select...">
                                                                 <option value="">Select...</option>
                                                                 <template x-for="opt in (tmpl.enum_options || [])" :key="opt">
                                                                     <option :value="opt" :selected="getPropertyValue(el.acm_domain, el.id || el.name, tmpl.property_key) === opt" x-text="opt"></option>
@@ -809,9 +809,9 @@
                                                 {# Add rule form #}
                                                 <div class="space-y-1.5 pt-1 border-t border-border/40">
                                                     <input type="text" x-model="brName" placeholder="Rule name (e.g. must-validate-email)"
-                                                           class="w-full text-xs border border-input rounded px-2 py-1 bg-background"/>
+                                                           class="w-full text-xs border border-input rounded px-2 py-1 bg-background" aria-label="Rule name (e.g. must-validate-email)"/>
                                                     <input type="text" x-model="brCond" placeholder="Condition / assertion (e.g. email must match RFC 5322)"
-                                                           class="w-full text-xs border border-input rounded px-2 py-1 bg-background"/>
+                                                           class="w-full text-xs border border-input rounded px-2 py-1 bg-background" aria-label="Condition / assertion (e.g. email must match RFC 5322)"/>
                                                     <div class="flex gap-2">
                                                         <select x-model="brSev" class="text-xs border border-input rounded px-2 py-1 bg-background">
                                                             <option value="must">must</option>

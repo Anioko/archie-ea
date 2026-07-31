@@ -592,7 +592,7 @@
           class="chat-input"
           rows="1"
           x-ref="chatInput"
-        ></textarea>
+         aria-label="Type your message or paste document text here..."></textarea>
         <button type="button"
           @click="sendMessage()"
           :disabled="!currentMessage.trim() || isProcessing"

@@ -230,10 +230,10 @@ Usage:
             <div class="flex-1 min-w-[200px]">
                 <input type="text" id="archimate-search-{{ container_id }}" placeholder="Search work packages..."
                     class="w-full px-4 py-2 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    @input="filterArchimateItems{{ container_id }}()">
+                    @input="filterArchimateItems{{ container_id }}()" aria-label="Search work packages...">
             </div>
             <select id="archimate-status-filter-{{ container_id }}" @change="filterArchimateItems{{ container_id }}()"
-                class="px-3 py-2 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                class="px-3 py-2 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Filter by Status">
                 <option value="">All Statuses</option>
                 <option value="planned">Planned</option>
                 <option value="in_progress">In Progress</option>

@@ -122,7 +122,7 @@
                     <input type="number" x-model.number="structuredIntake.budget_min" placeholder="Min budget (&pound;)"
                            class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Budget Range">
                     <input type="number" x-model.number="structuredIntake.budget_max" placeholder="Max budget (&pound;)"
-                           class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                           class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Max budget (&pound;)">
                 </div>
             </div>
 
@@ -160,9 +160,9 @@
                     <input type="number" x-model.number="structuredIntake.user_count" placeholder="End users"
                            class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Scale Indicators">
                     <input type="number" x-model.number="structuredIntake.transaction_volume" placeholder="Daily transactions"
-                           class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                           class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Daily transactions">
                     <input type="number" x-model.number="structuredIntake.data_volume_gb" placeholder="Data volume (GB)"
-                           class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                           class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Data volume (GB)">
                 </div>
             </div>
         </div>
@@ -363,14 +363,14 @@
                                     </div>
                                     <textarea x-model="pickerState[idx].contextText" rows="1"
                                               placeholder="Additional context (optional)..."
-                                              class="w-full rounded-md border border-input bg-background px-3 py-2 text-xs focus:ring-2 focus:ring-ring focus:outline-none text-muted-foreground"></textarea>
+                                              class="w-full rounded-md border border-input bg-background px-3 py-2 text-xs focus:ring-2 focus:ring-ring focus:outline-none text-muted-foreground" aria-label="Additional context (optional)..."></textarea>
                                 </div>
                             </template>
                             {# Regular textarea for text type questions #}
                             <template x-if="q.type !== 'entity_picker'">
                                 <textarea x-model="clarifyAnswers[idx]" rows="2"
                                           placeholder="Your answer..."
-                                          class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-ring focus:outline-none"></textarea>
+                                          class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-ring focus:outline-none" aria-label="Your answer..."></textarea>
                             </template>
                         </div>
                     </div>
@@ -475,7 +475,7 @@
                                 </div>
                                 <div class="col-span-4">
                                     <input type="text" x-model="nfr.target" placeholder="Target (e.g. 99.9%, &lt; 200ms)"
-                                           class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                                           class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Target (e.g. 99.9%, &lt; 200ms)">
                                 </div>
                                 <div class="col-span-3">
                                     <select x-model="nfr.priority" aria-label="NFR priority"
@@ -495,12 +495,12 @@
                                 <div class="col-span-5">
                                     <input type="text" x-model="nfr.acceptance_criteria"
                                            placeholder="Acceptance criteria (testable success condition)"
-                                           class="w-full px-3 py-2 border border-border rounded-md bg-muted/30 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                                           class="w-full px-3 py-2 border border-border rounded-md bg-muted/30 text-sm focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Acceptance criteria (testable success condition)">
                                 </div>
                                 <div class="col-span-4">
                                     <input type="text" x-model="nfr.compliance_reference"
                                            placeholder="Compliance ref (e.g. GDPR Art. 25)"
-                                           class="w-full px-3 py-2 border border-border rounded-md bg-muted/30 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                                           class="w-full px-3 py-2 border border-border rounded-md bg-muted/30 text-sm focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Compliance ref (e.g. GDPR Art. 25)">
                                 </div>
                                 <div class="col-span-3">
                                     <select x-model="nfr.verification_method" aria-label="NFR verification method"
@@ -540,7 +540,7 @@
                             </div>
                             <div class="col-span-6">
                                 <input type="text" x-model="tc.technology" placeholder="Technology name (e.g. Azure, PostgreSQL)"
-                                       class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                                       class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Technology name (e.g. Azure, PostgreSQL)">
                             </div>
                             <div class="col-span-1 flex justify-center">
                                 <button @click="structuredIntake.tech_constraints.splice(idx, 1)" type="button"
@@ -725,7 +725,7 @@
             <div class="flex gap-2">
                 <input type="text" x-model="_motivationNewStakeholder" placeholder="Stakeholder name..."
                        @keydown.enter.prevent="addMotivationItem('motivationStakeholders', _motivationNewStakeholder); _motivationNewStakeholder = ''"
-                       class="flex-1 px-3 py-2 text-sm bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring">
+                       class="flex-1 px-3 py-2 text-sm bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Stakeholder name...">
                 <button type="button" @click="addMotivationItem('motivationStakeholders', _motivationNewStakeholder); _motivationNewStakeholder = ''"
                         class="px-3 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90">Add</button>
             </div>
@@ -747,7 +747,7 @@
             <div class="flex gap-2">
                 <input type="text" x-model="_motivationNewDriver" placeholder="Business driver..."
                        @keydown.enter.prevent="addMotivationItem('motivationDrivers', _motivationNewDriver); _motivationNewDriver = ''"
-                       class="flex-1 px-3 py-2 text-sm bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring">
+                       class="flex-1 px-3 py-2 text-sm bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Business driver...">
                 <button type="button" @click="addMotivationItem('motivationDrivers', _motivationNewDriver); _motivationNewDriver = ''"
                         class="px-3 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90">Add</button>
             </div>
@@ -769,7 +769,7 @@
             <div class="flex gap-2">
                 <input type="text" x-model="_motivationNewGoal" placeholder="Goal or success metric..."
                        @keydown.enter.prevent="addMotivationItem('motivationGoals', _motivationNewGoal); _motivationNewGoal = ''"
-                       class="flex-1 px-3 py-2 text-sm bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring">
+                       class="flex-1 px-3 py-2 text-sm bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Goal or success metric...">
                 <button type="button" @click="addMotivationItem('motivationGoals', _motivationNewGoal); _motivationNewGoal = ''"
                         class="px-3 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90">Add</button>
             </div>
@@ -791,7 +791,7 @@
             <div class="flex gap-2">
                 <input type="text" x-model="_motivationNewConstraint" placeholder="Constraint..."
                        @keydown.enter.prevent="addMotivationItem('motivationConstraints', _motivationNewConstraint); _motivationNewConstraint = ''"
-                       class="flex-1 px-3 py-2 text-sm bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring">
+                       class="flex-1 px-3 py-2 text-sm bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Constraint...">
                 <button type="button" @click="addMotivationItem('motivationConstraints', _motivationNewConstraint); _motivationNewConstraint = ''"
                         class="px-3 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90">Add</button>
             </div>

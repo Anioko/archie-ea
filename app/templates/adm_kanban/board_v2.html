@@ -26,19 +26,19 @@
         </div>
         <div class="flex items-center gap-2">
             <select x-model="filters.assignee" @change="reload()"
-                    class="h-8 px-2 text-xs bg-background border border-border rounded text-foreground">
+                    class="h-8 px-2 text-xs bg-background border border-border rounded text-foreground" aria-label="Filter by Type">
                 <option value="all">All Assignees</option>
                 <option value="me">My Cards</option>
             </select>
             <select x-model="filters.card_type" @change="reload()"
-                    class="h-8 px-2 text-xs bg-background border border-border rounded text-foreground">
+                    class="h-8 px-2 text-xs bg-background border border-border rounded text-foreground" aria-label="Filter by Type">
                 <option value="">All Types</option>
                 <option value="solution">Solutions</option>
                 <option value="deliverable">Deliverables</option>
                 <option value="task">Tasks</option>
             </select>
             <select x-model="filters.priority" @change="reload()"
-                    class="h-8 px-2 text-xs bg-background border border-border rounded text-foreground">
+                    class="h-8 px-2 text-xs bg-background border border-border rounded text-foreground" aria-label="Filter by Priority">
                 <option value="">All Priorities</option>
                 <option value="critical">Critical</option>
                 <option value="high">High</option>
@@ -866,7 +866,7 @@
                             </div>
                             <input type="text" x-model="requirementSearch" @input.debounce.300ms="searchRequirements()" @focus="searchRequirements()"
                                    placeholder="Search requirements..."
-                                   class="w-full text-sm border border-zinc-300 dark:border-zinc-600 rounded px-3 py-1.5 bg-background dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100">
+                                   class="w-full text-sm border border-zinc-300 dark:border-zinc-600 rounded px-3 py-1.5 bg-background dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100" aria-label="Search requirements...">
                             <div x-show="requirementResults.length > 0" x-cloak class="mt-1 border border-zinc-200 dark:border-zinc-700 rounded bg-background dark:bg-zinc-800 shadow-lg max-h-40 overflow-y-auto z-50">
                                 <template x-for="r in requirementResults" :key="r.id">
                                     <button type="button" @click="addRequirement(r)" class="w-full text-left px-3 py-1.5 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-700">
@@ -892,7 +892,7 @@
                             </div>
                             <input type="text" x-model="goalSearch" @input.debounce.300ms="searchGoals()" @focus="searchGoals()"
                                    placeholder="Search goals..."
-                                   class="w-full text-sm border border-zinc-300 dark:border-zinc-600 rounded px-3 py-1.5 bg-background dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100">
+                                   class="w-full text-sm border border-zinc-300 dark:border-zinc-600 rounded px-3 py-1.5 bg-background dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100" aria-label="Search goals...">
                             <div x-show="goalResults.length > 0" x-cloak class="mt-1 border border-zinc-200 dark:border-zinc-700 rounded bg-background dark:bg-zinc-800 shadow-lg max-h-40 overflow-y-auto z-50">
                                 <template x-for="r in goalResults" :key="r.id">
                                     <button type="button" @click="addGoal(r)" class="w-full text-left px-3 py-1.5 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-700">
@@ -918,7 +918,7 @@
                             </div>
                             <input type="text" x-model="driverSearch" @input.debounce.300ms="searchDrivers()" @focus="searchDrivers()"
                                    placeholder="Search drivers..."
-                                   class="w-full text-sm border border-zinc-300 dark:border-zinc-600 rounded px-3 py-1.5 bg-background dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100">
+                                   class="w-full text-sm border border-zinc-300 dark:border-zinc-600 rounded px-3 py-1.5 bg-background dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100" aria-label="Search drivers...">
                             <div x-show="driverResults.length > 0" x-cloak class="mt-1 border border-zinc-200 dark:border-zinc-700 rounded bg-background dark:bg-zinc-800 shadow-lg max-h-40 overflow-y-auto z-50">
                                 <template x-for="r in driverResults" :key="r.id">
                                     <button type="button" @click="addDriver(r)" class="w-full text-left px-3 py-1.5 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-700">
@@ -944,7 +944,7 @@
                             </div>
                             <input type="text" x-model="principleSearch" @input.debounce.300ms="searchPrinciples()" @focus="searchPrinciples()"
                                    placeholder="Search principles..."
-                                   class="w-full text-sm border border-zinc-300 dark:border-zinc-600 rounded px-3 py-1.5 bg-background dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100">
+                                   class="w-full text-sm border border-zinc-300 dark:border-zinc-600 rounded px-3 py-1.5 bg-background dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100" aria-label="Search principles...">
                             <div x-show="principleResults.length > 0" x-cloak class="mt-1 border border-zinc-200 dark:border-zinc-700 rounded bg-background dark:bg-zinc-800 shadow-lg max-h-40 overflow-y-auto z-50">
                                 <template x-for="r in principleResults" :key="r.id">
                                     <button type="button" @click="addPrinciple(r)" class="w-full text-left px-3 py-1.5 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-700">
@@ -1333,7 +1333,7 @@
                                            @focus="searchDetailRequirements()"
                                            placeholder="Search requirements..."
                                            autocomplete="off"
-                                           class="w-full px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring"/>
+                                           class="w-full px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Search requirements..."/>
                                     <div x-show="detailRequirementResults.length > 0" x-cloak
                                          class="absolute z-50 mt-1 w-full bg-background border border-border rounded-md shadow-lg max-h-40 overflow-y-auto">
                                         <template x-for="item in detailRequirementResults" :key="item.id">
@@ -1355,7 +1355,7 @@
                                            @focus="searchDetailGoals()"
                                            placeholder="Search goals..."
                                            autocomplete="off"
-                                           class="w-full px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring"/>
+                                           class="w-full px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Search goals..."/>
                                     <div x-show="detailGoalResults.length > 0" x-cloak
                                          class="absolute z-50 mt-1 w-full bg-background border border-border rounded-md shadow-lg max-h-40 overflow-y-auto">
                                         <template x-for="item in detailGoalResults" :key="item.id">
@@ -1377,7 +1377,7 @@
                                            @focus="searchDetailDrivers()"
                                            placeholder="Search drivers..."
                                            autocomplete="off"
-                                           class="w-full px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring"/>
+                                           class="w-full px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Search drivers..."/>
                                     <div x-show="detailDriverResults.length > 0" x-cloak
                                          class="absolute z-50 mt-1 w-full bg-background border border-border rounded-md shadow-lg max-h-40 overflow-y-auto">
                                         <template x-for="item in detailDriverResults" :key="item.id">
@@ -1399,7 +1399,7 @@
                                            @focus="searchDetailPrinciples()"
                                            placeholder="Search principles..."
                                            autocomplete="off"
-                                           class="w-full px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring"/>
+                                           class="w-full px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Search principles..."/>
                                     <div x-show="detailPrincipleResults.length > 0" x-cloak
                                          class="absolute z-50 mt-1 w-full bg-background border border-border rounded-md shadow-lg max-h-40 overflow-y-auto">
                                         <template x-for="item in detailPrincipleResults" :key="item.id">

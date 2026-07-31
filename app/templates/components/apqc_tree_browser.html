@@ -24,7 +24,7 @@
             class="w-full px-4 py-2 border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
             @input="searchAPQCProcesses(this.value)">
         </div>
-        <select id="apqc-level-filter" class="px-4 py-2 border border-border rounded-lg" @change="filterAPQCByLevel(this.value)">
+        <select id="apqc-level-filter" class="px-4 py-2 border border-border rounded-lg" @change="filterAPQCByLevel(this.value)" aria-label="Filter by Level">
           <option value="">All Levels</option>
           <option value="1">Level 1 - Operating Processes</option>
           <option value="2">Level 2 - Process Groups</option>

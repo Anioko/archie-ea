@@ -26,14 +26,14 @@
     </select>
     <select x-model="domainFilter" @change="applyFilters()"
             class="block rounded-md border-border shadow-sm text-sm focus:ring-ring focus:border-ring bg-background text-foreground"
-            x-show="groupBy === 'domain'" x-cloak>
+            x-show="groupBy === 'domain'" x-cloak aria-label="Filter by Domain">
       <option value="">All Domains</option>
       {% for d in all_domains %}
       <option value="{{ d }}" {% if d == selected_domain %}selected{% endif %}>{{ d }}</option>
       {% endfor %}
     </select>
     <select x-model="statusFilter" @change="applyFilters()"
-            class="block rounded-md border-border shadow-sm text-sm focus:ring-ring focus:border-ring bg-background text-foreground">
+            class="block rounded-md border-border shadow-sm text-sm focus:ring-ring focus:border-ring bg-background text-foreground" aria-label="Filter by Status">
       <option value="">All Statuses</option>
       {% for s in all_statuses %}
       <option value="{{ s }}" {% if s == selected_status %}selected{% endif %}>{{ s|replace('_',' ')|title }}</option>
