@@ -466,7 +466,8 @@ class ARBIntegrationService:
         # summary returns a valid (zeroed) shape instead of 500ing. getattr keeps
         # this correct if ARB status tracking is added to the model later.
         total = len(capabilities)
-        _status = lambda c: getattr(c, "arb_status", None)
+        def _status(c):
+            return getattr(c, "arb_status", None)
         with_arb_status = len([c for c in capabilities if _status(c)])
         pending = len([c for c in capabilities if _status(c) == 'pending_review'])
         approved = len([c for c in capabilities if _status(c) == 'approved'])

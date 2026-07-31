@@ -368,7 +368,6 @@ class ArchiMateExchangeService:
         """Map ArchiMate exchange relationship type to our KGRelationshipType enum."""
         # Simplified mapping
         type_mapping = {
-            "association": KGRelationshipType.DEPENDS_ON,
             "realization": KGRelationshipType.DEPENDS_ON,
             "serving": KGRelationshipType.PROVIDES,
             "assignment": KGRelationshipType.MAPS_TO,

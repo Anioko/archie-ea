@@ -4,7 +4,7 @@
   "ratchets": {
     "undefined_names": 0,
     "redefinitions": 0,
-    "lint_core": 392,
+    "lint_core": 370,
     "design_tokens": 1255,
     "air_gap": 0
   }

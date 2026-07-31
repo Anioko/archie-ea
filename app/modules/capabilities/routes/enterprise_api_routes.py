@@ -1056,7 +1056,6 @@ def _req_to_dict(req):
         "goal_id": req.goal_id,
         "goal_name": goal_name,
         "stakeholder_id": req.stakeholder_id,
-        "stakeholder_name": stakeholder_name,
         "archimate_requirement_id": req.archimate_requirement_id,
         "archimate_requirement_name": _resolve_archimate_req_name(req.archimate_requirement_id),
         # User Story / Epic fields (TPM-003)

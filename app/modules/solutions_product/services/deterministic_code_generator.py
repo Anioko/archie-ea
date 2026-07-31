@@ -4062,9 +4062,9 @@ with a real, working implementation.
             content = template.render(**ctx, models=single, table_names=table_names)
             path = f"app/models/{snake}.py"
             archimate_ids = []
-            for field in model_def.get("fields", []):
-                if hasattr(field, "archimate_source_id") and field.archimate_source_id:
-                    archimate_ids.append(field.archimate_source_id)
+            for item in model_def.get("fields", []):
+                if hasattr(item, "archimate_source_id") and item.archimate_source_id:
+                    archimate_ids.append(item.archimate_source_id)
             files.append(GeneratedFile(path=path, content=content, archimate_sources=archimate_ids))
             model_imports.append((snake, model_name))
 
@@ -7182,7 +7182,8 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
         - Auth context with JWT token storage
         """
         import json as _json_mod
-        _json_dumps = lambda obj, **kw: _json_mod.dumps(obj, **kw)
+        def _json_dumps(obj, **kw):
+            return _json_mod.dumps(obj, **kw)
         files = []
         solution_slug = _kebab(bundle.solution_name)
         services = bundle.services or []

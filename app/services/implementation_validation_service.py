@@ -86,12 +86,6 @@ class ImplementationValidationService:
                 "due_date",
             ],
         },
-        "ImplementationGap": {
-            "description": "A gap between current and desired states",
-            "valid_relationships": ["association", "influence", "triggering"],
-            "required_attributes": ["name", "gap_description"],
-            "optional_attributes": ["description", "gap_type", "impact_level", "urgency"],
-        },
         "ImplementationPlateau": {
             "description": "A relatively stable state of the architecture",
             "valid_relationships": [

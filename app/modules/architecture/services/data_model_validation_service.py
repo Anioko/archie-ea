@@ -645,13 +645,13 @@ class DataModelValidationService:
                 columns = inspect(model_class).columns
                 id_column = next((col for col in columns if col.name == 'id'), None)
 
-                if id_column and id_column.type.python_type != int:
+                if id_column and id_column.type.python_type is not int:
                     issues.append(f"{model_class.__name__} id field should be Integer")
                     recommendations.append(f"Change id field to Integer in {model_class.__name__}")
 
                 # Check name field
                 name_column = next((col for col in columns if col.name == 'name'), None)
-                if name_column and name_column.type.python_type != str:
+                if name_column and name_column.type.python_type is not str:
                     issues.append(f"{model_class.__name__} name field should be String")
                     recommendations.append(f"Change name field to String in {model_class.__name__}")
 

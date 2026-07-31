@@ -68,18 +68,6 @@ class PatternRecognitionAgent:
             "confidence_threshold": 0.5,
             "frameworks": ["TOGAF", "Zachman"],
         },
-        "event_sourcing": {
-            "keywords": ["event sourcing", "event store", "immutable", "audit", "replay"],
-            "characteristics": ["immutable event log", "state reconstruction", "audit trail"],
-            "frameworks": ["TOGAF"],
-            "confidence_threshold": 0.5,
-        },
-        "api_gateway": {
-            "keywords": ["gateway", "api", "routing", "proxy", "aggregation"],
-            "characteristics": ["API gateway pattern", "request routing", "service aggregation"],
-            "confidence_threshold": 0.3,
-            "frameworks": ["TOGAF", "Zachman"],
-        },
         "hexagonal": {
             "keywords": ["hexagonal", "ports", "adapters", "dependency", "inversion"],
             "characteristics": [

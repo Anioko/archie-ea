@@ -109,7 +109,6 @@ class VendorProcessMappingService:
             "sap": ["financial", "procurement", "hr", "operations", "supply chain"],
             "oracle": ["financial", "hr", "procurement", "it", "supply chain"],
             "microsoft": ["it", "operations", "customer", "collaboration", "productivity"],
-            "workday": ["hr", "financial", "procurement", "talent management"],
             "sage": ["financial", "hr", "procurement"],
             "intuit": ["financial", "accounting", "procurement"],
             "coupa": ["procurement", "financial", "supply chain"],
@@ -130,7 +129,6 @@ class VendorProcessMappingService:
             # CRM & Customer Experience
             "salesforce": ["customer", "sales", "marketing", "service", "crm"],
             "adobe": ["customer", "marketing", "digital experience", "content"],
-            "hubspot": ["customer", "marketing", "sales", "crm"],
             "zendesk": ["customer", "service", "support"],
             "freshdesk": ["customer", "service", "support"],
             "liveagent": ["customer", "service", "support"],
@@ -164,12 +162,8 @@ class VendorProcessMappingService:
             "zoom": ["collaboration", "communication", "video conferencing"],
             "webex": ["collaboration", "communication", "video conferencing"],
             # E-commerce & Digital
-            "shopify": ["e-commerce", "customer", "sales", "digital"],
-            "magento": ["e-commerce", "customer", "sales", "digital"],
-            "woocommerce": ["e-commerce", "customer", "sales", "digital"],
             # Social Media & Marketing
             "twitter": ["marketing", "customer", "social media", "communications"],
-            "linkedin": ["marketing", "customer", "social media", "hr", "professional networking"],
             "facebook": ["marketing", "customer", "social media"],
             "instagram": ["marketing", "customer", "social media"],
             # Streaming & Entertainment

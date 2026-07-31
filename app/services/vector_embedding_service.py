@@ -384,18 +384,18 @@ class VectorEmbeddingService:
 
         # For OpenAI, process in parallel with rate limiting
         tasks = []
-        for text in texts:
-            task = self.embed_text(text, model)
+        for item in texts:
+            task = self.embed_text(item, model)
             tasks.append(task)
 
         # Process with concurrency control
         semaphore = asyncio.Semaphore(5)  # Max 5 concurrent requests
 
-        async def bounded_embed(text, model):
+        async def bounded_embed(item, model):
             async with semaphore:
-                return await self.embed_text(text, model)
+                return await self.embed_text(item, model)
 
-        bounded_tasks = [bounded_embed(text, model) for text in texts]
+        bounded_tasks = [bounded_embed(item, model) for item in texts]
         return await asyncio.gather(*bounded_tasks)
 
     def _embed_batch_sentence_transformers(
