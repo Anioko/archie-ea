@@ -22,14 +22,16 @@ from flask_login import current_user, login_required
 from app.decorators import requires_application_owner
 from app.extensions import db
 from app.models.application_owner import ApplicationOwner
-from app.models.solution_models import Solution
+from app.models.application_portfolio import ApplicationComponent
 
 from . import my_applications_bp
 
 # Vocabularies are pinned here rather than accepted from the form. Both fields
 # drive grouped counts on the dashboard and health overview; a value outside the
 # set is not merely untidy, it silently vanishes from every total.
-STATUSES = ["planned", "in_progress", "deployed", "deprecated"]
+LIFECYCLE_STATUSES = [
+    "planning", "development", "testing", "operational", "deprecated", "retired",
+]
 DEPLOYMENT_STATUSES = ["design", "development", "testing", "production"]
 HEALTH_STATUSES = ["healthy", "at_risk", "critical"]
 
@@ -45,7 +47,7 @@ def _owned_application_or_404(app_id):
         # 404, not 403: the user has no relationship to this record, so confirming
         # it exists tells them something they have no standing to learn.
         abort(404)
-    return Solution.query.get_or_404(app_id)
+    return ApplicationComponent.query.get_or_404(app_id)
 
 
 @my_applications_bp.route("/app/<int:app_id>/edit", methods=["GET", "POST"])
@@ -61,15 +63,27 @@ def app_edit(app_id):
         description = (form.get("description") or "").strip()
         app.description = description or None
 
+        # Reject rather than coerce. lifecycle_status carries default="operational",
+        # so quietly mapping an unrecognised value to None lets the column default
+        # fire and files the application as operational - inventing a meaningful
+        # status is worse than storing the junk. Empty still means "not set".
         for field, allowed in (
-            ("status", STATUSES),
+            ("lifecycle_status", LIFECYCLE_STATUSES),
             ("deployment_status", DEPLOYMENT_STATUSES),
             ("health_status", HEALTH_STATUSES),
         ):
             value = (form.get(field) or "").strip()
-            setattr(app, field, value if value in allowed else None)
+            if value and value not in allowed:
+                flash("%s is not a recognised value." % field.replace("_", " ").title(), "danger")
+                return render_template(
+                    "my_applications/app_form.html",
+                    app=app, statuses=LIFECYCLE_STATUSES,
+                    deployment_statuses=DEPLOYMENT_STATUSES,
+                    health_statuses=HEALTH_STATUSES,
+                ), 400
+            setattr(app, field, value or None)
 
-        for field in ("solution_owner", "business_sponsor", "technical_lead"):
+        for field in ("business_owner", "technical_owner"):
             value = (form.get(field) or "").strip()
             setattr(app, field, value[:255] or None)
 
@@ -80,7 +94,7 @@ def app_edit(app_id):
     return render_template(
         "my_applications/app_form.html",
         app=app,
-        statuses=STATUSES,
+        statuses=LIFECYCLE_STATUSES,
         deployment_statuses=DEPLOYMENT_STATUSES,
         health_statuses=HEALTH_STATUSES,
     )

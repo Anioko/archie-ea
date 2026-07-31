@@ -187,6 +187,12 @@ class ApplicationComponent(TenantMixin, db.Model, OptimisticLockMixin):
     lifecycle_status = Column(
         db.String(20), default="operational"
     )  # planning, development, testing, operational, deprecated, retired
+    # healthy, at_risk, critical. my_applications' dashboard and health overview
+    # both read app.health_status, but no such column existed on this model - so
+    # every owned application reported "unknown" and the health page could never
+    # show anything else. Nullable, because reconcile-schema only adds nullable
+    # columns; None keeps meaning "not assessed".
+    health_status = Column(db.String(20))
     implementation_date = Column(db.Date)
     go_live_date = Column(db.Date)  # Date the application went live
     last_major_upgrade = Column(db.Date)

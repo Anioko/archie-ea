@@ -32,12 +32,12 @@
       <h2 class="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Status</h2>
       <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div>
-          <label for="status" class="block text-sm font-medium mb-1.5">Lifecycle</label>
-          <select id="status" name="status"
+          <label for="lifecycle_status" class="block text-sm font-medium mb-1.5">Lifecycle</label>
+          <select id="lifecycle_status" name="lifecycle_status"
                   class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring">
             <option value="">Not set</option>
             {% for value in statuses %}
-            <option value="{{ value }}" {% if app.status == value %}selected{% endif %}>
+            <option value="{{ value }}" {% if app.lifecycle_status == value %}selected{% endif %}>
               {{ value | replace('_', ' ') | title }}
             </option>
             {% endfor %}
@@ -73,23 +73,17 @@
 
     <div class="bg-card border border-border rounded-lg p-6 space-y-4">
       <h2 class="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Accountability</h2>
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <label for="solution_owner" class="block text-sm font-medium mb-1.5">Business owner</label>
-          <input type="text" id="solution_owner" name="solution_owner" maxlength="255"
-                 value="{{ app.solution_owner or '' }}"
+          <label for="business_owner" class="block text-sm font-medium mb-1.5">Business owner</label>
+          <input type="text" id="business_owner" name="business_owner" maxlength="255"
+                 value="{{ app.business_owner or '' }}"
                  class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring">
         </div>
         <div>
-          <label for="business_sponsor" class="block text-sm font-medium mb-1.5">Sponsor</label>
-          <input type="text" id="business_sponsor" name="business_sponsor" maxlength="255"
-                 value="{{ app.business_sponsor or '' }}"
-                 class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring">
-        </div>
-        <div>
-          <label for="technical_lead" class="block text-sm font-medium mb-1.5">Technical lead</label>
-          <input type="text" id="technical_lead" name="technical_lead" maxlength="255"
-                 value="{{ app.technical_lead or '' }}"
+          <label for="technical_owner" class="block text-sm font-medium mb-1.5">Technical lead</label>
+          <input type="text" id="technical_owner" name="technical_owner" maxlength="255"
+                 value="{{ app.technical_owner or '' }}"
                  class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring">
         </div>
       </div>

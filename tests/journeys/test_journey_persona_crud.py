@@ -71,7 +71,15 @@ def test_procurement_can_create_a_contract(app, client):
 
 
 def test_a_contract_status_outside_the_vocabulary_is_rejected(app, client):
-    """Free text here disappears from every dashboard that groups on status."""
+    """Free text here disappears from every dashboard that groups on status.
+
+    The submission is refused outright rather than cleaned up. Mapping an
+    unrecognised value to None looks tidier but is worse: VendorContract.status
+    carries default="active", so assigning None lets the column default fire and
+    the contract is filed as ACTIVE. Inventing a meaningful status from nonsense
+    is a worse outcome than storing the nonsense would have been - which is
+    exactly what the first version of this code did, and what this test caught.
+    """
     from app import db
     from app.models.application_portfolio import VendorContract
 
@@ -81,15 +89,16 @@ def test_a_contract_status_outside_the_vocabulary_is_rejected(app, client):
 
     login(client, user_id)
     name = "Odd Status %s" % uuid.uuid4().hex[:6]
-    client.post(
+    response = client.post(
         "/procurement/contracts/new",
         data={"contract_name": name, "status": "whatever-i-typed", "start_date": "2026-01-01"},
-        follow_redirects=True,
     )
+    assert response.status_code == 400, "an unrecognised status was accepted"
+
     with app.app_context():
-        saved = VendorContract.query.filter_by(contract_name=name).first()
-        assert saved is not None
-        assert saved.status is None, "an unrecognised status was stored verbatim"
+        assert VendorContract.query.filter_by(contract_name=name).first() is None, (
+            "the contract was persisted despite an invalid status"
+        )
 
 
 def test_procurement_cannot_edit_another_tenants_contract(app, client):
@@ -206,24 +215,34 @@ def test_the_procurement_section_root_resolves(app, client):
 # ── Application Manager ─────────────────────────────────────────────────────
 
 def _owned_application(db, org_id, user_id):
-    from app.models.application_owner import ApplicationOwner
-    from app.models.solution_models import Solution
+    """An ApplicationComponent this user owns.
 
-    solution = Solution(name="Owned App %s" % uuid.uuid4().hex[:6], organization_id=org_id)
-    db.session.add(solution)
+    ApplicationOwner.application_id is a foreign key to application_components.
+    An earlier version of this helper created a Solution instead and the insert
+    failed on that constraint - which is how the read path was found to be
+    resolving those same ids against the solutions table, matching on nothing
+    more than two id sequences colliding.
+    """
+    from app.models.application_owner import ApplicationOwner
+    from app.models.application_portfolio import ApplicationComponent
+
+    component = ApplicationComponent(
+        name="Owned App %s" % uuid.uuid4().hex[:6], organization_id=org_id
+    )
+    db.session.add(component)
     db.session.flush()
     db.session.add(
         ApplicationOwner(
-            user_id=user_id, application_id=solution.id, organization_id=org_id
+            user_id=user_id, application_id=component.id, organization_id=org_id
         )
     )
     db.session.commit()
-    return solution.id
+    return component.id
 
 
 def test_an_application_manager_can_update_an_application_they_own(app, client):
     from app import db
-    from app.models.solution_models import Solution
+    from app.models.application_portfolio import ApplicationComponent
 
     with app.app_context():
         org_id = make_org(db, "AppMgr")
@@ -235,27 +254,27 @@ def test_an_application_manager_can_update_an_application_they_own(app, client):
         "/my-applications/app/%d/edit" % app_id,
         data={
             "description": "Now maintained by its owner.",
-            "status": "deployed",
+            "lifecycle_status": "operational",
             "health_status": "at_risk",
-            "technical_lead": "R. Patel",
+            "technical_owner": "R. Patel",
         },
         follow_redirects=True,
     )
     assert response.status_code == 200
 
     with app.app_context():
-        saved = Solution.query.get(app_id)
-        assert saved.status == "deployed"
+        saved = ApplicationComponent.query.get(app_id)
+        assert saved.lifecycle_status == "operational"
         # health_status did not exist as a column, so the health overview could
         # only ever report "unknown" for every application.
         assert saved.health_status == "at_risk"
-        assert saved.technical_lead == "R. Patel"
+        assert saved.technical_owner == "R. Patel"
 
 
 def test_an_application_manager_cannot_edit_an_application_they_do_not_own(app, client):
     """Same organisation is not sufficient - the persona is scoped by ownership."""
     from app import db
-    from app.models.solution_models import Solution
+    from app.models.application_portfolio import ApplicationComponent
 
     with app.app_context():
         org_id = make_org(db, "SameOrg")
@@ -266,12 +285,12 @@ def test_an_application_manager_cannot_edit_an_application_they_do_not_own(app, 
     login(client, other_id)
     response = client.post(
         "/my-applications/app/%d/edit" % app_id,
-        data={"description": "Not mine to change.", "status": "deprecated"},
+        data={"description": "Not mine to change.", "lifecycle_status": "retired"},
     )
     assert response.status_code == 404
 
     with app.app_context():
-        assert Solution.query.get(app_id).status != "deprecated"
+        assert ApplicationComponent.query.get(app_id).lifecycle_status != "retired"
 
 
 def test_licence_entitlement_is_tenant_scoped():

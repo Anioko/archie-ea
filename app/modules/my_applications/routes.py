@@ -16,7 +16,7 @@ from sqlalchemy import or_
 from app.decorators import requires_application_owner
 from app.extensions import db
 from app.models.application_owner import ApplicationOwner
-from app.models.solution_models import Solution
+from app.models.application_portfolio import ApplicationComponent
 
 from . import my_applications_bp
 
@@ -29,17 +29,24 @@ from .services import get_application_health_summary, get_ownership_summary
 
 
 def get_owned_apps():
-    """Get applications owned by current user."""
-    # Get app IDs where user is owner
+    """Get applications owned by current user.
+
+    Resolved against ApplicationComponent, not Solution. ApplicationOwner.
+    application_id is a foreign key to application_components, so looking those
+    ids up in the solutions table matched on nothing more than two independent id
+    sequences happening to collide - this persona was shown whichever unrelated
+    solution shared an integer with an application it owned, which is both wrong
+    and a cross-record disclosure. The templates agree: they read
+    application_type, business_criticality, lifecycle_status and hosting_type,
+    which are ApplicationComponent fields.
+    """
     ownership = ApplicationOwner.query.filter_by(user_id=current_user.id).all()
     app_ids = [o.application_id for o in ownership]
 
     if not app_ids:
         return []
 
-    # Get the actual applications
-    apps = Solution.query.filter(Solution.id.in_(app_ids)).all()
-    return apps
+    return ApplicationComponent.query.filter(ApplicationComponent.id.in_(app_ids)).all()
 
 
 @my_applications_bp.route("/")
@@ -105,7 +112,7 @@ def app_detail(app_id):
         from flask import abort
         abort(403, description="You do not own this application")
 
-    app = Solution.query.get_or_404(app_id)
+    app = ApplicationComponent.query.get_or_404(app_id)
 
     return render_template(
         "my_applications/app_detail.html",

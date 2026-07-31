@@ -81,16 +81,28 @@ def _apply_contract_form(contract, form):
     contract.contract_description = (form.get("contract_description") or "").strip() or None
     contract.vendor_id = int(form["vendor_id"]) if form.get("vendor_id") else None
 
-    # Reject values outside the documented vocabulary rather than storing them.
+    # Values outside the documented vocabulary are REJECTED, not coerced.
+    #
     # These drive the renewal and spend dashboards, and a free-text status simply
-    # disappears from every count that groups on it.
+    # disappears from every count that groups on it. The first version quietly
+    # mapped an unrecognised value to None - which is worse, because
+    # VendorContract.status carries default="active": assigning None lets the
+    # column default fire, so posting nonsense produced a contract confidently
+    # marked active. Silently inventing a meaningful status is a worse failure
+    # than storing the junk would have been.
+    #
+    # Empty is still allowed and means "not specified"; only a non-empty value
+    # that is not in the list is an error, and the form's own dropdowns can only
+    # produce valid ones.
     for field, allowed in (
         ("contract_type", CONTRACT_TYPES),
         ("contract_category", CONTRACT_CATEGORIES),
         ("status", CONTRACT_STATUSES),
     ):
-        value = form.get(field) or None
-        setattr(contract, field, value if value in allowed else None)
+        value = (form.get(field) or "").strip()
+        if value and value not in allowed:
+            raise ValueError("%s=%r is not one of %s" % (field, value, allowed))
+        setattr(contract, field, value or None)
 
     contract.contract_value = _parse_number(form.get("contract_value"))
     contract.annual_cost = _parse_number(form.get("annual_cost"))
