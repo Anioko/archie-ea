@@ -137,10 +137,20 @@
 </div>
 
 <script>
-Alpine.data('valueStreamIndex', function () {
-    return {
-        init() {}
-    };
+// Registered on alpine:init, not at top level.
+//
+// alpine.min.js is loaded with `defer`, so it has not executed when an inline
+// script runs. Calling Alpine.data() here directly threw "Alpine is not defined",
+// the component was never registered, and x-data="valueStreamIndex()" then threw
+// "valueStreamIndex is not defined" - leaving the enterprise architect's value
+// stream page inert behind x-cloak. This is the pattern the rest of the templates
+// already use.
+document.addEventListener('alpine:init', function () {
+    Alpine.data('valueStreamIndex', function () {
+        return {
+            init() {}
+        };
+    });
 });
 </script>
 {% endblock %}

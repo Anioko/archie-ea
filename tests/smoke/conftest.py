@@ -23,6 +23,7 @@ import os
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
 
@@ -33,6 +34,31 @@ from playwright.sync_api import sync_playwright  # noqa: E402
 
 PASSWORD = "SmokeJourney!2026"
 BOOT_TIMEOUT = int(os.environ.get("SMOKE_BOOT_TIMEOUT", "180"))
+
+
+def _tail(path, lines=40):
+    """Last *lines* of the server log - what actually failed, in its own words."""
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as fh:
+            return "".join(fh.readlines()[-lines:])
+    except Exception as exc:
+        return "(could not read server log: %s)" % exc
+
+
+class SmokeServer(str):
+    """The base URL, plus the server log behind it.
+
+    Subclasses str so every existing `live_server + path` still works, while
+    giving a failing test somewhere to look.
+    """
+
+    def __new__(cls, base, log_path):
+        obj = super().__new__(cls, base)
+        obj.log_path = log_path
+        return obj
+
+    def tail(self, lines=40):
+        return _tail(self.log_path, lines)
 
 
 def _has_gunicorn():
@@ -88,14 +114,22 @@ def live_server():
                "--bind", "127.0.0.1:%d" % port,
                "--workers", "2", "--threads", "8",
                "--timeout", "120", "--graceful-timeout", "20",
-               "--access-logfile", "-", "--error-logfile", "-"]
+               # No access log: one line per request, and the errors are what matter.
+               "--error-logfile", "-"]
     else:                                   # Windows dev machines: no gunicorn
         cmd = [sys.executable, "-m", "flask", "--app", "manage", "run",
                "--host", "127.0.0.1", "--port", str(port), "--no-reload"]
 
-    proc = subprocess.Popen(
-        cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-    )
+    # Log to a FILE, never to a pipe.
+    #
+    # subprocess.PIPE with nothing draining it deadlocks the child as soon as the
+    # 64 KB buffer fills. With --access-logfile that is roughly one journey: the
+    # first test passed, the second filled the buffer, and every request after it
+    # timed out on a server that was blocked writing a log line. A file also means
+    # the server log survives to be printed when a test fails.
+    log_path = os.path.join(tempfile.gettempdir(), "smoke-server-%d.log" % port)
+    log_handle = open(log_path, "w+b")
+    proc = subprocess.Popen(cmd, env=env, stdout=log_handle, stderr=subprocess.STDOUT)
     base = "http://127.0.0.1:%d" % port
 
     deadline = time.time() + BOOT_TIMEOUT
@@ -142,7 +176,7 @@ def live_server():
     except Exception as exc:
         print("[smoke] live_server at %s NOT serving: %s" % (base, exc))
 
-    yield base
+    yield SmokeServer(base, log_path)
 
     proc.terminate()
     try:
