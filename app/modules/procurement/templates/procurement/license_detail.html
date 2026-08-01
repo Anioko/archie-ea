@@ -33,10 +33,10 @@
             <!-- Utilization -->
             <div class="bg-card border border-border rounded-lg p-6">
                 <h2 class="text-lg font-semibold mb-4">License Utilization</h2>
-                {% set util = (license.consumed_quantity or 0) / (license.entitled_quantity or 1) * 100 %}
+                {% set util = (license.quantity_deployed or 0) / (license.quantity_entitled or 1) * 100 %}
                 <div class="mb-4">
                     <div class="flex justify-between text-sm mb-2">
-                        <span>{{ license.consumed_quantity or 0 }} consumed of {{ license.entitled_quantity or 0 }} entitled</span>
+                        <span>{{ license.quantity_deployed or 0 }} consumed of {{ license.quantity_entitled or 0 }} entitled</span>
                         <span class="font-medium">{{ "{:.1f}".format(util) }}%</span>
                     </div>
                     <div class="h-4 bg-muted rounded-full overflow-hidden">
@@ -49,15 +49,15 @@
                 </div>
                 <div class="grid grid-cols-3 gap-4 text-center">
                     <div class="p-3 bg-muted/50 rounded-lg">
-                        <div class="text-2xl font-bold">{{ license.entitled_quantity or 0 }}</div>
+                        <div class="text-2xl font-bold">{{ license.quantity_entitled or 0 }}</div>
                         <div class="text-sm text-muted-foreground">Entitled</div>
                     </div>
                     <div class="p-3 bg-muted/50 rounded-lg">
-                        <div class="text-2xl font-bold">{{ license.consumed_quantity or 0 }}</div>
+                        <div class="text-2xl font-bold">{{ license.quantity_deployed or 0 }}</div>
                         <div class="text-sm text-muted-foreground">Consumed</div>
                     </div>
                     <div class="p-3 bg-muted/50 rounded-lg">
-                        <div class="text-2xl font-bold text-green-600">{{ (license.entitled_quantity or 0) - (license.consumed_quantity or 0) }}</div>
+                        <div class="text-2xl font-bold text-green-600">{{ (license.quantity_entitled or 0) - (license.quantity_deployed or 0) }}</div>
                         <div class="text-sm text-muted-foreground">Available</div>
                     </div>
                 </div>

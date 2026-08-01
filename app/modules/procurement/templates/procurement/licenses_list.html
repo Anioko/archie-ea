@@ -42,10 +42,10 @@
                         <div class="text-sm text-muted-foreground">{{ license.license_type or 'N/A' }}</div>
                     </td>
                     <td class="px-4 py-3 text-sm">{{ license.vendor.name if license.vendor else 'N/A' }}</td>
-                    <td class="px-4 py-3 text-center font-medium">{{ license.entitled_quantity or 0 }}</td>
-                    <td class="px-4 py-3 text-center font-medium">{{ license.consumed_quantity or 0 }}</td>
+                    <td class="px-4 py-3 text-center font-medium">{{ license.quantity_entitled or 0 }}</td>
+                    <td class="px-4 py-3 text-center font-medium">{{ license.quantity_deployed or 0 }}</td>
                     <td class="px-4 py-3 text-center">
-                        {% set util = (license.consumed_quantity or 0) / (license.entitled_quantity or 1) * 100 %}
+                        {% set util = (license.quantity_deployed or 0) / (license.quantity_entitled or 1) * 100 %}
                         <div class="flex items-center justify-center gap-2">
                             <div class="w-16 h-2 bg-muted rounded-full overflow-hidden">
                                 <div class="h-full rounded-full
