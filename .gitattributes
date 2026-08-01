@@ -1,2 +1,12 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Vendored third-party assets: never transform line endings.
+#
+# `* text=auto` above plus core.autocrlf=true rewrites LF to CRLF on Windows
+# checkout, which changes the bytes. The vendor-integrity gate hashes these files
+# against VENDOR_MANIFEST.txt to prove they are the upstream artefacts, so any
+# transformation makes the check fail on Windows while passing on Linux — a
+# false negative that only some developers ever see. Caught by verifying a fresh
+# clone: zxcvbn.js came out 28 bytes larger, one per converted newline.
+app/static/vendor/** -text
