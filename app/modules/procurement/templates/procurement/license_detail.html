@@ -21,7 +21,8 @@
                     {% if license.compliance_status == 'compliant' %}bg-green-100 text-green-800
                     {% elif license.compliance_status == 'warning' %}bg-amber-100 text-amber-800
                     {% else %}bg-red-100 text-red-800{% endif %}">
-                    {{ license.compliance_status or 'unknown' }}
+                    {# Stored snake_case; render as words. 'over_deployed' was shown verbatim. #}
+                    {{ (license.compliance_status or 'unknown') | replace('_', ' ') | title }}
                 </span>
             </div>
             <p class="text-muted-foreground">{{ license.license_type or 'License' }}</p>
