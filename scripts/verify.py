@@ -233,6 +233,31 @@ def gate_air_gap(baseline: int) -> Result:
     return Result("air-gap", PASS if count <= baseline else FAIL, "", count, baseline)
 
 
+def gate_sri() -> Result:
+    """Every same-origin integrity= hash matches the file it guards. Gated at ZERO.
+
+    A stale SRI hash does not degrade — the browser REFUSES to execute the asset.
+    The failure is a dead page with a console error, invisible to any server-side
+    test. This repository has already shipped that bug twice.
+
+    Vendoring makes it easy: repointing a src from a CDN to a local copy is safe
+    only if the bytes are identical, and consolidating a version (alpinejs@3 to
+    @3.14.3) silently invalidates the hash. Neither vendor-integrity (files vs the
+    manifest) nor air-gap (external origins) relates a template's declared hash to
+    the file its src resolves to, which is why both passed while two hashes on this
+    branch were wrong.
+    """
+    proc = _run([sys.executable, "scripts/check_sri.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("sri", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = ""
+    if count:
+        detail = _run([sys.executable, "scripts/check_sri.py"]).stdout[-1200:]
+    return Result("sri", PASS if count == 0 else FAIL, detail, count, 0)
+
+
 def gate_vendor_integrity() -> Result:
     """Vendored assets match their recorded provenance.
 
@@ -370,6 +395,10 @@ def build_gates(baseline: dict) -> list[Gate]:
              lambda: gate_air_gap(baseline["air_gap"]),
              remediation="vendor the asset into app/static/ and use url_for('static', ...)",
              tags=["static", "ui", "airgap"]),
+        Gate("sri", "Subresource Integrity hashes match their files", "zero",
+             gate_sri,
+             remediation="recompute the hash for the file the tag actually loads",
+             tags=["static", "ui", "airgap", "security"]),
         Gate("vendor-integrity", "Vendored assets match their manifest", "command",
              gate_vendor_integrity,
              remediation="run: python scripts/vendor_assets.py",
