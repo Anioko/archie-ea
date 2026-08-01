@@ -67,6 +67,12 @@ TEST_*.txt
 VALIDATION_*.txt
 VALIDATION_*.md
 VENDOR_*.txt
+# ...but the vendored-asset provenance record is a tracked artefact, not clutter.
+# It is how "what is in app/static/vendor and where did it come from" is answered
+# for an enterprise security review, and the vendor-integrity gate reads it.
+# Second time this "one-off looking name" pattern has hidden a permanent file —
+# see the scripts/check_*.py note further down.
+!app/static/vendor/VENDOR_MANIFEST.txt
 VENDOR_*.md
 📖_*.txt
 🎉_*.txt

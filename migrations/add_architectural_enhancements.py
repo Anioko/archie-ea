@@ -10,7 +10,6 @@ Migration adds comprehensive architectural metadata fields to support:
 
 import sqlalchemy as sa
 from alembic import op
-from sqlalchemy.dialects import postgresql
 
 
 def upgrade():
