@@ -8,6 +8,7 @@ SA-005: export_to_xml() produces valid Open Exchange Format (OEF) XML
         importable by Archi and Sparx EA.
 """
 
+import json
 import uuid
 import xml.etree.ElementTree as ET
 from datetime import datetime  # dead-code-ok: kept for class methods below
@@ -28,6 +29,14 @@ from app.models import (
 
 _OEF_NS = "http://www.opengroup.org/xsd/archimate/3.0/"
 _XSI_NS = "http://www.w3.org/2001/XMLSchema-instance"
+_XML_LANG = "{http://www.w3.org/XML/1998/namespace}lang"
+
+# Folder tree emitted in <organizations>, in ArchiMate layer order.
+_LAYER_ORDER = [
+    "Strategy", "Business", "Application", "Technology", "Physical",
+    "Motivation", "Implementation & Migration", "Other",
+]
+
 _SCHEMA_LOC = (
     "http://www.opengroup.org/xsd/archimate/3.0/ "
     "http://www.opengroup.org/xsd/archimate/3.0/archimate3_Diagram.xsd"
@@ -36,6 +45,30 @@ _SCHEMA_LOC = (
 # ---------------------------------------------------------------------------
 # Mapping: internal element_type → OEF xsi:type
 # ---------------------------------------------------------------------------
+
+# OEF xsi:type -> ArchiMate layer, used to build the <organizations> folder tree.
+_OEF_TYPE_LAYER = {
+    **{t: "Strategy" for t in ("Resource", "Capability", "CourseOfAction", "ValueStream")},
+    **{t: "Business" for t in (
+        "BusinessActor", "BusinessRole", "BusinessCollaboration", "BusinessInterface",
+        "BusinessProcess", "BusinessFunction", "BusinessInteraction", "BusinessEvent",
+        "BusinessService", "BusinessObject", "Contract", "Representation", "Product")},
+    **{t: "Application" for t in (
+        "ApplicationComponent", "ApplicationCollaboration", "ApplicationInterface",
+        "ApplicationFunction", "ApplicationInteraction", "ApplicationProcess",
+        "ApplicationEvent", "ApplicationService", "DataObject")},
+    **{t: "Technology" for t in (
+        "Node", "Device", "SystemSoftware", "TechnologyCollaboration",
+        "TechnologyInterface", "Path", "CommunicationNetwork", "TechnologyFunction",
+        "TechnologyProcess", "TechnologyInteraction", "TechnologyEvent",
+        "TechnologyService", "Artifact")},
+    **{t: "Physical" for t in ("Equipment", "Facility", "DistributionNetwork", "Material")},
+    **{t: "Motivation" for t in (
+        "Stakeholder", "Driver", "Assessment", "Goal", "Outcome", "Principle",
+        "Requirement", "Constraint", "Meaning", "Value")},
+    **{t: "Implementation & Migration" for t in (
+        "WorkPackage", "Deliverable", "ImplementationEvent", "Plateau", "Gap")},
+}
 
 OEF_ELEMENT_TYPE_MAP: Dict[str, str] = {
     # Business layer
@@ -175,7 +208,7 @@ def export_to_xml(model_id: Optional[int] = None) -> str:
     )
 
     name_el = ET.SubElement(root, f"{{{_OEF_NS}}}name")
-    name_el.set("{http://www.w3.org/XML/1998/namespace}lang", "en")
+    name_el.set(_XML_LANG, "en")
     name_el.text = model_name
 
     # --- Query elements ---
@@ -190,6 +223,20 @@ def export_to_xml(model_id: Optional[int] = None) -> str:
         rel_query = rel_query.filter_by(architecture_id=model_id)
     relationships = rel_query.all()
 
+    # Property keys are declared once in <propertyDefinitions> and referenced by
+    # identifier from each element, so they must be collected up front.
+    prop_defs: Dict[str, str] = {}   # key -> propertyDefinition identifier
+    elem_props: Dict[int, Dict[str, str]] = {}
+    for elem in elements:
+        merged: Dict[str, str] = {}
+        for source in (getattr(elem, "properties", None), getattr(elem, "custom_properties", None)):
+            merged.update(_coerce_properties(source))
+        if merged:
+            elem_props[elem.id] = merged
+            for key in merged:
+                if key not in prop_defs:
+                    prop_defs[key] = f"propid-{len(prop_defs) + 1}"
+
     # <elements>
     elements_el = ET.SubElement(root, f"{{{_OEF_NS}}}elements")
     for elem in elements:
@@ -203,16 +250,20 @@ def export_to_xml(model_id: Optional[int] = None) -> str:
             },
         )
         el_name = ET.SubElement(el_node, f"{{{_OEF_NS}}}name")
-        el_name.set("{http://www.w3.org/XML/1998/namespace}lang", "en")
+        el_name.set(_XML_LANG, "en")
         el_name.text = getattr(elem, "name", "") or ""
         desc = getattr(elem, "description", None)
         if desc:
             doc_el = ET.SubElement(el_node, f"{{{_OEF_NS}}}documentation")
-            doc_el.set("{http://www.w3.org/XML/1998/namespace}lang", "en")
+            doc_el.set(_XML_LANG, "en")
             doc_el.text = desc
+        # Order inside <element> is fixed by the schema: name, documentation,
+        # then properties.
+        _emit_properties(el_node, elem_props.get(elem.id), prop_defs)
 
     # <relationships>
     relationships_el = ET.SubElement(root, f"{{{_OEF_NS}}}relationships")
+    exported_rel_ids = set()
     for rel in relationships:
         src = getattr(rel, "source_id", None)
         tgt = getattr(rel, "target_id", None)
@@ -229,8 +280,182 @@ def export_to_xml(model_id: Optional[int] = None) -> str:
                 "target": f"id-{tgt}",
             },
         )
+        exported_rel_ids.add(rel.id)
+
+    # <organizations> — the folder tree an importing tool shows in its model
+    # browser. Without it Archi drops everything into one flat default folder,
+    # so a large model arrives technically complete but unusable.
+    _emit_organizations(root, elements)
+
+    # <propertyDefinitions> — must follow <organizations> and precede <views>.
+    if prop_defs:
+        defs_el = ET.SubElement(root, f"{{{_OEF_NS}}}propertyDefinitions")
+        for key, ident in prop_defs.items():
+            definition = ET.SubElement(
+                defs_el,
+                f"{{{_OEF_NS}}}propertyDefinition",
+                attrib={"identifier": ident, "type": "string"},
+            )
+            d_name = ET.SubElement(definition, f"{{{_OEF_NS}}}name")
+            d_name.set(_XML_LANG, "en")
+            d_name.text = key
+
+    # <views> — diagram geometry. This is what makes the export a model rather
+    # than a data dump: without it every saved layout is lost on import.
+    _emit_views(root, {e.id for e in elements}, exported_rel_ids)
 
     return ET.tostring(root, encoding="unicode", xml_declaration=False)
+
+
+def _coerce_properties(raw) -> Dict[str, str]:
+    """Normalise a JSON / text / dict property bag into flat {str: str}."""
+    if not raw:
+        return {}
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except (ValueError, TypeError):
+            return {}
+    if not isinstance(raw, dict):
+        return {}
+    return {
+        str(k): ("" if v is None else str(v))
+        for k, v in raw.items()
+        if k is not None and not isinstance(v, (dict, list))
+    }
+
+
+def _emit_properties(parent, props, prop_defs) -> None:
+    if not props:
+        return
+    props_el = ET.SubElement(parent, f"{{{_OEF_NS}}}properties")
+    for key, value in props.items():
+        prop = ET.SubElement(
+            props_el,
+            f"{{{_OEF_NS}}}property",
+            attrib={"propertyDefinitionRef": prop_defs[key]},
+        )
+        val = ET.SubElement(prop, f"{{{_OEF_NS}}}value")
+        val.set(_XML_LANG, "en")
+        val.text = value
+
+
+def _emit_organizations(root, elements) -> None:
+    """Group elements into one <item> folder per ArchiMate layer."""
+    by_layer: Dict[str, list] = {}
+    for elem in elements:
+        oef_type = _elem_oef_type(getattr(elem, "type", None))
+        by_layer.setdefault(_OEF_TYPE_LAYER.get(oef_type, "Other"), []).append(elem.id)
+    if not by_layer:
+        return
+    orgs = ET.SubElement(root, f"{{{_OEF_NS}}}organizations")
+    for layer in _LAYER_ORDER:
+        ids = by_layer.get(layer)
+        if not ids:
+            continue
+        item = ET.SubElement(orgs, f"{{{_OEF_NS}}}item")
+        label = ET.SubElement(item, f"{{{_OEF_NS}}}label")
+        label.set(_XML_LANG, "en")
+        label.text = layer
+        for eid in ids:
+            ET.SubElement(item, f"{{{_OEF_NS}}}item", attrib={"identifierRef": f"id-{eid}"})
+
+
+def _emit_views(root, element_ids, relationship_ids) -> None:
+    """Emit <views><diagrams><view> with node geometry and connections.
+
+    Scoped to the exported model by way of the elements each diagram places,
+    because SavedDiagram itself carries no architecture_id.
+    """
+    try:
+        from app.models.archimate_core import (
+            SavedDiagram,
+            SavedDiagramElement,
+            SavedDiagramRelationship,
+        )
+    except Exception:  # noqa: BLE001 — views are optional; never fail the export
+        return
+
+    try:
+        placements = (
+            SavedDiagramElement.query.filter(
+                SavedDiagramElement.element_id.in_(element_ids)
+            ).all()
+            if element_ids
+            else []
+        )
+        if not placements:
+            return
+        diagram_ids = {p.diagram_id for p in placements}
+        diagrams = SavedDiagram.query.filter(SavedDiagram.id.in_(diagram_ids)).all()
+        connections = SavedDiagramRelationship.query.filter(
+            SavedDiagramRelationship.diagram_id.in_(diagram_ids)
+        ).all()
+    except Exception:  # noqa: BLE001 — a missing table must not break the export
+        return
+
+    if not diagrams:
+        return
+
+    views = ET.SubElement(root, f"{{{_OEF_NS}}}views")
+    diagrams_el = ET.SubElement(views, f"{{{_OEF_NS}}}diagrams")
+    for diagram in diagrams:
+        view = ET.SubElement(
+            diagrams_el,
+            f"{{{_OEF_NS}}}view",
+            attrib={
+                "identifier": f"id-view-{diagram.id}",
+                f"{{{_XSI_NS}}}type": "Diagram",
+            },
+        )
+        v_name = ET.SubElement(view, f"{{{_OEF_NS}}}name")
+        v_name.set(_XML_LANG, "en")
+        v_name.text = getattr(diagram, "name", "") or f"View {diagram.id}"
+
+        # A <connection>'s source/target reference NODE identifiers, not element
+        # identifiers, so the element -> node mapping for this view is needed.
+        node_for_element = {}
+        for placement in placements:
+            if placement.diagram_id != diagram.id:
+                continue
+            node_id = f"id-node-{placement.id}"
+            node_for_element[placement.element_id] = node_id
+            ET.SubElement(
+                view,
+                f"{{{_OEF_NS}}}node",
+                attrib={
+                    "identifier": node_id,
+                    "elementRef": f"id-{placement.element_id}",
+                    f"{{{_XSI_NS}}}type": "Element",
+                    "x": str(int(placement.position_x or 0)),
+                    "y": str(int(placement.position_y or 0)),
+                    "w": str(int(placement.width or 180)),
+                    "h": str(int(placement.height or 64)),
+                },
+            )
+
+        for conn in connections:
+            if conn.diagram_id != diagram.id or conn.relationship_id not in relationship_ids:
+                continue
+            rel = ArchiMateRelationship.query.get(conn.relationship_id)
+            if rel is None:
+                continue
+            src_node = node_for_element.get(rel.source_id)
+            tgt_node = node_for_element.get(rel.target_id)
+            # Both endpoints must be placed on THIS view or the reference dangles.
+            if not src_node or not tgt_node:
+                continue
+            ET.SubElement(
+                view,
+                f"{{{_OEF_NS}}}connection",
+                attrib={
+                    "identifier": f"id-conn-{conn.id}",
+                    "relationshipRef": f"id-rel-{conn.relationship_id}",
+                    f"{{{_XSI_NS}}}type": "Relationship",
+                    "source": src_node,
+                    "target": tgt_node,
+                },
+            )
 
 
 class ArchiMateXMLExportService:
