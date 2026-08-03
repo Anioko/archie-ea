@@ -68,3 +68,68 @@ process start time against the file you changed:
     stat -c %y /root/archie-ea/<changed_file>
 
 If the master predates the file, the change is not running.
+
+## The deploy procedure
+
+`deploy/deploy.sh` does the whole sequence on the application host. Every step in
+it exists because that step has already caught a real failure — see the comments
+at the top of the script.
+
+    # from a workstation: put the code on the host, then run the deploy
+    git push ssh://root@10.106.0.6/root/archie-ea HEAD:refs/heads/deploy-$(date +%Y%m%d)
+    ssh -J root@165.22.125.156 root@10.106.0.6 \
+        'cd /root/archie-ea && ./deploy/deploy.sh deploy-YYYYMMDD'
+
+It refuses a non-fast-forward unless given `--force`, dumps the database first,
+verifies subresource integrity **before** restarting, restarts rather than
+SIGHUPing, and **rolls itself back if health does not return**. It prints the
+rollback command and the dump path on the way out.
+
+Then verify what users actually get, in a browser, from a workstation:
+
+    python deploy/verify_production.py https://165-22-125-156.sslip.io
+
+    # optionally walk signed-in pages too
+    SMOKE_EMAIL=... SMOKE_PASSWORD=... python deploy/verify_production.py https://...
+
+### Why both, and why the second one matters
+
+`tests/smoke/` runs in CI against a seeded database and proves the **code** is
+good. `deploy/verify_production.py` proves the **deployment** is good — that the
+bytes being served behave in a browser.
+
+Those are not the same thing, and the gap between them is not theoretical. On
+2026-07-31 a Windows checkout rewrote the vendored JavaScript to CRLF, which
+changed every file's SHA-384 and so broke the `integrity=` attributes. The
+templates stayed valid, every test passed, every route returned 200 — and the
+browser refused to execute Alpine, DOMPurify and the icon library, leaving the
+entire interface inert. Nothing server-side can see that. `.gitattributes` now
+pins those files with `-text`, and `deploy.sh` checks the hashes before it
+restarts anything.
+
+### Topology
+
+    https://165-22-125-156.sslip.io   ->  165.22.125.156  archie-proxy  (Caddy)
+                                              |  reverse_proxy 10.106.0.6:5000
+                                              v
+                                          10.106.0.6      archie-oss    (the app)
+
+The app host has no public address; reach it with
+`ssh -J root@165.22.125.156 root@10.106.0.6`. The proxy's own key is not
+authorised on the app host, so use ProxyJump from a workstation rather than
+hopping manually.
+
+### Known friction: the host pulls from a repo we cannot push to
+
+The droplet's `origin` is `Anioko/archie-ea`, and the working credentials get 403
+against it. That is why deploys go over SSH to a `deploy-*` branch instead of
+`git pull`, and why the host sits on a deploy branch rather than `main`.
+
+Fixing it — grant push access to `Anioko`, or repoint `origin` at
+`saint-gobain-archie` — reduces a deploy to `git pull && ./deploy/deploy.sh main`.
+Until then, delete merged deploy branches occasionally:
+
+    git branch --list 'deploy-*' --format='%(refname:short)' | while read b; do
+        [ "$b" = "$(git rev-parse --abbrev-ref HEAD)" ] && continue
+        git merge-base --is-ancestor "$b" HEAD && git branch -D "$b"
+    done
