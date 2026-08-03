@@ -272,11 +272,11 @@
         if (!badge) return;
         const text = badge.textContent.trim().toLowerCase();
         const map = {
-            admin:    'bg-amber-500/10 text-amber-600 border-amber-500/30',
+            admin:    'bg-amber-500/10 text-amber-700 border-amber-500/30',
             user:     'bg-blue-500/10 text-primary border-blue-500/30',
             analyst:  'bg-purple-500/10 text-primary border-purple-500/30',
-            architect:'bg-emerald-500/10 text-emerald-600 border-emerald-500/30',
-            viewer:   'bg-slate-500/10 text-slate-500 border-slate-400/30',
+            architect:'bg-emerald-500/10 text-emerald-700 border-emerald-500/30',
+            viewer:   'bg-slate-500/10 text-slate-600 border-slate-400/30',
         };
         const cls = Object.entries(map).find(([k]) => text.includes(k));
         if (cls) cls[1].split(' ').forEach(function(c) { badge.classList.add(c); });

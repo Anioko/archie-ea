@@ -1,0 +1,20 @@
+{
+  "_comment": "Accepted axe-core violations per page. Every entry is a real WCAG 2.1 AA failure that has not been fixed yet, not a statement that the page is accessible. Regenerate with SMOKE_A11Y_UPDATE_BASELINE=1.",
+  "accepted": {
+    "/applications/": {
+      "color-contrast": 8
+    },
+    "/capability-map/": {
+      "color-contrast": 2
+    },
+    "/dashboard/overview": {
+      "color-contrast": 5
+    },
+    "/my-applications/": {},
+    "/procurement/compliance": {
+      "color-contrast": 2
+    },
+    "/procurement/contracts": {},
+    "/procurement/contracts/new": {}
+  }
+}
