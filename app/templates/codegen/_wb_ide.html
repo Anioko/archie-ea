@@ -32,7 +32,7 @@
                 <div x-show="qualityScore !== null" x-cloak
                      @click="rightTab='quality'"
                      class="flex items-center gap-1.5 px-2.5 h-7 rounded-md border text-xs font-medium cursor-pointer transition-colors"
-                     :class="qualityScore >= 80 ? 'border-emerald-500/30 bg-emerald-500/8 text-emerald-600 hover:bg-emerald-500/15' : qualityScore >= 60 ? 'border-amber-500/30 bg-amber-500/8 text-amber-600 hover:bg-amber-500/15' : 'border-destructive/30 bg-red-500/8 text-destructive hover:bg-red-500/15'">
+                     :class="qualityScore >= 80 ? 'border-emerald-500/30 bg-emerald-500/8 text-emerald-600 hover:bg-emerald-500/15' : qualityScore >= 60 ? 'border-amber-500/30 bg-amber-500/8 text-amber-600 hover:bg-amber-500/15' : 'border-destructive/30 bg-destructive/8 text-destructive hover:bg-destructive/15'">
                     <svg class="w-3 h-3" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="5" stroke="currentColor" stroke-width="1.5" fill="none"/><circle cx="6" cy="6" r="2.5" fill="currentColor" opacity=".3"/></svg>
                     <span>Structural <span x-text="qualityScore"></span>%</span>
                 </div>
@@ -188,7 +188,7 @@
                     <template x-for="key in promptGroups" :key="key">
                         <div class="flex items-center gap-1 text-[10px]">
                             <span class="w-1.5 h-1.5 rounded-full shrink-0"
-                                  :class="promptGroupStatus[key]==='done'?'bg-emerald-400':promptGroupStatus[key]==='running'?'bg-primary animate-pulse':promptGroupStatus[key]==='error'?'bg-red-400':'bg-muted-foreground/20'"></span>
+                                  :class="promptGroupStatus[key]==='done'?'bg-emerald-400':promptGroupStatus[key]==='running'?'bg-primary animate-pulse':promptGroupStatus[key]==='error'?'bg-destructive':'bg-muted-foreground/20'"></span>
                             <span :class="promptGroupStatus[key]==='running'?'text-foreground font-medium':promptGroupStatus[key]==='done'?'text-emerald-600':'text-muted-foreground/50'" x-text="key"></span>
                         </div>
                     </template>
@@ -385,7 +385,7 @@
                     <div class="grid grid-cols-2 max-h-52 overflow-hidden">
                         <div class="border-r border-border overflow-auto">
                             <div class="sticky top-0 px-2 py-1 bg-destructive/10 text-destructive text-[10px] font-semibold uppercase tracking-wider">Before</div>
-                            <pre class="p-2 text-[10px] font-mono leading-relaxed bg-red-500/5 whitespace-pre-wrap break-all" x-text="patchDiff ? patchDiff.old.substring(0,3000) + (patchDiff.old.length>3000?'\n…':'') : ''"></pre>
+                            <pre class="p-2 text-[10px] font-mono leading-relaxed bg-destructive/5 whitespace-pre-wrap break-all" x-text="patchDiff ? patchDiff.old.substring(0,3000) + (patchDiff.old.length>3000?'\n…':'') : ''"></pre>
                         </div>
                         <div class="overflow-auto">
                             <div class="sticky top-0 px-2 py-1 bg-emerald-500/10 text-emerald-600 text-[10px] font-semibold uppercase tracking-wider">After</div>
@@ -676,7 +676,7 @@
                                         <template x-for="(rec, i) in qualityDetails.recommendations" :key="i">
                                             <div class="rounded-lg overflow-hidden"
                                                  :class="{
-                                                     'bg-red-500/5 border border-red-500/20':     (rec.icon||'warning') === 'error',
+                                                     'bg-destructive/5 border border-destructive/20':     (rec.icon||'warning') === 'error',
                                                      'bg-sky-500/5 border border-sky-500/20':     (rec.icon||'warning') === 'info',
                                                      'bg-amber-500/5 border border-amber-500/20': (rec.icon||'warning') !== 'error' && (rec.icon||'warning') !== 'info'
                                                  }">
@@ -728,9 +728,9 @@
                                     <div class="space-y-1.5">
                                         <template x-for="(v, vi) in qualityDetails.blueprint_violations" :key="vi">
                                             <div class="flex items-start gap-2 px-3 py-2 rounded-lg"
-                                                 :class="v.severity === 'error' ? 'bg-red-500/5 border border-red-500/20' : 'bg-amber-500/5 border border-amber-500/20'">
+                                                 :class="v.severity === 'error' ? 'bg-destructive/5 border border-destructive/20' : 'bg-amber-500/5 border border-amber-500/20'">
                                                 <span class="shrink-0 text-[9px] font-bold uppercase px-1 py-0.5 rounded"
-                                                      :class="v.severity === 'error' ? 'bg-destructive/10 text-destructive dark:bg-red-900/30 dark:text-red-400' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'"
+                                                      :class="v.severity === 'error' ? 'bg-destructive/10 text-destructive dark:bg-destructive/30 dark:text-red-400' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'"
                                                       x-text="v.severity"></span>
                                                 <div class="flex-1 min-w-0">
                                                     <p class="text-[11px] font-medium text-foreground leading-snug" x-text="v.constraint"></p>
@@ -738,7 +738,7 @@
                                                 </div>
                                                 <button @click="patchViolation(v.constraint)"
                                                         class="shrink-0 text-[9px] font-semibold px-1.5 py-0.5 rounded border transition-colors"
-                                                        :class="v.severity === 'error' ? 'border-red-400/50 text-destructive hover:bg-destructive/10' : 'border-amber-400/50 text-amber-600 hover:bg-amber-500/10'"
+                                                        :class="v.severity === 'error' ? 'border-destructive/50 text-destructive hover:bg-destructive/10' : 'border-amber-400/50 text-amber-600 hover:bg-amber-500/10'"
                                                         title="Auto-patch this violation">Patch</button>
                                             </div>
                                         </template>
@@ -849,7 +849,7 @@
                                 <button @click="verify()"
                                         :disabled="verifying || !fileList.length"
                                         class="flex-1 h-8 text-[10px] font-medium border rounded-lg transition-colors flex items-center justify-center gap-1.5 disabled:opacity-40"
-                                        :class="verifying ? 'border-blue-400/50 text-primary bg-blue-500/5' : 'border-emerald-400/50 text-emerald-600 hover:bg-emerald-500/5'">
+                                        :class="verifying ? 'border-blue-400/50 text-primary bg-info/5' : 'border-emerald-400/50 text-emerald-600 hover:bg-emerald-500/5'">
                                     <template x-if="!verifying">
                                         <i data-lucide="play-circle" class="h-3 w-3"></i>
                                     </template>
@@ -1113,7 +1113,7 @@
                         </div>
                         <p class="text-[10px] text-muted-foreground mb-2.5 leading-relaxed">Build and run the generated FastAPI app in Docker. Opens /docs (Swagger UI) for the live API.</p>
                         <div x-show="dockerError" x-cloak
-                             class="rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2 text-[10px] text-destructive mb-2"
+                             class="rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2 text-[10px] text-destructive mb-2"
                              x-text="dockerError"></div>
                         <div x-show="!dockerRunning" x-cloak>
                             <button @click="dockerPreview()" :disabled="dockerBuilding || !fileList.length"
@@ -1168,7 +1168,7 @@
                         </div>
                         <p class="text-[10px] text-muted-foreground mb-2.5 leading-relaxed">Opens the generated Next.js frontend in <strong>StackBlitz WebContainers</strong> — a real Node.js environment running entirely in your browser. See your app live in ~30 seconds with no local setup.</p>
                         <button @click="openStackBlitz()" :disabled="stackBlitzLoading || !fileList.length"
-                                class="w-full h-9 text-xs font-semibold rounded-lg border border-info/30 bg-blue-500/8 hover:bg-blue-500/15 text-primary disabled:opacity-50 transition-colors flex items-center justify-center gap-2">
+                                class="w-full h-9 text-xs font-semibold rounded-lg border border-info/30 bg-info/10 hover:bg-info/15 text-primary disabled:opacity-50 transition-colors flex items-center justify-center gap-2">
                             <svg x-show="stackBlitzLoading" x-cloak class="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
                             <!-- StackBlitz bolt icon -->
                             <svg x-show="!stackBlitzLoading" class="w-3.5 h-3.5" viewBox="0 0 28 28" fill="currentColor"><path d="M14.5 2L4 16h9.5L12 26l12-14h-9.5z"/></svg>
@@ -1238,31 +1238,31 @@
                             <p class="text-sm font-semibold text-foreground">Preview Mobile App</p>
                         </div>
                         <p class="text-[10px] text-muted-foreground mb-2.5 leading-relaxed">Preview in the browser simulator below, open in a new tab, or scan the QR code with <span class="font-medium">Expo Go</span> on your phone.</p>
-                        <div x-show="snackError" x-cloak class="rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2 text-[10px] text-destructive mb-2" x-text="snackError"></div>
+                        <div x-show="snackError" x-cloak class="rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2 text-[10px] text-destructive mb-2" x-text="snackError"></div>
 
                         <!-- Action buttons (shown after upload) -->
                         <div x-show="snackUrl" x-cloak class="flex gap-2 mb-3">
                             <a :href="snackUrl" target="_blank" rel="noopener noreferrer"
-                               class="flex-1 h-7 px-2.5 text-[10px] font-semibold rounded-md border border-info/30 bg-info/10 hover:bg-blue-500/20 text-primary flex items-center justify-center gap-1.5">
+                               class="flex-1 h-7 px-2.5 text-[10px] font-semibold rounded-md border border-info/30 bg-info/10 hover:bg-info/20 text-primary flex items-center justify-center gap-1.5">
                                 <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"/></svg>
                                 Open in Tab
                             </a>
                             <button @click="showEmbed = !showEmbed"
                                     :class="showEmbed ? 'bg-primary text-primary-foreground' : 'bg-info/10 text-primary'"
-                                    class="flex-1 h-7 px-2.5 text-[10px] font-semibold rounded-md border border-info/30 hover:bg-blue-500/20 flex items-center justify-center gap-1.5 transition-colors">
+                                    class="flex-1 h-7 px-2.5 text-[10px] font-semibold rounded-md border border-info/30 hover:bg-info/20 flex items-center justify-center gap-1.5 transition-colors">
                                 <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3"/></svg>
                                 Simulator
                             </button>
                             <button @click="showQr = !showQr"
                                     :class="showQr ? 'bg-primary text-primary-foreground' : 'bg-info/10 text-primary'"
-                                    class="h-7 px-2.5 text-[10px] font-semibold rounded-md border border-info/30 hover:bg-blue-500/20 flex items-center justify-center gap-1.5 transition-colors">
+                                    class="h-7 px-2.5 text-[10px] font-semibold rounded-md border border-info/30 hover:bg-info/20 flex items-center justify-center gap-1.5 transition-colors">
                                 <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 013.75 9.375v-4.5zm0 9.75c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5zm9.75-9.75c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0113.5 9.375v-4.5z"/></svg>
                                 QR
                             </button>
                         </div>
 
                         <!-- Inline Expo Snack embed (phone simulator) -->
-                        <div x-show="showEmbed && snackId" x-cloak class="mb-3 rounded-xl overflow-hidden border border-zinc-200 bg-zinc-950">
+                        <div x-show="showEmbed && snackId" x-cloak class="mb-3 rounded-xl overflow-hidden border border-border bg-zinc-950">
                             <iframe :src="'https://snack.expo.dev/embedded/@snack/' + snackId + '?preview=true&platform=ios&theme=dark'"
                                     style="width: 100%; height: 580px; border: 0;"
                                     allow="accelerometer; ambient-light-sensor; camera; encrypted-media; geolocation; gyroscope; hid; microphone; midi; payment; usb; vr; xr-spatial-tracking"
@@ -1270,7 +1270,7 @@
                         </div>
 
                         <!-- QR Code for Expo Go scanning -->
-                        <div x-show="showQr && snackId" x-cloak class="mb-3 rounded-xl border border-zinc-200 bg-background p-4 text-center">
+                        <div x-show="showQr && snackId" x-cloak class="mb-3 rounded-xl border border-border bg-background p-4 text-center">
                             <img :src="'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=exp://exp.host/@snack/' + snackId"
                                  alt="QR Code" class="mx-auto rounded-lg" width="200" height="200">
                             <p class="text-[10px] text-muted-foreground mt-2">Scan with <strong>Expo Go</strong> app on your phone</p>
@@ -1295,7 +1295,7 @@
                             })
                             .catch(e => { snacking = false; snackError = 'Network error: ' + e.message; })"
                                 :disabled="snacking"
-                                class="w-full h-8 text-xs font-semibold rounded-lg border border-info/30 bg-blue-500/8 hover:bg-blue-500/15 text-primary disabled:opacity-50 transition-colors flex items-center justify-center gap-2">
+                                class="w-full h-8 text-xs font-semibold rounded-lg border border-info/30 bg-info/10 hover:bg-info/15 text-primary disabled:opacity-50 transition-colors flex items-center justify-center gap-2">
                             <svg x-show="snacking" x-cloak class="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
                             <svg x-show="!snacking" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 8.25h3"/></svg>
                             <span x-text="snacking ? 'Uploading to Snack…' : (snackUrl ? 'Re-upload to Snack' : 'Preview in Expo Snack')"></span>
@@ -1496,7 +1496,7 @@
                             <div class="flex items-start justify-between gap-2">
                                 <p class="text-[11px] text-foreground/90 leading-relaxed" x-text="intentPlan && intentPlan.summary"></p>
                                 <span class="shrink-0 text-[9px] font-semibold px-1.5 py-0.5 rounded border uppercase tracking-wider"
-                                      :class="(intentPlan && intentPlan.risk) === 'high' ? 'text-destructive border-red-400/40 bg-red-500/5' : (intentPlan && intentPlan.risk) === 'medium' ? 'text-amber-600 border-amber-400/40 bg-amber-500/5' : 'text-emerald-600 border-emerald-400/40 bg-emerald-500/5'"
+                                      :class="(intentPlan && intentPlan.risk) === 'high' ? 'text-destructive border-destructive/40 bg-destructive/5' : (intentPlan && intentPlan.risk) === 'medium' ? 'text-amber-600 border-amber-400/40 bg-amber-500/5' : 'text-emerald-600 border-emerald-400/40 bg-emerald-500/5'"
                                       x-text="(intentPlan && intentPlan.risk) ? (intentPlan.risk + ' risk') : 'low risk'"></span>
                             </div>
 
@@ -1544,7 +1544,7 @@
                                 </div>
                                 <template x-for="(s, si) in (intentVerify && intentVerify.steps ? intentVerify.steps : [])" :key="si">
                                     <div class="rounded-md border px-2 py-1.5"
-                                         :class="s.status === 'pass' ? 'border-emerald-500/20 bg-emerald-500/5' : s.status === 'warn' ? 'border-amber-500/20 bg-amber-500/5' : s.status === 'running' ? 'border-blue-500/20 bg-blue-500/5' : 'border-border bg-muted/20'">
+                                         :class="s.status === 'pass' ? 'border-emerald-500/20 bg-emerald-500/5' : s.status === 'warn' ? 'border-amber-500/20 bg-amber-500/5' : s.status === 'running' ? 'border-info/20 bg-info/5' : 'border-border bg-muted/20'">
                                         <div class="flex items-center gap-1.5">
                                             <i x-show="s.status === 'pass'" data-lucide="check-circle-2" class="h-3 w-3 text-emerald-600"></i>
                                             <i x-show="s.status === 'warn'" data-lucide="alert-triangle" class="h-3 w-3 text-amber-600"></i>
@@ -1567,7 +1567,7 @@
                                         <p class="text-muted-foreground">Total</p>
                                         <p class="font-semibold text-foreground" x-text="intentGateStats.total_events || 0"></p>
                                     </div>
-                                    <div class="rounded border border-red-500/20 bg-red-500/5 px-1.5 py-1 text-center">
+                                    <div class="rounded border border-destructive/20 bg-destructive/5 px-1.5 py-1 text-center">
                                         <p class="text-destructive">Blocked</p>
                                         <p class="font-semibold text-destructive" x-text="intentGateStats.blocked || 0"></p>
                                     </div>

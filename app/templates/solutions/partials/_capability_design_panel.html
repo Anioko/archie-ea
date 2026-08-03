@@ -159,7 +159,7 @@
                                     <div class="mt-2 space-y-1">
                                         <template x-for="gap in domain.gaps" :key="gap.id || gap.name">
                                             <div class="text-xs text-muted-foreground flex items-center gap-1.5">
-                                                <span class="w-1.5 h-1.5 rounded-full bg-red-400 flex-shrink-0"></span>
+                                                <span class="w-1.5 h-1.5 rounded-full bg-destructive flex-shrink-0"></span>
                                                 <span x-text="gap.name"></span>
                                                 <span x-show="gap.severity" x-cloak class="inline-flex items-center px-1.5 py-0.5 rounded bg-destructive/10 text-destructive text-xs" x-text="gap.severity"></span>
                                             </div>

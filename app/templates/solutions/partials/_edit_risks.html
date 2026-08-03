@@ -48,7 +48,7 @@
                                     <td class="text-center py-0.5 px-1">
                                         <div class="w-7 h-7 rounded flex items-center justify-center mx-auto font-medium text-xs transition-colors"
                                              :class="{
-                                                 'bg-red-500/80 text-primary-foreground': cell.count > 0 && (cell.impact === 'critical' || cell.impact === 'high') && (cell.probability === 'high' || cell.probability === 'critical'),
+                                                 'bg-destructive/80 text-primary-foreground': cell.count > 0 && (cell.impact === 'critical' || cell.impact === 'high') && (cell.probability === 'high' || cell.probability === 'critical'),
                                                  'bg-orange-400/70 text-primary-foreground': cell.count > 0 && ((cell.impact === 'high' && cell.probability === 'medium') || (cell.impact === 'medium' && cell.probability === 'high')),
                                                  'bg-amber-300/70 text-foreground': cell.count > 0 && cell.impact === 'medium' && cell.probability === 'medium',
                                                  'bg-emerald-400/60 text-primary-foreground': cell.count > 0 && (cell.impact === 'low' || cell.probability === 'low'),

@@ -607,7 +607,7 @@
                 {# Section 1: Identity #}
                 <div x-data="{ expanded: true }">
                     <button type="button" @click="expanded = !expanded"
-                            class="flex w-full items-center justify-between py-2 text-sm font-semibold text-zinc-700 dark:text-zinc-300 border-b border-zinc-200 dark:border-zinc-700 mb-3">
+                            class="flex w-full items-center justify-between py-2 text-sm font-semibold text-foreground dark:text-zinc-300 border-b border-border dark:border-zinc-700 mb-3">
                         <span>Identity</span>
                         <svg :class="expanded ? 'rotate-180' : ''" class="w-4 h-4 transition-transform" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
@@ -649,7 +649,7 @@
                 {# Section 2: TOGAF Classification #}
                 <div x-data="{ expanded: true }">
                     <button type="button" @click="expanded = !expanded"
-                            class="flex w-full items-center justify-between py-2 text-sm font-semibold text-zinc-700 dark:text-zinc-300 border-b border-zinc-200 dark:border-zinc-700 mb-3">
+                            class="flex w-full items-center justify-between py-2 text-sm font-semibold text-foreground dark:text-zinc-300 border-b border-border dark:border-zinc-700 mb-3">
                         <span>TOGAF Classification</span>
                         <svg :class="expanded ? 'rotate-180' : ''" class="w-4 h-4 transition-transform" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
@@ -743,7 +743,7 @@
                 {# Section 3: Planning & Gantt #}
                 <div x-data="{ expanded: false }">
                     <button type="button" @click="expanded = !expanded"
-                            class="flex w-full items-center justify-between py-2 text-sm font-semibold text-zinc-700 dark:text-zinc-300 border-b border-zinc-200 dark:border-zinc-700 mb-3">
+                            class="flex w-full items-center justify-between py-2 text-sm font-semibold text-foreground dark:text-zinc-300 border-b border-border dark:border-zinc-700 mb-3">
                         <span>Planning &amp; Gantt</span>
                         <svg :class="expanded ? 'rotate-180' : ''" class="w-4 h-4 transition-transform" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
@@ -781,7 +781,7 @@
                 {# Section 4: Assignment & Governance #}
                 <div x-data="{ expanded: false }">
                     <button type="button" @click="expanded = !expanded"
-                            class="flex w-full items-center justify-between py-2 text-sm font-semibold text-zinc-700 dark:text-zinc-300 border-b border-zinc-200 dark:border-zinc-700 mb-3">
+                            class="flex w-full items-center justify-between py-2 text-sm font-semibold text-foreground dark:text-zinc-300 border-b border-border dark:border-zinc-700 mb-3">
                         <span>Assignment &amp; Governance</span>
                         <svg :class="expanded ? 'rotate-180' : ''" class="w-4 h-4 transition-transform" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
@@ -843,7 +843,7 @@
                 {# Section 5: Traceability (ArchiMate 3.2) #}
                 <div x-data="{ expanded: false }">
                     <button type="button" @click="expanded = !expanded"
-                            class="flex w-full items-center justify-between py-2 text-sm font-semibold text-zinc-700 dark:text-zinc-300 border-b border-zinc-200 dark:border-zinc-700 mb-3">
+                            class="flex w-full items-center justify-between py-2 text-sm font-semibold text-foreground dark:text-zinc-300 border-b border-border dark:border-zinc-700 mb-3">
                         <span>Traceability (ArchiMate 3.2)</span>
                         <svg :class="expanded ? 'rotate-180' : ''" class="w-4 h-4 transition-transform" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
@@ -852,9 +852,9 @@
                     <div x-show="expanded" x-cloak class="space-y-3 mb-2">
                         {# Requirements #}
                         <div>
-                            <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1">
+                            <label class="block text-xs font-medium text-muted-foreground dark:text-muted-foreground mb-1">
                                 Realizes Requirements
-                                <span class="text-zinc-400 font-normal ml-1">Work Package → realizes → Requirement</span>
+                                <span class="text-muted-foreground font-normal ml-1">Work Package → realizes → Requirement</span>
                             </label>
                             <div class="flex flex-wrap gap-1 mb-1">
                                 <template x-for="item in form.requirement_ids" :key="item.id">
@@ -866,11 +866,11 @@
                             </div>
                             <input type="text" x-model="requirementSearch" @input.debounce.300ms="searchRequirements()" @focus="searchRequirements()"
                                    placeholder="Search requirements..."
-                                   class="w-full text-sm border border-zinc-300 dark:border-zinc-600 rounded px-3 py-1.5 bg-background dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100" aria-label="Search requirements...">
-                            <div x-show="requirementResults.length > 0" x-cloak class="mt-1 border border-zinc-200 dark:border-zinc-700 rounded bg-background dark:bg-zinc-800 shadow-lg max-h-40 overflow-y-auto z-50">
+                                   class="w-full text-sm border border-border dark:border-zinc-600 rounded px-3 py-1.5 bg-background dark:bg-zinc-800 text-foreground dark:text-zinc-100" aria-label="Search requirements...">
+                            <div x-show="requirementResults.length > 0" x-cloak class="mt-1 border border-border dark:border-zinc-700 rounded bg-background dark:bg-zinc-800 shadow-lg max-h-40 overflow-y-auto z-50">
                                 <template x-for="r in requirementResults" :key="r.id">
-                                    <button type="button" @click="addRequirement(r)" class="w-full text-left px-3 py-1.5 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-700">
-                                        <span class="font-mono text-xs text-zinc-500 mr-2" x-text="r.ref"></span>
+                                    <button type="button" @click="addRequirement(r)" class="w-full text-left px-3 py-1.5 text-sm hover:bg-muted dark:hover:bg-zinc-700">
+                                        <span class="font-mono text-xs text-muted-foreground mr-2" x-text="r.ref"></span>
                                         <span x-text="r.label"></span>
                                     </button>
                                 </template>
@@ -878,9 +878,9 @@
                         </div>
                         {# Goals #}
                         <div>
-                            <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1">
+                            <label class="block text-xs font-medium text-muted-foreground dark:text-muted-foreground mb-1">
                                 Influences Goals
-                                <span class="text-zinc-400 font-normal ml-1">Work Package → influences → Goal</span>
+                                <span class="text-muted-foreground font-normal ml-1">Work Package → influences → Goal</span>
                             </label>
                             <div class="flex flex-wrap gap-1 mb-1">
                                 <template x-for="item in form.goal_ids" :key="item.id">
@@ -892,11 +892,11 @@
                             </div>
                             <input type="text" x-model="goalSearch" @input.debounce.300ms="searchGoals()" @focus="searchGoals()"
                                    placeholder="Search goals..."
-                                   class="w-full text-sm border border-zinc-300 dark:border-zinc-600 rounded px-3 py-1.5 bg-background dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100" aria-label="Search goals...">
-                            <div x-show="goalResults.length > 0" x-cloak class="mt-1 border border-zinc-200 dark:border-zinc-700 rounded bg-background dark:bg-zinc-800 shadow-lg max-h-40 overflow-y-auto z-50">
+                                   class="w-full text-sm border border-border dark:border-zinc-600 rounded px-3 py-1.5 bg-background dark:bg-zinc-800 text-foreground dark:text-zinc-100" aria-label="Search goals...">
+                            <div x-show="goalResults.length > 0" x-cloak class="mt-1 border border-border dark:border-zinc-700 rounded bg-background dark:bg-zinc-800 shadow-lg max-h-40 overflow-y-auto z-50">
                                 <template x-for="r in goalResults" :key="r.id">
-                                    <button type="button" @click="addGoal(r)" class="w-full text-left px-3 py-1.5 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-700">
-                                        <span class="font-mono text-xs text-zinc-500 mr-2" x-text="r.ref"></span>
+                                    <button type="button" @click="addGoal(r)" class="w-full text-left px-3 py-1.5 text-sm hover:bg-muted dark:hover:bg-zinc-700">
+                                        <span class="font-mono text-xs text-muted-foreground mr-2" x-text="r.ref"></span>
                                         <span x-text="r.label"></span>
                                     </button>
                                 </template>
@@ -904,9 +904,9 @@
                         </div>
                         {# Drivers #}
                         <div>
-                            <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1">
+                            <label class="block text-xs font-medium text-muted-foreground dark:text-muted-foreground mb-1">
                                 Associated Drivers
-                                <span class="text-zinc-400 font-normal ml-1">Work Package → associated with → Driver</span>
+                                <span class="text-muted-foreground font-normal ml-1">Work Package → associated with → Driver</span>
                             </label>
                             <div class="flex flex-wrap gap-1 mb-1">
                                 <template x-for="item in form.driver_ids" :key="item.id">
@@ -918,11 +918,11 @@
                             </div>
                             <input type="text" x-model="driverSearch" @input.debounce.300ms="searchDrivers()" @focus="searchDrivers()"
                                    placeholder="Search drivers..."
-                                   class="w-full text-sm border border-zinc-300 dark:border-zinc-600 rounded px-3 py-1.5 bg-background dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100" aria-label="Search drivers...">
-                            <div x-show="driverResults.length > 0" x-cloak class="mt-1 border border-zinc-200 dark:border-zinc-700 rounded bg-background dark:bg-zinc-800 shadow-lg max-h-40 overflow-y-auto z-50">
+                                   class="w-full text-sm border border-border dark:border-zinc-600 rounded px-3 py-1.5 bg-background dark:bg-zinc-800 text-foreground dark:text-zinc-100" aria-label="Search drivers...">
+                            <div x-show="driverResults.length > 0" x-cloak class="mt-1 border border-border dark:border-zinc-700 rounded bg-background dark:bg-zinc-800 shadow-lg max-h-40 overflow-y-auto z-50">
                                 <template x-for="r in driverResults" :key="r.id">
-                                    <button type="button" @click="addDriver(r)" class="w-full text-left px-3 py-1.5 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-700">
-                                        <span class="font-mono text-xs text-zinc-500 mr-2" x-text="r.ref"></span>
+                                    <button type="button" @click="addDriver(r)" class="w-full text-left px-3 py-1.5 text-sm hover:bg-muted dark:hover:bg-zinc-700">
+                                        <span class="font-mono text-xs text-muted-foreground mr-2" x-text="r.ref"></span>
                                         <span x-text="r.label"></span>
                                     </button>
                                 </template>
@@ -930,9 +930,9 @@
                         </div>
                         {# Principles #}
                         <div>
-                            <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1">
+                            <label class="block text-xs font-medium text-muted-foreground dark:text-muted-foreground mb-1">
                                 Complies with Principles
-                                <span class="text-zinc-400 font-normal ml-1">Work Package → complies with → Principle</span>
+                                <span class="text-muted-foreground font-normal ml-1">Work Package → complies with → Principle</span>
                             </label>
                             <div class="flex flex-wrap gap-1 mb-1">
                                 <template x-for="item in form.principle_ids" :key="item.id">
@@ -944,11 +944,11 @@
                             </div>
                             <input type="text" x-model="principleSearch" @input.debounce.300ms="searchPrinciples()" @focus="searchPrinciples()"
                                    placeholder="Search principles..."
-                                   class="w-full text-sm border border-zinc-300 dark:border-zinc-600 rounded px-3 py-1.5 bg-background dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100" aria-label="Search principles...">
-                            <div x-show="principleResults.length > 0" x-cloak class="mt-1 border border-zinc-200 dark:border-zinc-700 rounded bg-background dark:bg-zinc-800 shadow-lg max-h-40 overflow-y-auto z-50">
+                                   class="w-full text-sm border border-border dark:border-zinc-600 rounded px-3 py-1.5 bg-background dark:bg-zinc-800 text-foreground dark:text-zinc-100" aria-label="Search principles...">
+                            <div x-show="principleResults.length > 0" x-cloak class="mt-1 border border-border dark:border-zinc-700 rounded bg-background dark:bg-zinc-800 shadow-lg max-h-40 overflow-y-auto z-50">
                                 <template x-for="r in principleResults" :key="r.id">
-                                    <button type="button" @click="addPrinciple(r)" class="w-full text-left px-3 py-1.5 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-700">
-                                        <span class="font-mono text-xs text-zinc-500 mr-2" x-text="r.ref"></span>
+                                    <button type="button" @click="addPrinciple(r)" class="w-full text-left px-3 py-1.5 text-sm hover:bg-muted dark:hover:bg-zinc-700">
+                                        <span class="font-mono text-xs text-muted-foreground mr-2" x-text="r.ref"></span>
                                         <span x-text="r.label"></span>
                                     </button>
                                 </template>
@@ -1936,7 +1936,7 @@
                 });
             },
             phaseClass: function(phase) {
-                let map = { 'PRELIM':'bg-slate-500/10 text-slate-600', 'A':'bg-info/10 text-primary', 'B':'bg-emerald-500/10 text-emerald-600', 'C':'bg-violet-500/10 text-violet-600', 'D':'bg-orange-500/10 text-orange-600', 'E':'bg-amber-500/10 text-amber-600', 'F':'bg-cyan-500/10 text-cyan-600', 'G':'bg-rose-500/10 text-rose-600', 'H':'bg-indigo-500/10 text-primary', 'REQ':'bg-gray-500/10 text-muted-foreground' };
+                let map = { 'PRELIM':'bg-muted-foreground/10 text-muted-foreground', 'A':'bg-info/10 text-primary', 'B':'bg-emerald-500/10 text-emerald-600', 'C':'bg-violet-500/10 text-violet-600', 'D':'bg-orange-500/10 text-orange-600', 'E':'bg-amber-500/10 text-amber-600', 'F':'bg-cyan-500/10 text-cyan-600', 'G':'bg-rose-500/10 text-rose-600', 'H':'bg-indigo-500/10 text-primary', 'REQ':'bg-muted-foreground/10 text-muted-foreground' };
                 return map[phase] || 'bg-muted text-muted-foreground';
             },
             priorityClass: function(priority) {

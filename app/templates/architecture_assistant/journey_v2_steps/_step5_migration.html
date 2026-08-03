@@ -120,7 +120,7 @@
                                           'bg-info/10 text-primary border border-info/30': opt.option_type === 'build',
                                           'bg-emerald-500/10 text-emerald-600 border border-emerald-500/30': opt.option_type === 'buy',
                                           'bg-purple-500/10 text-primary border border-purple-500/30': opt.option_type === 'hybrid',
-                                          'bg-zinc-500/10 text-zinc-600 border border-zinc-500/30': true
+                                          'bg-muted-foreground/10 text-muted-foreground border border-muted-foreground/30': true
                                       }"
                                       x-text="opt.option_type"></span>
                             </template>
@@ -183,7 +183,7 @@
                          :class="{
                              'bg-rose-500/5 border-b border-rose-500/20': phase.phase_order === 0,
                              'bg-cyan-500/5 border-b border-cyan-500/20': phase.phase_order === 1,
-                             'bg-blue-500/5 border-b border-blue-500/20': phase.phase_order === 2,
+                             'bg-info/5 border-b border-info/20': phase.phase_order === 2,
                              'bg-amber-500/5 border-b border-amber-500/20': phase.phase_order === 3,
                              'bg-sky-500/5 border-b border-sky-500/20': phase.phase_order === 4
                          }">
@@ -257,10 +257,10 @@
                                             class="text-[10px] px-1.5 py-0.5 rounded border focus:outline-none focus:ring-1 focus:ring-ring"
                                             :class="{
                                                 'border-border bg-background text-muted-foreground': !el.implementation_status,
-                                                'border-zinc-400/40 bg-zinc-500/10 text-zinc-600': el.implementation_status === 'not_started',
+                                                'border-zinc-400/40 bg-muted-foreground/10 text-muted-foreground': el.implementation_status === 'not_started',
                                                 'border-blue-400/40 bg-info/10 text-primary': el.implementation_status === 'in_progress',
                                                 'border-emerald-400/40 bg-emerald-500/10 text-emerald-600': el.implementation_status === 'complete',
-                                                'border-red-400/40 bg-destructive/10 text-destructive': el.implementation_status === 'blocked'
+                                                'border-destructive/40 bg-destructive/10 text-destructive': el.implementation_status === 'blocked'
                                             }">
                                         <option value="">Status?</option>
                                         <option value="not_started">Not Started</option>

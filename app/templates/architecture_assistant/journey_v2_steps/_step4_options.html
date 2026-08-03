@@ -90,7 +90,7 @@
         <template x-for="(gap, idx) in reasoningGaps" :key="gap.id || idx">
             <div class="rounded-md border overflow-hidden"
                  :class="{
-                     'border-red-500/40': gap.severity === 'critical',
+                     'border-destructive/40': gap.severity === 'critical',
                      'border-amber-500/40': gap.severity === 'high',
                      'border-border': gap.severity !== 'critical' && gap.severity !== 'high'
                  }">
@@ -102,7 +102,7 @@
                                       'bg-destructive/10 text-destructive border border-destructive/30': gap.severity === 'critical',
                                       'bg-amber-500/10 text-amber-600 border border-amber-500/30': gap.severity === 'high',
                                       'bg-info/10 text-info border border-info/30': gap.severity === 'medium',
-                                      'bg-zinc-500/10 text-zinc-600 border border-zinc-500/30': true
+                                      'bg-muted-foreground/10 text-muted-foreground border border-muted-foreground/30': true
                                   }"
                                   x-text="gap.severity || 'unknown'"></span>
                             <span class="text-sm font-medium truncate" x-text="gap.title || gap.name || gap.gap_type || 'Gap'"></span>
@@ -127,7 +127,7 @@
         <button type="button" @click="expandedLayers._variants = !expandedLayers._variants"
                 class="w-full flex items-center justify-between px-5 py-4 hover:bg-muted/30 transition-colors">
             <div class="flex items-center gap-3">
-                <span class="flex items-center justify-center w-8 h-8 rounded-lg bg-info/10 border border-blue-500/20 text-info">
+                <span class="flex items-center justify-center w-8 h-8 rounded-lg bg-info/10 border border-info/20 text-info">
                     <i data-lucide="git-branch" class="w-4 h-4" aria-hidden="true"></i>
                 </span>
                 <div class="text-left">
@@ -199,7 +199,7 @@
                                                 'bg-emerald-500/10 text-emerald-600': opt.approach === 'buy',
                                                 'bg-amber-500/10 text-amber-600': opt.approach === 'extend' || opt.approach === 'hybrid',
                                                 'bg-purple-500/10 text-purple-600': opt.approach === 'hybrid',
-                                                'bg-zinc-500/10 text-zinc-600': true
+                                                'bg-muted-foreground/10 text-muted-foreground': true
                                               }"
                                               x-text="opt.approach || 'custom'"></span>
                                     </div>
@@ -241,7 +241,7 @@
                                                   :class="{
                                                     'bg-destructive/10 text-destructive': risk.likelihood === 'high' || risk.impact === 'high',
                                                     'bg-amber-500/10 text-amber-600': risk.likelihood === 'medium' || risk.impact === 'medium',
-                                                    'bg-zinc-500/10 text-zinc-600': true
+                                                    'bg-muted-foreground/10 text-muted-foreground': true
                                                   }"
                                                   x-text="risk.likelihood + '/' + risk.impact"></span>
                                             <p class="text-[10px] text-muted-foreground" x-text="risk.name"></p>
@@ -295,7 +295,7 @@
                                           'bg-amber-500/10 text-amber-600 border border-amber-500/30': el.value === 'extend-existing',
                                           'bg-purple-500/10 text-purple-600 border border-purple-500/30': el.value === 'cloud-native' || el.value === 'cloud-hosted',
                                           'bg-cyan-500/10 text-cyan-600 border border-cyan-500/30': el.value === 'on-prem' || el.value === 'hybrid',
-                                          'bg-zinc-500/10 text-zinc-600 border border-zinc-500/30': true
+                                          'bg-muted-foreground/10 text-muted-foreground border border-muted-foreground/30': true
                                       }"
                                       x-text="el.value"></span>
                                 <template x-if="el.detail">

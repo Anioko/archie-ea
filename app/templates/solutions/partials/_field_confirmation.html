@@ -186,7 +186,7 @@
              : el.fields_status === 'vendor_seeded'
                ? 'border-violet-500/30 bg-violet-500/5'
                : el.fields_status === 'schema_imported'
-                 ? 'border-info/30 bg-blue-500/5'
+                 ? 'border-info/30 bg-info/5'
                  : el.fields.length > 0
                    ? 'border-amber-500/30 bg-amber-500/5'
                    : 'border-border bg-card'">
@@ -198,7 +198,7 @@
           <span class="w-2 h-2 rounded-full shrink-0 mt-px"
                 :class="el.fields_status === 'confirmed' ? 'bg-emerald-500'
                         : el.fields_status === 'vendor_seeded' ? 'bg-violet-500'
-                        : el.fields_status === 'schema_imported' ? 'bg-blue-500'
+                        : el.fields_status === 'schema_imported' ? 'bg-info'
                         : el.fields.length > 0 ? 'bg-amber-400'
                         : 'bg-muted-foreground/40'"></span>
 

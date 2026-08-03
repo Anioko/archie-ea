@@ -98,7 +98,7 @@ function reviewQueue() {
             try { const r = await fetch('/capability-map/api/archimate/relationship-suggestions/bulk-accept', {method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':document.querySelector('meta[name=csrf-token]')?.content||''},body:JSON.stringify({min_confidence:mc})}); const d = await r.json(); if(d.success){this.showStatus(`Accepted ${d.accepted_count}`);await this.loadSuggestions();}else{this.showStatus(d.error||'Failed',true);}} catch(e){this.showStatus('Error',true);}
             finally { this.processing = false; }
         },
-        layerClass(l) { const c={'motivation':'bg-violet-500/10 text-violet-600 border-violet-500/30','strategy':'bg-indigo-500/10 text-primary border-indigo-500/30','business':'bg-amber-500/10 text-amber-600 border-amber-500/30','application':'bg-info/10 text-primary border-info/30','technology':'bg-green-500/10 text-emerald-600 border-green-500/30','implementation':'bg-slate-500/10 text-slate-600 border-slate-500/30'}; return c[(l||'').toLowerCase()]||'bg-muted text-muted-foreground border-input'; },
+        layerClass(l) { const c={'motivation':'bg-violet-500/10 text-violet-600 border-violet-500/30','strategy':'bg-indigo-500/10 text-primary border-indigo-500/30','business':'bg-amber-500/10 text-amber-600 border-amber-500/30','application':'bg-info/10 text-primary border-info/30','technology':'bg-green-500/10 text-emerald-600 border-green-500/30','implementation':'bg-muted-foreground/10 text-muted-foreground border-muted-foreground/30'}; return c[(l||'').toLowerCase()]||'bg-muted text-muted-foreground border-input'; },
         showStatus(m,e=false) { this.statusMessage=m; this.statusError=e; setTimeout(()=>this.statusMessage='',3000); }
     };
 }

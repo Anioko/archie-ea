@@ -75,7 +75,7 @@
                             Generate
                         </button>
                         <button aria-label="Delete" @click="deleteBoundary(b.id)"
-                                class="inline-flex items-center rounded-md border border-red-500/20 bg-red-500/5 p-1.5 text-destructive hover:bg-destructive/10 transition-colors">
+                                class="inline-flex items-center rounded-md border border-destructive/20 bg-destructive/5 p-1.5 text-destructive hover:bg-destructive/10 transition-colors">
                             <i data-lucide="trash-2" class="h-3.5 w-3.5"></i>
                         </button>
                     </div>
@@ -273,7 +273,7 @@
                         <template x-for="(c, i) in (artifactsBoundary && artifactsBoundary.generated_artifacts ? artifactsBoundary.generated_artifacts.contracts : [])" :key="i">
                             <div class="rounded-lg border border-border bg-muted/10 px-4 py-3">
                                 <div class="flex items-center gap-2 mb-1">
-                                    <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-info/10 text-info border border-blue-500/20"
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-info/10 text-info border border-info/20"
                                           x-text="c.method"></span>
                                     <span class="text-xs font-mono text-foreground" x-text="c.endpoint"></span>
                                 </div>
