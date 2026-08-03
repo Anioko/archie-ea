@@ -10,7 +10,6 @@ Configures application-wide logging with:
 
 import logging
 import logging.config
-import os
 from pathlib import Path
 
 
@@ -121,7 +120,7 @@ def setup_logging(app_env: str = "development"):
 
     logger = logging.getLogger(__name__)
     logger.info(f"Logging configured for {app_env} environment")
-    logger.info(f"Log files: logs/app.log, logs/errors.log")
+    logger.info("Log files: logs/app.log, logs/errors.log")
 
 
 def get_logger(name: str) -> logging.Logger:

@@ -5,7 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ solution.name }} — Executive Briefing</title>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        /* No webfont @import here. This template is rendered SERVER-SIDE by
+           WeasyPrint to produce the PDF, so an @import is an outbound request from
+           the application host, not the browser. On an air-gapped or proxied
+           enterprise network that call stalls until it times out, delaying or
+           failing every executive PDF export. The stack below resolves to the
+           host's own fonts. */
+        body { font-family: 'Inter', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; }
 
         :root {
             --navy: #0f172a;

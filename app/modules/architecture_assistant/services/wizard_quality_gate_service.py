@@ -11,9 +11,8 @@ if deterministic score already passes or already fails catastrophically.
 
 import json
 import logging
-import uuid
-from dataclasses import asdict, dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from dataclasses import asdict, dataclass
+from typing import List, Optional, Tuple
 
 from app import db
 
@@ -293,7 +292,7 @@ class WizardQualityGateService:
                 if cur < tgt:
                     consistency_ok += 1
                 else:
-                    issues.append(QualityIssue(f"capabilities[].maturity", f"Current maturity ({cur}) >= target ({tgt})", "warning", True, "Target must exceed current"))
+                    issues.append(QualityIssue("capabilities[].maturity", f"Current maturity ({cur}) >= target ({tgt})", "warning", True, "Target must exceed current"))
         consistency = int((consistency_ok / total) * 100) if capabilities else 50
 
         # Traceability: capabilities linked back to problem keywords
@@ -428,7 +427,7 @@ class WizardQualityGateService:
             return int((len(connected) / max(len(elements), 1)) * 100)
 
         try:
-            from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship
+            from app.models.archimate_core import ArchiMateRelationship
 
             element_ids = set()
             rows = db.session.execute(db.text(  # tenant-filtered: scoped via solution_id FK
@@ -441,12 +440,12 @@ class WizardQualityGateService:
 
             # Count elements with at least one relationship (source or target)
             from sqlalchemy import or_
-            rel_count = ArchiMateRelationship.query.filter(
+            (ArchiMateRelationship.query.filter(
                 or_(
                     ArchiMateRelationship.source_id.in_(element_ids),
                     ArchiMateRelationship.target_id.in_(element_ids),
                 )
-            ).count()
+            ).count())
 
             # Chain completeness = connected elements / total elements
             connected = set()

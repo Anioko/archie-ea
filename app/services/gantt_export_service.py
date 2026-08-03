@@ -14,14 +14,12 @@ Complies with:
 - Multiple format support
 """
 
-import base64
 import csv
 import io
 import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from flask import current_app
 
 try:
     from PIL import Image, ImageDraw, ImageFont
@@ -34,7 +32,7 @@ except ImportError:
 try:
     import matplotlib.dates as mdates
     import matplotlib.pyplot as plt
-    from matplotlib.patches import Rectangle
+    from matplotlib.patches import Rectangle  # noqa: F401 — availability probe: the import IS the test
 
     MATPLOTLIB_AVAILABLE = True
 except ImportError:
@@ -192,7 +190,6 @@ class GanttExportService:
                 df.to_excel(writer, sheet_name="Work Packages", index=False)
 
                 # Get the workbook and worksheet for formatting
-                workbook = writer.book
                 worksheet = writer.sheets["Work Packages"]
 
                 # Auto-adjust column widths
@@ -210,7 +207,7 @@ class GanttExportService:
 
                 # Add conditional formatting for status
                 from openpyxl.formatting.rule import CellIsRule
-                from openpyxl.styles import Font, PatternFill
+                from openpyxl.styles import PatternFill
 
                 # Status colors
                 status_colors = {
@@ -291,7 +288,7 @@ class GanttExportService:
                 valid_packages.sort(key=lambda x: x["start_date_obj"])
 
                 # Create Gantt chart
-                y_pos = range(len(valid_packages))
+                range(len(valid_packages))
 
                 for i, wp in enumerate(valid_packages):
                     # Get color based on status
@@ -535,7 +532,7 @@ class GanttExportService:
                 valid_packages.sort(key=lambda x: x["start_date_obj"])
 
                 # Create Gantt chart
-                y_pos = range(len(valid_packages))
+                range(len(valid_packages))
 
                 for i, wp in enumerate(valid_packages):
                     # Get color based on status

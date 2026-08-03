@@ -18,12 +18,6 @@ def seed_cli():
     pass
 
 
-@click.group("seed")
-def seed_cli():
-    """Seed data management commands."""
-    pass
-
-
 @seed_cli.command("all")
 @click.option(
     "--skip-errors", is_flag=True, help="Continue seeding even if individual seeders fail"
@@ -191,7 +185,7 @@ def enrich_vendors(skip_errors):
     if successful > 0:
         click.echo(f"✅ Vendor enrichment completed: {successful}/{total} successful")
         click.echo(
-            f"📊 Enriched vendors with external intelligence from G2 Crowd, Crunchbase, and GitHub"
+            "📊 Enriched vendors with external intelligence from G2 Crowd, Crunchbase, and GitHub"
         )
     else:
         click.echo("❌ Vendor enrichment completed with no successful enrichments")
@@ -220,7 +214,7 @@ def enrich_products(skip_errors):
 
     if successful > 0:
         click.echo(f"✅ Product enrichment completed: {successful}/{total} successful")
-        click.echo(f"📊 Enriched products with ratings, technical stack, and community metrics")
+        click.echo("📊 Enriched products with ratings, technical stack, and community metrics")
     else:
         click.echo("❌ Product enrichment completed with no successful enrichments")
         click.echo(f"Total products processed: {total}")

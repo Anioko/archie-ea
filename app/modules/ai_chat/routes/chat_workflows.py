@@ -16,8 +16,6 @@ from app import db
 from app.decorators import audit_log
 from app.services.rate_limiter import rate_limit
 from app.models.application_portfolio import ApplicationComponent
-from app.models.unified_capability import UnifiedCapability
-from app.models.vendor.vendor_organization import VendorOrganization
 from . import unified_ai_chat_bp
 
 # Baseline annual infrastructure cost used for rough vendor TCO estimates when
@@ -406,7 +404,7 @@ def bulk_process_applications():
         )
 
         data = request.json or {}
-        application_ids = data.get("application_ids")
+        data.get("application_ids")
         max_applications = data.get("max_applications", 50)
 
         result = ApplicationArchitectureMapperService.bulk_auto_map(
@@ -460,7 +458,7 @@ def actionable_gap_analysis():
     try:
         data = request.json or {}
         analysis_type = data.get("analysis_type", "capability")
-        create_roadmap = data.get("create_roadmap_items", False)
+        data.get("create_roadmap_items", False)
 
         gaps = []
 
@@ -624,12 +622,11 @@ def discover_vendors_for_capability():
             VendorOrganization,
             VendorProduct,
         )
-        from app.services.vendor_discovery_engine import VendorDiscoveryEngine
 
         data = request.json or {}
         capability_name = data.get("capability_name", "")
         capability_id = data.get("capability_id")
-        organization_size = data.get("organization_size", "medium")
+        data.get("organization_size", "medium")
         calculate_tco = data.get("calculate_tco", False)
 
         if not capability_name and not capability_id:
@@ -1072,7 +1069,7 @@ def architect_viewpoints():
                     "type": vp_def["type"],
                     "name": vp_def["name"],
                     "viewpoint_view_id": None,
-                    "composer_url": f"/archimate/composer?viewpoint=0",
+                    "composer_url": "/archimate/composer?viewpoint=0",
                     "element_count": len(filtered_ids),
                 })
                 continue
@@ -1107,7 +1104,7 @@ def architect_viewpoints():
                     "type": vp_def["type"],
                     "name": vp_def["name"],
                     "viewpoint_view_id": None,
-                    "composer_url": f"/archimate/composer?viewpoint=0",
+                    "composer_url": "/archimate/composer?viewpoint=0",
                     "element_count": len(filtered_ids),
                 })
 

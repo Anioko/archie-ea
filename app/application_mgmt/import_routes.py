@@ -4,6 +4,7 @@ Import Routes for Application Management
 Handles application data import (CSV, Excel, JSON, manual) and import history.
 """
 
+import re
 import csv
 import io
 import json
@@ -26,6 +27,7 @@ from .. import db
 from ..models.application_portfolio import ApplicationComponent
 from . import application_mgmt
 from .routes import (
+    FIELD_MAX_LENGTHS,
     IMPORT_COLUMN_ALIASES,
     INTEGER_RANGE_FIELDS,
     _link_application_to_apqc_by_ids,
@@ -833,7 +835,6 @@ def get_import_fields():
             )
 
     # Build auto-mapping aliases based on field names
-    aliases = {}
     alias_patterns = {
         "name": ["name", "application name", "app name", "appname", "app_name"],
         "application_code": [
@@ -1026,7 +1027,6 @@ def analyze_import():
     import csv
     import io
     import json
-    import unicodedata
 
     import openpyxl
 
@@ -1113,7 +1113,7 @@ def analyze_import():
         return jsonify({"error": "No file selected"}), 400
 
     filename = (file.filename or "").lower()
-    duplicate_mode = request.form.get("duplicate_mode", "merge")
+    request.form.get("duplicate_mode", "merge")
 
     # Get custom field mappings from frontend
     custom_mappings = {}
@@ -1304,7 +1304,7 @@ def analyze_import():
             pcf_column = capabilities_column
 
         # Debug logging for column detection
-        current_app.logger.info(f"Column detection results:")
+        current_app.logger.info("Column detection results:")
         current_app.logger.info(f"  - Headers found: {headers}")
         current_app.logger.info(f"  - Name: '{name_column}'")
         current_app.logger.info(f"  - App ID: '{app_id_column}'")
@@ -1349,9 +1349,9 @@ def analyze_import():
             }
             _all_apqc = APQCProcess.query.all()
             existing_apqc = {p.process_code: p for p in _all_apqc}
-            existing_apqc_by_name = {
+            ({
                 p.process_name.lower(): p for p in _all_apqc
-            }
+            })
             existing_vendors = {}
             if VendorOrganization:
                 existing_vendors = {
@@ -1422,7 +1422,7 @@ def analyze_import():
                 )
 
                 # Performance optimization: Set timeout for large imports
-                import threading
+                import threading  # noqa: F401 — availability probe: the import IS the test
                 import time
                 from concurrent.futures import ThreadPoolExecutor
                 from concurrent.futures import TimeoutError as FutureTimeoutError
@@ -2968,7 +2968,7 @@ def upload_excel_applications():
         else None
     )
     if archimate_layers:
-        archimate_layers = [l.strip() for l in archimate_layers if l.strip()]
+        archimate_layers = [item.strip() for item in archimate_layers if item.strip()]
     current_app.logger.info(
         f"Import: ArchiMate generation: {generate_archimate}, layers: {archimate_layers}"
     )
@@ -2981,14 +2981,6 @@ def upload_excel_applications():
     # NEW: Store original file data for AI analysis
     file_applications_data = []  # Store original file data with app IDs
 
-    # Check if batch processing should be used for large imports
-    use_batch_processing = False
-    batch_job_id = None
-    if len(data_rows) > 100:  # Use batch processing for imports >100 applications
-        use_batch_processing = True
-        current_app.logger.info(
-            f"Large import detected ({len(data_rows)} rows), enabling batch processing"
-        )
 
     # Determine import source based on file type
     if filename.endswith(".csv"):
@@ -3013,70 +3005,6 @@ def upload_excel_applications():
     file.seek(0)  # Reset file pointer
     db.session.add(import_history)
     db.session.flush()
-
-    # Create batch job if needed
-    if use_batch_processing:
-        try:
-            from ..services.batch_processing_service import (
-                BatchJobConfig,
-                BatchJobType,
-                BatchProcessingService,
-            )
-
-            batch_service = BatchProcessingService()
-
-            # Prepare items for batch processing
-            items = []
-            for row_idx, row in enumerate(data_rows):
-                items.append(
-                    {
-                        "row_index": row_idx,
-                        "data": row,
-                        "import_history_id": import_history.id,
-                        "duplicate_mode": duplicate_mode,
-                        "generate_archimate": generate_archimate,
-                    }
-                )
-
-            batch_config = BatchJobConfig(
-                job_name=f"AI Import - {file.filename}",
-                job_type="ai_import",
-                items=items,
-                confidence_threshold=0.6,
-                auto_retry=True,
-                max_retries=3,
-                parallel_processing=False,
-                user_id=current_user.id if current_user.is_authenticated else None,
-                config_data={
-                    "import_history_id": import_history.id,
-                    "file_name": file.filename,
-                    "duplicate_mode": duplicate_mode,
-                    "generate_archimate": generate_archimate,
-                    "archimate_layers": archimate_layers,
-                    "field_mappings": custom_mappings,
-                    "apqc_links_by_row": apqc_links_by_row,
-                },
-            )
-
-            batch_job_result = batch_service.create_batch_job(batch_config)
-            if batch_job_result["success"]:
-                batch_job_id = batch_job_result["batch_job_id"]
-                import_history.batch_job_id = batch_job_id
-                current_app.logger.info(
-                    f"Created batch job {batch_job_id} for large import"
-                )
-            else:
-                current_app.logger.error(
-                    f"Failed to create batch job: {batch_job_result.get('error')}"
-                )
-                use_batch_processing = False  # Fallback to regular processing
-
-        except ImportError as e:
-            current_app.logger.error(f"Batch processing service not available: {e}")
-            use_batch_processing = False  # Fallback to regular processing
-        except Exception as e:
-            current_app.logger.error(f"Error creating batch job: {e}")
-            use_batch_processing = False  # Fallback to regular processing
 
     try:
         headers = []
@@ -3172,6 +3100,86 @@ def upload_excel_applications():
                 ),
                 400,
             )
+
+        # Batch processing for large imports.
+        # MOVED: this ran before the parsing above, so `data_rows` was unbound and
+        # every request to this endpoint raised NameError before doing any work.
+        # It must run after parsing. `use_batch_processing` and `batch_job_id` are
+        # used only within this block, so relocating it changes nothing downstream.
+        # Note `data_rows` is populated for CSV/JSON only; Excel streams via `ws`,
+        # so batching applies to CSV/JSON imports, as before.
+        # Check if batch processing should be used for large imports
+        use_batch_processing = False
+        batch_job_id = None
+        if len(data_rows) > 100:  # Use batch processing for imports >100 applications
+            use_batch_processing = True
+            current_app.logger.info(
+                f"Large import detected ({len(data_rows)} rows), enabling batch processing"
+            )
+        # Create batch job if needed
+        if use_batch_processing:
+            try:
+                from ..services.batch_processing_service import (
+                    BatchJobConfig,
+                    BatchJobType,  # noqa: F401 — availability probe: the import IS the test
+                    BatchProcessingService,
+                )
+
+                batch_service = BatchProcessingService()
+
+                # Prepare items for batch processing
+                items = []
+                for row_idx, row in enumerate(data_rows):
+                    items.append(
+                        {
+                            "row_index": row_idx,
+                            "data": row,
+                            "import_history_id": import_history.id,
+                            "duplicate_mode": duplicate_mode,
+                            "generate_archimate": generate_archimate,
+                        }
+                    )
+
+                batch_config = BatchJobConfig(
+                    job_name=f"AI Import - {file.filename}",
+                    job_type="ai_import",
+                    items=items,
+                    confidence_threshold=0.6,
+                    auto_retry=True,
+                    max_retries=3,
+                    parallel_processing=False,
+                    user_id=current_user.id if current_user.is_authenticated else None,
+                    config_data={
+                        "import_history_id": import_history.id,
+                        "file_name": file.filename,
+                        "duplicate_mode": duplicate_mode,
+                        "generate_archimate": generate_archimate,
+                        "archimate_layers": archimate_layers,
+                        "field_mappings": custom_mappings,
+                        "apqc_links_by_row": apqc_links_by_row,
+                    },
+                )
+
+                batch_job_result = batch_service.create_batch_job(batch_config)
+                if batch_job_result["success"]:
+                    batch_job_id = batch_job_result["batch_job_id"]
+                    import_history.batch_job_id = batch_job_id
+                    current_app.logger.info(
+                        f"Created batch job {batch_job_id} for large import"
+                    )
+                else:
+                    current_app.logger.error(
+                        f"Failed to create batch job: {batch_job_result.get('error')}"
+                    )
+                    use_batch_processing = False  # Fallback to regular processing
+
+            except ImportError as e:
+                current_app.logger.error(f"Batch processing service not available: {e}")
+                use_batch_processing = False  # Fallback to regular processing
+            except Exception as e:
+                current_app.logger.error(f"Error creating batch job: {e}")
+                use_batch_processing = False  # Fallback to regular processing
+
 
         # Process rows
         records_created = 0
@@ -4363,6 +4371,20 @@ def import_manual_applications():
     records_failed = 0
     errors = []
 
+    # Traceability state. The audit block near the end of this function referenced
+    # created_app_ids/updated_app_ids without this function ever building them —
+    # they are initialised in upload_excel_applications, from which that block was
+    # copied — so every call raised NameError once it reached the audit step.
+    created_app_objs = []
+    updated_app_ids = []
+
+    # This function does not batch: the batch branch further down was copied from
+    # upload_excel_applications along with the audit block. Initialising these keeps
+    # that branch inert (and correct) rather than raising NameError at the guard.
+    use_batch_processing = False
+    batch_job_id = None
+    file_applications_data = []
+
     # Prefetch all existing applications to avoid N+1 query in loop
     existing_apps_list = ApplicationComponent.query.all()
     existing_apps_by_name = {
@@ -4372,7 +4394,7 @@ def import_manual_applications():
     for idx, app_data in enumerate(applications, start=1):
         try:
             name = app_data.get("name", "").strip()
-            app_id = app_data.get("app_id", "").strip() or None
+            app_data.get("app_id", "").strip() or None
 
             if not name:
                 records_failed += 1
@@ -4420,6 +4442,7 @@ def import_manual_applications():
                         "Import merge updated %s: %s", existing_app.name, changed_fields
                     )
                 records_updated += 1
+                updated_app_ids.append(existing_app.id)
             elif existing_app and duplicate_mode == "skip":
                 records_skipped += 1
                 continue
@@ -4434,10 +4457,19 @@ def import_manual_applications():
                 app = ApplicationComponent(**filtered_data)
                 db.session.add(app)
                 records_created += 1
+                # Collect the object, not the id: the PK is not assigned until flush.
+                # Flushed once after the loop rather than per row.
+                created_app_objs.append(app)
 
         except Exception as e:
             records_failed += 1
             errors.append(f"Row {idx}: {str(e)}")
+
+    # Assign primary keys to newly created rows so their ids can be recorded in the
+    # audit trail below. One flush for the whole batch, not one per row.
+    if created_app_objs:
+        db.session.flush()
+    created_app_ids = [a.id for a in created_app_objs if a.id is not None]
 
     # Update import history with comprehensive audit data
     import_history.total_records = len(applications)

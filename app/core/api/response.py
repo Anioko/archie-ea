@@ -14,7 +14,7 @@ Response format:
 """
 from typing import Any, Optional
 
-from flask import g, jsonify, request
+from flask import g, jsonify
 
 
 def _get_request_id() -> Optional[str]:

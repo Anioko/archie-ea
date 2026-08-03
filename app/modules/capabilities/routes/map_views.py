@@ -14,18 +14,10 @@ Helpers:
     - build_nodes_edges(catalog)   — used by mapping_routes.api_nodes_edges()
 """
 
-from flask import current_app, jsonify, render_template, request  # dead-code-ok
+from flask import current_app, render_template  # dead-code-ok
 from flask_login import login_required
 
 from app.extensions.cache import cached
-from app.exceptions import (  # dead-code-ok
-    BusinessRuleError,
-    DatabaseError,
-    ExternalServiceError,
-    IntegrityError,
-    NotFoundError,
-    ValidationError,
-)
 
 from . import capability_map
 
@@ -51,7 +43,6 @@ def hierarchy():
         ).all()
 
         # Build parent lookup
-        by_id = {c.id: c for c in capabilities}
         children_by_parent = {}
         for c in capabilities:
             if c.parent_capability_id:

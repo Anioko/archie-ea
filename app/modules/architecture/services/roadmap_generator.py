@@ -12,20 +12,17 @@ Features:
 - Progress tracking and reporting
 """
 
-import json  # dead-code-ok
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from app import db
 from app.models.implementation_migration import (  # dead-code-ok
-    Deliverable,
     Gap,
-    ImplementationEvent,
     Plateau,
     WorkPackage,
 )
-from app.models.relationship_tables import gap_work_packages, work_package_plateaus  # dead-code-ok
+from app.models.relationship_tables import work_package_plateaus  # dead-code-ok
 from app.services.archimate.gap_resolution_service import GapResolutionService
 from app.services.llm_service import LLMService
 

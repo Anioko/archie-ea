@@ -6,7 +6,6 @@ from flask_login import current_user, login_required
 from app import db
 from app.application_mgmt import application_mgmt
 from app.models.application_compliance import ApplicationComplianceControl
-from app.models.application_portfolio import ApplicationComponent  # dead-code-ok
 from app.models.compliance_models import ComplianceControl, RegulatoryFramework
 
 

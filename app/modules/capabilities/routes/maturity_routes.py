@@ -62,7 +62,9 @@ def search_capabilities():
 
         if strategic_importance:
             base_query += " AND strategic_importance = :strategic_importance"
-            params["strategic_importance"] = strategic# Add ordering and pagination
+            params["strategic_importance"] = strategic_importance
+
+        # Add ordering and pagination
         base_query += " ORDER BY business_domain, name LIMIT :limit OFFSET :offset"
         params["limit"] = per_page
         params["offset"] = (page - 1) * per_page
@@ -82,9 +84,16 @@ def search_capabilities():
         count_result = db.session.execute(text(count_query), params)  # tenant-filtered
         total_count = count_result.scalar()
 
-        # Get available domains
+        # Get available domains. The execute and the `domains` assignment were
+        # missing, leaving `domains` unbound in the render_template call below.
         _domain_query = "SELECT DISTINCT business_domain FROM business_capability WHERE business_domain IS NOT NULL"
         _domain_params = {}
+        domains = [
+            row[0]
+            for row in db.session.execute(  # tenant-filtered
+                text(_domain_query), _domain_params
+            ).fetchall()
+        ]
 
         return render_template(
             "capability_maturity/search.html",
@@ -98,7 +107,7 @@ def search_capabilities():
             selected_importance=strategic_importance,
         )
 
-    except Exception as e:
+    except Exception:
         flash("Error searching capabilities. Please try again.", "error")
         return render_template(
             "capability_maturity/search.html", capabilities=[], domains=[], total_count=0
@@ -162,7 +171,9 @@ def edit_capability_maturity(capability_id):
             # Calculate gap
             gap = 0
             if current_level is not None and target_level is not None:
-                gap = target_level - current# Update the capability
+                gap = target_level - current_level
+
+            # Update the capability
             update_query = """
                 UPDATE business_capability
                 SET current_maturity_level = :current_level,
@@ -202,6 +213,9 @@ def edit_capability_maturity(capability_id):
         """
         _get_params = {"capability_id": capability_id}
 
+        # The execute was missing: _get_query/_get_params were built and never run,
+        # so `result` was unbound and this route raised NameError on every request.
+        result = db.session.execute(text(_get_query), _get_params)  # tenant-filtered
         capability = result.fetchone()
 
         if not capability:
@@ -210,7 +224,7 @@ def edit_capability_maturity(capability_id):
 
         return render_template("capability_maturity/edit.html", capability=capability)
 
-    except Exception as e:
+    except Exception:
         flash("Error updating capability. Please try again.", "error")
         return redirect(url_for("maturity_management.search_capabilities"))
 
@@ -326,6 +340,18 @@ def batch_update_maturity():
         result = db.session.execute(text(preview_query), params)  # tenant-filtered
         preview_capabilities = result.fetchall()
 
+        # `domains` populates the domain selector on the batch-update form. Its query
+        # was missing, so this route raised NameError on every request.
+        domains = [
+            row[0]
+            for row in db.session.execute(  # tenant-filtered
+                text(
+                    "SELECT DISTINCT business_domain FROM business_capability "
+                    "WHERE business_domain IS NOT NULL ORDER BY business_domain"
+                )
+            ).fetchall()
+        ]
+
         return render_template(
             "capability_maturity/batch_update.html",
             domains=domains,
@@ -334,7 +360,7 @@ def batch_update_maturity():
             selected_importance=strategic_importance,
         )
 
-    except Exception as e:
+    except Exception:
         flash("Error in batch update. Please try again.", "error")
         return redirect(url_for("maturity_management.frameworks_overview"))
 
@@ -376,7 +402,7 @@ def get_capability_api(capability_id):
             }
         )
 
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -402,17 +428,59 @@ def framework_dashboard(framework_key):
         # Build WHERE clause for framework categories
         category_filter = " OR ".join([f"category = '{cat}'" for cat in framework_categories])
 
-        # Get framework statistics
-        _fw_params = {}
+        # Tenant scoping. These are raw SQL statements, so the ORM tenant filter in
+        # app/middleware/tenant_isolation.py does NOT apply to them (see ADR 0003) —
+        # the predicate has to be added explicitly here.
+        _org_id = getattr(g, "current_org_id", None)
+        _fw_org_filter = " AND organization_id = :org_id" if _org_id else ""
+        _fw_params = {"org_id": _org_id} if _org_id else {}
 
-        # Get domain distribution within framework
+        # Get framework statistics. The columns below are exactly what
+        # templates/capability_maturity/frameworks/*_dashboard.html reads from
+        # `stats`; this query and its assignment had been removed, leaving `stats`
+        # unbound and the route raising NameError on every request.
+        _stats_row = db.session.execute(  # tenant-filtered
+            text(
+                f"""
+            SELECT COUNT(*) AS total_capabilities,
+                   AVG(current_maturity_level) AS avg_current,
+                   AVG(target_maturity_level)  AS avg_target,
+                   COUNT(*) FILTER (
+                       WHERE maturity_gap IS NOT NULL AND maturity_gap > 0
+                   ) AS with_gap
+            FROM business_capability
+            WHERE ({category_filter}){_fw_org_filter}
+        """
+            ),
+            _fw_params,
+        ).mappings().first()
+        stats = dict(_stats_row) if _stats_row else {}
+
+        # Get domain distribution within framework.
+        # This loop previously built domain_filter and _dom_params and then did
+        # nothing with them: the execute and the domain_stats assignment were both
+        # missing, so domain_stats stayed {} on every request. That failed silently —
+        # the dashboard rendered with an empty domain breakdown rather than erroring.
         domain_stats = {}
         for domain_key, domain_data in framework_info["domains"].items():
             domain_categories = FrameworkClassifier.get_domain_categories(framework_key, domain_key)
             if domain_categories:
                 domain_filter = " OR ".join([f"category = '{cat}'" for cat in domain_categories])
+                _dom_params = dict(_fw_params)
+                _dom_row = db.session.execute(  # tenant-filtered
+                    text(
+                        f"""
+                    SELECT COUNT(*) AS total_capabilities,
+                           AVG(current_maturity_level) AS avg_current,
+                           AVG(target_maturity_level)  AS avg_target
+                    FROM business_capability
+                    WHERE ({domain_filter}){_fw_org_filter}
+                """
+                    ),
+                    _dom_params,
+                ).mappings().first()
+                domain_stats[domain_key] = dict(_dom_row) if _dom_row else {}
 
-                _dom_params = {}
         # Get capabilities needing attention in this framework
         result = db.session.execute(  # tenant-filtered
             text(
@@ -439,7 +507,7 @@ def framework_dashboard(framework_key):
             attention_needed=attention_needed,
         )
 
-    except Exception as e:
+    except Exception:
         flash("Error loading framework dashboard. Please try again.", "error")
         return redirect(url_for("maturity_management.frameworks_overview"))
 
@@ -471,8 +539,30 @@ def domain_dashboard(framework_key, domain_key):
         # Build WHERE clause for domain categories
         category_filter = " OR ".join([f"category = '{cat}'" for cat in domain_categories])
 
-        # Get domain statistics
-        _dd_params = {}
+        # Tenant scoping — raw SQL bypasses the ORM tenant filter (ADR 0003).
+        _org_id = getattr(g, "current_org_id", None)
+        _dd_org_filter = " AND organization_id = :org_id" if _org_id else ""
+        _dd_params = {"org_id": _org_id} if _org_id else {}
+
+        # Get domain statistics. Same defect as framework_dashboard: the query and
+        # its assignment were missing, so `stats` was unbound and this route raised
+        # NameError on every request. Columns match what the dashboard template reads.
+        _stats_row = db.session.execute(  # tenant-filtered
+            text(
+                f"""
+            SELECT COUNT(*) AS total_capabilities,
+                   AVG(current_maturity_level) AS avg_current,
+                   AVG(target_maturity_level)  AS avg_target,
+                   COUNT(*) FILTER (
+                       WHERE maturity_gap IS NOT NULL AND maturity_gap > 0
+                   ) AS with_gap
+            FROM business_capability
+            WHERE ({category_filter}){_dd_org_filter}
+        """
+            ),
+            _dd_params,
+        ).mappings().first()
+        stats = dict(_stats_row) if _stats_row else {}
 
         # Get all capabilities in this domain
         result = db.session.execute(  # tenant-filtered
@@ -516,7 +606,7 @@ def domain_dashboard(framework_key, domain_key):
             attention_needed=attention_needed,
         )
 
-    except Exception as e:
+    except Exception:
         flash("Error loading domain dashboard. Please try again.", "error")
         return redirect(
             url_for("maturity_management.framework_dashboard", framework_key=framework_key)
@@ -547,12 +637,12 @@ def frameworks_overview():
 
             if framework_categories:
                 # Use parameterized query to prevent SQL injection
-                placeholders = ", ".join(
+                (", ".join(
                     [f":cat_{i}" for i in range(len(framework_categories))]
-                )
-                params = {
+                ))
+                ({
                     f"cat_{i}": cat for i, cat in enumerate(framework_categories)
-                }
+                })
 
 
         return render_template(
@@ -561,7 +651,7 @@ def frameworks_overview():
             framework_stats=framework_stats,
         )
 
-    except Exception as e:
+    except Exception:
         flash("Error loading frameworks overview. Please try again.", "error")
         return redirect(url_for("capability_map.index"))
 
@@ -581,7 +671,8 @@ def import_maturity_csv():
 
     Returns JSON: {success, updated, skipped, errors:[{row, reason}]}
     """
-    import csv, io
+    import csv
+    import io
     from app.models.capability_models import BusinessCapability
 
     f = request.files.get("file")

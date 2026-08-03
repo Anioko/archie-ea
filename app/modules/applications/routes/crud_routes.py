@@ -20,8 +20,6 @@ from flask import (
     url_for,
 )
 from flask_login import current_user, login_required
-from sqlalchemy import or_  # dead-code-ok
-from sqlalchemy.orm import joinedload  # dead-code-ok
 
 from app import db
 from app.models.application_capability import ApplicationCapabilityMapping  # dead-code-ok
@@ -40,41 +38,12 @@ from app.models.archimate_core import ArchiMateElement
 from app.models.business_capabilities import (  # dead-code-ok
     BusinessCapability,
 )
-from app.models.business_layer import (  # dead-code-ok
-    BusinessActor,
-)
-from app.models.implementation_migration import (  # dead-code-ok
-    Deliverable,
-    Gap,
-    ImplementationEvent,
-    Plateau,
-    WorkPackage,
-)
 from app.models.models import (  # dead-code-ok
-    ArchiMateElement,
+    # ArchiMateElement omitted deliberately: it is already imported from
+    # app.models.archimate_core above, and app.models.models re-exports the same
+    # object (verified identical), so importing it twice shadowed the first.
     ArchiMateRelationship,
     ArchitectureModel,
-    Requirement,
-)
-from app.models.motivation import Driver, Goal  # dead-code-ok
-from app.models.physical_layer import (  # dead-code-ok
-    PhysicalDistributionNetwork,
-    PhysicalEquipment,
-    PhysicalFacility,
-    PhysicalMaterial,
-)
-from app.models.relationship_tables import (  # dead-code-ok
-    ApplicationBusinessActorMapping,
-    ApplicationProcessSupport,
-)
-from app.models.unified_application_capability_mapping import (  # dead-code-ok
-    UnifiedApplicationCapabilityMapping,
-)
-from app.models.unified_capability import BusinessDomain, UnifiedCapability  # dead-code-ok
-from app.models.vendor.vendor_organization import (  # dead-code-ok
-    VendorOrganization,
-    VendorProduct,
-    application_vendor_products,
 )
 from app.services.archimate.archimate_llm_service import ArchiMateLLMService
 from app.decorators import audit_log, require_roles
@@ -91,19 +60,8 @@ from app.utils.validators import (
 from app.schemas.api_schemas import ApplicationCreateSchema, _load_and_validate
 
 from . import unified_applications_bp
-from ._constants import (  # dead-code-ok
-    ARCHIMATE_RELATIONSHIP_CHOICES,
-    CAPABILITY_MATURITY_CHOICES,
-    CAPABILITY_SUPPORT_LEVEL_CHOICES,
-    VENDOR_CRITICALITY_CHOICES,
-    VENDOR_DEPLOYMENT_CHOICES,
-    VENDOR_HOSTING_CHOICES,
-)
 from ._helpers import (  # dead-code-ok
     _cleanup_application_relationships,
-    _format_date,
-    _load_domain_model_elements,
-    _query_archimate_by_layer,
 )
 
 logger = logging.getLogger(__name__)
@@ -751,7 +709,7 @@ def application_edit(id):
 
         return render_template("applications/edit.html", application=app)
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         flash("Error updating application. Please try again.", "error")
         return redirect(url_for("unified_applications.application_detail", id=id))
@@ -997,8 +955,6 @@ def suggest_capabilities(id):
     Returns ranked suggestions with confidence scores and evidence.
     """
     from sqlalchemy import func
-    from app.models.application_capability import ApplicationCapabilityMapping
-    from app.models.business_capabilities import BusinessCapability
 
     app_obj = ApplicationComponent.query.get_or_404(id)
 
@@ -1144,9 +1100,8 @@ def suggest_capabilities(id):
 def accept_capability_suggestion(id):
     """Accept an AI-suggested capability mapping — creates the ApplicationCapabilityMapping record."""
     from flask_login import current_user
-    from app.models.application_capability import ApplicationCapabilityMapping
 
-    app_obj = ApplicationComponent.query.get_or_404(id)
+    ApplicationComponent.query.get_or_404(id)
     data = request.get_json() or {}
     cap_id = data.get("capability_id")
     confidence = data.get("confidence", 0)

@@ -9,12 +9,10 @@ Tracks regulatory compliance across business capabilities and applications:
 - Compliance reporting and dashboards
 """
 
-from datetime import date, datetime
-from typing import Dict, List, Optional, Tuple
+from datetime import datetime
+from typing import Dict, List
 
-from sqlalchemy import and_, func, or_
 
-from app import db
 from app.services.decorators import transactional
 
 

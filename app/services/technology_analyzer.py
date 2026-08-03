@@ -6,12 +6,10 @@ and automatically extract technology stack details.
 """
 import json
 import logging
-from typing import Any, Dict, Optional  # dead-code-ok
+from typing import Any, Dict  # dead-code-ok
 
-from flask import current_app  # dead-code-ok
 
 from app import db
-from app.models import APISettings  # dead-code-ok
 from app.services.llm_service import LLMService
 
 logger = logging.getLogger(__name__)

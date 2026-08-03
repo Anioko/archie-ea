@@ -306,7 +306,7 @@ class SolutionOrchestrationService:
             created = 0
             for elem in elements:
                 layer = str(elem.get("layer", "business")).lower()
-                elem_type = str(elem.get("type", ""))
+                str(elem.get("type", ""))
                 name = str(elem.get("name", ""))[:255]
 
                 if not name:

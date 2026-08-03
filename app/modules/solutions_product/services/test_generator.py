@@ -9,7 +9,6 @@ Four test categories:
 
 Pure deterministic transform — no LLM, no network.
 """
-import json
 import logging
 import re
 

@@ -26,7 +26,7 @@ All routes maintain backward compatibility and include proper error handling.
 import logging
 from datetime import datetime
 
-from flask import flash, g, redirect, render_template, request, url_for  # dead-code-ok
+from flask import flash, jsonify, redirect, render_template, request, url_for  # dead-code-ok
 from flask_login import login_required
 from sqlalchemy import text
 
@@ -34,7 +34,6 @@ from app import db
 
 # Import main blueprint
 from app.main.views import main
-from app.models.implementation_migration import Gap
 
 logger = logging.getLogger(__name__)
 
@@ -263,7 +262,7 @@ def _archimate_roadmap_legacy():
             months=months,
         )
 
-    except Exception as e:
+    except Exception:
         flash("Error loading ArchiMate roadmap. Please try again.", "error")
         # Provide default timeline dates even in error case
         start_date = datetime(2024, 1, 1)
@@ -357,7 +356,7 @@ def get_archimate_work_packages():
             },
         ]
         return jsonify({"work_packages": work_packages})
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -401,7 +400,7 @@ def create_archimate_work_package():
 
         return jsonify({"success": True, "work_package": new_wp})
 
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -431,7 +430,7 @@ def update_archimate_work_package(wp_id):
 
         return jsonify({"success": True, "work_package": updated_wp})
 
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -444,7 +443,7 @@ def delete_archimate_work_package(wp_id):
             {"success": True, "message": f"ArchiMate work package {wp_id} deleted"}
         )
 
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -478,7 +477,7 @@ def get_archimate_gaps():
             },
         ]
         return jsonify({"gaps": gaps})
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -595,7 +594,7 @@ def unmapped_capabilities():
             priority_breakdown=priority_breakdown,
         )
 
-    except Exception as e:
+    except Exception:
         flash("Error loading unmapped capabilities. Please try again.", "error")
         return render_template(
             "capability_analysis/unmapped_capabilities.html",
@@ -801,7 +800,7 @@ def _capability_roadmap_legacy():
             months=months,
         )
 
-    except Exception as e:
+    except Exception:
         flash("Error loading capability roadmap. Please try again.", "error")
         # Provide default data even in error case
         start_date = datetime(2024, 1, 1)
@@ -852,7 +851,7 @@ def get_capability_work_packages():
             },
         ]
         return jsonify({"work_packages": work_packages})
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -939,7 +938,7 @@ def hybrid_mapping_dashboard():
             unmapped_archimate=unmapped_archimate,
         )
 
-    except Exception as e:
+    except Exception:
         flash("Error loading hybrid mapping dashboard. Please try again.", "error")
         return render_template(
             "hybrid_mapping/dashboard.html",

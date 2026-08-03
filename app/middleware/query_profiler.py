@@ -14,7 +14,7 @@ import threading
 import time
 from collections import defaultdict
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 from flask import current_app, g, request
 from sqlalchemy import event

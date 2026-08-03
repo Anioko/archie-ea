@@ -2,9 +2,8 @@
 Conversation History Service with Vector Search
 Persistent chat threads with semantic search capabilities
 """
-import json  # dead-code-ok
 import uuid
-from dataclasses import asdict, dataclass  # dead-code-ok
+from dataclasses import dataclass  # dead-code-ok
 from datetime import datetime
 from typing import Dict, List, Optional
 
@@ -425,7 +424,7 @@ class ConversationHistoryService:
 
         # Invalidate cache
         invalidate_cache(f"thread:{thread_id}:*")
-        invalidate_cache(f"threads:user:*")
+        invalidate_cache("threads:user:*")
 
     def update_thread_title(self, thread_id: str, title: str):
         """Update thread title."""
@@ -441,116 +440,7 @@ class ConversationHistoryService:
         )
         db.session.commit()
 
-        invalidate_cache(f"threads:user:*")
+        invalidate_cache("threads:user:*")
 
 
-# ============================================================================
-# Module-level wiring so the chat endpoints persist every turn (always on).
-# A single service instance is reused (the vector model loads once, lazily).
-# ============================================================================
-
-_HISTORY_SINGLETON = None
-_TABLES_READY = False
-
-# Dialect-agnostic DDL (Postgres + SQLite). The thread/message tables are created
-# by a raw-SQL migration that the runtime entrypoint doesn't run — so we ensure
-# them here, idempotently, on first use. This keeps chat history working on the
-# live box and on every fresh deploy with no manual migration step.
-_ENSURE_DDL = [
-    """
-    CREATE TABLE IF NOT EXISTS conversation_threads (
-        id VARCHAR(36) PRIMARY KEY,
-        user_id INTEGER NOT NULL REFERENCES users(id),
-        title VARCHAR(255) NOT NULL,
-        model VARCHAR(50) NOT NULL,
-        created_at TIMESTAMP NOT NULL,
-        updated_at TIMESTAMP NOT NULL,
-        message_count INTEGER DEFAULT 0
-    )
-    """,
-    "CREATE INDEX IF NOT EXISTS idx_threads_user_updated ON conversation_threads (user_id, updated_at)",
-    """
-    CREATE TABLE IF NOT EXISTS conversation_messages (
-        id VARCHAR(36) PRIMARY KEY,
-        thread_id VARCHAR(36) NOT NULL REFERENCES conversation_threads(id),
-        role VARCHAR(20) NOT NULL,
-        content TEXT NOT NULL,
-        model VARCHAR(50),
-        tokens INTEGER,
-        created_at TIMESTAMP NOT NULL
-    )
-    """,
-    "CREATE INDEX IF NOT EXISTS idx_messages_thread_created ON conversation_messages (thread_id, created_at)",
-]
-
-
-def _ensure_tables():
-    """Create the conversation tables if missing. Runs at most once per process."""
-    global _TABLES_READY
-    if _TABLES_READY:
-        return
-    try:
-        for stmt in _ENSURE_DDL:
-            db.session.execute(text(stmt))
-        db.session.commit()
-        _TABLES_READY = True
-    except Exception:
-        try:
-            db.session.rollback()
-        except Exception:
-            pass
-        # Leave _TABLES_READY False so a later call can retry once the DB is ready.
-
-
-def get_history_service() -> "ConversationHistoryService":
-    """Return the shared history service, building it on first use."""
-    global _HISTORY_SINGLETON
-    _ensure_tables()
-    if _HISTORY_SINGLETON is None:
-        _HISTORY_SINGLETON = ConversationHistoryService()
-    return _HISTORY_SINGLETON
-
-
-def thread_owned_by(thread_id: str, user_id: int) -> bool:
-    """True only if this thread exists and belongs to user_id (guards IDOR)."""
-    if not thread_id or user_id is None:
-        return False
-    _ensure_tables()
-    row = db.session.execute(
-        text("SELECT user_id FROM conversation_threads WHERE id = :id"),
-        {"id": thread_id},
-    ).fetchone()
-    return bool(row) and row.user_id == user_id
-
-
-def persist_turn(user_id, thread_id, user_message, assistant_text, model=None):
-    """Persist one user+assistant turn, creating the thread on the first turn.
-
-    Returns the thread_id (new one if created). NEVER raises — chat must keep
-    working even if history storage hiccups.
-    """
-    if user_id is None or not (user_message or "").strip():
-        return thread_id
-    try:
-        svc = get_history_service()
-        model = (model or "assistant").strip() or "assistant"
-        # New conversation, or a thread_id that isn't this user's → start fresh.
-        if not thread_owned_by(thread_id, user_id):
-            title = (user_message or "New chat").strip().splitlines()[0][:60] or "New chat"
-            thread_id = svc.create_thread(user_id, title=title, model=model).id
-        svc.add_message(thread_id, "user", user_message, model=None)
-        if (assistant_text or "").strip():
-            svc.add_message(thread_id, "assistant", assistant_text, model=model)
-        return thread_id
-    except Exception as exc:  # pragma: no cover - persistence must never break chat
-        try:
-            db.session.rollback()
-        except Exception:
-            pass
-        try:
-            from flask import current_app
-
-            current_app.logger.warning("persist_turn failed: %s", exc)
-        except Exception:
-            pass
-        return thread_id
+# =====================================================================

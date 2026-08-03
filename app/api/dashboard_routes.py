@@ -84,7 +84,6 @@ def import_history():
 def rationalization_dashboard():
     """Application Rationalization Dashboard - TIME Framework."""
     from app.models import ApplicationComponent
-    from app.models.unified_duplicate_detection import UnifiedDuplicateGroup
     from app.services.unified_duplicate_detection_service import (
         UnifiedDuplicateDetectionService,
     )

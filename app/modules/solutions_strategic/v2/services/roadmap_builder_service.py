@@ -20,18 +20,16 @@ Reuses:
 - capability_roadmap_dashboard_service.py patterns
 """
 
-import json  # dead-code-ok
 import logging
 from collections import defaultdict
-from dataclasses import asdict, dataclass, field  # dead-code-ok
+from dataclasses import dataclass  # dead-code-ok
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from sqlalchemy import and_, func, or_  # dead-code-ok
+from sqlalchemy import or_  # dead-code-ok
 
 from app import db
 from app.models.implementation_migration import (  # dead-code-ok
-    Deliverable as PlanningDeliverable,
     Gap as ImplementationGap,
     WorkPackage as ImplementationWorkPackage,
 )

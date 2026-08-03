@@ -4,10 +4,9 @@ Handles CRUD operations for issue tracking and escalation
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from flask import Blueprint, jsonify, request
 from flask_login import current_user, login_required
-from sqlalchemy import func
 
 from app import db
 from app.models import User

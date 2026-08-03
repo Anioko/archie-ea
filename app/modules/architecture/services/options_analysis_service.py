@@ -932,7 +932,7 @@ Be specific and practical. Consider real-world constraints.
             output += f"\n{'='*80}\n"
             output += f"RECOMMENDED: {recommended.get('approach_name', 'Unknown')}\n"
             output += f"Confidence: {recommended.get('recommendation_confidence', 'Unknown')}\n"
-            output += f"\nRationale:\n"
+            output += "\nRationale:\n"
             for reason in recommended.get("decision_rationale", []):
                 output += f"  - {reason}\n"
 

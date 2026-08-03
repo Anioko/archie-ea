@@ -58,7 +58,7 @@ class QueryCounter:
         logger.info(f"{'='*70}")
         logger.info(f"⏱️  Elapsed: {elapsed_time:.2f}s")
         logger.info(f"📊 Queries: {self.count}")
-        logger.info(f"")
+        logger.info("")
         for i, q in enumerate(self.queries[:5], 1):
             logger.info(f"  {i}. {q}...")
         if len(self.queries) > 5:

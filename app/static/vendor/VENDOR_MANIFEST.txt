@@ -1,0 +1,25 @@
+# Vendored front-end libraries — provenance record.
+# Regenerate with: python scripts/vendor_assets.py
+# Verify with:     python scripts/vendor_assets.py --verify
+# filename | upstream URL | bytes | sha384 (first 16 hex)
+alpine-collapse.min.js | https://cdn.jsdelivr.net/npm/@alpinejs/collapse@3.14.3/dist/cdn.min.js | 1448 | 340acdc335ac5121
+alpine-focus.min.js | https://cdn.jsdelivr.net/npm/@alpinejs/focus@3.14.3/dist/cdn.min.js | 14937 | 6ca5cd53ba366375
+alpine-intersect.min.js | https://cdn.jsdelivr.net/npm/@alpinejs/intersect@3.14.3/dist/cdn.min.js | 897 | 780ebe935a5ebae2
+alpine.min.js | https://cdn.jsdelivr.net/npm/alpinejs@3.14.3/dist/cdn.min.js | 44795 | 8990f65fca3565da
+backbone-min.js | https://cdn.jsdelivr.net/npm/backbone@1.4.1/backbone-min.js | 25200 | b22426d93c0d3ee8
+chart.umd.min.js | https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js | 205637 | 254875eb7a02448b
+d3-sankey.min.js | https://cdn.jsdelivr.net/npm/d3-sankey@0.12.3/dist/d3-sankey.min.js | 5652 | 48ce78084e61faa7
+d3.min.js | https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js | 279706 | 0a396803ccb4d3ed
+dagre.min.js | https://cdn.jsdelivr.net/npm/dagre@0.8.5/dist/dagre.min.js | 283803 | d881f74faf4420a6
+html2canvas.min.js | https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js | 198689 | 659d699dc5376d07
+joint.min.css | https://cdn.jsdelivr.net/npm/jointjs@3.7.7/dist/joint.min.css | 46323 | 1d2d203c839e1545
+joint.min.js | https://cdn.jsdelivr.net/npm/jointjs@3.7.7/dist/joint.min.js | 514842 | ec03db5f3e9b0ebb
+jquery.min.js | https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js | 87533 | d47db5ee0c125722
+jspdf.umd.min.js | https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js | 364463 | 25c9ec8d43cfca59
+lodash.min.js | https://cdn.jsdelivr.net/npm/lodash@4.17.21/lodash.min.js | 73015 | 1fa28a4b51f55b0b
+lucide.min.js | https://unpkg.com/lucide@0.344.0/dist/umd/lucide.min.js | 317289 | b53905b6d9017256
+marked.min.js | https://cdn.jsdelivr.net/npm/marked/marked.min.js | 39903 | f78f1a864e199b16
+mermaid.min.js | https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js | 3337508 | a97f55bd690fefd9
+plot.umd.min.js | https://cdn.jsdelivr.net/npm/@observablehq/plot@0.6.14/dist/plot.umd.min.js | 199634 | ff076caeebdfdcf5
+purify.min.js | https://cdn.jsdelivr.net/npm/dompurify@3.0.8/dist/purify.min.js | 21074 | bdd49c8a111909f6
+zxcvbn.js | https://cdnjs.cloudflare.com/ajax/libs/zxcvbn/4.2.0/zxcvbn.js | 821322 | 84f5eaf8ddb67490

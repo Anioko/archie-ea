@@ -8,7 +8,6 @@ Used by both unified applications import and batch import systems.
 import re
 from typing import Any, Dict, List, Optional
 
-from .field_validator import ImportFieldValidator
 
 
 class ImportDataCleaner:

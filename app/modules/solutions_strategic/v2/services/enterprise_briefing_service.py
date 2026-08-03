@@ -213,7 +213,6 @@ class EnterpriseBriefingService:
 
     @classmethod
     def _governance_findings(cls) -> List[Dict]:
-        from app.models.solution_models import Solution
         from app.models.strategic import StrategicInitiative
         from app.modules.solutions_strategic.v2.services.programme_governance_service import (
             ProgrammeGovernanceService,

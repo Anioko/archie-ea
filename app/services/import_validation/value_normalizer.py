@@ -6,7 +6,7 @@ Maps common variations to canonical values and handles null patterns.
 import logging
 import re
 from datetime import date, datetime
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 

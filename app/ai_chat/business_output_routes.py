@@ -4,7 +4,7 @@ API endpoints for transforming AI chat outputs into business-friendly insights
 """
 
 from flask import Blueprint, jsonify, request
-from flask_login import current_user, login_required
+from flask_login import login_required
 
 from app.services.business_output_service import BusinessOutputService, StakeholderRole
 
@@ -53,7 +53,7 @@ def transform_output():
 
         return jsonify({"success": True, "transformed_output": transformed})
 
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "Transformation failed"}), 500
 
 
@@ -67,7 +67,7 @@ def get_available_roles():
 
         return jsonify({"success": True, "roles": roles})
 
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "Failed to get roles"}), 500
 
 
@@ -78,7 +78,7 @@ def get_role_info(role_value):
     try:
         # Validate role
         try:
-            role = StakeholderRole(role_value)
+            StakeholderRole(role_value)
         except ValueError:
             return jsonify({"error": f"Invalid role: {role_value}"}), 400
 
@@ -93,5 +93,5 @@ def get_role_info(role_value):
 
         return jsonify({"success": True, "role_info": role_info})
 
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "Failed to get role info"}), 500

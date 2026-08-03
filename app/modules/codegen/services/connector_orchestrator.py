@@ -4,7 +4,6 @@ This is the ONLY file that knows about n8n's API. If we swap to
 Temporal, Prefect, or custom workers later, only this file changes.
 """
 import logging
-from datetime import datetime
 
 import requests
 from requests.exceptions import ConnectionError as RequestsConnectionError

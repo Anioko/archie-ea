@@ -8,3 +8,17 @@ coverage>=7.0.0
 # Add to requirements-test.txt for performance testing
 psutil>=5.9.0
 requests>=2.31.0
+
+# Moved out of requirements.txt: test tooling was shipping in the production
+# image, enlarging its attack surface and its CVE reporting surface for no
+# runtime benefit. CI installs this file explicitly.
+pytest>=9.0.3                # CVE: 1 advisory at 8.3.3
+pytest-asyncio>=0.23.0,<1.0.0
+pytest-playwright>=0.7.0,<0.8.0
+pytest-json-report>=1.5.0,<2.0.0
+pytest-timeout>=2.2.0,<3.0.0
+pytest-xdist==3.6.1
+pytest-mock>=3.11.0,<4.0.0
+pytest-rerunfailures>=13.0,<15.0
+pytest-cov>=5.0.0,<7.0.0
+playwright>=1.47.0,<2.0.0

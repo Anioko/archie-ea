@@ -15,7 +15,6 @@ from datetime import datetime  # dead-code-ok: kept for class methods below
 from typing import Dict, Optional
 from xml.dom import minidom
 
-from app import db  # dead-code-ok: used by existing class methods
 from app.models import (
     ArchiMateElement,
     ArchiMateRelationship,
@@ -518,7 +517,7 @@ class ArchiMateXMLExportService:
             self._add_relationship_to_xml(relationships, relationship)
 
         # Add views (viewpoints)
-        views = ET.SubElement(root, "views")
+        ET.SubElement(root, "views")
         # Viewpoints would be added here if needed
 
         # Convert to pretty XML string
@@ -600,7 +599,7 @@ class ArchiMateXMLExportService:
 
         # Add properties if they exist
         if hasattr(element, "properties") and element.properties:
-            props = ET.SubElement(elem, "properties")
+            ET.SubElement(elem, "properties")
             # Parse and add properties (would need to handle JSON properties)
 
     def _add_relationship_to_xml(self, parent: ET.Element, relationship: ArchiMateRelationship):
@@ -617,5 +616,5 @@ class ArchiMateXMLExportService:
         )
 
         if relationship.properties:
-            props = ET.SubElement(rel, "properties")
+            ET.SubElement(rel, "properties")
             # Parse and add properties

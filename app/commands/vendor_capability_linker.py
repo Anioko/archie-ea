@@ -19,7 +19,7 @@ Usage:
 
 import json
 from difflib import SequenceMatcher
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 from app import db
 from app.models.business_capabilities import BusinessCapability
@@ -428,7 +428,7 @@ class VendorCapabilityLinker:
 
         stats = results.get("stats", {})
 
-        print(f"\n📊 Linking Statistics:")
+        print("\n📊 Linking Statistics:")
         print(f"   ✅ Exact matches: {stats.get('exact_matches', 0)}")
         print(f"   🔍 Fuzzy matches: {stats.get('fuzzy_matches', 0)}")
         print(f"   ➕ Created capabilities: {stats.get('created_capabilities', 0)}")
@@ -436,12 +436,12 @@ class VendorCapabilityLinker:
         print(f"   ❌ Not matched: {stats.get('no_match', 0)}")
 
         if results.get("capabilities_created"):
-            print(f"\n➕ Created Business Capabilities:")
+            print("\n➕ Created Business Capabilities:")
             for cap_name in results["capabilities_created"]:
                 print(f"   - {cap_name}")
 
         if results.get("capabilities_fuzzy_matched"):
-            print(f"\n🔍 Fuzzy Matched Capabilities:")
+            print("\n🔍 Fuzzy Matched Capabilities:")
             for match in results["capabilities_fuzzy_matched"]:
                 print(
                     f"   - '{match['vendor_name']}' → '{match['matched_to']}' "
@@ -449,7 +449,7 @@ class VendorCapabilityLinker:
                 )
 
         if results.get("capabilities_not_matched"):
-            print(f"\n⚠️  Unmatched Capabilities (require manual review):")
+            print("\n⚠️  Unmatched Capabilities (require manual review):")
             for item in results["capabilities_not_matched"]:
                 if item.get("fuzzy_candidate"):
                     print(f"   - {item['name']} (similar to: {item['fuzzy_candidate']})")
@@ -457,7 +457,7 @@ class VendorCapabilityLinker:
                     print(f"   - {item['name']}")
 
         if results.get("capabilities_linked"):
-            print(f"\n✅ Successfully Linked Capabilities:")
+            print("\n✅ Successfully Linked Capabilities:")
             for link in results["capabilities_linked"]:
                 print(
                     f"   - {link['capability_name']}: "

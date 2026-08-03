@@ -18,7 +18,7 @@ Returns a scored compliance report with untraced artifacts and coverage %.
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import List
 
 logger = logging.getLogger(__name__)
 

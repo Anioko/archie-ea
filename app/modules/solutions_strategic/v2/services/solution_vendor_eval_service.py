@@ -520,7 +520,7 @@ class SolutionVendorEvalService:
         Raises:
             ValueError: If product is not on the shortlist.
         """
-        from app.models.solution_models import Solution, solution_vendor_products
+        from app.models.solution_models import solution_vendor_products
         from app.models.vendor.vendor_organization import VendorProduct
 
         # Verify product is on shortlist

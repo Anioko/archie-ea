@@ -10,11 +10,9 @@ Design decisions:
 
 import logging
 from dataclasses import dataclass
-from typing import Any
 
 from app import db
 
-from .registry import TOOL_SCHEMA_BY_NAME
 from .resolver import EntityResolver
 
 logger = logging.getLogger(__name__)
@@ -370,7 +368,6 @@ class ToolExecutor:
 
     def _tool_query_capability_gaps(self, args: dict) -> dict:
         from app.models.business_capabilities import BusinessCapability
-        from app.models.solution_models import SolutionCapabilityMapping
 
         max_maturity = args.get("max_maturity", 2)
         domain_filter = args.get("business_domain")
@@ -1270,11 +1267,9 @@ class ToolExecutor:
         if fmt == "ddl":
             result = SchemaInferenceService.infer_from_ddl(input_text)
             count = result.get("table_count", 0)
-            key = "table_count"
         else:
             result = SchemaInferenceService.infer_from_openapi(input_text)
             count = result.get("schema_count", 0)
-            key = "schema_count"
 
         if result.get("success"):
             result["message"] = (

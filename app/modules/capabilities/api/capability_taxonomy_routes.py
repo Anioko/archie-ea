@@ -9,7 +9,6 @@ validation, rule management, and violation correction for enterprise architectur
 """
 
 import logging
-from typing import Optional
 
 from flask import Blueprint, jsonify, request
 

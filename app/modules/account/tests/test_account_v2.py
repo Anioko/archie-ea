@@ -10,7 +10,6 @@ Verifies:
 6. Schemas validate correctly
 7. Utils work as expected
 """
-import pytest
 
 
 class TestAccountV2Imports:
@@ -199,7 +198,6 @@ class TestAccountV2Blueprint:
         """Blueprint has /login route."""
         with app.app_context():
             from app.modules.account.v2.routes import account_bp_v2
-            rules = [r.rule for r in account_bp_v2.deferred_functions]
             # Deferred functions are lazy, so we check endpoint names instead
             endpoints = set()
             for func_name in dir(account_bp_v2):
@@ -245,7 +243,6 @@ class TestAccountCompatWrapper:
         """Compat module imports without error."""
         with app.app_context():
             from app.compat.account import (
-                AccountCompatStats,
                 LEGACY_ROUTE_MAP,
                 wrap_legacy_account_bp,
             )

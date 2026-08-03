@@ -4,10 +4,9 @@ Provides real-time AI assistance during architecture editing
 """
 import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
-from app import db
-from app.models import ArchiMateElement, ArchiMateRelationship, ArchitectureModel, LLMInteraction
+from app.models import ArchiMateElement, ArchiMateRelationship, ArchitectureModel
 from app.services.archimate.archimate_validator import ArchiMateValidator
 from app.services.llm_service import LLMService
 
@@ -361,7 +360,7 @@ Return JSON with:
                 else:
                     result = json.loads(response)
             except json.JSONDecodeError:
-                logger.warning(f"Failed to parse JSON from LLM response")
+                logger.warning("Failed to parse JSON from LLM response")
                 result = {
                     "generated_elements": [],
                     "generated_relationships": [],

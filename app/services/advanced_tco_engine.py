@@ -18,30 +18,26 @@ import io
 import json
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from decimal import Decimal
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
-import numpy as np
 
 # Excel export dependencies
 try:
-    import openpyxl
+    import openpyxl  # noqa: F401 — availability probe: the import IS the test
     from openpyxl import Workbook
-    from openpyxl.chart import BarChart, LineChart, Reference
-    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.chart import BarChart, LineChart, Reference  # noqa: F401 — availability probe: the import IS the test
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side  # noqa: F401 — availability probe: the import IS the test
 
     EXCEL_AVAILABLE = True
 except ImportError:
     EXCEL_AVAILABLE = False
 
-from sqlalchemy import func
 
 from app import db
-from app.models.business_capabilities import BusinessCapability
 from app.models.vendor.vendor_organization import (
     TCOCalculation,
-    VendorOrganization,
     VendorProduct,
     VendorProductPricing,
 )
@@ -727,7 +723,7 @@ class AdvancedTCOEngine:
             },
             "cost_comparison": {
                 "total_tco_vs_benchmark": vs_industry_percentage,
-                "per_user_annual_vs_benchmark": vs_per_user_annual,
+                "per_user_annual_vs_benchmark": vs_per_user_percentage,
                 "assessment": self._assess_cost_performance(vs_industry_percentage),
             },
             "category_comparison": category_comparison,

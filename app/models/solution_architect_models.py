@@ -838,7 +838,6 @@ def _bind_solution_roadmap_relationship():
     Uses late-binding so we only need to edit solution_architect_models.py
     (within the allowed file_paths) rather than solution_models.py.
     """
-    from app.models.solution_models import Solution
     from app.models.implementation_migration import TechnologyRoadmapInitiative  # noqa: F401
 
     if not hasattr(Solution, "roadmap_initiatives"):

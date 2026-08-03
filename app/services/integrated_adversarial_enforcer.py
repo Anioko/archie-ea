@@ -10,23 +10,18 @@ from dataclasses import dataclass
 from enum import Enum
 
 from app.services.adversarial_scope_service import (
-    get_scope_service, 
     get_scope_enforcer,
-    EnforcementLevel,
-    RequestCharacteristics
+    EnforcementLevel
 )
 from app.services.lightweight_adversarial_validator import (
-    get_lightweight_validator,
-    LightweightValidationResult
+    get_lightweight_validator
 )
 from app.services.critique_verification_service import (
     get_critique_service,
-    CritiqueSession,
     CritiqueFinding
 )
 from app.services.dual_agent_orchestrator import (
     get_dual_agent_orchestrator,
-    DualAgentOrchestrator,
     AgentContext
 )
 
@@ -87,7 +82,6 @@ class IntegratedAdversarialEnforcer:
         scope_result = self.scope_enforcer.enforce_for_request(request_text, context)
         
         level = scope_result["enforcement_level"]
-        decision = scope_result["decision"]
         
         if level == EnforcementLevel.NONE.value:
             # No enforcement needed

@@ -19,7 +19,6 @@ from flask_wtf.csrf import CSRFError, validate_csrf
 
 from app import db
 from app.decorators import audit_log
-from app.extensions import csrf
 from app.models.application_portfolio import ApplicationComponent
 
 from . import unified_applications_bp
@@ -97,7 +96,7 @@ def update_overview(id):
                 )
             )
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         if request.headers.get("X-Requested-With") == "XMLHttpRequest":
             return {
@@ -167,7 +166,7 @@ def update_health_quality(id):
                 )
             )
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         if request.headers.get("X-Requested-With") == "XMLHttpRequest":
             return {
@@ -366,7 +365,7 @@ def update_resources(id):
 @audit_log("update_strategy_layer")
 def update_strategy_layer(id):
     """Update Strategy Layer elements (Capabilities, Resources, Value Streams, Courses of Action)"""
-    app = ApplicationComponent.query.get_or_404(id)
+    ApplicationComponent.query.get_or_404(id)
 
     try:
         token = request.form.get("csrf_token")

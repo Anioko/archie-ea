@@ -2322,7 +2322,7 @@ function sadPage() {
 </script>
 <script src="{{ url_for('static', filename='js/archimate/composer_renderer.js') }}"></script> <!-- entity-picker-ok: script include -->
 {% if stakeholder_mappings %}
-<script src="https://d3js.org/d3.v7.min.js"></script>
+<script src="{{ url_for('static', filename='vendor/d3.min.js') }}"></script>
 <script>
 (function(){
   'use strict';

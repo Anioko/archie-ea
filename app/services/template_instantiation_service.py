@@ -13,12 +13,10 @@ Key responsibilities:
 """
 
 import json
-from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
 from flask import current_app
 from flask_login import current_user
-from sqlalchemy.exc import IntegrityError
 
 from app import db
 from app.events.template_events import (
@@ -31,7 +29,6 @@ from app.factories.domain_model_factory import DomainModelFactory
 from app.models.application_portfolio import ApplicationComponent  # FIXED: Correct import path
 from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship, ArchitectureModel
 from app.models.element_templates import ElementTemplate, ElementTemplateUsage
-from app.models.process_data import BusinessProcess
 from app.repositories.template_repository import (
     ElementTemplateRepository,
     ElementTemplateUsageRepository,

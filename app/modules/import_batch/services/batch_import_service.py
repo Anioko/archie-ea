@@ -26,12 +26,10 @@ from app.models.batch_import import (  # dead-code-ok
     AppProcessingStatus,
     BatchImportApplication,
     BatchImportBatch,
-    BatchImportCheckpoint,
     BatchImportElement,
     BatchImportJob,
     BatchJobStatus,
     BatchStatus,
-    CheckpointType,
 )
 
 logger = logging.getLogger(__name__)

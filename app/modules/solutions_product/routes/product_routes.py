@@ -68,8 +68,8 @@ def generate_product(solution_id):
         if _has_fields:
             _links = _SAE.query.filter_by(solution_id=solution_id).all()
             _needs_enrichment = not any(
-                (l.spec_data or {}).get("fields_status") in ("confirmed", "ai_inferred")
-                for l in _links
+                (item.spec_data or {}).get("fields_status") in ("confirmed", "ai_inferred")
+                for item in _links
             )
         if _needs_enrichment:
             logger.info("Auto-triggering UML enrichment for solution %d before code generation", solution_id)

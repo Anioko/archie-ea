@@ -448,8 +448,6 @@ class VendorOrganization(db.Model):
         Calculate overall capability coverage across all products.
         Returns dict with coverage stats.
         """
-        from app.models import BusinessCapability
-
         # Get all unique capabilities covered by vendor's products
         covered_capabilities = set()
         total_coverage = 0
@@ -1286,7 +1284,6 @@ class TCOCalculation(db.Model):
             return []
 
         yearly_data = []
-        remaining_tco = self.total_tco
 
         for year in range(1, self.tco_period_years + 1):
             year_cost = {

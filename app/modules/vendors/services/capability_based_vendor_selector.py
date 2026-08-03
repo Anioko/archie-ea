@@ -7,10 +7,8 @@ L1/L2/L3 filtering, coverage scoring, and intelligent recommendations.
 Replaces manual checkbox selection with algorithmic vendor matching.
 """
 
-import json
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
-from sqlalchemy.orm import joinedload
 
 from app import create_app, db
 from app.models import BusinessCapability

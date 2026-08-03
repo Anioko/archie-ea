@@ -65,7 +65,7 @@ def application_gap_analysis_api(application_id):
     try:
         from app.modules.solutions_strategic.v2.services.gap_analysis_service import ArchitecturalGapAnalyzer
 
-        app = ApplicationComponent.query.get_or_404(application_id)
+        ApplicationComponent.query.get_or_404(application_id)
 
         analyzer = ArchitecturalGapAnalyzer()
         gap_results = analyzer.analyze_application_gaps(application_id)

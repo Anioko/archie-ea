@@ -11,9 +11,8 @@ Generates visual representations from AI Chat queries including:
 
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
-from app import db
 
 logger = logging.getLogger(__name__)
 
@@ -150,7 +149,7 @@ class VisualGenerationService:
         self, elements: List[Dict], relationships: List[Dict], title: str
     ) -> str:
         """Convert ArchiMate elements to Mermaid flowchart."""
-        lines = [f"flowchart TB"]
+        lines = ["flowchart TB"]
         lines.append(f'    subgraph {title.replace(" ", "_")}["{title}"]')
 
         # Group by layer
@@ -455,7 +454,7 @@ class VisualGenerationService:
         lines = ["gantt"]
         lines.append(f"    title {title}")
         lines.append("    dateFormat YYYY-MM-DD")
-        lines.append(f"    axisFormat %b %Y")
+        lines.append("    axisFormat %b %Y")
         lines.append("")
 
         # Add sections for phases

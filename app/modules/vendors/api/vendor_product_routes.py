@@ -7,7 +7,6 @@ Vendor Product Catalog API Routes
 """
 
 import logging
-from typing import Any, Dict, List, Optional  # dead-code-ok
 
 from flask import Blueprint, jsonify, request
 from flask_login import current_user, login_required

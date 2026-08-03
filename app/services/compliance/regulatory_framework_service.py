@@ -26,9 +26,6 @@ from typing import Dict, List
 from app import db
 from app.models.compliance_models import (
     ComplianceControl,
-    ComplianceRequirement,
-    ProjectConstraint,
-    QualityAttribute,
     RegulatoryFramework,
 )
 

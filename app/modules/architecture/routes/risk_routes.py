@@ -4,7 +4,6 @@ import logging
 from flask import Blueprint, jsonify, render_template, request
 from flask_login import login_required
 
-from app import db  # dead-code-ok
 from app.models.risk import Risk
 from app.services import risk_service
 

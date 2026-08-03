@@ -1,7 +1,6 @@
 """Test file to verify enforcement works"""
 
 # This will trigger multiple violations:
-import unused_module  # Dead code: unused import
 
 
 def calculate_cost():

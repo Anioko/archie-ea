@@ -22,7 +22,7 @@ The UnifiedAPQCService automatically delegates to this service when appropriate.
 
 import logging
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 import numpy as np
 

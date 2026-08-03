@@ -1358,8 +1358,8 @@ def rationalization_portfolio_readiness():
                 {
                     "app_id": app_obj.id,
                     "app_name": app_obj.name,
-                    "lifecycle_status": app_obj.lifecycle_status,  # noqa: model-safety-ok
-                    "business_criticality": app_obj.business_criticality,  # noqa: model-safety-ok
+                    "lifecycle_status": app_obj.lifecycle_status,  # model-safety-ok
+                    "business_criticality": app_obj.business_criticality,  # model-safety-ok
                     "readiness_score": score.readiness_score,
                     "is_decision_ready": is_decision_ready,
                     "readiness_dimensions": score.readiness_dimensions or {},
@@ -1866,7 +1866,6 @@ def rationalization_portfolio_workbench():
 
         if include_unscored:
             # Left outer join: show ALL apps, scored or not
-            from sqlalchemy.orm import outerjoin
             query = (
                 db.session.query(ApplicationComponent, ApplicationRationalizationScore)
                 .outerjoin(
@@ -2552,7 +2551,6 @@ def rationalization_decision_dossier(app_id):
     from app.models.application_rationalization import (
         ApplicationDependency,
         ApplicationRationalizationScore,
-        ReplacementPlan,
     )
 
     try:
@@ -2688,6 +2686,11 @@ def rationalization_bulk_review():
         app_ids = data.get("app_ids", [])
         action = (data.get("action") or "").strip().lower()
         notes = (data.get("notes") or "").strip()
+        # Read alongside action/notes from the same payload. Its extraction had been
+        # removed while the "set_disposition" branch below still used it, so that
+        # branch raised NameError after already having mutated earlier records in
+        # the batch.
+        disposition_value = (data.get("disposition") or "").strip()
 
         if not app_ids or not isinstance(app_ids, list):
             return jsonify({"success": False, "error": "app_ids must be a non-empty list"}), 400
@@ -3371,7 +3374,6 @@ def rationalization_executive_summary():
 def rationalization_score_app(app_id):
     """RATA-002/REQ-RAT-102: Score a single application."""
     from app.models.application_rationalization import (
-        ApplicationRationalizationScore,
         RationalizationBenefitsTracker,
     )
     from app.services.rationalization_scoring_service import (

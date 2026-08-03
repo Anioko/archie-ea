@@ -7,7 +7,6 @@ from typing import Any, Dict, List, Optional, Tuple
 from app.modules.import_batch.v2.services.import_validation.validation_pipeline_v2 import ValidationPipeline
 from app.modules.import_batch.v2.services.import_validation.validation_result_v2 import (
     ImportValidationResult,
-    RowValidationResult,
 )
 from app.modules.import_batch.v2.services.import_validation.validation_schemas_v2 import (
     APPLICATION_COMPONENT_SCHEMA,

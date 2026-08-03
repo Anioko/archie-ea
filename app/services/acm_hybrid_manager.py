@@ -13,11 +13,9 @@ Approach:
 
 import time
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List
 
 from flask import current_app
-from sqlalchemy import text
-from sqlalchemy.orm import Session
 
 from .. import db
 from ..models.technical_capability import ACMDomain, TechnicalCapability

@@ -824,7 +824,6 @@ def rollback_import(history_id):
         # AUDIT-IMP-006: Create audit log entry for the rollback action.
         # This provides accountability for destructive rollback operations.
         try:
-            from datetime import datetime
             from app.models.batch_import import ImportAuditLog
 
             rollback_audit = ImportAuditLog(
@@ -997,7 +996,7 @@ def application_import():
     generate_archimate = (
         request.form.get("generate_archimate", "false").lower() == "true"
     )
-    clone_vendor = request.form.get("clone_vendor_archimate", "false").lower() == "true"
+    request.form.get("clone_vendor_archimate", "false").lower() == "true"
     confidence_threshold = float(request.form.get("confidence_threshold", "0.7"))
 
     # Quick import mode: skip AI to prevent timeout (for E2E tests and fast imports)
@@ -2230,7 +2229,7 @@ def application_import():
     except ValueError as exc:
         db.session.rollback()
         flash(f"Invalid import data: {exc}", "error")
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         flash("Error importing file. Please try again.", "error")
 
@@ -2323,11 +2322,10 @@ def import_with_ai_review():
     import_mode = request.form.get("import_mode", "skip")
 
     # Get custom field mappings if provided
-    field_mappings = {}
     field_mappings_json = request.form.get("field_mappings")
     if field_mappings_json:
         try:
-            field_mappings = json.loads(field_mappings_json)
+            json.loads(field_mappings_json)
         except json.JSONDecodeError:
             logger.exception("Failed to JSON parsing")
             pass
@@ -2347,7 +2345,6 @@ def import_with_ai_review():
         count = 0
         updated = 0
         skipped = 0
-        errors = []
 
         if filename.endswith(".csv"):
             import csv

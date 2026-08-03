@@ -38,7 +38,7 @@ def _level_to_int(val, default=3):
 def export_narrative(solution_id):
     """SA-004: Export solution narrative document."""
     from app.services.solution_narrative_service import generate_sad as _gen
-    ctx = _gen(solution_id)
+    _gen(solution_id)
     solution = Solution.query.get_or_404(solution_id)
     risks = SolutionRisk.query.filter_by(solution_id=solution_id).all()
     return render_template(

@@ -276,7 +276,6 @@ def sync_all_for_solution(solution_id):
             SolutionConstraint,
             SolutionDriver,
             SolutionGoal,
-            SolutionPrinciple,
             SolutionRecommendation,
             SolutionRequirement,
         )

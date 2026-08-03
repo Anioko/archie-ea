@@ -73,7 +73,7 @@ def industry_apqc_framework_detail(industry_code):
             regulatory_processes=regulatory_processes,
             stats=stats,
         )
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -122,7 +122,7 @@ def api_industry_apqc_frameworks():
         return jsonify(
             {"success": True, "frameworks": [fw.to_dict() for fw in frameworks]}
         )
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -138,7 +138,7 @@ def api_industry_apqc_framework(industry_code):
             return jsonify({"success": False, "error": "Framework not found"}), 404
 
         return jsonify({"success": True, "framework": framework.to_dict()})
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -158,7 +158,7 @@ def api_industry_apqc_processes(industry_code):
                 "total": len(processes),
             }
         )
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -174,7 +174,7 @@ def api_industry_apqc_statistics(industry_code):
             return jsonify({"success": False, "error": "Framework not found"}), 404
 
         return jsonify({"success": True, "statistics": stats})
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -216,7 +216,7 @@ def api_generate_recommendations():
                 "total": len(recommendations),
             }
         )
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -233,7 +233,7 @@ def api_accept_recommendation(recommendation_id):
             recommendation_id=recommendation_id, user_id=current_user.id
         )
         return jsonify(result)
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -253,7 +253,7 @@ def api_reject_recommendation(recommendation_id):
             recommendation_id=recommendation_id, user_id=current_user.id, reason=reason
         )
         return jsonify(result)
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -277,5 +277,5 @@ def api_seed_frameworks():
                 "total_created": len(created),
             }
         )
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500

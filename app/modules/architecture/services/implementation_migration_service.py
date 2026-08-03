@@ -18,12 +18,11 @@ ArchiMate 3.2 Implementation & Migration Elements:
 """
 
 import json
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 from app import db
 from app.datetime_helpers import utcnow
-from app.models import ArchiMateElement, ArchiMateRelationship, ArchitectureModel
+from app.models import ArchiMateElement, ArchiMateRelationship
 from app.services.llm_service import LLMService
 
 

@@ -5,16 +5,14 @@ Provides comprehensive security event monitoring and detection.
 """
 
 import logging
-import time
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, asdict
 from enum import Enum
 import threading
-import json
 import hashlib
 
-from flask import current_app, request, session
+from flask import request
 
 logger = logging.getLogger(__name__)
 

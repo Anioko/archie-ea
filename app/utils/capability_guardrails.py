@@ -2,7 +2,6 @@
 LLM Architecture Guardrails - Capability Framework Enforcement
 """
 
-import os
 import re
 import sys
 from pathlib import Path
@@ -107,32 +106,6 @@ class CapabilityFrameworkGuardrails:
                         "severity": "CRITICAL",
                     }
                 )
-
-        return violations
-
-    def check_file_creation(self, file_path: str) -> Dict[str, str]:
-        """Check if file creation is allowed"""
-        file_path = Path(file_path)
-
-        # Check protected directories
-        for protected_dir in self.PROTECTED_DIRECTORIES:
-            if file_path.is_relative_to(Path(protected_dir)):
-                if "capability" in file_path.name.lower():
-                    return {
-                        "type": "PROTECTED_DIRECTORY_FILE",
-                        "description": f"Creating capability file in protected directory: {file_path}",
-                        "severity": "CRITICAL",
-                    }
-
-        # Check if it's a capability-related file
-        if "capability" in file_path.name.lower():
-            return {
-                "type": "CAPABILITY_FILE_CREATION",
-                "description": f"Creating new capability file: {file_path}",
-                "severity": "CRITICAL",
-            }
-
-        return None
 
         return violations
 

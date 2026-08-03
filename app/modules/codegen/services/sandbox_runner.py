@@ -260,7 +260,8 @@ class DockerSmokeTestService:
 
     @staticmethod
     def _pick_free_port() -> int:
-        import socket, random
+        import socket
+        import random
         for _ in range(20):
             port = random.randint(49152, 65535)
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:

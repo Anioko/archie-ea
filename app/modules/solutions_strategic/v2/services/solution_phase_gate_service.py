@@ -394,7 +394,7 @@ class SolutionPhaseGateService:
         solution = Solution.query.get_or_404(solution_id)
         current_phase = solution.adm_phase or "A"
         completed_phases = solution.adm_phases_completed
-        current_idx = PHASE_ORDER.index(current_phase)
+        PHASE_ORDER.index(current_phase)
 
         results = []
         for i, letter in enumerate(PHASE_ORDER):

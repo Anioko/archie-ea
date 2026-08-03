@@ -15,7 +15,6 @@ import json
 import click
 from flask.cli import with_appcontext
 
-from app import db
 
 
 @click.command("codegen-drift")

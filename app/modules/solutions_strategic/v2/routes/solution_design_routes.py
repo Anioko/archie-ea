@@ -28,7 +28,6 @@ import logging
 import os
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
-from typing import List
 
 from flask import (
     Blueprint,
@@ -52,7 +51,6 @@ from app import csrf, db
 from app.decorators import audit_log, require_roles
 from app.models.application_portfolio import ApplicationComponent
 from app.models.apqc_process import APQCProcess, ProcessApplicationMapping
-from app.models.archimate_core import ArchitectureModel
 from app.models.solution_sad_models import SolutionADRDirect, SolutionAPQCProcess
 from app.models.solution_governance import SolutionNotification
 from app.models.solution_models import Solution
@@ -487,7 +485,6 @@ def _build_solution_worklist_summaries(solutions: list[Solution]) -> tuple[dict[
         )
         driver_count = drivers_by_problem.get(problem_id, 0)
         goal_count = goals_by_problem.get(problem_id, 0)
-        driver_goal_count = driver_count + goal_count
         constraint_count = constraints_by_problem.get(problem_id, 0)
         requirement_count = (
             requirements_by_problem.get(problem_id, 0)
@@ -1558,7 +1555,7 @@ def create_from_wizard():
 
         session_record = SolutionAnalysisSession(
             name=f"Architecture Assistant: {title[:180]}",
-            description=f"Auto-created from Architecture Assistant wizard submission",
+            description="Auto-created from Architecture Assistant wizard submission",
             status=SolutionSessionStatus.COMPLETED,
             created_by_id=current_user.id,
         )
@@ -1638,7 +1635,7 @@ def create_from_wizard():
                     problem_id=problem_def.id,
                     capability_id=cap_id_int,
                     support_level="required",
-                    notes=f"Mapped via Architecture Assistant wizard",
+                    notes="Mapped via Architecture Assistant wizard",
                     created_by_id=current_user.id,
                 )
                 db.session.add(mapping)
@@ -1760,8 +1757,7 @@ def _build_solution_detail_context(solution):
     analysis_data = {}
     try:
         from app.models.solution_architect_models import (
-            SolutionAnalysisSession, SolutionProblemDefinition,
-            SolutionDriver, SolutionGoal, SolutionRequirement,
+            SolutionAnalysisSession, SolutionDriver, SolutionGoal, SolutionRequirement,
             SolutionConstraint, SolutionRecommendation,
         )
         drivers_all = []
@@ -2478,8 +2474,8 @@ def api_phase_summary(solution_id: int):
         (stk_count, "stakeholders"),
     ]
     phases["sec-2"] = _phase(
-        [f"{c} {l}" for c, l in sec2_items if c > 0],
-        [l for c, l in sec2_items if c == 0],
+        [f"{c} {item}" for c, item in sec2_items if c > 0],
+        [item for c, item in sec2_items if c == 0],
         len(sec2_items), sum(1 for c, _ in sec2_items if c > 0),
     )
 
@@ -2489,8 +2485,8 @@ def api_phase_summary(solution_id: int):
         (len(vendors), "vendor products"), (len(procs), "APQC processes"),
     ]
     phases["sec-3"] = _phase(
-        [f"{c} {l}" for c, l in sec3_items if c > 0],
-        [l for c, l in sec3_items if c == 0],
+        [f"{c} {item}" for c, item in sec3_items if c > 0],
+        [item for c, item in sec3_items if c == 0],
         len(sec3_items), sum(1 for c, _ in sec3_items if c > 0),
     )
 
@@ -2499,8 +2495,8 @@ def api_phase_summary(solution_id: int):
     tech_elems = len([e for e in archimate if (e.get("layer") or getattr(e, "layer", "")) == "technology"])
     sec4_items = [(app_elems, "app elements"), (tech_elems, "tech elements"), (len(apps), "applications")]
     phases["sec-4"] = _phase(
-        [f"{c} {l}" for c, l in sec4_items if c > 0],
-        [l for c, l in sec4_items if c == 0],
+        [f"{c} {item}" for c, item in sec4_items if c > 0],
+        [item for c, item in sec4_items if c == 0],
         len(sec4_items), sum(1 for c, _ in sec4_items if c > 0),
     )
 
@@ -2508,22 +2504,21 @@ def api_phase_summary(solution_id: int):
     selected = len([r for r in recs if r.get("is_recommended") or r.get("selected")])
     sec5_items = [(len(recs), "options"), (selected, "selected options"), (len(tco), "TCO items")]
     phases["sec-5"] = _phase(
-        [f"{c} {l}" for c, l in sec5_items if c > 0],
-        [l for c, l in sec5_items if c == 0],
+        [f"{c} {item}" for c, item in sec5_items if c > 0],
+        [item for c, item in sec5_items if c == 0],
         len(sec5_items), sum(1 for c, _ in sec5_items if c > 0),
     )
 
     # sec-6: Delivery (Phase F)
     sec6_items = [(len(plateaus), "plateaus"), (len(tco), "TCO items")]
     phases["sec-6"] = _phase(
-        [f"{c} {l}" for c, l in sec6_items if c > 0],
-        [l for c, l in sec6_items if c == 0],
+        [f"{c} {item}" for c, item in sec6_items if c > 0],
+        [item for c, item in sec6_items if c == 0],
         len(sec6_items), sum(1 for c, _ in sec6_items if c > 0),
     )
 
     # sec-7: Governance (Phase G)
     arb_submitted = solution.governance_status not in (None, "draft")
-    sec7_items = [(1 if arb_submitted else 0, "ARB submission")]
     phases["sec-7"] = _phase(
         ["ARB submitted"] if arb_submitted else [],
         ["ARB submission"] if not arb_submitted else [],
@@ -2533,16 +2528,16 @@ def api_phase_summary(solution_id: int):
     # sec-8: Risks & Decisions
     sec8_items = [(len(risks), "risks"), (len(adrs), "ADRs")]
     phases["sec-8"] = _phase(
-        [f"{c} {l}" for c, l in sec8_items if c > 0],
-        [l for c, l in sec8_items if c == 0],
+        [f"{c} {item}" for c, item in sec8_items if c > 0],
+        [item for c, item in sec8_items if c == 0],
         len(sec8_items), sum(1 for c, _ in sec8_items if c > 0),
     )
 
     # sec-9: Operational Readiness (Phase H)
     sec9_items = [(len(metrics), "metrics")]
     phases["sec-9"] = _phase(
-        [f"{c} {l}" for c, l in sec9_items if c > 0],
-        [l for c, l in sec9_items if c == 0],
+        [f"{c} {item}" for c, item in sec9_items if c > 0],
+        [item for c, item in sec9_items if c == 0],
         len(sec9_items), sum(1 for c, _ in sec9_items if c > 0),
     )
 
@@ -2552,8 +2547,8 @@ def api_phase_summary(solution_id: int):
         (len(requirements), "requirements"), (len(caps), "capabilities"),
     ]
     phases["sec-10"] = _phase(
-        [f"{c} {l}" for c, l in sec10_items if c > 0],
-        [l for c, l in sec10_items if c == 0],
+        [f"{c} {item}" for c, item in sec10_items if c > 0],
+        [item for c, item in sec10_items if c == 0],
         len(sec10_items), sum(1 for c, _ in sec10_items if c > 0),
     )
 
@@ -2611,8 +2606,7 @@ def _build_blueprint_context(solution):
     try:
         from app.models.solution_sad_models import (
             SolutionIntegrationFlow, SolutionComposition, RiskSnapshot,
-            SolutionQualityAttribute, SolutionSLA, MigrationDependency,
-            SolutionInvestmentPhase, SolutionGovernanceException,
+            SolutionQualityAttribute, SolutionSLA, SolutionInvestmentPhase, SolutionGovernanceException,
             SolutionComplianceMapping, SolutionChangeRequest,
             SolutionFeasibilityReview, SolutionBenefitRealization,
             SolutionOrgImpact, SolutionLessonLearned,
@@ -3915,7 +3909,6 @@ def export_solution_blueprint(solution_id: int):
         role_map = {link.element_id: getattr(link, "element_role", "supporting") for link in links}
 
         # Group by section based on element type → viewpoint mapping
-        from app.modules.architecture.services.element_type_normalizer import ElementTypeNormalizer
         section_elements = {}
         type_to_section = {}
         for sec_id, sec_def in ctx["section_definitions"].items():
@@ -4020,17 +4013,17 @@ def export_solution_markdown(solution_id: int):
     # Build markdown
     lines = [
         f"# {solution.name}",
-        f"",
+        "",
         f"**Type:** {solution.solution_type or 'N/A'}  ",
         f"**Domain:** {solution.business_domain or 'N/A'}  ",
         f"**Status:** {solution.status or 'N/A'}  ",
         f"**ADM Phase:** {solution.adm_phase or 'A'}  ",
         f"**Governance:** {solution.governance_status or 'draft'}  ",
-        f"",
-        f"## Description",
-        f"",
+        "",
+        "## Description",
+        "",
         solution.description or "_No description provided._",
-        f"",
+        "",
     ]
     # Add drivers/goals/constraints/requirements from DB
     try:
@@ -4097,7 +4090,7 @@ def export_solution_markdown(solution_id: int):
         logger.debug(f"Could not load lifecycle entities for export: {e}")
     lines += [
         "---",
-        f"_Exported from A.R.C.H.I.E. Enterprise Architecture Platform_",
+        "_Exported from A.R.C.H.I.E. Enterprise Architecture Platform_",
     ]
     content = "\n".join(lines)
     from flask import Response
@@ -6214,7 +6207,7 @@ def api_update_solution(solution_id: int):
                 "solution_id": solution.id,
             }
         )
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
@@ -6290,7 +6283,6 @@ def get_solution_capabilities(solution_id: int):
 @login_required
 def get_motivation_elements(solution_id):
     """Return Assessments, Principles, Outcomes, Values for a solution."""
-    import json as _json
     solution = Solution.query.get_or_404(solution_id)
     elements = []
     try:
@@ -6319,7 +6311,7 @@ def get_motivation_elements(solution_id):
         from app.models.solution_archimate_element import SolutionArchiMateElement as SAE
         from app.models.archimate_core import ArchiMateElement as AE
         links = SAE.query.filter_by(solution_id=solution_id, layer_type='motivation').all()
-        elem_ids = [l.element_id for l in links if l.element_id]
+        elem_ids = [item.element_id for item in links if item.element_id]
         if elem_ids:
             aes = AE.query.filter(AE.id.in_(elem_ids), AE.type.in_(['Outcome', 'Value'])).all()
             for ae in aes:
@@ -6333,7 +6325,7 @@ def get_motivation_elements(solution_id):
 @login_required
 def patch_motivation_entity(solution_id, entity_id):
     """Inline edit a motivation element."""
-    solution = Solution.query.get_or_404(solution_id)
+    Solution.query.get_or_404(solution_id)
     data = request.get_json(silent=True) or {}
     if not data:
         return jsonify({"error": "No data"}), 400
@@ -6485,7 +6477,7 @@ def delete_solution_capability(solution_id: int, mapping_id: int):
 @login_required
 def get_solution_archimate_elements(solution_id: int):
     """Get all ArchiMate elements mapped to a solution, grouped by layer."""
-    solution = Solution.query.get_or_404(solution_id)
+    Solution.query.get_or_404(solution_id)
 
     try:
         from app.models.solution_models import SolutionArchiMateElement
@@ -6536,7 +6528,7 @@ def get_solution_archimate_elements(solution_id: int):
 @audit_log("update_solution_archimate")
 def update_solution_archimate_elements(solution_id: int):
     """Add or update ArchiMate element mappings for a solution."""
-    solution = Solution.query.get_or_404(solution_id)
+    Solution.query.get_or_404(solution_id)
 
     try:
         from app.models.solution_models import SolutionArchiMateElement
@@ -7658,7 +7650,7 @@ _PHASE_LAYERS = {
 @login_required
 def generate_solution_viewpoint(solution_id: int, phase: str):
     """Return the solution's linked ArchiMate elements filtered by ADM phase layers."""
-    solution = Solution.query.get_or_404(solution_id)
+    Solution.query.get_or_404(solution_id)
     phase_upper = phase.upper()
     relevant_layers = _PHASE_LAYERS.get(phase_upper)
     if not relevant_layers:
@@ -7731,7 +7723,7 @@ def get_solution_viewpoint_elements(solution_id: int):
     Returns JSON compatible with ComposerRenderer.loadElements():
         {elements: [{id, name, type, layer}], relationships: [{id, source_id, target_id, type}]}
     """
-    solution = Solution.query.get_or_404(solution_id)
+    Solution.query.get_or_404(solution_id)
     viewpoint_id = request.args.get("viewpoint", "layered")
 
     try:
@@ -8202,7 +8194,7 @@ def add_solution_dependency():
 @login_required
 def linked_vendor_products(solution_id):
     """Return vendor products currently linked to this solution."""
-    solution = Solution.query.get_or_404(solution_id)
+    Solution.query.get_or_404(solution_id)
     try:
         from app.models.vendor.vendor_organization import VendorProduct
         tbl = db.metadata.tables.get("solution_vendor_products")
@@ -8234,7 +8226,7 @@ def linked_vendor_products(solution_id):
 @login_required
 def linked_apqc_processes(solution_id):
     """Return APQC processes currently linked to this solution."""
-    solution = Solution.query.get_or_404(solution_id)
+    Solution.query.get_or_404(solution_id)
     try:
         from app.models.apqc_process import APQCProcess as APQCModel
         from app.models.solution_sad_models import SolutionAPQCProcess
@@ -8269,7 +8261,7 @@ def linked_apqc_processes(solution_id):
 @login_required
 def linked_applications_api(solution_id):
     """Return applications currently linked to this solution."""
-    solution = Solution.query.get_or_404(solution_id)
+    Solution.query.get_or_404(solution_id)
     try:
         apps = _get_solution_applications(solution_id)
         return jsonify({
@@ -8710,8 +8702,6 @@ def suggest_connections(solution_id: int):
         from app.models.solution_models import (
             SolutionArchiMateElement,
             SolutionCapabilityMapping,
-            solution_applications,
-            solution_vendor_products,
         )
         from app.models.vendor.vendor_organization import VendorProduct
 
@@ -8921,7 +8911,7 @@ def link_capability(solution_id):
     from app.models.business_capabilities import BusinessCapability
     from app.models.solution_models import SolutionCapabilityMapping
 
-    solution = Solution.query.get_or_404(solution_id)
+    Solution.query.get_or_404(solution_id)
     data = request.get_json() or {}
     cap_id = data.get("capability_id")
     if not cap_id:
@@ -9468,7 +9458,7 @@ def api_accept_suggestions(solution_id):
     """
     from app.models.archimate_core import ArchiMateElement
 
-    solution = Solution.query.get_or_404(solution_id)
+    Solution.query.get_or_404(solution_id)
 
     data = request.get_json(silent=True) or {}
     accepted = data.get("accepted", [])
@@ -9851,8 +9841,8 @@ def _build_section_narrative_prompt(
     ))
 
     prompt_parts = [
-        f"You are a senior enterprise architect writing a Solution Architecture Document (SAD) "
-        f"for a real production system. Your output will be reviewed by an Architecture Review Board.",
+        "You are a senior enterprise architect writing a Solution Architecture Document (SAD) "
+        "for a real production system. Your output will be reviewed by an Architecture Review Board.",
         "",
         f"Solution: {sol_name}",
     ]
@@ -9868,7 +9858,7 @@ def _build_section_narrative_prompt(
         f"Section to generate: '{section_title}' ({viewpoint} viewpoint)",
         f"Relevant ArchiMate element types: {', '.join(required_types) or 'All'}",
         "",
-        f"Architecture elements linked to this section:",
+        "Architecture elements linked to this section:",
         element_lines,
     ]
 
@@ -9966,7 +9956,7 @@ def api_generate_section_narrative(solution_id, section_id):
     try:
         from app.services.llm_service import LLMService
         narrative = LLMService.generate_from_prompt(prompt, use_cache=False)
-    except ValueError as e:
+    except ValueError:
         return jsonify({
             "success": False,
             "error": "No LLM provider configured. Add an API key in Admin → API Settings.",
@@ -10433,7 +10423,7 @@ def api_get_viewpoint_elements(solution_id, section_id):
         .with_entities(_SAE.element_id).all()
         if r[0] is not None
     ]
-    sol_elem_ids_set = set(sol_elem_ids)
+    set(sol_elem_ids)
 
     if elem_ids:
         # Relationships where section element is source and target is anywhere in solution
@@ -10509,8 +10499,7 @@ def api_get_viewpoint_elements(solution_id, section_id):
 @login_required
 def api_get_viewpoint_diagram_data(solution_id, section_id):
     """Return JointJS-compatible graph data (elements + relationships between them)."""
-    from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship
-    from app.models.solution_archimate_element import SolutionArchiMateElement
+    from app.models.archimate_core import ArchiMateRelationship
     from app.modules.solutions_strategic.v2.services.blueprint_completeness_service import (
         BlueprintCompletenessService,
     )
@@ -10561,7 +10550,6 @@ def api_get_viewpoint_diagram_data(solution_id, section_id):
     # Grid layout: arrange elements in rows by layer
     x_offset = 50
     y_offset = 50
-    col = 0
     row_elements = {}
 
     for elem in elements:
@@ -10655,7 +10643,6 @@ def api_get_traceability_matrix(solution_id):
 
     elem_ids = [eid for (eid,) in element_ids_q]
     elements = ArchiMateElement.query.filter(ArchiMateElement.id.in_(elem_ids)).all()
-    elem_map = {e.id: e for e in elements}
 
     # Separate by role
     requirements = [e for e in elements if e.type in ("Requirement", "Constraint", "Goal")]

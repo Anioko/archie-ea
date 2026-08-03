@@ -18,7 +18,7 @@ and gap assessment.
 import json
 import logging
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 from app import db
 from app.models.application_portfolio import ApplicationComponent
@@ -26,7 +26,6 @@ from app.models.apqc_process import APQCProcess, ProcessApplicationMapping
 from app.models.archimate_core import ArchiMateElement, ArchitectureModel
 from app.models.vendor.vendor_organization import VendorProduct
 from app.models.vendor_product_apqc_mapping import VendorProductAPQCMapping
-from app.models.vendor_stack_template import VendorStackTemplate
 
 logger = logging.getLogger(__name__)
 
@@ -288,7 +287,7 @@ class APQCVendorArchiMateService:
         if vendor_products:
             description_parts.extend(
                 [
-                    f"",
+                    "",
                     f"Vendor Support: {len(vendor_products)} vendor products",
                     f"Best Coverage: {best_vendor['vendor_name']} - {best_vendor['product_name']} ({max_coverage}%)",
                     f"Average Coverage: {avg_coverage:.1f}%",
@@ -306,8 +305,8 @@ class APQCVendorArchiMateService:
             description_parts.extend(
                 [
                     "",
-                    f"⚠️ NO VENDOR SUPPORT FOUND",
-                    f"This process may require custom development or manual implementation",
+                    "⚠️ NO VENDOR SUPPORT FOUND",
+                    "This process may require custom development or manual implementation",
                 ]
             )
 

@@ -6,7 +6,7 @@ This module provides configurable validation rules for mapping APQC processes
 to business capabilities. Rules include level compatibility, confidence thresholds,
 and domain-specific constraints.
 """
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 

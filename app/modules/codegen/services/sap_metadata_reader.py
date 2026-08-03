@@ -524,7 +524,7 @@ class SapMetadataReader:
         # RFC_READ_TABLE against DD02L
         options = [{"TEXT": "TABCLASS NE 'INTTAB'"}]
         if package_filter:
-            options.append({"TEXT": f"AND AS4LOCAL = 'A'"})
+            options.append({"TEXT": "AND AS4LOCAL = 'A'"})
 
         result = self._call(
             "RFC_READ_TABLE",

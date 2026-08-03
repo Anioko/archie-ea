@@ -9,8 +9,7 @@ Pure database querying — no AI.
 """
 
 import logging
-from decimal import Decimal
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from app import db
 

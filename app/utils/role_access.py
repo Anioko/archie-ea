@@ -20,7 +20,6 @@ from app.models.user import (
     ROLE_PORTFOLIO_MANAGER,
     ROLE_PROCUREMENT,
     ROLE_SOLUTION_ARCHITECT,
-    VALID_ROLES,
 )
 
 

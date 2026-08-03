@@ -7,7 +7,7 @@ into a standards-compliant ArchiMate Open Exchange XML document.
 Spec ref: The Open Group ArchiMate 3.2 Exchange File Format (October 2022)
 """
 import xml.etree.ElementTree as ET
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 from xml.dom import minidom
 
 

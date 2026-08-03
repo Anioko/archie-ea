@@ -10,7 +10,7 @@ Reference: ArchiMate 3.2 Specification, Appendix B: Derivation Rules
 """
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Tuple
 
 # =============================================================================
 # Data Classes and Enumerations

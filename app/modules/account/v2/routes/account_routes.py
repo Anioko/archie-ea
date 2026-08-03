@@ -99,12 +99,12 @@ def register():
     """Register a new user, and send them a confirmation email."""
     form = RegistrationForm()
     if form.validate_on_submit():
-        user = _svc.register_user(
+        (_svc.register_user(
             first_name=form.first_name.data,
             last_name=form.last_name.data,
             email=form.email.data,
             password=form.password.data,
-        )
+        ))
         flash("Account created successfully. Welcome to A.R.C.H.I.E.!", "success")
         return redirect(url_for("main.index"))
     return render_template("account/register.html", form=form)
@@ -366,7 +366,7 @@ def _get_sso_oauth():
 @timed_route
 def sso_login(provider):
     """Initiate SSO login flow for the given provider."""
-    from flask import abort, current_app
+    from flask import abort
     import secrets
 
     if not _sso_enabled():
@@ -393,7 +393,7 @@ def sso_login(provider):
 @timed_route
 def sso_callback(provider):
     """Handle SSO callback from identity provider."""
-    from flask import abort, current_app
+    from flask import abort
 
     if not _sso_enabled():
         abort(404)
@@ -464,7 +464,7 @@ def saml_login():
         abort(404)
 
     try:
-        from app.auth.sso import SSOError, sso_service
+        from app.auth.sso import sso_service
         redirect_url = sso_service.build_saml_authn_request_url()
     except Exception as exc:
         current_app.logger.error("SAML login initiation failed: %s", exc)
@@ -484,7 +484,7 @@ def saml_acs():
         abort(404)
 
     try:
-        from app.auth.sso import SSOError, sso_service
+        from app.auth.sso import sso_service
         user_attrs = sso_service.process_saml_response(request.form.get("SAMLResponse", ""))
     except Exception as exc:
         current_app.logger.error("SAML ACS failed: %s", exc)

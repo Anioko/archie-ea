@@ -447,7 +447,7 @@ def overview():
         # defaults to "high" regardless of context, making severity an unreliable signal.
         # A portfolio where architects consistently document risks (whatever severity)
         # is healthier than one with no risk documentation.
-        rc = persona_metrics.get("cto", {}).get("risk_counts", {})
+        persona_metrics.get("cto", {}).get("risk_counts", {})
         sol_ids_with_risks = persona_metrics.get("cto", {}).get("sol_ids_with_risks", set())
         mature_sols = [s for s in solutions if (getattr(s, "maturity_current", 0) or 0) > 0]
         coverage_score = round(len([s for s in mature_sols if s.id in sol_ids_with_risks]) / max(len(mature_sols), 1) * 100)

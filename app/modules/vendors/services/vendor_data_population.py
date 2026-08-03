@@ -16,17 +16,13 @@ Key Features:
 - TCO benchmark population
 """
 
-import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
 from decimal import Decimal
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import joinedload
 
 from app import db
-from app.models.business_capabilities import BusinessCapability
 from app.models.vendor.vendor_organization import (
     TCOCalculation,
     VendorOrganization,
@@ -38,7 +34,6 @@ from app.models.vendor.vendor_organization import (
 
 # Import comprehensive dataset
 from scripts.vendor_seeds.comprehensive_vendor_dataset import (
-    COMPREHENSIVE_VENDOR_DATA,
     RISK_BENCHMARKS,
     TCO_BENCHMARKS,
     get_products_by_category,
@@ -153,7 +148,7 @@ class VendorDataPopulationService:
 
                 # Create products
                 for product_data in vendor_data.get("products", []):
-                    product = self._create_vendor_product(vendor, product_data)
+                    self._create_vendor_product(vendor, product_data)
                     self.population_stats["products_created"] += 1
 
                 self.population_stats["vendors_created"] += 1
@@ -361,7 +356,7 @@ class VendorDataPopulationService:
     def _calculate_financial_rating(self, vendor_data: Dict[str, Any]) -> str:
         """Calculate financial stability rating based on vendor data."""
         revenue = vendor_data.get("revenue", "0")
-        employees = vendor_data.get("employees", 0)
+        vendor_data.get("employees", 0)
         year_founded = vendor_data.get("year_founded", 2000)
 
         # Simple rating logic based on revenue and age
@@ -383,7 +378,7 @@ class VendorDataPopulationService:
 
     def _calculate_innovation_rate(self, vendor_data: Dict[str, Any]) -> str:
         """Calculate innovation rate based on vendor characteristics."""
-        category = vendor_data.get("category", "")
+        vendor_data.get("category", "")
         gartner_position = vendor_data.get("gartner_magic_quadrant", "")
 
         if gartner_position == "Leaders":

@@ -162,7 +162,6 @@ def pull_issues(solution_id: int, jira_project_key: str) -> PullResult:
     Returns:
         PullResult with created/updated/unchanged/failed counts.
     """
-    from app.models.solution_architect_models import SolutionRequirement
     from app.models.solution_models import Solution
 
     result = PullResult()

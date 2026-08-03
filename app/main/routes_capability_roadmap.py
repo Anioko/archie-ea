@@ -3,21 +3,18 @@
 from werkzeug.exceptions import HTTPException
 import logging
 import re
-from datetime import datetime, timedelta
+from datetime import datetime
 
-from flask import flash, jsonify, redirect, render_template, request, url_for
+from flask import current_app, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
-from sqlalchemy import func, text
+from sqlalchemy import func
 
 from app import db
 from app.main.views import main
-from app.models.implementation_migration import Gap, Plateau
 from app.models.roadmap import RoadmapTask
 from app.models.roadmap_models import RoadmapDeliverable
-from app.models.unified_application_capability_mapping import UnifiedApplicationCapabilityMapping
 from app.models.unified_capability import BusinessDomain, UnifiedCapability
 from app.models.unified_work_package import UnifiedWorkPackage
-from app.services.capability_roadmap_dashboard_service import CapabilityRoadmapDashboardService
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +72,7 @@ def get_grouped_capabilities():
 
         raise
 
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -103,7 +100,7 @@ def get_capability_domains():
 
         raise
 
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -145,7 +142,7 @@ def check_capability_duplicate():
 
         raise
 
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -166,7 +163,7 @@ def list_users_for_assignment():
         )
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -190,7 +187,7 @@ def list_capabilities():
         )
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -410,15 +407,15 @@ def get_capability_work_packages():
     try:
         # Get filter parameters
         selected_levels = request.args.getlist("levels") or ["L1", "L2", "L3"]
-        selected_domain = request.args.get("domain", "")
-        selected_importance = request.args.get("importance", "")
+        request.args.get("domain", "")
+        request.args.get("importance", "")
 
         # Convert level strings to integers
-        level_ints = [
+        ([
             int(level[1])
             for level in selected_levels
             if level.startswith("L") and level[1:].isdigit()
-        ]
+        ])
 
         # Use ORM without backend filtering (let frontend handle filtering)
         work_packages_query = UnifiedWorkPackage.query.filter(
@@ -561,7 +558,7 @@ def get_capability_work_packages():
         return jsonify({"work_packages": work_packages_list})
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -644,7 +641,7 @@ def create_capability_work_package():
 
         raise
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return jsonify({"error": "An internal error occurred"}), 500
 
@@ -731,7 +728,7 @@ def update_capability_work_package(wp_id):
 
         raise
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return jsonify({"error": "An internal error occurred"}), 500
 
@@ -754,7 +751,7 @@ def delete_capability_work_package(wp_id):
 
         raise
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return jsonify({"error": "An internal error occurred"}), 500
 
@@ -793,7 +790,7 @@ def get_work_package_tasks(wp_id):
 
         raise
 
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -803,7 +800,7 @@ def create_work_package_task(wp_id):
     """Create a new task for a work package"""
     try:
         # Verify work package exists
-        work_package = UnifiedWorkPackage.query.get_or_404(wp_id)
+        UnifiedWorkPackage.query.get_or_404(wp_id)
 
         data = request.get_json()
 
@@ -841,7 +838,7 @@ def create_work_package_task(wp_id):
 
         raise
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return jsonify({"error": "An internal error occurred"}), 500
 
@@ -852,7 +849,7 @@ def update_work_package_task(wp_id, task_id):
     """Update a task"""
     try:
         # Verify work package and task exist
-        work_package = UnifiedWorkPackage.query.get_or_404(wp_id)
+        UnifiedWorkPackage.query.get_or_404(wp_id)
         task = RoadmapTask.query.filter_by(id=task_id, unified_work_package_id=wp_id).first_or_404()
 
         data = request.get_json()
@@ -894,7 +891,7 @@ def update_work_package_task(wp_id, task_id):
 
         raise
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return jsonify({"error": "An internal error occurred"}), 500
 
@@ -905,7 +902,7 @@ def delete_work_package_task(wp_id, task_id):
     """Delete a task"""
     try:
         # Verify work package and task exist
-        work_package = UnifiedWorkPackage.query.get_or_404(wp_id)
+        UnifiedWorkPackage.query.get_or_404(wp_id)
         task = RoadmapTask.query.filter_by(id=task_id, unified_work_package_id=wp_id).first_or_404()
 
         db.session.delete(task)
@@ -917,7 +914,7 @@ def delete_work_package_task(wp_id, task_id):
 
         raise
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return jsonify({"error": "An internal error occurred"}), 500
 
@@ -956,7 +953,7 @@ def get_work_package_deliverables(wp_id):
 
         raise
 
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -966,7 +963,7 @@ def create_work_package_deliverable(wp_id):
     """Create a new deliverable for a work package"""
     try:
         # Verify work package exists
-        work_package = UnifiedWorkPackage.query.get_or_404(wp_id)
+        UnifiedWorkPackage.query.get_or_404(wp_id)
 
         data = request.get_json()
 
@@ -997,7 +994,7 @@ def create_work_package_deliverable(wp_id):
 
         raise
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return jsonify({"error": "An internal error occurred"}), 500
 
@@ -1010,7 +1007,7 @@ def update_work_package_deliverable(wp_id, deliverable_id):
     """Update a deliverable"""
     try:
         # Verify work package and deliverable exist
-        work_package = UnifiedWorkPackage.query.get_or_404(wp_id)
+        UnifiedWorkPackage.query.get_or_404(wp_id)
         deliverable = RoadmapDeliverable.query.filter_by(
             id=deliverable_id, unified_work_package_id=wp_id
         ).first_or_404()
@@ -1052,7 +1049,7 @@ def update_work_package_deliverable(wp_id, deliverable_id):
 
         raise
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return jsonify({"error": "An internal error occurred"}), 500
 
@@ -1066,7 +1063,7 @@ def delete_work_package_deliverable(wp_id, deliverable_id):
     """Delete a deliverable"""
     try:
         # Verify work package and deliverable exist
-        work_package = UnifiedWorkPackage.query.get_or_404(wp_id)
+        UnifiedWorkPackage.query.get_or_404(wp_id)
         deliverable = RoadmapDeliverable.query.filter_by(
             id=deliverable_id, unified_work_package_id=wp_id
         ).first_or_404()
@@ -1080,7 +1077,7 @@ def delete_work_package_deliverable(wp_id, deliverable_id):
 
         raise
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return jsonify({"error": "An internal error occurred"}), 500
 
@@ -1195,5 +1192,5 @@ def get_work_package_details(wp_id):
 
         raise
 
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500

@@ -6,7 +6,7 @@ This service enforces the API documentation standards.
 """
 
 import re
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
 from flask import current_app
 
@@ -94,7 +94,7 @@ class APIComplianceService:
                 "valid": False,
                 "error": f'Route URL "{route_url}" incorrectly includes blueprint name "{blueprint_name}"',
                 "violation": "BLUEPRINT_NAME_IN_URL",
-                "suggestion": f"Remove blueprint name from URL. Use blueprint url_prefix instead.",
+                "suggestion": "Remove blueprint name from URL. Use blueprint url_prefix instead.",
             }
 
         return {"valid": True}
@@ -254,7 +254,7 @@ def validate_api_endpoint(
             error_msg += f"- {violation['error']}\n"
             if "suggestion" in violation:
                 error_msg += f"  Suggestion: {violation['suggestion']}\n"
-        error_msg += f"\nReference: docs/API_DOCUMENTATION.md"
+        error_msg += "\nReference: docs/API_DOCUMENTATION.md"
 
         raise ValueError(error_msg)
 

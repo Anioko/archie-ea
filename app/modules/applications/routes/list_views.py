@@ -31,11 +31,11 @@ from app.security.import_decorators import with_import_security
 # Import performance utilities (conditionally available)  # dead-code-ok
 try:
     from app.services.core.data_cache import (  # dead-code-ok
-        get_all_applications,
-        get_application_filter_options,
-        invalidate_application_cache,
+        get_all_applications,  # noqa: F401 — availability probe: the import IS the test
+        get_application_filter_options,  # noqa: F401 — availability probe: the import IS the test
+        invalidate_application_cache,  # noqa: F401 — availability probe: the import IS the test
     )
-    from app.services.core.eager_loading import get_application_options  # dead-code-ok
+    from app.services.core.eager_loading import get_application_options  # dead-code-ok  # noqa: F401 — availability probe: the import IS the test
 
     PERF_UTILS_AVAILABLE = True
 except ImportError:
@@ -561,7 +561,7 @@ def api_list():
                 "per_page": pagination.per_page,
             }
         )
-    except Exception as e:
+    except Exception:
         try:
             db.session.rollback()
         except Exception as rollback_error:

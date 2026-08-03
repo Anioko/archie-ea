@@ -10,17 +10,13 @@ import logging
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import func
 
 from app import db
 from app.models.architecture_review_board import (
     ARBReviewItem,
-    ARBReviewStatus,
-    ArchitectureReviewBoard,
     ReviewType,
 )
 from app.models.adm_kanban import KanbanCard
-from app.models.adm_phase_approval import ADMPhaseApproval
 from app.services.adm_audit_service import ADMAuditAction, adm_audit_service
 
 logger = logging.getLogger(__name__)

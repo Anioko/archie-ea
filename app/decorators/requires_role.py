@@ -14,7 +14,7 @@ from typing import List, Union
 from flask import abort, current_app, request
 from flask_login import current_user
 
-from app.models.user import ROLE_PLATFORM_ADMIN, VALID_ROLES
+from app.models.user import ROLE_PLATFORM_ADMIN
 from app.utils.role_access import get_user_role
 
 

@@ -353,6 +353,7 @@ class UnifiedCapability(db.Model, OptimisticLockMixin):
         self.kpis = json.dumps(kpis_list)
 
 
+
 class CapabilityValueStreamMapping(TenantMixin, db.Model):
     """
     Capability-Value Stream Mapping
@@ -404,6 +405,7 @@ class CapabilityValueStreamMapping(TenantMixin, db.Model):
         return f"<CapabilityValueStreamMapping cap={self.capability_id} -> vs={self.value_stream_stage_id}>"
 
 
+
 class ValueStream(TenantMixin, db.Model):
     """
     Value Stream Model
@@ -450,6 +452,7 @@ class ValueStream(TenantMixin, db.Model):
 
     def __repr__(self):
         return f"<ValueStream {self.name}>"
+
 
 
 class ValueStreamStage(TenantMixin, db.Model):

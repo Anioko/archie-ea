@@ -1,6 +1,26 @@
 #!/usr/bin/env python
 import os
 import subprocess
+import sys
+
+# Force UTF-8 on stdout/stderr before anything prints.
+#
+# Several CLI commands below print non-ASCII progress markers (check marks, warning
+# signs). On Windows the default console encoding is cp1252, which cannot encode
+# them, so `flask --app manage init-db` died mid-run with:
+#
+#     UnicodeEncodeError: 'charmap' codec can't encode character '✓'
+#
+# That aborted the documented setup path from README.md partway through — after some
+# tables were created but before the final commit. Reconfiguring here fixes the whole
+# class of failure rather than the ~30 individual call sites, and covers future ones.
+# errors="replace" guarantees output can never again crash a command.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        # Not a TextIOWrapper (redirected/wrapped stream) — nothing to reconfigure.
+        pass
 
 # Load .env file if present — allows API keys to be set without restarting
 try:
@@ -513,7 +533,7 @@ def register_cli_commands(app):
         print("=" * 60)
         print(f"Admin Email:    {admin_email}")
         print(f"Admin Password: {admin_password}")
-        print(f"Login Route:    /account/login")
+        print("Login Route:    /account/login")
         print("=" * 60)
 
     @app.cli.command()
@@ -639,7 +659,7 @@ def register_cli_commands(app):
             else:
                 print(f"Server Status (Port {port}):")
                 if result.get("running"):
-                    print(f"✅ Server is running")
+                    print("✅ Server is running")
                     flask_processes = result.get("flask_processes", [])
                     if flask_processes:
                         print(f"   Flask processes: {len(flask_processes)}")
@@ -752,7 +772,7 @@ def register_cli_commands(app):
                 if killed:
                     print(f"   Killed: {', '.join(killed)}")
             else:
-                print(f"❌ Failed to kill some processes")
+                print("❌ Failed to kill some processes")
                 if killed:
                     print(f"   Killed: {', '.join(killed)}")
 
@@ -1607,20 +1627,20 @@ def register_cli_commands(app):
                 else:
                     print(f"  {app.name}")
                     print(f"    vendor_name: {app.vendor_name}")
-                    print(f"    -> No matching vendor found")
+                    print("    -> No matching vendor found")
             return
 
         print("Mapping applications to vendor products...\n")
         results = service.bulk_auto_map_applications(limit=limit)
 
-        print(f"=== Mapping Results ===")
+        print("=== Mapping Results ===")
         print(f"Total processed: {results['total_processed']}")
         print(f"Successfully mapped: {results['mapped']}")
         print(f"Already mapped (skipped): {results['skipped']}")
         print(f"Failed: {results['failed']}")
 
         if verbose:
-            print(f"\n=== Details ===")
+            print("\n=== Details ===")
             for detail in results["details"]:
                 status = "OK" if detail["success"] else "FAIL"
                 print(f"  [{status}] {detail['application_name']}: {detail['message']}")
@@ -1700,7 +1720,6 @@ def register_cli_commands(app):
             flask standardize-vendor-domains -v
         """
         from app.models.vendor.domain_choices import (
-            VENDOR_DOMAINS,
             get_domain_label,
             normalize_domain,
         )

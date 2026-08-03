@@ -466,11 +466,11 @@ def submit_suggestion_feedback(solution_id, solution):
         
         # Record feedback
         orchestrator = SolutionAIOrchestrator()
-        result = orchestrator.record_feedback(
+        (orchestrator.record_feedback(
             reasoning_state_id=state.id,
             feedback=feedback,
             reason=reason
-        )
+        ))
         
         return jsonify({
             'success': True,

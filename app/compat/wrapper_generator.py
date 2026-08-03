@@ -21,7 +21,7 @@ Usage::
 
 import logging
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 from flask import Blueprint, request
 

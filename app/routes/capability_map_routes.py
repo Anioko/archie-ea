@@ -8,20 +8,23 @@ Performance optimizations:
 - Reduces database queries by 80%+ on high-traffic endpoints
 """
 
+import json
 from datetime import datetime
 
 from flask import Blueprint, Response, current_app, jsonify, render_template, request
 from flask_login import login_required
 
 from .. import db
+from ..models.application_portfolio import ApplicationComponent
+from ..models.unified_capability import UnifiedCapability
 
 # Import caching utilities for performance
 try:
     from app.services.core.data_cache import (  # dead-code-ok — conditional import for optional caching
-        get_all_applications,
-        get_all_capabilities,
-        get_application_filter_options,
-        get_capability_filter_options,
+        get_all_applications,  # noqa: F401 — availability probe: the import IS the test
+        get_all_capabilities,  # noqa: F401 — availability probe: the import IS the test
+        get_application_filter_options,  # noqa: F401 — availability probe: the import IS the test
+        get_capability_filter_options,  # noqa: F401 — availability probe: the import IS the test
     )
 
     CACHING_AVAILABLE = True
@@ -459,7 +462,7 @@ def api_unified_capabilities():
                         "coverage_percentage": 100 if mfg_mapped else 0,
                     }
                 )
-            except Exception as e:
+            except Exception:
                 # Skip problematic manufacturing capability
                 continue
 
@@ -543,7 +546,6 @@ def api_mappings():
     """API endpoint to get application-capability mappings with gap analysis and filtering"""
     try:
         from app.models.application_layer import ApplicationComponent
-        from app.models.business_capabilities import BusinessCapability
         from app.models.unified_application_capability_mapping import (
             UnifiedApplicationCapabilityMapping,
         )
@@ -1307,12 +1309,7 @@ def api_manufacturing_capabilities():
 def api_export_mappings():
     """Export capability mappings and gap analysis to multiple formats"""
     try:
-        import csv
-        import json
-        from datetime import datetime
-        from io import StringIO
 
-        from flask import Response
 
         # Get format parameter
         export_format = request.args.get("format", "csv").lower()
@@ -1396,7 +1393,6 @@ def _export_csv(capabilities, mappings, mapped_capability_ids, applications):
     from datetime import datetime
     from io import StringIO
 
-    from flask import Response
 
     output = StringIO()
     writer = csv.writer(output)
@@ -1594,7 +1590,6 @@ def _export_json(capabilities, mappings, mapped_capability_ids, applications):
     """Export to JSON format"""
     from datetime import datetime
 
-    from flask import Response
 
     # Build JSON structure
     export_data = {
@@ -1906,15 +1901,10 @@ def api_process_gaps():
                     process_name = process.apqc_process.process_name
                     process_description = process.apqc_process.process_description
                     process_code = process.apqc_process.process_code
-                    process_type = process.apqc_process.process_type or process.process_type
-                    process_category = (
-                        process.apqc_process.process_category or process.process_category
-                    )
                     process_owner = process.apqc_process.process_owner or process.process_owner
                     maturity_level = process.apqc_process.process_maturity or process.maturity_level
                 else:
-                    process_type = process.process_type
-                    process_category = process.process_category
+                    pass
 
             else:  # APQCProcess (unmapped APQC processes)
                 process_name = process.process_name
@@ -1926,8 +1916,6 @@ def api_process_gaps():
                 else:
                     process_level = 2  # Default to Process level
                 process_code = process.process_code
-                process_type = process.process_type
-                process_category = process.process_category
                 process_owner = process.process_owner
                 business_unit = None
                 is_automated = False  # APQC processes don't have this field by default
@@ -2800,11 +2788,6 @@ def api_flow_sankey():
         nodes = []
         node_index = {}  # 'domain_{id}' | 'cap_{id}' | 'app_{id}' → index
 
-        LAYER_COLORS = {
-            "domain": "strategy",
-            "capability": "business",
-            "application": "application",
-        }
 
         # Collect domains (L1 caps referenced by mapped caps)
         domain_ids = set()

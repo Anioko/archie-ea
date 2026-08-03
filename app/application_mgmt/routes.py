@@ -5,15 +5,16 @@ Dashboard and CRUD operations for Application Layer elements.
 """
 # mass-deletion-ok — BE-179 removes 16 manual CSRF blocks replaced by global CSRFProtect
 
-import asyncio  # dead-code-ok
-import csv  # dead-code-ok
-import io  # dead-code-ok
+# Side-effect import, NOT dead code: this is the only module that imports
+# app/models/metrics.py, and that import is what registers the
+# `application_metrics_snapshots` table on db.metadata. Removing it (as
+# `ruff --fix --select F401` did) silently drops the table from the ORM —
+# caught by comparing db.metadata.tables before and after.
+from ..models.metrics import ApplicationMetricsSnapshot  # noqa: F401
 import json
 import logging
-import os  # dead-code-ok
 import re
-from datetime import datetime, timedelta  # dead-code-ok
-from decimal import Decimal  # dead-code-ok
+from datetime import datetime  # dead-code-ok
 
 # Define the logger
 logger = logging.getLogger(__name__)
@@ -25,65 +26,24 @@ from flask import (
     redirect,
     render_template,
     request,
-    session,
     url_for,
 )
-from flask import send_file  # dead-code-ok
-from flask_login import current_user, login_required  # dead-code-ok
-from sqlalchemy import func, or_, select, text  # dead-code-ok: func
+from sqlalchemy import or_, select, text  # dead-code-ok: func
 from sqlalchemy.orm import joinedload
-from werkzeug.exceptions import BadRequest  # dead-code-ok
 
 from config import CurrencyConfig
-from .. import csrf, db  # dead-code-ok
+from .. import db  # dead-code-ok
 from ..models.application_layer import (
-    ApplicationEvent,
-    ApplicationFunction,
-    ApplicationInteraction,
     ApplicationInterface,
-    ApplicationProcess,
     ApplicationService,
     DataObject,
 )
 from ..models.application_portfolio import ApplicationComponent
-from ..models.archimate_business import (
-    BusinessCollaboration,
-    BusinessInteraction,
-    BusinessInterface,
-    Contract,
-    Representation,
-)
-from ..models.motivation import Stakeholder
-from ..models.archimate_technology import (
-    Resource,
-    TechnologyEvent,
-    TechnologyFunction,
-    TechnologyInteraction,
-    TechnologyProcess,
-)
-from ..models.archimate_technology import TechnologyCollaborationFull  # dead-code-ok
-from ..models.business_layer import BusinessEvent
 
 # Import the missing model
-from ..models.metrics import ApplicationMetricsSnapshot  # dead-code-ok
-from ..models.models import ArchiMateElement, ArchiMateRelationship, ArchitectureModel  # dead-code-ok: ArchitectureModel
-from ..models.motivation import Assessment, Driver, Goal, Meaning, Value
-from ..utils.validators import (  # dead-code-ok
-    sanitize_html,
-    validate_application_name,
-    validate_description,
-    validate_email,
-    validate_enum,
-    validate_float,
-    validate_id,
-    validate_integer,
-    validate_json_payload,
-    validate_string,
-    validation_error_response,
-)
+from ..models.models import ArchiMateElement, ArchiMateRelationship  # dead-code-ok: ArchitectureModel
+from ..models.motivation import Driver, Goal
 from . import application_mgmt
-from .forms import ApplicationComponentForm, OverviewForm  # dead-code-ok
-from app.utils.deprecation import deprecated_route  # dead-code-ok
 
 # =============================================================================
 # HELPER FUNCTIONS FOR DATA IMPORT
@@ -416,7 +376,6 @@ def _find_process_by_name_enhanced(name):
     """
     import difflib
 
-    from ..models.process_data import BusinessProcess
 
     if not name:
         return None
@@ -484,7 +443,6 @@ def _link_application_to_processes(app, functional_capabilities_str):
     Returns:
         dict: {'linked': int, 'not_found': list, 'matched': list}
     """
-    from ..models.relationship_tables import ApplicationProcessSupport
 
     if not functional_capabilities_str or not app:
         return {"linked": 0, "not_found": [], "matched": []}
@@ -578,11 +536,9 @@ def _link_application_to_apqc_by_ids(app, apqc_matches):
     Returns:
         dict: {'linked': int, 'skipped': int, 'created_processes': int, 'errors': list}
     """
-    from datetime import datetime
 
     from app.models.apqc_process import APQCProcess
 
-    from ..models.process_data import BusinessProcess
     from ..models.relationship_tables import ApplicationProcessSupport
 
     if not apqc_matches or not app:
@@ -642,7 +598,7 @@ def _link_application_to_apqc_by_ids(app, apqc_matches):
             # Get the APQC process ID from the semantic match
             apqc_id = match.get("existing_id")
             process_code = match.get("process_code", "")
-            process_name = match.get("process_name", "")
+            match.get("process_name", "")
             similarity_score = match.get("similarity_score", 0)
             source = match.get("source", "semantic_similarity")
 
@@ -825,9 +781,6 @@ def _link_application_to_capabilities(app, capabilities_str):
     Returns:
         dict: {'linked': int, 'not_found': list, 'matched': list}
     """
-    from ..models.unified_application_capability_mapping import (
-        UnifiedApplicationCapabilityMapping,
-    )
 
     if not capabilities_str or not app:
         return {"linked": 0, "not_found": [], "matched": []}
@@ -896,7 +849,6 @@ def _suggest_process_links_semantic(app, confidence_threshold=0.5):
     """
     from difflib import SequenceMatcher
 
-    from ..models.process_data import BusinessProcess
 
     if not app:
         return []
@@ -1152,11 +1104,6 @@ def validate_archimate_element_creation(
 from sqlalchemy.exc import SQLAlchemyError
 
 # Import statements (moved to proper location)
-from ..models.application_layer import (
-    ApplicationCollaboration,
-    ApplicationEvent,
-    DataObject,
-)
 from ..models.business_capabilities import BusinessCapability, BusinessFunction
 from ..models.business_layer import (
     BusinessActor,
@@ -1165,13 +1112,9 @@ from ..models.business_layer import (
     BusinessService,
 )
 from ..models.implementation_migration import Deliverable
-from ..models.implementation_migration import Gap
 from ..models.implementation_migration import Plateau
 from ..models.implementation_migration import WorkPackage
-from ..models.miscellaneous import ApplicationDocument
-from ..models.models import ArchiMateElement, ArchiMateRelationship, ArchitectureModel  # dead-code-ok: ArchitectureModel
-from ..models.models import Principle, Requirement
-from ..models.motivation import Driver, Goal
+from ..models.models import Requirement
 from ..models.physical_layer import (
     PhysicalDistributionNetwork,
     PhysicalEquipment,
@@ -1180,17 +1123,10 @@ from ..models.physical_layer import (
 )
 from ..models.process_data import BusinessProcess
 from ..models.relationship_tables import ApplicationProcessSupport
-from ..models.relationship_tables import ApplicationBusinessActorMapping  # dead-code-ok
-from ..models.relationship_tables import DataObjectStorage  # dead-code-ok
-from ..models.strategy_layer import CourseOfAction, ValueStream
 from ..models.technology_layer import (
-    CommunicationNetwork,
     Device,
     Node,
-    Path,
     SystemSoftware,
-    TechnologyInterface,
-    TechnologyService,
 )
 from ..models.unified_application_capability_mapping import (
     UnifiedApplicationCapabilityMapping,
@@ -1200,12 +1136,7 @@ from ..models.vendor.vendor_organization import (
     VendorProduct,
     application_vendor_products,
 )
-from ..services.archimate.archimate_llm_service import ArchiMateLLMService  # dead-code-ok
 from ..services.archimate_validation_service import ArchiMateValidationService
-from ..services.compliance.compliance_inheritance_service import (  # dead-code-ok
-    ComplianceInheritanceService,
-)
-from ..services.mermaid_diagram_generator import MermaidDiagramGenerator  # dead-code-ok
 
 # ============================================================================
 # Batch Query Helpers - N + 1 Query Prevention
@@ -1953,10 +1884,6 @@ def render_application_detail(id):
     Restored after BE-054 god-file decomposition dropped this shared handler.
     """
     from app.models.application_portfolio import ApplicationComponent
-    from app.models.business_capabilities import BusinessCapability
-    from app.models.unified_application_capability_mapping import (
-        UnifiedApplicationCapabilityMapping,
-    )
 
     app_obj = ApplicationComponent.query.get_or_404(id)
 

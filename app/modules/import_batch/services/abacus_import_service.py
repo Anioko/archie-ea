@@ -1074,7 +1074,7 @@ class AbacusImportService:
             try:
                 # Extract source and target IDs/names
                 source_eeid = rel_data.get("source_eeid") or rel_data.get("source_id")
-                source_archimate_id = rel_data.get("source_archimate_id")
+                rel_data.get("source_archimate_id")
                 target_name = rel_data.get("target_name") or rel_data.get("target_id")
                 target_archimate_id = rel_data.get("target_archimate_id")
                 connection_type = rel_data.get("connection_type")

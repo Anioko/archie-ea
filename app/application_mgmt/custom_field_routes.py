@@ -73,7 +73,6 @@ def _validate_custom_field(form_data):
 @require_roles("admin")
 def custom_fields_list():
     """List all custom field definitions with filtering and search"""
-    from ..models.custom_fields import ApplicationCustomFieldValue
 
     # Get query parameters
     status_filter = request.args.get("status", "all")
@@ -212,7 +211,7 @@ def custom_field_create():
             )
             return redirect(url_for("application_mgmt.custom_fields_list"))
 
-        except Exception as e:
+        except Exception:
             db.session.rollback()
             flash("Error creating custom field. Please try again.", "error")
             return redirect(url_for("application_mgmt.custom_fields_list"))
@@ -290,7 +289,7 @@ def custom_field_edit(id):
             )
             return redirect(url_for("application_mgmt.custom_fields_list"))
 
-        except Exception as e:
+        except Exception:
             db.session.rollback()
             flash("Error updating custom field. Please try again.", "error")
 
@@ -382,7 +381,7 @@ def custom_fields_bulk_delete():
                 # Safe to delete
                 db.session.delete(field)
                 deleted_count += 1
-        except Exception as e:
+        except Exception:
             continue
 
     db.session.commit()

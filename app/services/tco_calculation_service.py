@@ -13,11 +13,10 @@ Features:
 """
 
 import logging
-from datetime import date, datetime
-from decimal import Decimal, DivisionByZero, InvalidOperation
-from typing import Dict, List, Optional, Tuple, Union
+from datetime import datetime
+from decimal import Decimal, InvalidOperation
+from typing import Dict, List, Optional, Union
 
-from .. import db
 from ..models.application_portfolio import ApplicationComponent
 
 logger = logging.getLogger(__name__)

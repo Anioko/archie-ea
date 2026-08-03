@@ -16,13 +16,10 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Dict, List, Optional, Tuple
 
-from app import db
 from app.models import (
     BusinessCapability,
     OptionsAnalysis,
-    RequiredCapability,
     TCOBenchmark,
-    TechnologyStack,
     VendorOption,
 )
 

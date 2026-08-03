@@ -6,7 +6,7 @@
 {% block title %}Org Chart - Organization{% endblock %}
 
 {% block extra_css %}
-<script src="https://d3js.org/d3.v7.min.js"></script>
+<script src="{{ url_for('static', filename='vendor/d3.min.js') }}"></script>
 <style>
     #org-chart-svg .org-node rect {
         stroke-width: 1.5px;

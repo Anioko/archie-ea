@@ -15,22 +15,17 @@ Key Features:
 - Auto-suggest capability names using semantic similarity
 """
 
-import asyncio  # dead-code-ok
-import json
 import logging
 import time
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import datetime, timezone  # dead-code-ok
+from datetime import datetime  # dead-code-ok
 from decimal import Decimal
-from typing import Any, Dict, List, Optional, Tuple, Union  # dead-code-ok
+from typing import Any, Dict, List, Optional, Tuple  # dead-code-ok
 
 # Vector embeddings and search
 import faiss
 import numpy as np
-from sklearn.feature_extraction.text import TfidfVectorizer  # dead-code-ok
-from sklearn.metrics.pairwise import cosine_similarity  # dead-code-ok
-from sqlalchemy import and_, func, or_, text  # dead-code-ok
 from sqlalchemy.orm import joinedload
 
 # Try to import sentence_transformers - may fail due to torch circular import
@@ -45,10 +40,7 @@ except Exception as e:
 
 # Flask and database
 from app import db
-from app.models import User  # dead-code-ok
-from app.models.business_capabilities import BusinessCapability  # dead-code-ok
 from app.models.vendor.vendor_organization import (  # dead-code-ok
-    TCOCalculation,
     VendorOrganization,
     VendorProduct,
     VendorProductCapability,

@@ -323,7 +323,6 @@ class EnterpriseCapability(db.Model):
     def get_capability_score(self):
         """Calculate overall capability maturity score"""
         # Weighted score based on COBIT, ITIL, and technology alignment
-        score = 0
         weights = {"cobit": 0.3, "itil": 0.3, "technology": 0.4}
 
         # COBIT alignment score - use len() for lists

@@ -307,7 +307,6 @@ def api_vendor_capability_risks():
     - capability_id: filter by capability
     """
     try:
-        from sqlalchemy import and_
 
         from app.models.business_capabilities import BusinessCapability
         from app.models.vendor.relationship_tables import vendor_capability_risks

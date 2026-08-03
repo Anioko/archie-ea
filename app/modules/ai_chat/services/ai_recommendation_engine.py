@@ -16,26 +16,12 @@ Key Features:
 - Strategic alignment recommendations
 """
 
-import json
 import logging
 import statistics
-from datetime import datetime, timedelta, timezone
-from decimal import Decimal
-from typing import Any, Dict, List, Optional, Tuple
+from datetime import datetime
+from typing import Any, Dict, List, Optional
 
-from sqlalchemy import and_, func, or_, text
-from sqlalchemy.orm import joinedload
 
-from app import db
-from app.models.business_capabilities import BusinessCapability
-from app.models.vendor.vendor_organization import (
-    TCOCalculation,
-    VendorOrganization,
-    VendorProduct,
-    VendorProductCapability,
-    VendorProductPricing,
-    VendorRiskAssessment,
-)
 from app.services.advanced_risk_assessment import AdvancedRiskAssessmentService
 from app.services.vendor_discovery_engine import VendorDiscoveryEngine
 
@@ -288,7 +274,6 @@ class AIRecommendationEngine:
         """Predict vendor performance using AI analysis."""
 
         vendor = candidate["vendor"]
-        product = candidate["product"]
         scores = candidate["scores"]
 
         prediction = {

@@ -412,7 +412,7 @@ def send_message():
 
     try:
         # Get multi-domain chat service
-        chat_service = get_chat_service()
+        get_chat_service()
 
         # Prepare context data
         context_data = {}
@@ -914,7 +914,7 @@ def get_available_domains():
         chat_service = get_chat_service()
         domains = chat_service.get_available_domains()
         return jsonify({"success": True, "domains": domains})
-    except Exception as e:
+    except Exception:
         return jsonify(
             {"error": "Failed to get domains", "details": "See server logs for details"}
         ), 500
@@ -953,7 +953,7 @@ def get_available_personas():
         chat_service = get_chat_service()
         personas = chat_service.get_available_personas()
         return jsonify({"success": True, "personas": personas})
-    except Exception as e:
+    except Exception:
         return jsonify(
             {
                 "error": "Failed to get personas",
@@ -1023,7 +1023,7 @@ def get_prompt_templates():
             }
         ]
         return jsonify({"success": True, "templates": template_list, "slash_commands": slash_commands})
-    except Exception as e:
+    except Exception:
         return jsonify(
             {
                 "error": "Failed to get templates",
@@ -1054,7 +1054,7 @@ def get_chat_history():
 
         return jsonify({"success": True, "history": history})
 
-    except Exception as e:
+    except Exception:
         return jsonify(
             {
                 "error": "Failed to get chat history",
@@ -1079,7 +1079,7 @@ def clear_chat_history():
             }
         )
 
-    except Exception as e:
+    except Exception:
         return jsonify(
             {
                 "error": "Failed to clear history",
@@ -1118,7 +1118,7 @@ def save_chat_session():
             }
         )
 
-    except Exception as e:
+    except Exception:
         return jsonify(
             {
                 "error": "Failed to save session",
@@ -1137,7 +1137,7 @@ def get_saved_sessions():
 
         return jsonify({"success": True, "sessions": sessions})
 
-    except Exception as e:
+    except Exception:
         return jsonify(
             {
                 "error": "Failed to get sessions",
@@ -1159,7 +1159,7 @@ def load_chat_session(session_id):
         else:
             return jsonify({"error": result.get("error", "Session not found")}), 404
 
-    except Exception as e:
+    except Exception:
         return jsonify(
             {
                 "error": "Failed to load session",
@@ -1284,7 +1284,7 @@ def get_domain_context(domain):
         chat_service = get_chat_service()
         context_data = chat_service.get_domain_context(domain)
         return jsonify(context_data)
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 

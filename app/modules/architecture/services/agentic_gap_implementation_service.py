@@ -26,13 +26,12 @@ import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from flask_login import current_user
 
 from app import db
-from app.models import ArchiMateElement, ArchiMateRelationship, ArchitectureModel
-from app.models.agentic_gaps import AgentConfiguration, AgentExecutionHistory, AgentSchedule
+from app.models.agentic_gaps import AgentConfiguration, AgentExecutionHistory
 from app.services.archimate.archimate_validator import ArchiMateValidator
 from app.services.gap_discovery_service import GapDiscoveryService
 from app.services.llm_service import LLMService
@@ -692,11 +691,11 @@ class AgenticGapImplementationService:
         try:
             # Try importing existing models first
             from app.models.system_architecture import (
-                SystemBoundary,
-                SystemDeployment,
-                SystemHierarchy,
-                SystemInterface,
-                SystemLifecycle,
+                SystemBoundary,  # noqa: F401 — availability probe: the import IS the test
+                SystemDeployment,  # noqa: F401 — availability probe: the import IS the test
+                SystemHierarchy,  # noqa: F401 — availability probe: the import IS the test
+                SystemInterface,  # noqa: F401 — availability probe: the import IS the test
+                SystemLifecycle,  # noqa: F401 — availability probe: the import IS the test
             )
 
             return {
@@ -762,11 +761,11 @@ class AgenticGapImplementationService:
         """
         try:
             from app.models.data_governance import (
-                DataAccessControl,
-                DataCatalog,
-                DataGovernanceWorkflow,
-                DataQualityMetrics,
-                DataRetentionPolicy,
+                DataAccessControl,  # noqa: F401 — availability probe: the import IS the test
+                DataCatalog,  # noqa: F401 — availability probe: the import IS the test
+                DataGovernanceWorkflow,  # noqa: F401 — availability probe: the import IS the test
+                DataQualityMetrics,  # noqa: F401 — availability probe: the import IS the test
+                DataRetentionPolicy,  # noqa: F401 — availability probe: the import IS the test
             )
 
             return {
@@ -796,9 +795,9 @@ class AgenticGapImplementationService:
         """
         try:
             from app.models.application_lifecycle import (
-                ApplicationPerformanceMetrics,
-                ApplicationVersioning,
-                DeploymentPipeline,
+                ApplicationPerformanceMetrics,  # noqa: F401 — availability probe: the import IS the test
+                ApplicationVersioning,  # noqa: F401 — availability probe: the import IS the test
+                DeploymentPipeline,  # noqa: F401 — availability probe: the import IS the test
             )
 
             return {
@@ -829,9 +828,9 @@ class AgenticGapImplementationService:
         """
         try:
             from app.models.software_quality import (
-                CodeQualityMetrics,
-                RefactoringTracking,
-                TechnicalDebt,
+                CodeQualityMetrics,  # noqa: F401 — availability probe: the import IS the test
+                RefactoringTracking,  # noqa: F401 — availability probe: the import IS the test
+                TechnicalDebt,  # noqa: F401 — availability probe: the import IS the test
             )
 
             return {
@@ -857,8 +856,8 @@ class AgenticGapImplementationService:
         """
         try:
             from app.models.solution_deployment import (
-                SolutionDeploymentArchitecture,
-                solution_technology_mapping,
+                SolutionDeploymentArchitecture,  # noqa: F401 — availability probe: the import IS the test
+                solution_technology_mapping,  # noqa: F401 — availability probe: the import IS the test
             )
 
             return {
@@ -883,7 +882,7 @@ class AgenticGapImplementationService:
         """
         try:
             from app.services.archimate.archimate_xml_export_service import (
-                ArchiMateXMLExportService,
+                ArchiMateXMLExportService,  # noqa: F401 — availability probe: the import IS the test
             )
 
             return {
@@ -938,7 +937,7 @@ Generate complete, production-ready Python code for each model."""
 
     def _build_data_governance_prompt(self, architecture_id: int) -> str:
         """Build prompt for Data Governance Agent."""
-        return f"""You are a Data Architect expert. Generate Python SQLAlchemy models for data governance.
+        return """You are a Data Architect expert. Generate Python SQLAlchemy models for data governance.
 
 REQUIREMENTS:
 1. DataCatalog model - centralized metadata catalog
@@ -957,7 +956,7 @@ Return JSON with model definitions following existing data architecture patterns
 
     def _build_application_lifecycle_prompt(self, architecture_id: int) -> str:
         """Build prompt for Application Lifecycle Agent."""
-        return f"""You are an Applications Architect expert. Generate models for application lifecycle management.
+        return """You are an Applications Architect expert. Generate models for application lifecycle management.
 
 REQUIREMENTS:
 1. ApplicationVersioning model - version history tracking
@@ -974,7 +973,7 @@ Return JSON with model definitions."""
 
     def _build_software_quality_prompt(self, architecture_id: int) -> str:
         """Build prompt for Software Quality Agent."""
-        return f"""You are a Software Architect expert. Generate models for software quality tracking.
+        return """You are a Software Architect expert. Generate models for software quality tracking.
 
 REQUIREMENTS:
 1. TechnicalDebt model - debt items, prioritization, remediation
@@ -990,7 +989,7 @@ Return JSON with model definitions."""
 
     def _build_solution_deployment_prompt(self, architecture_id: int) -> str:
         """Build prompt for Solution Deployment Agent."""
-        return f"""You are a Solutions Architect expert. Generate models for solution deployment.
+        return """You are a Solutions Architect expert. Generate models for solution deployment.
 
 REQUIREMENTS:
 1. SolutionTechnologyMapping - junction table linking Solution to TechnologyStack
@@ -1006,7 +1005,7 @@ Return JSON with model definitions."""
 
     def _build_viewpoint_export_prompt(self, architecture_id: int) -> str:
         """Build prompt for Viewpoint Export Agent."""
-        return f"""You are an ArchiMate 3.2 expert. Generate Python service for ArchiMate XML export.
+        return """You are an ArchiMate 3.2 expert. Generate Python service for ArchiMate XML export.
 
 REQUIREMENTS:
 1. Export ArchiMateViewpoint to ArchiMate XML format

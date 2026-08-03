@@ -209,7 +209,7 @@ def api_data_models():
                 ],
             }
         )
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -236,7 +236,7 @@ def api_data_lineage():
                 for m in lineage_models
             ]
         )
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -262,7 +262,7 @@ def api_data_transformations():
                 for t in transformations
             ]
         )
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -324,7 +324,7 @@ def create_data_model():
             201,
         )
 
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 

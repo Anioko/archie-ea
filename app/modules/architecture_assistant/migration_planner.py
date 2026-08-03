@@ -159,7 +159,7 @@ class MigrationPlannerService:
 
         created = 0
         for phase in phases:
-            phase_name = phase.get("name", "Unknown Phase")
+            phase.get("name", "Unknown Phase")
             for wp in phase.get("work_packages", []):
                 task = RoadmapTask(
                     title=wp.get("name", "Unnamed Work Package"),

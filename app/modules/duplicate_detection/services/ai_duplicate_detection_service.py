@@ -12,6 +12,7 @@ Advanced AI/ML implementation for intelligent duplicate detection with:
 Phase 1: Foundation Intelligence Implementation
 """
 
+import numpy as np
 import json
 import logging
 from datetime import datetime
@@ -256,9 +257,6 @@ class AdaptiveLearningEngine:
         # Calculate optimal threshold based on feedback
         accepted_confidences = [
             f["original_confidence"] for f in feedback_data if f["action"] == "accept"
-        ]
-        rejected_confidences = [
-            f["original_confidence"] for f in feedback_data if f["action"] == "reject"
         ]
 
         if not accepted_confidences:

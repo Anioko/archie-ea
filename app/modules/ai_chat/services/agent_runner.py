@@ -12,6 +12,7 @@ Supports Anthropic (Claude) and OpenAI providers.
 Tools marked 'approve' tier are queued for user confirmation — not executed.
 """
 
+from app.modules.ai_chat.tools.executor import ToolCall
 import json
 import logging
 from typing import Callable, Optional

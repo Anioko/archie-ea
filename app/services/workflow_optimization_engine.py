@@ -10,14 +10,10 @@ Analyzes workflow patterns and provides AI-driven recommendations to optimize:
 """
 
 import logging
-import statistics
-from collections import defaultdict
-from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Tuple
+from datetime import datetime
+from typing import Any, Dict, List
 
-from flask import current_app
 
-from app import db
 from app.models.application_portfolio import ApplicationComponent
 from app.models.unified_capability import UnifiedCapability
 from app.models.vendor.vendor_organization import VendorOrganization

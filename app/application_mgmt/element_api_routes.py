@@ -7,7 +7,7 @@ These routes provide API endpoints for:
 """
 
 from flask import current_app, jsonify, request
-from flask_login import current_user, login_required  # dead-code-ok
+from flask_login import login_required  # dead-code-ok
 from sqlalchemy.exc import IntegrityError
 
 from app import db
@@ -308,9 +308,9 @@ def create_application_element(app_id):
             "Grouping": "other",
             "Junction": "other",
         }
-        for prefix, l in type_to_layer.items():
+        for prefix, item in type_to_layer.items():
             if data["type"].startswith(prefix):
-                layer = l
+                layer = item
                 break
         if not layer:
             layer = "application"
@@ -347,10 +347,10 @@ def create_application_element(app_id):
             201,
         )
 
-    except IntegrityError as e:
+    except IntegrityError:
         db.session.rollback()
         return jsonify({"error": "Element already exists or constraint violation"}), 409
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         current_app.logger.exception("Error creating element")
         return jsonify({"error": "An internal error occurred"}), 500
@@ -367,7 +367,7 @@ def get_application_element(app_id, element_id):
     Returns:
         JSON with element details including relationships.
     """
-    from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship, ArchitectureModel
+    from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship
 
     app_obj = ApplicationComponent.query.get_or_404(app_id)
 
@@ -534,10 +534,10 @@ def update_application_element(app_id, element_id):
             }
         )
 
-    except IntegrityError as e:
+    except IntegrityError:
         db.session.rollback()
         return jsonify({"error": "Update failed due to constraint violation"}), 409
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         current_app.logger.exception("Error updating element")
         return jsonify({"error": "An internal error occurred"}), 500
@@ -604,7 +604,7 @@ def delete_application_element(app_id, element_id):
             }
         )
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         current_app.logger.exception("Error deleting element")
         return jsonify({"error": "An internal error occurred"}), 500
@@ -776,10 +776,10 @@ def create_element_relationship(app_id, element_id):
             201,
         )
 
-    except IntegrityError as e:
+    except IntegrityError:
         db.session.rollback()
         return jsonify({"error": "Relationship already exists or constraint violation"}), 409
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         current_app.logger.exception("Error creating relationship")
         return jsonify({"error": "An internal error occurred"}), 500

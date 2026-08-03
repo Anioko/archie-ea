@@ -100,7 +100,7 @@ class GanttExportService:
         svg_lines.append(f'<rect width="{width}" height="{height}" fill="#fff" stroke="#ccc" stroke-width="1"/>')
         
         # Add title
-        svg_lines.append(f'<text x="10" y="25" class="task-label" font-weight="bold">Gantt Chart Export</text>')
+        svg_lines.append('<text x="10" y="25" class="task-label" font-weight="bold">Gantt Chart Export</text>')
         svg_lines.append(f'<text x="10" y="45" class="task-label" font-size="10">Generated: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}</text>')
         
         # Add tasks (simplified SVG rendering)
@@ -162,7 +162,6 @@ class CriticalPathAnalyzer:
             return [], 0
         
         # Build dependency graph
-        task_map = {t['id']: t for t in tasks}
         
         # Find tasks with no predecessors (start tasks)
         all_deps = set()
@@ -230,7 +229,7 @@ class CriticalPathAnalyzer:
             es = earliest_start.get(task['id'], 0)
             ef = earliest_finish.get(task['id'], es + duration)
             ls = latest_start.get(task['id'], es)
-            lf = latest_finish.get(task['id'], ef)
+            latest_finish.get(task['id'], ef)
             
             slack = ls - es
             

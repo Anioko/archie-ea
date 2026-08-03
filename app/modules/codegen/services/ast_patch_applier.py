@@ -34,7 +34,7 @@ def apply_patch(original_content: str, unified_diff: str) -> str:
         orig_count = hunk["orig_count"]
 
         # Validate context
-        hunk_orig_lines = [l for l in hunk["lines"] if l.startswith(" ") or l.startswith("-")]
+        hunk_orig_lines = [item for item in hunk["lines"] if item.startswith(" ") or item.startswith("-")]
         segment = lines[orig_start: orig_start + orig_count]
 
         if not _context_matches(segment, hunk_orig_lines):
