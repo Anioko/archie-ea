@@ -3150,6 +3150,10 @@
     "has_default": true,
     "nullable": true
    },
+   "lock_version": {
+    "has_default": true,
+    "nullable": true
+   },
    "main_branch": {
     "has_default": true,
     "nullable": true

@@ -10,8 +10,15 @@ doesn't have, the request 500s, and one bad column can blank a whole page.
 This command diffs every mapped model's columns against the live table and runs
 `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` for each missing one. It is:
   - SAFE: adds columns only — never drops, retypes, or reorders. Added columns
-    are nullable (no DEFAULT backfill), so it never rewrites existing rows.
+    are always nullable, so an existing row can never violate them.
   - IDEMPOTENT: `IF NOT EXISTS` means re-running is a no-op.
+
+A column that declares a `server_default` keeps it, so existing rows are
+populated as the column is added rather than left NULL. This matters for any
+column the ORM must read back — an optimistic-lock version, a status the code
+treats as non-optional — where an all-NULL backfill is not a neutral starting
+state but a broken one. On PostgreSQL 11+ `ADD COLUMN ... DEFAULT` is a
+metadata-only operation, so this stays cheap on a large table.
 
 It intentionally does NOT create missing tables — `flask init-db` (create_all)
 already does that. Run them together:  flask init-db && flask reconcile-schema
@@ -24,6 +31,33 @@ import click
 from flask.cli import with_appcontext
 
 from app import db
+
+
+def _column_clause(col, dialect):
+    """Render `"name" TYPE DEFAULT ...` for one column, or None if it can't be.
+
+    Hand-building the DEFAULT clause would be wrong: SQLAlchemy quotes a plain
+    string server_default but emits a text() one raw, and getting that backwards
+    produces either a syntax error or a literal that means something else. So
+    let SQLAlchemy's own compiler render it.
+
+    NOT NULL is then stripped deliberately. It is the one part of a column
+    definition an existing row can fail, and reconcile-schema's contract is that
+    it never rewrites or rejects existing data. The ORM still enforces the
+    constraint on write; the database simply stays permissive about rows that
+    predate the column.
+    """
+    import re
+
+    from sqlalchemy.schema import CreateColumn
+
+    try:
+        rendered = str(CreateColumn(col).compile(dialect=dialect)).strip()
+    except Exception:
+        return None
+    if not rendered:
+        return None
+    return re.sub(r"\s+NOT\s+NULL\b", "", rendered).strip()
 
 
 def _reconcile(dry_run=False):
@@ -48,13 +82,14 @@ def _reconcile(dry_run=False):
                 coltype = col.type.compile(dialect=dialect)
             except Exception:
                 coltype = "TEXT"
+            coldef = _column_clause(col, dialect) or f'"{col.name}" {coltype}'
             label = f"{table.name}.{col.name}"
             if dry_run:
                 added.append(f"{label} :: {coltype}")
                 continue
             ddl = (
                 f'ALTER TABLE "{table.name}" '
-                f'ADD COLUMN IF NOT EXISTS "{col.name}" {coltype}'
+                f'ADD COLUMN IF NOT EXISTS {coldef}'
             )
             try:
                 db.session.execute(text(ddl))
