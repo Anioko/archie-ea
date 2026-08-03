@@ -144,8 +144,22 @@ Guard cross-module links:
   context: `do_orm_execute` returns early for non-`SELECT`, and `before_flush` only
   covers inserts. 35 bulk-write call sites over 55 `TenantMixin` models — each is safe
   only if a scoped read happens first. Always put `organization_id` in the predicate.
-  `Query.get()` *is* scoped (verified), so existing `.get()`-then-delete handlers are
-  safe, but don't rely on it for new code. [ADR 0003](docs/adr/0003-tenant-isolation-gaps.md);
+  `Query.get()` / `Session.get()` are scoped **only on an identity-map miss** —
+  correcting an earlier "is scoped (verified)" note here, which was measured with a
+  cold session and so only ever tested the miss. On a hit they return the cached
+  object without emitting SQL, so `do_orm_execute` never runs and no tenant filter
+  is applied. Demonstrated: load a row as org A, switch `g.current_org_id` to org B
+  in the same session, and `.get()` hands back org A's row; `expunge_all()` first and
+  it is correctly blocked.
+  Per-request code is unaffected — one request is one tenant and one session. The
+  exposure is anything that **loops over tenants inside a single session**: CLI
+  commands, the scheduler, importers, and tests. Call `db.session.remove()` (or
+  `expunge_all()`) between tenants there, and put `organization_id` in the predicate
+  rather than trusting `.get()`.
+  The same caching bit flask_login: its `g._login_user` survives when a context is
+  reused, which made four cross-org tests exercise the wrong user and report a leak
+  that does not exist — see the note in `tests/test_ba_tenant_and_authz.py::_login`.
+  [ADR 0003](docs/adr/0003-tenant-isolation-gaps.md);
   invariants pinned in `tests/test_tenant_isolation.py`.
 
 **Two parallel code layouts** — both live; `app/modules/` is canonical for new work:

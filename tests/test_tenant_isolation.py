@@ -128,6 +128,52 @@ def test_get_by_id_is_tenant_scoped(db_session, make_org, tenant_ctx):
     )
 
 
+def test_get_by_id_is_NOT_scoped_on_an_identity_map_hit(db_session, make_org, tenant_ctx):
+    """The limit of the guarantee above, pinned so it cannot be over-read.
+
+    The preceding test calls ``expunge_all()`` so ``.get()`` must hit the database.
+    That is the only case it covers, and CLAUDE.md previously generalised it to
+    "``Query.get()`` *is* scoped (verified)". It is not.
+
+    On an identity-map HIT, ``.get()`` returns the cached object without emitting
+    SQL, so ``do_orm_execute`` never fires and no tenant predicate is applied. This
+    test asserts that leaky behaviour deliberately: it documents a real property of
+    SQLAlchemy rather than a defect we intend to fix, and it will fail loudly if a
+    future change makes the identity map tenant-aware — at which point the guidance
+    below can be relaxed.
+
+    Consequence, and the reason this is written down: a single request is a single
+    tenant on a single session, so request-handling code is unaffected. The exposure
+    is code that loops over tenants *within one session* — CLI commands, the
+    scheduler, importers, and tests. There, call ``db.session.remove()`` between
+    tenants and put ``organization_id`` in the predicate.
+    """
+    from app.models.application_portfolio import ApplicationComponent
+
+    org_a, org_b = make_org("a"), make_org("b")
+    b_row = _make_app_component(db_session, org_b.id, "App owned by B")
+    b_row_id = b_row.id
+
+    # Deliberately NO expunge: load B's row as B so it sits in the identity map.
+    with tenant_ctx(org_b.id):
+        assert ApplicationComponent.query.get(b_row_id) is not None
+
+    with tenant_ctx(org_a.id):
+        leaked = ApplicationComponent.query.get(b_row_id)
+    assert leaked is not None, (
+        "Query.get() no longer returns a cached cross-tenant row. That is an "
+        "improvement, not a failure — the identity map has become tenant-aware. "
+        "Relax the CLI/scheduler guidance in CLAUDE.md and delete this test."
+    )
+
+    # And the control: once the cache is dropped, the filter does apply.
+    db_session.expunge_all()
+    with tenant_ctx(org_a.id):
+        assert ApplicationComponent.query.get(b_row_id) is None, (
+            "SECURITY: .get() reached another tenant's row even on a cold session."
+        )
+
+
 # --------------------------------------------------------------- INSERT scoping
 
 
