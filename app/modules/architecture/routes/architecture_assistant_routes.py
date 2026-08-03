@@ -616,10 +616,19 @@ def design_solution():
             constraints=constraints,
             include_vendor_analysis=include_vendor_analysis,
         )
-        # rag_context is deliberately not passed: design_solution does not declare
-        # it, so doing so raised TypeError and the endpoint always 500'd. The RAG
-        # context is still retrieved above but the service cannot consume it yet -
-        # a real feature gap, tracked separately from this crash fix.
+        # design_solution() cannot consume rag_context: it is deterministic — it
+        # ranks vendor/build/hybrid options from the capability, vendors and
+        # constraints — with no LLM prompt for a text blob to enter. Passing it
+        # raised TypeError, which is why it was dropped.
+        #
+        # But get_context_for_solution() runs four SQL queries (principles, prior
+        # ARB decisions, reference architectures, solution patterns) on every
+        # request, and formatting then discarding the result made all four pure
+        # waste. Returning it alongside the design costs nothing further and gives
+        # the caller the governance context the retrieval was written to surface.
+        # Purely additive: no existing field changes.
+        if isinstance(result, dict) and _rag_context:
+            result.setdefault("rag_context", _rag_context)
 
         _log_ai_call(
             action="design_solution",
@@ -1833,8 +1842,11 @@ def analyze_gap():
             target_coverage=target_coverage,
             include_solutions=include_solutions,
         )
-        # rag_context not passed: analyze_gap does not declare it, so this raised
-        # TypeError on every call. Retrieved above but not yet consumable.
+        # Same as design-solution: analyze_gap() is deterministic and cannot take a
+        # text blob, but the four queries behind _rag_context have already run, so
+        # the result is returned rather than discarded. Purely additive.
+        if isinstance(result, dict) and _rag_context:
+            result.setdefault("rag_context", _rag_context)
 
         _log_ai_call(
             action="analyze_gap",
