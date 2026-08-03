@@ -66,7 +66,7 @@
                                 <span x-show="specLoading[elem.element_id || elem.id]">Inferring...</span>
                             </button>
                             <template x-if="componentSpecs[elem.element_id || elem.id] && componentSpecs[elem.element_id || elem.id].spec_data && componentSpecs[elem.element_id || elem.id].spec_data.fields_status === 'proposed'">
-                                <button class="inline-flex items-center px-3 py-1 text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-white rounded-md transition-colors"
+                                <button class="inline-flex items-center px-3 py-1 text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-primary-foreground rounded-md transition-colors"
                                         x-on:click="confirmSpec(elem.element_id || elem.id, 'fields')">Confirm</button>
                             </template>
                         </div>
@@ -118,7 +118,7 @@
                                 <span x-show="specLoading[elem.element_id || elem.id]">Inferring...</span>
                             </button>
                             <template x-if="componentSpecs[elem.element_id || elem.id] && componentSpecs[elem.element_id || elem.id].spec_data && componentSpecs[elem.element_id || elem.id].spec_data.api_contract_status === 'proposed'">
-                                <button class="inline-flex items-center px-3 py-1 text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-white rounded-md transition-colors"
+                                <button class="inline-flex items-center px-3 py-1 text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-primary-foreground rounded-md transition-colors"
                                         x-on:click="confirmSpec(elem.element_id || elem.id, 'api_contract')">Confirm</button>
                             </template>
                         </div>
@@ -197,7 +197,7 @@
                                         <p class="text-xs text-muted-foreground" x-text="rule.description || rule.condition || ''"></p>
                                     </div>
                                     <template x-if="rule.status === 'proposed'">
-                                        <button class="shrink-0 ml-3 inline-flex items-center px-2 py-1 text-[10px] font-medium bg-emerald-600 hover:bg-emerald-700 text-white rounded-md transition-colors"
+                                        <button class="shrink-0 ml-3 inline-flex items-center px-2 py-1 text-[10px] font-medium bg-emerald-600 hover:bg-emerald-700 text-primary-foreground rounded-md transition-colors"
                                                 x-on:click="confirmSpec(elem.element_id || elem.id, 'business_rules', rule.id || rule.name)">Confirm</button>
                                     </template>
                                 </div>

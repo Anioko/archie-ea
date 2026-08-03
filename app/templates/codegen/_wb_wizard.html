@@ -59,7 +59,7 @@
                 Applying confirmed specs overwrites the LLM's field inference with your architect-verified definitions — making them binding for Phase 4 code generation.
             </div>
             <button @click="applySpecs()" :disabled="applyingSpecs"
-                    class="shrink-0 inline-flex items-center gap-1.5 rounded-md bg-blue-600 text-white px-3 py-1.5 text-xs font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors">
+                    class="shrink-0 inline-flex items-center gap-1.5 rounded-md bg-blue-600 text-primary-foreground px-3 py-1.5 text-xs font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors">
                 <i data-lucide="lock" class="h-3 w-3"></i>
                 Apply Specs
             </button>
@@ -464,7 +464,7 @@
                                             </table>
                                             <div class="flex items-center justify-between mt-2 pt-2 border-t border-border/50">
                                                 <button @click="addField(cls.name)" class="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"><i data-lucide="plus" class="h-3 w-3"></i> Add Field</button>
-                                                <button @click="confirmClass(cls)" :disabled="confirmingClass === cls.name" class="inline-flex items-center gap-1.5 rounded-md bg-emerald-600 text-white px-3 py-1.5 text-xs font-medium hover:bg-emerald-700 disabled:opacity-50 transition-colors"><i data-lucide="check" class="h-3 w-3"></i><span x-text="confirmingClass === cls.name ? 'Saving…' : 'Confirm Fields'"></span></button>
+                                                <button @click="confirmClass(cls)" :disabled="confirmingClass === cls.name" class="inline-flex items-center gap-1.5 rounded-md bg-emerald-600 text-primary-foreground px-3 py-1.5 text-xs font-medium hover:bg-emerald-700 disabled:opacity-50 transition-colors"><i data-lucide="check" class="h-3 w-3"></i><span x-text="confirmingClass === cls.name ? 'Saving…' : 'Confirm Fields'"></span></button>
                                             </div>
                                         </div>
                                     </div>

@@ -75,7 +75,7 @@
 
                 {# Apply Button #}
                 <button @click="applyChangeRequest()" :disabled="applyingChange"
-                        class="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 disabled:opacity-50">
+                        class="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-primary-foreground rounded-lg text-sm font-medium hover:bg-emerald-700 disabled:opacity-50">
                     <i data-lucide="check" class="w-4 h-4" aria-hidden="true"></i>
                     <span x-text="applyingChange ? 'Deploying...' : 'Accept & Deploy Changes'"></span>
                 </button>

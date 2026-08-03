@@ -170,7 +170,7 @@
         </button>
         <button @click="runImport()"
                 :disabled="importing || !importContent.trim()"
-                class="px-3 py-1.5 rounded bg-violet-600 text-white text-[11px] font-medium hover:bg-violet-700 disabled:opacity-50 transition-colors">
+                class="px-3 py-1.5 rounded bg-violet-600 text-primary-foreground text-[11px] font-medium hover:bg-violet-700 disabled:opacity-50 transition-colors">
           <span x-text="importing ? 'Importing…' : 'Import &amp; Confirm'"></span>
         </button>
       </div>
@@ -331,7 +331,7 @@
               <div class="flex items-center gap-2">
                 <button @click="confirmFields(el)"
                         :disabled="el._saving"
-                        class="px-2.5 py-1 rounded bg-emerald-600 text-white text-[11px] font-medium hover:bg-emerald-700 disabled:opacity-50 transition-colors">
+                        class="px-2.5 py-1 rounded bg-emerald-600 text-primary-foreground text-[11px] font-medium hover:bg-emerald-700 disabled:opacity-50 transition-colors">
                   <span x-text="el._saving ? 'Saving…' : 'Save changes'"></span>
                 </button>
                 <button @click="cancelEdit(el)"
@@ -346,7 +346,7 @@
               <div class="flex items-center gap-2">
                 <button @click="confirmFields(el)"
                         :disabled="el._saving"
-                        class="px-2.5 py-1 rounded bg-violet-600 text-white text-[11px] font-medium hover:bg-violet-700 disabled:opacity-50 transition-colors">
+                        class="px-2.5 py-1 rounded bg-violet-600 text-primary-foreground text-[11px] font-medium hover:bg-violet-700 disabled:opacity-50 transition-colors">
                   <span x-text="el._saving ? 'Saving…' : 'Confirm fields'"></span>
                 </button>
                 <button @click="el._editing = true"
@@ -362,7 +362,7 @@
               <div class="flex items-center gap-2">
                 <button @click="confirmFields(el)"
                         :disabled="el._saving"
-                        class="px-2.5 py-1 rounded bg-blue-600 text-white text-[11px] font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors">
+                        class="px-2.5 py-1 rounded bg-blue-600 text-primary-foreground text-[11px] font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors">
                   <span x-text="el._saving ? 'Saving…' : 'Confirm fields'"></span>
                 </button>
                 <button @click="el._editing = true"

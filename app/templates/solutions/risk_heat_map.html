@@ -75,7 +75,7 @@
                             {% for risk in cell_risks %}
                             <button
                                 type="button"
-                                class="w-full text-left mb-1 rounded px-1.5 py-0.5 text-xs font-medium bg-white/70 dark:bg-black/30 border border-border hover:bg-background dark:hover:bg-black/50 truncate transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
+                                class="w-full text-left mb-1 rounded px-1.5 py-0.5 text-xs font-medium bg-background/70 dark:bg-black/30 border border-border hover:bg-background dark:hover:bg-black/50 truncate transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
                                 @click="openDetail({{ risk | tojson }})"
                                 :aria-pressed="activeRisk && activeRisk.id === {{ risk.id }} ? 'true' : 'false'"
                                 aria-label="{{ risk.title | e }}"
