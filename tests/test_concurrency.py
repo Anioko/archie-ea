@@ -31,6 +31,18 @@ def app():
     application = create_app("testing")
     with application.app_context():
         db.create_all()
+
+    # A route that loses the race on demand. Provoking a genuine conflict over
+    # HTTP would need two interleaved requests against one row; what is under
+    # test here is the app's response to StaleDataError, not the ORM's ability
+    # to raise it - that is covered above. Registered before any request is
+    # served, because Flask refuses to add routes afterwards.
+    from sqlalchemy.orm.exc import StaleDataError
+
+    def _lose_the_race():
+        raise StaleDataError("simulated concurrent update")
+
+    application.add_url_rule("/__test__/conflict", "test_conflict", _lose_the_race)
     return application
 
 
@@ -166,6 +178,49 @@ def test_the_version_advances_on_write(app, component):
     assert after > before, (
         "version did not advance on UPDATE (%s -> %s), so a later writer reading "
         "the old value would be accepted" % (before, after))
+
+
+def test_a_conflict_is_explained_rather_than_crashing(app):
+    """A refused write is only an improvement if the person can tell what happened.
+
+    Without a handler, StaleDataError is a 500 and an unexplained error page.
+    The user cannot distinguish "your colleague saved first" from "this product
+    is broken", and their edits are gone either way. 409 plus a plain-English
+    message is the difference between a safeguard and a fault.
+    """
+    client = app.test_client()
+    response = client.get("/__test__/conflict")
+
+    assert response.status_code == 409, (
+        "expected 409 Conflict, got %s - the request was well-formed and "
+        "permitted, it lost a race" % response.status_code)
+    body = response.get_data(as_text=True).lower()
+    assert "someone else" in body, (
+        "the page does not say another user saved first, so the reader has no "
+        "way to understand why their work was rejected")
+    assert "reload" in body, "the page does not say how to recover"
+
+
+def test_a_conflict_on_a_json_request_stays_json(app):
+    """An API caller must get JSON, not an HTML error page it cannot parse.
+
+    A front end that receives HTML where it expects JSON fails at the parse
+    step, so the user sees a generic script error instead of the conflict
+    message - the handler's whole purpose, lost at the last hop.
+    """
+    client = app.test_client()
+    response = client.get("/__test__/conflict",
+                          headers={"Accept": "application/json"})
+
+    assert response.status_code == 409
+    assert response.is_json, (
+        "conflict returned %s to a JSON caller, which the front end cannot "
+        "parse" % response.content_type)
+    payload = response.get_json()
+    assert payload.get("conflict") is True, (
+        "no machine-readable conflict flag, so the front end cannot tell this "
+        "apart from any other failure: %r" % payload)
+    assert "someone else" in (payload.get("error") or "").lower()
 
 
 def test_every_optimistically_locked_model_is_wired_up(app):

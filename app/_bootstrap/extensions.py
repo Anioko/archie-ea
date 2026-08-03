@@ -73,6 +73,67 @@ def init_extensions(app):
         form = LoginForm()
         return render_template("account/login.html", form=form), 400
 
+    from sqlalchemy.orm.exc import StaleDataError
+
+    @app.errorhandler(StaleDataError)
+    def handle_stale_data_error(e):
+        """Someone else saved this record first — say so, don't show a crash.
+
+        Optimistic locking turns a silent overwrite into a refused write, which
+        is only an improvement if the person who was refused understands what
+        happened. Without this handler they get a 500 and no idea their work was
+        rejected, which reads as the product being broken rather than as the
+        product protecting a colleague's edit.
+
+        409 Conflict is the accurate status: the request was well-formed and the
+        user is allowed to make it — it lost a race. The record on screen is
+        stale, so reloading is genuinely the fix, and the message says that
+        rather than asking the user to guess.
+        """
+        from flask import flash, jsonify, redirect, render_template, request
+
+        db.session.rollback()
+        logger.warning(
+            "optimistic lock conflict: method=%s path=%s user=%s",
+            request.method, request.path,
+            getattr(getattr(request, "user", None), "id", "anonymous"),
+        )
+        message = (
+            "Someone else saved changes to this record while you were editing it. "
+            "Your changes were not saved. Reload the page to see their version, "
+            "then re-apply your edits."
+        )
+        wants_json = (
+            "/api/" in request.path
+            or request.content_type == "application/json"
+            or request.accept_mimetypes.best == "application/json"
+            or request.headers.get("X-Requested-With") == "XMLHttpRequest"
+        )
+        if wants_json:
+            return jsonify({
+                "success": False,
+                "error": message,
+                "error_type": "conflict",
+                "conflict": True,
+            }), 409
+        flash(message, "warning")
+        # Back to the record they were editing, which now reloads the saved
+        # version — a redirect rather than a re-render, so a refresh does not
+        # resubmit the losing write.
+        referrer = request.referrer
+        if referrer and request.host_url.rstrip("/") in referrer:
+            return redirect(referrer)
+        return render_template(
+            "errors/generic_error.html",
+            status_code=409,
+            error={
+                "error": "Someone else saved changes to this record while you "
+                         "were editing it, so your changes were not saved.",
+                "recovery_action": "Reload the page to see their version, then "
+                                   "re-apply your edits.",
+            },
+        ), 409
+
     compress.init_app(app)
 
     # Optional: Flask-Migrate
