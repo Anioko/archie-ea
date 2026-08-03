@@ -190,8 +190,11 @@ class PageGuideService:
             # the LLM never sees another org's portfolio. _op supplies the bind.
             from flask import g
             _org = getattr(g, "current_org_id", None)
-            _oa = (lambda col="organization_id": f" AND {col} = :org" if _org is not None else "")
-            _ow = (lambda col="organization_id": f" WHERE {col} = :org" if _org is not None else "")
+            def _oa(col="organization_id"):
+                return f" AND {col} = :org" if _org is not None else ""
+
+            def _ow(col="organization_id"):
+                return f" WHERE {col} = :org" if _org is not None else ""
             _op = ({"org": _org} if _org is not None else {})
 
             record_id: Optional[int] = None

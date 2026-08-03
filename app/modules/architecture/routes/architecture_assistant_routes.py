@@ -596,7 +596,7 @@ def design_solution():
         include_vendor_analysis = data.get("include_vendor_analysis", True)
 
         # Gather RAG context (best-effort — never crashes the endpoint)
-        rag_context = ""
+        _rag_context = ""
         try:
             from app.services.architecture_rag_service import ArchitectureRAGService
             rag_svc = ArchitectureRAGService()
@@ -604,7 +604,7 @@ def design_solution():
                 business_domain=data.get("business_domain", ""),
                 capability_ids=[validated_id],
             )
-            rag_context = rag_svc.format_context(rag_ctx)
+            _rag_context = rag_svc.format_context(rag_ctx)
         except Exception as e:
             logger.warning("RAG context retrieval failed in design-solution: %s", e)
 
@@ -1815,7 +1815,7 @@ def analyze_gap():
         include_solutions = data.get("include_solutions", True)
 
         # Gather RAG context (best-effort — never crashes the endpoint)
-        rag_context = ""
+        _rag_context = ""
         try:
             from app.services.architecture_rag_service import ArchitectureRAGService
             rag_svc = ArchitectureRAGService()
@@ -1823,7 +1823,7 @@ def analyze_gap():
                 business_domain=data.get("business_domain", ""),
                 capability_ids=capability_ids,
             )
-            rag_context = rag_svc.format_context(rag_ctx)
+            _rag_context = rag_svc.format_context(rag_ctx)
         except Exception as e:
             logger.warning("RAG context retrieval failed in analyze-gap: %s", e)
 

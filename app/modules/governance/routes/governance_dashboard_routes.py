@@ -29,7 +29,6 @@ def api_metrics():
     """API endpoint to get governance metrics."""
     try:
         from app.models.solution_governance import SolutionARBReview as SolutionGovernance
-        from app.models.governance_gates import GovernanceGate
         
         # Count pending ARB reviews
         pending_reviews = db.session.query(SolutionGovernance).filter(

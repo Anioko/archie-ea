@@ -203,8 +203,8 @@ def comprehensive_auto_map():
         data.get("clone_vendor_archimate", True)
 
         # Perform bulk AI analysis
-        application_ids = data.get("application_ids", None)
-        layer_targets = data.get("layer_targets", None)
+        _application_ids = data.get("application_ids", None)
+        _layer_targets = data.get("layer_targets", None)
         # bulk_ai_analyze only accepts max_applications and confidence_threshold.
         # Passing application_ids / generation_mode / layer_targets raised
         # TypeError on every request, so this endpoint always 500'd. The service

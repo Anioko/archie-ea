@@ -15,7 +15,10 @@ Usage:
   no_dark_features.py --all          # scan the whole tree (audit)
 Exit code 1 on any violation.
 """
-import re, subprocess, sys, pathlib
+import re
+import subprocess
+import sys
+import pathlib
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 ALLOW = ROOT / "config" / "allowed_config.txt"

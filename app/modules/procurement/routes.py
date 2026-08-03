@@ -31,13 +31,13 @@ def _compliance_summary(licenses):
     from the same LicenseEntitlement rows the page already renders rather than
     re-querying - one source of truth per request.
     """
-    total_entitled = sum(l.quantity_entitled or 0 for l in licenses)
-    total_consumed = sum(l.quantity_deployed or 0 for l in licenses)
+    total_entitled = sum(lic.quantity_entitled or 0 for lic in licenses)
+    total_consumed = sum(lic.quantity_deployed or 0 for lic in licenses)
     return {
         "total": len(licenses),
-        "compliant": sum(1 for l in licenses if l.compliance_status == "compliant"),
-        "warning": sum(1 for l in licenses if l.compliance_status == "under_utilized"),
-        "violation": sum(1 for l in licenses if l.compliance_status == "over_deployed"),
+        "compliant": sum(1 for lic in licenses if lic.compliance_status == "compliant"),
+        "warning": sum(1 for lic in licenses if lic.compliance_status == "under_utilized"),
+        "violation": sum(1 for lic in licenses if lic.compliance_status == "over_deployed"),
         "total_entitled": total_entitled,
         "total_consumed": total_consumed,
         # Guarded: an empty tenant has nothing entitled, and a ZeroDivisionError
