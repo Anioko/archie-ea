@@ -76,7 +76,7 @@ pytest-mock>=3.11.0,<4.0.0
 pytest-rerunfailures>=13.0,<15.0
 pytest-cov>=5.0.0,<7.0.0
 playwright>=1.47.0,<2.0.0
-Pillow==10.4.0
+Pillow>=12.3.0,<13.0.0
 
 # -----------------------------------------------------------------------------
 # 5. AI/LLM API CLIENTS (Cloud-based - no heavy ML deps)
@@ -115,7 +115,7 @@ jsonpickle>=3.0.0,<4.0.0
 python-dateutil>=2.8.0,<3.0.0
 python-dotenv>=1.0.0,<2.0.0
 # Document parsing for journey wizard document upload (extract-brief endpoint)
-pypdf>=4.0.0,<6.0.0
+pypdf>=6.9.2,<7.0.0
 python-docx>=1.0.0,<2.0.0
 
 # -----------------------------------------------------------------------------
@@ -198,6 +198,10 @@ aiohttp>=3.9.0
 # -----------------------------------------------------------------------------
 python-pptx>=0.6.23,<1.0.0  # PowerPoint generation
 weasyprint>=60.0,<61.0      # HTML to PDF (CSS support)
+# NOT upgraded to 68.x despite 2 advisories: it requires pydyf>=0.11, and the
+# pin below records that pydyf 0.11+ previously 500'd PDF export. Upgrading both
+# together needs a PDF-generation test on Linux first - a blind bump trades two
+# advisories for a broken user-facing feature.
 pydyf>=0.8.0,<0.11.0        # weasyprint 60 backend; pydyf 0.11+ broke PDF() -> 500 on PDF export
 # pdfkit + wkhtmltopdf (alternative PDF generator - requires system install)
 

@@ -162,3 +162,20 @@ jobs:
           path: tests/smoke/_shots/
           if-no-files-found: ignore
           retention-days: 7
+
+  dependency-audit:
+    name: Dependency CVEs (pip-audit)
+    runs-on: ubuntu-latest
+    # A ratchet against scripts/ci/dependency_baseline.json: the count may fall,
+    # never rise. The baseline is accepted risk, not proof of safety - every entry
+    # is a real advisory a security review will ask about.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install pip-audit
+        run: python -m pip install --upgrade pip pip-audit
+      - name: Audit declared dependencies
+        run: python scripts/ci/dependency_audit.py
