@@ -3,7 +3,6 @@
 import logging
 from typing import Dict, List, Tuple
 from flask import current_app
-from app.extensions import db
 from app.models.sidebar_menu import SidebarMenuItem
 
 logger = logging.getLogger(__name__)

@@ -12,7 +12,7 @@ Calculates confidence scores for AI-generated outputs based on:
 """
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from app.services.archimate_validation_service import ArchiMateValidationService
 

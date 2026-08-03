@@ -42,7 +42,6 @@ class SolutionContextAssembler:
             linked_elements, first_degree_relationships,
             second_degree_elements, similar_solutions.
         """
-        from app.models.application_portfolio import ApplicationComponent
         from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship
         from app.models.solution_models import Solution
 

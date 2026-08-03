@@ -127,6 +127,17 @@ def create_app(config=None):
     return app
 
 
+# Endpoints that core chrome (admin_base.html / admin_sidebar.html) calls url_for()
+# on unguarded. A missing registration here silently breaks every admin page, so
+# boot warns and tests/test_boot_health.py asserts on it. Module-level so the test
+# imports this list rather than duplicating it.
+REQUIRED_ENDPOINTS = [
+    "dashboard.health_scorecard",
+    "dashboard_pages.rationalization_scorecard",
+    "unified_applications.application_list",
+]
+
+
 def _validate_critical_endpoints(app):
     """Warn at startup if any endpoint referenced by core templates is missing.
 
@@ -134,11 +145,6 @@ def _validate_critical_endpoints(app):
     admin_sidebar.html — a missing registration silently breaks every admin page.
     This check surfaces the problem immediately at boot rather than on first request.
     """
-    REQUIRED_ENDPOINTS = [
-        "dashboard.health_scorecard",
-        "dashboard_pages.rationalization_scorecard",
-        "unified_applications.application_list",
-    ]
     with app.app_context():
         missing = [ep for ep in REQUIRED_ENDPOINTS if ep not in app.view_functions]
         if missing:

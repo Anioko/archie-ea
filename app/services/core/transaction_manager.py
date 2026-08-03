@@ -4,7 +4,7 @@ Ensures pipeline failures don't leave orphaned data.
 """
 import logging
 from contextlib import contextmanager
-from typing import Any, Callable, List, Tuple
+from typing import Callable, List, Tuple
 
 from app import db
 

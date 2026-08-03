@@ -594,6 +594,11 @@ class StructuredDeliverableService:
                 except Exception:  # fabricated-values-ok
                     logger.exception("Failed to JSON parsing")
                     pass
+            # Accumulator for the rows created below. Its initialisation had been
+            # removed while `created.append(...)`, `len(created)` and the closing
+            # comprehension over it all remained, so this raised NameError on the
+            # first requirement.
+            created = []
             for req_data in requirements_data:
                 req = SolutionRequirement(
                     solution_id=solution_id,

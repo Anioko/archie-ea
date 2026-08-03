@@ -23,10 +23,8 @@ import logging
 import uuid
 import xml.etree.ElementTree as ET
 from datetime import datetime
-from io import StringIO
-from typing import Any, Dict, List, Optional, Tuple, Type, Union
+from typing import Any, Dict, Optional, Type
 
-from flask import current_app
 from sqlalchemy.exc import SQLAlchemyError
 
 from app import db
@@ -184,7 +182,7 @@ class ArchiMateExchangeService:
         Returns:
             ArchiMate XML string in Open Exchange Format 3.2
         """
-        from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship
+        from app.models.archimate_core import ArchiMateElement
         from app.models.truly_missing_models import Solution
 
         try:
@@ -293,12 +291,6 @@ class ArchiMateExchangeService:
         """
         from app.models.solution_architect_models import (
             SolutionAnalysisSession,
-            SolutionAssessment,
-            SolutionConstraint,
-            SolutionDriver,
-            SolutionGoal,
-            SolutionPrinciple,
-            SolutionRequirement,
         )
 
         try:
@@ -536,8 +528,6 @@ class ArchiMateExchangeService:
             Import summary with counts of created, skipped, and error items
         """
         from app.models.archimate_core import (
-            ArchiMateElement,
-            ArchiMateRelationship,
             ArchitectureModel,
         )
 
@@ -569,7 +559,7 @@ class ArchiMateExchangeService:
             model_name = root.get(
                 "name", f'Imported Model {datetime.utcnow().strftime("%Y%m%d_%H%M%S")}'
             )
-            model_identifier = root.get("identifier", str(uuid.uuid4()))
+            root.get("identifier", str(uuid.uuid4()))
 
             # Create ArchitectureModel
             arch_model = ArchitectureModel(name=model_name, version="1.0", model_data=xml_content)
@@ -1084,7 +1074,6 @@ class ArchiMateExchangeService:
             ApplicationService,
             DataObject,
         )
-        from app.models.archimate_core import ArchiMateElement
         from app.models.motivation import Assessment, Driver, Goal, Meaning, Value
 
         type_model_map = {

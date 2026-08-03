@@ -17,7 +17,6 @@ from app import db
 # Import capability framework blueprint
 from app.main.capability_framework_routes import capability_framework_bp
 from app.main.framework_management_routes import framework_management_bp
-from app.models import EditableHTML  # dead-code-ok
 from app.models.business_capabilities import BusinessCapability
 from app.services.vendor_analysis.capability_based_vendor_selector import (
     CapabilityBasedVendorSelector,
@@ -147,7 +146,7 @@ def forbidden_error(error):
 @login_required
 def uploaded_files(filename):
     """Serve uploaded files with tenant isolation."""
-    from flask import abort, g
+    from flask import abort
 
     from app.middleware.tenant_files import verify_file_access
 

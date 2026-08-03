@@ -322,6 +322,12 @@ def patch_journey_state(solution_id):
 
         state = solution.journey_state or {}
         if not isinstance(state, dict):
+            # `_json` is imported as `import json as _json` inside a DIFFERENT
+            # function in this module, so it was never bound here. The except below
+            # catches Exception and would have swallowed the resulting NameError,
+            # silently discarding a valid string state as {}.
+            import json as _json
+
             try:
                 state = _json.loads(state) if isinstance(state, str) else {}
             except Exception:
@@ -2263,7 +2269,7 @@ def generation_readiness(solution_id):
 
     try:
         links = _SAE.query.filter_by(solution_id=solution_id).all()
-        element_ids = [l.element_id for l in links if l.element_id]
+        element_ids = [item.element_id for item in links if item.element_id]
 
         layer_counts = {}
         app_element_names = []
@@ -3909,9 +3915,9 @@ def validate_step(solution_id, step_num):
                 .all()
             )
             counts_by_layer = {r.layer_type: r.cnt for r in rows}
-            empty_layers = [l for l in LAYERS if counts_by_layer.get(l, 0) == 0]
+            empty_layers = [item for item in LAYERS if counts_by_layer.get(item, 0) == 0]
             if empty_layers:
-                labels = ", ".join(l.capitalize() for l in empty_layers)
+                labels = ", ".join(item.capitalize() for item in empty_layers)
                 warnings.append({
                     "code": "empty_layers",
                     "count": len(empty_layers),
@@ -4588,7 +4594,7 @@ def architecture_accuracy(solution_id):
 
     # ── Dimension 3: chain completeness ──────────────────────────────────
     covered_layers = {_AM32_LAYER[e.type] for e in elements if e.type in _AM32_LAYER}
-    missing_layers = [l for l in _CHAIN_LAYERS if l not in covered_layers]
+    missing_layers = [item for item in _CHAIN_LAYERS if item not in covered_layers]
     chain_score = int(100 * len(covered_layers & set(_CHAIN_LAYERS)) / len(_CHAIN_LAYERS))
 
     # ── Dimension 4: traceability (AIR + AR) ─────────────────────────────
@@ -4850,13 +4856,13 @@ def get_element_fields(solution_id):
     if not links:
         return jsonify({"elements": [], "summary": {"total": 0, "confirmed": 0, "ai_inferred": 0, "pending": 0}})
 
-    element_ids = [l.element_id for l in links]
+    element_ids = [item.element_id for item in links]
     elements = {
         e.id: e
         for e in ArchiMateElement.query.filter(ArchiMateElement.id.in_(element_ids)).all()
         if e.type in _DATA_ELEMENT_TYPES
     }
-    junction_by_el = {l.element_id: l for l in links}
+    junction_by_el = {item.element_id: item for item in links}
 
     result = []
     summary = {"total": 0, "confirmed": 0, "vendor_seeded": 0, "schema_imported": 0, "ai_inferred": 0, "pending": 0}
@@ -5148,13 +5154,13 @@ def import_schema(solution_id):
     if not links:
         return api_error("No ArchiMate elements linked to this solution yet — generate architecture first", 400)
 
-    el_ids = [l.element_id for l in links]
+    el_ids = [item.element_id for item in links]
     elements = {
         e.id: e
         for e in ArchiMateElement.query.filter(ArchiMateElement.id.in_(el_ids)).all()
         if e.type in _DATA_ELEMENT_TYPES
     }
-    junction_by_el_id = {l.element_id: l for l in links}
+    junction_by_el_id = {item.element_id: item for item in links}
     el_name_to_id = {e.name: e.id for e in elements.values()}
 
     matched, unmatched = [], []

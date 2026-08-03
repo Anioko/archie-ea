@@ -725,5 +725,5 @@ def health_check():
         from sqlalchemy import text
         db.session.execute(text("SELECT 1"))  # tenant-exempt: health check
         return jsonify({"status": "healthy"}), 200
-    except Exception as e:
+    except Exception:
         return jsonify({"status": "unhealthy", "error": "Health check failed"}), 500

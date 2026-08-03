@@ -3,17 +3,17 @@ Roadmap Data Synchronization Services
 Real-time synchronization between roadmap entities and related systems
 """
 
+from app.models.roadmap_models import work_package_capabilities
 import json
 import logging
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Tuple  # dead-code-ok
+from typing import Any, Dict  # dead-code-ok
 
-from sqlalchemy import and_, or_, text  # dead-code-ok
+from sqlalchemy import text  # dead-code-ok
 
 from app import db
 from app.models.roadmap_models import (  # dead-code-ok
     ImplementationGap,
-    ImplementationPlateau,
     PlanningDeliverable,
     RoadmapAudit,
     RoadmapWorkPackage,

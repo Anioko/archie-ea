@@ -3,7 +3,6 @@ Detail overview/governance/roadmap routes for Application Management.
 """
 # mass-deletion-ok — BE-179 removes 16 manual CSRF blocks replaced by global CSRFProtect
 
-import json
 import logging
 from datetime import datetime
 

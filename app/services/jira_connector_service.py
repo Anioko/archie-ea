@@ -221,11 +221,6 @@ class JiraConnectorService:
         jql = f"project={jira_project_key} AND labels=archie-import"
         url = f"{self._instance_url(config)}/rest/api/3/search"
         headers = self._get_headers(config)
-        params_payload = {
-            "jql": jql,
-            "maxResults": 100,
-            "fields": "summary,description,status,priority,issuetype",
-        }
 
         try:
             result = self._handle_request(

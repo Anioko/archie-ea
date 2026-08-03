@@ -32,6 +32,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
+# Module-level logger — `logger` was referenced by 8 call sites in this file without
+# ever being bound, raising NameError when those paths ran.
+logger = logging.getLogger(__name__)
+
 from sqlalchemy import or_, text
 from sqlalchemy.orm import joinedload
 
@@ -39,7 +43,6 @@ from app import db
 from app.models import ArchiMateElement, ArchiMateRelationship, ArchitectureModel
 from app.models.application_layer import (  # dead-code-ok
     ApplicationComponent,
-    ApplicationEvent,
     ApplicationInterface,
 )
 from app.models.business_capabilities import BusinessCapability

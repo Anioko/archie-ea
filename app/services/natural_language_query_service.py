@@ -16,17 +16,14 @@ Features:
 import logging
 import re
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
-from sqlalchemy import and_, asc, desc, func, or_
+from sqlalchemy import and_, asc, desc, or_
 from sqlalchemy.orm import Query
 
-from app import db
-from app.models.application_layer import ApplicationInterface
 from app.models.application_portfolio import ApplicationComponent
 from app.models.archimate_core import ArchiMateElement
 from app.models.business_capabilities import BusinessCapability
-from app.models.unified_capability import UnifiedCapability
 from app.models.vendor.vendor_organization import VendorOrganization, VendorProduct
 from app.services.multi_domain_chat_service import PERSONA_CONFIGS
 

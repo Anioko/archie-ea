@@ -11,6 +11,10 @@ import time
 # Compiled regex: matches <script followed by whitespace or > (actual HTML script tags)
 _SCRIPT_TAG_RE = re.compile(r"<script(?=[\s>])", re.IGNORECASE)
 
+# Matches content-hashed static filenames, e.g. "tailwind-output.b257857d.css".
+# Such URLs change whenever the bytes change, so they are safe to cache forever.
+_FINGERPRINTED_RE = re.compile(r"\.[0-9a-f]{8,}\.[^./]+$")
+
 
 def init_security(app):
     """Register security headers and guardrails."""
@@ -102,18 +106,33 @@ def init_security(app):
         if response.content_type:
             ct = response.content_type
             request_path = ""
+            request_versioned = False
             try:
                 from flask import request as _req
 
                 request_path = _req.path
+                request_versioned = bool(_req.args.get("v"))
             except RuntimeError:
                 pass
 
             if request_path.startswith("/static/"):
-                # Fingerprinted static assets: cache aggressively (1 year)
-                response.headers["Cache-Control"] = (
-                    "public, max-age=31536000, immutable"
-                )
+                # Only cache-forever assets whose URL changes when their bytes
+                # change: content-hashed filenames (…​.<hash>.css) or URLs carrying
+                # an mtime ?v= cache-buster (see assets.asset_url). Un-versioned
+                # static paths (e.g. /static/css/tailwind-output.css) can change in
+                # place on deploy, so they must revalidate — otherwise `immutable`
+                # pins clients to a stale build for a year (observed as an
+                # unstyled login page after a CSS rebuild).
+                if request_versioned or _FINGERPRINTED_RE.search(request_path):
+                    response.headers["Cache-Control"] = (
+                        "public, max-age=31536000, immutable"
+                    )
+                else:
+                    # ETag / Last-Modified are already set, so revalidation is cheap
+                    # (304 when unchanged) and a rebuilt file is picked up at once.
+                    response.headers["Cache-Control"] = (
+                        "public, max-age=0, must-revalidate"
+                    )
             elif "text/html" in ct:
                 # HTML pages: always revalidate
                 response.headers["Cache-Control"] = (

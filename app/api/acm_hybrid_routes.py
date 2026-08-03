@@ -5,7 +5,7 @@ REST API endpoints for ACM Technical Capability management using hybrid approach
 Provides comprehensive CRUD operations with validation and performance optimization.
 """
 
-from flask import Blueprint, g, jsonify, request
+from flask import Blueprint, jsonify, request
 from flask_login import login_required
 
 from app import db
@@ -81,7 +81,7 @@ def seed_capabilities():
                 400,
             )
 
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "Seeding operation failed"}), 500
 
 
@@ -108,7 +108,7 @@ def get_seeding_status():
         else:
             return jsonify({"success": False, "error": status["error"]}), 500
 
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "Status check failed"}), 500
 
 
@@ -143,7 +143,7 @@ def get_domains():
 
         return jsonify({"success": True, "domains": domains}), 200
 
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "Failed to get domains"}), 500
 
 
@@ -241,7 +241,7 @@ def get_capabilities():
             200,
         )
 
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "Failed to get capabilities"}), 500
 
 
@@ -270,7 +270,7 @@ def get_capability(code):
 
         return jsonify({"success": True, "capability": capability.to_dict()}), 200
 
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "Failed to get capability"}), 500
 
 
@@ -308,7 +308,7 @@ def update_capability(code):
         else:
             return jsonify({"success": False, "error": result["error"]}), 400
 
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "Failed to update capability"}), 500
 
 
@@ -441,7 +441,7 @@ def validate_capabilities():
 
         return jsonify({"success": True, "validation": validation_result}), 200
 
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "Validation failed"}), 500
 
 
@@ -556,7 +556,7 @@ def get_statistics():
             200,
         )
 
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "Failed to get statistics"}), 500
 
 
@@ -608,7 +608,7 @@ def get_hierarchy():
 
         return jsonify({"success": True, "hierarchy": hierarchy}), 200
 
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "Failed to get hierarchy"}), 500
 
 

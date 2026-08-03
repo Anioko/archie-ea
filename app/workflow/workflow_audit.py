@@ -569,7 +569,6 @@ class WorkflowAudit:
             self._events = self._events[-self._max_events:]
         
         # Clean up correlation map for removed events
-        event_ids = {e.id for e in self._events}
         self._correlation_map = {
             corr_id: [eid for eid in event_ids if eid in event_ids]
             for corr_id, event_ids in self._correlation_map.items()

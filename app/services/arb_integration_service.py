@@ -15,7 +15,6 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import and_
 from sqlalchemy.orm import joinedload
 
 from app import db

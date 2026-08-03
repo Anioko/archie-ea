@@ -53,7 +53,7 @@ def natural_language_query():
         service = AIGapDetectionService()
         results = service.query(data["query"])
         return jsonify({"success": True, "data": results})
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -77,7 +77,7 @@ def get_low_coverage_capabilities():
         return jsonify(
             {"success": True, "threshold": threshold, "count": len(results), "data": results}
         )
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -103,7 +103,7 @@ def get_rationalization_opportunities():
                 ),
             }
         )
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -120,7 +120,7 @@ def get_legacy_only_capabilities():
         service = AIGapDetectionService()
         results = service.find_capabilities_with_only_legacy_apps()
         return jsonify({"success": True, "count": len(results), "data": results})
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -137,7 +137,7 @@ def get_critical_gaps():
         service = AIGapDetectionService()
         results = service.find_critical_gaps()
         return jsonify({"success": True, "count": len(results), "data": results})
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -154,7 +154,7 @@ def get_vendor_lifecycle_risks():
         service = AIGapDetectionService()
         results = service.find_vendor_lifecycle_risks()
         return jsonify({"success": True, "count": len(results), "data": results})
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -171,7 +171,7 @@ def get_uncovered_capabilities():
         service = AIGapDetectionService()
         results = service.find_uncovered_capabilities()
         return jsonify({"success": True, "count": len(results), "data": results})
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -188,7 +188,7 @@ def get_gap_summary():
         service = AIGapDetectionService()
         summary = service.get_comprehensive_gap_summary()
         return jsonify({"success": True, "data": summary})
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 

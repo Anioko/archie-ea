@@ -9,10 +9,8 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from flask import current_app  # dead-code-ok: imported for potential app-context use in audit/logging helpers
 
 from app import db
-from app.models.ai_service import AIPromptTemplate  # dead-code-ok: used by validate_operation for template lookup
 from app.models.application_portfolio import ApplicationComponent
 from app.models.business_capabilities import BusinessCapability
 from app.models.unified_application_capability_mapping import UnifiedApplicationCapabilityMapping
@@ -449,7 +447,7 @@ class AIDataInteractionService:
                 "success": True,
                 "mapping_id": mapping.id,
                 "operation": "create_capability_mapping",
-                "message": f"Capability mapping created successfully",
+                "message": "Capability mapping created successfully",
             }
 
         except Exception as e:
@@ -503,7 +501,7 @@ class AIDataInteractionService:
                 "success": True,
                 "mapping_id": mapping.id,
                 "operation": "update_capability_mapping",
-                "message": f"Capability mapping updated successfully",
+                "message": "Capability mapping updated successfully",
             }
 
         except Exception as e:
@@ -959,7 +957,7 @@ class AIDataInteractionService:
                     source_id=req_element.id,
                     target_id=capability_id,
                     type="Association",
-                    name=f"supports",
+                    name="supports",
                 )
                 db.session.add(rel)
                 db.session.flush()

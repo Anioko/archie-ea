@@ -708,13 +708,7 @@ def revert_smart_defaults(solution, created_ids):
         created_ids: The created_ids dict returned by apply_smart_defaults
     """
     from app.models.solution_models import (
-        SolutionArchiMateElement,
         SolutionCapabilityMapping,
-    )
-    from app.models.solution_architect_models import (
-        SolutionConstraint,
-        SolutionDriver,
-        SolutionGoal,
     )
 
     reverted = {

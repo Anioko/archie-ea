@@ -20,9 +20,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
-from sqlalchemy import and_, func, or_
+from sqlalchemy import func, or_
 
 from app import db
+from app.models.vendor.vendor_organization import VendorOrganization
 
 logger = logging.getLogger(__name__)
 
@@ -766,7 +767,6 @@ class VendorProductService:
 
     def _find_product_family_by_name(self, family_name: str, vendor_name: str):
         """Find product family by name and vendor."""
-        from app.models.vendor.vendor_organization import VendorProduct
         from app.models.vendor.vendor_product import VendorProductFamily
 
         return (
@@ -804,7 +804,6 @@ class VendorProductService:
 
     def _get_vendor_product_families(self, vendor_id: int):
         """Get all product families for a vendor."""
-        from app.models.vendor.vendor_organization import VendorProduct
         from app.models.vendor.vendor_product import VendorProductFamily
 
         return VendorProductFamily.query.filter_by(vendor_id=vendor_id).all()
@@ -1034,7 +1033,6 @@ class VendorProductService:
         """Calculate average TCO for vendor products"""
         try:
             from app.models.vendor.vendor_organization import VendorProduct
-            from app.models.vendor.vendor_product import VendorProductFamily
 
             # Get all products for this vendor directly by vendor_organization_id
             products = VendorProduct.query.filter_by(vendor_organization_id=vendor.id).all()
@@ -1116,7 +1114,7 @@ class VendorProductService:
             List of product dictionaries with search results
         """
         try:
-            from sqlalchemy import and_, distinct, or_
+            from sqlalchemy import or_
 
             from app.models.vendor.vendor_organization import VendorOrganization, VendorProduct
 
@@ -1382,7 +1380,6 @@ class VendorProductService:
     def get_all_categories(self) -> List[str]:
         """Get all unique product family categories."""
         try:
-            from app.models.vendor.vendor_organization import VendorProduct
             from app.models.vendor.vendor_product import VendorProductFamily
             rows = db.session.query(VendorProductFamily.category).distinct().all()
             return sorted([r[0] for r in rows if r[0]])
@@ -1444,7 +1441,6 @@ class VendorProductService:
     def get_vendor_product_families(self, vendor_id: int) -> List[Dict[str, Any]]:
         """Get all product families for a vendor."""
         try:
-            from app.models.vendor.vendor_organization import VendorProduct
             from app.models.vendor.vendor_product import VendorProductFamily
             families = VendorProductFamily.query.filter_by(vendor_id=vendor_id).all()
             return [f.to_dict() for f in families] if families else []

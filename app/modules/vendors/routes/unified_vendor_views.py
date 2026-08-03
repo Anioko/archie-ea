@@ -407,7 +407,7 @@ def edit_vendor(vendor_id):
             db.session.commit()
             flash(f'Vendor "{vendor.name}" updated successfully.', "success")
             return redirect(url_for("unified_vendors.edit_vendor", vendor_id=vendor.id))
-        except Exception as e:
+        except Exception:
             db.session.rollback()
             flash("Error updating vendor. Please try again.", "error")
 

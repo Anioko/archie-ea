@@ -25,8 +25,6 @@ from app.models.batch_import import (  # dead-code-ok
     BatchImportBatch,
     BatchImportCheckpoint,
     BatchImportElement,
-    BatchImportJob,
-    BatchJobStatus,
     BatchStatus,
     CheckpointType,
     ElementApprovalStatus,

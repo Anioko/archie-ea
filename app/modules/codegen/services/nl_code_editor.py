@@ -9,10 +9,9 @@ Orchestrates:
 
 from __future__ import annotations
 
-import difflib
 import re
 import logging
-from typing import Generator, Iterator
+from typing import Generator
 
 logger = logging.getLogger(__name__)
 
@@ -208,7 +207,6 @@ def stream_selection_action(
     model: str | None = None,
 ) -> Generator[str, None, None]:
     """Stream SSE for explain/fix/refactor on a selection."""
-    import json
 
     action_prompts = {
         "explain": (

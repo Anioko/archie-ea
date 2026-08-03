@@ -297,11 +297,11 @@ body:has([data-workbench]) #main-content > div {
         window.__heavyLibsLoaded = true;
 
         let libs = [
-            { tag: 'link', href: 'https://cdn.jsdelivr.net/npm/jointjs@3.7.7/dist/joint.min.css', rel: 'stylesheet' },
-            { tag: 'script', src: 'https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js' },
-            { tag: 'script', src: 'https://cdn.jsdelivr.net/npm/lodash@4.17.21/lodash.min.js' },
-            { tag: 'script', src: 'https://cdn.jsdelivr.net/npm/backbone@1.4.1/backbone-min.js' },
-            { tag: 'script', src: 'https://cdn.jsdelivr.net/npm/jointjs@3.7.7/dist/joint.min.js' },
+            { tag: 'link', href: '{{ url_for('static', filename='vendor/joint.min.css') }}', rel: 'stylesheet' },
+            { tag: 'script', src: '{{ url_for('static', filename='vendor/jquery.min.js') }}' },
+            { tag: 'script', src: '{{ url_for('static', filename='vendor/lodash.min.js') }}' },
+            { tag: 'script', src: '{{ url_for('static', filename='vendor/backbone-min.js') }}' },
+            { tag: 'script', src: '{{ url_for('static', filename='vendor/joint.min.js') }}' },
             { tag: 'script', src: '{{ url_for("static", filename="js/archimate/composer_renderer.js") }}' },
             { tag: 'script', src: '{{ url_for("static", filename="js/codegen/uml_shapes.js") }}' },
         ];

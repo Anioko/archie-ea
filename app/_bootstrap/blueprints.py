@@ -28,7 +28,63 @@ def _csrf_exempt_blueprint(app, blueprint):
 
 
 
+class _RegistrationFailureCapture(logging.Handler):
+    """Collect WARNING+ records emitted while blueprints register.
+
+    ``init_blueprints`` deliberately swallows import errors so one broken module
+    degrades a single feature instead of taking down the whole app — 99 of its
+    ~100 ``except`` handlers report via ``app.logger.warning``/``.error``. That
+    resilience is intentional, but it also makes breakage invisible: a module can
+    silently stop registering and the only symptom is a ``BuildError`` 500 the
+    next time a template calls ``url_for()`` on one of its endpoints.
+
+    Capturing the records here turns every one of those handlers into an
+    assertable signal without editing a single call site. Read the result from
+    ``app.extensions["blueprint_registration_failures"]``; see
+    ``tests/test_boot_health.py``.
+    """
+
+    def __init__(self):
+        super().__init__(level=logging.WARNING)
+        self.records = []
+
+    def emit(self, record):
+        try:
+            self.records.append(
+                {
+                    "level": record.levelname,
+                    "logger": record.name,
+                    "message": record.getMessage(),
+                }
+            )
+        except Exception:  # noqa: BLE001 — a broken record must never break boot
+            pass
+
+
 def init_blueprints(app):
+    """Register every blueprint / module on *app*, recording any failures.
+
+    Thin wrapper around :func:`_init_blueprints` that captures the warnings the
+    registration helpers emit when a module fails to import, and stashes them on
+    ``app.extensions["blueprint_registration_failures"]``.
+    """
+    capture = _RegistrationFailureCapture()
+    original_level = app.logger.level
+
+    # A logger whose effective level is above WARNING would drop the records
+    # before any handler sees them. Lower it for the duration, then restore.
+    if original_level > logging.WARNING or original_level == logging.NOTSET:
+        app.logger.setLevel(logging.WARNING)
+    app.logger.addHandler(capture)
+    try:
+        _init_blueprints(app)
+    finally:
+        app.logger.removeHandler(capture)
+        app.logger.setLevel(original_level)
+        app.extensions["blueprint_registration_failures"] = capture.records
+
+
+def _init_blueprints(app):
     """Register every blueprint / module on *app*."""
     from app.extensions import csrf
 
@@ -132,6 +188,9 @@ def _register_optional_standalone(app):
         ("app.modules.governance.routes.governance_dashboard_routes", "governance_bp", None),
         ("app.modules.admin.billing_routes", "billing_bp", "/admin/billing"),
         ("app.modules.admin.team_routes", "team_bp", "/admin"),
+        ("app.modules.business_model_canvas.routes", "business_model_bp", "/business-model"),
+        ("app.modules.organization.routes", "organization_bp", "/organization"),
+        ("app.modules.business_case.routes", "business_case_bp", "/business-case"),
     ]
     for module_path, attr, prefix in specs:
         try:
@@ -1234,6 +1293,40 @@ def _register_misc_blueprints(app, csrf):
 
         # COM-015: vendor_comparison removed (BPM-001 wave-2, zero callers, merged into unified_vendors_api)
 
+    # The vendors page (vendors/list.html) and its JS depend on the vendor JSON API
+    # (/api/vendors/list, /api/vendors/ranking) and on vendor_management.create_vendor.
+    # When USE_VENDORS_GUARDRAILS is on, the v2 vendor blueprints can fail to register
+    # with no fallback, so the vendor table 404s on load ("NOT FOUND" toasts) and the
+    # Add Vendor button is dead. Register the canonical vendor API + management routes
+    # unconditionally, guarded against double-registration so v1 and v2 both work.
+    if "unified_vendors_api" not in app.blueprints:
+        try:
+            from app.modules.vendors.routes.unified_vendor_api import (
+                unified_vendors_api_bp,
+            )
+
+            app.register_blueprint(unified_vendors_api_bp)
+            app.logger.info(
+                "[BLUEPRINT] Vendor JSON API registered at /api/vendors (always-on)"
+            )
+        except Exception as e:  # pragma: no cover - defensive
+            app.logger.warning(f"[BLUEPRINT] Vendor JSON API registration failed: {e}")
+
+    if "vendor_management" not in app.blueprints:
+        try:
+            from app.modules.vendors.routes.vendor_management_routes import (
+                vendor_management_bp,
+            )
+
+            app.register_blueprint(vendor_management_bp)
+            app.logger.info(
+                "[BLUEPRINT] Vendor Management registered (always-on)"
+            )
+        except Exception as e:  # pragma: no cover - defensive
+            app.logger.warning(
+                f"[BLUEPRINT] Vendor Management registration failed: {e}"
+            )
+
     if not _use_applications:
         # Application Merging
         from app.api.application_merging_routes import merging_bp
@@ -1412,7 +1505,6 @@ def _register_late_apis(app, csrf, **flags):
 
             if os.environ.get("USE_IMPORT_BATCH_COMPAT", "true").lower() != "false":
                 try:
-                    from app.compat.import_batch import wrap_legacy_import_batch_bp
 
                     # Note: register_batch_processing_routes is a function, not a blueprint
                     # Compat wrapper would need to be applied differently if needed

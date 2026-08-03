@@ -4,6 +4,7 @@ Vendor Management Routes
 Vendor organization and product management for application portfolio.
 """
 
+from app.models.vendor.vendor_organization import VendorOrganization
 from flask import redirect, url_for, render_template, request, jsonify, current_app, flash
 from flask_login import login_required, current_user
 from . import application_mgmt
@@ -26,10 +27,9 @@ def vendors_redirect():
 @login_required
 def vendors_dashboard():
     """Display all vendor organizations with their product portfolios."""
-    from app.models.vendor.vendor_organization import VendorOrganization, VendorProduct
+    from app.models.vendor.vendor_organization import VendorOrganization
     from app.models.solution_models import solution_vendor_products
     from sqlalchemy.orm import joinedload
-    from sqlalchemy import func
 
     # Get query parameters
     vendor_type_filter = request.args.get('vendor_type', 'all')
@@ -130,8 +130,6 @@ def create_vendor():
     from app.models.vendor.vendor_organization import VendorOrganization
     from app.modules.vendors.forms import CreateVendorForm
     from flask_login import current_user
-    from flask import flash
-    from datetime import datetime
 
     form = CreateVendorForm()
 
@@ -438,8 +436,6 @@ def vendor_applications_portfolio(vendor_id):
     from app.models.vendor.vendor_organization import application_vendor_products
     from app.models.models import ArchiMateElement
     from app.models.application_layer import ApplicationComponent
-    from sqlalchemy.orm import joinedload
-    from sqlalchemy import and_
 
     # Get vendor
     vendor = VendorOrganization.query.get_or_404(vendor_id)
@@ -499,7 +495,6 @@ def edit_vendor(vendor_id):
     """Edit vendor organization."""
     from app.models.vendor.vendor_organization import VendorOrganization
     from app.modules.vendors.forms import CreateVendorForm
-    from flask import flash
     from datetime import datetime
 
     vendor = VendorOrganization.query.get_or_404(vendor_id)
@@ -538,7 +533,6 @@ def edit_vendor(vendor_id):
 def delete_vendor(vendor_id):
     """Delete vendor organization."""
     from app.models.vendor.vendor_organization import VendorOrganization
-    from flask import flash
 
     vendor = VendorOrganization.query.get_or_404(vendor_id)
     if not (hasattr(current_user, 'is_admin') and current_user.is_admin()):
@@ -664,7 +658,7 @@ def activate_vendor(vendor_id):
     from app.services.vendor_onboarding_service import VendorOnboardingService
     from app.models.vendor.vendor_organization import VendorOrganization
     from datetime import datetime
-    from flask import jsonify, flash
+    from flask import jsonify
 
     vendor = VendorOrganization.query.get_or_404(vendor_id)
     if not (hasattr(current_user, 'is_admin') and current_user.is_admin()):
@@ -716,7 +710,7 @@ def deploy_vendor_product(vendor_id, product_id):
     """Deploy a vendor product as an application instance."""
     from app.services.vendor_onboarding_service import VendorOnboardingService
     from app.models.vendor.vendor_organization import VendorOrganization
-    from flask import jsonify, flash
+    from flask import jsonify
 
     vendor = VendorOrganization.query.get_or_404(vendor_id)
     if not (hasattr(current_user, 'is_admin') and current_user.is_admin()):
@@ -777,7 +771,7 @@ def deploy_vendor_product(vendor_id, product_id):
 def link_application_to_vendor(app_id):
     """Link an existing application to a vendor product."""
     from app.services.vendor_onboarding_service import VendorOnboardingService
-    from flask import jsonify, flash
+    from flask import jsonify
     
     try:
         # Get form data

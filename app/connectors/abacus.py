@@ -30,7 +30,6 @@ from urllib.parse import urljoin
 import aiohttp
 
 from ..config.abacus_field_mapping import (
-    DEFAULT_OUTCONNECTION_MAPPINGS,
     get_application_mappings,
     get_capability_mappings,
     get_outconnection_mappings,

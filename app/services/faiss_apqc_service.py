@@ -23,11 +23,11 @@ The UnifiedAPQCService automatically delegates to this service when appropriate.
 """
 
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List
 
 import faiss
 import numpy as np
-from flask import current_app, has_app_context
+from flask import has_app_context
 
 from app.models.apqc_process import APQCProcess
 from app.utils.deprecation import (
@@ -102,7 +102,6 @@ class FAISSAPQCService:
 
             # Create vectors for all processes
             vectors = []
-            metadata = []
 
             for i, process in enumerate(processes):
                 text_parts = [

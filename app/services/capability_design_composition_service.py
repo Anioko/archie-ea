@@ -306,7 +306,7 @@ RESPOND WITH VALID JSON ONLY (no markdown fences):
             bus_caps = BusinessCapability.query.filter(
                 BusinessCapability.id.in_(capability_ids)
             ).all()
-            relevant_names = {cap.name.lower() for cap in bus_caps}
+            {cap.name.lower() for cap in bus_caps}
             relevant_domains = {
                 getattr(cap, "business_domain", None)  # model-safety-ok
                 for cap in bus_caps

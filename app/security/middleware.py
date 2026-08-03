@@ -5,13 +5,11 @@ Runtime security monitoring and enforcement for Flask-ShadCN platform.
 This middleware provides real-time security monitoring and blocks malicious requests.
 """
 
-import hashlib
 import logging
 import re
 import threading
 import time
 from typing import Dict, List, Set
-from urllib.parse import urlparse
 
 from flask import abort, current_app, g, request
 
@@ -263,12 +261,26 @@ class SecurityEnforcement:
         # Store on app
         app.security_enforcement = self
 
-        # Add default security configuration
-        # Must allow CDN domains used in _head.html (Tailwind, Lucide, Alpine.js, DOMPurify)
+        # Default CSP: same-origin only.
+        #
+        # This previously allowed cdn.tailwindcss.com, unpkg.com and cdn.jsdelivr.net
+        # because _head.html loaded Tailwind, Lucide, Alpine and DOMPurify from them.
+        # Those are now vendored under app/static/vendor/ (see the air-gap gate), so
+        # the allowances are dead permissions — and a dead script-src allowance is a
+        # standing invitation: any injected tag pointing at one of those hosts would
+        # still execute.
+        #
+        # www.google-analytics.com and cdn.segment.com are likewise removed. Both
+        # integrations are gated on config that defaults to empty
+        # (GOOGLE_ANALYTICS_ID, SEGMENT_API_KEY, POSTHOG_API_KEY), so nothing loads
+        # them by default. If a deployment deliberately enables one, it must widen
+        # this policy explicitly via the CONTENT_SECURITY_POLICY config key — which
+        # makes enabling third-party telemetry a visible, reviewable decision rather
+        # than a silent default.
         app.config.setdefault(
             "CONTENT_SECURITY_POLICY",
             "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://unpkg.com https://cdn.jsdelivr.net https://www.google-analytics.com https://cdn.segment.com; "
+            "script-src 'self' 'unsafe-inline'; "
             "style-src 'self' 'unsafe-inline'; "
             "img-src 'self' data:; "
             "font-src 'self' data:; "

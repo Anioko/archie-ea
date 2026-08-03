@@ -660,7 +660,7 @@ def api_archimate_relationship_health():
         by_layer: [{layer, element_count, relationship_count, avg}]
     """
     try:
-        from sqlalchemy import func, or_, literal_column
+        from sqlalchemy import func
 
         from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship
         from app.models.architecture_inference_relationship import ArchitectureInferenceRelationship

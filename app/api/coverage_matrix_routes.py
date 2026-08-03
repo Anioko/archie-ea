@@ -6,7 +6,6 @@ gap analysis modal, and AI-powered coverage estimation.
 """
 
 import logging
-from datetime import datetime
 
 from flask import Blueprint, jsonify, request
 from flask_login import login_required
@@ -19,7 +18,6 @@ from app.models.business_capabilities import BusinessCapability
 from app.models.vendor.vendor_organization import VendorProduct
 from app.services.interactive_coverage_matrix import (
     InteractiveCoverageMatrix,
-    generate_coverage_matrix,
 )
 
 logger = logging.getLogger(__name__)
@@ -335,7 +333,7 @@ def get_capabilities():
                     "capabilities": capability_list,
                     "total": total,
                     "domains": [d[0] for d in domains if d[0]],
-                    "levels": [l[0] for l in levels if l[0]],
+                    "levels": [item[0] for item in levels if item[0]],
                 },
             }
         )
@@ -468,7 +466,7 @@ def get_matrix_data():
     try:
         # Get query parameters
         matrix_type = request.args.get("matrix_type", "overview")
-        force_refresh = request.args.get("refresh", "false").lower() == "true"
+        request.args.get("refresh", "false").lower() == "true"
 
         # Initialize coverage matrix service
         service = InteractiveCoverageMatrix()
@@ -536,9 +534,9 @@ def export_matrix():
             return jsonify({"success": False, "error": "No request data provided"}), 400
 
         matrix_data = data.get("matrix_data")
-        export_format = data.get("format", "excel")
-        include_charts = data.get("include_charts", True)
-        include_gap_analysis = data.get("include_gap_analysis", False)
+        data.get("format", "excel")
+        data.get("include_charts", True)
+        data.get("include_gap_analysis", False)
 
         if not matrix_data:
             return jsonify({"success": False, "error": "matrix_data is required"}), 400

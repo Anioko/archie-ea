@@ -4359,7 +4359,7 @@ Use enterprise architecture terminology appropriate for this role."""
             summary = {
                 "total_elements": total_elements,
                 "by_layer": {layer: count for layer, count in layer_counts if layer},
-                "by_type": [{"type": t, "layer": l, "count": c} for t, l, c in type_counts if t],
+                "by_type": [{"type": t, "layer": item, "count": c} for t, item, c in type_counts if t],
             }
 
             # Step 2: Load relationship counts per element (batch query)
@@ -5320,7 +5320,7 @@ Instructions:
             return {
                 "success": False,
                 "domain": "architecture",
-                "response": f"I encountered an error processing your architecture question. Please try again or rephrase your question.",
+                "response": "I encountered an error processing your architecture question. Please try again or rephrase your question.",
                 "error": str(e),
                 "insights": [],
                 "context_used": context.get("architecture_elements", []),
@@ -5391,7 +5391,7 @@ Response should be practical, actionable, and based on current industry standard
             return {
                 "success": False,
                 "domain": "technology",
-                "response": f"I encountered an error processing your technology question. Please try again.",
+                "response": "I encountered an error processing your technology question. Please try again.",
                 "error": str(e),
                 "insights": [],
                 "context_used": context.get("technology_stacks", []),
@@ -5491,7 +5491,7 @@ Instructions:
             return {
                 "success": False,
                 "domain": "business_capability",
-                "response": f"I encountered an error processing your capability question. Please try again.",
+                "response": "I encountered an error processing your capability question. Please try again.",
                 "error": str(e),
                 "insights": [],
                 "context_used": context.get("business_capabilities", []),
@@ -5626,7 +5626,7 @@ Instructions:
             return {
                 "success": False,
                 "domain": "gap_analysis",
-                "response": f"I encountered an error processing your gap analysis question. Please try again.",
+                "response": "I encountered an error processing your gap analysis question. Please try again.",
                 "error": str(e),
                 "insights": [],
                 "context_used": context.get("capability_gaps", []),
@@ -5732,7 +5732,7 @@ Instructions:
             return {
                 "success": False,
                 "domain": "vendor_intelligence",
-                "response": f"I encountered an error processing your vendor question. Please try again.",
+                "response": "I encountered an error processing your vendor question. Please try again.",
                 "error": str(e),
                 "insights": [],
                 "context_used": context.get("vendor_organizations", []),
@@ -6173,7 +6173,7 @@ Instructions:
             return {
                 "success": False,
                 "domain": "general",
-                "response": f"I encountered an error processing your question. Please try again or rephrase.",
+                "response": "I encountered an error processing your question. Please try again or rephrase.",
                 "error": str(e),
                 "insights": [],
                 "context_used": list(context.keys()) if context else [],
@@ -6334,7 +6334,7 @@ Instructions:
         """Build a side-by-side vendor comparison from DB data."""
         try:
             from sqlalchemy import text, func
-            from app.models.vendor.vendor_organization import VendorOrganization, VendorProduct
+            from app.models.vendor.vendor_organization import VendorProduct
 
             lines = [f"VENDOR COMPARISON: {vendor_a['name']} vs {vendor_b['name']}"]
             for v_info in [vendor_a, vendor_b]:
@@ -6413,7 +6413,6 @@ Instructions:
 
             # Create or find a solution to anchor the workflow
             solution_id = (context or {}).get("solution_id")
-            solution_name = target
 
             # Load current state data for the target area
             resolved = self._resolve_entities_from_message(message)
@@ -6904,7 +6903,7 @@ End with: "Type **'next'** to complete the design workflow."
                 lines.append("  All supported capabilities have alternative supporting applications.")
 
             # List all supported capabilities
-            lines.append(f"  All supported capabilities:")
+            lines.append("  All supported capabilities:")
             for _, cap_name, cap_level, _ in cap_rows[:15]:
                 lines.append(f"    - {cap_name} (L{cap_level})")
 
@@ -7967,7 +7966,7 @@ End with: "Type **'next'** to complete the design workflow."
         elif step == "GENERATE":
             if msg_lower in ("generate", "yes", "proceed", "go"):
                 solution_id = wf.get("solution_id")
-                accepted_ids = wf.get("accepted_ids", [])
+                wf.get("accepted_ids", [])
                 solution_name = wf.get("solution_name", "the solution")
 
                 # Call generation
@@ -8147,8 +8146,8 @@ End with: "Type **'next'** to complete the design workflow."
             if "generate roadmap" in msg_lower or "generate plateaus" in msg_lower:
                 if workspace_id:
                     planner = DeliveryPlanningService(kernel, user_id=self.user_id)
-                    wp_result = planner.generate_work_packages(workspace_id, solution_id)
-                    pl_result = planner.generate_plateaus(workspace_id, solution_id)
+                    planner.generate_work_packages(workspace_id, solution_id)
+                    planner.generate_plateaus(workspace_id, solution_id)
                     summary = planner.generate_planner_summary(workspace_id)
                     return {"success": True, "response": summary.get("message", "Roadmap generated.")}
                 return None

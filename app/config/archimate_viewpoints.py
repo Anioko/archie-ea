@@ -10,7 +10,7 @@ Each viewpoint defines:
 
 Reference: The Open Group ArchiMate 3.2 Specification, Chapter 14 (Viewpoints)
 """
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Dict, List, Optional
 
 

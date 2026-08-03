@@ -11,7 +11,6 @@ import logging
 import re
 from datetime import datetime
 
-from app.extensions import db
 from app.modules.codegen.models import CodegenGeneration, SolutionVersion
 
 logger = logging.getLogger(__name__)

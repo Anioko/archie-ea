@@ -10,15 +10,12 @@ High-accuracy clause extraction with:
 Uses spaCy/Transformers pipeline for NLP processing.
 """
 
-import json  # dead-code-ok
 import logging
 import re
 from datetime import datetime
-from typing import Any, Dict, List, NamedTuple, Optional, Tuple  # dead-code-ok
+from typing import Any, Dict, List, NamedTuple, Optional  # dead-code-ok
 
-from flask import current_app  # dead-code-ok
 
-from ... import db  # dead-code-ok
 
 logger = logging.getLogger(__name__)
 

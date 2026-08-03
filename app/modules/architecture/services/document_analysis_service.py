@@ -267,29 +267,12 @@ class DocumentAnalysisService:
         """Analyze image file for ArchiMate elements."""
         # Use specialized prompt based on context
         if context == "application":
-            prompt_addition = """
-Focus on extracting Application Layer elements:
-- ApplicationComponent (applications, systems, modules)
-- ApplicationInterface (APIs, integration points)
-- ApplicationService (services exposed by applications)
-- ApplicationFunction (functions performed by applications)
-- DataObject (data entities managed by applications)
-
-Also extract related Business and Technology layer elements that interact with applications.
-"""
+            pass
         else:  # vendor
-            prompt_addition = """
-Focus on extracting Business Layer elements related to vendors:
-- BusinessActor (vendor organizations, partners)
-- Product (vendor products, solutions)
-- Contract (vendor agreements, SLAs)
-- BusinessService (services provided by vendors)
-
-Also extract Application and Technology elements that represent vendor offerings.
-"""
+            pass
 
         # Use multi-modal service with enhanced prompt
-        base_prompt = await self.multi_modal_service.extract_archimate_from_diagram.__doc__
+        await self.multi_modal_service.extract_archimate_from_diagram.__doc__
 
         # For now, use the existing method and enhance results
         extracted_data, interaction = await self.multi_modal_service.extract_archimate_from_diagram(
@@ -416,7 +399,7 @@ Also extract Application and Technology elements that represent vendor offerings
                         error_type = extracted_data.get("metadata", {}).get("error_type", "")
                         raw_response = extracted_data.get("metadata", {}).get("raw_response", "")
 
-                        logger.warning(f"⚠️ Enhanced extraction returned 0 elements")
+                        logger.warning("⚠️ Enhanced extraction returned 0 elements")
                         logger.warning(f"Error: {error_msg}")
                         logger.warning(f"Error type: {error_type}")
                         if raw_response:
@@ -2269,7 +2252,7 @@ create a relationship: ApplicationInterface "Salesforce API" → ApplicationServ
                                             "properties": {},
                                         }
                                     )
-                        except (json.JSONDecodeError, ValueError) as parse_err:
+                        except (json.JSONDecodeError, ValueError):
                             # Create minimal element as fallback
                             try:
                                 element_objects.append(
@@ -2570,7 +2553,7 @@ create a relationship: ApplicationInterface "Salesforce API" → ApplicationServ
                         {
                             "relationship": f"{source_name} -> {target_name}",
                             "type": "unknown_element",
-                            "error": f"Source or target element not found in extracted elements",
+                            "error": "Source or target element not found in extracted elements",
                             "severity": "warning",
                         }
                     )
@@ -2979,7 +2962,7 @@ create a relationship: ApplicationInterface "Salesforce API" → ApplicationServ
 
         This prevents token limit issues and improves reliability for large datasets.
         """
-        logger.info(f"Analyzing large spreadsheet using chunking strategy")
+        logger.info("Analyzing large spreadsheet using chunking strategy")
 
         records = structured_data.get("records", [])
         columns = structured_data.get("columns", []) or structured_data.get("headers", [])

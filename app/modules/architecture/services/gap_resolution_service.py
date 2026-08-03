@@ -14,7 +14,7 @@ Features:
 
 import json
 import logging
-from datetime import date, datetime, timedelta  # dead-code-ok
+from datetime import date, datetime  # dead-code-ok
 from typing import Dict, List, Optional
 
 from app import db

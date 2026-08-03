@@ -762,7 +762,7 @@ class JourneyReasoningOrchestrator:
 
         data = self._get_journey_data()
         landscape = data.get("landscape", [])
-        confirmed = data.get("confirmed_capabilities", [])
+        data.get("confirmed_capabilities", [])
 
         cost_by_capability = {}
         total_annual = 0.0
@@ -1027,7 +1027,7 @@ class JourneyReasoningOrchestrator:
         landscape = data.get("landscape", [])
         gaps = data.get("gaps", [])
         recommendation = data.get("recommendation", {})
-        selected = recommendation.get("selected_option", {})
+        recommendation.get("selected_option", {})
 
         # Build section narratives from graph data
         narratives = {}
@@ -1504,7 +1504,6 @@ Do not use placeholder text or generic language.
         # Also link DataObject elements related to the confirmed capabilities
         # The Code Workbench needs DataObjects for class diagram generation
         try:
-            from app.models.archimate_core import ArchiMateElement as AE
             from sqlalchemy import text as sa_text
 
             confirmed = self._get_journey_data().get("confirmed_capabilities", [])

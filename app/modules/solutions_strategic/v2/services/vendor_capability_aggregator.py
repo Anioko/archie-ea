@@ -8,9 +8,8 @@ Unified vendor recommendation engine that:
 - Recommends vendor combinations
 """
 
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
-from app import db
 from app.models.solution_models import Solution
 import logging
 

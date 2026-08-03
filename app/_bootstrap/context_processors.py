@@ -393,6 +393,7 @@ def init_context_processors(app):
 
     # PLT-040: enterprise_role-based sidebar visibility (takes precedence over archetype)
     # NS-006: Updated for North Star Persona MVP with 8 enterprise roles
+    # (+ business_architect added for the Business Architect persona)
     ENTERPRISE_ROLE_SECTION_MAP = {
         "solution_architect": {
             "home", "solutions", "portfolio", "architecture", "capabilities",
@@ -400,9 +401,13 @@ def init_context_processors(app):
         },
         "enterprise_architect": {
             "home", "solutions", "portfolio", "architecture", "capabilities",
-            "roadmaps", "governance", "data_integration",
+            "business_architecture", "roadmaps", "governance", "data_integration",
             # Legacy aliases
             "application", "tools", "data", "utilities",
+        },
+        "business_architect": {
+            "home", "business_architecture", "capabilities", "architecture",
+            "roadmaps", "governance", "portfolio", "solutions", "data_integration",
         },
         "arb_member": {
             "home", "solutions", "portfolio", "governance",
@@ -429,8 +434,8 @@ def init_context_processors(app):
         },
         "platform_admin": {
             "home", "solutions", "portfolio", "architecture", "capabilities",
-            "roadmaps", "governance", "procurement", "my_applications",
-            "data_integration", "administration",
+            "business_architecture", "roadmaps", "governance", "procurement",
+            "my_applications", "data_integration", "administration",
             # Legacy aliases for backward compatibility
             "application", "tools", "data", "utilities", "admin",
         },
@@ -450,6 +455,8 @@ def init_context_processors(app):
             # North Star Persona MVP sections
             "portfolio", "procurement", "my_applications",
             "data_integration", "administration",
+            # Business Architect persona section
+            "business_architecture",
         }
 
         if not current_user.is_authenticated:

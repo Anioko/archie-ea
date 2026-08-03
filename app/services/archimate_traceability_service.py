@@ -241,7 +241,7 @@ class ArchiMateTraceabilityService:
 
 # ── SA-002 — 8-layer traceability chain ─────────────────────────────────────
 
-def get_traceability_chain(solution_id=None):
+def get_traceability_chain(solution_id=None, include_bridge_links=False):
     """Build an 8-layer cross-layer traceability chain.
 
     TRC-001 / TRC-025: When solution_id is provided, filter layers to elements
@@ -249,6 +249,13 @@ def get_traceability_chain(solution_id=None):
     solution_apqc_processes, solution_applications, solution_archimate_elements).
     Stakeholders, drivers, goals, requirements remain global when no direct
     solution junction exists. Also builds relationship_maps dicts.
+
+    include_bridge_links (motivation bridge feature, additive & opt-in):
+    when True and solution_id is set, adds a 'bridged_motivation' key listing
+    the enterprise Driver/Goal/Outcome/Principle rows this solution's journey
+    motivation was promoted to via MotivationBridgeLink (see
+    app.services.motivation_bridge_service). Defaults to False so existing
+    callers are unaffected — no new key, no behavior change.
 
     Returns a dict with lists of plain dicts (JSON-serialisable) plus
     a relationship_maps dict with 4 chain keys.
@@ -453,7 +460,47 @@ def get_traceability_chain(solution_id=None):
     # TRC-001: Build relationship maps
     _build_relationship_maps(result, solution_id)
 
+    # Motivation bridge (additive, opt-in — see get_bridged_motivation_for_solution)
+    if include_bridge_links and solution_id is not None:
+        result["bridged_motivation"] = get_bridged_motivation_for_solution(solution_id)
+
     return result
+
+
+def get_bridged_motivation_for_solution(solution_id):
+    """Return enterprise motivation elements bridged from a solution's journey
+    motivation (SolutionDriver/SolutionGoal/SolutionOutcome/SolutionPrinciple)
+    via MotivationBridgeLink.
+
+    Additive helper for the motivation bridge feature (see
+    app.services.motivation_bridge_service.promote_solution_motivation). Does
+    not affect any existing traceability query — only used when explicitly
+    called or when get_traceability_chain(..., include_bridge_links=True) is
+    used. Returns [] on any error, missing table, or falsy solution_id.
+    """
+    if not solution_id:
+        return []
+    try:
+        from app.models.motivation import MotivationBridgeLink
+
+        links = MotivationBridgeLink.query.filter_by(solution_id=solution_id).all()
+        return [
+            {
+                "id": link.enterprise_element_id,
+                "type": link.enterprise_element_type,
+                "archimate_element_id": link.archimate_element_id,
+                "solution_element_type": link.solution_element_type,
+                "solution_element_id": link.solution_element_id,
+            }
+            for link in links
+        ]
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("get_bridged_motivation_for_solution: %s", exc)
+        try:
+            db.session.rollback()
+        except Exception as rb_exc:  # noqa: BLE001
+            logger.debug("get_bridged_motivation_for_solution rollback: %s", rb_exc)
+        return []
 
 
 def _build_relationship_maps(result, solution_id=None):

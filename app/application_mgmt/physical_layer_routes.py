@@ -36,7 +36,7 @@ from .forms import PhysicalLayerForm
 @login_required
 def update_physical_layer(id):
     """Update Physical Layer elements (Equipment, Facilities, Distribution Networks, Materials)"""
-    app = ApplicationComponent.query.get_or_404(id)
+    ApplicationComponent.query.get_or_404(id)
     # csrf-ok: global CSRFProtect active
     try:
         form = PhysicalLayerForm(request.form)
@@ -337,7 +337,7 @@ def physical_material_delete(id, material_id):
 @login_required
 def physical_equipment_edit(id, equipment_id):
     """Update Physical Equipment properties"""
-    app = ApplicationComponent.query.get_or_404(id)
+    ApplicationComponent.query.get_or_404(id)
     equipment = PhysicalEquipment.query.get_or_404(equipment_id)
 
     try:
@@ -369,7 +369,7 @@ def physical_equipment_edit(id, equipment_id):
 @login_required
 def physical_facility_edit(id, facility_id):
     """Update Physical Facility properties"""
-    app = ApplicationComponent.query.get_or_404(id)
+    ApplicationComponent.query.get_or_404(id)
     facility = PhysicalFacility.query.get_or_404(facility_id)
 
     try:
@@ -399,7 +399,7 @@ def physical_facility_edit(id, facility_id):
 @login_required
 def distribution_network_edit(id, network_id):
     """Update Distribution Network properties"""
-    app = ApplicationComponent.query.get_or_404(id)
+    ApplicationComponent.query.get_or_404(id)
     network = PhysicalDistributionNetwork.query.get_or_404(network_id)
 
     try:
@@ -428,7 +428,7 @@ def distribution_network_edit(id, network_id):
 @login_required
 def physical_material_edit(id, material_id):
     """Update Physical Material properties"""
-    app = ApplicationComponent.query.get_or_404(id)
+    ApplicationComponent.query.get_or_404(id)
     material = PhysicalMaterial.query.get_or_404(material_id)
 
     try:

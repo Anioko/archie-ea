@@ -66,7 +66,7 @@ def run_compliance_check(review_item_id: int):
             return jsonify({"success": False, "error": results["error"]}), 404
 
         return jsonify({"success": True, "data": results})
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -128,7 +128,7 @@ def create_conditional_approval(review_item_id: int):
             return jsonify({"success": False, "error": result["error"]}), 404
 
         return jsonify({"success": True, "data": result})
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -166,7 +166,7 @@ def fulfill_condition(condition_id: int):
             return jsonify({"success": False, "error": result["error"]}), 404
 
         return jsonify({"success": True, "data": result})
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -200,7 +200,7 @@ def waive_condition(condition_id: int):
             return jsonify({"success": False, "error": result["error"]}), 404
 
         return jsonify({"success": True, "data": result})
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -223,7 +223,7 @@ def get_conditions_summary():
         summary = service.get_conditions_summary(review_item_id=review_item_id)
 
         return jsonify({"success": True, "data": summary})
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -241,7 +241,7 @@ def get_pending_by_phase():
         by_phase = service.get_pending_reviews_by_phase()
 
         return jsonify({"success": True, "data": by_phase})
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -259,7 +259,7 @@ def get_compliance_dashboard():
         dashboard = service.get_compliance_dashboard()
 
         return jsonify({"success": True, "data": dashboard})
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -329,7 +329,7 @@ def get_stages():
         stages = service.get_all_stages(include_inactive=include_inactive)
 
         return jsonify({"success": True, "data": stages})
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -394,7 +394,7 @@ def create_stage():
             return jsonify({"success": False, "error": result["error"]}), 400
 
         return jsonify({"success": True, "data": result["stage"]}), 201
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -415,7 +415,7 @@ def get_stage(stage_id: int):
             return jsonify({"success": False, "error": f"Stage {stage_id} not found"}), 404
 
         return jsonify({"success": True, "data": stage})
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -448,7 +448,7 @@ def update_stage(stage_id: int):
             )
 
         return jsonify({"success": True, "data": result["stage"]})
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -474,7 +474,7 @@ def delete_stage(stage_id: int):
             )
 
         return jsonify({"success": True, "message": result["message"]})
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -494,7 +494,7 @@ def init_stages():
         result = service.initialize_workflow_stages()
 
         return jsonify({"success": True, "data": result})
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -523,7 +523,7 @@ def reorder_stages():
         result = service.reorder_stages(data["stage_order"])
 
         return jsonify({"success": True, "data": result})
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -549,7 +549,7 @@ def get_available_transitions(review_item_id: int):
             return jsonify({"success": False, "error": result["error"]}), 404
 
         return jsonify({"success": True, "data": result})
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -578,7 +578,7 @@ def validate_transition(review_item_id: int):
         )
 
         return jsonify({"success": True, "data": result})
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -634,7 +634,7 @@ def transition_stage(review_item_id: int):
             )
 
         return jsonify({"success": True, "data": result})
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -666,7 +666,7 @@ def get_kanban_board():
         )
 
         return jsonify({"success": True, "data": board_data})
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -684,7 +684,7 @@ def get_stage_analytics():
         analytics = service.get_stage_analytics()
 
         return jsonify({"success": True, "data": analytics})
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 

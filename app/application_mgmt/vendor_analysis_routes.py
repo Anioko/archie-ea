@@ -156,7 +156,6 @@ def api_list_vendor_analyses():
         if search:
             query = query.filter(OptionsAnalysis.name.ilike(f"%{search}%"))
 
-        from sqlalchemy import func
 
         total_count = query.count()
         approved_count = OptionsAnalysis.query.filter_by(
@@ -1315,7 +1314,7 @@ def api_export_vendor_analysis(analysis_id):
         denied = _check_analysis_access(analysis)
         if denied:
             return denied
-        export_service = ExportService()
+        ExportService()
 
         if format_type == "csv":
             # CSV Export
@@ -1828,7 +1827,7 @@ def api_get_unified_capabilities():
     try:
         from sqlalchemy.orm import joinedload
 
-        from app.models.unified_capability import BusinessDomain, UnifiedCapability
+        from app.models.unified_capability import UnifiedCapability
 
         # Get level filter from query parameter
         level_filter = request.args.get("level", type=int)

@@ -13,7 +13,6 @@ Covers:
 import pathlib
 import re
 
-import pytest
 
 
 # ============================================================================
@@ -312,8 +311,6 @@ class TestDashboardCompatWrappers:
 
     def test_compat_module_imports(self):
         from app.compat.dashboard import (
-            DashboardCompatStats,
-            LEGACY_ROUTE_MAP,
             wrap_legacy_dashboard_bp,
             wrap_legacy_dashboard_pages_bp,
         )

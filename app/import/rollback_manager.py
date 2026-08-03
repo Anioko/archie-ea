@@ -5,10 +5,8 @@ Provides comprehensive rollback capabilities for import workflows.
 """
 
 import logging
-import json
-import shutil
 from datetime import datetime, timedelta
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, asdict
 from enum import Enum
 import threading
@@ -295,10 +293,10 @@ class ImportRollbackManager:
         try:
             # Get specific row to rollback (would be provided in metadata)
             row_id = rollback_op.metadata.get('row_id')
-            table_name = rollback_opmetadata.get('table_name')
+            table_name = rollback_op.metadata.get('table_name')
             
             if not row_id or not table_name:
-                logger.error(f"Row-level rollback requires row_id and table_name in metadata")
+                logger.error("Row-level rollback requires row_id and table_name in metadata")
                 return False
             
             # Delete specific record

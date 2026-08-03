@@ -16,11 +16,9 @@ Components:
 import json
 import time
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
-import requests
 from flask import current_app
-from sqlalchemy.orm import joinedload
 
 from app import db
 from app.models.ai_service import AIInteractionLog, AIPromptTemplate, AIServiceConfig
@@ -168,21 +166,11 @@ class CognitiveArchitectureService:
             # Simulation Mode if no URL configured
             return self._simulate_response(user_prompt)
 
-        headers = {
+        ({
             "Authorization": f"Bearer {current_app.config.get('OPENAI_API_KEY', 'placeholder')}",
             "Content-Type": "application/json",
-        }
+        })
 
-        payload = {
-            "model": config.model_version,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            "temperature": config.temperature,
-            "max_tokens": config.max_tokens,
-            "response_format": {"type": "json_object"},  # Enforcing JSON mode
-        }
 
         try:
             # NOTE: This runs the actual request if URL is present.

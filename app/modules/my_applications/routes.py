@@ -11,10 +11,8 @@ from datetime import date
 
 from flask import render_template
 from flask_login import current_user, login_required
-from sqlalchemy import or_
 
 from app.decorators import requires_application_owner
-from app.extensions import db
 from app.models.application_owner import ApplicationOwner
 from app.models.solution_models import Solution
 

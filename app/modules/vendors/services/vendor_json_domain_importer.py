@@ -184,7 +184,6 @@ class VendorJsonDomainImporter:
             else:
                 db.session.rollback()
 
-            total = self.summary.vendors_created + self.summary.vendors_updated
             msg = (
                 f"Imported {self.summary.files_loaded} files: "
                 f"{self.summary.vendors_created} vendors created, "

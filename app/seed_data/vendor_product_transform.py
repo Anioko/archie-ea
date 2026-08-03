@@ -569,6 +569,6 @@ if __name__ == "__main__":
     with open("transformed_rich_vendor_seeds.json", "w") as f:
         json.dump(vendor_seeds, f, indent=2)
 
-    print(f"\n💾 Saved transformed rich data to:")
-    print(f"   - transformed_rich_vendor_catalogue.json")
-    print(f"   - transformed_rich_vendor_seeds.json")
+    print("\n💾 Saved transformed rich data to:")
+    print("   - transformed_rich_vendor_catalogue.json")
+    print("   - transformed_rich_vendor_seeds.json")

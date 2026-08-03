@@ -207,7 +207,6 @@ class ARBExceptionService:
                 "error": f"Cannot approve exception in {exception.status} status",
             }
 
-        old_status = exception.status
         exception.status = ARBExceptionStatus.APPROVED.value
         exception.approved_by_id = approved_by_id
         exception.approved_at = datetime.utcnow()
@@ -267,7 +266,6 @@ class ARBExceptionService:
                 "error": f"Cannot deny exception in {exception.status} status",
             }
 
-        old_status = exception.status
         exception.status = ARBExceptionStatus.DENIED.value
         exception.denied_by_id = denied_by_id
         exception.denied_at = datetime.utcnow()

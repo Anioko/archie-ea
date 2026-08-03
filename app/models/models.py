@@ -126,10 +126,19 @@ else:
         )
 
         def generate_outputs(self):
-            """Generate requirements and code artifacts for this architecture model."""
-            for element in self.elements:  # elements backref from ArchiMateElement
-                apply_transformation(element)  # implement this function elsewhere
-            return True
+            """Generate requirements and code artifacts for this architecture model.
+
+            Not implemented. `apply_transformation` was never written ("implement
+            this function elsewhere"), so this method could only ever raise
+            NameError — a confusing failure that reads like a missing import rather
+            than unfinished work. It has no call sites anywhere in the codebase.
+            Raising explicitly states the real situation, and keeps the placeholder
+            visible instead of silently deleting an intended feature.
+            """
+            raise NotImplementedError(
+                "ArchitectureModel.generate_outputs requires apply_transformation(), "
+                "which has never been implemented."
+            )
 
         def __repr__(self):
             return f"<ArchitectureModel {self.name} v{self.version}>"

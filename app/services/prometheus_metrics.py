@@ -11,11 +11,7 @@ Usage:
     track_metric('application_created', source='manual')
 """
 
-import functools
-import time
-from typing import Optional, Callable, Dict, Any
 
-from flask import request, g
 from prometheus_client import (
     Counter,
     Histogram,

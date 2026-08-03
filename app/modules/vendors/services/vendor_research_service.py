@@ -17,7 +17,7 @@ import json
 import logging
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Dict, List, Optional  # dead-code-ok
+from typing import Dict  # dead-code-ok
 
 from app import db
 from app.models import TechnologyStack, VendorOption

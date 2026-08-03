@@ -35,10 +35,10 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from flask import current_app
-from sqlalchemy import and_, func, or_
+from sqlalchemy import func, or_
 
 from app import db
-from app.models.ai_suggestion import AISuggestion, SuggestionFeedback, UserPreference
+from app.models.ai_suggestion import AISuggestion, UserPreference
 
 
 class AISuggestionService:

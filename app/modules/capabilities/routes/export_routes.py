@@ -15,22 +15,15 @@ Helpers:
 import csv
 import json
 from datetime import datetime
-from io import BytesIO, StringIO
+from io import StringIO
 
 from flask import Response, current_app, jsonify, request
 from flask_login import login_required
-from sqlalchemy.exc import IntegrityError as SQLIntegrityError  # dead-code-ok
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import joinedload, selectinload  # dead-code-ok
 
-from app import db  # dead-code-ok
 from app.exceptions import (  # dead-code-ok
     BusinessRuleError,
     DatabaseError,
-    ExternalServiceError,
-    IntegrityError,
-    NotFoundError,
-    ValidationError,
 )
 
 from . import capability_map
@@ -41,12 +34,7 @@ from . import capability_map
 def api_export_mappings():
     """Export capability mappings and gap analysis to multiple formats"""
     try:
-        import csv
-        import json
-        from datetime import datetime
-        from io import StringIO
 
-        from flask import Response
 
         # Get format parameter
         export_format = request.args.get("format", "csv").lower()
@@ -127,9 +115,6 @@ def api_export_mappings():
 
 def _export_csv(capabilities, mappings, mapped_capability_ids, applications):
     """Export to CSV format"""
-    import csv
-    from datetime import datetime
-    from io import StringIO
 
     from flask import Response
 
@@ -230,10 +215,7 @@ def _export_csv(capabilities, mappings, mapped_capability_ids, applications):
 
 def _export_json(capabilities, mappings, mapped_capability_ids, applications):
     """Export to JSON format"""
-    import json
-    from datetime import datetime
 
-    from flask import Response
 
     from app.models.application_layer import ApplicationComponent
     from app.models.business_capabilities import BusinessCapability
@@ -460,7 +442,7 @@ def _export_image(capabilities, mappings, mapped_capability_ids, format_type, ap
 
         return response
 
-    except Exception as e:
+    except Exception:
         # Fallback to error response if PIL is not available
         return (
             jsonify(

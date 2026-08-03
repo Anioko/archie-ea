@@ -178,7 +178,6 @@ class ADMPhaseGateService:
     def get_phase_summary(self, architecture_id: int) -> list[dict]:
         """Return a summary of all ADM phases A-H with element counts and gate status."""
         results = []
-        prev_result = None
         for phase in ["A", "B", "C", "D", "E", "F", "G", "H"]:
             count = self._count_phase_outputs(architecture_id, phase)
             gate = self.can_enter_phase(architecture_id, phase)
@@ -190,5 +189,4 @@ class ADMPhaseGateService:
                 "gate_message": gate.message,
                 "missing_phases": gate.missing_phases,
             })
-            prev_result = gate
         return results

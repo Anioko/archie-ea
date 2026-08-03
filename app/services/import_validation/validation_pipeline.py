@@ -2,14 +2,12 @@
 Multi-layer validation pipeline for ApplicationComponent imports.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from .business_rules import BusinessRuleValidator, CrossRecordValidator
 from .validation_result import (
-    FieldValidationIssue,
     ImportValidationResult,
     RowValidationResult,
-    ValidationSeverity,
 )
 from .validation_schemas import APPLICATION_COMPONENT_SCHEMA, FieldSchema, FieldType
 from .value_normalizer import ValueNormalizer

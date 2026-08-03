@@ -403,7 +403,7 @@ def api_arch_elements(id):
         }
     """
     try:
-        app = ApplicationComponent.query.get_or_404(id)
+        ApplicationComponent.query.get_or_404(id)
 
         if request.method == "GET":
             # Return linked architecture elements
@@ -415,9 +415,6 @@ def api_arch_elements(id):
                 ApplicationService,
                 DataObject,
             )
-            from app.models.business_layer import BusinessService
-            from app.models.process_data import BusinessProcess
-            from app.models.technology_layer import TechnologyService
 
             # Collect all elements
             processes = ApplicationProcess.query.filter_by(
@@ -619,7 +616,7 @@ def api_arch_export(id):
         import csv
         import io
 
-        app = ApplicationComponent.query.get_or_404(id)
+        ApplicationComponent.query.get_or_404(id)
 
         # Get all elements
         from app.models.application_layer import (
@@ -697,9 +694,7 @@ def api_find_duplicates():
     """
     try:
         threshold = request.args.get("threshold", 0.7, type=float)
-        include_processed = (
-            request.args.get("include_processed", "false").lower() == "true"
-        )
+        request.args.get("include_processed", "false").lower() == "true"
 
         # Get all applications
         apps = ApplicationComponent.query.limit(2000).all()
@@ -935,7 +930,7 @@ def api_bulk_consolidate():
                         "message": f"Consolidated {secondary.name} into {primary.name}",
                     }
                 )
-            except Exception as e:
+            except Exception:
                 results.append(
                     {
                         "pair": {
@@ -1023,7 +1018,7 @@ def api_process_links(app_id):
         }
     """
     try:
-        app = ApplicationComponent.query.get_or_404(app_id)
+        ApplicationComponent.query.get_or_404(app_id)
 
         if request.method == "GET":
             from app.models.relationship_tables import ApplicationProcessSupport
@@ -1168,7 +1163,7 @@ def api_work_packages(id):
     try:
         from app.models.implementation_migration import WorkPackage
 
-        app_obj = ApplicationComponent.query.get_or_404(id)
+        ApplicationComponent.query.get_or_404(id)
 
         work_packages = WorkPackage.query.filter_by(application_component_id=id).all()
 
@@ -1253,12 +1248,8 @@ def api_bulk_process_link():
         confidence_threshold: float - minimum confidence (0-1)
         dry_run: bool - only return suggestions without creating links
     """
-    import re
-    from difflib import SequenceMatcher
 
-    from sqlalchemy import or_
 
-    from app.models.process_data import BusinessProcess
     from app.models.relationship_tables import ApplicationProcessSupport
 
     data = request.get_json() or {}

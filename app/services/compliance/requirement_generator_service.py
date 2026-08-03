@@ -13,7 +13,6 @@ Generates:
 import logging
 from typing import Dict, List, Optional
 
-from flask import current_app
 
 from app import db
 from app.models.compliance_models import (

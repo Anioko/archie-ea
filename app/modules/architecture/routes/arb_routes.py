@@ -10,7 +10,6 @@ Integrates with existing platform workflows and provides TOGAF-aligned governanc
 """
 
 from datetime import datetime, timedelta
-from typing import List
 
 from flask import (
     Blueprint,
@@ -550,12 +549,12 @@ def add_board_member(session_id):
     """Add a member to an ARB session."""
     try:
         data = request.form.to_dict()
-        member = arb_service.add_board_member(
+        (arb_service.add_board_member(
             arb_session_id=session_id,
             user_id=int(data.get("user_id")),
             role=data.get("role"),
             voting_member=data.get("voting_member") == "on",
-        )
+        ))
         flash("Board member added successfully", "success")
     except Exception as e:
         current_app.logger.error(f"Error adding board member: {e}")
@@ -852,8 +851,8 @@ def assign_to_session(id):
     """Assign review item to an ARB session."""
     try:
         data = request.form.to_dict()
-        review = arb_service.assign_to_session(id, int(data.get("arb_session_id")))
-        flash(f"Review item assigned to ARB session", "success")
+        arb_service.assign_to_session(id, int(data.get("arb_session_id")))
+        flash("Review item assigned to ARB session", "success")
         return redirect(url_for("arb.review_detail", id=id))
     except Exception as e:
         current_app.logger.error(f"Error assigning to session: {e}")
@@ -1942,7 +1941,7 @@ def api_arb_begin_review(item_id: int):
             "error": f"Cannot begin review from status '{current_status}'.",
         }), 409
 
-    data = request.get_json() or {}
+    request.get_json() or {}
     try:
         item.status = "under_review"
         item.reviewer_id = current_user.id

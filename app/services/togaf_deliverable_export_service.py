@@ -11,7 +11,6 @@ Follows the ARBExportService pattern: conditional imports for reportlab/pandas,
 branded header/footer, and graceful degradation when dependencies are missing.
 """
 
-import csv
 import io
 import logging
 from datetime import datetime

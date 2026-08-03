@@ -193,8 +193,6 @@ class TestAdminCompatWrappers:
     def test_compat_module_imports(self):
         """Compat module imports without error."""
         from app.compat.admin import (
-            AdminCompatStats,
-            LEGACY_ROUTE_MAP,
             wrap_legacy_admin_bp,
             wrap_legacy_sidebar_mgmt_bp,
             wrap_legacy_deprecation_bp,

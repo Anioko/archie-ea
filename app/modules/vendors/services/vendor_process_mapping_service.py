@@ -109,7 +109,6 @@ class VendorProcessMappingService:
             "sap": ["financial", "procurement", "hr", "operations", "supply chain"],
             "oracle": ["financial", "hr", "procurement", "it", "supply chain"],
             "microsoft": ["it", "operations", "customer", "collaboration", "productivity"],
-            "workday": ["hr", "financial", "procurement", "talent management"],
             "sage": ["financial", "hr", "procurement"],
             "intuit": ["financial", "accounting", "procurement"],
             "coupa": ["procurement", "financial", "supply chain"],
@@ -130,7 +129,6 @@ class VendorProcessMappingService:
             # CRM & Customer Experience
             "salesforce": ["customer", "sales", "marketing", "service", "crm"],
             "adobe": ["customer", "marketing", "digital experience", "content"],
-            "hubspot": ["customer", "marketing", "sales", "crm"],
             "zendesk": ["customer", "service", "support"],
             "freshdesk": ["customer", "service", "support"],
             "liveagent": ["customer", "service", "support"],
@@ -164,12 +162,8 @@ class VendorProcessMappingService:
             "zoom": ["collaboration", "communication", "video conferencing"],
             "webex": ["collaboration", "communication", "video conferencing"],
             # E-commerce & Digital
-            "shopify": ["e-commerce", "customer", "sales", "digital"],
-            "magento": ["e-commerce", "customer", "sales", "digital"],
-            "woocommerce": ["e-commerce", "customer", "sales", "digital"],
             # Social Media & Marketing
             "twitter": ["marketing", "customer", "social media", "communications"],
-            "linkedin": ["marketing", "customer", "social media", "hr", "professional networking"],
             "facebook": ["marketing", "customer", "social media"],
             "instagram": ["marketing", "customer", "social media"],
             # Streaming & Entertainment
@@ -914,11 +908,11 @@ class VendorProcessMappingService:
                     level = process_info.get("level", 1)
                     parts = process_code.split(".")
                     category_l1 = parts[0] + ".0" if len(parts) >= 1 else None
-                    category_l2 = ".".join(parts[:2]) if len(parts) >= 2 else None
-                    category_l3 = ".".join(parts[:3]) if len(parts) >= 3 else None
+                    ".".join(parts[:2]) if len(parts) >= 2 else None
+                    ".".join(parts[:3]) if len(parts) >= 3 else None
 
                     # Get parent code
-                    parent_code = process_info.get("parent")
+                    process_info.get("parent")
 
                     # Get category name
                     category_name = APQC_CATEGORIES.get(category_l1, "")
@@ -1036,7 +1030,7 @@ class VendorProcessMappingService:
                 # Get category mapping info
                 category_mapping = VENDOR_CATEGORY_APQC_MAPPING.get(category, {})
                 coverage_level = category_mapping.get("coverage_level", "partial")
-                arch_domains = category_mapping.get("architecture_domains", [])
+                category_mapping.get("architecture_domains", [])
 
                 # Create mappings for each APQC process
                 for apqc_code in apqc_codes:

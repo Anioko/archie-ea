@@ -122,7 +122,7 @@ def sso_callback_oidc():
         _log.error("OIDC callback failed: %s", exc)
         flash(f"SSO login failed: {exc}", "error")
         return redirect(url_for("account.login"))
-    except Exception as exc:
+    except Exception:
         _log.exception("Unexpected error during OIDC callback")
         flash("SSO login failed due to an unexpected error.", "error")
         return redirect(url_for("account.login"))

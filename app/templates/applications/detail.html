@@ -2646,7 +2646,7 @@
 </div>
 
 {# Mermaid.js Library #}
-<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script src="{{ url_for('static', filename='vendor/mermaid.min.js') }}"></script>
 <script>
   // Initialize Mermaid
   mermaid.initialize({

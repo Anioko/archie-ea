@@ -12,14 +12,13 @@ Features:
 
 import json
 import logging
-from typing import Dict, List, Optional, Tuple  # dead-code-ok
+from typing import Dict, List, Optional  # dead-code-ok
 
 from app.services.archimate.archimate_prompts import GENERATE_ARCHIMATE_FROM_REQUIREMENTS
 from app.services.core.cache_service import cache_service
 from app.services.core.error_handler import (  # dead-code-ok
     ArchiMateValidationError,
     ErrorSeverity,
-    LLMServiceError,
     handle_service_errors,
     log_performance,
 )
@@ -393,7 +392,6 @@ class EnhancedArchiMateExtractor:
         Perform targeted extraction to fill gaps
         """
 
-        gaps = quality_report["gaps"]
         metrics = quality_report["metrics"]
 
         elements = initial_extraction.get("elements", [])
@@ -401,7 +399,7 @@ class EnhancedArchiMateExtractor:
 
         # Enhancement 1: Extract more stakeholders if needed
         if metrics["stakeholder_count"] < 5:
-            logger.info(f"[ENHANCE] Extracting implicit stakeholders...")
+            logger.info("[ENHANCE] Extracting implicit stakeholders...")
             additional_stakeholders = self._extract_implicit_stakeholders(
                 document_text, elements, provider
             )
@@ -410,21 +408,21 @@ class EnhancedArchiMateExtractor:
 
         # Enhancement 2: Extract hierarchical goals if needed
         if metrics["goal_count"] < 7:
-            logger.info(f"[ENHANCE] Extracting hierarchical goals...")
+            logger.info("[ENHANCE] Extracting hierarchical goals...")
             additional_goals = self._extract_hierarchical_goals(document_text, elements, provider)
             elements.extend(additional_goals)
             logger.info(f"  Added {len(additional_goals)} hierarchical goals")
 
         # Enhancement 3: Extract Course of Action if missing
         if metrics["course_of_action_count"] == 0:
-            logger.info(f"[ENHANCE] Extracting Course of Action elements...")
+            logger.info("[ENHANCE] Extracting Course of Action elements...")
             course_of_actions = self._extract_course_of_action(document_text, elements, provider)
             elements.extend(course_of_actions)
             logger.info(f"  Added {len(course_of_actions)} Course of Action elements")
 
         # Enhancement 4: Extract Principles and Constraints
         if metrics["principle_count"] < 3:
-            logger.info(f"[ENHANCE] Extracting Principles...")
+            logger.info("[ENHANCE] Extracting Principles...")
             principles = self._extract_principles(document_text, elements, provider)
             elements.extend(principles)
             logger.info(f"  Added {len(principles)} Principles")

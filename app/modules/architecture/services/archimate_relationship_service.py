@@ -10,7 +10,7 @@ import logging
 from typing import Dict, List, Optional, Tuple
 
 from app import db
-from app.models.models import ArchiMateElement, ArchiMateRelationship, ArchitectureModel  # dead-code-ok (pre-existing)
+from app.models.models import ArchiMateElement, ArchiMateRelationship  # dead-code-ok (pre-existing)
 
 logger = logging.getLogger(__name__)
 

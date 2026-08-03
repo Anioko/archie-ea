@@ -50,7 +50,6 @@ def match_applications_to_vendors():
         from app.models.vendor.vendor_organization import (
             VendorOrganization,
             VendorProduct,
-            application_vendor_products,
         )
 
         # Get applications (capped to prevent unbounded queries)

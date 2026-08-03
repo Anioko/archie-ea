@@ -1428,7 +1428,7 @@
   <div id="toast-container" class="fixed bottom-4 right-4 z-[100] space-y-2" aria-live="polite" aria-atomic="true"></div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
 <script src="{{ url_for('static', filename='js/application_mgmt/vendor_analysis_detail.js') }}"></script>
 {% endblock %}
 

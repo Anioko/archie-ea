@@ -90,7 +90,6 @@ def get_archimate_summary():
             if elements:
                 try:
                     from app.models.archimate_core import ArchiMateElement
-                    from app import db
                     latest = (
                         ArchiMateElement.query  # model-safety-ok: batch .in_() not N+1
                         .filter(ArchiMateElement.id.in_(element_ids))

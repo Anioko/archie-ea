@@ -555,7 +555,6 @@ def update_entry(entry_id):
             entry.target_quarter = data["target_quarter"]
             if not entry.roadmap_item_id:
                 try:
-                    from app.models.application_rationalization import ApplicationRationalizationScore
                     # Create a lightweight roadmap reference
                     # (roadmap_item_id serves as a flag that a roadmap entry exists)
                     entry.roadmap_item_id = entry.id  # Self-reference as roadmap marker

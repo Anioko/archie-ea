@@ -247,7 +247,6 @@ def upload_document_file(application_id):
 @login_required
 def download_document_file(doc_id):
     """Download a document file"""
-    import os
     from pathlib import Path
 
     from app.models.miscellaneous import ApplicationDocument

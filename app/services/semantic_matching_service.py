@@ -1,7 +1,7 @@
 import math
 import re
 from collections import Counter
-from typing import Dict, List, Tuple
+from typing import Dict, List
 
 
 class SemanticMatchingService:

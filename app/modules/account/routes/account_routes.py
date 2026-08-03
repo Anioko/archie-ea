@@ -107,12 +107,12 @@ def register():
     """Register a new user, and send them a confirmation email."""
     form = RegistrationForm()
     if form.validate_on_submit():
-        user = _svc.register_user(
+        (_svc.register_user(
             first_name=form.first_name.data,
             last_name=form.last_name.data,
             email=form.email.data,
             password=form.password.data,
-        )
+        ))
         flash("Account created successfully. Welcome to A.R.C.H.I.E.!", "success")
         return redirect(url_for("main.index"))
     return render_template("account/register.html", form=form)
@@ -351,7 +351,7 @@ def _sso_enabled():
 @account_bp.route("/sso/<provider>")
 def sso_login(provider):
     """Initiate SSO login flow for the given provider."""
-    from flask import abort, current_app
+    from flask import abort
 
     if not _sso_enabled():
         abort(404)

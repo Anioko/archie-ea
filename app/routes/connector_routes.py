@@ -60,7 +60,7 @@ def api_list_connectors():
 
         return jsonify({"connectors": result}), 200
 
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -116,7 +116,7 @@ def api_get_connector(connector_id):
             200,
         )
 
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -177,7 +177,7 @@ def api_get_sync_logs(connector_id):
             200,
         )
 
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -214,7 +214,7 @@ def api_test_connection(connector_id):
             200,
         )
 
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -251,5 +251,5 @@ def api_trigger_sync(connector_id):
             200,
         )
 
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500

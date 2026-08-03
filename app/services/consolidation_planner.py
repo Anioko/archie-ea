@@ -16,10 +16,8 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import func
 from sqlalchemy.orm import joinedload
 
-from app import db
 from app.exceptions import BusinessRuleError, DatabaseError, ValidationError
 from app.models.application_portfolio import ApplicationComponent
 from app.models.application_rationalization import ApplicationDependency

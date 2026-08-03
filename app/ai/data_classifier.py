@@ -7,12 +7,12 @@ Provides comprehensive data classification and filtering for AI features.
 import logging
 import re
 from datetime import datetime
-from typing import Dict, List, Any, Optional, Set
+from typing import Dict, Any
 from dataclasses import dataclass
 from enum import Enum
 import threading
 
-from flask import current_app, g
+from flask import current_app
 
 logger = logging.getLogger(__name__)
 

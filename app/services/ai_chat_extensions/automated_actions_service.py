@@ -10,12 +10,10 @@ Provides intelligent automation capabilities including:
 - Notification and alert management
 """
 
-import json
 from datetime import datetime, timedelta
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from flask import current_app
 
 
 class ActionType(Enum):

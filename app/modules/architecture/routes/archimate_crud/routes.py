@@ -3,7 +3,6 @@ Architecture CRUD Routes
 Unified dashboard for managing Motivation, Strategy, and Business layer elements
 """
 
-import json
 from datetime import datetime
 
 from flask import (
@@ -1399,8 +1398,8 @@ def _build_traceability_sankey_response():
     # Layer counts
     layer_counts = {}
     for node in nodes_map.values():
-        l = node["layer"]
-        layer_counts[l] = layer_counts.get(l, 0) + 1
+        item = node["layer"]
+        layer_counts[item] = layer_counts.get(item, 0) + 1
 
     return jsonify({
         "nodes": list(nodes_map.values()),
@@ -1484,8 +1483,7 @@ def api_health_scorecard():
         semantic_rels = sum(v for k, v in rel_by_type.items() if (k or "").lower() not in STRUCTURAL_TYPES)
 
         # Cross-layer relationship pairs (excluding composition/aggregation within same layer)
-        cross_layer_raw = (
-            db.session.query(
+        (db.session.query(
                 ArchiMateElement.layer.label("src_layer"),
                 func.count(ArchiMateRelationship.id).label("cnt"),
             )
@@ -1499,8 +1497,7 @@ def api_health_scorecard():
                 ArchiMateRelationship.type.notin_(["composition", "aggregation"]),
             )
             .group_by(ArchiMateElement.layer)
-            .all()
-        )
+            .all())
         # Fallback: count relationships crossing layers via raw SQL for reliability
         try:
             _cross_sql = """

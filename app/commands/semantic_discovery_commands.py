@@ -56,7 +56,7 @@ def init_semantic_discovery(
 
     # Get current statistics
     stats = semantic_service.get_discovery_statistics()
-    click.echo(f"📊 Current Status:")
+    click.echo("📊 Current Status:")
     click.echo(f"   - Indexed Products: {stats.get('indexed_products', 0)}")
     click.echo(f"   - Indexed Capabilities: {stats.get('indexed_capabilities', 0)}")
     click.echo(f"   - Device: {stats.get('device', 'unknown')}")
@@ -111,7 +111,7 @@ def init_semantic_discovery(
 
     # Final statistics
     final_stats = semantic_service.get_discovery_statistics()
-    click.echo(f"\n📊 Final Status:")
+    click.echo("\n📊 Final Status:")
     click.echo(f"   - Indexed Products: {final_stats.get('indexed_products', 0)}")
     click.echo(f"   - Indexed Capabilities: {final_stats.get('indexed_capabilities', 0)}")
     click.echo(f"   - Search Cache Size: {final_stats.get('search_cache_size', 0)}")
@@ -129,7 +129,7 @@ def init_semantic_discovery(
 def test_semantic_search(query, limit):
     """Test the semantic search functionality."""
 
-    click.echo(f"🔍 Testing Semantic Search...")
+    click.echo("🔍 Testing Semantic Search...")
     click.echo(f"   Query: '{query}'")
     click.echo(f"   Limit: {limit}")
 
@@ -149,12 +149,12 @@ def test_semantic_search(query, limit):
         click.echo(f"❌ Search failed: {results['error']}")
         return 1
 
-    click.echo(f"\n📊 Search Results:")
+    click.echo("\n📊 Search Results:")
     click.echo(f"   Found: {results['total_found']} vendors")
     click.echo(f"   Query: '{results['query']}'")
 
     if results["results"]:
-        click.echo(f"\n🏆 Top Results:")
+        click.echo("\n🏆 Top Results:")
         for i, result in enumerate(results["results"][:limit], 1):
             click.echo(f"   {i}. {result['product_name']} ({result['vendor_name']})")
             click.echo(f"      Similarity: {result['similarity_score']:.3f}")
@@ -182,7 +182,7 @@ def semantic_discovery_status():
     stats = semantic_service.get_discovery_statistics()
 
     # Service status
-    click.echo(f"🔧 Service Status:")
+    click.echo("🔧 Service Status:")
     click.echo(
         f"   Embedding Model: {'✅ Available' if stats.get('embedding_model_loaded') else '❌ Not Available'}"
     )
@@ -195,7 +195,7 @@ def semantic_discovery_status():
     click.echo(f"   Device: {stats.get('device', 'Unknown')}")
 
     # Indexing status
-    click.echo(f"\n📚 Indexing Status:")
+    click.echo("\n📚 Indexing Status:")
     click.echo(f"   Indexed Products: {stats.get('indexed_products', 0)}")
     click.echo(f"   Indexed Capabilities: {stats.get('indexed_capabilities', 0)}")
 
@@ -220,7 +220,7 @@ def semantic_discovery_status():
     click.echo(f"   Capability Coverage: {capability_coverage:.1f}%")
 
     # Cache status
-    click.echo(f"\n💾 Cache Status:")
+    click.echo("\n💾 Cache Status:")
     click.echo(f"   Search Cache Size: {stats.get('search_cache_size', 0)}")
 
     # Overall status

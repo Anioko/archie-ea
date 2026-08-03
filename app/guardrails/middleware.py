@@ -55,7 +55,7 @@ def guardrail_monitor(view_func):
     def wrapped_view(*args, **kwargs):
         # Pre-request checks
         if hasattr(request, "view_args"):
-            view_signature = f"{request.endpoint}:{hash(str(request.view_args))}"
+            f"{request.endpoint}:{hash(str(request.view_args))}"
 
             # Check for pattern fragmentation
             if detect_pattern_fragmentation(request):

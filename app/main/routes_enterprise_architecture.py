@@ -5,7 +5,7 @@ Unified endpoints for all roadmap systems
 
 from datetime import datetime, timedelta
 
-from flask import Blueprint, current_app, g, jsonify, request  # dead-code-ok
+from flask import Blueprint, current_app, jsonify, request  # dead-code-ok
 from flask_login import login_required
 from sqlalchemy import text
 

@@ -17,7 +17,7 @@ All 40 routes preserved exactly from v1 dashboard_pages_routes.py.
 
 import logging
 
-from flask import Blueprint, jsonify, redirect, render_template, request, url_for
+from flask import Blueprint, current_app, jsonify, redirect, render_template, request, url_for
 from flask_login import login_required
 
 from app.core.compat import mark_blueprint_guardrailed
@@ -75,7 +75,6 @@ def import_history():
 def rationalization_dashboard():
     """Application Rationalization Dashboard - TIME Framework."""
     from app.models import ApplicationComponent
-    from app.models.unified_duplicate_detection import UnifiedDuplicateGroup
     from app.modules.dashboard.v2.services import UnifiedDuplicateDetectionService
     from config import CurrencyConfig
 
@@ -821,7 +820,7 @@ def get_tco_cost_tiers():
     try:
         from app.models import ApplicationComponent
         from app.extensions import db
-        from sqlalchemy import func, case
+        from sqlalchemy import func
 
         tiers = [
             {

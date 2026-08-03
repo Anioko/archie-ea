@@ -16,7 +16,7 @@ Routes:
 - /architecture/implementation/* → Implementation Layer elements
 """
 
-from flask import Blueprint, redirect, url_for, request
+from flask import Blueprint, redirect, url_for
 from flask_login import login_required
 
 archimate_layer_nav_bp = Blueprint('archimate_layers', __name__, url_prefix='/architecture')
@@ -145,7 +145,10 @@ def business_processes():
     # Redirect to APQC process view if available, otherwise composer
     try:
         return redirect(url_for('apqc.process_list'))
-    except:
+    except Exception:
+        # Was a bare `except:`, which also catches KeyboardInterrupt and SystemExit.
+        # The failure guarded here is url_for() not resolving when the APQC
+        # blueprint did not register — they register non-fatally.
         return redirect(url_for('archimate.composer_page', layer='business', element_type='business_process'))
 
 @archimate_layer_nav_bp.route('/business/functions')

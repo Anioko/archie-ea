@@ -2,7 +2,6 @@
 Unit tests for AI Chat Copilot tools.
 All DB calls are mocked — no real database required.
 """
-import pytest
 from unittest.mock import MagicMock, patch
 
 

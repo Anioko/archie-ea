@@ -11,8 +11,6 @@ from dataclasses import dataclass
 from enum import Enum
 import threading
 
-from flask import current_app, g
-from app import db
 from app.models import APISettings
 
 logger = logging.getLogger(__name__)
@@ -361,7 +359,7 @@ class AIFeatureFlags:
         try:
             # Simple rate limit check based on feature metadata
             flag = self._flags[feature]
-            rate_limit = flag.metadata.get('rate_limit_per_hour', 100)
+            flag.metadata.get('rate_limit_per_hour', 100)
             
             # In a real implementation, this would check actual usage
             # For now, just return True (rate limiting would be implemented with Redis)

@@ -18,7 +18,6 @@ from typing import Any, Dict, List, Optional
 import jwt
 from flask import current_app
 
-from app import db
 
 logger = logging.getLogger(__name__)
 

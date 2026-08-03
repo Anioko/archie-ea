@@ -264,7 +264,7 @@ class ImpactAnalysisService:
     def _evaluate_principle(solution, principle) -> str:
         """Return a violation reason string, or empty string if compliant."""
         name_lower = (principle.name or "").lower()
-        statement_lower = (principle.statement or "").lower()
+        (principle.statement or "").lower()
 
         # Security principle: solution must have a security_lead defined
         if "security" in name_lower and not solution.security_lead:

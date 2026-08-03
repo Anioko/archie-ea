@@ -432,7 +432,6 @@ def bootstrap_architecture(solution_id):
             # Preview: show what would be created
             # Estimate the chain from a Goal
             preview = [{"type": "Goal", "name": goal_name, "direction": "root", "source": "solution"}]
-            downstream_types = []
             current_type = "Goal"
             for _ in range(10):  # max chain depth
                 required = engine.rules.required_downstream(current_type)
@@ -660,7 +659,7 @@ def refine_names(solution_id):
     Response: {"refined": [{"id": 1, "type": "Goal", "before": "...", "after": "..."}], ...}
     """
     from app.models.archimate_core import ArchiMateElement
-    from app.modules.architecture.services.inference_providers import PROVIDER_REGISTRY, _llm_refine_element
+    from app.modules.architecture.services.inference_providers import _llm_refine_element
 
     solution = Solution.query.get(solution_id)
     if not solution:

@@ -51,6 +51,7 @@ logger = logging.getLogger(__name__)
 # values defined in app.models.user.VALID_ROLES.
 DEFAULT_GROUP_ROLE_MAP = {
     "EA-Architects": "enterprise_architect",
+    "Business-Architects": "business_architect",
     "Solution-Architects": "solution_architect",
     "ARB-Members": "arb_member",
     "Portfolio-Managers": "portfolio_manager",

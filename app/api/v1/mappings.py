@@ -18,7 +18,6 @@ from sqlalchemy import func, or_
 from app.decorators import audit_log
 
 from app import db
-from app.models.application_portfolio import ApplicationComponent
 from app.models.capability_to_vendor_mapping import (
     ApplicationVendorProductMapping,
     TechnicalCapabilityVendorMapping,
@@ -26,8 +25,6 @@ from app.models.capability_to_vendor_mapping import (
     UnifiedCapabilityVendorOrganizationMapping,
 )
 from app.models.technical_capability import TechnicalCapability
-from app.models.unified_capability import UnifiedCapability
-from app.models.vendor.vendor_organization import VendorOrganization, VendorProduct
 from app.utils.api_response import error_response, not_found_response, success_response
 
 mappings_bp = Blueprint("mappings_v1", __name__, url_prefix="/api/v1/mappings")
@@ -41,7 +38,6 @@ mappings_bp = Blueprint("mappings_v1", __name__, url_prefix="/api/v1/mappings")
 def _build_filter_query(query, filters):
     """Build query with common filters."""
     if filters.get("search"):
-        search = f"%{filters['search']}%"
         # Search across name fields if available
         query = query.filter(
             or_(

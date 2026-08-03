@@ -758,7 +758,7 @@ def create_deliverable():
         data = request.get_json()
 
         # Validate work package exists
-        work_package = ImplementationWorkPackage.query.get_or_404(data["work_package_id"])
+        ImplementationWorkPackage.query.get_or_404(data["work_package_id"])
 
         deliverable = Deliverable(
             name=data["name"],

@@ -5,13 +5,10 @@ Provides comprehensive metrics collection and aggregation for system monitoring.
 """
 
 import logging
-import time  # dead-code-ok
-from datetime import datetime, timedelta  # dead-code-ok
-from typing import Dict, List, Any, Optional  # dead-code-ok
+from typing import Dict, Any, Optional  # dead-code-ok
 from collections import defaultdict, deque
 import threading
 
-from flask import current_app  # dead-code-ok
 
 logger = logging.getLogger(__name__)
 

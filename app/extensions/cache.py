@@ -3,9 +3,7 @@ Redis caching extension for Flask application.
 Provides decorator-based caching for expensive operations.
 """
 import functools
-import json
 import pickle
-from datetime import timedelta
 from typing import Any, Callable, Optional
 
 import redis

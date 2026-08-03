@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
+from flask import Blueprint, render_template, request, redirect, flash, jsonify
 from app.services.org_service import OrgService
 from app import db
 

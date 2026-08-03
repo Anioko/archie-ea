@@ -9,11 +9,9 @@ AIC-319: Code-Level Debugging Workflow
 
 import logging
 import re
-import traceback
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
-from app import db
 
 logger = logging.getLogger(__name__)
 
@@ -200,7 +198,7 @@ class DebugWorkflow:
                         if uml:
                             classes = uml.get("class_diagram", {}).get("classes", [])
                             flows = uml.get("sequence_diagram", {}).get("flows", [])
-                            uml_context = f"\n**UML Context (from ArchiMate):**\n"
+                            uml_context = "\n**UML Context (from ArchiMate):**\n"
                             uml_context += f"- {len(classes)} entity classes: {', '.join(c.get('name', '') for c in classes[:5])}\n"
                             uml_context += f"- {len(flows)} API flows/endpoints\n"
                             
@@ -218,7 +216,7 @@ class DebugWorkflow:
                         genome = gen.genome_snapshot
                         if genome:
                             modules = genome.get("modules", {})
-                            genome_context = f"\n**Architectural Genome:**\n"
+                            genome_context = "\n**Architectural Genome:**\n"
                             genome_context += f"- {len(modules)} modules defined\n"
                             genome_context += f"- Generation mode: {gen.config.get('generation_mode', 'unknown')}\n"
                 except Exception as ctx_err:

@@ -1,0 +1,70 @@
+# Pre-commit gates — fast, changed-files-only feedback.
+#
+#   pip install pre-commit && pre-commit install
+#   pre-commit run --all-files    # one-off sweep
+#
+# Design notes
+# ------------
+# These hooks are the *in-loop* half of the verification strategy: an agent or
+# developer gets the failure at commit time, not in a PR review an hour later.
+# `scripts/verify.py` is the *whole-tree* half, and CI runs that.
+#
+# Deliberately calibrated to the correctness-critical rule subset (F821 undefined
+# name, F811 redefinition, F822 bad __all__, E9 syntax) rather than the full lint
+# set. Rationale: the tree carries ~4.5k known F401/F841 findings, so gating every
+# touched file on the full set would block routine edits to legacy modules on
+# unrelated pre-existing debt — which trains people to pass --no-verify, and a
+# bypassed gate is worse than no gate. Whole-tree totals are held by the ratchets
+# in verification_baseline.json instead.
+#
+# No auto-formatter is included on purpose: a formatting sweep across ~500 Python
+# files would bury real diffs and make history bisection painful.
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      # Parses every changed Python file — catches a syntax error before it lands.
+      - id: check-ast
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=2048"]
+      - id: detect-private-key
+      - id: check-yaml
+        # CI workflow files use multi-document / template syntax in places.
+        args: ["--allow-multiple-documents"]
+      - id: check-json
+      - id: end-of-file-fixer
+        # Limited to the files this repo's gates own, to avoid a tree-wide sweep.
+        files: ^(scripts/|tests/|docs/adr/).*\.(py|md)$
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.0
+    hooks:
+      - id: ruff
+        name: ruff (correctness subset, changed files)
+        # --force-exclude makes ruff honour ruff.toml's exclude list even when
+        # pre-commit passes explicit filenames.
+        args: ["--force-exclude", "--select", "F821,F811,F822,E9"]
+
+  - repo: local
+    hooks:
+      - id: design-tokens
+        name: DESIGN.md colour tokens (changed templates)
+        entry: python scripts/check_design_tokens.py
+        language: system
+        files: ^app/templates/.*\.html$
+        pass_filenames: true
+
+      - id: no-console-log
+        name: no console.log in shipped templates/JS
+        # CONTRIBUTING.md forbids these; Platform.toast is the sanctioned path.
+        entry: bash -c 'if grep -nE "console\.log\(|(^|[^.\w])alert\(|(^|[^.\w])confirm\(" "$@" /dev/null; then echo "Use Platform.toast — see CONTRIBUTING.md"; exit 1; fi' --
+        language: system
+        files: ^app/(templates/.*\.html|static/js/.*\.js)$
+
+      - id: sqlalchemy-raw-execute
+        name: no bare-string db.session.execute (SQLAlchemy 2.0 raises)
+        entry: bash -c 'if grep -nE "session\.execute\(\s*[\x27\"]" "$@" /dev/null; then echo "Wrap in db.text(...) — see CLAUDE.md"; exit 1; fi' --
+        language: system
+        files: ^app/.*\.py$

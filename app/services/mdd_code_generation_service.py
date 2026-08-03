@@ -10,19 +10,16 @@ This service provides the core MDD hybrid generation capability:
 3. Code validation and quality checks
 4. Multi-language support (Python, Java, TypeScript, Salesforce)
 """
-import json
 import logging
 import os
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 from flask import current_app
 from jinja2 import Environment, FileSystemLoader
-from jinja2 import Template as Jinja2Template
 from jinja2 import select_autoescape
 
-from app import db
-from app.services.code_validator import CodeValidator, validate_code_artifact
+from app.services.code_validator import validate_code_artifact
 from app.services.llm_service import LLMService
 
 logger = logging.getLogger(__name__)

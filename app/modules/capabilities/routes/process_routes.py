@@ -5,12 +5,10 @@ Extracted from capability_map_routes.py (lines 1975-2625, 2740-3015, 4074-4275).
 Routes registered on the shared ``capability_map`` blueprint.
 """
 
-from datetime import datetime
 
 from flask import current_app, jsonify, request
-from flask_login import current_user, login_required
+from flask_login import login_required
 
-from app import db
 from app.decorators import audit_log
 
 from . import capability_map
@@ -116,15 +114,10 @@ def api_process_gaps():
                     process_name = process.apqc_process.process_name
                     process_description = process.apqc_process.process_description
                     process_code = process.apqc_process.process_code
-                    process_type = process.apqc_process.process_type or process.process_type
-                    process_category = (
-                        process.apqc_process.process_category or process.process_category
-                    )
                     process_owner = process.apqc_process.process_owner or process.process_owner
                     maturity_level = process.apqc_process.process_maturity or process.maturity_level
                 else:
-                    process_type = process.process_type
-                    process_category = process.process_category
+                    pass
 
             else:  # APQCProcess (unmapped APQC processes)
                 process_name = process.process_name
@@ -136,8 +129,6 @@ def api_process_gaps():
                 else:
                     process_level = 2  # Default to Process level
                 process_code = process.process_code
-                process_type = process.process_type
-                process_category = process.process_category
                 process_owner = process.process_owner
                 business_unit = None
                 is_automated = False  # APQC processes don't have this field by default

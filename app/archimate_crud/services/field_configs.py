@@ -239,6 +239,6 @@ def create_empty_form_data(element_type: str) -> Dict[str, str]:
         return {}
     
     data = {'name': '', 'description': ''}
-    for field in config.fields:
-        data[field.name] = ''
+    for item in config.fields:
+        data[item.name] = ''
     return data

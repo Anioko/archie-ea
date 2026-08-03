@@ -7,7 +7,6 @@ and automated enterprise architecture modeling from vendor and capability data.
 
 import json
 import logging
-from datetime import datetime  # dead-code-ok: used in element timestamps
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import selectinload
@@ -16,7 +15,7 @@ from app import db
 from app.models import ArchiMateElement, ArchiMateRelationship, ArchitectureModel
 from app.models.archimate import ElementType, Layer, RelationshipType
 from app.models.business_capabilities import BusinessCapability
-from app.models.vendor.vendor_organization import VendorOrganization, VendorProduct  # dead-code-ok: VendorProduct used by rules engine
+from app.models.vendor.vendor_organization import VendorOrganization  # dead-code-ok: VendorProduct used by rules engine
 from app.services.archimate.archimate_rules_engine import ArchiMateRulesEngine
 
 logger = logging.getLogger(__name__)
@@ -136,7 +135,6 @@ class ArchiMateService:
     @staticmethod
     def _build_llm_prompt(capability: "BusinessCapability") -> str:
         """Build org-context-enriched LLM prompt for ArchiMate generation."""
-        from app import db as _db
 
         cap_name = capability.name or "Unknown"
         cap_level = capability.level if capability.level is not None else 1

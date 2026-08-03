@@ -1,6 +1,28 @@
 # ARCHITECT'S QUICK START GUIDE
 ## A.R.C.H.I.E. Platform - Get Up and Running
 
+> ## ⚠️ LEGACY DOCUMENT — SETUP STEPS ARE WRONG FOR THIS REPOSITORY
+>
+> The feature tour below is still broadly useful. **The setup, database and command
+> sections are not.** Specifically:
+>
+> - It describes Flask-Migrate (`flask db upgrade`, "18 migrations") and
+>   `python manage.py recreate_db|setup_dev|runserver`. The current path is
+>   `flask --app manage init-db` then `flask --app manage reconcile-schema`, and
+>   `recreate-db` is destructive and now requires `--force`. See
+>   [ADR 0002](docs/adr/0002-schema-management.md).
+> - It hardcodes PostgreSQL on **port 5439**; use whatever `DATABASE_URL` specifies.
+> - It prints default credentials (`admin@example.com` / `admin123`) — these come from
+>   `ADMIN_EMAIL` / `ADMIN_PASSWORD` in your `.env`.
+> - It references `SECURITY_REMEDIATION.md`, `KNOWN_ISSUES.md`,
+>   `DEPLOYMENT_READINESS_GOVERNANCE.md` and `docs/monitoring/grafana_dashboard.json`,
+>   none of which exist here.
+> - Support channels ("#archie-support", internal wiki) are placeholders. For this
+>   open-source project use `CONTRIBUTING.md` and `SECURITY.md`.
+>
+> **For setup follow [`README.md`](README.md); for working in the codebase follow
+> [`CLAUDE.md`](CLAUDE.md).**
+
 **Last Updated:** 2026-02-19  
 **Target Audience:** Enterprise Architects  
 **Time to Complete:** 15-30 minutes  

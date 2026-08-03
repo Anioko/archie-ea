@@ -5,15 +5,12 @@ Provides comprehensive cost monitoring and budget controls for AI features.
 """
 
 import logging
-import time
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, asdict
 from enum import Enum
 import threading
 
-from flask import current_app, g
-from app import db
 from app.models import APISettings
 
 logger = logging.getLogger(__name__)
@@ -293,7 +290,7 @@ class AICostMonitor:
         try:
             from app.monitoring.alerting_service import alerting_service, AlertSeverity
             
-            alert = alerting_service.create_manual_alert(
+            (alerting_service.create_manual_alert(
                 name=f"budget_alert_{budget_type}",
                 severity=AlertSeverity.WARNING if percentage_used < 0.95 else AlertSeverity.CRITICAL,
                 message=f"Budget alert: {entity_id} has used {percentage_used:.1%} of {budget_type} budget (${current_usage:.2f}/${budget_limit:.2f})",
@@ -305,7 +302,7 @@ class AICostMonitor:
                     'budget_limit': budget_limit,
                     'percentage_used': percentage_used
                 }
-            )
+            ))
             
             logger.warning(f"Budget alert triggered for {entity_id}: {percentage_used:.1%} of {budget_type} budget used")
             

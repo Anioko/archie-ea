@@ -1,0 +1,95 @@
+{% extends 'layouts/admin_base.html' %}
+{% from 'components/page_header.html' import page_header %}
+{% from 'components/empty_state.html' import empty_state %}
+{% from 'components/skeleton.html' import skeleton_card %}
+
+{% block title %}Org Chart - Organization{% endblock %}
+
+{% block extra_css %}
+<script src="{{ url_for('static', filename='vendor/d3.min.js') }}"></script>
+<style>
+    #org-chart-svg .org-node rect {
+        stroke-width: 1.5px;
+    }
+    #org-chart-svg .org-node text {
+        font: 12px sans-serif;
+        pointer-events: none;
+    }
+    #org-chart-svg .org-link {
+        fill: none;
+        stroke: hsl(var(--border));
+        stroke-width: 1.5px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="flex-1 overflow-auto" x-data="orgChart()" x-init="init()" x-cloak>
+  {{ page_header(
+      title='Org Chart',
+      description='Business Actors linked by Composition/Aggregation relationships.',
+      breadcrumbs=[
+          {'label': 'Home', 'href': url_for('main.index')},
+          {'label': 'Organization', 'href': url_for('organization.index')},
+          {'label': 'Org Chart'}
+      ]
+  ) }}
+
+  <div class="p-6 space-y-6">
+    <!-- Loading state -->
+    <div x-show="loading" x-cloak>
+      {{ skeleton_card() }}
+    </div>
+
+    <!-- Empty state -->
+    <div x-show="!loading && actorCount === 0" x-cloak>
+      {{ empty_state(
+          icon='network',
+          title='No Business Actors yet',
+          description='Model departments, teams and business units as Business Actors to see the enterprise org chart here.',
+      ) }}
+    </div>
+
+    <!-- Fallback: flat grouped-by-actor_type listing (zero composition/aggregation relationships) -->
+    <template x-if="!loading && actorCount > 0 && fallback">
+      <div class="space-y-6">
+        <div class="rounded-md border border-border bg-muted/30 px-4 py-3 text-sm text-muted-foreground flex items-center gap-2">
+          <i data-lucide="info" class="h-4 w-4 shrink-0" aria-hidden="true"></i>
+          <span>No Composition/Aggregation relationships found between Business Actors yet, so actors are grouped by type instead of shown as a tree.</span>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" data-testid="org-flat-groups">
+          <template x-for="group in groups" :key="group.actor_type">
+            <div class="rounded-lg border border-border bg-card overflow-hidden">
+              <div class="px-4 py-2.5 border-b border-border bg-muted/40">
+                <h3 class="text-sm font-semibold text-foreground" x-text="group.actor_type"></h3>
+              </div>
+              <ul class="divide-y divide-border">
+                <template x-for="actor in group.actors" :key="actor.id">
+                  <li class="px-4 py-2.5 flex items-center justify-between gap-2">
+                    <span class="text-sm text-foreground" x-text="actor.name"></span>
+                    <span class="text-xs text-muted-foreground" x-text="actor.headcount ? actor.headcount + ' hc' : ''"></span>
+                  </li>
+                </template>
+              </ul>
+            </div>
+          </template>
+        </div>
+      </div>
+    </template>
+
+    <!-- D3 tree -->
+    <div x-show="!loading && actorCount > 0 && !fallback" x-cloak class="rounded-lg border border-border bg-card overflow-x-auto">
+      <div class="flex items-center justify-between px-4 py-2.5 border-b border-border">
+        <span class="text-sm text-muted-foreground">
+          <span x-text="actorCount"></span> actors, <span x-text="relationshipCount"></span> composition/aggregation links
+        </span>
+      </div>
+      <div id="org-chart-container" class="w-full" style="min-height: 500px;"></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/organization/org_chart.js') }}"></script>
+{% endblock %}

@@ -14,12 +14,10 @@ import json
 import os
 import time
 from datetime import datetime
-from enum import Enum  # dead-code-ok: reserved for future role enum extension
 
 from flask import (  # dead-code-ok: flash/Enum reserved; blueprint aggregates many routes
     Blueprint,
     current_app,
-    flash,
     jsonify,
     redirect,
     render_template,
@@ -874,7 +872,7 @@ def get_role_info(role_value):
     try:
         # Validate role
         try:
-            role = StakeholderRole(role_value)
+            StakeholderRole(role_value)
         except ValueError:
             return jsonify({"error": f"Invalid role: {role_value}"}), 400
 
@@ -1479,7 +1477,7 @@ def upload_document():
     try:
         from werkzeug.utils import secure_filename
 
-        from app.archimate_crud.routes import LAYER_CONFIG, MODEL_REGISTRY
+        from app.archimate_crud.routes import MODEL_REGISTRY
         from app.services.archimate.document_analysis_service import DocumentAnalysisService
         from app.services.core.async_utils import get_or_create_event_loop
         from app.services.core.retry_handler import execute_with_db_retry
@@ -2801,7 +2799,7 @@ def compare_document_versions(doc_id):
         if not document:
             return jsonify({"success": False, "error": "Document not found"}), 404
 
-        version1_id = request.args.get("version1_id", type=int)
+        request.args.get("version1_id", type=int)
         version2_id = request.args.get("version2_id", type=int)
 
         comparison_service = DocumentComparisonService()
@@ -2820,7 +2818,7 @@ def compare_document_versions(doc_id):
             analysis2 = analysis1.copy()
 
         comparison = comparison_service.compare_analyses(analysis1, analysis2)
-        diff_report = comparison_service.generate_diff_report(comparison)
+        comparison_service.generate_diff_report(comparison)
 
         return jsonify(
             {

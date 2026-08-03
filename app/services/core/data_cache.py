@@ -12,11 +12,10 @@ Uses the cache_service infrastructure with appropriate TTLs.
 
 import logging
 from datetime import datetime
-from functools import lru_cache
 from typing import Any, Dict, List, Optional
 
-from flask import current_app, g
-from sqlalchemy.orm import joinedload, selectinload
+from flask import g
+from sqlalchemy.orm import selectinload
 
 from app import db
 from app.services.core.cache_service import cache_service

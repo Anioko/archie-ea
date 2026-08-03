@@ -248,7 +248,6 @@ def _check_entity_minimums(solution_id, gate_config, failures):
             SolutionAnalysisSession,
             SolutionDriver,
             SolutionGoal,
-            SolutionProblemDefinition,
         )
         from app.models.solution_lifecycle_models import SolutionRisk
         from app.models.solution_models import Solution

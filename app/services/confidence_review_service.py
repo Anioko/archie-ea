@@ -18,15 +18,13 @@ import json
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
-from sqlalchemy import and_, func, or_
 
 from app import db
 
 # Import models
-from app.models.confidence_review import ReviewDecision, ReviewQueueItem, ReviewStatus
+from app.models.confidence_review import ReviewQueueItem, ReviewStatus
 
 logger = logging.getLogger(__name__)
 
@@ -474,7 +472,6 @@ class ConfidenceReviewService:
             Dictionary with evaluation result and action
         """
         try:
-            from app.models.confidence_review import ConfidenceThreshold
 
             # Find applicable threshold
             threshold = self._find_applicable_threshold(
@@ -959,7 +956,7 @@ class ConfidenceReviewService:
             Dictionary with review statistics
         """
         try:
-            from app.models.confidence_review import ReviewDecision, ReviewQueueItem, ReviewStatus
+            from app.models.confidence_review import ReviewQueueItem, ReviewStatus
 
             query = ReviewQueueItem.query
 

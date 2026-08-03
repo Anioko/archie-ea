@@ -6,7 +6,7 @@ Two-pass approach: creates domains first, then sets parent relationships.
 """
 
 from datetime import datetime
-from typing import Dict, List, Tuple
+from typing import Dict, List
 
 from sqlalchemy.exc import IntegrityError
 

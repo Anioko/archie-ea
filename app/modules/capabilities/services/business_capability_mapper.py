@@ -11,11 +11,10 @@ Maps applications to business capabilities using multiple analysis methods:
 4. AI-powered capability detection
 """
 
-import json
 import logging
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
-from sqlalchemy import and_, func, or_
+from sqlalchemy import and_
 
 from app import db
 from app.models.application_layer import ApplicationComponent
@@ -215,7 +214,7 @@ class BusinessCapabilityMapper:
                         "capability_name": capability.name,
                         "mapping_method": "semantic_matching",
                         "confidence_score": similarity,
-                        "reasoning": f"Semantic similarity between application and capability names/descriptions",
+                        "reasoning": "Semantic similarity between application and capability names/descriptions",
                     }
                 )
 

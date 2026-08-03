@@ -15,7 +15,7 @@ Run with: python manage.py seed-vendor-siemens
 import json
 
 from app import create_app, db
-from app.models import User, VendorStackTemplate
+from app.models import VendorStackTemplate
 from config import DevelopmentConfig
 
 
@@ -1995,22 +1995,22 @@ def seed_siemens_opcenter(link_capabilities: bool = True):
 
             print("✅ Siemens OPCenter template seeded successfully!")
             print(f"   - Vendor: {template.vendor_name}")
-            print(f"   - Technology Layer: ✅ Complete")
-            print(f"   - Strategy Layer: ✅ Complete (20 capabilities, 6 value streams)")
+            print("   - Technology Layer: ✅ Complete")
+            print("   - Strategy Layer: ✅ Complete (20 capabilities, 6 value streams)")
             print(
-                f"   - Business Layer: ✅ Complete (10 services, 6 processes, 8 objects, 10 actors, 9 products)"
+                "   - Business Layer: ✅ Complete (10 services, 6 processes, 8 objects, 10 actors, 9 products)"
             )
             print(
-                f"   - Application Layer: ✅ Complete (13 components, 10 services, 7 interfaces, 8 data objects, 10 functions)"
+                "   - Application Layer: ✅ Complete (13 components, 10 services, 7 interfaces, 8 data objects, 10 functions)"
             )
             print(
-                f"   - Motivation Layer: ✅ Complete (10 stakeholders, 10 drivers, 9 goals, 8 outcomes, 10 principles, 11 requirements, 9 constraints, 5 assessments)"
+                "   - Motivation Layer: ✅ Complete (10 stakeholders, 10 drivers, 9 goals, 8 outcomes, 10 principles, 11 requirements, 9 constraints, 5 assessments)"
             )
             print(
-                f"   - Implementation Layer: ✅ Complete (9 events, 10 work packages, 8 deliverables, 5 plateaus)"
+                "   - Implementation Layer: ✅ Complete (9 events, 10 work packages, 8 deliverables, 5 plateaus)"
             )
-            print(f"   - Physical Layer: ✅ Complete (3 facilities, 5 equipment types, 4 networks)")
-            print(f"   - Total ArchiMate Coverage: 100%")
+            print("   - Physical Layer: ✅ Complete (3 facilities, 5 equipment types, 4 networks)")
+            print("   - Total ArchiMate Coverage: 100%")
             # Link capabilities to BusinessCapability records
             if link_capabilities:
                 print("\n🔗 Linking capabilities to BusinessCapability records...")

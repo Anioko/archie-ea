@@ -189,7 +189,7 @@ def seed_feature_flags_command(clear):
     db.session.commit()
 
     click.echo("\n" + "=" * 60)
-    click.echo(f"✅ Feature flag seeding complete!")
+    click.echo("✅ Feature flag seeding complete!")
     click.echo(f"   Created: {created_count}")
     click.echo(f"   Skipped: {skipped_count}")
     click.echo(f"   Total: {created_count + skipped_count}")

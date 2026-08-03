@@ -801,7 +801,6 @@ class ArchitectureAssistantService:
             from ..models.unified_application_capability_mapping import (
                 UnifiedApplicationCapabilityMapping,
             )
-            from ..models.unified_capability import UnifiedCapability
 
             # Normalize input to list
             if not isinstance(capability_ids, list):

@@ -14,7 +14,7 @@ Blueprint name: health_v2 (distinct from v1 to allow coexistence)
 from datetime import datetime
 
 from flask import Blueprint, jsonify
-from flask_login import current_user, login_required  # dead-code-ok
+from flask_login import login_required  # dead-code-ok
 from sqlalchemy import text
 
 from app.core.api import api_error, api_success

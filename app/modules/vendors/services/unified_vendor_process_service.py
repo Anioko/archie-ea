@@ -20,16 +20,13 @@ Usage:
     analysis = service.get_capability_process_vendor_analysis("customer-relationship-management")
 """
 
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List
 
-from flask import current_app
-from sqlalchemy import and_, func, or_
 
 from app import db
 from app.models.apqc_process import APQCProcess
 from app.models.business_capability import BusinessCapability
 from app.models.capability_process_mapping import CapabilityProcessMapping
-from app.models.unified_capability import UnifiedCapability
 from app.models.vendor.vendor_organization import VendorOrganization
 from app.models.vendor.vendor_product import VendorProduct
 from app.models.vendor_product_apqc_mapping import VendorProductAPQCMapping
@@ -138,7 +135,7 @@ class UnifiedVendorProcessService:
             return []
 
         # Get all products for this vendor
-        products = VendorProduct.query.filter_by(vendor_id=vendor_id).all()
+        VendorProduct.query.filter_by(vendor_id=vendor_id).all()
 
         # Get all mappings for this vendor's products
         mappings = (
@@ -527,7 +524,7 @@ class UnifiedVendorProcessService:
                     "type": "VENDOR_CONSOLIDATION",
                     "priority": "MEDIUM",
                     "title": "Consider Vendor Consolidation",
-                    "description": f"Multiple vendors support this capability. Consider consolidation for better integration and cost management.",
+                    "description": "Multiple vendors support this capability. Consider consolidation for better integration and cost management.",
                     "action_items": [
                         "Analyze vendor overlap",
                         "Evaluate consolidation benefits",

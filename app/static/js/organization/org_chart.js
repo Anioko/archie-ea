@@ -1,0 +1,142 @@
+/**
+ * Organization Chart — D3 v7 tree of BusinessActors linked by
+ * Composition/Aggregation ArchiMateRelationships.
+ *
+ * Alpine.js component: orgChart()
+ * Mirrors app/static/js/capability_map/tree.js's use of D3 v7 (loaded via
+ * the same CDN tag as the capability network view,
+ * /static/vendor/d3.min.js) but builds a dendrogram (d3.tree) instead
+ * of a force simulation, since org charts are strict hierarchies.
+ */
+document.addEventListener('alpine:init', () => {
+    Alpine.data('orgChart', () => ({
+        loading: true,
+        fallback: false,
+        roots: [],
+        groups: [],
+        actorCount: 0,
+        relationshipCount: 0,
+
+        async init() {
+            await this.loadData();
+        },
+
+        async loadData() {
+            this.loading = true;
+            try {
+                const resp = await fetch('/organization/chart/api/data');
+                const json = await resp.json();
+                const data = json.data ?? json;
+
+                this.fallback = !!data.fallback;
+                this.actorCount = data.actor_count || 0;
+                this.relationshipCount = data.relationship_count || 0;
+
+                if (this.fallback) {
+                    this.groups = data.groups || [];
+                } else {
+                    this.roots = data.roots || [];
+                    this.$nextTick(() => this.renderTree());
+                }
+            } catch (e) {
+                console.error('Failed to load org chart data:', e);
+                if (window.Platform && Platform.toast) {
+                    Platform.toast.error('Failed to load org chart data.');
+                }
+            } finally {
+                this.loading = false;
+            }
+        },
+
+        renderTree() {
+            const container = document.getElementById('org-chart-container');
+            if (!container || typeof d3 === 'undefined') return;
+            container.innerHTML = '';
+
+            if (!this.roots || this.roots.length === 0) return;
+
+            // Multiple roots are common (several top-level Business Units) —
+            // wrap them under a synthetic invisible root so d3.hierarchy can
+            // lay out a single tree.
+            const syntheticRoot = {
+                name: 'Organization',
+                actor_type: null,
+                _synthetic: true,
+                children: this.roots,
+            };
+
+            const root = d3.hierarchy(syntheticRoot);
+            const nodeCount = root.descendants().length;
+
+            const nodeWidth = 190;
+            const nodeHeight = 90;
+            const width = Math.max(container.clientWidth || 900, root.leaves().length * nodeWidth);
+            const height = Math.max(500, root.height * nodeHeight + 120);
+
+            const treeLayout = d3.tree().size([width - 160, height - 100]);
+            treeLayout(root);
+
+            const svg = d3.select(container)
+                .append('svg')
+                .attr('id', 'org-chart-svg')
+                .attr('width', width)
+                .attr('height', height);
+
+            const g = svg.append('g').attr('transform', 'translate(80,60)');
+
+            // Links (skip the synthetic root's own edges to itself — d3 still
+            // draws them, so just style them the same; visually harmless
+            // since the synthetic root renders as an invisible node too).
+            g.selectAll('.org-link')
+                .data(root.links())
+                .enter()
+                .append('path')
+                .attr('class', 'org-link')
+                .attr('d', d3.linkVertical().x(d => d.x).y(d => d.y));
+
+            const node = g.selectAll('.org-node')
+                .data(root.descendants())
+                .enter()
+                .append('g')
+                .attr('class', 'org-node')
+                .attr('transform', d => `translate(${d.x},${d.y})`);
+
+            // Hide the synthetic root visually but keep it in the layout so
+            // multiple top-level actors fan out symmetrically.
+            const visibleNode = node.filter(d => !d.data._synthetic);
+
+            visibleNode.append('rect')
+                .attr('x', -80)
+                .attr('y', -22)
+                .attr('width', 160)
+                .attr('height', 44)
+                .attr('rx', 6)
+                .attr('fill', 'hsl(var(--card))')
+                .attr('stroke', 'hsl(var(--primary))');
+
+            visibleNode.append('text')
+                .attr('text-anchor', 'middle')
+                .attr('y', -4)
+                .attr('fill', 'hsl(var(--foreground))')
+                .style('font-weight', '600')
+                .text(d => this.truncate(d.data.name, 22));
+
+            visibleNode.append('text')
+                .attr('text-anchor', 'middle')
+                .attr('y', 12)
+                .attr('fill', 'hsl(var(--muted-foreground))')
+                .text(d => d.data.actor_type || '');
+
+            svg.call(
+                d3.zoom().scaleExtent([0.4, 2]).on('zoom', (event) => {
+                    g.attr('transform', event.transform);
+                })
+            );
+        },
+
+        truncate(text, max) {
+            if (!text) return '';
+            return text.length > max ? text.substring(0, max) + '…' : text;
+        },
+    }));
+});

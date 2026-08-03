@@ -172,7 +172,7 @@ def search_templates_advanced():
     # Fuzzy search across multiple fields
     if data.get("fuzzy", False):
         # PostgreSQL-compatible fuzzy search using similarity
-        from sqlalchemy import func, or_
+        from sqlalchemy import or_
 
         search_pattern = f"%{query}%"
         base_query = base_query.filter(
@@ -216,7 +216,7 @@ def search_templates_advanced():
         # Boost recent templates (if requested)
         if data.get("boost_recent", False) and hasattr(template, "last_used_at"):
             if template.last_used_at:
-                from datetime import datetime, timedelta
+                from datetime import datetime
 
                 days_old = (datetime.utcnow() - template.last_used_at).days
                 if days_old < 30:
@@ -247,7 +247,6 @@ def get_all_tags():
     if not hasattr(ElementTemplate, "tags"):
         return jsonify([])
 
-    from sqlalchemy import func
 
     # Get all unique tags with counts
     # Note: This assumes tags are stored as JSON array or comma-separated
@@ -568,7 +567,7 @@ def instantiate_template(app_id):
         db.session.rollback()
         current_app.logger.error(f"Database error: {str(e)}")
         return jsonify({"error": "Database error occurred"}), 500
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         current_app.logger.exception("Unexpected error instantiating template")
         return jsonify({"error": "Internal server error"}), 500
@@ -807,7 +806,7 @@ def link_template_elements(app_id):
         db.session.rollback()
         current_app.logger.error(f"Database operational error in link operation: {str(e)}")
         return jsonify({"error": "Database operation failed. Please try again."}), 503
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         current_app.logger.exception("Unexpected error linking templates")
         return jsonify({"error": "An internal error occurred"}), 500
@@ -867,7 +866,7 @@ def remove_template(app_id, template_id):
 
         return jsonify({"success": True, "message": "Successfully removed template usage"})
 
-    except ValueError as e:
+    except ValueError:
         return jsonify({"error": "Resource not found"}), 404
     except Exception as e:
         current_app.logger.error(f"Error removing template: {str(e)}")
@@ -910,7 +909,7 @@ def add_from_template_page(app_id):
         else:
             flash("No templates were instantiated", "warning")
 
-    except Exception as e:
+    except Exception:
         flash("Error adding templates. Please try again.", "error")
 
     return redirect(url_for("unified_applications.application_detail", id=app_id))
@@ -1102,7 +1101,7 @@ def instantiate_bulk_enterprise(app_id):
 
     except RateLimitExceeded as e:
         return jsonify({"error": "Rate limit exceeded", "retry_after": e.retry_after}), 429
-    except Exception as e:
+    except Exception:
         current_app.logger.exception("Error in bulk instantiation")
         return jsonify({"error": "An internal error occurred"}), 500
 
@@ -1175,13 +1174,13 @@ def rollback_session(session_id):
 
         return jsonify(result)
 
-    except ValueError as e:
+    except ValueError:
         return jsonify({"success": False, "error": "Invalid request parameters"}), 400
-    except PermissionError as e:
+    except PermissionError:
         return jsonify({"success": False, "error": "Forbidden"}), 403
-    except RuntimeError as e:
+    except RuntimeError:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
-    except Exception as e:
+    except Exception:
         current_app.logger.exception("Unexpected error in rollback")
         return jsonify({"success": False, "error": "Internal server error"}), 500
 
@@ -1266,7 +1265,7 @@ def preview_template_instantiation(template_id):
         return jsonify({"error": "application_id required"}), 400
 
     template = ElementTemplate.query.get_or_404(template_id)
-    application = ApplicationComponent.query.get_or_404(app_id)
+    ApplicationComponent.query.get_or_404(app_id)
 
     # Build preview
     preview = {
@@ -2050,7 +2049,7 @@ def instantiate_template_with_hierarchy(app_id):
             }
         )
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         current_app.logger.exception("Error instantiating hierarchy")
         return jsonify({"error": "An internal error occurred"}), 500

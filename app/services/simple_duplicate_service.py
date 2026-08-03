@@ -21,7 +21,6 @@ class SimpleDuplicateService:
         Clean up stale duplicate detection data
         """
         try:
-            from ..models.simple_duplicate_detection import SimpleDuplicateGroup, SimpleDetectionRun, simple_group_applications
             from .. import db
             
             # Delete all existing groups and runs to start fresh
@@ -470,7 +469,6 @@ class SimpleDuplicateService:
             dict with results including deleted apps count and any errors
         """
         try:
-            from ..models.application_layer import ApplicationComponent
             from .. import db
             
             # Validate inputs
@@ -481,7 +479,7 @@ class SimpleDuplicateService:
                 logger.error(f"Invalid group_id or keep_app_id: group_id={group_id}, keep_app_id={keep_app_id}, error={e}")
                 return {
                     'success': False,
-                    'error': f'Invalid group ID or application ID. Please refresh the page and try again.'
+                    'error': 'Invalid group ID or application ID. Please refresh the page and try again.'
                 }
             
             # Check if tables exist first

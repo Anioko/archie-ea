@@ -3,28 +3,21 @@ Roadmap Validation and Business Rules Enforcement
 Comprehensive validation for roadmap entities and business logic
 """
 
-import json
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
-from sqlalchemy import and_, or_, text
 
-from app import db
 from app.models.roadmap_models import (
-    ImplementationGap,
-    ImplementationPlateau,
     PlanningDeliverable,
-    RoadmapResource,
     RoadmapWorkPackage,
 )
 
 # Aliases for backwards compatibility
 Deliverable = PlanningDeliverable
 ImplementationWorkPackage = RoadmapWorkPackage
-from app.models.application_portfolio import ApplicationComponent
 from app.models.unified_capability import UnifiedCapability
 
 logger = logging.getLogger(__name__)

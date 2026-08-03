@@ -4,12 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ solution.name }} — Generated Code</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    {# Served from this origin, not cdn.tailwindcss.com: the CDN build is blocked on
+       enterprise networks, and it is a JIT compiler that ships far more than the
+       committed stylesheet. Webfont links removed for the same reason — the stacks
+       below fall back to fonts the workstation already has. #}
+    <link href="{{ url_for('static', filename='css/tailwind-output.css') }}" rel="stylesheet">
     <style>
-        body { font-family: 'Inter', sans-serif; background: #0f0f0f; color: #e5e5e5; }
-        .mono { font-family: 'JetBrains Mono', monospace; }
+        body { font-family: 'Inter', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background: #0f0f0f; color: #e5e5e5; }
+        .mono { font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Consolas, 'Liberation Mono', monospace; }
         .badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; }
         pre { white-space: pre-wrap; word-break: break-word; }
     </style>

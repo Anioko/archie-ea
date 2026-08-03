@@ -9,11 +9,10 @@ Visualizes and analyzes dependencies across the enterprise architecture:
 - Dependency health assessment
 """
 
-from datetime import date, datetime  # dead-code-ok
-from typing import Dict, List, Optional, Tuple  # dead-code-ok
+from datetime import datetime  # dead-code-ok
+from typing import Dict, List  # dead-code-ok
 
-from flask import g
-from sqlalchemy import and_, func, or_, text  # dead-code-ok
+from sqlalchemy import text  # dead-code-ok
 
 from app import db
 from .decorators import transactional

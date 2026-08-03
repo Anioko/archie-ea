@@ -18,7 +18,7 @@ from flask import (
 from flask_login import login_required, current_user
 from sqlalchemy import func
 
-from app.decorators import admin_required, audit_log, require_roles  # dead-code-ok
+from app.decorators import audit_log, require_roles  # dead-code-ok
 from app.extensions import db
 from app.models.vendor_organization import VendorOrganization
 
@@ -277,7 +277,6 @@ def import_vendors():
 
                 if existing:
                     # Update existing (use allowlist to prevent mass assignment)
-                    old_name = existing.name
                     for key in VENDOR_UPDATE_ALLOWLIST:
                         if key in vendor_data and vendor_data[key]:
                             setattr(existing, key, vendor_data[key])

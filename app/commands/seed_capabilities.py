@@ -2055,7 +2055,6 @@ def seed_technical_caps():
 
 def seed_unified_caps():
     """Seed unified capabilities with proper domain-aligned hierarchy."""
-    import json
 
     from app.models.unified_capability import BusinessDomain, UnifiedCapability
 

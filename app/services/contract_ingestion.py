@@ -21,7 +21,6 @@ Do NOT connect any UI route to this service until the stubs are resolved.
 
 import logging
 import re
-import uuid  # dead-code-ok
 from datetime import datetime
 from enum import Enum
 from pathlib import Path

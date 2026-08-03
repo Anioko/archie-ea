@@ -1240,7 +1240,6 @@ RESPOND WITH VALID JSON:
         # meaningless elements like "SAP - Manage". Removed per adversarial review.
 
         # Create BusinessProcess elements from mapped APQC PCF processes (idempotent)
-        from app.models.apqc_process import ProcessApplicationMapping
 
         process_mappings = db.session.execute(  # tenant-filtered: scoped via parent FK (application_id)
             text(
@@ -2141,7 +2140,7 @@ RESPOND WITH VALID JSON:
         """
         from sqlalchemy import text
 
-        from app.models.vendor.vendor_organization import VendorOrganization, VendorProduct
+        from app.models.vendor.vendor_organization import VendorProduct
 
         product = db.session.get(VendorProduct, vendor_product_id)
         if not product:

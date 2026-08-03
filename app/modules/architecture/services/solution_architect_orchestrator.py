@@ -14,14 +14,13 @@ Combines:
 - Cost modeling and risk assessment
 """
 
-import asyncio  # dead-code-ok
 import logging
 from datetime import datetime
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
 from app import db
-from app.models import ApplicationComponent, BusinessCapability, VendorOrganization, VendorProduct  # dead-code-ok
+from app.models import ApplicationComponent, BusinessCapability, VendorProduct  # dead-code-ok
 from app.modules.architecture.services.options_analysis_service import (
     OptionsAnalysisService as ArchimateOptionsService,
 )

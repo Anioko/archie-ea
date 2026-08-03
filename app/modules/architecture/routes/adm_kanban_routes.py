@@ -511,7 +511,6 @@ def create_card(board_id):
             try:
                 # Import ARB models (lazy import to avoid circular dependencies)
                 from app.models.arb_models import ARBReviewItem
-                from app.models.user import User
 
                 # Get board creator as submitter (architect)
                 submitter = board.created_by

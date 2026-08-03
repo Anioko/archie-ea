@@ -8,7 +8,6 @@ Non-critical; best-effort and safe to run on app startup.
 def seed_default_ai_prompt_templates():
     """Create default AIPromptTemplate rows if missing."""
     try:
-        from datetime import datetime
 
         from app import db
         from app.models.ai_service import AIPromptTemplate

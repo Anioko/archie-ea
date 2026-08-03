@@ -423,7 +423,7 @@ function investmentMatrix() {
 }
 </script>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
 <script>
 // Priority Distribution Chart
 const priorityCtx = document.getElementById('priorityChart').getContext('2d');

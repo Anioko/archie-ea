@@ -11,9 +11,8 @@ at the bottom of codegen_routes.py.
 import logging
 
 from flask import abort, jsonify, request
-from flask_login import current_user, login_required
+from flask_login import login_required
 
-from app.extensions import db
 from app.models.solution_models import Solution
 from app.modules.codegen.models import CodegenGeneration
 from app.modules.codegen.routes.codegen_routes import codegen_bp

@@ -8,7 +8,7 @@ import io
 import json
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Optional  # dead-code-ok
+from typing import Dict, List, Optional  # dead-code-ok
 from urllib.parse import urljoin, urlparse
 
 import requests
@@ -86,7 +86,7 @@ class APIDashboardGenerator:
         fields = schema.get("fields", [])
         dashboard_config = schema.get("dashboard", {})
         title = dashboard_config.get("title", "Generated Dashboard")
-        sections = dashboard_config.get("sections", [])
+        dashboard_config.get("sections", [])
 
         config = DashboardConfig(
             title=title,
@@ -750,9 +750,7 @@ Return ONLY valid JSON in this format:
         Returns:
             DashboardConfig with LIVE calculated metrics
         """
-        from sqlalchemy import inspect
 
-        from app import db
 
         logger.info(f"Generating dashboard for {model_class.__name__} with LIVE data")
 
@@ -802,7 +800,7 @@ Return ONLY valid JSON in this format:
         """Generate time-series chart from model data"""
         from datetime import datetime, timedelta
 
-        from sqlalchemy import extract, func
+        from sqlalchemy import func
 
         from app import db
 
@@ -1020,19 +1018,19 @@ Return ONLY valid JSON in this format:
 
         from app import db
 
-        logger.info(f"=== generate_detail_page START ===")
+        logger.info("=== generate_detail_page START ===")
         logger.info(f"Model: {model_class.__name__}, ID: {record_id}")
 
         try:
             # Fetch the record
-            logger.info(f"Fetching record from database...")
+            logger.info("Fetching record from database...")
             record = db.session.query(model_class).get(record_id)
             if not record:
                 raise ValueError(f"{model_class.__name__} with ID {record_id} not found")
             logger.info(f"Record found: {record}")
 
             # Get model columns
-            logger.info(f"Inspecting model columns...")
+            logger.info("Inspecting model columns...")
             inspector = inspect(model_class)
             logger.info(f"Inspector created, columns count: {len(list(inspector.columns))}")
         except Exception as e:
@@ -1157,7 +1155,7 @@ Return ONLY valid JSON in this format:
         logger.info(f"Total related records tables: {len(related_records)}")
 
         # Convert record to safe dictionary for template
-        logger.info(f"Creating safe record dictionary...")
+        logger.info("Creating safe record dictionary...")
         try:
             created_at = getattr(record, "created_at", None)
             updated_at = getattr(record, "updated_at", None)
@@ -1186,7 +1184,7 @@ Return ONLY valid JSON in this format:
             logger.error(traceback.format_exc())
             raise
 
-        logger.info(f"Building final config dictionary...")
+        logger.info("Building final config dictionary...")
         try:
             result = {
                 "record": record_dict,
@@ -1197,7 +1195,7 @@ Return ONLY valid JSON in this format:
                 "list_url": list_url,
                 "delete_url": f"/api/{model_class.__tablename__}/{record_id}",
             }
-            logger.info(f"=== generate_detail_page COMPLETE ===")
+            logger.info("=== generate_detail_page COMPLETE ===")
             return result
         except Exception as e:
             logger.error(f"Error building final config: {e}")
@@ -1328,7 +1326,6 @@ Return ONLY valid JSON in this format:
         Note: This is called BEFORE value conversion to string,
         so we can inspect the original value type.
         """
-        from datetime import datetime
 
         column_type = str(column.type).upper()
 
@@ -1457,7 +1454,7 @@ Return ONLY valid JSON in this format:
             BytesIO object with Excel content
         """
         try:
-            import openpyxl
+            import openpyxl  # noqa: F401 — availability probe: the import IS the test
             from openpyxl import Workbook
 
             wb = Workbook()

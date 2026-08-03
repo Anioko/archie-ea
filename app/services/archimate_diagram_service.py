@@ -62,8 +62,8 @@ class DiagramRenderService:
             layers.setdefault(layer, []).append(el)
 
         # Determine draw order: canonical order first, then any extras
-        ordered_layers = [l for l in LAYER_ORDER if l in layers] + [
-            l for l in layers if l not in LAYER_ORDER
+        ordered_layers = [item for item in LAYER_ORDER if item in layers] + [
+            item for item in layers if item not in LAYER_ORDER
         ]
 
         canvas_w = max(

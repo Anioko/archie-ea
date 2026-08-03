@@ -157,7 +157,7 @@ def _validate_handler_code(code):
     # Dedent the code to normalize indentation
     dedented = textwrap.dedent(code)
     # Wrap in a function so ast.parse can handle it
-    wrapped = f"def _synthesized_handler(self, entity):\n"
+    wrapped = "def _synthesized_handler(self, entity):\n"
     for line in dedented.splitlines():
         if line.strip():
             wrapped += f"    {line}\n"

@@ -17,9 +17,8 @@ Features:
 
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
-from app import db
 from app.services.document_entity_matching_service import DocumentEntityMatchingService
 from app.services.multi_domain_chat_service import MultiDomainChatService
 

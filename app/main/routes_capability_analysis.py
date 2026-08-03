@@ -1,6 +1,6 @@
 """Unmapped Capabilities Analysis Routes"""
 
-from flask import flash, g, jsonify, render_template, request  # dead-code-ok
+from flask import flash, jsonify, render_template  # dead-code-ok
 from flask_login import login_required
 from sqlalchemy import text
 
@@ -14,7 +14,20 @@ def unmapped_capabilities():
     """Dedicated page for viewing capabilities with no applications mapped"""
 
     try:
-        # Get unmapped capabilities with detailed information
+        # Get unmapped capabilities with detailed information.
+        #
+        # `org_filter` is interpolated into the four queries below but was never
+        # assigned, so this route raised NameError on every request. It is defined
+        # here as an empty fragment rather than a tenant predicate because
+        # `unified_capabilities` has no organization_id column — there is nothing on
+        # this table to scope by. (One call site does
+        # `org_filter.replace('AND uc.', 'AND uc.')`, a no-op, which is consistent
+        # with the fragment having been empty.)
+        #
+        # If these views need tenant scoping later it has to come through a joined
+        # table that does carry organization_id; that is a design change, not a
+        # NameError fix, so it is deliberately not attempted here.
+        org_filter = ""
         org_params = {}
 
         # Get summary statistics
@@ -100,7 +113,7 @@ def unmapped_capabilities():
             priority_breakdown=priority_breakdown,
         )
 
-    except Exception as e:
+    except Exception:
         flash("Error loading unmapped capabilities. Please try again.", "error")
         return render_template(
             "capability_analysis/unmapped_capabilities.html",
@@ -160,5 +173,5 @@ def export_unmapped_capabilities():
             }
         )
 
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
