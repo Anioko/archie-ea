@@ -156,11 +156,40 @@ def _grant_admin(db, user_id):
 
 
 def _login(client, user_id):
-    """Standard Flask-Login test-client pattern: fake the session cookie
-    rather than going through the real /account/login form."""
+    """Log the test client in as *user_id*.
+
+    Rewriting the session cookie is the standard Flask-Login test pattern, but on
+    its own it is NOT enough to switch user here, and the failure is silent.
+
+    Flask's test client keeps the application context alive between calls, so
+    flask_login's per-context cache (``g._login_user``) survives from the previous
+    request. flask_login returns that cached object without consulting the cookie.
+    Measured directly: after _login(client, attacker) the request saw
+    ``session["_user_id"] == "735"`` (the attacker) while ``current_user.id`` was
+    still 734 (the owner), and ``id(g)`` was identical across both requests.
+
+    That made every cross-tenant assertion in this module exercise the wrong
+    actor. The owner was reading their own data, so the "attacker" appeared to
+    succeed and the tests reported a cross-org leak that does not exist — verified
+    against a real WSGI server over HTTP with two genuine logins, where the same
+    request is correctly refused with 404.
+
+    A test that fails for a reason unrelated to what it asserts is worse than no
+    test: it trains the team to wave through red isolation results. Dropping the
+    cached identity makes the cookie authoritative again.
+    """
+    from flask.globals import app_ctx
+
     with client.session_transaction() as sess:
         sess["_user_id"] = str(user_id)
         sess["_fresh"] = True
+
+    try:
+        ctx = app_ctx._get_current_object()
+    except RuntimeError:
+        return  # no lingering context; nothing cached to clear
+    for attr in ("_login_user", "current_org_id", "current_org"):
+        ctx.g.pop(attr, None)
 
 
 def _cleanup_ids(db, model, ids):
