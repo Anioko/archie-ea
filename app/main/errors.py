@@ -55,8 +55,33 @@ def handle_rate_limit_exceeded(e):
         return response
 
 
+def _api_error(status, message):
+    """JSON for an /api/ caller, or None when an HTML page is the right answer.
+
+    These three handlers are registered per status code, and Flask prefers the
+    most specific handler it can find - so they beat the generic HTTPException
+    handler in _bootstrap/extensions.py and an /api/ path was still being served
+    an HTML error page. A front end that asks for JSON and gets HTML fails at
+    JSON.parse, so the user sees a script error instead of "not found" or "you
+    do not have access": the refusal is right and the explanation is lost.
+
+    Keyed on the path rather than the Accept header because fetch() sends
+    Accept: */* by default, so header sniffing misses most real callers.
+    """
+    if not request.path.startswith("/api/"):
+        return None
+    return jsonify({
+        "success": False,
+        "error": message,
+        "error_type": message.lower().replace(" ", "_"),
+    }), status
+
+
 @main.app_errorhandler(403)
 def forbidden(e):
+    api = _api_error(403, "Forbidden")
+    if api is not None:
+        return api
     try:
         return render_template("errors/403.html"), 403
     except Exception:
@@ -66,6 +91,9 @@ def forbidden(e):
 
 @main.app_errorhandler(404)
 def page_not_found(e):
+    api = _api_error(404, "Not Found")
+    if api is not None:
+        return api
     try:
         return render_template("errors/404.html"), 404
     except Exception:
@@ -75,6 +103,9 @@ def page_not_found(e):
 
 @main.app_errorhandler(500)
 def internal_server_error(e):
+    api = _api_error(500, "Internal Server Error")
+    if api is not None:
+        return api
     try:
         return render_template("errors/500.html"), 500
     except Exception:

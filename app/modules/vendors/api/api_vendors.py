@@ -108,8 +108,8 @@ analytics_summary_model = api.model(
 @ns_vendors.route("/")
 class VendorList(Resource):
     @api.doc("list_vendors")
-    @api.marshal_list_with(vendor_model)
     @login_required
+    @api.marshal_list_with(vendor_model)
     def get(self):
         """List all vendor organizations"""
         vendors = VendorOrganization.query.order_by(VendorOrganization.name).all()
@@ -139,8 +139,8 @@ class VendorList(Resource):
 @api.param("id", "The vendor identifier")
 class Vendor(Resource):
     @api.doc("get_vendor")
-    @api.marshal_with(vendor_model)
     @login_required
+    @api.marshal_with(vendor_model)
     def get(self, id):
         """Get a vendor by ID"""
         vendor = VendorOrganization.query.get_or_404(id)
@@ -224,8 +224,8 @@ class ProductList(Resource):
             "limit": "Maximum results to return (default: 50)",
         },
     )
-    @api.marshal_list_with(product_model)
     @login_required
+    @api.marshal_list_with(product_model)
     def get(self):
         """List and filter vendor products"""
         query = VendorProduct.query
@@ -269,8 +269,8 @@ class ProductList(Resource):
 @api.param("id", "The product identifier")
 class Product(Resource):
     @api.doc("get_product")
-    @api.marshal_with(product_model)
     @login_required
+    @api.marshal_with(product_model)
     def get(self, id):
         """Get a product by ID"""
         product = VendorProduct.query.get_or_404(id)
@@ -290,8 +290,8 @@ class Product(Resource):
 @ns_analytics.route("/summary")
 class AnalyticsSummary(Resource):
     @api.doc("get_analytics_summary")
-    @api.marshal_with(analytics_summary_model)
     @login_required
+    @api.marshal_with(analytics_summary_model)
     def get(self):
         """Get vendor portfolio analytics summary"""
         total_vendors = VendorOrganization.query.count()
@@ -348,8 +348,8 @@ class AnalyticsSummary(Resource):
 @ns_analytics.route("/risk-assessment")
 class RiskAssessment(Resource):
     @api.doc("get_risk_assessment")
-    @api.marshal_list_with(vendor_risk_model)
     @login_required
+    @api.marshal_list_with(vendor_risk_model)
     def get(self):
         """Get vendor risk assessment for all vendors"""
         vendors = VendorOrganization.query.all()
@@ -538,8 +538,8 @@ capability_process_model = api.model(
 @ns_apqc.route("/processes")
 class APQCProcessList(Resource):
     @api.doc("list_apqc_processes", params={"category": "Filter by APQC category", "level": "Filter by process level (1-3)", "limit": "Max results"})
-    @api.marshal_list_with(apqc_process_model)
     @login_required
+    @api.marshal_list_with(apqc_process_model)
     def get(self):
         """List all APQC PCF processes with optional filtering"""
         query = APQCProcess.query
@@ -563,8 +563,8 @@ class APQCProcessList(Resource):
 @api.response(404, "Process not found")
 class APQCProcessDetail(Resource):
     @api.doc("get_apqc_process")
-    @api.marshal_with(apqc_process_model)
     @login_required
+    @api.marshal_with(apqc_process_model)
     def get(self, id):
         """Get an APQC process by ID"""
         process = APQCProcess.query.get_or_404(id)
@@ -738,8 +738,8 @@ class VendorAPQCComparison(Resource):
 @ns_apqc.route("/capability-mappings")
 class CapabilityProcessMappingList(Resource):
     @api.doc("list_capability_process_mappings", params={"capability_id": "Filter by capability ID", "process_id": "Filter by APQC process ID", "relationship_type": "Filter by relationship type"})
-    @api.marshal_list_with(capability_process_model)
     @login_required
+    @api.marshal_list_with(capability_process_model)
     def get(self):
         """List capability-to-process mappings"""
         query = CapabilityProcessMapping.query

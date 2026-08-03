@@ -73,6 +73,33 @@ def init_extensions(app):
         form = LoginForm()
         return render_template("account/login.html", form=form), 400
 
+    from werkzeug.exceptions import HTTPException
+
+    @app.errorhandler(HTTPException)
+    def handle_http_exception_on_api(e):
+        """An /api/ path must answer in JSON even when it is refusing.
+
+        A front end that asks for JSON and receives an HTML error page fails at
+        JSON.parse, so the user sees a generic script error instead of "you do
+        not have access" - the refusal is correct and the explanation is lost.
+        Flask-Login's unauthorized_handler already does this for the routes it
+        guards, but abort(401)/abort(403) raised by a role decorator bypasses it
+        and renders HTML.
+
+        Everything outside /api/ is returned untouched, so ordinary pages keep
+        their existing error templates. Blueprint-level handlers are more
+        specific than this one and still win where they are registered.
+        """
+        from flask import jsonify, request
+
+        if not request.path.startswith("/api/"):
+            return e
+        return jsonify({
+            "success": False,
+            "error": e.description,
+            "error_type": (e.name or "error").lower().replace(" ", "_"),
+        }), e.code
+
     from sqlalchemy.orm.exc import StaleDataError
 
     @app.errorhandler(StaleDataError)
