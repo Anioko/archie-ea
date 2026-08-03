@@ -595,8 +595,10 @@ def design_solution():
         constraints = data.get("constraints")
         include_vendor_analysis = data.get("include_vendor_analysis", True)
 
-        # Gather RAG context (best-effort — never crashes the endpoint)
+        # Gather RAG context (best-effort — never crashes the endpoint).
+        # Bound before the try: retrieval failure must leave these defined.
         _rag_context = ""
+        rag_ctx = None
         try:
             from app.services.architecture_rag_service import ArchitectureRAGService
             rag_svc = ArchitectureRAGService()
@@ -615,6 +617,10 @@ def design_solution():
             requirements=requirements,
             constraints=constraints,
             include_vendor_analysis=include_vendor_analysis,
+            # The structured dict, not the formatted string: the ranker matches
+            # option text against individual principles and prior decisions, and
+            # needs them as rows to name which one matched.
+            rag_context=rag_ctx,
         )
         # design_solution() cannot consume rag_context: it is deterministic — it
         # ranks vendor/build/hybrid options from the capability, vendors and
@@ -1823,8 +1829,10 @@ def analyze_gap():
         target_coverage = data.get("target_coverage", 100.0)
         include_solutions = data.get("include_solutions", True)
 
-        # Gather RAG context (best-effort — never crashes the endpoint)
+        # Gather RAG context (best-effort — never crashes the endpoint).
+        # Bound before the try: retrieval failure must leave these defined.
         _rag_context = ""
+        rag_ctx = None
         try:
             from app.services.architecture_rag_service import ArchitectureRAGService
             rag_svc = ArchitectureRAGService()
