@@ -104,7 +104,7 @@
                                         <span class="text-[10px] text-muted-foreground font-mono w-28 pt-0.5 shrink-0" x-text="field"></span>
                                         <div class="flex flex-wrap gap-1">
                                             <template x-for="val in (meta.detected_values || [])" :key="val">
-                                                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-blue-500/10 text-primary border border-blue-500/20"
+                                                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-info/10 text-primary border border-blue-500/20"
                                                       x-text="val"></span>
                                             </template>
                                             <span x-show="!meta.detected_values || meta.detected_values.length === 0"

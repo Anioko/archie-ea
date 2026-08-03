@@ -1306,7 +1306,7 @@
                                 <p class="text-xs text-muted-foreground mb-2">Linked Items</p>
                                 <div class="flex flex-wrap gap-1.5">
                                     <template x-for="id in (card ? card.requirement_ids || [] : [])" :key="'r'+id">
-                                        <span class="inline-flex items-center px-2 py-0.5 text-xs rounded bg-blue-500/10 text-primary"
+                                        <span class="inline-flex items-center px-2 py-0.5 text-xs rounded bg-info/10 text-primary"
                                               x-text="'REQ-' + String(id).padStart(3,'0')"></span>
                                     </template>
                                     <template x-for="id in (card ? card.goal_ids || [] : [])" :key="'g'+id">
@@ -1936,7 +1936,7 @@
                 });
             },
             phaseClass: function(phase) {
-                let map = { 'PRELIM':'bg-slate-500/10 text-slate-600', 'A':'bg-blue-500/10 text-primary', 'B':'bg-emerald-500/10 text-emerald-600', 'C':'bg-violet-500/10 text-violet-600', 'D':'bg-orange-500/10 text-orange-600', 'E':'bg-amber-500/10 text-amber-600', 'F':'bg-cyan-500/10 text-cyan-600', 'G':'bg-rose-500/10 text-rose-600', 'H':'bg-indigo-500/10 text-primary', 'REQ':'bg-gray-500/10 text-muted-foreground' };
+                let map = { 'PRELIM':'bg-slate-500/10 text-slate-600', 'A':'bg-info/10 text-primary', 'B':'bg-emerald-500/10 text-emerald-600', 'C':'bg-violet-500/10 text-violet-600', 'D':'bg-orange-500/10 text-orange-600', 'E':'bg-amber-500/10 text-amber-600', 'F':'bg-cyan-500/10 text-cyan-600', 'G':'bg-rose-500/10 text-rose-600', 'H':'bg-indigo-500/10 text-primary', 'REQ':'bg-gray-500/10 text-muted-foreground' };
                 return map[phase] || 'bg-muted text-muted-foreground';
             },
             priorityClass: function(priority) {

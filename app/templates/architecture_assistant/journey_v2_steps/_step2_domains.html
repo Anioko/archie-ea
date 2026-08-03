@@ -109,7 +109,7 @@
                         <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium"
                               :class="{
                                   'bg-purple-500/10 text-purple-600 border border-purple-500/20': getDomainTier(code) === 'differentiating',
-                                  'bg-blue-500/10 text-blue-600 border border-blue-500/20': getDomainTier(code) === 'important',
+                                  'bg-info/10 text-info border border-blue-500/20': getDomainTier(code) === 'important',
                                   'bg-zinc-500/10 text-zinc-500 border border-zinc-500/20': getDomainTier(code) === 'standard'
                               }"
                               x-text="getDomainTier(code)"></span>
@@ -172,7 +172,7 @@
                                                   'bg-zinc-100 text-zinc-500': el.source === 'baseline',
                                                   'bg-purple-100 text-purple-600': el.source === 'llm',
                                                   'bg-amber-100 text-amber-600': el.source === 'industry_overlay',
-                                                  'bg-blue-100 text-blue-600': el.source === 'cross_domain',
+                                                  'bg-blue-100 text-info': el.source === 'cross_domain',
                                                   'bg-emerald-100 text-emerald-600': el.source === 'user'
                                               }"
                                               x-text="el.source === 'industry_overlay' ? 'Ins.' : (el.source === 'cross_domain' ? 'Chain' : el.source)"></span>
@@ -365,7 +365,7 @@
                                 {# Capability context — shown after confirmation if context was returned #}
                                 <template x-if="domainsData[code] && domainsData[code].capability_context && domainsData[code].capability_context.total">
                                     <div class="flex flex-wrap gap-1">
-                                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium bg-blue-500/10 text-blue-600 border border-blue-500/20"
+                                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium bg-info/10 text-info border border-blue-500/20"
                                               x-text="domainsData[code].capability_context.total + ' capabilities'"></span>
                                         <span x-show="domainsData[code].capability_context.foundational_count > 0"
                                               class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/20"

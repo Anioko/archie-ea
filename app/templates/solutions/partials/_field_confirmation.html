@@ -28,7 +28,7 @@
                 title="Pre-populated from vendor template — spot-check field names before confirming"></span>
         </template>
         <template x-if="summary.schema_imported > 0">
-          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-blue-500/10 text-blue-600 border border-blue-500/30"
+          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-info/10 text-info border border-info/30"
                 x-text="`${summary.schema_imported} schema-imported`"
                 title="Imported from your DDL/OpenAPI/CDS — high fidelity, confirm to lock in"></span>
         </template>
@@ -186,7 +186,7 @@
              : el.fields_status === 'vendor_seeded'
                ? 'border-violet-500/30 bg-violet-500/5'
                : el.fields_status === 'schema_imported'
-                 ? 'border-blue-500/30 bg-blue-500/5'
+                 ? 'border-info/30 bg-blue-500/5'
                  : el.fields.length > 0
                    ? 'border-amber-500/30 bg-amber-500/5'
                    : 'border-border bg-card'">
@@ -219,7 +219,7 @@
                 class="text-[11px] font-semibold text-violet-600 shrink-0"
                 title="Pre-populated from vendor template — spot-check before confirming">&#9670; Vendor-seeded</span>
           <span x-show="el.fields_status === 'schema_imported'"
-                class="text-[11px] font-semibold text-blue-600 shrink-0"
+                class="text-[11px] font-semibold text-info shrink-0"
                 title="Imported from DDL/OpenAPI/CDS — confirm to lock in">&#9642; Schema-imported</span>
 
           {# Chevron #}
@@ -369,7 +369,7 @@
                         class="px-2.5 py-1 rounded border border-border text-[11px] text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors">
                   Edit
                 </button>
-                <span class="text-[10px] text-blue-600">From your schema — confirm to lock in for codegen</span>
+                <span class="text-[10px] text-info">From your schema — confirm to lock in for codegen</span>
               </div>
             </template>
 

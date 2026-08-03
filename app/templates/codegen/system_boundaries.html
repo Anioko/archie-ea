@@ -91,7 +91,7 @@
                                 <span class="text-[10px] text-muted-foreground" x-text="':' + (svc.service_port || '?')"></span>
                                 <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
                                       :class="{
-                                          'bg-blue-500/10 text-blue-600': svc.role === 'producer',
+                                          'bg-info/10 text-info': svc.role === 'producer',
                                           'bg-amber-500/10 text-amber-600': svc.role === 'consumer',
                                           'bg-muted text-muted-foreground': svc.role === 'service',
                                       }"
@@ -273,7 +273,7 @@
                         <template x-for="(c, i) in (artifactsBoundary && artifactsBoundary.generated_artifacts ? artifactsBoundary.generated_artifacts.contracts : [])" :key="i">
                             <div class="rounded-lg border border-border bg-muted/10 px-4 py-3">
                                 <div class="flex items-center gap-2 mb-1">
-                                    <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-blue-600 border border-blue-500/20"
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-info/10 text-info border border-blue-500/20"
                                           x-text="c.method"></span>
                                     <span class="text-xs font-mono text-foreground" x-text="c.endpoint"></span>
                                 </div>

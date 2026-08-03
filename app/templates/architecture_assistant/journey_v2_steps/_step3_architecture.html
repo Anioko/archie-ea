@@ -138,7 +138,7 @@
                              @click="expandedLayers['app-' + (app.app_id || idx)] = !expandedLayers['app-' + (app.app_id || idx)]">
                             <div class="flex items-center gap-3 min-w-0">
                                 <span class="flex items-center justify-center w-10 h-10 rounded-lg shrink-0"
-                                      :class="app.is_decommissioning ? 'bg-destructive/10 border border-red-500/20' : 'bg-blue-500/10 border border-blue-500/20'">
+                                      :class="app.is_decommissioning ? 'bg-destructive/10 border border-red-500/20' : 'bg-info/10 border border-blue-500/20'">
                                     <svg :class="app.is_decommissioning ? 'text-red-500' : 'text-blue-500'" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8m-4-4v4"/></svg>
                                 </span>
                                 <div class="min-w-0">
@@ -601,7 +601,7 @@
                     ('motivation', 'Motivation', 'text-violet-600', 'bg-violet-500/10', 'border-violet-500/20', 'bg-violet-500', 'hover:border-violet-500/30'),
                     ('strategy', 'Strategy', 'text-rose-600', 'bg-rose-500/10', 'border-rose-500/20', 'bg-rose-500', 'hover:border-rose-500/30'),
                     ('business', 'Business', 'text-amber-600', 'bg-amber-500/10', 'border-amber-500/20', 'bg-amber-500', 'hover:border-amber-500/30'),
-                    ('application', 'Application', 'text-blue-600', 'bg-blue-500/10', 'border-blue-500/20', 'bg-blue-500', 'hover:border-blue-500/30'),
+                    ('application', 'Application', 'text-info', 'bg-info/10', 'border-blue-500/20', 'bg-blue-500', 'hover:border-info/30'),
                     ('technology', 'Technology', 'text-emerald-600', 'bg-emerald-500/10', 'border-emerald-500/20', 'bg-emerald-500', 'hover:border-emerald-500/30'),
                     ('implementation', 'Implementation', 'text-sky-600', 'bg-sky-500/10', 'border-sky-500/20', 'bg-sky-500', 'hover:border-sky-500/30'),
                 ] %}

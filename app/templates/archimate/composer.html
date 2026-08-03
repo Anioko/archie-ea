@@ -540,7 +540,7 @@ nav[aria-label="Composer toolbar"] { margin-bottom: 0 !important; }
 {% block content %}
 {# AIC-318: workspace return banner — visible when composer was opened for a solution that has an active workspace #}
 {% if solution_id %}
-<div class="bg-blue-500/10 border-b border-blue-500/30 text-primary dark:text-blue-400 px-4 py-2 text-sm flex items-center gap-2" role="alert" data-testid="composer-workspace-banner">
+<div class="bg-info/10 border-b border-info/30 text-primary dark:text-blue-400 px-4 py-2 text-sm flex items-center gap-2" role="alert" data-testid="composer-workspace-banner">
   <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
   Composer is optional for ordinary workflows.
   <a href="{{ url_for('unified_ai_chat.index') }}?element_id={{ solution_id }}&context_type=solution" class="font-medium underline hover:no-underline ml-1">Return to AI Chat &rarr;</a>
@@ -1255,7 +1255,7 @@ nav[aria-label="Composer toolbar"] { margin-bottom: 0 !important; }
                                               :class="{
                                                   'bg-emerald-500/10 text-emerald-700': entry.action.indexOf('added') !== -1,
                                                   'bg-destructive/10 text-destructive': entry.action.indexOf('removed') !== -1,
-                                                  'bg-blue-500/10 text-primary': entry.action.indexOf('added') === -1 && entry.action.indexOf('removed') === -1,
+                                                  'bg-info/10 text-primary': entry.action.indexOf('added') === -1 && entry.action.indexOf('removed') === -1,
                                               }"
                                               x-text="entry.action.replace(/_/g, ' ')"></span>
                                         <span class="font-medium text-foreground" x-text="entry.entity_name || ''"></span>

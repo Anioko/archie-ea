@@ -51,7 +51,7 @@
         <!-- Confirmed specs ready to lock into UML -->
         {% if confirmed_specs_count > 0 %}
         <div x-show="phase >= 2 && !applyingSpecs" x-cloak
-             class="mb-4 flex items-start gap-3 rounded-lg border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-sm text-blue-700">
+             class="mb-4 flex items-start gap-3 rounded-lg border border-info/30 bg-info/10 px-4 py-3 text-sm text-blue-700">
             <i data-lucide="lock" class="h-4 w-4 mt-0.5 shrink-0"></i>
             <div class="flex-1">
                 <strong>{{ confirmed_specs_count }} confirmed spec{{ 's' if confirmed_specs_count != 1 else '' }}</strong>
@@ -333,7 +333,7 @@
                     {% if confirmed_specs_count > 0 %}
                     {% set spec_s = 's' if confirmed_specs_count != 1 else '' %}
                     <button @click="applySpecs()" :disabled="applyingSpecs || !uml"
-                            class="inline-flex items-center gap-2 rounded-md border border-blue-500/40 bg-blue-500/10 text-blue-700 px-4 py-2 text-sm font-medium hover:bg-blue-500/20 disabled:opacity-50 transition-colors"
+                            class="inline-flex items-center gap-2 rounded-md border border-blue-500/40 bg-info/10 text-blue-700 px-4 py-2 text-sm font-medium hover:bg-blue-500/20 disabled:opacity-50 transition-colors"
                             title="Lock {{ confirmed_specs_count }} confirmed field spec{{ spec_s }} into UML classes">
                         <i data-lucide="lock" class="h-4 w-4"></i>
                         <span x-text="applyingSpecs ? 'Applying…' : 'Apply {{ confirmed_specs_count }} Confirmed Spec{{ spec_s }}'"></span>

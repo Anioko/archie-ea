@@ -70,7 +70,7 @@
                 <span :class="{
                   'bg-destructive/10 text-destructive border-destructive/30': gap.severity === 'critical',
                   'bg-amber-500/10 text-amber-600 border-amber-500/30': gap.severity === 'high',
-                  'bg-blue-500/10 text-primary border-blue-500/30': gap.severity === 'medium',
+                  'bg-info/10 text-primary border-info/30': gap.severity === 'medium',
                   'bg-muted text-muted-foreground border-border': gap.severity === 'low'
                 }" class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium border"
                   x-text="gap.severity"></span>
@@ -107,7 +107,7 @@
       <template x-for="layer in affectedLayers" :key="layer">
         <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium border"
           :class="{
-            'bg-blue-500/10 text-primary border-blue-500/30': layer === 'Business',
+            'bg-info/10 text-primary border-info/30': layer === 'Business',
             'bg-emerald-500/10 text-emerald-600 border-emerald-500/30': layer === 'Application',
             'bg-amber-500/10 text-amber-600 border-amber-500/30': layer === 'Technology',
             'bg-purple-500/10 text-primary border-purple-500/30': layer === 'Motivation'

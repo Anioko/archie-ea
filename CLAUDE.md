@@ -27,7 +27,7 @@ skipping.
 
 Several gates are **ratchets**: they compare a measurement against
 `verification_baseline.json` and fail when it gets worse. The tree carries known debt
-(296 undefined names, 1255 raw-Tailwind-colour uses), so the gate is "no worse", not
+(739 raw-Tailwind-colour uses; the undefined-name and lint debt is now cleared), so the gate is "no worse", not
 "clean". Lowering a baseline is routine — `python scripts/verify.py --update-baseline`
 after a cleanup. Raising one is a regression that must be justified in review.
 
@@ -39,6 +39,8 @@ after a cleanup. Raising one is a regression that must be justified in review.
 | `redefinitions` | shadowed definitions (ruff F811) | ratchet |
 | `lint-core` | correctness lint (ruff `F,E4,E7,E9`) | ratchet |
 | `design-tokens` | raw Tailwind colours (DESIGN.md rule) | ratchet |
+| `sri` | `integrity=` hash not matching the file it guards | must be 0 |
+| `css-build` | committed `tailwind-output.css` stale vs a rebuild | must pass (needs Tailwind CLI) |
 | `boot-health` | unregistered blueprints; unresolved `url_for` | must pass |
 | `schema-drift` | ORM/database column drift | must pass (needs DB) |
 | `tests` | behavioural regression | must pass (needs DB) |

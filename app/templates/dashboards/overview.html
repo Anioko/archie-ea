@@ -514,7 +514,7 @@
                         {% for level, bg, text in [
                             ('critical', 'bg-destructive/10 border-destructive/30', 'text-destructive'),
                             ('high', 'bg-amber-500/10 border-amber-500/30', 'text-amber-600'),
-                            ('medium', 'bg-blue-500/10 border-blue-500/30', 'text-primary'),
+                            ('medium', 'bg-info/10 border-info/30', 'text-primary'),
                             ('low', 'bg-emerald-500/10 border-emerald-500/30', 'text-emerald-600'),
                         ] %}
                         {% set count = (persona_metrics.get('cto') or {}).get('risk_counts', {}).get(level, 0) %}

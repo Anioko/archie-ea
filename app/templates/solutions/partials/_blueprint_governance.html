@@ -606,7 +606,7 @@
                                 </div>
                             </div>
                             <div class="flex items-center gap-1.5 flex-wrap">
-                                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-blue-500/10 text-primary border border-blue-500/30" x-text="(c.protocol || 'rest').toUpperCase()"></span>
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-info/10 text-primary border border-info/30" x-text="(c.protocol || 'rest').toUpperCase()"></span>
                                 <span x-show="c.auth_method" class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-violet-500/10 text-violet-600 border border-violet-500/30" x-text="c.auth_method"></span>
                                 <span x-show="c.base_url" class="text-[10px] text-muted-foreground truncate max-w-[140px]" x-text="c.base_url" :title="c.base_url"></span>
                             </div>
@@ -663,7 +663,7 @@
 
                 {# Conditional auth config fields #}
                 <template x-if="form.auth_method === 'oauth2'">
-                    <div class="space-y-2 pl-2 border-l-2 border-blue-500/30">
+                    <div class="space-y-2 pl-2 border-l-2 border-info/30">
                         <div><label class="text-[10px] text-muted-foreground block mb-0.5">Token URL</label>
                         <input type="url" x-model="form.auth_config.token_url" placeholder="https://auth.example.com/oauth/token" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary"  aria-label="Token URL"/></div>
                         <div><label class="text-[10px] text-muted-foreground block mb-0.5">Client ID env var</label>
@@ -673,7 +673,7 @@
                     </div>
                 </template>
                 <template x-if="form.auth_method === 'api_key'">
-                    <div class="space-y-2 pl-2 border-l-2 border-blue-500/30">
+                    <div class="space-y-2 pl-2 border-l-2 border-info/30">
                         <div><label class="text-[10px] text-muted-foreground block mb-0.5">Header name</label>
                         <input type="text" x-model="form.auth_config.api_key_header" placeholder="X-API-Key" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary"  aria-label="Header name"/></div>
                         <div><label class="text-[10px] text-muted-foreground block mb-0.5">Env var name</label>
@@ -681,7 +681,7 @@
                     </div>
                 </template>
                 <template x-if="form.auth_method === 'basic'">
-                    <div class="space-y-2 pl-2 border-l-2 border-blue-500/30">
+                    <div class="space-y-2 pl-2 border-l-2 border-info/30">
                         <div><label class="text-[10px] text-muted-foreground block mb-0.5">Username env var</label>
                         <input type="text" x-model="form.auth_config.username_env" placeholder="BASIC_USER" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary"  aria-label="Username env var"/></div> <!-- entity-picker-ok: env var name, not a user reference -->
                         <div><label class="text-[10px] text-muted-foreground block mb-0.5">Password env var</label>
@@ -689,7 +689,7 @@
                     </div>
                 </template>
                 <template x-if="form.auth_method === 'mtls'">
-                    <div class="space-y-2 pl-2 border-l-2 border-blue-500/30">
+                    <div class="space-y-2 pl-2 border-l-2 border-info/30">
                         <div><label class="text-[10px] text-muted-foreground block mb-0.5">Cert path env var</label>
                         <input type="text" x-model="form.auth_config.cert_path_env" placeholder="MTLS_CERT_PATH" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary"  aria-label="Cert path env var"/></div>
                         <div><label class="text-[10px] text-muted-foreground block mb-0.5">Key path env var</label>

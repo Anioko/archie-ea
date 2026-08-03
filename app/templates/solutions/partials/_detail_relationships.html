@@ -46,7 +46,7 @@
         typeBadgeClass(t) {
             const cat = this.typeCategory(t);
             const map = {
-                structural: 'bg-blue-500/10 text-primary border-blue-500/30',
+                structural: 'bg-info/10 text-primary border-info/30',
                 dependency: 'bg-amber-500/10 text-amber-600 border-amber-500/30',
                 dynamic:    'bg-emerald-500/10 text-emerald-600 border-emerald-500/30',
                 other:      'bg-gray-500/10 text-muted-foreground border-gray-500/30'
@@ -263,7 +263,7 @@
                 motivation: 'bg-purple-500/10 text-primary border-purple-500/30',
                 strategy: 'bg-rose-500/10 text-rose-600 border-rose-500/30',
                 business: 'bg-amber-500/10 text-amber-600 border-amber-500/30',
-                application: 'bg-blue-500/10 text-primary border-blue-500/30',
+                application: 'bg-info/10 text-primary border-info/30',
                 technology: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30'
             };
             return map[(layer || '').toLowerCase()] || 'bg-muted text-muted-foreground border-border';

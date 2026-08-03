@@ -99,7 +99,7 @@
                             <span
                                 class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
                                 x-bind:class="spec.spec_type === 'openapi'
-                                    ? 'bg-blue-500/10 text-blue-600 border border-blue-500/30'
+                                    ? 'bg-info/10 text-info border border-info/30'
                                     : 'bg-purple-500/10 text-purple-600 border border-purple-500/30'"
                                 x-text="spec.spec_type || '—'"
                             ></span>
@@ -160,7 +160,7 @@
                                                 class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-mono font-bold w-14 justify-center"
                                                 x-bind:class="{
                                                     'bg-green-500/10 text-green-600': ep.method === 'GET',
-                                                    'bg-blue-500/10 text-blue-600': ep.method === 'POST',
+                                                    'bg-info/10 text-info': ep.method === 'POST',
                                                     'bg-yellow-500/10 text-yellow-600': ep.method === 'PUT' || ep.method === 'PATCH',
                                                     'bg-destructive/10 text-destructive': ep.method === 'DELETE',
                                                 }"

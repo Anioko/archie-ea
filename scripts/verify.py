@@ -258,6 +258,34 @@ def gate_sri() -> Result:
     return Result("sri", PASS if count == 0 else FAIL, detail, count, 0)
 
 
+def gate_css_build() -> Result:
+    """The committed tailwind-output.css matches what a rebuild produces.
+
+    CSS ships pre-built so a fresh clone renders without a Node toolchain. The
+    cost is that editing a template's classes and not rebuilding leaves the two
+    out of sync, and the failure is silent and one-directional: a class that is
+    not in the built CSS renders as NOTHING. No request fails, no test notices.
+
+    This gate exists because that is exactly what happened while migrating the
+    red status badges to the destructive token — the classes involved already
+    existed, so nothing broke, but the committed CSS still carried dead rules for
+    the removed ones and no gate could see the drift.
+
+    SKIPs when the Tailwind CLI is absent, which is the common case on a fresh
+    clone: the binary is gitignored at scripts/bin/tailwindcss[.exe]. A SKIP is
+    printed in the summary and never counts as a pass.
+    """
+    proc = _run([sys.executable, "scripts/build_css.py", "--check"])
+    output = proc.stdout + proc.stderr
+    if "Tailwind CLI unavailable" in output or "SKIP" in output:
+        return Result("css-build", SKIP,
+                      "Tailwind CLI not installed (scripts/bin/tailwindcss[.exe]); "
+                      "cannot verify the committed CSS")
+    if proc.returncode == 0:
+        return Result("css-build", PASS, "committed CSS matches a rebuild")
+    return Result("css-build", FAIL, output.strip()[-800:])
+
+
 def gate_vendor_integrity() -> Result:
     """Vendored assets match their recorded provenance.
 
@@ -395,6 +423,10 @@ def build_gates(baseline: dict) -> list[Gate]:
              lambda: gate_air_gap(baseline["air_gap"]),
              remediation="vendor the asset into app/static/ and use url_for('static', ...)",
              tags=["static", "ui", "airgap"]),
+        Gate("css-build", "committed tailwind-output.css matches a rebuild", "command",
+             gate_css_build,
+             remediation="python scripts/build_css.py   and commit the result",
+             tags=["static", "ui"]),
         Gate("sri", "Subresource Integrity hashes match their files", "zero",
              gate_sri,
              remediation="recompute the hash for the file the tag actually loads",

@@ -71,7 +71,7 @@
 
 {# AIC-318: workspace return banner — visible when an active AI chat workspace is linked #}
 {% if active_workspace_id %}
-<div class="bg-blue-500/10 border-b border-blue-500/30 text-blue-700 dark:text-blue-400 px-4 py-2 text-sm flex items-center gap-2" role="alert" data-testid="workspace-return-banner">
+<div class="bg-info/10 border-b border-info/30 text-blue-700 dark:text-blue-400 px-4 py-2 text-sm flex items-center gap-2" role="alert" data-testid="workspace-return-banner">
   <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
   This solution has an active AI workspace.
   <a href="{{ url_for('unified_ai_chat.index') }}?workspace={{ active_workspace_id }}" class="font-medium underline hover:no-underline ml-1">Return to Chat Workspace &rarr;</a>
@@ -1475,7 +1475,7 @@
         <div class="rounded-xl border border-border bg-card divide-y divide-border overflow-hidden">
           {% for plateau in plateaus_list %}
           <div class="flex items-center gap-3 px-5 py-3 hover:bg-muted/20">
-            <span class="flex items-center justify-center w-8 h-8 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-bold shrink-0">{{ loop.index }}</span>
+            <span class="flex items-center justify-center w-8 h-8 rounded-lg bg-info/10 border border-blue-500/20 text-blue-400 text-xs font-bold shrink-0">{{ loop.index }}</span>
             <div class="flex-1 min-w-0">
               <p class="text-sm font-medium text-foreground">{{ plateau.get('name') or plateau.get('title') or 'Plateau ' ~ loop.index }}</p>
               <p class="text-[10px] text-muted-foreground">{{ plateau.get('description', '') | truncate(100) }}</p>
@@ -1490,7 +1490,7 @@
         <div class="rounded-xl border border-border bg-card divide-y divide-border overflow-hidden">
           {% for phase in investment_phases %}
           <div class="flex items-center gap-3 px-5 py-3 hover:bg-muted/20">
-            <span class="flex items-center justify-center w-8 h-8 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-bold shrink-0">{{ phase.get('phase_number', loop.index) }}</span>
+            <span class="flex items-center justify-center w-8 h-8 rounded-lg bg-info/10 border border-blue-500/20 text-blue-400 text-xs font-bold shrink-0">{{ phase.get('phase_number', loop.index) }}</span>
             <div class="flex-1 min-w-0">
               <p class="text-sm font-medium text-foreground">{{ phase.get('name') or phase.get('title') or 'Phase ' ~ loop.index }}</p>
               {% if phase.get('budget') %}<p class="text-[10px] text-muted-foreground">Budget: {{ currency_symbol }}{{ '{:,.0f}'.format(phase.get('budget')) }}</p>{% endif %}
@@ -1677,7 +1677,7 @@
                 <td class="px-3 py-2.5 font-medium">{{ adr.title or 'Untitled' }}</td>
                 <td class="px-3 py-2.5">
                   {% set adr_status = (adr.status or 'draft') | lower %}
-                  <span class="text-[10px] px-1.5 py-0.5 rounded {% if adr_status == 'accepted' or adr_status == 'approved' %}bg-emerald-500/10 text-emerald-400{% elif adr_status == 'proposed' %}bg-amber-500/10 text-amber-400{% elif adr_status == 'superseded' or adr_status == 'deprecated' %}bg-muted text-muted-foreground{% else %}bg-blue-500/10 text-blue-400{% endif %}">{{ adr_status | title }}</span>
+                  <span class="text-[10px] px-1.5 py-0.5 rounded {% if adr_status == 'accepted' or adr_status == 'approved' %}bg-emerald-500/10 text-emerald-400{% elif adr_status == 'proposed' %}bg-amber-500/10 text-amber-400{% elif adr_status == 'superseded' or adr_status == 'deprecated' %}bg-muted text-muted-foreground{% else %}bg-info/10 text-blue-400{% endif %}">{{ adr_status | title }}</span>
                 </td>
                 <td class="px-3 py-2.5 text-xs text-muted-foreground">{{ (adr.decision or '')[:80] }}{% if (adr.decision or '') | length > 80 %}&hellip;{% endif %}</td>
               </tr>

@@ -613,7 +613,7 @@
                                 <div class="flex items-center gap-2 px-2 py-1.5 rounded-md border border-border bg-muted/20 text-xs">
                                     <input type="checkbox" x-model="p.checked" class="rounded border-input">
                                     <span class="font-medium text-foreground" x-text="p.source_name"></span>
-                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-primary border border-blue-500/30"
+                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-info/10 text-primary border border-info/30"
                                           x-text="(p.relationship_type || '').charAt(0).toUpperCase() + (p.relationship_type || '').slice(1)"></span>
                                     <span class="font-medium text-foreground" x-text="p.target_name"></span>
                                     <span class="ml-auto inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border"
@@ -658,7 +658,7 @@
                      toneClass(tone) {
                          return tone === 'good'  ? 'bg-emerald-500/10 text-emerald-700 border-emerald-500/30'
                               : tone === 'warn'  ? 'bg-amber-500/10 text-amber-700 border-amber-500/30'
-                              : 'bg-blue-500/10 text-blue-700 border-blue-500/30';
+                              : 'bg-info/10 text-blue-700 border-info/30';
                      },
                      async load() {
                          if (this.bpLoaded || this.bpLoading || !this.bpSid) return;

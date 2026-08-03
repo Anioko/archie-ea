@@ -117,7 +117,7 @@
                             <template x-if="opt.option_type">
                                 <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium"
                                       :class="{
-                                          'bg-blue-500/10 text-primary border border-blue-500/30': opt.option_type === 'build',
+                                          'bg-info/10 text-primary border border-info/30': opt.option_type === 'build',
                                           'bg-emerald-500/10 text-emerald-600 border border-emerald-500/30': opt.option_type === 'buy',
                                           'bg-purple-500/10 text-primary border border-purple-500/30': opt.option_type === 'hybrid',
                                           'bg-zinc-500/10 text-zinc-600 border border-zinc-500/30': true
@@ -191,7 +191,7 @@
                              :class="{
                                  'bg-rose-500/10 text-rose-600': phase.phase_order === 0,
                                  'bg-cyan-500/10 text-cyan-600': phase.phase_order === 1,
-                                 'bg-blue-500/10 text-primary': phase.phase_order === 2,
+                                 'bg-info/10 text-primary': phase.phase_order === 2,
                                  'bg-amber-500/10 text-amber-600': phase.phase_order === 3,
                                  'bg-sky-500/10 text-sky-600': phase.phase_order === 4
                              }"
@@ -258,7 +258,7 @@
                                             :class="{
                                                 'border-border bg-background text-muted-foreground': !el.implementation_status,
                                                 'border-zinc-400/40 bg-zinc-500/10 text-zinc-600': el.implementation_status === 'not_started',
-                                                'border-blue-400/40 bg-blue-500/10 text-primary': el.implementation_status === 'in_progress',
+                                                'border-blue-400/40 bg-info/10 text-primary': el.implementation_status === 'in_progress',
                                                 'border-emerald-400/40 bg-emerald-500/10 text-emerald-600': el.implementation_status === 'complete',
                                                 'border-red-400/40 bg-destructive/10 text-destructive': el.implementation_status === 'blocked'
                                             }">

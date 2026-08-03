@@ -635,11 +635,11 @@
                         <div class="flex items-center gap-3 mb-2">
                             <div class="w-1 h-5 rounded-full bg-primary"></div>
                             <p class="text-sm font-semibold text-foreground">Live Frontend Preview</p>
-                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-primary border border-blue-500/30">Instant · No GitHub needed</span>
+                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-info/10 text-primary border border-info/30">Instant · No GitHub needed</span>
                         </div>
                         <p class="text-[10px] text-muted-foreground mb-2.5 leading-relaxed">Opens the generated Next.js frontend in <strong>StackBlitz WebContainers</strong> — a real Node.js environment running entirely in your browser. See your app live in ~30 seconds with no local setup.</p>
                         <button @click="openStackBlitz()" :disabled="stackBlitzLoading || !fileList.length"
-                                class="w-full h-9 text-xs font-semibold rounded-lg border border-blue-500/30 bg-blue-500/8 hover:bg-blue-500/15 text-primary disabled:opacity-50 transition-colors flex items-center justify-center gap-2">
+                                class="w-full h-9 text-xs font-semibold rounded-lg border border-info/30 bg-blue-500/8 hover:bg-blue-500/15 text-primary disabled:opacity-50 transition-colors flex items-center justify-center gap-2">
                             <svg x-show="stackBlitzLoading" x-cloak class="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
                             <!-- StackBlitz bolt icon -->
                             <svg x-show="!stackBlitzLoading" class="w-3.5 h-3.5" viewBox="0 0 28 28" fill="currentColor"><path d="M14.5 2L4 16h9.5L12 26l12-14h-9.5z"/></svg>
@@ -770,19 +770,19 @@ eas build --platform android --profile preview</pre>
                         <!-- Action buttons (shown after upload) -->
                         <div x-show="snackUrl" x-cloak class="flex gap-2 mb-3">
                             <a :href="snackUrl" target="_blank" rel="noopener noreferrer"
-                               class="flex-1 h-7 px-2.5 text-[10px] font-semibold rounded-md border border-blue-500/30 bg-blue-500/10 hover:bg-blue-500/20 text-primary flex items-center justify-center gap-1.5">
+                               class="flex-1 h-7 px-2.5 text-[10px] font-semibold rounded-md border border-info/30 bg-info/10 hover:bg-blue-500/20 text-primary flex items-center justify-center gap-1.5">
                                 <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"/></svg>
                                 Open in Tab
                             </a>
                             <button @click="showEmbed = !showEmbed"
-                                    :class="showEmbed ? 'bg-primary text-primary-foreground' : 'bg-blue-500/10 text-primary'"
-                                    class="flex-1 h-7 px-2.5 text-[10px] font-semibold rounded-md border border-blue-500/30 hover:bg-blue-500/20 flex items-center justify-center gap-1.5 transition-colors">
+                                    :class="showEmbed ? 'bg-primary text-primary-foreground' : 'bg-info/10 text-primary'"
+                                    class="flex-1 h-7 px-2.5 text-[10px] font-semibold rounded-md border border-info/30 hover:bg-blue-500/20 flex items-center justify-center gap-1.5 transition-colors">
                                 <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3"/></svg>
                                 Simulator
                             </button>
                             <button @click="showQr = !showQr"
-                                    :class="showQr ? 'bg-primary text-primary-foreground' : 'bg-blue-500/10 text-primary'"
-                                    class="h-7 px-2.5 text-[10px] font-semibold rounded-md border border-blue-500/30 hover:bg-blue-500/20 flex items-center justify-center gap-1.5 transition-colors">
+                                    :class="showQr ? 'bg-primary text-primary-foreground' : 'bg-info/10 text-primary'"
+                                    class="h-7 px-2.5 text-[10px] font-semibold rounded-md border border-info/30 hover:bg-blue-500/20 flex items-center justify-center gap-1.5 transition-colors">
                                 <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 013.75 9.375v-4.5zm0 9.75c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5zm9.75-9.75c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0113.5 9.375v-4.5z"/></svg>
                                 QR
                             </button>
@@ -822,7 +822,7 @@ eas build --platform android --profile preview</pre>
                             })
                             .catch(e => { snacking = false; snackError = 'Network error: ' + e.message; })"
                                 :disabled="snacking"
-                                class="w-full h-8 text-xs font-semibold rounded-lg border border-blue-500/30 bg-blue-500/8 hover:bg-blue-500/15 text-primary disabled:opacity-50 transition-colors flex items-center justify-center gap-2">
+                                class="w-full h-8 text-xs font-semibold rounded-lg border border-info/30 bg-blue-500/8 hover:bg-blue-500/15 text-primary disabled:opacity-50 transition-colors flex items-center justify-center gap-2">
                             <svg x-show="snacking" x-cloak class="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
                             <svg x-show="!snacking" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 8.25h3"/></svg>
                             <span x-text="snacking ? 'Uploading to Snack…' : (snackUrl ? 'Re-upload to Snack' : 'Preview in Expo Snack')"></span>

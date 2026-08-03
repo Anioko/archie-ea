@@ -101,7 +101,7 @@
                                   :class="{
                                       'bg-destructive/10 text-destructive border border-destructive/30': gap.severity === 'critical',
                                       'bg-amber-500/10 text-amber-600 border border-amber-500/30': gap.severity === 'high',
-                                      'bg-blue-500/10 text-blue-600 border border-blue-500/30': gap.severity === 'medium',
+                                      'bg-info/10 text-info border border-info/30': gap.severity === 'medium',
                                       'bg-zinc-500/10 text-zinc-600 border border-zinc-500/30': true
                                   }"
                                   x-text="gap.severity || 'unknown'"></span>
@@ -127,7 +127,7 @@
         <button type="button" @click="expandedLayers._variants = !expandedLayers._variants"
                 class="w-full flex items-center justify-between px-5 py-4 hover:bg-muted/30 transition-colors">
             <div class="flex items-center gap-3">
-                <span class="flex items-center justify-center w-8 h-8 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-600">
+                <span class="flex items-center justify-center w-8 h-8 rounded-lg bg-info/10 border border-blue-500/20 text-info">
                     <i data-lucide="git-branch" class="w-4 h-4" aria-hidden="true"></i>
                 </span>
                 <div class="text-left">
@@ -195,7 +195,7 @@
                                         <p class="text-xs font-semibold text-foreground" x-text="opt.name"></p>
                                         <span class="inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium mt-0.5"
                                               :class="{
-                                                'bg-blue-500/10 text-blue-600': opt.approach === 'build',
+                                                'bg-info/10 text-info': opt.approach === 'build',
                                                 'bg-emerald-500/10 text-emerald-600': opt.approach === 'buy',
                                                 'bg-amber-500/10 text-amber-600': opt.approach === 'extend' || opt.approach === 'hybrid',
                                                 'bg-purple-500/10 text-purple-600': opt.approach === 'hybrid',
@@ -290,7 +290,7 @@
                             <div class="flex items-center gap-2 flex-shrink-0">
                                 <span class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold"
                                       :class="{
-                                          'bg-blue-500/10 text-blue-600 border border-blue-500/30': el.value === 'build',
+                                          'bg-info/10 text-info border border-info/30': el.value === 'build',
                                           'bg-emerald-500/10 text-emerald-600 border border-emerald-500/30': el.value === 'buy' || el.value === 'SaaS',
                                           'bg-amber-500/10 text-amber-600 border border-amber-500/30': el.value === 'extend-existing',
                                           'bg-purple-500/10 text-purple-600 border border-purple-500/30': el.value === 'cloud-native' || el.value === 'cloud-hosted',
