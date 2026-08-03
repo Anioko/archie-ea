@@ -68,10 +68,10 @@
 
         <!-- Error banners -->
         <template x-for="err in errors" :key="err.id">
-            <div x-transition class="mb-3 flex items-start gap-3 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-700">
+            <div x-transition class="mb-3 flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-red-700">
                 <i data-lucide="alert-circle" class="h-4 w-4 mt-0.5 shrink-0"></i>
                 <span x-text="err.text" class="flex-1"></span>
-                <button @click="errors = errors.filter(e => e.id !== err.id)" class="shrink-0 text-red-400 hover:text-red-600">
+                <button @click="errors = errors.filter(e => e.id !== err.id)" class="shrink-0 text-red-400 hover:text-destructive">
                     <i data-lucide="x" class="h-3.5 w-3.5"></i>
                 </button>
             </div>
@@ -630,7 +630,7 @@
                                         </div>
                                     </template>
                                     <template x-if="sapImport.error">
-                                        <div class="rounded-md bg-red-500/10 border border-red-500/30 p-3 text-xs">
+                                        <div class="rounded-md bg-destructive/10 border border-destructive/30 p-3 text-xs">
                                             <p class="font-semibold text-destructive">Import error</p>
                                             <p class="text-muted-foreground mt-1" x-text="sapImport.error"></p>
                                         </div>
@@ -742,7 +742,7 @@
             <div x-show="phase >= 4" x-collapse class="border-t border-border px-5 pb-5 pt-4">
                 <!-- Error banners -->
                 <template x-for="err in errors" :key="err.id">
-                    <div x-transition class="mb-3 flex items-start gap-3 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-destructive">
+                    <div x-transition class="mb-3 flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
                         <i data-lucide="alert-circle" class="h-4 w-4 mt-0.5 shrink-0"></i>
                         <span x-text="err.text" class="flex-1"></span>
                         <button @click="errors = errors.filter(e => e.id !== err.id)" class="shrink-0 text-red-400 hover:text-destructive"><i data-lucide="x" class="h-3.5 w-3.5"></i></button>

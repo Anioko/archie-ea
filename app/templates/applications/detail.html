@@ -48,14 +48,14 @@
                 {% elif app.data_freshness_tier == 'stale' %}
                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-amber-500/10 text-amber-600 border border-amber-500/30" title="Last updated: {{ app.updated_at.strftime('%Y-%m-%d') if app.updated_at else 'Never updated' }}">stale</span>
                 {% elif app.data_freshness_tier == 'outdated' %}
-                <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-red-500/10 text-destructive border border-red-500/30" title="Last updated: {{ app.updated_at.strftime('%Y-%m-%d') if app.updated_at else 'Never updated' }}">outdated</span>
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive border border-destructive/30" title="Last updated: {{ app.updated_at.strftime('%Y-%m-%d') if app.updated_at else 'Never updated' }}">outdated</span>
                 {% else %}
                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground border border-border" title="Never updated">unknown</span>
                 {% endif %}
                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium
                     {% if app.completeness_score >= 80 %}bg-emerald-500/10 text-emerald-600 border border-emerald-500/30
                     {% elif app.completeness_score >= 50 %}bg-amber-500/10 text-amber-600 border border-amber-500/30
-                    {% else %}bg-red-500/10 text-destructive border border-red-500/30{% endif %}"
+                    {% else %}bg-destructive/10 text-destructive border border-destructive/30{% endif %}"
                     title="Data completeness: {{ app.completeness_gaps|join(', ') }} gaps">
                     {{ app.completeness_score }}% complete
                 </span>

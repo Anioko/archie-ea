@@ -1254,7 +1254,7 @@ nav[aria-label="Composer toolbar"] { margin-bottom: 0 !important; }
                                         <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
                                               :class="{
                                                   'bg-emerald-500/10 text-emerald-700': entry.action.indexOf('added') !== -1,
-                                                  'bg-red-500/10 text-destructive': entry.action.indexOf('removed') !== -1,
+                                                  'bg-destructive/10 text-destructive': entry.action.indexOf('removed') !== -1,
                                                   'bg-blue-500/10 text-primary': entry.action.indexOf('added') === -1 && entry.action.indexOf('removed') === -1,
                                               }"
                                               x-text="entry.action.replace(/_/g, ' ')"></span>
@@ -1749,7 +1749,7 @@ nav[aria-label="Composer toolbar"] { margin-bottom: 0 !important; }
                             <div class="flex flex-wrap gap-1 mt-1">
                                 <template x-for="sig in (intelligenceData[String(selectedNode.elementId)].signals || [])" :key="sig">
                                     <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
-                                          :class="sig === 'eol_risk' || sig === 'lifecycle_risk' ? 'bg-red-500/10 text-destructive border border-red-500/30' : sig === 'maturity_gap' ? 'bg-amber-500/10 text-amber-600 border border-amber-500/30' : 'bg-primary/10 text-primary border border-primary/30'"
+                                          :class="sig === 'eol_risk' || sig === 'lifecycle_risk' ? 'bg-destructive/10 text-destructive border border-destructive/30' : sig === 'maturity_gap' ? 'bg-amber-500/10 text-amber-600 border border-amber-500/30' : 'bg-primary/10 text-primary border border-primary/30'"
                                           x-text="sig.replace(/_/g, ' ')"></span>
                                 </template>
                             </div>

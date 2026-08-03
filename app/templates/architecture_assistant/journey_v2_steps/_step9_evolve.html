@@ -54,7 +54,7 @@
                                           :class="{
                                               'bg-emerald-500/10 text-emerald-600 border border-emerald-500/30': change.risk === 'low',
                                               'bg-amber-500/10 text-amber-600 border border-amber-500/30': change.risk === 'medium',
-                                              'bg-red-500/10 text-red-600 border border-red-500/30': change.risk === 'high',
+                                              'bg-destructive/10 text-destructive border border-destructive/30': change.risk === 'high',
                                           }"
                                           x-text="change.risk + ' risk'"></span>
                                 </div>
@@ -119,7 +119,7 @@
                                       'bg-emerald-500/10 text-emerald-600 border border-emerald-500/30': ver.status === 'live',
                                       'bg-blue-500/10 text-blue-600 border border-blue-500/30': ver.status === 'deploying',
                                       'bg-muted text-muted-foreground border border-border': ver.status === 'superseded',
-                                      'bg-red-500/10 text-red-600 border border-red-500/30': ver.status === 'rolled_back',
+                                      'bg-destructive/10 text-destructive border border-destructive/30': ver.status === 'rolled_back',
                                   }"
                                   x-text="ver.status"></span>
                             <template x-if="ver.status !== 'live'">

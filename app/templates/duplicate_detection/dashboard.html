@@ -24,7 +24,7 @@
          x-cloak
          data-slot="card"
          class="rounded-xl border shadow-sm p-4"
-         :class="runFeedback.status === 'running' ? 'bg-primary/5 border-primary/30' : (runFeedback.status === 'success' ? 'bg-green-500/10 border-green-500/30' : 'bg-red-500/10 border-red-500/30')">
+         :class="runFeedback.status === 'running' ? 'bg-primary/5 border-primary/30' : (runFeedback.status === 'success' ? 'bg-green-500/10 border-green-500/30' : 'bg-destructive/10 border-destructive/30')">
       <div class="flex items-start justify-between gap-4">
         <div class="flex items-start gap-3 min-w-0">
           <i x-show="runFeedback.status === 'running'" x-cloak data-lucide="loader" class="w-5 h-5 text-primary animate-spin mt-0.5" aria-hidden="true"></i>

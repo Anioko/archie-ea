@@ -63,8 +63,20 @@ def scan_file(path: str) -> list[tuple[int, str, str]]:
         return findings
 
     for lineno, line in enumerate(lines, start=1):
-        # A file may opt out of a specific line with an explicit acknowledgement.
-        if "design-tokens-ok" in line:
+        # A line may opt out with an explicit acknowledgement.
+        #
+        # `token-migration-ok` is the repository's own convention, left by the
+        # earlier token migration and understood by the `check_token_migration.py`
+        # hook DESIGN.md refers to (that hook is absent from this extract). 144
+        # such annotations exist across 8 templates.
+        #
+        # `design-tokens-ok` was invented by this script and appears nowhere in the
+        # tree — so until now the gate silently ignored every exception the
+        # codebase had already recorded, and counted consciously-reviewed lines as
+        # violations. A gate that does not understand the project's existing
+        # annotation is measuring the wrong thing. Both are honoured; the older
+        # name is the one to keep using.
+        if "design-tokens-ok" in line or "token-migration-ok" in line:
             continue
         for match in SCALED.finditer(line):
             utility = match.group(1)

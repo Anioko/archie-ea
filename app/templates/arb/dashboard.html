@@ -155,7 +155,7 @@
                             </td>
                             <td class="px-4 py-3 text-sm border-b border-border">
                                 {% if review.priority == 'critical' %}
-                                <span class="inline-flex items-center px-2 py-0.5 text-xs rounded bg-red-500/10 text-destructive border border-red-500/30">Critical</span>
+                                <span class="inline-flex items-center px-2 py-0.5 text-xs rounded bg-destructive/10 text-destructive border border-destructive/30">Critical</span>
                                 {% elif review.priority == 'high' %}
                                 <span class="inline-flex items-center px-2 py-0.5 text-xs rounded bg-amber-500/10 text-amber-600 border border-amber-500/30">High</span>
                                 {% elif review.priority == 'medium' %}
@@ -193,7 +193,7 @@
                                         <i data-lucide="check" class="w-3 h-3 mr-1" aria-hidden="true"></i>Approve
                                     </button>
                                     <button type="button"
-                                            class="inline-flex items-center px-2 py-1 text-xs bg-red-500/10 text-destructive border border-red-500/30 rounded hover:bg-red-500/20"
+                                            class="inline-flex items-center px-2 py-1 text-xs bg-destructive/10 text-destructive border border-destructive/30 rounded hover:bg-red-500/20"
                                             data-review-id="{{ review.id }}" data-arb-action="reject"
                                             aria-label="Reject">
                                         <i data-lucide="x" class="w-3 h-3 mr-1" aria-hidden="true"></i>Reject

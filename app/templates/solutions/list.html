@@ -212,7 +212,7 @@
                                     {% elif _gov in ('arb_review', 'under_review') %}
                                         {% set _gov_cls = 'bg-amber-500/10 text-amber-600 border border-amber-500/20' %}
                                     {% elif _gov == 'rejected' %}
-                                        {% set _gov_cls = 'bg-red-500/10 text-destructive border border-red-500/20' %}
+                                        {% set _gov_cls = 'bg-destructive/10 text-destructive border border-red-500/20' %}
                                     {% else %}
                                         {% set _gov_cls = 'bg-muted text-muted-foreground border border-border/50' %}
                                     {% endif %}

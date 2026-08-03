@@ -383,8 +383,8 @@ function getStatusClasses(status) {
         '2.1 STRATEGIC':      'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-500/10 text-emerald-600',
         '2.2 TACTICAL':       'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-primary',
         '3. SUNSET':          'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/10 text-amber-600',
-        '4.1 DECOM DECIDED':  'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-500/10 text-destructive',
-        '4.2 DECOM PLANNED':  'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-500/10 text-destructive',
+        '4.1 DECOM DECIDED':  'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-destructive/10 text-destructive',
+        '4.2 DECOM PLANNED':  'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-destructive/10 text-destructive',
         '4.3 READ-ONLY':      'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/10 text-amber-600',
         '5. DECOMMISSIONED':  'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-500/10 text-muted-foreground',
         '1. UNDETERMINED':    'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-500/10 text-muted-foreground'
@@ -394,7 +394,7 @@ function getStatusClasses(status) {
 
 function getCriticalityClasses(crit) {
     const map = {
-        'mission_critical':    'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-500/10 text-destructive',
+        'mission_critical':    'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-destructive/10 text-destructive',
         'business_critical':   'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/10 text-amber-600',
         'business_operational':'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-primary',
         'administrative':      'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-500/10 text-muted-foreground'

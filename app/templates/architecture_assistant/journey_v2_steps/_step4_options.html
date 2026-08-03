@@ -99,7 +99,7 @@
                         <div class="flex items-center gap-2">
                             <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium"
                                   :class="{
-                                      'bg-red-500/10 text-red-600 border border-red-500/30': gap.severity === 'critical',
+                                      'bg-destructive/10 text-destructive border border-destructive/30': gap.severity === 'critical',
                                       'bg-amber-500/10 text-amber-600 border border-amber-500/30': gap.severity === 'high',
                                       'bg-blue-500/10 text-blue-600 border border-blue-500/30': gap.severity === 'medium',
                                       'bg-zinc-500/10 text-zinc-600 border border-zinc-500/30': true
@@ -227,7 +227,7 @@
                                     <span x-show="opt.impact && opt.impact.complexity"
                                           class="inline-flex px-1.5 py-0.5 rounded text-[10px]"
                                           :class="{
-                                            'bg-red-500/10 text-red-600': opt.impact.complexity === 'high',
+                                            'bg-destructive/10 text-destructive': opt.impact.complexity === 'high',
                                             'bg-amber-500/10 text-amber-600': opt.impact.complexity === 'medium',
                                             'bg-emerald-500/10 text-emerald-600': opt.impact.complexity === 'low'
                                           }"
@@ -239,7 +239,7 @@
                                         <div class="flex items-start gap-1.5">
                                             <span class="inline-flex px-1 py-0.5 rounded text-[9px] font-medium flex-shrink-0 mt-px"
                                                   :class="{
-                                                    'bg-red-500/10 text-red-600': risk.likelihood === 'high' || risk.impact === 'high',
+                                                    'bg-destructive/10 text-destructive': risk.likelihood === 'high' || risk.impact === 'high',
                                                     'bg-amber-500/10 text-amber-600': risk.likelihood === 'medium' || risk.impact === 'medium',
                                                     'bg-zinc-500/10 text-zinc-600': true
                                                   }"

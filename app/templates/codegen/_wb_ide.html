@@ -12,7 +12,7 @@
                 <!-- Errors badge -->
                 <template x-if="errors.length > 0">
                     <div class="relative" x-data="errorsBadgeDropdown()">
-                        <button @click="open=!open" class="h-7 px-2.5 flex items-center gap-1.5 text-xs font-medium text-red-400 border border-red-500/30 rounded-md hover:bg-red-500/10 transition-colors">
+                        <button @click="open=!open" class="h-7 px-2.5 flex items-center gap-1.5 text-xs font-medium text-red-400 border border-destructive/30 rounded-md hover:bg-destructive/10 transition-colors">
                             <i data-lucide="alert-circle" class="h-3 w-3"></i>
                             <span x-text="errors.length + ' error' + (errors.length>1?'s':'')"></span>
                         </button>
@@ -32,7 +32,7 @@
                 <div x-show="qualityScore !== null" x-cloak
                      @click="rightTab='quality'"
                      class="flex items-center gap-1.5 px-2.5 h-7 rounded-md border text-xs font-medium cursor-pointer transition-colors"
-                     :class="qualityScore >= 80 ? 'border-emerald-500/30 bg-emerald-500/8 text-emerald-600 hover:bg-emerald-500/15' : qualityScore >= 60 ? 'border-amber-500/30 bg-amber-500/8 text-amber-600 hover:bg-amber-500/15' : 'border-red-500/30 bg-red-500/8 text-red-600 hover:bg-red-500/15'">
+                     :class="qualityScore >= 80 ? 'border-emerald-500/30 bg-emerald-500/8 text-emerald-600 hover:bg-emerald-500/15' : qualityScore >= 60 ? 'border-amber-500/30 bg-amber-500/8 text-amber-600 hover:bg-amber-500/15' : 'border-destructive/30 bg-red-500/8 text-destructive hover:bg-red-500/15'">
                     <svg class="w-3 h-3" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="5" stroke="currentColor" stroke-width="1.5" fill="none"/><circle cx="6" cy="6" r="2.5" fill="currentColor" opacity=".3"/></svg>
                     <span>Structural <span x-text="qualityScore"></span>%</span>
                 </div>
@@ -384,7 +384,7 @@
                     </div>
                     <div class="grid grid-cols-2 max-h-52 overflow-hidden">
                         <div class="border-r border-border overflow-auto">
-                            <div class="sticky top-0 px-2 py-1 bg-red-500/10 text-destructive text-[10px] font-semibold uppercase tracking-wider">Before</div>
+                            <div class="sticky top-0 px-2 py-1 bg-destructive/10 text-destructive text-[10px] font-semibold uppercase tracking-wider">Before</div>
                             <pre class="p-2 text-[10px] font-mono leading-relaxed bg-red-500/5 whitespace-pre-wrap break-all" x-text="patchDiff ? patchDiff.old.substring(0,3000) + (patchDiff.old.length>3000?'\n…':'') : ''"></pre>
                         </div>
                         <div class="overflow-auto">
@@ -738,7 +738,7 @@
                                                 </div>
                                                 <button @click="patchViolation(v.constraint)"
                                                         class="shrink-0 text-[9px] font-semibold px-1.5 py-0.5 rounded border transition-colors"
-                                                        :class="v.severity === 'error' ? 'border-red-400/50 text-destructive hover:bg-red-500/10' : 'border-amber-400/50 text-amber-600 hover:bg-amber-500/10'"
+                                                        :class="v.severity === 'error' ? 'border-red-400/50 text-destructive hover:bg-destructive/10' : 'border-amber-400/50 text-amber-600 hover:bg-amber-500/10'"
                                                         title="Auto-patch this violation">Patch</button>
                                             </div>
                                         </template>
@@ -1786,7 +1786,7 @@
                                             </button>
                                             <!-- Delete -->
                                             <button @click="deleteTemplateSet(tmpl.id)"
-                                                    class="h-5 w-5 rounded border border-border text-muted-foreground hover:text-destructive hover:border-red-500/30 transition-colors flex items-center justify-center">
+                                                    class="h-5 w-5 rounded border border-border text-muted-foreground hover:text-destructive hover:border-destructive/30 transition-colors flex items-center justify-center">
                                                 <svg class="w-2.5 h-2.5" viewBox="0 0 10 10" fill="currentColor"><path d="M3 1h4M1.5 2.5h7l-.75 6H2.25l-.75-6ZM4 4.5v2.5M6 4.5v2.5"/><path d="M1.5 2.5h7" stroke="currentColor" stroke-width=".5" fill="none"/></svg>
                                             </button>
                                         </div>

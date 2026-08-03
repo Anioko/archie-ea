@@ -26,7 +26,7 @@
         <span x-text="successMsg"></span>
     </div>
     <template x-for="(err, i) in errors" :key="i">
-        <div x-transition class="mb-2 flex items-start gap-3 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-700">
+        <div x-transition class="mb-2 flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-red-700">
             <i data-lucide="x-circle" class="h-4 w-4 mt-0.5 shrink-0"></i>
             <span x-text="err"></span>
         </div>
@@ -75,7 +75,7 @@
                             Generate
                         </button>
                         <button aria-label="Delete" @click="deleteBoundary(b.id)"
-                                class="inline-flex items-center rounded-md border border-red-500/20 bg-red-500/5 p-1.5 text-red-600 hover:bg-red-500/10 transition-colors">
+                                class="inline-flex items-center rounded-md border border-red-500/20 bg-red-500/5 p-1.5 text-destructive hover:bg-destructive/10 transition-colors">
                             <i data-lucide="trash-2" class="h-3.5 w-3.5"></i>
                         </button>
                     </div>
@@ -99,7 +99,7 @@
                                 <span x-show="!svc.has_codegen" x-cloak
                                       class="text-[10px] text-amber-600">⚠ no code</span>
                                 <button aria-label="Remove" @click="removeSolution(b.id, svc.solution_id)"
-                                        class="text-muted-foreground hover:text-red-600 transition-colors ml-0.5">
+                                        class="text-muted-foreground hover:text-destructive transition-colors ml-0.5">
                                     <i data-lucide="x" class="h-3 w-3"></i>
                                 </button>
                             </div>

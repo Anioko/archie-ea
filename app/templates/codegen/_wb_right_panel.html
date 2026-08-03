@@ -225,7 +225,7 @@
                                                 </div>
                                                 <button @click="patchViolation(v.constraint)"
                                                         class="shrink-0 text-[9px] font-semibold px-1.5 py-0.5 rounded border transition-colors"
-                                                        :class="v.severity === 'error' ? 'border-red-400/50 text-destructive hover:bg-red-500/10' : 'border-amber-400/50 text-amber-600 hover:bg-amber-500/10'"
+                                                        :class="v.severity === 'error' ? 'border-red-400/50 text-destructive hover:bg-destructive/10' : 'border-amber-400/50 text-amber-600 hover:bg-amber-500/10'"
                                                         title="Auto-patch this violation">Patch</button>
                                             </div>
                                         </template>
@@ -1205,7 +1205,7 @@ eas build --platform android --profile preview</pre>
                                             </button>
                                             <!-- Delete -->
                                             <button @click="deleteTemplateSet(tmpl.id)"
-                                                    class="h-5 w-5 rounded border border-border text-muted-foreground hover:text-destructive hover:border-red-500/30 transition-colors flex items-center justify-center">
+                                                    class="h-5 w-5 rounded border border-border text-muted-foreground hover:text-destructive hover:border-destructive/30 transition-colors flex items-center justify-center">
                                                 <svg class="w-2.5 h-2.5" viewBox="0 0 10 10" fill="currentColor"><path d="M3 1h4M1.5 2.5h7l-.75 6H2.25l-.75-6ZM4 4.5v2.5M6 4.5v2.5"/><path d="M1.5 2.5h7" stroke="currentColor" stroke-width=".5" fill="none"/></svg>
                                             </button>
                                         </div>

@@ -187,7 +187,7 @@
                         <div class="border-t border-border pt-2 space-y-1">
                             <p class="text-xs font-medium">
                                 Sandbox: <span x-text="testResult.test_summary.passed + ' passed'" class="text-emerald-600"></span>,
-                                <span x-text="testResult.test_summary.failed + ' failed'" class="text-red-600"></span>
+                                <span x-text="testResult.test_summary.failed + ' failed'" class="text-destructive"></span>
                             </p>
                             <template x-for="f in (testResult.failures || []).slice(0, 5)" :key="f.test_name">
                                 <p class="text-[11px] text-muted-foreground">
@@ -200,7 +200,7 @@
                     </template>
                     {# Error display #}
                     <template x-if="error">
-                        <p class="text-xs text-red-600" x-text="error"></p>
+                        <p class="text-xs text-destructive" x-text="error"></p>
                     </template>
                 </div>
             </div>
@@ -824,7 +824,7 @@
           </div>
           <div class="rounded-xl border border-border bg-card p-4">
             <div class="flex items-center gap-3">
-              <span class="flex items-center justify-center w-10 h-10 rounded-lg bg-red-500/10 border border-red-500/20 shrink-0">
+              <span class="flex items-center justify-center w-10 h-10 rounded-lg bg-destructive/10 border border-red-500/20 shrink-0">
                 <svg class="w-5 h-5 text-red-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/></svg>
               </span>
               <div>
@@ -846,7 +846,7 @@
             <span class="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold
               {{ 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20' if _ac.score >= 80
                  else ('bg-amber-500/10 text-amber-600 border border-amber-500/20' if _ac.score >= 40
-                 else 'bg-red-500/10 text-destructive border border-red-500/20') }}">
+                 else 'bg-destructive/10 text-destructive border border-red-500/20') }}">
               {{ _ac.score }}% &mdash; {{ _ac.filled_count }}/{{ _ac.total }} sections
             </span>
           </div>
@@ -997,7 +997,7 @@
             <span class="text-xs text-muted-foreground">Target: {{ qa.get('target_value') or qa.get('target') }}</span>
             {% endif %}
             {% if qa.get('priority') %}
-            <span class="text-[10px] px-1.5 py-0.5 rounded {% if qa.get('priority') | lower in ('critical', 'high') %}bg-red-500/10 text-red-400{% else %}bg-muted text-muted-foreground{% endif %}">{{ qa.get('priority') | title }}</span>
+            <span class="text-[10px] px-1.5 py-0.5 rounded {% if qa.get('priority') | lower in ('critical', 'high') %}bg-destructive/10 text-red-400{% else %}bg-muted text-muted-foreground{% endif %}">{{ qa.get('priority') | title }}</span>
             {% endif %}
           </div>
           {% endfor %}
@@ -1057,7 +1057,7 @@
                 <div class="flex items-center gap-2 mt-2">
                   {% set mat = cap.get('maturity_level') or cap.get('level') %}
                   {% if mat %}
-                  <span class="inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium {% if mat >= 4 %}bg-emerald-500/10 text-emerald-400{% elif mat >= 3 %}bg-amber-500/10 text-amber-400{% else %}bg-red-500/10 text-red-400{% endif %}">L{{ mat }}</span>
+                  <span class="inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium {% if mat >= 4 %}bg-emerald-500/10 text-emerald-400{% elif mat >= 3 %}bg-amber-500/10 text-amber-400{% else %}bg-destructive/10 text-red-400{% endif %}">L{{ mat }}</span>
                   {% endif %}
                 </div>
               </div>
@@ -1572,7 +1572,7 @@
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-3">
               {% set gov_status = (solution.governance_status or 'draft') | lower %}
-              <span class="flex items-center justify-center w-10 h-10 rounded-lg {% if gov_status == 'approved' %}bg-emerald-500/10 border-emerald-500/20{% elif gov_status in ('arb_review', 'in_review') %}bg-amber-500/10 border-amber-500/20{% elif gov_status == 'rejected' %}bg-red-500/10 border-red-500/20{% else %}bg-muted border-border{% endif %} border">
+              <span class="flex items-center justify-center w-10 h-10 rounded-lg {% if gov_status == 'approved' %}bg-emerald-500/10 border-emerald-500/20{% elif gov_status in ('arb_review', 'in_review') %}bg-amber-500/10 border-amber-500/20{% elif gov_status == 'rejected' %}bg-destructive/10 border-red-500/20{% else %}bg-muted border-border{% endif %} border">
                 {% if gov_status == 'approved' %}
                 <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z"/></svg>
                 {% else %}
@@ -1736,7 +1736,7 @@
           <div class="flex items-center gap-3 px-5 py-2.5 hover:bg-muted/20">
             <span class="flex-1">{{ cm.get('framework') or cm.get('regulation') or cm.get('name') or 'Unnamed' }}{% if cm.get('control_id') %} &middot; {{ cm.get('control_id') }}{% endif %}</span>
             {% set cm_status = (cm.get('status') or cm.get('compliance_status') or 'pending') | lower %}
-            <span class="text-[10px] px-1.5 py-0.5 rounded {% if cm_status in ('compliant', 'met', 'passed') %}bg-emerald-500/10 text-emerald-400{% elif cm_status in ('partial', 'in_progress') %}bg-amber-500/10 text-amber-400{% else %}bg-red-500/10 text-red-400{% endif %}">{{ cm_status | replace('_', ' ') | title }}</span>
+            <span class="text-[10px] px-1.5 py-0.5 rounded {% if cm_status in ('compliant', 'met', 'passed') %}bg-emerald-500/10 text-emerald-400{% elif cm_status in ('partial', 'in_progress') %}bg-amber-500/10 text-amber-400{% else %}bg-destructive/10 text-red-400{% endif %}">{{ cm_status | replace('_', ' ') | title }}</span>
           </div>
           {% endfor %}
         </div>
