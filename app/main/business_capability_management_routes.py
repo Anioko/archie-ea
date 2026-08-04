@@ -19,6 +19,27 @@ from app.utils.business_capability_classifier import BusinessCapabilityClassifie
 business_capability_management = Blueprint("business_capability_management", __name__)
 
 
+def _org_scope(prefix: str = "WHERE"):
+    """Return (clause, params) scoping a raw-SQL query to the current tenant.
+
+    business_capability is a TenantMixin table, but do_orm_execute only rewrites
+    ORM statements — raw `text()` goes straight to the database unfiltered. Every
+    query in this module was written with an empty placeholder (`_org_filter = ""`)
+    and a `# tenant-filtered` comment beside it, so it read as scoped while
+    returning every organisation's capabilities.
+
+    None means no tenant context (CLI, system tasks). That returns an empty
+    clause, matching the ORM listener's own no-op behaviour rather than inventing
+    a stricter rule for raw SQL than the ORM applies.
+    """
+    from app.middleware.tenant_context import current_org_id
+
+    org = current_org_id()
+    if org is None:
+        return "", {}
+    return f"{prefix} organization_id = :org", {"org": org}
+
+
 @business_capability_management.route("/capabilities")
 @login_required
 def capabilities_overview():
@@ -27,9 +48,10 @@ def capabilities_overview():
     try:
         # Get all capabilities. The execute was stripped, leaving `capabilities`
         # unbound at the classification loop below.
-        _org_params = {}
-        capabilities = db.session.execute(  # tenant-filtered
-            text("SELECT id, name, description, category, business_domain FROM business_capability ORDER BY name"),
+        _org_filter, _org_params = _org_scope()
+        capabilities = db.session.execute(
+            text(f"SELECT id, name, description, category, business_domain "
+                 f"FROM business_capability {_org_filter} ORDER BY name"),
             _org_params,
         ).fetchall()
 
@@ -141,8 +163,7 @@ def grouping_detail(grouping_key):
 
         # Get capabilities in this grouping. Execute was stripped; `all_capabilities`
         # was unbound at the filter loop below.
-        _org_filter2 = ""
-        _org_params2 = {}
+        _org_filter2, _org_params2 = _org_scope()
         all_capabilities = db.session.execute(  # tenant-filtered
             text(f"""SELECT id, name, description, category, business_domain FROM business_capability {_org_filter2} ORDER BY name"""),
             _org_params2,
@@ -190,8 +211,7 @@ def capability_taxonomy():
     try:
         # Get all capabilities with their classifications. Execute was stripped;
         # `capabilities` was unbound at the organise loop below.
-        _org_filter3 = ""
-        _org_params3 = {}
+        _org_filter3, _org_params3 = _org_scope()
         capabilities = db.session.execute(  # tenant-filtered
             text(f"""SELECT id, name, description, category, business_domain FROM business_capability {_org_filter3} ORDER BY name"""),
             _org_params3,
@@ -355,7 +375,8 @@ def capability_detail(capability_id):
     try:
         # Get capability details
         _detail_params = {"capability_id": capability_id}
-        _org_clause_d = ""
+        _org_clause_d, _org_params_d = _org_scope(prefix="AND")
+        _detail_params.update(_org_params_d)
 
         # Execute was stripped; `result` was unbound on every request.
         result = db.session.execute(  # tenant-filtered
@@ -386,7 +407,10 @@ def capability_detail(capability_id):
                 "keyword1": f"%{classification['grouping_key']}%",
                 "keyword2": f"%{classification['subcategory_key']}%",
             }
-            _org_clause_r = ""
+            # No org clause is built here: the related-capabilities query itself
+            # was stripped from this handler and never restored, so _rel_params
+            # feeds nothing. Scoping a query that does not exist would just be
+            # another unused name. related_capabilities stays [].
 
         return render_template(
             "business_capability/overview.html",
@@ -409,8 +433,7 @@ def capability_analytics():
         # Get capability distribution analytics. Both this aggregate and the domain
         # distribution below had their executes stripped, leaving `overall_stats` and
         # `domain_distribution` unbound in the render_template call.
-        _org_filter_a = ""
-        _org_params_a = {}
+        _org_filter_a, _org_params_a = _org_scope()
         _overall_row = db.session.execute(  # tenant-filtered
             text(
                 f"""
