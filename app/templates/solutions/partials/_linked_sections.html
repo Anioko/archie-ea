@@ -346,7 +346,7 @@
                     <span x-text="req.name || ('Requirement #' + req.id)"></span>
                     <span x-show="req.moscow_priority" x-cloak
                           class="px-1 py-0 rounded text-[10px] font-bold"
-                          :class="{'bg-destructive text-red-800': req.moscow_priority === 'MUST', 'bg-yellow-200 text-yellow-800': req.moscow_priority === 'SHOULD', 'bg-muted text-foreground': req.moscow_priority === 'WONT'}"
+                          :class="{'bg-destructive text-destructive-emphasis': req.moscow_priority === 'MUST', 'bg-yellow-200 text-yellow-800': req.moscow_priority === 'SHOULD', 'bg-muted text-foreground': req.moscow_priority === 'WONT'}"
                           x-text="req.moscow_priority"></span>
                     <button type="button" @click="unlinkEntity('requirement', req.id)"
                         class="text-primary/60 hover:text-destructive ml-0.5 opacity-0 group-hover:opacity-100 transition-opacity" title="Remove" aria-label="Remove requirement link">

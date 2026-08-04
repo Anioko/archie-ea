@@ -31,6 +31,7 @@ module.exports = {
         destructive: {
           DEFAULT: "hsl(var(--destructive) / <alpha-value>)",
           foreground: "hsl(var(--destructive-foreground) / <alpha-value>)",
+          emphasis: "hsl(var(--destructive-emphasis) / <alpha-value>)",
         },
         success: {
           DEFAULT: "hsl(var(--success) / <alpha-value>)",
@@ -43,6 +44,7 @@ module.exports = {
         info: {
           DEFAULT: "hsl(var(--info) / <alpha-value>)",
           foreground: "hsl(var(--info-foreground) / <alpha-value>)",
+          emphasis: "hsl(var(--info-emphasis) / <alpha-value>)",
         },
         muted: {
           DEFAULT: "hsl(var(--muted) / <alpha-value>)",

@@ -357,7 +357,7 @@
                             <td class="px-4 py-3 text-sm border-b border-border">
                                 {% if review.priority %}
                                 <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium
-                                    {% if review.priority == 'critical' %}bg-destructive/10 text-red-800
+                                    {% if review.priority == 'critical' %}bg-destructive/10 text-destructive-emphasis
                                     {% elif review.priority == 'high' %}bg-orange-100 text-orange-800
                                     {% elif review.priority == 'medium' %}bg-amber-100 text-amber-800
                                     {% else %}bg-muted text-foreground{% endif %}">

@@ -77,6 +77,24 @@ All colors use CSS variables defined in `app/static/css/shadcn_tokens.css`. Refe
 
 Green and yellow have no semantic tokens — use emerald and amber scales directly for status colors.
 
+**Coloured text on its own tint** — use `-emphasis`, not the base token:
+
+```
+❌ bg-destructive/10 text-destructive   → ✅ bg-destructive/10 text-destructive-emphasis
+❌ bg-info/10 text-info                 → ✅ bg-info/10 text-info-emphasis
+```
+
+`--destructive` scores 3.30 against `bg-destructive/10` and `--info` scores 4.50
+against `bg-info/10`, both under the WCAG AA 4.5 required for normal text. shadcn's
+`-foreground` variants do not cover this case: they are for text on a *solid* fill.
+`--destructive-emphasis` and `--info-emphasis` are darker in light mode (5.68 and
+6.49 on the same tints) and lighter in dark mode, where the tint is dark.
+
+Note on blue: `bg-blue-500` maps to `bg-info`, not `bg-primary`, despite the table
+above. In light mode the two are the same colour, but `--primary` becomes near-white
+in dark mode (`210 40% 98%`), which would turn every blue info badge white for
+dark-theme users. `--info` tracks blue in both.
+
 ---
 
 ## Typography

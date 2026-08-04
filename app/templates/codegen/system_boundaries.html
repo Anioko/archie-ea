@@ -26,7 +26,7 @@
         <span x-text="successMsg"></span>
     </div>
     <template x-for="(err, i) in errors" :key="i">
-        <div x-transition class="mb-2 flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-red-700">
+        <div x-transition class="mb-2 flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive-emphasis">
             <i data-lucide="x-circle" class="h-4 w-4 mt-0.5 shrink-0"></i>
             <span x-text="err"></span>
         </div>

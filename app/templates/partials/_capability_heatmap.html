@@ -41,7 +41,7 @@
         {% elif conf >= 0.5 %}
         <span class="inline-block mt-1 text-xs font-medium px-1.5 py-0.5 rounded bg-amber-200 text-amber-800">Medium</span>
         {% else %}
-        <span class="inline-block mt-1 text-xs font-medium px-1.5 py-0.5 rounded bg-destructive text-red-800">Low</span>
+        <span class="inline-block mt-1 text-xs font-medium px-1.5 py-0.5 rounded bg-destructive text-destructive-emphasis">Low</span>
         {% endif %}
       </div>
       {% endfor %}
@@ -55,7 +55,7 @@
         @click="selected = selected && selected.capability_id === '{{ cap.capability_id }}' ? null : {{ cap | tojson }}"
         data-capability-id="{{ cap.capability_id }}"
       >
-        <p class="text-xs font-medium text-blue-900 truncate">{{ cap.capability_name }}</p>
+        <p class="text-xs font-medium text-info-emphasis truncate">{{ cap.capability_name }}</p>
         <p class="text-xs text-primary mt-1">{{ (cap.coverage_score * 100) | round(1) }}% &bull; {{ cap.app_count }} apps</p>
         {% set conf = cap.confidence if cap.confidence is defined else cap.coverage_score %}
         {% if conf >= 0.8 %}
@@ -63,7 +63,7 @@
         {% elif conf >= 0.5 %}
         <span class="inline-block mt-1 text-xs font-medium px-1.5 py-0.5 rounded bg-amber-200 text-amber-800">Medium</span>
         {% else %}
-        <span class="inline-block mt-1 text-xs font-medium px-1.5 py-0.5 rounded bg-destructive text-red-800">Low</span>
+        <span class="inline-block mt-1 text-xs font-medium px-1.5 py-0.5 rounded bg-destructive text-destructive-emphasis">Low</span>
         {% endif %}
       </div>
       {% endfor %}
@@ -85,7 +85,7 @@
         {% elif conf >= 0.5 %}
         <span class="inline-block mt-1 text-xs font-medium px-1.5 py-0.5 rounded bg-amber-200 text-amber-800">Medium</span>
         {% else %}
-        <span class="inline-block mt-1 text-xs font-medium px-1.5 py-0.5 rounded bg-destructive text-red-800">Low</span>
+        <span class="inline-block mt-1 text-xs font-medium px-1.5 py-0.5 rounded bg-destructive text-destructive-emphasis">Low</span>
         {% endif %}
       </div>
       {% endfor %}
@@ -107,7 +107,7 @@
         {% elif conf >= 0.5 %}
         <span class="inline-block mt-1 text-xs font-medium px-1.5 py-0.5 rounded bg-amber-200 text-amber-800">Medium</span>
         {% else %}
-        <span class="inline-block mt-1 text-xs font-medium px-1.5 py-0.5 rounded bg-destructive text-red-800">Low</span>
+        <span class="inline-block mt-1 text-xs font-medium px-1.5 py-0.5 rounded bg-destructive text-destructive-emphasis">Low</span>
         {% endif %}
       </div>
       {% endfor %}

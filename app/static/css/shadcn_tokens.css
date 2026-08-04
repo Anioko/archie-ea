@@ -17,12 +17,18 @@
     --accent-foreground: 222.2 47.4% 11.2%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
+    /* -emphasis: coloured TEXT on the token's own light tint. The base
+       --destructive scores 3.30 against bg-destructive/10, below WCAG AA 4.5, so
+       every tinted status badge built from it failed. shadcn's -foreground
+       variants do not solve this: they are for text on a SOLID fill. */
+    --destructive-emphasis: 0 72% 42%;
     --success: 142.1 76.2% 36.3%;
     --success-foreground: 0 0% 100%;
     --warning: 37.7 92.1% 50.2%;
     --warning-foreground: 0 0% 0%;
     --info: 221.2 83.2% 53.3%;
     --info-foreground: 210 40% 98%;
+    --info-emphasis: 221 83% 42%;
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
     --ring: 221.2 83.2% 53.3%;
@@ -55,6 +61,7 @@
     --accent-foreground: 210 40% 98%;
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 210 40% 98%;
+    --destructive-emphasis: 0 91% 71%;
     --success: 142.1 70.6% 45.3%;
     --success-foreground: 0 0% 0%;
     --warning: 45.4 93.4% 47.5%;
