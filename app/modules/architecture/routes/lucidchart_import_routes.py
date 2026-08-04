@@ -27,6 +27,28 @@ _service = LucidchartConnectorService()
 _transformer = LucidArchiMateTransformer()
 
 
+def _transformer_for_request() -> LucidArchiMateTransformer:
+    """Build a transformer honouring this request's fallback choice.
+
+    A diagram drawn with ordinary rectangles rather than Lucid's ArchiMate
+    stencils has no element type to read. Passing ``fallback_element_type``
+    imports those shapes as a stated default instead of skipping them, keeping
+    their names, colours and nesting so the architect retypes rather than
+    redraws. Absent, the strict behaviour is unchanged.
+    """
+    fallback = None
+    if request.is_json:
+        fallback = (request.get_json(silent=True) or {}).get("fallback_element_type")
+    fallback = fallback or request.form.get("fallback_element_type") \
+        or request.args.get("fallback_element_type")
+    fallback = (fallback or "").strip() or None
+    if fallback is None:
+        return _transformer
+    # Raised as ValueError by the transformer; surfaced as 400 by the caller
+    # rather than a 500, because it is the caller's input that is wrong.
+    return LucidArchiMateTransformer(fallback_element_type=fallback)
+
+
 def _current_org_id() -> int:
     org_id = getattr(current_user, "organization_id", None)
     if org_id is None:
@@ -285,14 +307,22 @@ def register_lucidchart_import_routes(bp: Blueprint) -> None:
             document = _service.get_document_contents(config, document_id=document_id)
         except LucidchartConnectorError:
             return jsonify({"needs_auth": True}), 200
-        transformed = _transformer.transform_document(document)
+        try:
+            transformer = _transformer_for_request()
+        except ValueError as exc:
+            return api_error(str(exc), status_code=400)
+        transformed = transformer.transform_document(document)
         return _import_payload_response(transformed)
 
     @bp.route("/api/lucidchart/import/upload", methods=["POST"])
     @login_required
     def api_lucidchart_import_upload():
         payload = _load_uploaded_payload()
-        transformed = _transformer.transform_document(payload)
+        try:
+            transformer = _transformer_for_request()
+        except ValueError as exc:
+            return api_error(str(exc), status_code=400)
+        transformed = transformer.transform_document(payload)
         return _import_payload_response(transformed)
 
 

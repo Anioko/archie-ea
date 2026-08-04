@@ -122,12 +122,42 @@ class LucidArchiMateTransformer:
     # of discarding it.
     NESTING_FALLBACK_ORDER = ("composition", "aggregation", "association")
 
-    def __init__(self, event_element_type: str = "BusinessEvent"):
+    def __init__(
+        self,
+        event_element_type: str = "BusinessEvent",
+        fallback_element_type: Optional[str] = None,
+    ):
+        """
+        Args:
+            event_element_type: which layer Lucid's layer-agnostic Event shape
+                maps to when context does not settle it.
+            fallback_element_type: what to do with shapes drawn with ordinary
+                rectangles instead of Lucid's ArchiMate stencils. Default None
+                keeps the strict behaviour - unrecognised shapes are skipped and
+                reported. Set it (e.g. "ApplicationComponent") and those shapes
+                are imported as that type, carrying their name, colour and
+                nesting, with the guess recorded on every element so it can be
+                reviewed and corrected in bulk afterwards.
+
+                Opt-in rather than default because inventing a type for every
+                box silently produces a model that looks authoritative and is
+                largely fiction. Retyping 40 correctly-named, correctly-nested
+                elements is minutes of work; discovering later that a diagram
+                was imported as confident nonsense is not.
+        """
         if event_element_type not in {"BusinessEvent", "ApplicationEvent"}:
             raise ValueError(
                 "event_element_type must be 'BusinessEvent' or 'ApplicationEvent'"
             )
+        if fallback_element_type is not None:
+            known = self._canonical_type_index()
+            if known and fallback_element_type not in known.values():
+                raise ValueError(
+                    f"fallback_element_type '{fallback_element_type}' is not an "
+                    f"ArchiMate 3.2 element type"
+                )
         self.event_element_type = event_element_type
+        self.fallback_element_type = fallback_element_type
 
     def transform_document(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """Return canonical elements, relationships, and import warnings."""
@@ -146,7 +176,13 @@ class LucidArchiMateTransformer:
         skipped_connector_count = 0
         skipped_relationship_count = 0
         total_shapes_seen = 0
+        fallback_used = 0
+        unmapped_classes: set = set()
         inferred_event_type = self._infer_event_element_type(pages)
+        # Only needed to decide container-vs-leaf for fallback typing.
+        container_ids = (
+            self._container_shape_ids(pages) if self.fallback_element_type else set()
+        )
 
         geometry_present = self._payload_has_geometry(payload)
         if not geometry_present:
@@ -166,16 +202,6 @@ class LucidArchiMateTransformer:
                     skipped_connector_count += 1
                     continue
 
-                element_type = self._element_type_for_class(
-                    lucid_class,
-                    inferred_event_type=inferred_event_type,
-                )
-                if not element_type:
-                    warnings.append(
-                        f"Unsupported Lucidchart shape class '{lucid_class}' skipped."
-                    )
-                    continue
-
                 identifier = shape.get("id")
                 if not identifier:
                     warnings.append("Encountered Lucidchart shape without an id; skipped.")
@@ -186,6 +212,29 @@ class LucidArchiMateTransformer:
                     warnings.append(
                         f"Lucidchart shape '{identifier}' has no importable name; skipped."
                     )
+                    continue
+
+                # Resolve the type from the strongest available signal, and
+                # record which one was used so a guess can be reviewed later.
+                type_source = "class"
+                element_type = self._element_type_for_class(
+                    lucid_class,
+                    inferred_event_type=inferred_event_type,
+                )
+                if not element_type:
+                    element_type = self._element_type_from_stereotype(shape)
+                    type_source = "stereotype"
+                if not element_type and self.fallback_element_type:
+                    # A box enclosing other boxes is a grouping whatever it was
+                    # drawn with; only leaves take the caller's default.
+                    element_type = (
+                        "Grouping" if identifier in container_ids
+                        else self.fallback_element_type
+                    )
+                    type_source = "fallback"
+                    fallback_used += 1
+                if not element_type:
+                    unmapped_classes.add(lucid_class or "(no class)")
                     continue
 
                 lucid_stereotype = self._extract_shape_stereotype(shape)
@@ -208,6 +257,11 @@ class LucidArchiMateTransformer:
                         "lucid_class": lucid_class,
                         "lucid_page_id": page_id,
                         "lucid_page_name": page_name,
+                        # How the type was decided: "class" (the shape said so),
+                        # "stereotype" (the author labelled it), or "fallback"
+                        # (nobody said, and a default was applied). Filter on
+                        # this to find everything worth re-checking.
+                        "lucid_type_source": type_source,
                     },
                 }
                 if lucid_stereotype:
@@ -249,6 +303,25 @@ class LucidArchiMateTransformer:
         for element in elements:
             element.get("custom_properties", {}).pop("lucid_parent_id", None)
 
+        if unmapped_classes:
+            shown = ", ".join(sorted(unmapped_classes))[:300]
+            warnings.append(
+                f"Skipped {len(unmapped_classes)} unrecognised shape type(s): "
+                f"{shown}. These are not from Lucid's ArchiMate stencil set and "
+                f"carry no element type. Re-run with a fallback element type to "
+                f"import them as a starting point instead, keeping their names, "
+                f"colours and nesting."
+            )
+
+        if fallback_used:
+            warnings.append(
+                f"{fallback_used} shape(s) had no ArchiMate type of their own and "
+                f"were imported as '{self.fallback_element_type}' (containers as "
+                f"Grouping). Their names, colours and nesting are real; the TYPE "
+                f"is a guess. Filter on the lucid_type_source property to review "
+                f"and retype them."
+            )
+
         if not elements and total_shapes_seen:
             distinct = sorted({
                 (shape.get("class") or "").strip()
@@ -259,8 +332,8 @@ class LucidArchiMateTransformer:
             shown = ", ".join(distinct)[:300] or "(none)"
             warnings.append(
                 f"No ArchiMate shapes were recognized in this export "
-                f"({total_shapes_seen} shape(s) found). The importer maps Lucid's "
-                f"ArchiMate shape library (the 'ArchiMate3…' shapes). Shape types in "
+                f"({total_shapes_seen} shape(s) found). The importer reads Lucid's "
+                f"ArchiMate stencils and «stereotype» labels. Shape types in "
                 f"this export: {shown}."
             )
 
@@ -406,14 +479,101 @@ class LucidArchiMateTransformer:
                     normalized[key] = endpoint
         return normalized
 
+    _CANONICAL_TYPE_INDEX: Optional[Dict[str, str]] = None
+
+    @classmethod
+    def _canonical_type_index(cls) -> Dict[str, str]:
+        """{"businessprocess": "BusinessProcess", ...} for every ArchiMate type.
+
+        Built from the relationship matrix so there is one list of element types
+        in the codebase rather than a second one here that drifts from it.
+        Returns {} if the matrix cannot be imported, which degrades this to the
+        curated map alone rather than failing the import.
+        """
+        if cls._CANONICAL_TYPE_INDEX is None:
+            try:
+                from app.config.archimate_relationship_matrix import (  # noqa: PLC0415
+                    ALL_ELEMENTS,
+                )
+                cls._CANONICAL_TYPE_INDEX = {
+                    name.lower(): name for name in ALL_ELEMENTS
+                }
+            except Exception:  # noqa: BLE001 - transformer works standalone
+                cls._CANONICAL_TYPE_INDEX = {}
+        return cls._CANONICAL_TYPE_INDEX
+
+    @classmethod
+    def _type_from_token(cls, token: str) -> Optional[str]:
+        """Match free text to a canonical type: "BUSINESS PROCESS" → BusinessProcess."""
+        if not token:
+            return None
+        squashed = "".join(ch for ch in token if ch.isalnum()).lower()
+        return cls._canonical_type_index().get(squashed)
+
+    @classmethod
+    def _element_type_from_class_name(cls, lucid_class: str) -> Optional[str]:
+        """Derive the type from Lucid's own class name.
+
+        Lucid names its ArchiMate stencils after the concept -
+        ``ArchiMate3BusinessProcessBoxBlock``. Deriving the type from the name
+        covers the whole stencil set instead of only the handful anyone has got
+        round to listing, and it is safe because the result must match a real
+        ArchiMate type before it is used.
+        """
+        if not lucid_class.startswith("ArchiMate3"):
+            return None
+        token = lucid_class[len("ArchiMate3"):]
+        for suffix in ("BoxBlock", "Block", "Box"):
+            if token.endswith(suffix):
+                token = token[: -len(suffix)]
+                break
+        return cls._type_from_token(token)
+
+    def _element_type_from_stereotype(self, shape: Dict[str, Any]) -> Optional[str]:
+        """A «Capability» label above the name is the author stating the type."""
+        text = self._extract_text(shape.get("textAreas") or [])
+        if not text:
+            return None
+        first = text.splitlines()[0].strip().strip("«»<>").strip()
+        return self._type_from_token(first)
+
     def _element_type_for_class(
         self,
         lucid_class: str,
         inferred_event_type: Optional[str] = None,
     ) -> Optional[str]:
+        # Lucid's Event shape is layer-agnostic; context decides which it is.
         if lucid_class == "ArchiMate3EventBoxBlock":
             return inferred_event_type or self.event_element_type
-        return self.LUCID_CLASS_TO_ELEMENT_TYPE.get(lucid_class)
+        # The curated map first: it resolves Lucid's deliberately layer-agnostic
+        # names (Object → DataObject, Component → ApplicationComponent), which a
+        # literal reading of the class name would get wrong.
+        explicit = self.LUCID_CLASS_TO_ELEMENT_TYPE.get(lucid_class)
+        if explicit:
+            return explicit
+        return self._element_type_from_class_name(lucid_class)
+
+    @classmethod
+    def _container_shape_ids(cls, pages: List[Dict[str, Any]]) -> set:
+        """Ids of shapes that visually enclose at least one other shape.
+
+        A box drawn around other boxes is a grouping, whatever stencil it was
+        drawn with. Used only when a fallback type is configured, to avoid
+        typing a container as a leaf.
+        """
+        containers = set()
+        for page in pages:
+            shapes = (page.get("items") or {}).get("shapes") or []
+            boxed = [(s.get("id"), cls._shape_geometry(s)) for s in shapes]
+            boxed = [(i, g) for i, g in boxed if i and g]
+            for outer_id, outer in boxed:
+                for inner_id, inner in boxed:
+                    if inner_id == outer_id:
+                        continue
+                    if cls._strictly_contains(outer, inner):
+                        containers.add(outer_id)
+                        break
+        return containers
 
     def _infer_event_element_type(self, pages: List[Dict[str, Any]]) -> str:
         if self.event_element_type != "BusinessEvent":
@@ -431,12 +591,21 @@ class LucidArchiMateTransformer:
     def _rendering_mode_for_class(self, lucid_class: str) -> str:
         return self.LUCID_CLASS_TO_RENDERING_MODE.get(lucid_class, "black_box")
 
+    def _is_stereotype_line(self, line: str) -> bool:
+        """A first line that states the type rather than the name.
+
+        Covers Lucid's own layer-agnostic labels (SERVICE, DATA OBJECT) and any
+        canonical ArchiMate type the author typed, with or without guillemets.
+        """
+        bare = line.strip().strip("«»<>").strip()
+        return bare.upper() in self.KNOWN_STEREOTYPES or self._type_from_token(bare) is not None
+
     def _extract_shape_name(self, shape: Dict[str, Any]) -> str:
         text = self._extract_text(shape.get("textAreas") or [])
         if not text:
             return ""
         lines = [line.strip() for line in text.splitlines() if line.strip()]
-        if len(lines) >= 2 and lines[0].upper() in self.KNOWN_STEREOTYPES:
+        if len(lines) >= 2 and self._is_stereotype_line(lines[0]):
             return " ".join(lines[1:]).strip()
         return " ".join(lines).strip()
 

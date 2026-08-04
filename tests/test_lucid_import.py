@@ -230,6 +230,115 @@ class TestColourIsPreserved:
             assert "lucid_parent_id" not in element["custom_properties"]
 
 
+class TestTheShapeMapIsWiderThanTheCuratedList:
+    """Lucid names its stencils after the concept, so the name can be read.
+
+    Listing every stencil by hand covers whatever someone got round to adding.
+    Deriving the type from the class name covers the whole set, and is safe
+    because the result must match a real ArchiMate 3.2 type before it is used.
+    """
+
+    @pytest.mark.parametrize("lucid_class,expected", [
+        ("ArchiMate3BusinessProcessBoxBlock", "BusinessProcess"),
+        ("ArchiMate3CapabilityBoxBlock", "Capability"),
+        ("ArchiMate3GoalBoxBlock", "Goal"),
+        ("ArchiMate3DriverBoxBlock", "Driver"),
+        ("ArchiMate3NodeBoxBlock", "Node"),
+        ("ArchiMate3WorkPackageBoxBlock", "WorkPackage"),
+        ("ArchiMate3BusinessActorBoxBlock", "BusinessActor"),
+        ("ArchiMate3ValueStreamBoxBlock", "ValueStream"),
+    ])
+    def test_stencils_beyond_the_curated_map_now_import(self, lucid_class, expected):
+        result = LucidArchiMateTransformer().transform_document(_payload([
+            _shape("a", lucid_class, "Thing", (0, 0, 100, 100)),
+        ]))
+        assert result["elements"], (
+            "%s was skipped; the class name names a real ArchiMate type"
+            % lucid_class)
+        assert result["elements"][0]["type"] == expected
+
+    def test_the_curated_map_still_wins_over_the_class_name(self):
+        """Lucid's layer-agnostic names would be mistyped by a literal reading.
+
+        'Object' is not an ArchiMate type and 'Component' is ambiguous; the
+        curated map resolves both, and must not be overridden by pattern
+        matching.
+        """
+        result = LucidArchiMateTransformer().transform_document(_payload([
+            _shape("o", "ArchiMate3ObjectBoxBlock", "Customer Record", (0, 0, 100, 100)),
+            _shape("c", "ArchiMate3ComponentBoxBlock", "CRM", (200, 0, 100, 100)),
+        ]))
+        types = {e["name"]: e["type"] for e in result["elements"]}
+        assert types == {"Customer Record": "DataObject", "CRM": "ApplicationComponent"}
+
+    def test_an_invented_type_is_not_accepted(self):
+        """Pattern matching must not manufacture types that do not exist."""
+        result = LucidArchiMateTransformer().transform_document(_payload([
+            _shape("a", "ArchiMate3UnicornBoxBlock", "Sparkle", (0, 0, 100, 100)),
+        ]))
+        assert not result["elements"], (
+            "invented an ArchiMate type from an unknown stencil: %r"
+            % result["elements"])
+
+    def test_a_stereotype_label_states_the_type(self):
+        """«Capability» above the name is the author telling you the type."""
+        shape = _shape("a", "GenericRectangle", "x", (0, 0, 100, 100))
+        shape["textAreas"] = [{"label": "Text", "text": "«Capability»\nOrder Fulfilment"}]
+        result = LucidArchiMateTransformer().transform_document(_payload([shape]))
+
+        assert len(result["elements"]) == 1
+        element = result["elements"][0]
+        assert element["type"] == "Capability"
+        assert element["name"] == "Order Fulfilment", (
+            "the stereotype leaked into the element name: %r" % element["name"])
+        assert element["custom_properties"]["lucid_type_source"] == "stereotype"
+
+    def test_plain_rectangles_are_skipped_by_default(self):
+        """Silence is the safe default: inventing a type for every box is fiction."""
+        result = LucidArchiMateTransformer().transform_document(_payload([
+            _shape("a", "GenericRectangle", "Some Product", (0, 0, 100, 100)),
+        ]))
+        assert not result["elements"]
+        assert any("fallback" in w.lower() for w in result["warnings"]), (
+            "skipped the shapes without telling the user how to import them: %r"
+            % result["warnings"])
+
+    def test_a_fallback_imports_plain_rectangles_with_their_structure(self):
+        """The whole point: keep names, colour and nesting, guess only the type."""
+        result = LucidArchiMateTransformer(
+            fallback_element_type="ApplicationComponent"
+        ).transform_document(_payload([
+            _shape("outer", "GenericRectangle", "ArchiCore", (0, 0, 800, 600),
+                   style={"fill": {"color": "#E8A33D"}}),
+            _shape("inner", "GenericRectangle", "Service Catalogue", (40, 40, 200, 100)),
+        ]))
+
+        by_name = {e["name"]: e for e in result["elements"]}
+        assert set(by_name) == {"ArchiCore", "Service Catalogue"}
+        # A box drawn around other boxes is a grouping, whatever it was drawn with.
+        assert by_name["ArchiCore"]["type"] == "Grouping"
+        assert by_name["Service Catalogue"]["type"] == "ApplicationComponent"
+        assert by_name["ArchiCore"]["custom_properties"]["lucid_fill_color"] == "#E8A33D"
+        assert _pair(result, "ArchiCore", "Service Catalogue") is not None, (
+            "nesting was lost for fallback-typed shapes")
+
+    def test_a_guessed_type_is_marked_as_guessed(self):
+        """A guess that looks like a fact is worse than no import at all."""
+        result = LucidArchiMateTransformer(
+            fallback_element_type="ApplicationComponent"
+        ).transform_document(_payload([
+            _shape("a", "GenericRectangle", "Thing", (0, 0, 100, 100)),
+        ]))
+
+        assert result["elements"][0]["custom_properties"]["lucid_type_source"] == "fallback"
+        assert any("guess" in w.lower() for w in result["warnings"]), (
+            "imported guessed types without saying so: %r" % result["warnings"])
+
+    def test_a_fallback_type_must_be_a_real_archimate_type(self):
+        with pytest.raises(ValueError, match="ArchiMate"):
+            LucidArchiMateTransformer(fallback_element_type="NotTheRealThing")
+
+
 class TestImageAnalysisNoLongerCrashes:
     """`await ...__doc__` sat on the live image path and raised TypeError.
 

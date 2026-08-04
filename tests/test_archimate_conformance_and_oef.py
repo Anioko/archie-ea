@@ -104,22 +104,47 @@ class TestRelationshipConformance:
         assert "permitted" in message.lower()
 
     def test_types_absent_from_the_matrix_warn_rather_than_reject(self):
-        """Junction, Grouping and Location are not in the matrix.
+        """Absence of a rule is not evidence of a violation.
 
-        Absence of a rule is not evidence of a violation. Treating "no entry" as
-        "forbidden" would trade the old false positives for new ones.
+        Treating "no entry" as "forbidden" would trade the old false positives
+        for new ones. This originally covered Junction, Grouping and Location,
+        which the matrix did not know. It knows all three now (see
+        tests/test_archimate_matrix_completeness.py), so the behaviour is
+        exercised with a type that is genuinely unknown - which is what the rule
+        was always about.
         """
         from app.modules.architecture.services.archimate_metamodel_validator import (
             ArchiMateMetamodelValidator,
         )
 
-        for absent in ("Junction", "Grouping", "Location"):
+        result = ArchiMateMetamodelValidator().validate_model(
+            [{"name": "X", "type": "SomeFutureConcept"},
+             {"name": "P", "type": "BusinessProcess"}],
+            [{"source": "X", "target": "P", "type": "Triggering"}],
+        )
+        assert not result["errors"], "an unknown type must not be rejected outright"
+        assert any("not in the ArchiMate relationship matrix" in w for w in result["warnings"])
+
+    def test_the_three_other_concepts_are_validated_not_waved_through(self):
+        """Grouping, Location and Junction are known now, so they get checked.
+
+        Being unknown meant every relationship touching them was waved through
+        with a warning. A Grouping aggregating its members is the most ordinary
+        construct in ArchiMate and deserves a real answer.
+        """
+        from app.modules.architecture.services.archimate_metamodel_validator import (
+            ArchiMateMetamodelValidator,
+        )
+
+        for concept in ("Junction", "Grouping", "Location"):
             result = ArchiMateMetamodelValidator().validate_model(
-                [{"name": "X", "type": absent}, {"name": "P", "type": "BusinessProcess"}],
+                [{"name": "X", "type": concept}, {"name": "P", "type": "BusinessProcess"}],
                 [{"source": "X", "target": "P", "type": "Triggering"}],
             )
-            assert not result["errors"], f"{absent} must not be rejected outright"
-            assert any("not in the ArchiMate relationship matrix" in w for w in result["warnings"])
+            assert not result["errors"], f"{concept} must not be rejected"
+            assert not any("not in the ArchiMate relationship matrix" in w
+                           for w in result["warnings"]), (
+                f"{concept} is still being reported as unknown to the matrix")
 
     def test_unknown_relationship_type_warns(self):
         from app.modules.architecture.services.archimate_metamodel_validator import (
