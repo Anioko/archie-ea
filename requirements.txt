@@ -61,7 +61,15 @@ urllib3>=2.1.0,<3.0.0
 msal>=1.28.0,<2.0.0
 # MIME type validation (IMP-001: File upload security)
 python-magic>=0.4.27,<1.0.0
-python-magic-bin>=0.4.14,<1.0.0; platform_system == "Windows"
+# python-magic-bin is NOT installed on Python 3.13+. It was last released in 2017
+# and its bundled `magic` module conflicts with modern python-magic: with both
+# present on Windows + CPython 3.13, `import magic` HANGS indefinitely inside
+# magic/compat.py rather than failing. app/utils/file_validation.py guards the
+# import with `except ImportError`, which a hang walks straight past, so the
+# whole app becomes unbootable — verified: create_app() never returned, and
+# removing this package alone brought boot back to 33s.
+# Linux and the production image are unaffected; they use the system libmagic.
+python-magic-bin>=0.4.14,<1.0.0; platform_system == "Windows" and python_version < "3.13"
 
 # -----------------------------------------------------------------------------
 # 4. IMAGE PROCESSING
