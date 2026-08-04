@@ -64,9 +64,24 @@ class ApplicationComponent(TenantMixin, db.Model, OptimisticLockMixin):
     __tablename__ = "application_components"
     __table_args__ = {"extend_existing": True}
 
-    # Override OptimisticLockMixin's version_id_col — this model uses 'version'
-    # as a String field for application version (e.g. "2.1.0"), not for ORM locking.
-    __mapper_args__ = {}
+    # 'version' on this model is the application's own release number ("2.1.0"),
+    # a String the user edits — not a lock counter. It collides by name with
+    # OptimisticLockMixin's integer column, so the lock gets its own name here.
+    #
+    # This previously read `__mapper_args__ = {}`, which resolved the collision
+    # by switching optimistic locking off altogether. Nothing failed visibly:
+    # two architects editing the same application both saved, and the second
+    # silently overwrote the first. ApplicationComponent is the most-edited
+    # entity in the product, so it is the row where that matters most.
+    #
+    # Nullable on purpose — reconcile-schema cannot add a NOT NULL column to a
+    # table that already has rows. The server_default is what matters: it makes
+    # reconcile-schema emit ADD COLUMN ... DEFAULT 1, so existing applications
+    # arrive at version 1 rather than NULL. A NULL here would be worse than the
+    # bug being fixed — SQLAlchemy would compare `lock_version = NULL`, match no
+    # row, and refuse every save on that application.
+    lock_version = Column(db.Integer, nullable=True, default=1, server_default="1")
+    __mapper_args__ = {"version_id_col": lock_version}
 
     id = Column(db.Integer, primary_key=True)
 

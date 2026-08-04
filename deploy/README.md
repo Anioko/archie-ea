@@ -133,3 +133,20 @@ Until then, delete merged deploy branches occasionally:
         [ "$b" = "$(git rev-parse --abbrev-ref HEAD)" ] && continue
         git merge-base --is-ancestor "$b" HEAD && git branch -D "$b"
     done
+
+## Backup restore drill
+
+An untested backup is not a backup. `deploy/verify_backup.sh` runs on the
+application host and proves the current backup reproduces the live database:
+
+    ssh -J root@165.22.125.156 root@10.106.0.6 \
+        'cd /root/archie-ea && ./deploy/verify_backup.sh'
+
+It checks every archive decompresses, takes a fresh single-database dump,
+restores it into a scratch database, compares row counts table by table against
+live, and drops the scratch copy. **The live database is only ever read.**
+
+Last run: 733 tables restored, 0 row-count mismatches, 0 restore errors.
+
+Run it after any change to the schema or the backup mechanism, and on a schedule
+if nothing else forces it — the failure mode is silent until an incident.

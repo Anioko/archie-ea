@@ -73,6 +73,94 @@ def init_extensions(app):
         form = LoginForm()
         return render_template("account/login.html", form=form), 400
 
+    from werkzeug.exceptions import HTTPException
+
+    @app.errorhandler(HTTPException)
+    def handle_http_exception_on_api(e):
+        """An /api/ path must answer in JSON even when it is refusing.
+
+        A front end that asks for JSON and receives an HTML error page fails at
+        JSON.parse, so the user sees a generic script error instead of "you do
+        not have access" - the refusal is correct and the explanation is lost.
+        Flask-Login's unauthorized_handler already does this for the routes it
+        guards, but abort(401)/abort(403) raised by a role decorator bypasses it
+        and renders HTML.
+
+        Everything outside /api/ is returned untouched, so ordinary pages keep
+        their existing error templates. Blueprint-level handlers are more
+        specific than this one and still win where they are registered.
+        """
+        from flask import jsonify, request
+
+        if not request.path.startswith("/api/"):
+            return e
+        return jsonify({
+            "success": False,
+            "error": e.description,
+            "error_type": (e.name or "error").lower().replace(" ", "_"),
+        }), e.code
+
+    from sqlalchemy.orm.exc import StaleDataError
+
+    @app.errorhandler(StaleDataError)
+    def handle_stale_data_error(e):
+        """Someone else saved this record first — say so, don't show a crash.
+
+        Optimistic locking turns a silent overwrite into a refused write, which
+        is only an improvement if the person who was refused understands what
+        happened. Without this handler they get a 500 and no idea their work was
+        rejected, which reads as the product being broken rather than as the
+        product protecting a colleague's edit.
+
+        409 Conflict is the accurate status: the request was well-formed and the
+        user is allowed to make it — it lost a race. The record on screen is
+        stale, so reloading is genuinely the fix, and the message says that
+        rather than asking the user to guess.
+        """
+        from flask import flash, jsonify, redirect, render_template, request
+
+        db.session.rollback()
+        logger.warning(
+            "optimistic lock conflict: method=%s path=%s user=%s",
+            request.method, request.path,
+            getattr(getattr(request, "user", None), "id", "anonymous"),
+        )
+        message = (
+            "Someone else saved changes to this record while you were editing it. "
+            "Your changes were not saved. Reload the page to see their version, "
+            "then re-apply your edits."
+        )
+        wants_json = (
+            "/api/" in request.path
+            or request.content_type == "application/json"
+            or request.accept_mimetypes.best == "application/json"
+            or request.headers.get("X-Requested-With") == "XMLHttpRequest"
+        )
+        if wants_json:
+            return jsonify({
+                "success": False,
+                "error": message,
+                "error_type": "conflict",
+                "conflict": True,
+            }), 409
+        flash(message, "warning")
+        # Back to the record they were editing, which now reloads the saved
+        # version — a redirect rather than a re-render, so a refresh does not
+        # resubmit the losing write.
+        referrer = request.referrer
+        if referrer and request.host_url.rstrip("/") in referrer:
+            return redirect(referrer)
+        return render_template(
+            "errors/generic_error.html",
+            status_code=409,
+            error={
+                "error": "Someone else saved changes to this record while you "
+                         "were editing it, so your changes were not saved.",
+                "recovery_action": "Reload the page to see their version, then "
+                                   "re-apply your edits.",
+            },
+        ), 409
+
     compress.init_app(app)
 
     # Optional: Flask-Migrate

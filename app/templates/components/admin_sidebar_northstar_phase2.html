@@ -437,6 +437,12 @@ Depends on: ENABLE_NORTH_STAR_NAV (Phase 1)
     <!-- User Footer -->
     <div class="flex-shrink-0 border-t border-border px-4 py-3">
         <div class="flex items-center gap-3">
+            {# AnonymousUser defines only can() and is_admin(), so any other
+               attribute raises UndefinedError. This layout is normally only
+               reached by a signed-in user, but the error templates extend it
+               too - and an error page that crashes while rendering turns a
+               handled 409 or 403 into an unexplained 500. #}
+            {% if current_user.is_authenticated %}
             <div class="flex-1 min-w-0">
                 <div class="text-sm font-medium text-foreground truncate">{{ current_user.full_name() }}</div>
                 <div class="text-xs text-muted-foreground truncate">{{ current_user.email }}</div>
@@ -444,6 +450,14 @@ Depends on: ENABLE_NORTH_STAR_NAV (Phase 1)
             <a href="{{ url_for('account.logout') }}" class="text-muted-foreground hover:text-foreground transition-colors" title="Logout">
                 <i data-lucide="log-out" class="h-4 w-4"></i>
             </a>
+            {% else %}
+            <div class="flex-1 min-w-0">
+                <div class="text-sm font-medium text-foreground truncate">Not signed in</div>
+            </div>
+            <a href="{{ url_for('account.login') }}" class="text-muted-foreground hover:text-foreground transition-colors" title="Sign in">
+                <i data-lucide="log-in" class="h-4 w-4"></i>
+            </a>
+            {% endif %}
         </div>
     </div>
 </aside>

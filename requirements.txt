@@ -68,7 +68,7 @@ python-magic-bin>=0.4.14,<1.0.0; platform_system == "Windows"
 # -----------------------------------------------------------------------------
 # (Test tooling moved to requirements-test.txt — it was shipping in the
 #  production image, enlarging attack surface and CVE surface for no benefit.)
-Pillow>=12.3.0               # CVE: 24 advisories at 10.4.0 (parses untrusted uploads)
+Pillow>=12.3.0,<13.0.0       # CVE: 24 advisories at 10.4.0 (parses untrusted uploads)
 
 # -----------------------------------------------------------------------------
 # 5. AI/LLM API CLIENTS (Cloud-based - no heavy ML deps)
@@ -107,7 +107,7 @@ jsonpickle>=3.0.0,<4.0.0
 python-dateutil>=2.8.0,<3.0.0
 python-dotenv>=1.0.0,<2.0.0
 # Document parsing for journey wizard document upload (extract-brief endpoint)
-pypdf>=6.14.2                # CVE: 35 advisories at 5.9.0; <6.0.0 bound blocked the fix
+pypdf>=6.14.2,<7.0.0         # CVE: 35 advisories at 5.9.0; <6.0.0 bound blocked the fix
 python-docx>=1.0.0,<2.0.0
 
 # -----------------------------------------------------------------------------
@@ -193,13 +193,12 @@ aiohttp>=3.9.0
 # NORTH STAR PHASE 4: Enterprise Export Formats
 # -----------------------------------------------------------------------------
 python-pptx>=0.6.23,<1.0.0  # PowerPoint generation
-weasyprint>=68.0             # HTML to PDF; CVE: 2 advisories at 60.2, <61.0 bound blocked the fix
-pydyf>=0.11.0               # weasyprint 68 backend. The previous <0.11.0 ceiling was
-                            # correct for weasyprint 60, whose PDF() call pydyf 0.11
-                            # broke (500 on PDF export). weasyprint 68 targets the new
-                            # pydyf API and REQUIRES >=0.11.0, so the ceiling had to be
-                            # lifted with the weasyprint bump, not before it — these two
-                            # pins must always move together.
+weasyprint>=60.0,<61.0      # HTML to PDF (CSS support)
+# NOT upgraded to 68.x despite 2 advisories: it requires pydyf>=0.11, and the
+# pin below records that pydyf 0.11+ previously 500'd PDF export. Upgrading both
+# together needs a PDF-generation test on Linux first - a blind bump trades two
+# advisories for a broken user-facing feature.
+pydyf>=0.8.0,<0.11.0        # weasyprint 60 backend; pydyf 0.11+ broke PDF() -> 500 on PDF export
 # pdfkit + wkhtmltopdf (alternative PDF generator - requires system install)
 
 # COM-010: Fernet field encryption for SOC 2 compliance — no existing encryption utility
@@ -211,3 +210,4 @@ stripe>=9.0.0
 # COM-013: PostHog product analytics — no existing analytics library in codebase
 posthog>=3.0.0
 defusedxml>=0.7.1                 # untrusted XML (ArchiMate uploads, SAML) - blocks entity expansion
+axe-playwright-python>=0.1.4      # WCAG 2.1 AA audit in tests/smoke
