@@ -86,7 +86,23 @@ print("  integrity mismatches: %d" % bad)
 sys.exit(1 if bad else 0)
 PY
 
-# ── 4. restart (NOT SIGHUP - see README) ────────────────────────────────────
+# ── 4. rebuild, then restart (NOT SIGHUP - see README) ──────────────────────
+#
+# The build step is not optional and its absence was a silent, serious bug.
+# `up -d --force-recreate` recreates the CONTAINER from the EXISTING image; it
+# never rebuilds. So for as long as this script omitted a build, no change to
+# Dockerfile or requirements.txt could reach production, however many times it
+# was deployed.
+#
+# Measured on 2026-08-04: the running image was built 2026-07-12. The Dockerfile
+# gained WeasyPrint's native libraries on 2026-07-30 (after someone installed
+# them into a live container on 07-14 and that fix was destroyed by the next
+# --force-recreate), and PDF export had been failing on "cannot load library
+# gobject-2.0-0" ever since. In the same image, Pillow was 10.4.0, pypdf 5.9.0
+# and weasyprint 60.2 while requirements.txt pinned CVE-patched floors — 62
+# advisories that had been "fixed" in git for weeks and were still running.
+say "rebuilding the image"
+docker compose build server
 say "restarting the application"
 docker compose up -d --force-recreate server
 
