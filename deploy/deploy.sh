@@ -101,17 +101,24 @@ PY
 # gobject-2.0-0" ever since. In the same image, Pillow was 10.4.0, pypdf 5.9.0
 # and weasyprint 60.2 while requirements.txt pinned CVE-patched floors — 62
 # advisories that had been "fixed" in git for weeks and were still running.
-say "rebuilding the image"
-docker compose build server
-# Building on every deploy grows the buildkit cache without bound — it reached
-# 16.3 GB in two rebuilds and then failed the third with "no space left on
-# device" at 85% disk. Pruning here rather than leaving it for someone to
-# discover: the cache is regenerable, so the only cost is a slower next build.
-# Done AFTER the build so this run still benefits from its own cache.
-say "pruning the build cache"
+# Prune BEFORE building, not after. Building on every deploy grows the buildkit
+# cache without bound — it reached 16.3 GB in two rebuilds and the third died with
+# "no space left on device" at 85% disk with a ~16 GB image to write.
+#
+# The first attempt at this put the prune after the build, reasoning that the run
+# should keep its own warm cache. That is useless: a build that fails for want of
+# space never reaches a cleanup step placed after it, so the deploy deadlocks at
+# exactly the moment the cleanup was meant to help. Verified — the cache was back
+# to 16.31 GB and the disk to 85% immediately after the next successful deploy.
+#
+# Pruning first costs a cold build every time. That is the correct trade: a slower
+# deploy beats a deploy that cannot run.
+say "pruning the build cache to make room"
 docker builder prune -af >/dev/null 2>&1 || true
 df -h / | tail -1 | sed 's/^/  /'
 
+say "rebuilding the image"
+docker compose build server
 say "restarting the application"
 docker compose up -d --force-recreate server
 
