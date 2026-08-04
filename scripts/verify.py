@@ -258,6 +258,28 @@ def gate_sri() -> Result:
     return Result("sri", PASS if count == 0 else FAIL, detail, count, 0)
 
 
+def gate_deployed_deps() -> Result:
+    """Installed packages satisfy the floors requirements.txt pins. Gated at ZERO.
+
+    dependency-cves reads requirements.txt, which measures intent. It reported 62
+    advisories resolved and stayed green for weeks while production ran every one
+    of them: deploy.sh recreated the container from an existing image and never
+    rebuilt, so the running image was six weeks older than the pins. Nothing
+    compared the two, so nothing could notice.
+
+    This checks the environment this runs in. Locally that is the dev virtualenv;
+    `--remote` points it at the production container, which is what CI or a
+    post-deploy step should use.
+    """
+    proc = _run([sys.executable, "scripts/check_deployed_deps.py"])
+    output = (proc.stdout + proc.stderr).strip()
+    match = re.search(r"^(\d+) of (\d+) pinned", output, re.M)
+    count = int(match.group(1)) if match else (0 if proc.returncode == 0 else -1)
+    if count < 0:
+        return Result("deployed-deps", FAIL, output[-800:])
+    return Result("deployed-deps", PASS if count == 0 else FAIL, output[-800:], count, 0)
+
+
 def gate_css_build() -> Result:
     """The committed tailwind-output.css matches what a rebuild produces.
 
@@ -423,6 +445,10 @@ def build_gates(baseline: dict) -> list[Gate]:
              lambda: gate_air_gap(baseline["air_gap"]),
              remediation="vendor the asset into app/static/ and use url_for('static', ...)",
              tags=["static", "ui", "airgap"]),
+        Gate("deployed-deps", "installed packages satisfy the pinned floors", "zero",
+             gate_deployed_deps,
+             remediation="rebuild the image (deploy.sh builds) or pip install -r requirements.txt",
+             tags=["static", "security"]),
         Gate("css-build", "committed tailwind-output.css matches a rebuild", "command",
              gate_css_build,
              remediation="python scripts/build_css.py   and commit the result",

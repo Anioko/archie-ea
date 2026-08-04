@@ -194,6 +194,8 @@ scripts/check_*.py
 # Note: gitignore has no inline comments, so each negation gets its own line.
 !scripts/check_design_tokens.py
 !scripts/check_external_origins.py
+!scripts/check_sri.py
+!scripts/check_deployed_deps.py
 scripts/patch_*.py
 scripts/find_*.py
 scripts/delete_*.py
