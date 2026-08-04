@@ -39,10 +39,23 @@ def dashboard():
     # Metric 3: Capability Coverage (apps with capability mappings)
     # Use raw SQL for counting since mapping table might not have a model
     try:
-        result = db.session.execute(  # tenant-filtered: scoped via parent FK (aggregate)
-            db.text(  # tenant-filtered
-                "SELECT COUNT(DISTINCT application_component_id) FROM application_capability_mapping"
-            )
+        # The marker here previously claimed "scoped via parent FK (aggregate)",
+        # but there is no join to a parent — this was a bare COUNT over the whole
+        # table. application_capability_mapping carries organization_id, and raw
+        # text() bypasses do_orm_execute, so the metric counted every tenant's
+        # mappings and then divided by THIS tenant's application total. That is
+        # both a cross-tenant aggregate leak and an arithmetically wrong
+        # percentage, which could exceed 100%.
+        from app.middleware.tenant_context import current_org_id
+
+        _org = current_org_id()
+        _clause = " WHERE organization_id = :org" if _org is not None else ""
+        result = db.session.execute(
+            db.text(
+                "SELECT COUNT(DISTINCT application_component_id) "
+                "FROM application_capability_mapping" + _clause
+            ),
+            {"org": _org} if _org is not None else {},
         )
         apps_with_capabilities = result.scalar() or 0
     except Exception:

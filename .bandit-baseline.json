@@ -20,6 +20,7 @@
  "B602|manage.py|print(\"Running {}\".format(isort)) subprocess.call(isort, shell=True)",
  "B602|manage.py|print(\"Running {}\".format(yapf)) subprocess.call(yapf, shell=True)",
  "B602|manage.py|try: _sp.call(f\"taskkill /F /PID {pid}\", shell=True, stdout=_sp.DEVNULL, stderr=_sp.DEVNULL) killed.append(pid)",
+ "B608|app/application_mgmt/dashboard_routes.py|db.text( \"SELECT COUNT(DISTINCT application_component_id) \" \"FROM application_capability_mapping\" + _clause ),",
  "B608|app/application_mgmt/routes.py|db.session.execute( text(f\"UPDATE {table} SET {col} = NULL WHERE {col} = :id\"), # noqa: S608 {\"id\": eid},",
  "B608|app/commands/backfill_archimate_relationships.py|return ( \"SELECT e1.id AS source_id, e2.id AS target_id \" \"FROM archimate_elements e1, archimate_elements e2 \" f\"WHERE e1.type = '{source_type}' AND e2.type = '{target_type}' \" \"AND e1.id != e2.id \" f\"LIMIT {int(limit)}\" )",
  "B608|app/commands/backfill_archimate_relationships.py|sql = ( \"SELECT DISTINCT s1.element_id AS source_id, \" \"s2.element_id AS target_id, s1.solution_id \" \"FROM solution_archimate_elements s1 \" \"JOIN solution_archimate_elements s2 \" \" ON s1.solution_id = s2.solution_id AND s1.element_id != s2.element_id \" \"JOIN archimate_elements e1 ON s1.element_id = e1.id \" \"JOIN archimate_elements e2 ON s2.element_id = e2.id \" f\"WHERE e1.type = '{source_type}' AND e2.type = '{target_type}'\" )",
