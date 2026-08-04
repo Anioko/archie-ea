@@ -103,6 +103,15 @@ PY
 # advisories that had been "fixed" in git for weeks and were still running.
 say "rebuilding the image"
 docker compose build server
+# Building on every deploy grows the buildkit cache without bound — it reached
+# 16.3 GB in two rebuilds and then failed the third with "no space left on
+# device" at 85% disk. Pruning here rather than leaving it for someone to
+# discover: the cache is regenerable, so the only cost is a slower next build.
+# Done AFTER the build so this run still benefits from its own cache.
+say "pruning the build cache"
+docker builder prune -af >/dev/null 2>&1 || true
+df -h / | tail -1 | sed 's/^/  /'
+
 say "restarting the application"
 docker compose up -d --force-recreate server
 
