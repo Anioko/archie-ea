@@ -288,12 +288,12 @@ Focus on extracting Business Layer elements related to vendors:
 Also extract Application and Technology elements that represent vendor offerings.
 """
 
-        # Use multi-modal service with enhanced prompt
-        base_prompt = await self.multi_modal_service.extract_archimate_from_diagram.__doc__
-
-        # For now, use the existing method and enhance results
+        # `await ...__doc__` used to sit here, awaiting a docstring string. That
+        # raises TypeError: object str can't be used in 'await' expression - so
+        # every image upload through this path failed before it reached the
+        # model, and the context prompt built above was never used by anything.
         extracted_data, interaction = await self.multi_modal_service.extract_archimate_from_diagram(
-            image_path, provider
+            image_path, provider, extra_instructions=prompt_addition
         )
 
         return extracted_data, interaction

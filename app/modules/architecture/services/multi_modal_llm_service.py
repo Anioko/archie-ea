@@ -503,7 +503,7 @@ class MultiModalLLMService:
             raise ValueError(f"Unknown provider: {provider}")
 
     async def extract_archimate_from_diagram(
-        self, image_path: str, provider: str = "claude"
+        self, image_path: str, provider: str = "claude", extra_instructions: str = ""
     ) -> Tuple[Dict, Optional[LLMInteraction]]:
         """
         Extract ArchiMate elements from architecture diagram image
@@ -511,6 +511,10 @@ class MultiModalLLMService:
         Args:
             image_path: Path to diagram image
             provider: 'claude', 'openai', or 'gemini'
+            extra_instructions: Optional caller-specific guidance appended to the
+                prompt — e.g. "focus on Application Layer elements" when the
+                upload arrived through an application-context flow. Optional and
+                defaulted so existing two-argument callers are unaffected.
 
         Returns:
             (parsed_json, llm_interaction) with ArchiMate elements and relationships
@@ -565,6 +569,9 @@ Return ONLY valid JSON in this exact format:
 
 Be conservative - only extract elements you can clearly identify. If uncertain about element type, note it in metadata.
 """
+
+        if extra_instructions and extra_instructions.strip():
+            prompt = f"{prompt}\nADDITIONAL CONTEXT FOR THIS UPLOAD:\n{extra_instructions.strip()}\n"
 
         response_text, interaction = await self.analyze_image(
             image_path, prompt, provider, max_tokens=6000, temperature=0.1

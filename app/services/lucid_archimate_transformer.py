@@ -91,6 +91,37 @@ class LucidArchiMateTransformer:
         "waypoints",
     }
 
+    # Keys a Lucid export may use to name a shape's container. Which one appears
+    # depends on the export path, so all are tried before falling back to
+    # geometry.
+    PARENT_ID_KEYS = (
+        "parent",
+        "parentId",
+        "containedBy",
+        "containerId",
+        "groupId",
+    )
+
+    # Where a fill colour hides, by export flavour. Colour frequently carries
+    # real meaning in a hand-drawn diagram - a RAG status, a readiness key, an
+    # ownership legend - and it is meaning the author cannot get back once the
+    # import drops it. It is preserved as a property rather than interpreted,
+    # because only the author knows what their palette meant.
+    FILL_COLOR_PATHS = (
+        ("style", "fill", "color"),
+        ("style", "fillColor"),
+        ("style", "backgroundColor"),
+        ("fillColor",),
+    )
+
+    # Nesting in ArchiMate denotes a structural relationship, and the spec allows
+    # several. Composition is the usual reading and is what Archi emits when you
+    # drop one element inside another; a Grouping aggregates its members rather
+    # than owning them (ArchiMate 3.2 §4.5), so it gets aggregation. Association
+    # is the last resort - weaker, but it keeps the containment visible instead
+    # of discarding it.
+    NESTING_FALLBACK_ORDER = ("composition", "aggregation", "association")
+
     def __init__(self, event_element_type: str = "BusinessEvent"):
         if event_element_type not in {"BusinessEvent", "ApplicationEvent"}:
             raise ValueError(
@@ -181,6 +212,15 @@ class LucidArchiMateTransformer:
                 }
                 if lucid_stereotype:
                     element["custom_properties"]["lucid_stereotype"] = lucid_stereotype
+
+                fill_color = self._extract_fill_color(shape)
+                if fill_color:
+                    element["custom_properties"]["lucid_fill_color"] = fill_color
+                declared_parent = self._extract_parent_id(shape)
+                if declared_parent:
+                    # Consumed by _derive_nesting_relationships, which removes it
+                    # once it has been turned into a relationship.
+                    element["custom_properties"]["lucid_parent_id"] = declared_parent
                 if geometry:
                     # Source layout available (e.g. Standard Import boundingBox or
                     # an ARCHIE round-trip export) — preserve it so the composer
@@ -195,6 +235,19 @@ class LucidArchiMateTransformer:
                     skipped_relationship_count += 1
                     continue
                 relationships.append(relationship)
+
+        # Visual containment carries structure that no connector states. Derived
+        # after every page is read, so a declared parent is resolvable wherever
+        # it sits, and only where an explicit connector has not already spoken.
+        existing_pairs = {
+            (rel.get("source_id"), rel.get("target_id")) for rel in relationships
+        }
+        relationships.extend(
+            self._derive_nesting_relationships(elements, existing_pairs, warnings)
+        )
+        # Any parent id that survived (target not imported) is provenance noise.
+        for element in elements:
+            element.get("custom_properties", {}).pop("lucid_parent_id", None)
 
         if not elements and total_shapes_seen:
             distinct = sorted({
@@ -486,6 +539,195 @@ class LucidArchiMateTransformer:
                 geom["h"] = int(h)
             return geom
         return {}
+
+    @classmethod
+    def _extract_fill_color(cls, shape: Dict[str, Any]) -> Optional[str]:
+        """The shape's fill colour as a string, or None.
+
+        Returned verbatim rather than normalised: Lucid emits '#FF9900',
+        'rgb(255,153,0)' and named colours depending on the export, and the
+        author's legend is easier to match against the original spelling.
+        """
+        for path in cls.FILL_COLOR_PATHS:
+            value: Any = shape
+            for key in path:
+                if not isinstance(value, dict):
+                    value = None
+                    break
+                value = value.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        return None
+
+    @classmethod
+    def _extract_parent_id(cls, shape: Dict[str, Any]) -> Optional[str]:
+        """An explicitly declared container id, if the export names one."""
+        for key in cls.PARENT_ID_KEYS:
+            value = shape.get(key)
+            if isinstance(value, (str, int)) and str(value).strip():
+                return str(value).strip()
+            # Some exports nest it: {"parent": {"id": "..."}}
+            if isinstance(value, dict):
+                inner = value.get("id") or value.get("shapeId")
+                if isinstance(inner, (str, int)) and str(inner).strip():
+                    return str(inner).strip()
+        return None
+
+    @staticmethod
+    def _box(element: Dict[str, Any]) -> Optional[Tuple[int, int, int, int]]:
+        """(x, y, w, h) when the element has a full rectangle, else None."""
+        keys = ("x", "y", "w", "h")
+        if not all(isinstance(element.get(k), int) for k in keys):
+            return None
+        x, y, w, h = (element[k] for k in keys)
+        if w <= 0 or h <= 0:
+            return None
+        return x, y, w, h
+
+    @classmethod
+    def _strictly_contains(
+        cls, outer: Dict[str, Any], inner: Dict[str, Any], tolerance: int = 2
+    ) -> bool:
+        """True when `outer`'s rectangle encloses `inner`'s and is larger.
+
+        The tolerance absorbs a border width or a shape sitting flush against
+        its container's edge, which is common once a diagram has been tidied.
+        """
+        outer_box, inner_box = cls._box(outer), cls._box(inner)
+        if not outer_box or not inner_box:
+            return False
+        ox, oy, ow, oh = outer_box
+        ix, iy, iw, ih = inner_box
+        if ow * oh <= iw * ih:
+            return False
+        return (
+            ix >= ox - tolerance
+            and iy >= oy - tolerance
+            and ix + iw <= ox + ow + tolerance
+            and iy + ih <= oy + oh + tolerance
+        )
+
+    def _nesting_relationship_type(
+        self, parent_type: str, child_type: str
+    ) -> Optional[str]:
+        """Pick a structural type for a nesting, refusing to invent an invalid one.
+
+        Validated against the ArchiMate 3.2 matrix when it knows both element
+        types. It does not know Grouping, Location or Junction - the three
+        "Other" elements are absent from it - and for those the spec default is
+        used directly rather than treating "unknown to the matrix" as "not
+        allowed", which would silently drop the most common nesting of all.
+        """
+        try:
+            from app.config.archimate_relationship_matrix import (  # noqa: PLC0415
+                ALL_ELEMENTS,
+                is_valid_relationship,
+            )
+        except Exception:  # noqa: BLE001 - transformer must work without app config
+            ALL_ELEMENTS, is_valid_relationship = [], None
+
+        preferred = "aggregation" if parent_type == "Grouping" else "composition"
+        order = [preferred] + [t for t in self.NESTING_FALLBACK_ORDER if t != preferred]
+
+        both_known = (
+            is_valid_relationship is not None
+            and parent_type in ALL_ELEMENTS
+            and child_type in ALL_ELEMENTS
+        )
+        if not both_known:
+            return preferred
+
+        for candidate in order:
+            if is_valid_relationship(parent_type, child_type, candidate):
+                return candidate
+        return None
+
+    def _derive_nesting_relationships(
+        self,
+        elements: List[Dict[str, Any]],
+        existing_pairs: set,
+        warnings: List[str],
+    ) -> List[Dict[str, Any]]:
+        """Turn visual containment into structural ArchiMate relationships.
+
+        A nested box is the most common way an architect writes "part of", and
+        dropping it loses the diagram's whole structure: every element arrives
+        as a flat, unrelated list. Two sources, in order of trust:
+
+        1. An explicit container id, when the export names one.
+        2. Geometry - the smallest shape that encloses this one, which is its
+           nearest ancestor rather than the outermost box it happens to sit in.
+
+        Geometric inference is confined to a single page: two shapes on
+        different pages can share coordinates and are not nested.
+        """
+        by_id = {e["id"]: e for e in elements if e.get("id")}
+        parents: Dict[str, str] = {}
+
+        for element in elements:
+            declared = element.get("custom_properties", {}).pop("lucid_parent_id", None)
+            if declared and declared in by_id and declared != element["id"]:
+                parents[element["id"]] = declared
+
+        # Geometry fills in only where nothing was declared.
+        page_of = lambda e: (e.get("custom_properties") or {}).get("lucid_page_id")  # noqa: E731
+        for element in elements:
+            if element["id"] in parents or not self._box(element):
+                continue
+            best: Optional[Dict[str, Any]] = None
+            for candidate in elements:
+                if candidate["id"] == element["id"]:
+                    continue
+                if page_of(candidate) != page_of(element):
+                    continue
+                if not self._strictly_contains(candidate, element):
+                    continue
+                if best is None or self._strictly_contains(best, candidate):
+                    best = candidate
+            if best is not None:
+                parents[element["id"]] = best["id"]
+
+        derived: List[Dict[str, Any]] = []
+        unrepresentable = 0
+        for child_id, parent_id in sorted(parents.items()):
+            # An explicit connector already says how these two relate; a derived
+            # one would duplicate or contradict it.
+            if (parent_id, child_id) in existing_pairs or (child_id, parent_id) in existing_pairs:
+                continue
+            parent, child = by_id[parent_id], by_id[child_id]
+            rel_type = self._nesting_relationship_type(parent["type"], child["type"])
+            if rel_type is None:
+                unrepresentable += 1
+                continue
+            derived.append({
+                "id": f"nesting-{parent_id}-{child_id}",
+                "identifier": f"nesting-{parent_id}-{child_id}",
+                "type": rel_type,
+                "source_id": parent_id,
+                "target_id": child_id,
+                "source": parent_id,
+                "target": child_id,
+                "access_mode": None,
+                "flow_label": None,
+                "custom_label": None,
+                "description": "Derived from visual nesting in the Lucidchart source.",
+                "connection_spec": None,
+                "derived_from": "nesting",
+            })
+
+        if derived:
+            warnings.append(
+                f"Derived {len(derived)} structural relationship(s) from nested "
+                f"shapes. Nesting is ambiguous in ArchiMate - composition was "
+                f"assumed (aggregation under a Grouping). Review before publishing."
+            )
+        if unrepresentable:
+            warnings.append(
+                f"{unrepresentable} nested shape pair(s) have no valid ArchiMate "
+                f"relationship between their element types, so the containment "
+                f"was not imported."
+            )
+        return derived
 
     @staticmethod
     def _pretty_endpoint_style(style: str) -> str:
