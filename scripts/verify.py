@@ -258,6 +258,31 @@ def gate_sri() -> Result:
     return Result("sri", PASS if count == 0 else FAIL, detail, count, 0)
 
 
+def gate_raw_sql_tenancy(baseline: int) -> Result:
+    """Raw SQL reading a tenant-scoped table with no organization predicate.
+
+    A ratchet, not a hard zero. do_orm_execute rewrites ORM statements only, so
+    raw text() goes to the database as written, and the convention that grew up
+    instead was a `# tenant-filtered` comment. That comment has been wrong twice:
+    ten queries in business_capability_management_routes.py returned every
+    organisation's rows, and the dashboard's capability-coverage metric counted
+    every organisation's mappings before dividing by one organisation's total.
+
+    A clean run does NOT prove tenancy. It proves the one mechanically detectable
+    failure — no predicate at all — is absent. The common "scoped via parent FK"
+    case needs the value followed back through the caller, which no regex can do.
+    """
+    proc = _run([sys.executable, "scripts/check_raw_sql_tenancy.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("raw-sql-tenancy", FAIL, f"could not parse: {proc.stdout!r}")
+    detail = ""
+    if count > baseline:
+        detail = _run([sys.executable, "scripts/check_raw_sql_tenancy.py"]).stdout[-1500:]
+    return Result("raw-sql-tenancy", PASS if count <= baseline else FAIL, detail, count, baseline)
+
+
 def gate_deployed_deps() -> Result:
     """Installed packages satisfy the floors requirements.txt pins. Gated at ZERO.
 
@@ -445,6 +470,10 @@ def build_gates(baseline: dict) -> list[Gate]:
              lambda: gate_air_gap(baseline["air_gap"]),
              remediation="vendor the asset into app/static/ and use url_for('static', ...)",
              tags=["static", "ui", "airgap"]),
+        Gate("raw-sql-tenancy", "raw SQL on tenant tables without an org predicate",
+             "ratchet", lambda: gate_raw_sql_tenancy(baseline["raw_sql_tenancy"]),
+             remediation="scope the query, or append 'tenancy-ok: <reason>'",
+             tags=["static", "security"]),
         Gate("deployed-deps", "installed packages satisfy the pinned floors", "zero",
              gate_deployed_deps,
              remediation="rebuild the image (deploy.sh builds) or pip install -r requirements.txt",

@@ -118,13 +118,18 @@ def groupings_overview():
             }
             # The counting query was stripped; `count` was unbound. _grp_params
             # still carries the three keyword patterns it was written for.
-            count = db.session.execute(  # tenant-filtered
+            # The OR-chain must be bracketed before the tenant predicate is
+            # appended: `A OR B OR C AND org=:org` binds AND tighter than OR and
+            # would leak every organisation matching keyword1 or keyword2.
+            _grp_org_clause, _grp_org = _org_scope(prefix="AND")
+            _grp_params.update(_grp_org)
+            count = db.session.execute(
                 text(
-                    """
+                    f"""
                 SELECT COUNT(*) FROM business_capability
-                WHERE LOWER(COALESCE(name, '')) LIKE :keyword1
+                WHERE (LOWER(COALESCE(name, '')) LIKE :keyword1
                    OR LOWER(COALESCE(name, '')) LIKE :keyword2
-                   OR LOWER(COALESCE(description, '')) LIKE :keyword3
+                   OR LOWER(COALESCE(description, '')) LIKE :keyword3){_grp_org_clause}
             """
                 ),
                 _grp_params,
@@ -449,7 +454,12 @@ def capability_analytics():
         overall_stats = dict(_overall_row) if _overall_row else {}
 
         # Get domain distribution
-        _org_and_a = ""
+        # Both analytics queries already carry `WHERE <col> IS NOT NULL`, so the
+        # tenant predicate has to append with AND. Missed on the first pass over
+        # this file — _org_filter_a was fixed and this one was not — and found by
+        # scripts/check_raw_sql_tenancy.py rather than by re-reading the file.
+        _org_and_a, _org_and_params_a = _org_scope(prefix="AND")
+        _org_params_a = {**_org_params_a, **_org_and_params_a}
         domain_distribution = db.session.execute(  # tenant-filtered
             text(
                 f"""
