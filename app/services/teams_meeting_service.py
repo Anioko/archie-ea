@@ -13,8 +13,11 @@ Extra config stored in APISettings (provider='teams_meetings', key_label='defaul
     custom_headers      — JSON: {"transcript_analysis": bool, "signal_creation": bool}
 """
 
+import hashlib
+import hmac
 import json
 import logging
+import os
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
 
@@ -26,7 +29,44 @@ logger = logging.getLogger(__name__)
 
 _PROVIDER = "teams_meetings"
 _LABEL = "default"
-_CLIENT_STATE = "archie-teams-meeting-intelligence"
+def _client_state() -> str:
+    """The shared secret Microsoft Graph echoes back on every notification.
+
+    This was the literal string "archie-teams-meeting-intelligence", hardcoded in
+    a public AGPL repository — so the one value proving a notification came from
+    Graph was readable by anyone. /api/webhooks/teams/notifications takes no auth
+    and is csrf-exempt by necessity (Graph cannot send a CSRF token), which makes
+    clientState the ONLY thing standing between the internet and
+    _process_call_record() running against an attacker-chosen call id using the
+    application's own Graph credentials. The `transcript_analysis` gate above it
+    does not help: it defaults to True.
+
+    Derived from SECRET_KEY rather than added as new configuration, so it is
+    stable for an install (the same value must be used when creating the
+    subscription and when verifying notifications), differs between installs, and
+    needs no deployment change. TEAMS_WEBHOOK_CLIENT_STATE overrides it for
+    anyone who would rather set it explicitly.
+
+    Fails closed: with no SECRET_KEY and no override there is no secret to check
+    against, so an empty string is returned and verification below rejects
+    everything. A webhook that silently accepts anything is worse than one that
+    silently accepts nothing.
+    """
+    explicit = os.environ.get("TEAMS_WEBHOOK_CLIENT_STATE")
+    if explicit:
+        return explicit
+    secret = os.environ.get("SECRET_KEY") or ""
+    try:
+        from flask import current_app
+
+        secret = current_app.config.get("SECRET_KEY") or secret
+    except Exception:  # noqa: BLE001 — usable outside an app context
+        pass
+    if not secret:
+        return ""
+    return hmac.new(
+        secret.encode(), b"teams-webhook-client-state", hashlib.sha256
+    ).hexdigest()
 
 
 class TeamsMeetingService:
@@ -120,7 +160,7 @@ class TeamsMeetingService:
             "notificationUrl": notification_url,
             "resource": "/communications/callRecords",
             "expirationDateTime": expiry,
-            "clientState": _CLIENT_STATE,
+            "clientState": _client_state(),
         }
         try:
             resp = requests.post(
@@ -220,8 +260,16 @@ class TeamsMeetingService:
         if not cfg.get("transcript_analysis"):
             return
         for notification in data.get("value", []):
-            if notification.get("clientState") != _CLIENT_STATE:
-                logger.debug("teams_meetings: unexpected clientState, skipping")
+            expected = _client_state()
+            # compare_digest: this is a secret comparison on an unauthenticated
+            # path, so it should not leak length or prefix through timing.
+            # `not expected` is the fail-closed case — no configured secret means
+            # nothing can be trusted, so nothing is processed.
+            supplied = notification.get("clientState") or ""
+            if not expected or not hmac.compare_digest(str(supplied), expected):
+                logger.warning(
+                    "teams_meetings: rejected a notification with an invalid clientState"
+                )
                 continue
             call_id = cls._extract_call_id(notification)
             if call_id:
