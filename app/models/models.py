@@ -345,6 +345,25 @@ else:
         # GAP-INT-001: Structured connection specification
         connection_spec = db.Column(db.JSON, nullable=True, default=dict)
 
+        # How this relationship came to exist, when it was not drawn explicitly:
+        # "notation" (read from arrowhead and stroke), "stroke-stripped-label"
+        # (inferred from a line's label because the export discarded the stroke),
+        # "nesting" (one shape drawn inside another). NULL means stated outright,
+        # by a person or an explicit connector, and is what every pre-existing
+        # row correctly reads.
+        #
+        # Element provenance already survived in custom_properties; relationship
+        # provenance was computed on import and then dropped on the way into the
+        # database, which left the import review queue with nothing to triage.
+        derived_from = db.Column(db.String(40), nullable=True, index=True)
+
+        # When a person confirmed an inferred relationship. NULL with a
+        # derived_from set means "still to be looked at" - that pair is the whole
+        # import review queue. Kept as a timestamp rather than a boolean so the
+        # queue can show what was reviewed recently and by implication what has
+        # been sitting there.
+        reviewed_at = db.Column(db.DateTime, nullable=True)
+
         architecture = db.relationship("ArchitectureModel", backref="archimate_relationships")
         source = db.relationship(
             "ArchiMateElement", foreign_keys=[source_id], backref="outgoing_relationships"

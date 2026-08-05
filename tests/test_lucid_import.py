@@ -710,3 +710,47 @@ class TestImageAnalysisNoLongerCrashes:
         assert "ApplicationComponent" in captured.get("extra", ""), (
             "the application-context prompt was not passed through: %r"
             % captured.get("extra"))
+
+
+class TestImportProvenanceSurvivesPersistence:
+    """The review queue can only triage what the import bothered to record.
+
+    Element provenance always survived in custom_properties. Relationship
+    provenance was computed and then dropped on the way into the database, so
+    69 inferred relationships arrived indistinguishable from ones a person drew
+    deliberately - and a queue with nothing in it looks like a clean import.
+    """
+
+    def test_the_relationship_model_records_how_it_was_derived(self):
+        from app.models.models import ArchiMateRelationship
+
+        columns = ArchiMateRelationship.__table__.c
+        assert "derived_from" in columns, (
+            "relationships cannot say whether they were inferred, so nothing "
+            "can be reviewed")
+        assert "reviewed_at" in columns, (
+            "nothing records that a person confirmed an inferred relationship, "
+            "so the queue can never be worked down")
+
+    def test_both_review_columns_are_safe_for_reconcile_schema(self):
+        """reconcile-schema adds columns nullable with no backfill.
+
+        A NOT NULL column here would be fine on a fresh database and fatal on
+        every existing one - and the correct value for a pre-existing row is
+        NULL anyway: it was stated outright, not inferred by this importer.
+        """
+        from app.models.models import ArchiMateRelationship
+
+        for name in ("derived_from", "reviewed_at"):
+            column = ArchiMateRelationship.__table__.c[name]
+            assert column.nullable, "%s must be nullable" % name
+
+    def test_the_transformer_emits_a_provenance_value_to_persist(self):
+        """The column is pointless if nothing fills it."""
+        payload = _payload(
+            [_shape("a", "ArchiMate3ComponentBoxBlock", "A", (0, 0, 160, 60)),
+             _shape("b", "ArchiMate3ComponentBoxBlock", "B", (400, 0, 160, 60))],
+            [_line("l1", "a", "b", target_style="Arrow", stroke="dashed")],
+        )
+        result = LucidArchiMateTransformer().transform_document(payload)
+        assert result["relationships"][0]["derived_from"] == "notation"

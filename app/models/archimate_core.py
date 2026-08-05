@@ -122,6 +122,21 @@ if _FAST_INIT:
         # interface type, IAM method, file format, file name pattern, protocol, direction.
         connection_spec = db.Column(db.JSON, nullable=True, default=dict)
 
+        # How this relationship came to exist, when it was not drawn explicitly.
+        # "notation" - read from the arrowhead and stroke of a line.
+        # "stroke-stripped-label" - inferred from a line's label because the
+        #   export discarded the stroke that would have said flow vs serving.
+        # "nesting" - derived from one shape being drawn inside another.
+        # NULL - stated outright, by a person or by an explicit connector.
+        #
+        # Nullable and unindexed-by-default on purpose: reconcile-schema adds
+        # columns as nullable with no backfill, so every existing row reads NULL,
+        # which is exactly right - they were not inferred by this importer.
+        # Without this the import review queue has nothing to triage: element
+        # provenance survived in custom_properties and relationship provenance
+        # was dropped on the way into the database.
+        derived_from = db.Column(db.String(40), nullable=True, index=True)
+
         def __repr__(self):
             return f"<ArchiMateRelationship {self.source_id} -> {self.target_id}>"
 

@@ -210,6 +210,7 @@ def import_lucid(path, org_id, fallback_type, dedupe, link_applications,
 
     rels_created = 0
     rels_skipped = 0
+    refreshed_rels = 0
     for relationship in relationships:
         source = lucid_id_to_db_id.get(relationship.get("source_id"))
         target = lucid_id_to_db_id.get(relationship.get("target_id"))
@@ -223,6 +224,14 @@ def import_lucid(path, org_id, fallback_type, dedupe, link_applications,
             type=relationship.get("type")
         ).first()
         if exists is not None:
+            # Backfill provenance onto a relationship imported before this was
+            # recorded. Only when empty: a NULL means "stated outright", and a
+            # relationship a person drew deliberately must not be relabelled as
+            # inferred by a later run.
+            incoming_provenance = relationship.get("derived_from")
+            if incoming_provenance and not exists.derived_from:
+                exists.derived_from = incoming_provenance
+                refreshed_rels += 1
             continue
 
         try:
@@ -240,12 +249,16 @@ def import_lucid(path, org_id, fallback_type, dedupe, link_applications,
                     custom_label=(relationship.get("custom_label") or None) and
                                  relationship["custom_label"][:200],
                     connection_spec=relationship.get("connection_spec") or {},
+                    # Without this the review queue has nothing to triage.
+                    derived_from=relationship.get("derived_from"),
                     organization_id=org_id,
                 ))
             rels_created += 1
         except Exception as exc:  # noqa: BLE001
             click.echo(f"  ! could not create relationship: {str(exc)[:110]}")
 
+    if refreshed_rels:
+        click.echo(f"  recorded provenance on {refreshed_rels} existing relationship(s)")
     if refreshed_props:
         click.echo(f"  refreshed properties on {len(refreshed_props)} existing element(s)")
 

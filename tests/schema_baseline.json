@@ -9512,6 +9512,10 @@
     "has_default": false,
     "nullable": true
    },
+   "derived_from": {
+    "has_default": false,
+    "nullable": true
+   },
    "description": {
     "has_default": false,
     "nullable": true
@@ -9527,6 +9531,10 @@
    "organization_id": {
     "has_default": true,
     "nullable": false
+   },
+   "reviewed_at": {
+    "has_default": false,
+    "nullable": true
    },
    "source_id": {
     "has_default": false,

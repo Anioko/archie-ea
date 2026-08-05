@@ -356,6 +356,210 @@ def viewpoints_page():
     return redirect(url_for("archimate.composer_page", **params), code=302)
 
 
+# ---------------------------------------------------------------------------
+# Import review queue
+# ---------------------------------------------------------------------------
+# An import fills a repository with assertions nobody has checked. This one
+# guessed the type of 55 elements and inferred 69 relationships from how lines
+# were drawn - all correctly recorded, and until now surfaced nowhere, which
+# meant trusting 124 guesses sight unseen or trusting none of them.
+#
+# Confidence is ordered so the least defensible work comes first: a type applied
+# because the shape had none at all is a worse guess than a relationship read
+# from an arrowhead.
+_REVIEW_CONFIDENCE = {
+    "fallback": ("element type was guessed",
+                 "The shape carried no ArchiMate type; a default was applied."),
+    "stroke-stripped-label": ("relationship inferred from a label",
+                              "The export dropped the line's stroke, so a labelled "
+                              "arrow was read as a data flow."),
+    "nesting": ("containment derived from layout",
+                "One shape was drawn inside another; ArchiMate allows several "
+                "readings of that."),
+    "notation": ("relationship read from notation",
+                 "Taken from the arrowhead and stroke, which is how ArchiMate "
+                 "states a relationship."),
+    "diagram-image": ("read from an image by a model",
+                      "Extracted from a picture rather than structured data."),
+}
+_REVIEW_ORDER = ["fallback", "stroke-stripped-label", "nesting", "notation", "diagram-image"]
+
+
+def _review_org_id():
+    from flask import g as _g  # noqa: PLC0415
+
+    return getattr(_g, "current_org_id", None)
+
+
+@archimate_bp.route("/import-review", methods=["GET"])
+@login_required
+def import_review_page():
+    """Triage what an import guessed, rather than trusting it silently."""
+    return render_template("archimate/import_review.html")
+
+
+@archimate_bp.route("/api/import-review/items", methods=["GET"])
+@login_required
+def api_import_review_items():
+    """Everything an import inferred and nobody has confirmed yet."""
+    from app.models.models import ArchiMateElement, ArchiMateRelationship  # noqa: PLC0415
+
+    org_id = _review_org_id()
+    include_reviewed = request.args.get("include_reviewed") == "1"
+
+    # custom_properties is db.JSON, not JSONB, so `.astext` does not exist on it.
+    # Cast in the predicate rather than pulling every element back to filter in
+    # Python - a real repository has tens of thousands of these. PostgreSQL is
+    # required by this application, so the cast is safe.
+    element_q = ArchiMateElement.query.filter(
+        db.text("custom_properties::jsonb->>'lucid_type_source' = 'fallback'")
+    )
+    if org_id is not None:
+        element_q = element_q.filter(ArchiMateElement.organization_id == org_id)
+
+    elements = []
+    for row in element_q.order_by(ArchiMateElement.name).limit(500).all():
+        props = row.custom_properties or {}
+        if props.get("reviewed_at") and not include_reviewed:
+            continue
+        elements.append({
+            "kind": "element",
+            "id": row.id,
+            "name": row.name,
+            "type": row.type,
+            "layer": row.layer,
+            "reason": "fallback",
+            "reviewed_at": props.get("reviewed_at"),
+            "detail": props.get("lucid_class") or "",
+        })
+
+    rel_q = ArchiMateRelationship.query.filter(
+        ArchiMateRelationship.derived_from.isnot(None)
+    )
+    if org_id is not None:
+        rel_q = rel_q.filter(ArchiMateRelationship.organization_id == org_id)
+    if not include_reviewed:
+        rel_q = rel_q.filter(ArchiMateRelationship.reviewed_at.is_(None))
+
+    relationships = []
+    rows = rel_q.limit(500).all()
+    endpoint_ids = {r.source_id for r in rows} | {r.target_id for r in rows}
+    names = {}
+    if endpoint_ids:
+        for element in ArchiMateElement.query.filter(
+                ArchiMateElement.id.in_(endpoint_ids)).all():
+            names[element.id] = element.name
+    for row in rows:
+        relationships.append({
+            "kind": "relationship",
+            "id": row.id,
+            "name": f"{names.get(row.source_id, '?')} → {names.get(row.target_id, '?')}",
+            "type": row.type,
+            "layer": "",
+            "reason": row.derived_from,
+            "reviewed_at": row.reviewed_at.isoformat() if row.reviewed_at else None,
+            "detail": row.flow_label or row.custom_label or "",
+        })
+
+    items = elements + relationships
+    items.sort(key=lambda i: (_REVIEW_ORDER.index(i["reason"])
+                              if i["reason"] in _REVIEW_ORDER else 99, i["name"]))
+
+    groups = []
+    for reason in _REVIEW_ORDER:
+        matching = [i for i in items if i["reason"] == reason]
+        if not matching:
+            continue
+        label, explanation = _REVIEW_CONFIDENCE[reason]
+        groups.append({"reason": reason, "label": label,
+                       "explanation": explanation, "count": len(matching)})
+
+    return jsonify({
+        "success": True,
+        "items": items,
+        "groups": groups,
+        "total": len(items),
+        "element_types": _review_element_types(),
+    }), 200
+
+
+def _review_element_types():
+    try:
+        from app.config.archimate_relationship_matrix import (  # noqa: PLC0415
+            ALL_ELEMENTS,
+        )
+        return sorted(ALL_ELEMENTS)
+    except Exception:  # noqa: BLE001
+        return []
+
+
+@archimate_bp.route("/api/import-review/accept", methods=["POST"])
+@login_required
+def api_import_review_accept():
+    """Confirm inferred items. Marks them reviewed; it does not change them."""
+    from datetime import datetime  # noqa: PLC0415
+
+    from app.models.models import ArchiMateElement, ArchiMateRelationship  # noqa: PLC0415
+
+    data = request.get_json(silent=True) or {}
+    org_id = _review_org_id()
+    now = datetime.utcnow()
+    accepted = 0
+
+    for element_id in data.get("element_ids") or []:
+        row = db.session.get(ArchiMateElement, element_id)
+        if row is None or (org_id is not None and row.organization_id != org_id):
+            continue
+        props = dict(row.custom_properties or {})
+        props["reviewed_at"] = now.isoformat()
+        row.custom_properties = props
+        accepted += 1
+
+    for rel_id in data.get("relationship_ids") or []:
+        row = db.session.get(ArchiMateRelationship, rel_id)
+        if row is None or (org_id is not None and row.organization_id != org_id):
+            continue
+        row.reviewed_at = now
+        accepted += 1
+
+    db.session.commit()
+    return jsonify({"success": True, "accepted": accepted}), 200
+
+
+@archimate_bp.route("/api/import-review/retype", methods=["POST"])
+@login_required
+def api_import_review_retype():
+    """Correct a guessed element type, which is the point of reviewing it."""
+    from datetime import datetime  # noqa: PLC0415
+
+    from app.models.models import ArchiMateElement  # noqa: PLC0415
+
+    data = request.get_json(silent=True) or {}
+    new_type = (data.get("type") or "").strip()
+    if new_type not in _review_element_types():
+        return jsonify({"success": False,
+                        "error": f"'{new_type}' is not an ArchiMate 3.2 element type."}), 400
+
+    org_id = _review_org_id()
+    changed = 0
+    for element_id in data.get("element_ids") or []:
+        row = db.session.get(ArchiMateElement, element_id)
+        if row is None or (org_id is not None and row.organization_id != org_id):
+            continue
+        props = dict(row.custom_properties or {})
+        # Keep what it was guessed as: a correction is evidence about the
+        # importer, and knowing which guesses get overridden is how the
+        # fallback gets better.
+        props.setdefault("type_before_review", row.type)
+        props["reviewed_at"] = datetime.utcnow().isoformat()
+        row.type = new_type
+        row.custom_properties = props
+        changed += 1
+
+    db.session.commit()
+    return jsonify({"success": True, "changed": changed}), 200
+
+
 _VISION_PROVIDERS = ("anthropic", "openai", "gemini")
 _IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp")
 _IMAGE_MAX_BYTES = 12 * 1024 * 1024
