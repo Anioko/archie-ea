@@ -34,9 +34,16 @@ from app import db
 
 
 def _load_payload(path):
-    """Read a .json export or a .lucid archive, mirroring the upload route."""
+    """Read a .json export, a .lucid archive, or a Visio .vsdx.
+
+    Returns (payload, kind). A .vsdx is handed back as raw bytes because its
+    transformer opens the package itself.
+    """
     with open(path, "rb") as handle:
         raw = handle.read()
+
+    if path.lower().endswith(".vsdx"):
+        return raw, "visio"
 
     # A native .lucid file is a ZIP whose document.json holds the diagram.
     if raw[:2] == b"PK":
@@ -54,7 +61,7 @@ def _load_payload(path):
             raw = archive.read(member)
 
     try:
-        return json.loads(raw.decode("utf-8"))
+        return json.loads(raw.decode("utf-8")), "lucid"
     except (UnicodeDecodeError, ValueError) as exc:
         raise click.ClickException(f"Not valid Lucidchart JSON: {exc}") from exc
 
@@ -107,11 +114,17 @@ def import_lucid(path, org_id, fallback_type, dedupe, link_applications,
             f"No organization with id {org_id}. Importing into a tenant that "
             f"does not exist would strand every row.")
 
-    payload = _load_payload(path)
+    payload, kind = _load_payload(path)
     try:
-        transformer = LucidArchiMateTransformer(
-            event_element_type=event_type, fallback_element_type=fallback_type
-        )
+        if kind == "visio":
+            from app.services.visio_archimate_transformer import VisioArchiMateTransformer
+            transformer = VisioArchiMateTransformer(
+                event_element_type=event_type, fallback_element_type=fallback_type
+            )
+        else:
+            transformer = LucidArchiMateTransformer(
+                event_element_type=event_type, fallback_element_type=fallback_type
+            )
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
 

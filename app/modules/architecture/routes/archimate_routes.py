@@ -576,23 +576,34 @@ _IMPORT_MAX_BYTES = 50 * 1024 * 1024  # Lucid caps a .lucid archive at 50MB
 
 
 def _read_diagram_upload():
-    """Return (payload, error_response). Accepts .json or a .lucid archive."""
+    """Return (payload_or_bytes, kind, error_response).
+
+    kind is "lucid" or "visio". A .vsdx is returned as raw bytes because its
+    transformer parses the package itself; Lucid's is returned as parsed JSON.
+    """
     import io  # noqa: PLC0415
     import json as _json  # noqa: PLC0415
     import zipfile  # noqa: PLC0415
 
     upload = request.files.get("file")
     if upload is None or not upload.filename:
-        return None, (jsonify({"success": False,
-                               "error": "No file uploaded. Choose a .lucid or .json export."}), 400)
-    if not upload.filename.lower().endswith((".json", ".lucid")):
-        return None, (jsonify({"success": False,
-                               "error": "Upload a .lucid archive or a .json export from "
-                                        "Lucidchart (File → Export → JSON)."}), 400)
+        return None, None, (jsonify({"success": False,
+                                     "error": "No file uploaded. Choose a .lucid, .json "
+                                              "or .vsdx export."}), 400)
+    name = upload.filename.lower()
+    if not name.endswith((".json", ".lucid", ".vsdx")):
+        return None, None, (jsonify({"success": False,
+                                     "error": "Upload a Lucidchart .lucid or .json export, "
+                                              "or a Visio .vsdx drawing."}), 400)
 
     raw = upload.read()
     if len(raw) > _IMPORT_MAX_BYTES:
-        return None, (jsonify({"success": False, "error": "File exceeds 50MB."}), 400)
+        return None, None, (jsonify({"success": False, "error": "File exceeds 50MB."}), 400)
+
+    if name.endswith(".vsdx"):
+        # Visio keeps geometry, which is what makes containment recoverable.
+        # Lucid's JSON export discards it.
+        return raw, "visio", None
 
     if raw[:2] == b"PK":
         try:
@@ -602,18 +613,21 @@ def _read_diagram_upload():
                                if n.lower().rstrip("/").endswith("document.json")), None) \
                     or next((n for n in names if n.lower().endswith(".json")), None)
                 if not member:
-                    return None, (jsonify({"success": False,
-                                           "error": "The .lucid archive has no document.json."}), 400)
+                    return None, None, (jsonify({"success": False,
+                                                 "error": "The .lucid archive has no "
+                                                          "document.json."}), 400)
                 raw = archive.read(member)
         except zipfile.BadZipFile:
-            return None, (jsonify({"success": False,
-                                   "error": "The .lucid file is not a readable archive."}), 400)
+            return None, None, (jsonify({"success": False,
+                                         "error": "The .lucid file is not a readable "
+                                                  "archive."}), 400)
 
     try:
-        return _json.loads(raw.decode("utf-8")), None
+        return _json.loads(raw.decode("utf-8")), "lucid", None
     except (UnicodeDecodeError, ValueError) as exc:
-        return None, (jsonify({"success": False,
-                               "error": "Not valid Lucidchart JSON: %s" % str(exc)[:120]}), 400)
+        return None, None, (jsonify({"success": False,
+                                     "error": "Not valid Lucidchart JSON: %s"
+                                              % str(exc)[:120]}), 400)
 
 
 def _run_diagram_import(preview):
@@ -630,7 +644,7 @@ def _run_diagram_import(preview):
                         "error": "No organisation on this session, so there is nowhere "
                                  "to import into."}), 400
 
-    payload, error = _read_diagram_upload()
+    payload, kind, error = _read_diagram_upload()
     if error is not None:
         return error
 
@@ -640,7 +654,13 @@ def _run_diagram_import(preview):
         return jsonify({"success": False, "error": "Unknown de-duplication strategy."}), 400
 
     try:
-        transformer = LucidArchiMateTransformer(fallback_element_type=fallback)
+        if kind == "visio":
+            from app.services.visio_archimate_transformer import (  # noqa: PLC0415
+                VisioArchiMateTransformer,
+            )
+            transformer = VisioArchiMateTransformer(fallback_element_type=fallback)
+        else:
+            transformer = LucidArchiMateTransformer(fallback_element_type=fallback)
     except ValueError as exc:
         return jsonify({"success": False, "error": str(exc)}), 400
 

@@ -17,12 +17,15 @@
 {% block content %}
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8" x-data="diagramImport()" x-cloak>
 
-    {{ page_header(title='Import a diagram', description='Load a Lucidchart export into the ArchiMate repository') }}
+    {{ page_header(title='Import a diagram', description='Load a Lucidchart or Visio export into the ArchiMate repository') }}
 
     <div class="rounded-lg border border-border bg-muted/30 p-4 mb-6 text-sm text-muted-foreground">
         Export from Lucidchart with <strong class="text-foreground">File → Export → JSON</strong>,
-        or use a native <code>.lucid</code> archive. Nothing is written until you press Import —
-        the preview shows exactly what would be created, attached to what is already here, or changed.
+        or upload a native <code>.lucid</code> archive or a Visio <code>.vsdx</code> drawing.
+        Prefer <code>.vsdx</code> where you have it: Lucid's JSON export discards shape
+        geometry, and geometry is what tells the importer which application sits inside
+        which data centre. Nothing is written until you press Import — the preview shows
+        exactly what would be created, attached to what is already here, or changed.
     </div>
 
     {# ── Step 1: the file and how to read it ─────────────────────────────── #}
@@ -30,9 +33,9 @@
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div>
                 <label for="diagram-file" class="block text-sm font-medium text-foreground mb-1.5">
-                    Lucidchart export
+                    Diagram export
                 </label>
-                <input id="diagram-file" type="file" accept=".json,.lucid"
+                <input id="diagram-file" type="file" accept=".json,.lucid,.vsdx"
                        @change="file = $event.target.files[0]; report = null; committed = false"
                        class="block w-full text-sm text-muted-foreground rounded-md border border-input
                               bg-background px-3 py-2 file:mr-3 file:rounded file:border-0
