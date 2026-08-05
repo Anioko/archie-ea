@@ -1,0 +1,10 @@
+{
+ "_comment": "Accepted measurements for the ratchet gates in scripts/verify.py. Every number here is real debt that has not been paid off, not a statement that the tree is clean. Lowering one after a cleanup is routine; raising one is a regression that needs justifying in review.",
+ "gates": {
+  "boot-health": 3413,
+  "design-tokens": 6300,
+  "lint-core": 4508,
+  "redefinitions": 73,
+  "undefined-names": 293
+ }
+}
