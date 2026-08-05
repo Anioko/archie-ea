@@ -160,7 +160,92 @@ def backfill_initiative_org(dry_run, org_id):
     _backfill("enterprise_initiatives", dry_run, org_id)
 
 
+def _backfill_from_parent(table, parent_table, fk_column, dry_run):
+    """Backfill organization_id by deriving it from an already-scoped parent.
+
+    Exact, not a guess: where the child has a NOT NULL FK to a tenant-scoped
+    parent, the parent's organisation *is* the child's. No --org-id, no refusing
+    to choose between organisations, and correct even on a multi-tenant install.
+    """
+    from sqlalchemy import inspect, text
+
+    insp = inspect(db.engine)
+    live = set(insp.get_table_names())
+    if table not in live or parent_table not in live:
+        click.echo(f"  - {table}: table or parent absent, nothing to do")
+        return
+
+    conn = db.session.connection()
+
+    cols = {c["name"] for c in insp.get_columns(table)}
+    if "organization_id" not in cols:
+        if dry_run:
+            click.echo(f"  - {table}: would ADD COLUMN organization_id")
+            db.session.rollback()
+            return
+        conn.execute(text(f'ALTER TABLE "{table}" ADD COLUMN IF NOT EXISTS organization_id INTEGER'))
+        click.echo(f"  + {table}: added organization_id")
+
+    orphans = conn.execute(
+        text(f'SELECT count(*) FROM "{table}" WHERE organization_id IS NULL')
+    ).scalar()
+    if not orphans:
+        click.echo("  no orphaned rows — nothing to assign")
+    elif dry_run:
+        click.echo(f"  - {table}: would derive org for {orphans} row(s) from {parent_table}")
+        db.session.rollback()
+        return
+    else:
+        conn.execute(text(
+            f'UPDATE "{table}" AS c SET organization_id = p.organization_id '
+            f'FROM "{parent_table}" AS p '
+            f'WHERE c.{fk_column} = p.id AND c.organization_id IS NULL'
+        ))
+        remaining = conn.execute(
+            text(f'SELECT count(*) FROM "{table}" WHERE organization_id IS NULL')
+        ).scalar()
+        click.echo(f"  + {table}: derived org for {orphans - remaining} row(s) from {parent_table}")
+        if remaining:
+            # Only possible if the parent itself is unbackfilled. Say so rather
+            # than leaving rows silently invisible.
+            click.echo(
+                f"  ! {table}: {remaining} row(s) still NULL — their {parent_table} "
+                "row has no organization_id yet"
+            )
+
+    if dry_run:
+        db.session.rollback()
+        return
+
+    for ddl, label in (
+        (f'CREATE INDEX IF NOT EXISTS ix_{table}_organization_id ON "{table}" (organization_id)', "index"),
+        (f'ALTER TABLE "{table}" ADD CONSTRAINT fk_{table}_organization '
+         'FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE', "foreign key"),
+    ):
+        try:
+            conn.execute(text(ddl))
+            click.echo(f"  + {table}: {label}")
+        except Exception as exc:  # noqa: BLE001
+            click.echo(f"  ! {table}: {label} skipped ({str(exc)[:100]})")
+
+    db.session.commit()
+    click.echo(f"backfill {table}: done.")
+
+
+@click.command("backfill-kanban-card-org")
+@click.option("--dry-run", is_flag=True, help="Report what would change; change nothing.")
+@with_appcontext
+def backfill_kanban_card_org(dry_run):
+    """Backfill kanban_cards.organization_id from the owning board.
+
+    KanbanCard gained TenantMixin. board_id is NOT NULL and KanbanBoard is
+    already tenant-scoped, so every card's organisation is derivable exactly.
+    """
+    _backfill_from_parent("kanban_cards", "kanban_boards", "board_id", dry_run)
+
+
 def init_app(app):
     """Register the tenancy backfill CLI commands."""
     app.cli.add_command(backfill_principle_org)
     app.cli.add_command(backfill_initiative_org)
+    app.cli.add_command(backfill_kanban_card_org)

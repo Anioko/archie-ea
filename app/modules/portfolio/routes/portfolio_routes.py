@@ -19,6 +19,10 @@ logger = logging.getLogger(__name__)
 
 portfolio_bp = Blueprint("portfolio", __name__, url_prefix="/portfolio")
 
+# The write paths (demand intake, benefit measurement, assumption resolution)
+# attach to this blueprint from portfolio_write_routes. Imported at the bottom of
+# this module, after portfolio_bp exists, so the decorators can bind.
+
 
 def _money(value):
     """Decimal -> float for the template, preserving None as None (renders —)."""
@@ -133,3 +137,7 @@ def detail(initiative_id):
         demands=demands,
         work_packages=list(initiative.migration_work_packages),
     )
+
+
+# Bind the write paths to this blueprint (see note beside portfolio_bp above).
+from app.modules.portfolio.routes import portfolio_write_routes  # noqa: E402,F401

@@ -104,11 +104,31 @@ class KanbanBoard(TenantMixin, db.Model):
         return f"<KanbanBoard {self.name}>"
 
 
-class KanbanCard(db.Model):
+class KanbanCard(TenantMixin, db.Model):
     """Individual kanban cards representing architectural work items"""
 
     __tablename__ = "kanban_cards"
     __table_args__ = {"extend_existing": True}
+
+    # KanbanBoard carries TenantMixin; KanbanCard did not. Cards were therefore
+    # protected only when reached *through* a board — a direct
+    # `KanbanCard.query.get(id)` or `.filter_by(...)` returned any tenant's card,
+    # and card titles, descriptions and assignees are business content.
+    #
+    # Nullable for the usual reason: kanban_cards is an existing table and
+    # reconcile-schema can only ADD nullable columns (ADR 0002). Isolation keys
+    # on isinstance(TenantMixin), not on nullability.
+    #
+    # Unlike the other backfills in this series, this one does not have to guess
+    # or ask: board_id is NOT NULL and boards are already scoped, so each card's
+    # true owner is derivable exactly.
+    #     flask --app manage backfill-kanban-card-org
+    organization_id = Column(
+        Integer,
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
 
     id = Column(Integer, primary_key=True)
     title = Column(String(300), nullable=False)

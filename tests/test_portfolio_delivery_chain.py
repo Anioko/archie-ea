@@ -285,3 +285,98 @@ def test_rate_card_currency_of_the_period(app):
     past = RateCard(role="dev", hourly_rate=100, effective_to=dt.date(2000, 1, 1))
     assert past.is_current is False
     assert RateCard(role="dev", hourly_rate=100).is_current is True
+
+
+# --------------------------------------------------------------------------
+# 8. Write paths and KanbanCard tenancy
+# --------------------------------------------------------------------------
+
+def test_kanban_card_is_tenant_scoped(app):
+    """Cards were protected only when reached via their board.
+
+    KanbanBoard carried TenantMixin; KanbanCard did not, so a direct
+    KanbanCard.query returned any tenant's card - and titles, descriptions and
+    assignees are business content.
+    """
+    from app.models.adm_kanban import KanbanCard
+    from app.models.mixins import TenantMixin
+
+    assert issubclass(KanbanCard, TenantMixin)
+    assert KanbanCard.__table__.c.organization_id.nullable is True
+
+
+def test_kanban_card_org_is_derivable_from_its_board(app):
+    """Why this backfill needs no --org-id, unlike the others in this series."""
+    from app.models.adm_kanban import KanbanBoard, KanbanCard
+
+    assert KanbanCard.__table__.c.board_id.nullable is False
+    assert "organization_id" in KanbanBoard.__table__.c
+
+
+WRITE_ROUTES = [
+    ("portfolio.demands", "GET"),
+    ("portfolio.demand_new", "GET"),
+    ("portfolio.demand_decide", "POST"),
+    ("portfolio.benefit_create", "POST"),
+    ("portfolio.benefit_measure", "POST"),
+    ("portfolio.assumption_create", "POST"),
+    ("portfolio.assumption_resolve", "POST"),
+]
+
+
+def test_all_write_routes_are_registered(app):
+    registered = {r.endpoint for r in app.url_map.iter_rules()}
+    for endpoint, _method in WRITE_ROUTES:
+        assert endpoint in registered, endpoint
+
+
+def test_write_routes_require_login(app):
+    """Intake and benefit measurement are never anonymous."""
+    client = app.test_client()
+    for url in ("/portfolio/demands", "/portfolio/demands/new"):
+        assert client.get(url).status_code in (301, 302, 401, 403), url
+
+
+def test_declining_a_demand_requires_a_rationale(app):
+    """An unexplained decline is the one that returns next quarter."""
+    import inspect
+
+    from app.modules.portfolio.routes import portfolio_write_routes as w
+
+    src = inspect.getsource(w.demand_decide)
+    assert "A declined demand needs a rationale" in src
+
+
+def test_invalidating_an_assumption_requires_a_note(app):
+    import inspect
+
+    from app.modules.portfolio.routes import portfolio_write_routes as w
+
+    src = inspect.getsource(w.assumption_resolve)
+    assert "Say what happened when invalidating" in src
+    # The record is kept, not deleted - that entry is the useful one.
+    assert "db.session.delete" not in src
+
+
+def test_measurement_only_claims_realised_when_numbers_support_it(app):
+    """Status must not assert an outcome the measurement does not show."""
+    import inspect
+
+    from app.modules.portfolio.routes import portfolio_write_routes as w
+
+    src = inspect.getsource(w.benefit_measure)
+    assert "pct is not None and pct >= 100" in src
+
+
+def test_form_parsers_return_none_not_zero(app):
+    """Blank input must not become 0 - the same lie in a different place."""
+    from app.modules.portfolio.routes.portfolio_write_routes import (
+        _date_or_none, _decimal_or_none, _int_or_none,
+    )
+
+    for parser in (_int_or_none, _decimal_or_none, _date_or_none):
+        assert parser("") is None
+        assert parser(None) is None
+        assert parser("not-a-number") is None
+    assert _int_or_none("5") == 5
+    assert _decimal_or_none("1.5") == 1.5

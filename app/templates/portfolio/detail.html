@@ -122,7 +122,96 @@
       </p>
       {% endif %}
     </div>
+
+    {# Add a benefit. Baseline is asked for up front on purpose: a target with no
+       baseline cannot be measured against later. #}
+    <form method="post" action="{{ url_for('portfolio.benefit_create', initiative_id=initiative.id) }}"
+          class="border-t px-6 py-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-7 items-end">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="lg:col-span-2">
+        <label for="b-name" class="block text-xs font-medium mb-1">Benefit</label>
+        <input id="b-name" name="name" required placeholder="e.g. Retire duplicate CRM licences"
+               class="w-full h-9 rounded-md border border-input bg-background px-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring">
+      </div>
+      <div>
+        <label for="b-type" class="block text-xs font-medium mb-1">Type</label>
+        <select id="b-type" name="benefit_type" class="w-full h-9 rounded-md border border-input bg-background px-2 text-sm">
+          <option value="cost_saving">Cost saving</option>
+          <option value="cost_avoidance">Cost avoidance</option>
+          <option value="revenue">Revenue</option>
+          <option value="productivity">Productivity</option>
+          <option value="risk_reduction">Risk reduction</option>
+          <option value="compliance">Compliance</option>
+          <option value="customer">Customer</option>
+          <option value="capability">Capability</option>
+        </select>
+      </div>
+      <div>
+        <label for="b-unit" class="block text-xs font-medium mb-1">Unit</label>
+        <input id="b-unit" name="unit" placeholder="GBP"
+               class="w-full h-9 rounded-md border border-input bg-background px-3 text-sm placeholder:text-muted-foreground">
+      </div>
+      <div>
+        <label for="b-baseline" class="block text-xs font-medium mb-1">Baseline</label>
+        <input id="b-baseline" name="baseline_value" type="number" step="any"
+               class="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
+      </div>
+      <div>
+        <label for="b-target" class="block text-xs font-medium mb-1">Target</label>
+        <input id="b-target" name="target_value" type="number" step="any"
+               class="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
+      </div>
+      <div>
+        <label for="b-date" class="block text-xs font-medium mb-1">By</label>
+        <input id="b-date" name="target_date" type="date"
+               class="w-full h-9 rounded-md border border-input bg-background px-2 text-sm">
+      </div>
+      <div class="lg:col-span-7">
+        <button type="submit" class="h-9 px-4 rounded-md text-sm bg-primary text-primary-foreground hover:bg-primary/90">
+          Add benefit
+        </button>
+      </div>
+    </form>
   </div>
+
+  {# Record a measurement against an existing benefit. #}
+  {% if benefits %}
+  <div class="rounded-lg border bg-card">
+    <div class="border-b px-6 py-4">
+      <h2 class="text-xl font-semibold">Record a measurement</h2>
+      <p class="text-sm text-muted-foreground mt-1">
+        What turns a claimed benefit into evidence. Status becomes &ldquo;realised&rdquo; only when the
+        numbers support it.
+      </p>
+    </div>
+    <div class="divide-y">
+      {% for b in benefits %}
+      <form method="post" action="{{ url_for('portfolio.benefit_measure', benefit_id=b.id) }}"
+            class="px-6 py-3 flex flex-wrap items-end gap-3">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="flex-1 min-w-[12rem]">
+          <div class="text-sm font-medium">{{ b.name }}</div>
+          <div class="text-xs text-muted-foreground">
+            baseline {{ b.baseline_value if b.baseline_value is not none else '—' }}
+            &rarr; target {{ b.target_value if b.target_value is not none else '—' }}
+          </div>
+        </div>
+        <div>
+          <label for="m-val-{{ b.id }}" class="block text-xs font-medium mb-1">Actual</label>
+          <input id="m-val-{{ b.id }}" name="actual_value" type="number" step="any" required
+                 class="h-9 w-32 rounded-md border border-input bg-background px-3 text-sm">
+        </div>
+        <div>
+          <label for="m-date-{{ b.id }}" class="block text-xs font-medium mb-1">Measured on</label>
+          <input id="m-date-{{ b.id }}" name="actual_date" type="date"
+                 class="h-9 rounded-md border border-input bg-background px-2 text-sm">
+        </div>
+        <button type="submit" class="h-9 px-3 rounded-md text-sm border border-input hover:bg-accent">Record</button>
+      </form>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
 
   {# ── RAID: assumptions ─────────────────────────────────────────────────── #}
   <div class="rounded-lg border bg-card">
@@ -160,6 +249,51 @@
       <p class="text-sm text-muted-foreground py-8 text-center">No assumptions recorded.</p>
       {% endif %}
     </div>
+
+    {# Resolving keeps the record: an assumption that proved false is the most
+       useful entry in the log, and the one that should have become a risk. #}
+    {% for a in assumptions if a.status == 'open' %}
+    <form method="post" action="{{ url_for('portfolio.assumption_resolve', assumption_id=a.id) }}"
+          class="border-t px-6 py-3 flex flex-wrap items-center gap-2">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <span class="text-sm flex-1 min-w-[14rem] truncate" title="{{ a.statement }}">{{ a.statement }}</span>
+      <input type="text" name="note" placeholder="What happened (required to invalidate)"
+             class="flex-1 min-w-[14rem] h-9 rounded-md border border-input bg-background px-3 text-sm placeholder:text-muted-foreground"
+             aria-label="Resolution note">
+      <button name="status" value="validated" class="h-9 px-3 rounded-md text-sm bg-success/10 text-success hover:bg-success/20">Validated</button>
+      <button name="status" value="invalidated" class="h-9 px-3 rounded-md text-sm bg-destructive/10 text-destructive hover:bg-destructive/20">Invalidated</button>
+    </form>
+    {% endfor %}
+
+    <form method="post" action="{{ url_for('portfolio.assumption_create', initiative_id=initiative.id) }}"
+          class="border-t px-6 py-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5 items-end">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="lg:col-span-2">
+        <label for="a-stmt" class="block text-xs font-medium mb-1">Assumption</label>
+        <input id="a-stmt" name="statement" required placeholder="e.g. The vendor API supports bulk export"
+               class="w-full h-9 rounded-md border border-input bg-background px-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring">
+      </div>
+      <div>
+        <label for="a-impact" class="block text-xs font-medium mb-1">Impact if false (1&ndash;5)</label>
+        <input id="a-impact" name="impact_if_false" type="number" min="1" max="5"
+               class="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
+      </div>
+      <div>
+        <label for="a-conf" class="block text-xs font-medium mb-1">Confidence (1&ndash;5)</label>
+        <input id="a-conf" name="confidence" type="number" min="1" max="5"
+               class="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
+      </div>
+      <div>
+        <label for="a-by" class="block text-xs font-medium mb-1">Validate by</label>
+        <input id="a-by" name="validate_by_date" type="date"
+               class="w-full h-9 rounded-md border border-input bg-background px-2 text-sm">
+      </div>
+      <div class="lg:col-span-5">
+        <button type="submit" class="h-9 px-4 rounded-md text-sm bg-primary text-primary-foreground hover:bg-primary/90">
+          Log assumption
+        </button>
+      </div>
+    </form>
   </div>
 
   {# ── Delivery and origin ───────────────────────────────────────────────── #}
