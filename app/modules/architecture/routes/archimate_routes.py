@@ -356,6 +356,21 @@ def viewpoints_page():
     return redirect(url_for("archimate.composer_page", **params), code=302)
 
 
+@archimate_bp.route("/elements", methods=["GET"])
+@login_required
+def elements_redirect():
+    """/archimate/elements → the element catalogue.
+
+    Everything else ArchiMate lives under /archimate (composer, import,
+    viewpoints, traceability), so this is where people look for the element
+    list - it is the first URL I tried myself. The catalogue is served by the
+    architecture_crud blueprint at /architecture/elements, and the gap between
+    those two prefixes is invisible from the UI. Redirect rather than move the
+    page, so existing links and bookmarks keep working.
+    """
+    return redirect(url_for("architecture_crud.list_elements", **request.args), code=302)
+
+
 @archimate_bp.route("/composer", methods=["GET"])
 @login_required
 def composer_page():
