@@ -1592,6 +1592,7 @@ function composerApp() {
                         return !validSet[t];
                     });
                 })
+                // fabricated-ok: falls back to a single type tagged tier:'fallback' and raises an error toast
                 .catch(function() {
                     self.relPickerTypes = [{ type: 'association', tier: 'fallback', description: '' }];
                     self.relPickerInvalidTypes = [];
@@ -1682,6 +1683,7 @@ function composerApp() {
                         self.relPickerTypes.forEach(function(v) { validSet[v.type || v] = true; });
                         self.relPickerInvalidTypes = ALL_REL.filter(function(t) { return !validSet[t]; });
                     })
+                    // fabricated-ok: falls back to a single type tagged tier:'fallback' and raises an error toast
                     .catch(function() {
                         self.relPickerTypes = [{ type: 'association', tier: 'fallback', description: '' }];
                         self.relPickerInvalidTypes = [];
@@ -3901,6 +3903,7 @@ function composerApp() {
                 self.relPickerTypes.forEach(function(v) { validSet[v.type || v] = true; });
                 self.relPickerInvalidTypes = ALL_REL.filter(function(t) { return !validSet[t]; });
             })
+            // fabricated-ok: falls back to a single type tagged tier:'fallback' and raises an error toast
             .catch(function() {
                 self.relPickerTypes = [{ type: 'association', tier: 'fallback', description: '' }];
                 self.relPickerInvalidTypes = [];

@@ -999,6 +999,7 @@ let ComposerGraph = (function() {
                     return !validSet[t];
                 });
             })
+            // fabricated-ok: falls back to a single type tagged tier:'fallback' and raises an error toast
             .catch(function() {
                 self.relPickerTypes = [{ type: 'association', tier: 'fallback', description: '' }];
                 self.relPickerInvalidTypes = [];

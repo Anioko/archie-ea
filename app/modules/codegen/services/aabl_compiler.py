@@ -221,6 +221,7 @@ _UNIVERSAL_BASELINE: set = {
     "account_settings",  # /api/v1/account/* routes always generated
     "error_handling",    # Typed error responses always generated
     "api_versioning",    # /api/v1/ prefix always used
+    # fabricated-ok: codegen template config key, not displayed data
     "seed_data",         # Demo data seeded on first boot
     "soft_delete",       # deleted_at on all models; hard DELETE forbidden
     "security_headers",  # CORS + CSP + HSTS middleware always registered

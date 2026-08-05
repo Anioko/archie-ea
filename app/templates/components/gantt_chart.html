@@ -69,6 +69,12 @@ ArchiMate 3.2 Compatible with 5-year timeline support
     </div>
 
     <!-- Filter Controls -->
+    <div x-show="loadError" x-cloak
+         class="mb-6 flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4">
+        <i data-lucide="alert-triangle" class="h-5 w-5 text-destructive shrink-0 mt-0.5" aria-hidden="true"></i>
+        <p class="text-sm text-destructive" x-text="loadError"></p>
+    </div>
+
     <div class="mb-6 p-4 bg-card border border-border rounded-lg">
         <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
             <!-- Search -->
@@ -412,6 +418,7 @@ function ganttChartManager() {
         editingWorkPackage: null,
         workPackages: [],
         filteredWorkPackages: [],
+        loadError: null,
         timelineMonths: [],
         formData: {
             name: '',
@@ -439,93 +446,29 @@ function ganttChartManager() {
         },
         
         loadWorkPackages() {
-            // Load work packages from API
-            fetch('/implementation/api/work-packages')
-                .then(response => response.json())
+            // The catch below used to render five invented work packages (~$855k of
+            // fabricated budget, dated relative to today so they never looked stale).
+            // That fallback is gone; failures are now surfaced.
+            // Was /implementation/api/work-packages, which resolves but serves
+            // WorkPackage.to_dict() — wrong field names for this component
+            // (target_date/percent_complete vs end_date/progress_percentage, and no
+            // assigned_to/business_capability/layer/milestones), so bars drew with
+            // undefined dates. This endpoint serves the contract below.
+            fetch('/enterprise/api/work-packages/gantt')
+                .then(response => {
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                    return response.json();
+                })
                 .then(data => {
                     this.workPackages = data.work_packages || [];
                     this.filteredWorkPackages = [...this.workPackages];
+                    this.loadError = null;
                 })
                 .catch(error => {
-                    console.error('Error loading work packages:', error);
-                    // Sample data for demonstration
-                    this.workPackages = this.getSampleWorkPackages();
-                    this.filteredWorkPackages = [...this.workPackages];
+                    this.workPackages = [];
+                    this.filteredWorkPackages = [];
+                    this.loadError = 'Work packages could not be loaded: ' + error.message;
                 });
-        },
-        
-        getSampleWorkPackages() {
-            const today = new Date();
-            return [
-                {
-                    id: 1,
-                    name: 'Legacy System Migration',
-                    description: 'Migrate legacy CRM system to new platform',
-                    assigned_to: 'IT Infrastructure Team',
-                    status: 'in_progress',
-                    business_capability: 'customer-management',
-                    start_date: new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0],
-                    end_date: new Date(today.getFullYear(), today.getMonth() + 6, 30).toISOString().split('T')[0],
-                    progress_percentage: 35,
-                    estimated_cost: 250000,
-                    milestones: [
-                        { id: 1, name: 'Requirements Complete', date: new Date(today.getFullYear(), today.getMonth() + 1, 15) },
-                        { id: 2, name: 'Development Complete', date: new Date(today.getFullYear(), today.getMonth() + 4, 30) }
-                    ]
-                },
-                {
-                    id: 2,
-                    name: 'Cloud Infrastructure Setup',
-                    description: 'Setup cloud infrastructure for new applications',
-                    assigned_to: 'Cloud Team',
-                    status: 'planned',
-                    business_capability: 'digital-platform',
-                    start_date: new Date(today.getFullYear(), today.getMonth() + 2, 1).toISOString().split('T')[0],
-                    end_date: new Date(today.getFullYear(), today.getMonth() + 5, 31).toISOString().split('T')[0],
-                    progress_percentage: 0,
-                    estimated_cost: 150000,
-                    milestones: []
-                },
-                {
-                    id: 3,
-                    name: 'Business Process Reengineering',
-                    description: 'Redesign customer onboarding process',
-                    assigned_to: 'Business Process Team',
-                    status: 'completed',
-                    business_capability: 'customer-management',
-                    start_date: new Date(today.getFullYear(), today.getMonth() - 3, 1).toISOString().split('T')[0],
-                    end_date: new Date(today.getFullYear(), today.getMonth(), 31).toISOString().split('T')[0],
-                    progress_percentage: 100,
-                    estimated_cost: 75000,
-                    milestones: []
-                },
-                {
-                    id: 4,
-                    name: 'Financial Analytics Platform',
-                    description: 'Implement advanced financial analytics and reporting',
-                    assigned_to: 'Analytics Team',
-                    status: 'planned',
-                    business_capability: 'financial-services',
-                    start_date: new Date(today.getFullYear(), today.getMonth() + 1, 1).toISOString().split('T')[0],
-                    end_date: new Date(today.getFullYear(), today.getMonth() + 4, 30).toISOString().split('T')[0],
-                    progress_percentage: 0,
-                    estimated_cost: 200000,
-                    milestones: []
-                },
-                {
-                    id: 5,
-                    name: 'Supply Chain Optimization',
-                    description: 'Optimize supply chain management and inventory systems',
-                    assigned_to: 'Operations Team',
-                    status: 'in_progress',
-                    business_capability: 'supply-chain',
-                    start_date: new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0],
-                    end_date: new Date(today.getFullYear(), today.getMonth() + 3, 31).toISOString().split('T')[0],
-                    progress_percentage: 25,
-                    estimated_cost: 180000,
-                    milestones: []
-                }
-            ];
         },
         
         generateTimeline() {

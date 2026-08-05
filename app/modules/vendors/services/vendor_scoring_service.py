@@ -222,8 +222,10 @@ class VendorScoringService:
         """
         Score cost dimension with DYNAMIC RANGES (0 - 100, higher is better = lower cost).
 
-        Replaces hardcoded $50k-$500k with context-aware benchmarks.
-        Uses industry benchmarks based on capability type, org size, industry.
+        Prefers TCOBenchmark rows (capability type, org size, industry). When none
+        match — the default state on an unseeded install — falls back to unsourced
+        constants and logs a warning. The returned score does not currently
+        distinguish the two cases; see _get_tco_scoring_range.
         """
         if not vendor_option.tco_total:
             # Calculate TCO if not already done
@@ -274,19 +276,38 @@ class VendorScoringService:
                 )
                 return (float(benchmark.min_tco), float(benchmark.max_tco))
 
-        # Fallback: Use capability-specific defaults
+        # No TCOBenchmark row matched — which is the default state until the
+        # benchmark table is seeded. Everything below is an unsourced estimate,
+        # not market data, so log loudly: a cost score derived from these is only
+        # as good as the guess. Callers that surface the score to users should
+        # badge it as unbenchmarked (see TODO below).
+        # TODO: return a (range, is_benchmarked) pair and render an
+        # "unbenchmarked estimate" badge in the vendor comparison UI.
         if analysis and hasattr(analysis.capability, "category"):
             category = analysis.capability.category.lower()
-            if "crm" in category:
-                return (50000, 500000)  # CRM: $50k-$500k
-            elif "erp" in category:
-                return (500000, 5000000)  # ERP: $500k-$5M
-            elif "bi" in category or "analytics" in category:
-                return (100000, 1000000)  # BI: $100k-$1M
-            elif "collaboration" in category:
-                return (20000, 200000)  # Collaboration: $20k-$200k
+            fallbacks = {
+                "crm": (50000, 500000),
+                "erp": (500000, 5000000),
+                "bi": (100000, 1000000),
+                "analytics": (100000, 1000000),
+                "collaboration": (20000, 200000),
+            }
+            for key, rng in fallbacks.items():
+                if key in category:
+                    logger.warning(
+                        "No TCOBenchmark for category=%s size=%s; scoring against "
+                        "UNSOURCED fallback range $%s-$%s",
+                        category,
+                        getattr(analysis, "organization_size", None),
+                        f"{rng[0]:,}",
+                        f"{rng[1]:,}",
+                    )
+                    return rng
 
-        # Final fallback to old default
+        logger.warning(
+            "No TCOBenchmark and no category match; scoring against UNSOURCED "
+            "default range $50,000-$500,000"
+        )
         return (50000, 500000)
 
     def _score_capability_coverage(

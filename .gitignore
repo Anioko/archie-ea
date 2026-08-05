@@ -197,6 +197,7 @@ scripts/check_*.py
 !scripts/check_sri.py
 !scripts/check_deployed_deps.py
 !scripts/check_raw_sql_tenancy.py
+!scripts/check_fabricated_data.py
 scripts/patch_*.py
 scripts/find_*.py
 scripts/delete_*.py

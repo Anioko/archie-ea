@@ -233,6 +233,27 @@ def gate_air_gap(baseline: int) -> Result:
     return Result("air-gap", PASS if count <= baseline else FAIL, "", count, baseline)
 
 
+def gate_fabricated_data() -> Result:
+    """No invented data can reach the UI. Gated at ZERO.
+
+    Archie is a system of record, so a screen that fabricates a plausible value
+    when the real one is missing is worse than one that shows nothing — the user
+    cannot tell the two apart, and acts on it. This caught a governance dashboard
+    that invented the customer's architecture principles on API failure, a Gantt
+    chart that rendered ~$855k of imaginary work packages, and a settings page
+    that reported a backup as created when none was written.
+
+    Escape hatch is 'fabricated-ok: <reason>' on or above the flagged line.
+    """
+    proc = _run([sys.executable, "scripts/check_fabricated_data.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("fabricated-data", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = "" if count == 0 else "run scripts/check_fabricated_data.py to list them"
+    return Result("fabricated-data", PASS if count == 0 else FAIL, detail, count, 0)
+
+
 def gate_sri() -> Result:
     """Every same-origin integrity= hash matches the file it guards. Gated at ZERO.
 
@@ -474,6 +495,11 @@ def build_gates(baseline: dict) -> list[Gate]:
              "ratchet", lambda: gate_raw_sql_tenancy(baseline["raw_sql_tenancy"]),
              remediation="scope the query, or append 'tenancy-ok: <reason>'",
              tags=["static", "security"]),
+        Gate("fabricated-data", "no invented data can reach the UI", "zero",
+             gate_fabricated_data,
+             remediation="render an explicit empty/error state instead of inventing data; "
+                         "if genuinely fine, append 'fabricated-ok: <reason>'",
+             tags=["static", "ui"]),
         Gate("deployed-deps", "installed packages satisfy the pinned floors", "zero",
              gate_deployed_deps,
              remediation="rebuild the image (deploy.sh builds) or pip install -r requirements.txt",

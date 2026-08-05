@@ -219,7 +219,11 @@ CANONICAL_BLUEPRINTS = {
     'arb', 'arb_workflow',
     'consolidation_list',
     'unified_ai_chat',
-    # 'implementation_planning',  # REMOVED (PLT-099 audit): deprecated, all routes 404
+    # 'implementation_planning',  # Not canonical, but NOT dead: it is still
+    # registered elsewhere and serves 26 live rules under /implementation/*
+    # (verified against app.url_map). The previous note here said "all routes
+    # 404", which is false and has already misled one change. Deregistering it
+    # is still the intent — until then, treat its routes as live.
     'strategic',
     'admin', 'account',
     'dashboard_pages',

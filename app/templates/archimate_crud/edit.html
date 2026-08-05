@@ -178,6 +178,7 @@
                         const json = await r.json();
                         this.issues = json.issues || [];
                         this.validated = true;
+                    // fabricated-ok: assigns a visible error message, not fabricated content
                     } catch (e) {
                         this.issues = [{ severity: 'error', message: 'Validation request failed: ' + e.message }];
                     }

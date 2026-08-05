@@ -103,6 +103,7 @@ def _infer_module(table_name: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# fabricated-ok: opt-in SAP mock mode; disclosed in UI as 'Use mock SAP data' / 'Run Mock Import'
 # Mock data
 # ---------------------------------------------------------------------------
 

@@ -1467,7 +1467,7 @@ class Outcome(db.Model):
         return None
 
 
-class Principle(db.Model):
+class Principle(TenantMixin, db.Model):
     """
     ArchiMate 3.2 Principle element.
 
@@ -1483,6 +1483,23 @@ class Principle(db.Model):
     """
 
     __tablename__ = "principles"
+
+    # TenantMixin declares organization_id NOT NULL, but `principles` is an
+    # existing table and `reconcile-schema` can only ADD nullable columns
+    # (see CLAUDE.md / ADR 0002). Override to nullable so the column can land on
+    # deployed databases without a maintenance window. Inheriting TenantMixin is
+    # what actually switches on isolation — tenant_isolation filters on
+    # isinstance(TenantMixin), not on the column's nullability.
+    #
+    # Consequence: pre-existing rows have organization_id NULL and are filtered
+    # out of every tenant-scoped query until backfilled. Run:
+    #     flask --app manage backfill-principle-org
+    organization_id = db.Column(
+        db.Integer,
+        db.ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
 
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(255), nullable=False)

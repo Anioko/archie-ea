@@ -776,15 +776,19 @@
       <div data-slot="card" class="rounded-xl border bg-card shadow-sm p-4">
         <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Functional Maturity</p>
         <p class="mt-1 text-2xl font-bold text-foreground">
-          {% if functional_maturity > 0 %}{{ '%.1f' | format(functional_maturity) }} / 5{% else %}0 / 5{% endif %}
+          {% if functional_maturity %}{{ '%.1f' | format(functional_maturity) }} / 5{% else %}<span class="text-muted-foreground">&mdash;</span>{% endif %}
         </p>
       </div>
       <div data-slot="card" class="rounded-xl border bg-card shadow-sm p-4">
         <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Compliance Score</p>
+        {% if compliance_score is none %}
+        <p class="mt-1 text-2xl font-bold text-muted-foreground" title="Not yet assessed">&mdash;</p>
+        {% else %}
         <p class="mt-1 text-2xl font-bold
           {% if compliance_score >= 80 %}text-success{% elif compliance_score >= 50 %}text-warning{% else %}text-destructive{% endif %}">
           {{ '%.0f' | format(compliance_score) }}%
         </p>
+        {% endif %}
       </div>
     </div>
 
@@ -1495,6 +1499,10 @@
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
       <div data-slot="card" class="rounded-xl border bg-card shadow-sm p-4 text-center lg:col-span-1">
         <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Compliance Score</p>
+        {% if compliance_score is none %}
+        <div class="text-5xl font-bold text-muted-foreground">&mdash;</div>
+        <p class="text-xs text-muted-foreground mt-2">Not yet assessed</p>
+        {% else %}
         <div class="text-5xl font-bold
           {% if compliance_score >= 80 %}text-success
           {% elif compliance_score >= 50 %}text-warning
@@ -1505,6 +1513,7 @@
         <p class="text-xs text-muted-foreground mt-2">
           {{ compliance_results.get('satisfied_count', 0) }} / {{ compliance_results.get('total_requirements', 0) }} requirements satisfied
         </p>
+        {% endif %}
         {% endif %}
       </div>
 

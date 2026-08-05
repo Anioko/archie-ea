@@ -243,15 +243,23 @@ function renderImplementationSteps(steps) {
 }
 
 function loadRecentDeployments() {
-    let deployments = [
-        { organization: 'Acme Manufacturing', date: '2024-01-12', status: 'Completed', progress: 100 },
-        { organization: 'Global Industries', date: '2024-01-10', status: 'In Progress', progress: 65 },
-        { organization: 'Tech Solutions Inc', date: '2024-01-08', status: 'Completed', progress: 100 },
-        { organization: 'Precision Engineering', date: '2024-01-05', status: 'Planning', progress: 15 }
-    ];
+    // Previously rendered four invented organisations ("Acme Manufacturing",
+    // "Global Industries", …) with fabricated progress bars, unconditionally and
+    // for every tenant. There is no deployments API yet, so render an honest
+    // empty state rather than someone else's fictional portfolio.
+    let deployments = [];
 
     let container = document.getElementById('recentDeployments');
+    if (!container) return;
     safeHTML(container, '');
+
+    if (deployments.length === 0) {
+        let empty = document.createElement('p');
+        empty.className = 'text-sm text-muted-foreground py-4 text-center';
+        empty.textContent = 'No deployment history available.';
+        container.appendChild(empty);
+        return;
+    }
 
     deployments.forEach(function(deployment) {
         let deploymentDiv = document.createElement('div');

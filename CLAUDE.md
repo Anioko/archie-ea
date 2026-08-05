@@ -39,6 +39,7 @@ after a cleanup. Raising one is a regression that must be justified in review.
 | `redefinitions` | shadowed definitions (ruff F811) | ratchet |
 | `lint-core` | correctness lint (ruff `F,E4,E7,E9`) | ratchet |
 | `design-tokens` | raw Tailwind colours (DESIGN.md rule) | ratchet |
+| `fabricated-data` | invented data reaching the UI (see below) | must be 0 |
 | `sri` | `integrity=` hash not matching the file it guards | must be 0 |
 | `css-build` | committed `tailwind-output.css` stale vs a rebuild | must pass (needs Tailwind CLI) |
 | `boot-health` | unregistered blueprints; unresolved `url_for` | must pass |
@@ -198,6 +199,15 @@ map is in `DESIGN.md`. A plain textarea is not an acceptable substitute — the 
 - **No `console.log` in shipped templates/JS**, no stray `print()` in request handlers. User-facing
   notifications go through `Platform.toast`, never native `alert()`/`confirm()`.
 - **Null display:** em dash (`—`), never `0` or blank. Currency via `window.currencyManager.format()`.
+- **Never invent data.** Archie is a system of record: a screen that fabricates a plausible
+  value when the real one is missing is worse than one showing nothing, because the user
+  cannot tell the difference and acts on it. Concretely — no fake fallback in a `catch`
+  (render the error), no literal metric passed to `render_template` that looks computed
+  (pass `None`), no label describing a different field than the one plotted. A `0` that
+  means "not computed" is indistinguishable from a measured zero; use `None` → `—`.
+  Remember `fetch` does **not** reject on 404: `if (response.ok)` with no `else` silently
+  leaves metrics at their `0` initialiser. Use `if (!response.ok) throw`.
+  Enforced by the `fabricated-data` gate; escape hatch is `fabricated-ok: <reason>`.
 - **Entity fields** for user / application / vendor / ArchiMate element must use a debounced
   live-search picker against the documented endpoint, not a free-text input (see `DESIGN.md`).
 - **Staging:** `git add <file>` — never `git add -A`. Untracked scratch scripts are common at the repo

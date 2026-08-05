@@ -241,6 +241,7 @@ class PolicyEnforcer:
                 action="block",
                 requires_approval=True,
             ),
+            # fabricated-ok: section heading for rules that govern seeding, not seeded data
             # Sample Data Creation Rules
             PolicyRule(
                 name="NO_SAMPLE_DATA",

@@ -37,6 +37,19 @@
         </div>
     </div>
 
+    <!-- Load failure is surfaced, never swallowed into zeros/empty tables -->
+    <div x-show="loadError" x-cloak
+         class="flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4">
+        <i data-lucide="alert-triangle" class="h-5 w-5 text-destructive shrink-0 mt-0.5" aria-hidden="true"></i>
+        <div>
+            <p class="text-sm font-medium text-destructive">Governance data could not be loaded</p>
+            <p class="text-xs text-muted-foreground mt-1">
+                Figures below are shown as &mdash; because they are unavailable, not zero.
+                <span class="font-mono" x-text="loadError"></span>
+            </p>
+        </div>
+    </div>
+
     <!-- Key Metrics -->
     <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <!-- Pending Reviews -->
@@ -46,7 +59,7 @@
                 <i data-lucide="clock" class="h-4 w-4 text-amber-500" aria-hidden="true"></i>
             </div>
             <div class="mt-3">
-                <p class="text-2xl font-bold" x-text="metrics.pending_reviews ?? '...'">...</p>
+                <p class="text-2xl font-bold" x-text="metricsLoaded ? metrics.pending_reviews : '—'">—</p>
                 <p class="text-xs text-muted-foreground mt-1">Solutions awaiting approval</p>
             </div>
         </div>
@@ -58,7 +71,7 @@
                 <i data-lucide="alert-triangle" class="h-4 w-4 text-destructive" aria-hidden="true"></i>
             </div>
             <div class="mt-3">
-                <p class="text-2xl font-bold" x-text="metrics.active_risks ?? '...'">...</p>
+                <p class="text-2xl font-bold" x-text="metricsLoaded ? metrics.active_risks : '—'">—</p>
                 <p class="text-xs text-muted-foreground mt-1">High &amp; Critical severity</p>
             </div>
         </div>
@@ -70,7 +83,7 @@
                 <i data-lucide="file-check" class="h-4 w-4 text-primary" aria-hidden="true"></i>
             </div>
             <div class="mt-3">
-                <p class="text-2xl font-bold" x-text="metrics.recent_adrs ?? '...'">...</p>
+                <p class="text-2xl font-bold" x-text="metricsLoaded ? metrics.recent_adrs : '—'">—</p>
                 <p class="text-xs text-muted-foreground mt-1">Architecture decisions</p>
             </div>
         </div>
@@ -82,7 +95,7 @@
                 <i data-lucide="check-circle" class="h-4 w-4 text-emerald-500" aria-hidden="true"></i>
             </div>
             <div class="mt-3">
-                <p class="text-2xl font-bold"><span x-text="metrics.compliance_rate ?? '...'">...</span>%</p>
+                <p class="text-2xl font-bold"><span x-text="metricsLoaded ? metrics.compliance_rate + '%' : '—'">—</span></p>
                 <p class="text-xs text-muted-foreground mt-1">Solutions with approvals</p>
             </div>
         </div>
@@ -141,6 +154,9 @@
                 </div>
             </template>
         </div>
+        <p x-show="principles.length === 0" x-cloak class="text-sm text-muted-foreground py-6 text-center">
+            No architecture principles recorded.
+        </p>
     </div>
 
     <div x-show="activeTab === 'standards'" class="space-y-4">
@@ -260,90 +276,66 @@ function governanceDashboard() {
         principles: [],
         standards: [],
         recent_reviews: [],
-        
+        // Null until a load succeeds, so the template can distinguish
+        // "measured zero" from "never loaded" and refuse to display either as fact.
+        metricsLoaded: false,
+        loadError: null,
+
         async init() {
             await this.loadMetrics();
             await this.loadPrinciples();
             await this.loadStandards();
             await this.loadRecentReviews();
         },
-        
+
+        // A 404 does NOT reject fetch — it resolves with ok === false. Guarding on
+        // `if (response.ok)` alone silently left every metric at its 0 initialiser,
+        // so the page reported "Compliance Rate 0%" when it had simply never loaded.
+        async fetchJson(url) {
+            const response = await fetch(url);
+            if (!response.ok) throw new Error(`${url} returned HTTP ${response.status}`);
+            return await response.json();
+        },
+
         async loadMetrics() {
             try {
-                const response = await fetch('/api/governance/metrics');
-                if (response.ok) {
-                    this.metrics = await response.json();
-                }
+                this.metrics = await this.fetchJson('/governance/api/metrics');
+                this.metricsLoaded = true;
             } catch (error) {
-                console.error('Failed to load metrics:', error);
+                this.metricsLoaded = false;
+                this.loadError = error.message;
             }
         },
-        
+
+        // Removed a fallback that invented the customer's architecture principles
+        // ("Business Continuity", "Data is an Asset") on failure. Presenting
+        // fabricated governance records as an organisation's own is never acceptable.
         async loadPrinciples() {
             try {
-                const response = await fetch('/api/governance/principles');
-                if (response.ok) {
-                    this.principles = await response.json();
-                }
+                this.principles = await this.fetchJson('/governance/api/principles');
             } catch (error) {
-                console.error('Failed to load principles:', error);
-                // Mock data for demonstration
-                this.principles = [
-                    {
-                        id: 1,
-                        name: 'Business Continuity',
-                        statement: 'Enterprise operations are maintained despite system failures',
-                        priority: 'Critical',
-                        domain: 'Business'
-                    },
-                    {
-                        id: 2,
-                        name: 'Data is an Asset',
-                        statement: 'Data is managed as a strategic enterprise asset',
-                        priority: 'High',
-                        domain: 'Information'
-                    }
-                ];
+                this.principles = [];
+                this.loadError = error.message;
             }
         },
         
+        // Removed a fallback that invented approved technology standards
+        // ("Python 3.11+ / Approved", "PostgreSQL 15.x / Approved").
         async loadStandards() {
             try {
-                const response = await fetch('/api/governance/standards');
-                if (response.ok) {
-                    this.standards = await response.json();
-                }
+                this.standards = await this.fetchJson('/governance/api/standards');
             } catch (error) {
-                console.error('Failed to load standards:', error);
-                // Mock data
-                this.standards = [
-                    {
-                        id: 1,
-                        technology: 'Python',
-                        category: 'Programming Language',
-                        status: 'Approved',
-                        version: '3.11+'
-                    },
-                    {
-                        id: 2,
-                        technology: 'PostgreSQL',
-                        category: 'Database',
-                        status: 'Approved',
-                        version: '15.x'
-                    }
-                ];
+                this.standards = [];
+                this.loadError = error.message;
             }
         },
         
         async loadRecentReviews() {
             try {
-                const response = await fetch('/api/governance/reviews/recent');
-                if (response.ok) {
-                    this.recent_reviews = await response.json();
-                }
+                this.recent_reviews = await this.fetchJson('/governance/api/reviews/recent');
             } catch (error) {
-                console.error('Failed to load reviews:', error);
                 this.recent_reviews = [];
+                this.loadError = error.message;
             }
         },
         

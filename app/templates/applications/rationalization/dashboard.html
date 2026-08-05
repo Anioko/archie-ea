@@ -395,9 +395,12 @@
                 </div>
                 <span class="text-xs font-semibold w-10 text-right">{{ risk_pct }}%</span>
             </div>
-            {# Business Criticality — uses lifecycle as proxy; TODO: backend needs dedicated 'business_criticality' field #}
+            {# Labelled for what it actually measures. This bar plots lifecycle_pct;
+               it was previously captioned "Business Criticality", which is a different
+               field the backend does not yet supply. Rename here only when a real
+               business_criticality value is passed in. #}
             <div class="flex items-center gap-3">
-                <span class="text-xs font-medium w-32 text-muted-foreground">Business Criticality</span>
+                <span class="text-xs font-medium w-32 text-muted-foreground">Lifecycle Coverage</span>
                 <div class="flex-1 h-5 bg-muted rounded-full overflow-hidden">
                     <div class="h-full rounded-full transition-all duration-500 {{ 'bg-destructive' if lifecycle_pct < 25 else ('bg-amber-500' if lifecycle_pct <= 75 else 'bg-emerald-500') }}"
                          style="width: {{ lifecycle_pct }}%"></div>

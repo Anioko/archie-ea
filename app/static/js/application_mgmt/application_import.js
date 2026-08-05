@@ -31,6 +31,7 @@ async function loadImportFields() {
       COLUMN_ALIASES = data.aliases || {};
       fieldsLoaded = true;
     }
+  // fabricated-ok: falls back to form field definitions/labels, not to invented records
   } catch (error) {
     // Fall back to minimal defaults if API fails
     TARGET_FIELDS = [

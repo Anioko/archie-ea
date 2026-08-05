@@ -2179,9 +2179,12 @@ def render_application_detail(id):
     return render_template(
         "applications/dashboard.html",
         app=app_obj,
-        functional_maturity=0.0,
-        compliance_score=0.0,
-        compliance_results=[],
+        # Not yet computed for this view. Pass None (never 0.0) so the template
+        # renders an em dash instead of asserting a measured score of zero —
+        # a literal 0.0 here rendered every application as red/non-compliant.
+        functional_maturity=None,
+        compliance_score=None,
+        compliance_results=None,
         capabilities_with_compliance=[],
         edit_mode=request.args.get("edit") == "1",
         edit_mode_motivation=request.args.get("edit_motivation") == "1",

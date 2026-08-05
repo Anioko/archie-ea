@@ -580,6 +580,74 @@ def api_list_work_packages():
     })
 
 
+@enterprise_bp.route("/api/work-packages/gantt", methods=["GET"])
+@login_required
+def api_work_packages_gantt():
+    """Work packages in the shape the Gantt component consumes.
+
+    Separate from api_list_work_packages because that endpoint is a paginated
+    table feed (row_number, summary, percent_complete) while the Gantt needs a
+    full unpaginated timeline (start/end dates, progress, cost, owner).
+
+    The Gantt previously called `/implementation/api/work-packages`. That route
+    does resolve — despite a stale comment in _bootstrap/blueprints.py claiming
+    the blueprint was deregistered — but it serves WorkPackage.to_dict(), whose
+    field names do not match what the component reads: it emits `target_date` and
+    `percent_complete` where the Gantt expects `end_date` and
+    `progress_percentage`, and omits assigned_to / business_capability / layer /
+    milestones entirely. The chart therefore drew bars with undefined dates and
+    progress. This endpoint serves the component's actual contract.
+
+    Tenant scoping is implicit — WorkPackage carries TenantMixin.
+    """
+    try:
+        q = WorkPackage.query
+        status_filter = request.args.get("status", "")
+        if status_filter:
+            q = q.filter(WorkPackage.status == status_filter)
+
+        # Undated packages cannot be placed on a timeline; excluding them keeps the
+        # chart honest rather than inventing a start date. They remain visible in
+        # the table feed above.
+        q = q.filter(WorkPackage.start_date.isnot(None))
+        work_packages = q.order_by(
+            WorkPackage.start_date.asc(), WorkPackage.sequence_order.asc()
+        ).all()
+
+        items = []
+        for wp in work_packages:
+            items.append({
+                "id": wp.id,
+                "name": wp.name or "",
+                "description": wp.description or wp.summary or "",
+                "assigned_to": (wp.owner.email if wp.owner else None),
+                "business_capability": (wp.capability.name if wp.capability else None),
+                "status": wp.status or "planned",
+                "start_date": wp.start_date.isoformat() if wp.start_date else None,
+                # The Gantt's x-axis field is end_date; the model calls it target_date.
+                "end_date": (
+                    wp.completed_date.isoformat() if wp.completed_date
+                    else (wp.target_date.isoformat() if wp.target_date else None)
+                ),
+                "progress_percentage": (
+                    wp.percent_complete
+                    if wp.percent_complete is not None
+                    else (100 if wp.completed_date else 0)
+                ),
+                "estimated_cost": wp.estimated_cost,
+                "layer": wp.element_type or "implementation",
+                # Milestone (app/models/project_models.py) hangs off Project, not
+                # WorkPackage, so there is no link to traverse. Empty until one
+                # exists — the component already renders `milestones || []`.
+                "milestones": [],
+            })
+
+        return jsonify({"work_packages": items, "total": len(items)})
+    except Exception:
+        logger.exception("Failed to build Gantt work-package feed")
+        return jsonify({"error": "Failed to load work packages"}), 500
+
+
 # CSRF: Protected via X-CSRFToken header sent by Platform.fetch
 @enterprise_bp.route("/api/work-packages", methods=["POST"])
 @login_required

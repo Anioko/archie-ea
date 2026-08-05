@@ -832,42 +832,15 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     async function importSettings() {
-        // Mock import - replace with actual file upload
-        showInfo('Import functionality would open file dialog here');
+        showError('Settings import is not available in this build.');
     }
 
+    // No backup API exists yet. Previously this fabricated a backup-list entry
+    // (with an invented "2.3 MB" size) and reported success — an admin would
+    // believe a backup existed that had never been written. Report honestly
+    // instead; a backup that lies about succeeding is only discovered at restore.
     async function createBackup() {
-        try {
-            document.getElementById('btn-create-backup').disabled = true;
-            document.getElementById('btn-create-backup').textContent = 'Creating...';
-
-            // Mock backup creation
-            await new Promise(resolve => setTimeout(resolve, 2000));
-
-            // Add new backup to list
-            const backupList = document.getElementById('backup-list');
-            const newBackup = document.createElement('div');
-            newBackup.className = 'backup-item';
-            newBackup.innerHTML = `
-                <div>
-                    <div class="font-medium">backup_${new Date().toISOString().slice(0, 19).replace(/[:-]/g, '_').replace('T', '_')}.zip</div>
-                    <div class="text-sm text-muted-foreground">Created: ${new Date().toLocaleString()} • Size: 2.3 MB</div>
-                </div>
-                <div class="flex gap-2">
-                    <button class="inline-flex items-center justify-center whitespace-nowrap rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 h-9 px-3 text-sm bg-secondary text-secondary-foreground hover:bg-secondary/80" aria-label="Restore from this backup">Restore</button>
-                    <button class="inline-flex items-center justify-center whitespace-nowrap rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 h-9 px-3 text-sm bg-destructive text-destructive-foreground hover:bg-destructive/90" aria-label="Delete this backup">Delete</button>
-                </div>
-            `;
-            backupList.insertBefore(newBackup, backupList.firstChild);
-
-            showSuccess('Backup created successfully');
-        } catch (error) {
-            console.error('Failed to create backup:', error);
-            showError('Failed to create backup');
-        } finally {
-            document.getElementById('btn-create-backup').disabled = false;
-            document.getElementById('btn-create-backup').textContent = 'Create Backup Now';
-        }
+        showError('Backups are not available in this build. No backup was created.');
     }
 
     async function resetToDefaults() {
@@ -909,20 +882,10 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    // Previously prompted for a destructive confirmation, slept 3s, then reported
+    // "All data cleared successfully" without deleting anything.
     async function clearAllData() {
-        if (!(await Platform.modal.confirm('Are you sure you want to clear ALL data? This action cannot be undone and will permanently delete all applications, users, and configurations.'))) {
-            return;
-        }
-
-        try {
-            // Mock clear all data - replace with actual API
-            showInfo('Clearing all data...');
-            await new Promise(resolve => setTimeout(resolve, 3000));
-            showSuccess('All data cleared successfully');
-        } catch (error) {
-            console.error('Failed to clear data:', error);
-            showError('Failed to clear all data');
-        }
+        showError('Bulk data deletion is not available in this build. No data was changed.');
     }
 
     // Warn about unsaved changes
@@ -933,15 +896,17 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    // Utility functions
+    // Utility functions — route through Platform.toast (DESIGN.md: never alert()/console)
     function showSuccess(message) {
+        Platform.toast.success(message);
     }
 
     function showError(message) {
-        console.error('ERROR:', message);
+        Platform.toast.error(message);
     }
 
     function showInfo(message) {
+        Platform.toast.info(message);
     }
 });
 </script>
