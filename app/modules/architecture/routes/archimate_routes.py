@@ -560,6 +560,127 @@ def api_import_review_retype():
     return jsonify({"success": True, "changed": changed}), 200
 
 
+# ---------------------------------------------------------------------------
+# Diagram import screen
+# ---------------------------------------------------------------------------
+# The Lucidchart importer was reachable only from `flask import-lucid`, which
+# means it did not exist for the person it was built for. This is the same
+# import, with a preview step: an architect uploads the export, sees exactly
+# what would be created, linked or changed, and only then commits.
+#
+# Preview is not a courtesy. Re-importing a diagram into a live repository is
+# the moment an architect most needs to know what is about to happen, and
+# "88 elements, 103 relationships" does not answer that question.
+
+_IMPORT_MAX_BYTES = 50 * 1024 * 1024  # Lucid caps a .lucid archive at 50MB
+
+
+def _read_diagram_upload():
+    """Return (payload, error_response). Accepts .json or a .lucid archive."""
+    import io  # noqa: PLC0415
+    import json as _json  # noqa: PLC0415
+    import zipfile  # noqa: PLC0415
+
+    upload = request.files.get("file")
+    if upload is None or not upload.filename:
+        return None, (jsonify({"success": False,
+                               "error": "No file uploaded. Choose a .lucid or .json export."}), 400)
+    if not upload.filename.lower().endswith((".json", ".lucid")):
+        return None, (jsonify({"success": False,
+                               "error": "Upload a .lucid archive or a .json export from "
+                                        "Lucidchart (File → Export → JSON)."}), 400)
+
+    raw = upload.read()
+    if len(raw) > _IMPORT_MAX_BYTES:
+        return None, (jsonify({"success": False, "error": "File exceeds 50MB."}), 400)
+
+    if raw[:2] == b"PK":
+        try:
+            with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+                names = archive.namelist()
+                member = next((n for n in names
+                               if n.lower().rstrip("/").endswith("document.json")), None) \
+                    or next((n for n in names if n.lower().endswith(".json")), None)
+                if not member:
+                    return None, (jsonify({"success": False,
+                                           "error": "The .lucid archive has no document.json."}), 400)
+                raw = archive.read(member)
+        except zipfile.BadZipFile:
+            return None, (jsonify({"success": False,
+                                   "error": "The .lucid file is not a readable archive."}), 400)
+
+    try:
+        return _json.loads(raw.decode("utf-8")), None
+    except (UnicodeDecodeError, ValueError) as exc:
+        return None, (jsonify({"success": False,
+                               "error": "Not valid Lucidchart JSON: %s" % str(exc)[:120]}), 400)
+
+
+def _run_diagram_import(preview):
+    from flask import g as _g  # noqa: PLC0415
+
+    from app.services.lucid_archimate_transformer import (  # noqa: PLC0415
+        LucidArchiMateTransformer,
+    )
+    from app.services.lucid_import_service import import_payload  # noqa: PLC0415
+
+    org_id = getattr(_g, "current_org_id", None)
+    if org_id is None:
+        return jsonify({"success": False,
+                        "error": "No organisation on this session, so there is nowhere "
+                                 "to import into."}), 400
+
+    payload, error = _read_diagram_upload()
+    if error is not None:
+        return error
+
+    fallback = (request.form.get("fallback_element_type") or "").strip() or None
+    dedupe = (request.form.get("dedupe") or "name-type").strip()
+    if dedupe not in ("name-type", "name-type-container", "none"):
+        return jsonify({"success": False, "error": "Unknown de-duplication strategy."}), 400
+
+    try:
+        transformer = LucidArchiMateTransformer(fallback_element_type=fallback)
+    except ValueError as exc:
+        return jsonify({"success": False, "error": str(exc)}), 400
+
+    try:
+        transformed = transformer.transform_document(payload)
+    except ValueError as exc:
+        return jsonify({"success": False, "error": str(exc)}), 400
+
+    report = import_payload(
+        transformed, org_id=org_id, dedupe=dedupe,
+        link_applications=request.form.get("link_applications") != "0",
+        create_applications=request.form.get("create_applications") == "1",
+        preview=preview,
+    )
+    report["success"] = True
+    return jsonify(report), 200
+
+
+@archimate_bp.route("/import/diagram", methods=["GET"])
+@login_required
+def import_diagram_page():
+    """Upload a Lucidchart export, preview what it would do, then commit."""
+    return render_template("archimate/import_diagram.html",
+                           element_types=_review_element_types())
+
+
+@archimate_bp.route("/api/import/diagram/preview", methods=["POST"])
+@login_required
+def api_import_diagram_preview():
+    """Everything the import would do, having written nothing."""
+    return _run_diagram_import(preview=True)
+
+
+@archimate_bp.route("/api/import/diagram/commit", methods=["POST"])
+@login_required
+def api_import_diagram_commit():
+    """Do it."""
+    return _run_diagram_import(preview=False)
+
+
 _VISION_PROVIDERS = ("anthropic", "openai", "gemini")
 _IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp")
 _IMAGE_MAX_BYTES = 12 * 1024 * 1024
