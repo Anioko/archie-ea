@@ -231,3 +231,57 @@ class TestPackageHandling:
         element = result["elements"][0]
         for key in ("id", "identifier", "name", "type", "layer", "custom_properties"):
             assert key in element, "element is missing %r" % key
+
+
+class TestUntrustedXml:
+    """A .vsdx is a user upload, so its XML is hostile until proven otherwise.
+
+    Entity expansion turns a few kilobytes into gigabytes during parsing. This
+    deployment runs on a 3.8GB box that has already been OOM-killed once, so
+    this is a denial of service, not a theoretical.
+    """
+
+    @staticmethod
+    def _package_with(page_xml):
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as archive:
+            archive.writestr("[Content_Types].xml", "<Types/>")
+            archive.writestr("visio/pages/page1.xml", page_xml)
+        return buffer.getvalue()
+
+    def test_an_entity_declaration_is_refused(self):
+        bomb = ('<?xml version="1.0"?><!DOCTYPE lolz [<!ENTITY lol "lol">]>'
+                '<PageContents %s><Shapes><Shape ID="1" Type="Shape">'
+                '<Text>&lol;</Text></Shape></Shapes></PageContents>' % NS)
+        result = VisioArchiMateTransformer(
+            fallback_element_type="ApplicationComponent"
+        ).transform_document(self._package_with(bomb))
+
+        assert result["elements"] == [], (
+            "a document carrying entity declarations was parsed anyway")
+
+    def test_a_refusal_is_reported_rather_than_raised(self):
+        """Refusing is right; 500ing at the user is not.
+
+        safe_xml raises EntitiesForbidden, which is not an ET.ParseError - so a
+        handler catching only parse errors lets it escape as a server error.
+        """
+        bomb = ('<?xml version="1.0"?><!DOCTYPE lolz [<!ENTITY lol "lol">]>'
+                '<PageContents %s><Shapes/></PageContents>' % NS)
+        result = VisioArchiMateTransformer().transform_document(
+            self._package_with(bomb))
+
+        assert any("refused by the XML parser" in w for w in result["warnings"]), (
+            "the refusal was not reported to the uploader: %r" % result["warnings"])
+
+    def test_parsing_does_not_use_elementtree_directly(self):
+        """Every parse of uploaded bytes must go through safe_xml."""
+        import inspect
+
+        from app.services import visio_archimate_transformer as module
+
+        source = inspect.getsource(module)
+        assert "ET.fromstring" not in source, (
+            "ElementTree parses uploaded XML directly, bypassing the "
+            "entity-expansion guard")
+        assert "safe_xml.fromstring" in source

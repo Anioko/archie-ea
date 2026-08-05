@@ -24,6 +24,12 @@ Format notes, all confirmed against a real .vsdx rather than assumed:
     Where a diagram has no groups - the common case - geometry supplies it.
   * <Connects> gives connectivity: two <Connect> rows per connector, one for
     each end, joined by FromSheet.
+
+A .vsdx arrives as a user upload, so its XML is untrusted and every parse goes
+through app.utils.safe_xml rather than ElementTree directly. A few kilobytes of
+nested entity declarations expand to gigabytes during parsing, and this
+deployment has already been OOM-killed once. ElementTree is still imported, for
+type annotations only.
 """
 from __future__ import annotations
 
@@ -31,9 +37,10 @@ import io
 import re
 import zipfile
 from typing import Any, Dict, List, Optional
-from xml.etree import ElementTree as ET
+from xml.etree import ElementTree as ET  # noqa: S405 - types only; parsing goes via safe_xml
 
 from app.services.lucid_archimate_transformer import LucidArchiMateTransformer
+from app.utils import safe_xml  # untrusted XML: entity-expansion safe
 
 VISIO_NS = "http://schemas.microsoft.com/office/visio/2012/main"
 NS = {"v": VISIO_NS}
@@ -80,8 +87,8 @@ class VisioArchiMateTransformer:
     def _page_names(archive: zipfile.ZipFile) -> Dict[int, str]:
         """Page display names from pages.xml, keyed by 1-based position."""
         try:
-            root = ET.fromstring(archive.read("visio/pages/pages.xml"))
-        except (KeyError, ET.ParseError):
+            root = safe_xml.fromstring(archive.read("visio/pages/pages.xml"))
+        except Exception:  # noqa: BLE001 - page names are optional metadata
             return {}
         names = {}
         for index, page in enumerate(root.findall("v:Page", NS), start=1):
@@ -179,9 +186,14 @@ class VisioArchiMateTransformer:
 
         for position, part in enumerate(pages, start=1):
             try:
-                root = ET.fromstring(archive.read(part))
-            except ET.ParseError as exc:
-                warnings.append("Page %s could not be parsed: %s" % (part, exc))
+                root = safe_xml.fromstring(archive.read(part))
+            except Exception as exc:  # noqa: BLE001
+                # Not just malformed XML: safe_xml raises EntitiesForbidden for a
+                # document carrying entity declarations, which is a refusal, not
+                # a crash. Reporting it as a skipped page beats a 500 and tells
+                # the uploader which page was rejected and why.
+                warnings.append("Page %s was refused by the XML parser (%s): %s"
+                                % (part, type(exc).__name__, str(exc)[:120]))
                 continue
 
             page_id = "page-%d" % position
