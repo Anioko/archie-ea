@@ -1366,7 +1366,27 @@ for _element in LAYERED_ELEMENTS + OTHER_ELEMENTS + CONNECTOR_ELEMENTS:
     _add_rule("Junction", _element, list(_JUNCTION_RELATIONSHIPS))
     _add_rule(_element, "Junction", list(_JUNCTION_RELATIONSHIPS))
 
-del _element, _other
+# Dynamic relationships between ACTIVE STRUCTURE elements.
+#
+# The matrix allowed triggering and flow between behaviour elements
+# (BusinessProcess → BusinessProcess had both) but not between active structure
+# elements: ApplicationComponent → ApplicationComponent offered composition,
+# aggregation, serving, specialization and association only. ArchiMate 3.2 §5.3
+# places no such restriction - a component sending a file to another component
+# is a flow, and it is how almost every real application landscape is drawn.
+#
+# Found by conformance-checking a production solution diagram on import: 33 of
+# its 103 relationships were reported as violations, every one of them an
+# ApplicationComponent --flow--> ApplicationComponent. A conformance report that
+# is wrong a third of the time is a report nobody reads.
+for _source in ALL_ACTIVE_ELEMENTS:
+    for _target in ALL_ACTIVE_ELEMENTS:
+        _allowed = VALID_RELATIONSHIPS.setdefault((_source, _target), [])
+        for _dynamic in ("triggering", "flow"):
+            if _dynamic not in _allowed:
+                _allowed.append(_dynamic)
+
+del _element, _other, _source, _target, _allowed, _dynamic
 
 
 # Relationships that can participate in derivation chains

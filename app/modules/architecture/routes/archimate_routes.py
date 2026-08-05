@@ -356,6 +356,188 @@ def viewpoints_page():
     return redirect(url_for("archimate.composer_page", **params), code=302)
 
 
+_VISION_PROVIDERS = ("anthropic", "openai", "gemini")
+_IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp")
+_IMAGE_MAX_BYTES = 12 * 1024 * 1024
+
+
+def _first_vision_provider():
+    """The first configured provider that can actually see an image, or None.
+
+    DeepSeek is text-only, so "an LLM is configured" is not the same question as
+    "a diagram can be read". Answering the wrong one produces a feature that
+    appears to work and returns nothing.
+    """
+    from app.modules.architecture.services.multi_modal_llm_service import (  # noqa: PLC0415
+        MultiModalLLMService,
+    )
+
+    service = MultiModalLLMService()
+    for provider in _VISION_PROVIDERS:
+        try:
+            if service._resolve_api_key(provider):
+                return provider, service
+        except Exception:  # noqa: BLE001 - a broken provider is not a configured one
+            continue
+    return None, service
+
+
+@archimate_bp.route("/api/composer/extract-from-image", methods=["POST"])
+@login_required
+def api_composer_extract_from_image():
+    """Turn a diagram image into canonical ArchiMate elements and relationships.
+
+    The extraction itself already existed but was reachable only by uploading a
+    file into AI chat, which is not where anyone models. This puts it where the
+    Lucid import already is - the composer - and returns the SAME payload shape,
+    so the canvas has one way to receive a diagram regardless of whether it
+    arrived as a .lucid file or a screenshot of one.
+
+    Returns 503 with a plain explanation when no vision-capable provider is
+    configured, rather than an empty result that looks like "nothing found".
+
+    Form field:
+        file: the diagram image.
+    """
+    import os as _os  # noqa: PLC0415
+    import tempfile  # noqa: PLC0415
+
+    upload = request.files.get("file")
+    if upload is None or not upload.filename:
+        return jsonify({"success": False, "error": "No image uploaded. POST form-data 'file'."}), 400
+    if not upload.filename.lower().endswith(_IMAGE_EXTENSIONS):
+        return jsonify({
+            "success": False,
+            "error": "Unsupported image type. Use PNG, JPEG, GIF, WEBP or BMP.",
+        }), 400
+
+    raw = upload.read()
+    if len(raw) > _IMAGE_MAX_BYTES:
+        return jsonify({"success": False, "error": "Image exceeds 12MB."}), 400
+
+    provider, service = _first_vision_provider()
+    if provider is None:
+        return jsonify({
+            "success": False,
+            "error": "No vision-capable AI provider is configured, so a diagram "
+                     "image cannot be read. Add an Anthropic, OpenAI or Gemini "
+                     "key in Admin → API Settings. A text-only provider such as "
+                     "DeepSeek cannot do this.",
+            "error_type": "no_vision_provider",
+        }), 503
+
+    suffix = _os.path.splitext(upload.filename)[1] or ".png"
+    handle, temp_path = tempfile.mkstemp(suffix=suffix)
+    try:
+        with _os.fdopen(handle, "wb") as fh:
+            fh.write(raw)
+        import asyncio  # noqa: PLC0415
+
+        extracted, _interaction = asyncio.run(
+            service.extract_archimate_from_diagram(temp_path, provider)
+        )
+    except Exception as exc:  # noqa: BLE001
+        current_app.logger.exception("diagram image extraction failed")
+        return jsonify({
+            "success": False,
+            "error": f"Could not read the diagram: {str(exc)[:200]}",
+        }), 502
+    finally:
+        try:
+            _os.unlink(temp_path)
+        except OSError:
+            pass
+
+    return jsonify(_canonicalise_extracted(extracted, provider)), 200
+
+
+def _canonicalise_extracted(extracted, provider):
+    """Reshape the model's answer into the composer's import payload.
+
+    The model returns relationships that reference elements by NAME; the
+    composer works in ids, exactly as the Lucidchart importer produces them.
+    Converting here means the canvas has one contract, not two.
+    """
+    raw_elements = (extracted or {}).get("elements") or []
+    raw_relationships = (extracted or {}).get("relationships") or []
+
+    elements, by_name = [], {}
+    for index, item in enumerate(raw_elements):
+        name = (item.get("name") or "").strip()
+        if not name:
+            continue
+        identifier = f"img-{index}"
+        by_name[name.lower()] = identifier
+        elements.append({
+            "id": identifier,
+            "identifier": identifier,
+            "name": name,
+            "type": item.get("type") or "Grouping",
+            "layer": (item.get("layer") or "other").lower(),
+            "description": item.get("description"),
+            "rendering_mode": None,
+            "custom_properties": {
+                "source": "diagram-image",
+                "extracted_by": provider,
+                **(item.get("properties") or {}),
+            },
+        })
+
+    relationships, unresolved = [], 0
+    for index, item in enumerate(raw_relationships):
+        source = by_name.get((item.get("source") or "").strip().lower())
+        target = by_name.get((item.get("target") or "").strip().lower())
+        if not source or not target:
+            unresolved += 1
+            continue
+        relationships.append({
+            "id": f"img-rel-{index}",
+            "identifier": f"img-rel-{index}",
+            "type": (item.get("type") or "association").lower(),
+            "source_id": source,
+            "target_id": target,
+            "source": source,
+            "target": target,
+            "access_mode": None,
+            "flow_label": None,
+            "custom_label": None,
+            "description": item.get("description"),
+            "connection_spec": None,
+            "derived_from": "diagram-image",
+        })
+
+    warnings = [
+        "Read from an image by a language model. Every element and relationship "
+        "here is a reading of a picture, not extracted data - review before "
+        "publishing.",
+    ]
+    if unresolved:
+        warnings.append(
+            f"{unresolved} relationship(s) referenced an element the model did "
+            f"not also return, and were dropped."
+        )
+    metadata = (extracted or {}).get("metadata") or {}
+    if metadata.get("confidence"):
+        warnings.append(f"Model-reported confidence: {metadata['confidence']}.")
+
+    return {
+        "success": True,
+        "model_name": metadata.get("diagram_type") or "Diagram image import",
+        "elements": elements,
+        "relationships": relationships,
+        "layout_hints": {},
+        "warnings": warnings,
+        "errors": [],
+        "stats": {
+            "elements": len(elements),
+            "relationships": len(relationships),
+            "elements_created": len(elements),
+            "elements_linked": 0,
+            "relationships_created": len(relationships),
+        },
+    }
+
+
 @archimate_bp.route("/elements", methods=["GET"])
 @login_required
 def elements_redirect():

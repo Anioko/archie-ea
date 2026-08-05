@@ -170,6 +170,31 @@ class LucidArchiMateTransformer:
     # a shape carrying that much text is a note, a legend or a risk register.
     ANNOTATION_TEXT_LENGTH = 100
 
+    # Titles a legend block carries. A shape holding one of these, or holding
+    # nothing but an ArchiMate type name, is a key explaining the notation - not
+    # a system. See _is_legend_swatch.
+    LEGEND_TITLES = {"LEGEND", "KEY", "LEGEND:", "KEY:"}
+
+    # Shorthand a legend uses for a concept when it does not spell out the full
+    # ArchiMate name - "Application" for Application Component is the common one.
+    # These are only ever treated as swatches when the shape is also connected to
+    # nothing, which is what keeps a genuinely-named element safe.
+    LEGEND_CONCEPT_ALIASES = {
+        "APPLICATION", "APPLICATIONS", "BUSINESS", "TECHNOLOGY",
+        "MOTIVATION", "STRATEGY", "IMPLEMENTATION", "DATA",
+    }
+
+    # Qualifiers architects put in element names. They are real attributes -
+    # delivery phase, country scope, deployment model - written where the tool
+    # gave them nowhere else to go, and they stay trapped in the name unless
+    # something lifts them out. "(Phase 2)" should be filterable, not grep-able.
+    QUALIFIER_PATTERNS = (
+        (r"\bphase\s*([0-9]+)\b", "phase"),
+        (r"\b(DE|UK|US|FR|EU)\s+only\b", "scope"),
+        (r"\b(DE|UK|US|FR|EU)\s+payments\s+only\b", "scope"),
+        (r"\b(SaaS|PaaS|IaaS|On-?Prem(?:ise)?|Server\s+Image)\b", "deployment"),
+    )
+
     def __init__(
         self,
         event_element_type: str = "BusinessEvent",
@@ -226,6 +251,7 @@ class LucidArchiMateTransformer:
         total_shapes_seen = 0
         fallback_used = 0
         annotations = 0
+        legend_swatches = 0
         unmapped_classes: set = set()
         inferred_event_type = self._infer_event_element_type(pages)
         # Only needed to decide container-vs-leaf for fallback typing.
@@ -233,6 +259,7 @@ class LucidArchiMateTransformer:
             self._container_shape_ids(pages) if self.fallback_element_type else set()
         )
 
+        connected_ids = self._connected_shape_ids(pages)
         stroke_data_available = self._payload_has_stroke_data(pages)
         geometry_present = self._payload_has_geometry(payload)
         if not geometry_present:
@@ -271,6 +298,10 @@ class LucidArchiMateTransformer:
                 # named after their entire contents.
                 if len(name) > self.ANNOTATION_TEXT_LENGTH:
                     annotations += 1
+                    continue
+
+                if self._is_legend_swatch(name, str(identifier), connected_ids):
+                    legend_swatches += 1
                     continue
 
                 # Resolve the type from the strongest available signal, and
@@ -326,6 +357,8 @@ class LucidArchiMateTransformer:
                 if lucid_stereotype:
                     element["custom_properties"]["lucid_stereotype"] = lucid_stereotype
 
+                element["custom_properties"].update(self._extract_qualifiers(name))
+
                 fill_color = self._extract_fill_color(shape)
                 if fill_color:
                     element["custom_properties"]["lucid_fill_color"] = fill_color
@@ -369,6 +402,13 @@ class LucidArchiMateTransformer:
                 f"Skipped {annotations} shape(s) holding more than {self.ANNOTATION_TEXT_LENGTH} "
                 f"characters of text. A paragraph is a note, not an element name - these "
                 f"are commentary (risks, checklists, legends) rather than architecture."
+            )
+
+        if legend_swatches:
+            warnings.append(
+                f"Skipped {legend_swatches} legend swatch(es) - shapes labelled with an "
+                f"ArchiMate concept name and connected to nothing, which illustrate the "
+                f"notation rather than use it."
             )
 
         if unmapped_classes:
@@ -844,6 +884,66 @@ class LucidArchiMateTransformer:
                 geom["h"] = int(h)
             return geom
         return {}
+
+    @classmethod
+    def _extract_qualifiers(cls, name: str) -> Dict[str, Any]:
+        """Lift phase / scope / deployment out of an element name.
+
+        The name is left exactly as drawn - it is what the architect sees on the
+        diagram and what everything else matches on. These are additions, so
+        "Formula NAV UK/DE (Server Image)" keeps its name AND gains
+        deployment="Server Image", which a filter can reach.
+
+        Every parenthetical is also kept verbatim under `qualifiers`, because the
+        interesting one is always the next one nobody anticipated.
+        """
+        import re
+
+        found: Dict[str, Any] = {}
+        parentheticals = [p.strip() for p in re.findall(r"\(([^)]*)\)", name or "")]
+        if parentheticals:
+            found["qualifiers"] = parentheticals
+
+        haystack = " ".join(parentheticals) or (name or "")
+        for pattern, key in cls.QUALIFIER_PATTERNS:
+            match = re.search(pattern, haystack, re.IGNORECASE)
+            if match and key not in found:
+                found[key] = match.group(1).strip()
+        return found
+
+    @classmethod
+    def _is_legend_swatch(cls, name: str, identifier: str, connected: set) -> bool:
+        """True for a shape that illustrates the notation rather than using it.
+
+        A legend draws one box per concept and labels it with the concept's own
+        name. Those import as elements called "Application", "Business Role",
+        "Location" - six of them from the diagram that prompted this, deleted by
+        hand afterwards.
+
+        Two conditions together, because either alone is too eager: the text is
+        exactly an ArchiMate concept name (or a legend title), AND the shape is
+        connected to nothing. A real Location genuinely named "Location" would
+        still be related to something; a swatch never is.
+        """
+        stripped = (name or "").strip()
+        if not stripped or identifier in connected:
+            return False
+        upper = stripped.upper()
+        if upper in cls.LEGEND_TITLES or upper in cls.LEGEND_CONCEPT_ALIASES:
+            return True
+        return cls._type_from_token(stripped) is not None
+
+    @classmethod
+    def _connected_shape_ids(cls, pages: List[Dict[str, Any]]) -> set:
+        """Every shape id that some line attaches to."""
+        connected = set()
+        for page in pages:
+            for line in (page.get("items") or {}).get("lines") or []:
+                for key in ("endpoint1", "endpoint2"):
+                    ref = (line.get(key) or {}).get("connectedTo")
+                    if ref:
+                        connected.add(str(ref))
+        return connected
 
     @classmethod
     def _extract_fill_color(cls, shape: Dict[str, Any]) -> Optional[str]:

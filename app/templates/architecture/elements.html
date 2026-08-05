@@ -14,6 +14,8 @@
   .layer-application { background: rgb(59 130 246); }
   .layer-technology { background: rgb(16 185 129); }
   .layer-implementation { background: rgb(100 116 139); }
+  .layer-physical { background: rgb(217 119 6); }
+  .layer-other { background: rgb(120 113 108); }
 </style>
 {% endblock %}
 
@@ -28,7 +30,7 @@
     {{ page_header(title='ArchiMate Element Catalog', description='Every ArchiMate element in your repository') }}
 
     {# ── Layer Summary Bar (ARC-002) ── #}
-    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
+    <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-4 gap-3 mb-6">
         <template x-for="layer in layers" :key="layer.name">
             <button @click="filterByLayer(layer.name)"
                     :class="[layerBadgeClass(layer.name), activeLayer === layer.name.toLowerCase() ? 'ring-2 ring-offset-1 ring-current' : '']"
@@ -575,7 +577,9 @@ document.addEventListener('alpine:init', () => {
             business: ['BusinessActor','BusinessRole','BusinessProcess','BusinessFunction','BusinessService','BusinessObject','BusinessEvent','BusinessInterface','Contract'],
             application: ['ApplicationComponent','ApplicationService','ApplicationInterface','ApplicationFunction','DataObject'],
             technology: ['Node','Device','SystemSoftware','CommunicationNetwork','TechnologyService','Artifact','Path'],
-            implementation: ['WorkPackage','Deliverable','Plateau','Gap','ImplementationEvent']
+            implementation: ['WorkPackage','Deliverable','Plateau','Gap','ImplementationEvent'],
+            physical: ['Location','Equipment','Facility','Material','DistributionNetwork'],
+            other: ['Grouping','Junction']
         },
 
         async init() {

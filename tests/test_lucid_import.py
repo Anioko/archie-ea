@@ -540,6 +540,132 @@ class TestRelationshipsAreReadFromTheNotation:
         assert self._one(target_style="None")["derived_from"] is None
 
 
+class TestQualifiersAreLiftedOutOfNames:
+    """(Phase 2) and (DE Only) are attributes, written where nothing else fit.
+
+    Left in the name they can only be grepped. As properties they can be
+    filtered, reported on, and used to scope a migration wave - which is what
+    the architect meant by writing them.
+    """
+
+    def _props(self, name):
+        result = LucidArchiMateTransformer().transform_document(_payload([
+            _shape("a", "ArchiMate3ComponentBoxBlock", name, (0, 0, 160, 60)),
+        ]))
+        return result["elements"][0]["custom_properties"]
+
+    @pytest.mark.parametrize("name,key,value", [
+        ("Navitrans 365 App (Phase 2)", "phase", "2"),
+        ("COSMO CrefoDynamics App (Phase 1)", "phase", "1"),
+        ("ATLAS (DE Only)", "scope", "DE"),
+        ("IBM Sterling (UK Only) (Phase 1)", "scope", "UK"),
+        ("Business Central UK/DE (SaaS)", "deployment", "SaaS"),
+        ("Formula NAV UK/DE (Server Image)", "deployment", "Server Image"),
+    ])
+    def test_a_qualifier_becomes_a_property(self, name, key, value):
+        assert self._props(name).get(key) == value
+
+    def test_the_name_is_left_exactly_as_drawn(self):
+        """The name is what the architect sees on the diagram and matches on."""
+        name = "COUPA Treasury (Phase 1) (DE Payments Only)"
+        result = LucidArchiMateTransformer().transform_document(_payload([
+            _shape("a", "ArchiMate3ComponentBoxBlock", name, (0, 0, 160, 60)),
+        ]))
+        assert result["elements"][0]["name"] == name
+
+    def test_every_parenthetical_is_kept_even_when_unrecognised(self):
+        """The interesting qualifier is always the next one nobody anticipated."""
+        props = self._props("Okarno EDI System (Tranche 3) (Pilot)")
+        assert props.get("qualifiers") == ["Tranche 3", "Pilot"]
+
+    def test_a_plain_name_gains_nothing(self):
+        assert "qualifiers" not in self._props("MuleSoft")
+
+
+class TestLegendSwatchesAreNotArchitecture:
+    """A legend draws one box per concept, labelled with the concept's name.
+
+    Six of those imported from the diagram behind this work - "Application",
+    "Business Role", "Location" - and were deleted by hand afterwards.
+    """
+
+    @pytest.mark.parametrize("label", [
+        "LEGEND", "Location", "Business Role", "Application Interface",
+        "Communication Network", "Application",
+    ])
+    def test_an_unconnected_concept_label_is_skipped(self, label):
+        result = LucidArchiMateTransformer(
+            fallback_element_type="ApplicationComponent"
+        ).transform_document(_payload([
+            _shape("swatch", "GenericRectangle", label, (2000, 0, 120, 40)),
+            _shape("real", "ArchiMate3ComponentBoxBlock", "MuleSoft", (0, 0, 160, 60)),
+        ]))
+        assert [e["name"] for e in result["elements"]] == ["MuleSoft"], (
+            "%r was imported as architecture" % label)
+
+    def test_a_connected_element_is_never_treated_as_a_swatch(self):
+        """The guard is 'labelled like a concept AND attached to nothing'.
+
+        A real Location genuinely named "Location" would still be related to
+        something. Dropping it because of its name alone would lose real data.
+        """
+        result = LucidArchiMateTransformer().transform_document(_payload(
+            shapes=[
+                _shape("loc", "ArchiMate3LocationBoxBlock", "Location", (0, 0, 400, 300)),
+                _shape("app", "ArchiMate3ComponentBoxBlock", "MuleSoft", (900, 0, 160, 60)),
+            ],
+            lines=[_line("l1", "loc", "app", target_style="Arrow")],
+        ))
+        assert "Location" in [e["name"] for e in result["elements"]]
+
+
+class TestImageExtractionPayloadMatchesTheImporter:
+    """A screenshot and a .lucid file must reach the canvas the same way.
+
+    The model answers with relationships that reference elements by NAME; the
+    composer works in ids, as the Lucidchart importer produces. Converting at
+    the edge means the canvas has one contract rather than two.
+    """
+
+    def _canonicalise(self, extracted):
+        from app.modules.architecture.routes.archimate_routes import (
+            _canonicalise_extracted,
+        )
+        return _canonicalise_extracted(extracted, "anthropic")
+
+    def test_named_relationships_become_id_relationships(self):
+        payload = self._canonicalise({
+            "elements": [
+                {"name": "Business Central", "type": "ApplicationComponent", "layer": "application"},
+                {"name": "MuleSoft", "type": "ApplicationComponent", "layer": "application"},
+            ],
+            "relationships": [
+                {"source": "Business Central", "target": "MuleSoft", "type": "Flow"},
+            ],
+        })
+        assert len(payload["elements"]) == 2
+        rel = payload["relationships"][0]
+        ids = {e["id"] for e in payload["elements"]}
+        assert rel["source_id"] in ids and rel["target_id"] in ids, (
+            "relationship still references names, so the composer cannot place it")
+        assert rel["type"] == "flow", "relationship type was not normalised to lower case"
+        assert rel["derived_from"] == "diagram-image"
+
+    def test_a_relationship_to_an_unknown_element_is_dropped_and_reported(self):
+        payload = self._canonicalise({
+            "elements": [{"name": "A", "type": "ApplicationComponent"}],
+            "relationships": [{"source": "A", "target": "Ghost", "type": "serving"}],
+        })
+        assert payload["relationships"] == []
+        assert any("did not also return" in w for w in payload["warnings"]), (
+            "silently dropped a relationship: %r" % payload["warnings"])
+
+    def test_the_reader_is_told_this_was_read_from_a_picture(self):
+        payload = self._canonicalise({"elements": [{"name": "A", "type": "Node"}]})
+        assert any("reading of a picture" in w for w in payload["warnings"])
+        assert payload["elements"][0]["custom_properties"]["source"] == "diagram-image"
+
+
 class TestImageAnalysisNoLongerCrashes:
     """`await ...__doc__` sat on the live image path and raised TypeError.
 
