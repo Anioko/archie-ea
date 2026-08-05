@@ -580,6 +580,33 @@ def api_list_work_packages():
     })
 
 
+def _milestones_for(wp):
+    """Delivery milestones for a work package, via the projects that deliver it.
+
+    Returns [] rather than raising if the project models are unavailable — the
+    Gantt degrades to bars without markers, which is honest; it must never
+    invent a milestone.
+    """
+    try:
+        out = []
+        for project in getattr(wp, "projects", None) or []:
+            for ms in project.milestones:
+                target = ms.actual_date or ms.target_date
+                if not target:
+                    continue
+                out.append({
+                    "id": str(ms.id),
+                    "name": ms.name,
+                    "date": target.isoformat(),
+                    "status": ms.status,
+                    "project": project.name,
+                })
+        return sorted(out, key=lambda m: m["date"])
+    except Exception:
+        logger.exception("Could not resolve milestones for work package %s", getattr(wp, "id", "?"))
+        return []
+
+
 @enterprise_bp.route("/api/work-packages/gantt", methods=["GET"])
 @login_required
 def api_work_packages_gantt():
@@ -636,10 +663,11 @@ def api_work_packages_gantt():
                 ),
                 "estimated_cost": wp.estimated_cost,
                 "layer": wp.element_type or "implementation",
-                # Milestone (app/models/project_models.py) hangs off Project, not
-                # WorkPackage, so there is no link to traverse. Empty until one
-                # exists — the component already renders `milestones || []`.
-                "milestones": [],
+                # Milestone hangs off Project. Project now carries a real
+                # work_package_id FK, so the delivery milestones of a work package
+                # are reachable: work_package -> projects -> milestones. Before that
+                # FK existed there was no path and this was necessarily [].
+                "milestones": _milestones_for(wp),
             })
 
         return jsonify({"work_packages": items, "total": len(items)})

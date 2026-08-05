@@ -25,6 +25,7 @@ from typing import Dict, List
 from app.models.business_capabilities import BusinessCapability
 
 from .. import db
+from ..mixins import TenantMixin
 
 # ============================================================================
 # SEMANTIC EA INTELLIGENCE - JUNCTION TABLES
@@ -896,7 +897,7 @@ class VendorProductCapability(db.Model):
 # ============================================================================
 
 
-class EnterpriseInitiative(db.Model):
+class EnterpriseInitiative(TenantMixin, db.Model):
     """
     Strategic transformation programs and initiatives.
 
@@ -912,6 +913,24 @@ class EnterpriseInitiative(db.Model):
     """
 
     __tablename__ = "enterprise_initiatives"
+
+    # This model held every tenant's transformation programmes — budgets, spend,
+    # sponsors — with no organization_id at all, so it was not merely unfiltered
+    # but structurally impossible to filter (tenant_isolation attaches
+    # `organization_id == g.current_org_id` to SELECTs on TenantMixin models).
+    # Nothing surfaced it in the UI, which is the only reason it had not leaked.
+    #
+    # Nullable for the same reason as Principle: enterprise_initiatives is an
+    # existing table and reconcile-schema can only ADD nullable columns (ADR
+    # 0002). Isolation keys on isinstance(TenantMixin), not on nullability.
+    # Pre-existing rows are hidden until backfilled:
+    #     flask --app manage backfill-initiative-org
+    organization_id = db.Column(
+        db.Integer,
+        db.ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
 
     id = db.Column(db.Integer, primary_key=True)
 

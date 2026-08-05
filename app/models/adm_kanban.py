@@ -197,6 +197,35 @@ class KanbanCard(db.Model):
     labels = db.Column(db.JSON, nullable=True)
     acceptance_criteria = db.Column(db.Text, nullable=True)
 
+    # Effort actuals, pulled from Jira. Only assignee/status/story_points were
+    # ever synced, so nothing in the platform could observe how much effort a
+    # piece of work had actually consumed — which is why EnterpriseInitiative's
+    # spent_to_date was a column nothing ever wrote. Jira reports both in
+    # seconds; kept in seconds to avoid a lossy conversion on the way in.
+    # Nullable: existing rows have no history, and "no worklog" must stay
+    # distinguishable from "zero effort".
+    time_spent_seconds = db.Column(db.Integer, nullable=True)
+    time_estimate_seconds = db.Column(db.Integer, nullable=True)
+    effort_synced_at = db.Column(db.DateTime, nullable=True)
+
+    @property
+    def time_spent_hours(self):
+        """Effort actually logged, in hours. None when Jira reported nothing."""
+        if self.time_spent_seconds is None:
+            return None
+        return round(self.time_spent_seconds / 3600.0, 2)
+
+    @property
+    def effort_variance_pct(self):
+        """Logged vs originally estimated. None unless both are known."""
+        if not self.time_estimate_seconds or self.time_spent_seconds is None:
+            return None
+        return round(
+            (self.time_spent_seconds - self.time_estimate_seconds)
+            / self.time_estimate_seconds * 100,
+            1,
+        )
+
     # Gantt / progress
     arch_layer = db.Column(db.String(50), nullable=True)
     progress_pct = db.Column(db.Integer, nullable=True, default=0)

@@ -17,7 +17,7 @@ services:
     #                      dashboard, the ARB screens and the AI chat tools. Non-fatal:
     #                      it refuses to guess when several organisations exist.
     #   backfill-architect-role — normalise existing users onto the architect role.
-    command: sh -c "flask --app manage init-db && flask --app manage reconcile-schema && { flask --app manage backfill-value-stream-tenancy || echo 'WARN value-stream tenancy backfill skipped - run manually with --org-id'; } && { flask --app manage backfill-principle-org || echo 'WARN principle tenancy backfill skipped - run manually with --org-id'; } && flask --app manage backfill-architect-role && gunicorn -c gunicorn.conf.py manage:app"
+    command: sh -c "flask --app manage init-db && flask --app manage reconcile-schema && { flask --app manage backfill-value-stream-tenancy || echo 'WARN value-stream tenancy backfill skipped - run manually with --org-id'; } && { flask --app manage backfill-principle-org || echo 'WARN principle tenancy backfill skipped - run manually with --org-id'; } && { flask --app manage backfill-initiative-org || echo 'WARN initiative tenancy backfill skipped - run manually with --org-id'; } && flask --app manage backfill-architect-role && gunicorn -c gunicorn.conf.py manage:app"
     # Guardrails added 2026-07-30. Previously restart=no and no mem_limit, so a
     # memory spike triggered a GLOBAL OOM (22 Jul) and a wedged container stayed
     # wedged for six days (24-30 Jul). The ceiling confines a spike to this

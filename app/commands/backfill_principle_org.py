@@ -1,5 +1,8 @@
 """
-flask backfill-principle-org — give the ArchiMate Principle rows a tenant.
+Tenancy backfills: backfill-principle-org, backfill-initiative-org.
+
+Both give a pre-existing table's rows an owning organisation after the model
+gained TenantMixin. Same mechanics; `_backfill` holds the logic.
 
 `Principle` (app/models/models.py) shipped without an organization_id. The tenant
 filter in app/middleware/tenant_isolation.py attaches
@@ -29,6 +32,7 @@ Idempotent; safe to re-run. Run AFTER reconcile-schema:
     flask --app manage backfill-principle-org --dry-run
     flask --app manage backfill-principle-org
     flask --app manage backfill-principle-org --org-id 3
+    flask --app manage backfill-initiative-org --dry-run
 """
 
 import click
@@ -36,7 +40,7 @@ from flask.cli import with_appcontext
 
 from app import db
 
-TABLE = "principles"
+
 
 
 def _resolve_org_id(conn, explicit):
@@ -66,12 +70,8 @@ def _resolve_org_id(conn, explicit):
     )
 
 
-@click.command("backfill-principle-org")
-@click.option("--dry-run", is_flag=True, help="Report what would change; change nothing.")
-@click.option("--org-id", type=int, default=None, help="Organization to assign orphaned rows to.")
-@with_appcontext
-def backfill_principle_org(dry_run, org_id):
-    """Backfill organization_id on the principles table."""
+def _backfill(TABLE, dry_run, org_id):
+    """Backfill organization_id on one pre-existing tenant table."""
     from sqlalchemy import inspect, text
 
     insp = inspect(db.engine)
@@ -134,9 +134,33 @@ def backfill_principle_org(dry_run, org_id):
             click.echo(f"  ! {TABLE}: {label} skipped ({str(exc)[:100]})")
 
     db.session.commit()
-    click.echo("backfill-principle-org: done.")
+    click.echo(f"backfill {TABLE}: done.")
+
+
+@click.command("backfill-principle-org")
+@click.option("--dry-run", is_flag=True, help="Report what would change; change nothing.")
+@click.option("--org-id", type=int, default=None, help="Organization to assign orphaned rows to.")
+@with_appcontext
+def backfill_principle_org(dry_run, org_id):
+    """Backfill organization_id on the principles table."""
+    _backfill("principles", dry_run, org_id)
+
+
+@click.command("backfill-initiative-org")
+@click.option("--dry-run", is_flag=True, help="Report what would change; change nothing.")
+@click.option("--org-id", type=int, default=None, help="Organization to assign orphaned rows to.")
+@with_appcontext
+def backfill_initiative_org(dry_run, org_id):
+    """Backfill organization_id on the enterprise_initiatives table.
+
+    EnterpriseInitiative gained TenantMixin. Until this runs, pre-existing
+    programmes have a NULL organization_id and are hidden from the portfolio
+    views — which is the safe direction to fail, but it is still wrong.
+    """
+    _backfill("enterprise_initiatives", dry_run, org_id)
 
 
 def init_app(app):
-    """Register the backfill-principle-org CLI command."""
+    """Register the tenancy backfill CLI commands."""
     app.cli.add_command(backfill_principle_org)
+    app.cli.add_command(backfill_initiative_org)
