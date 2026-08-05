@@ -188,6 +188,46 @@ class TestNestingBecomesStructure:
             % result["relationships"])
 
 
+class TestAnnotationsAreNotElements:
+    """Real diagrams carry commentary in ordinary boxes.
+
+    The source diagram for this work has two: a provisioning checklist and a
+    risk register, each several hundred characters. With a fallback type
+    configured they imported as applications named after their entire contents,
+    and the repository rejected them - element names are varchar(100). Worse
+    than the failure is what a slightly shorter one would have done: silently
+    become an application called "Risks of Retaining the Server Image...".
+    """
+
+    def test_a_paragraph_is_not_an_element(self):
+        prose = (
+            "Risks of Retaining the Server Image in SG Germany DC - The server "
+            "will often need to be tested for compatibility with the latest "
+            "virtualisation environment, and may become inaccessible."
+        )
+        result = LucidArchiMateTransformer(
+            fallback_element_type="ApplicationComponent"
+        ).transform_document(_payload([
+            _shape("note", "GenericRectangle", prose, (0, 0, 400, 300)),
+            _shape("app", "ArchiMate3ComponentBoxBlock", "Business Central", (500, 0, 160, 60)),
+        ]))
+
+        names = [e["name"] for e in result["elements"]]
+        assert names == ["Business Central"], (
+            "a paragraph of commentary was imported as an element: %r" % names)
+        assert any("note" in w.lower() or "commentary" in w.lower()
+                   for w in result["warnings"]), (
+            "dropped the annotation without saying so: %r" % result["warnings"])
+
+    def test_a_normal_name_is_untouched(self):
+        """The guard must not eat legitimately long element names."""
+        name = "COSMO CrefoDynamics App (Phase 1)"
+        result = LucidArchiMateTransformer().transform_document(_payload([
+            _shape("a", "ArchiMate3ComponentBoxBlock", name, (0, 0, 160, 60)),
+        ]))
+        assert [e["name"] for e in result["elements"]] == [name]
+
+
 class TestColourIsPreserved:
     def test_fill_colour_survives_the_import(self):
         """A traffic-light key is information the author cannot recover later."""

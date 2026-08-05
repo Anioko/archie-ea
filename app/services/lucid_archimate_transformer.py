@@ -164,6 +164,12 @@ class LucidArchiMateTransformer:
     # of discarding it.
     NESTING_FALLBACK_ORDER = ("composition", "aggregation", "association")
 
+    # Text longer than this is prose, not a name. Chosen to match the widest
+    # element name the repository stores (varchar(100)) with a little room:
+    # anything past it could not be persisted as a name anyway, and in practice
+    # a shape carrying that much text is a note, a legend or a risk register.
+    ANNOTATION_TEXT_LENGTH = 100
+
     def __init__(
         self,
         event_element_type: str = "BusinessEvent",
@@ -219,6 +225,7 @@ class LucidArchiMateTransformer:
         skipped_relationship_count = 0
         total_shapes_seen = 0
         fallback_used = 0
+        annotations = 0
         unmapped_classes: set = set()
         inferred_event_type = self._infer_event_element_type(pages)
         # Only needed to decide container-vs-leaf for fallback typing.
@@ -255,6 +262,15 @@ class LucidArchiMateTransformer:
                     warnings.append(
                         f"Lucidchart shape '{identifier}' has no importable name; skipped."
                     )
+                    continue
+
+                # A shape holding a paragraph is a note, not an element. Real
+                # diagrams carry commentary - risk registers, provisioning
+                # checklists, legends - in ordinary boxes, and with a fallback
+                # type configured those would otherwise import as applications
+                # named after their entire contents.
+                if len(name) > self.ANNOTATION_TEXT_LENGTH:
+                    annotations += 1
                     continue
 
                 # Resolve the type from the strongest available signal, and
@@ -347,6 +363,13 @@ class LucidArchiMateTransformer:
         # Any parent id that survived (target not imported) is provenance noise.
         for element in elements:
             element.get("custom_properties", {}).pop("lucid_parent_id", None)
+
+        if annotations:
+            warnings.append(
+                f"Skipped {annotations} shape(s) holding more than {self.ANNOTATION_TEXT_LENGTH} "
+                f"characters of text. A paragraph is a note, not an element name - these "
+                f"are commentary (risks, checklists, legends) rather than architecture."
+            )
 
         if unmapped_classes:
             shown = ", ".join(sorted(unmapped_classes))[:300]
