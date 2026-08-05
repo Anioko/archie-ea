@@ -226,3 +226,62 @@ def test_portfolio_requires_login(app, url):
     """Portfolio holds budgets and sponsors — never anonymous."""
     resp = app.test_client().get(url)
     assert resp.status_code in (301, 302, 401, 403)
+
+
+# --------------------------------------------------------------------------
+# 7. Effort -> spend rollup
+# --------------------------------------------------------------------------
+
+def test_card_reaches_the_canonical_work_package(app):
+    """Effort could not reach an initiative before this link existed.
+
+    KanbanCard.work_package_id points at roadmap_work_packages, which stores
+    business_capability as a String and carries no foreign keys — a dead end.
+    The canonical WorkPackage is the one that links to the initiative.
+    """
+    from app.models.adm_kanban import KanbanCard
+
+    assert _fk_targets(KanbanCard, "implementation_work_package_id") == {"work_packages.id"}
+
+
+def test_rate_card_is_tenant_scoped(app):
+    from app.models.mixins import TenantMixin
+    from app.models.rate_card import RateCard
+
+    assert issubclass(RateCard, TenantMixin)
+
+
+def test_spend_is_none_not_zero_when_no_effort_logged(app):
+    """"Nobody recorded effort" and "zero effort" are different facts.
+
+    Returning 0.0 here would render as "£0 spent" on the portfolio page about an
+    initiative nobody has measured — the exact lie the fabricated-data gate exists
+    to prevent.
+    """
+    from app.services.initiative_spend_service import compute_initiative_spend
+
+    with app.app_context():
+        result = compute_initiative_spend(999_999)
+
+    assert result["amount"] is None
+    assert result["hours"] is None
+    assert result["reason_unavailable"]
+
+
+def test_spend_result_declares_itself_an_estimate(app):
+    """A rate-card figure must never be mistaken for booked cost."""
+    from app.services.initiative_spend_service import compute_initiative_spend
+
+    with app.app_context():
+        assert compute_initiative_spend(999_999)["is_estimate"] is True
+
+
+def test_rate_card_currency_of_the_period(app):
+    """A rate outside its effective window is not current and must not be used."""
+    import datetime as dt
+
+    from app.models.rate_card import RateCard
+
+    past = RateCard(role="dev", hourly_rate=100, effective_to=dt.date(2000, 1, 1))
+    assert past.is_current is False
+    assert RateCard(role="dev", hourly_rate=100).is_current is True

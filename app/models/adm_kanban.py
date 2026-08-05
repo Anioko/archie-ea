@@ -208,6 +208,16 @@ class KanbanCard(db.Model):
     time_estimate_seconds = db.Column(db.Integer, nullable=True)
     effort_synced_at = db.Column(db.DateTime, nullable=True)
 
+    # Effort has to reach an initiative for spend to be computable, and it could
+    # not. `work_package_id` above points at roadmap_work_packages, which stores
+    # business_capability as a String and carries no foreign keys at all — a dead
+    # end. The canonical work package is the ArchiMate Implementation & Migration
+    # element in `work_packages`, which does link to the initiative. This is the
+    # missing hop: card -> work package -> initiative.
+    implementation_work_package_id = db.Column(
+        db.Integer, db.ForeignKey("work_packages.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+
     @property
     def time_spent_hours(self):
         """Effort actually logged, in hours. None when Jira reported nothing."""
