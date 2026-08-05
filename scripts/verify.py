@@ -233,6 +233,27 @@ def gate_air_gap(baseline: int) -> Result:
     return Result("air-gap", PASS if count <= baseline else FAIL, "", count, baseline)
 
 
+def gate_template_syntax() -> Result:
+    """Every Jinja template parses. Gated at ZERO.
+
+    A template that does not parse is not a degraded page — it is a 500 on every
+    route that renders it, and on every route that renders a macro it defines.
+    Nothing else catches it: `compile` covers Python only, and boot-health
+    resolves endpoints without rendering bodies.
+
+    Added after `{# … #}` was inserted inside an existing `{# … #}` block in
+    components/dropdown_menu.html. Jinja has no nested comments, so the inner
+    `#}` closed the outer block early and 17 lines became live template code.
+    """
+    proc = _run([sys.executable, "scripts/check_template_syntax.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("template-syntax", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = "" if count == 0 else "run scripts/check_template_syntax.py to list them"
+    return Result("template-syntax", PASS if count == 0 else FAIL, detail, count, 0)
+
+
 def gate_fabricated_data() -> Result:
     """No invented data can reach the UI. Gated at ZERO.
 
@@ -495,6 +516,10 @@ def build_gates(baseline: dict) -> list[Gate]:
              "ratchet", lambda: gate_raw_sql_tenancy(baseline["raw_sql_tenancy"]),
              remediation="scope the query, or append 'tenancy-ok: <reason>'",
              tags=["static", "security"]),
+        Gate("template-syntax", "every Jinja template parses", "zero",
+             gate_template_syntax,
+             remediation="see the reported line; Jinja does not nest {# #} comments",
+             tags=["static", "ui"]),
         Gate("fabricated-data", "no invented data can reach the UI", "zero",
              gate_fabricated_data,
              remediation="render an explicit empty/error state instead of inventing data; "

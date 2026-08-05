@@ -83,11 +83,38 @@ def excused(lines: list[str], idx: int) -> bool:
     return idx > 0 and ALLOW.search(lines[idx - 1])
 
 
-def is_noise(name: str, line: str) -> bool:
+def _block_comment_spans(src: str) -> list[tuple[int, int]]:
+    """Character spans of Jinja `{# … #}` and HTML `<!-- … -->` comment blocks.
+
+    These span multiple lines, so a per-line check misses their interior. That
+    matters more than it looks: annotating a line *inside* a `{# … #}` block with
+    another `{# … #}` closes the outer block early and turns the remainder of the
+    file into live template code (jinja2 TemplateSyntaxError). Recognising the
+    block means no annotation is needed there at all.
+    """
+    spans = []
+    for opener, closer in (("{#", "#}"), ("<!--", "-->")):
+        pos = 0
+        while True:
+            start = src.find(opener, pos)
+            if start == -1:
+                break
+            end = src.find(closer, start + len(opener))
+            if end == -1:
+                spans.append((start, len(src)))
+                break
+            spans.append((start, end + len(closer)))
+            pos = end + len(closer)
+    return spans
+
+
+def is_noise(name: str, line: str, idx: int = -1, spans=(), offset: int = -1) -> bool:
     """Comments never render; placeholders are example text, not asserted data."""
     if name != "fictional-entity":
         return False
-    return bool(COMMENT.match(line) or ATTR_ONLY.search(line))
+    if COMMENT.match(line) or ATTR_ONLY.search(line):
+        return True
+    return any(a <= offset < b for a, b in spans)
 
 
 def main() -> int:
@@ -104,12 +131,15 @@ def main() -> int:
         except OSError:
             continue
         lines = src.split("\n")
+        spans = _block_comment_spans(src) if ext != ".py" else ()
         for name, pattern, exts in CHECKS:
             if ext not in exts:
                 continue
             for m in pattern.finditer(src):
                 idx = src.count("\n", 0, m.start())
-                if excused(lines, idx) or is_noise(name, lines[idx]):
+                if excused(lines, idx) or is_noise(
+                    name, lines[idx], idx, spans, m.start()
+                ):
                     continue
                 rel = os.path.relpath(path, ROOT).replace("\\", "/")
                 findings.append((rel, idx + 1, name, lines[idx].strip()[:120]))

@@ -39,6 +39,7 @@ after a cleanup. Raising one is a regression that must be justified in review.
 | `redefinitions` | shadowed definitions (ruff F811) | ratchet |
 | `lint-core` | correctness lint (ruff `F,E4,E7,E9`) | ratchet |
 | `design-tokens` | raw Tailwind colours (DESIGN.md rule) | ratchet |
+| `template-syntax` | a Jinja template that does not parse (500s every page using it) | must be 0 |
 | `fabricated-data` | invented data reaching the UI (see below) | must be 0 |
 | `sri` | `integrity=` hash not matching the file it guards | must be 0 |
 | `css-build` | committed `tailwind-output.css` stale vs a rebuild | must pass (needs Tailwind CLI) |

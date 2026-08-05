@@ -275,16 +275,20 @@ class DocumentAnalysisService:
         # branches of the context switch had been gutted to `pass`. Build the
         # value the call actually wants; extract_archimate_from_diagram documents
         # extra_instructions as caller-specific guidance appended to the prompt.
+        # Name the ArchiMate types exactly (DESIGN.md: ArchiMate is the backbone,
+        # not a view) so the model returns types that map straight onto
+        # ArchiMateElement rows without a second normalisation pass.
         if context == "application":
             prompt_addition = (
-                "Focus on Application Layer elements: application components, "
-                "application services, interfaces and the data objects they use."
+                "Focus on Application Layer elements: ApplicationComponent, "
+                "ApplicationService, ApplicationInterface, ApplicationFunction "
+                "and the DataObject elements they access."
             )
         else:  # vendor
             prompt_addition = (
-                "Focus on vendor-supplied products and the technology they run "
-                "on: nodes, system software, technology services and the "
-                "application components each vendor provides."
+                "Focus on vendor-supplied products and what they run on: the "
+                "ApplicationComponent elements each vendor provides, plus the "
+                "Node, SystemSoftware and TechnologyService elements beneath them."
             )
 
         extracted_data, interaction = await self.multi_modal_service.extract_archimate_from_diagram(
