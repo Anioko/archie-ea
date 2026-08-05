@@ -156,11 +156,36 @@ def _grant_admin(db, user_id):
 
 
 def _login(client, user_id):
-    """Standard Flask-Login test-client pattern: fake the session cookie
-    rather than going through the real /account/login form."""
+    """Switch the test client to *user_id*, and make the switch actually take.
+
+    Setting the session cookie is the standard Flask-Login test pattern and is
+    not sufficient here. pytest-flask (1.3.0) pushes an app AND request context
+    around every test that uses an `app` fixture, so `client.get()` reuses that
+    context instead of pushing its own - and Flask-Login caches the resolved
+    user on it as `g._login_user`.
+
+    The consequence is specific and nasty. In a cross-tenant test the first
+    login (the owner) resolves and caches; the second login (the attacker)
+    changes the cookie and nothing else. The "attacker" request then runs AS
+    THE OWNER, who can of course read their own record - and the test reports a
+    cross-org READ leak that cannot happen. Verified three ways that the
+    product blocks it correctly with a 404, including by driving these same
+    helpers outside pytest.
+
+    So drop the cached user. Without this the four cross-org tests in this file
+    are worse than useless: they fail when the product is correct, which trains
+    people to ignore the one test class that would catch a real tenancy leak.
+    """
     with client.session_transaction() as sess:
         sess["_user_id"] = str(user_id)
         sess["_fresh"] = True
+
+    from flask import g, has_app_context
+
+    if has_app_context():
+        for cached in ("_login_user", "_current_user"):
+            if hasattr(g, cached):
+                delattr(g, cached)
 
 
 def _cleanup_ids(db, model, ids):
