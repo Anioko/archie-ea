@@ -297,11 +297,11 @@
                     const result = await res.json();
                     if (result.success) {
                     } else {
-                        alert('Failed to record feedback');
+                        Platform.alert('Failed to record feedback');
                     }
                 } catch (err) {
                     console.error('Feedback submission error:', err);
-                    alert('Error submitting feedback');
+                    Platform.alert('Error submitting feedback');
                 }
             });
         });

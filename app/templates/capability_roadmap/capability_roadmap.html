@@ -660,7 +660,9 @@
       },
 
       async detectGaps() {
-        if (!window.confirm('Auto-detect gaps from capability maturity data? This will create or update Gap records.')) return;
+        if (!await Platform.confirm({ title: 'Auto-detect gaps?',
+                message: 'Gaps will be detected from capability maturity data. This creates or updates Gap records.',
+                confirmText: 'Detect gaps' })) return;
         this.isDetecting = true;
         this.errorMessage = '';
         try {
@@ -671,7 +673,7 @@
           const d = await r.json();
           if (!r.ok || !d.success) throw new Error(d.error || 'Detection failed');
           await this.loadGaps();
-          window.alert(`Detection complete: ${d.created} gap(s) created, ${d.updated} updated.`);
+          Platform.alert(`Detection complete: ${d.created} gap(s) created, ${d.updated} updated.`);
         } catch (e) {
           this.errorMessage = e.message || 'Gap detection failed.';
         } finally {
@@ -719,7 +721,9 @@
       },
 
       async deleteGap(gap) {
-        if (!window.confirm(`Delete gap "${gap.name}"?`)) return;
+        if (!await Platform.confirm({ title: `Delete gap "${gap.name}"?`,
+                message: 'This cannot be undone.', confirmText: 'Delete',
+                variant: 'destructive' })) return;
         try {
           const r = await fetch(`/capability-map/api/roadmap/gaps/${gap.id}`, {
             method: 'DELETE',
@@ -735,7 +739,9 @@
       },
 
       async deleteWorkPackage(wp) {
-        if (!window.confirm(`Delete work package "${wp.name}"?`)) return;
+        if (!await Platform.confirm({ title: `Delete work package "${wp.name}"?`,
+                message: 'This cannot be undone.', confirmText: 'Delete',
+                variant: 'destructive' })) return;
         try {
           const r = await fetch(`/capability-map/api/roadmap/work-packages/${wp.id}`, {
             method: 'DELETE',
@@ -839,7 +845,7 @@
           }
           Platform.modal.close('rdm-create-gap-modal');
         } catch (e) {
-          window.alert(e.message || 'Failed to save gap.');
+          Platform.alert(e.message || 'Failed to save gap.');
         } finally {
           this.isSubmitting = false;
         }
@@ -870,7 +876,7 @@
           this.form = { name: '', sequence_order: store.plateaus.length + 1, target_date: '', description: '' };
           Platform.modal.close('rdm-create-plateau-modal');
         } catch (e) {
-          window.alert(e.message || 'Failed to create plateau.');
+          Platform.alert(e.message || 'Failed to create plateau.');
         } finally {
           this.isSubmitting = false;
         }
@@ -919,7 +925,7 @@
 
       async submitWpForm() {
         if (!this.form.name || !this.form.start_date || !this.form.target_date) {
-          window.alert('Name, start date, and target date are required.');
+          Platform.alert('Name, start date, and target date are required.');
           return;
         }
         this.isSubmitting = true;
@@ -957,7 +963,7 @@
           }
           Platform.modal.close('rdm-create-wp-modal');
         } catch (e) {
-          window.alert(e.message || 'Failed to save work package.');
+          Platform.alert(e.message || 'Failed to save work package.');
         } finally {
           this.isSubmitting = false;
         }
@@ -989,7 +995,7 @@
             if (!r.ok || !d.success) throw new Error(d.error || 'Generation failed');
             this.preview = d.preview || [];
           } catch (e) {
-            window.alert(e.message || 'AI generation failed.');
+            Platform.alert(e.message || 'AI generation failed.');
           } finally {
             this.isLoading = false;
           }
@@ -1025,9 +1031,9 @@
           const store = Alpine.store('rdm');
           store.workPackages = [...created.filter(Boolean), ...store.workPackages];
           Platform.modal.close('rdm-ai-generate-modal');
-          window.alert(`${created.length} work package(s) created from AI suggestions.`);
+          Platform.alert(`${created.length} work package(s) created from AI suggestions.`);
         } catch (e) {
-          window.alert(e.message || 'Failed to create work packages.');
+          Platform.alert(e.message || 'Failed to create work packages.');
         } finally {
           this.isConfirming = false;
         }

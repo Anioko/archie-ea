@@ -214,7 +214,9 @@ async function submitCap() {
 }
 
 async function deleteCap(id, name) {
-    if (!window.confirm('Delete "' + name + '"? This cannot be undone.')) return;
+    if (!await Platform.confirm({ title: 'Delete "' + name + '"?',
+            message: 'This cannot be undone.', confirmText: 'Delete',
+            variant: 'destructive' })) return;
     try {
         const r = await fetch('/enterprise/capabilities/' + id, {
             method: 'DELETE',

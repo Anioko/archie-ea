@@ -325,7 +325,7 @@
     <div class="relative">
       <input type="text" x-model="appSearch" @input.debounce.300ms="searchApplications()"
              class="w-full text-sm border border-input rounded-lg px-3 py-2.5 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-             placeholder="Search 850 applications..." aria-label="Search 850 applications...">
+             placeholder="Search applications..." aria-label="Search applications">
       <div x-show="appResults.length > 0" x-cloak
            class="absolute z-10 w-full mt-1 border border-border rounded-lg bg-card shadow-lg max-h-48 overflow-y-auto">
         <template x-for="app in appResults" :key="app.id">
@@ -552,7 +552,7 @@ function programmeJourney() {
     ],
 
     copilotMessages: {
-      1: "Describe the business problem this programme solves. I'll search 850 applications, 516 capabilities, and 3,143 ArchiMate elements to enrich your programme brief.",
+      1: "Describe the business problem this programme solves. I'll search your applications, capabilities and ArchiMate elements to enrich your programme brief.",
       2: "Define the strategic drivers and value case. Each driver needs a measurable target and a benefit owner — these become the programme's value framework.",
       3: "Search your enterprise capability catalog. Accept capabilities in scope. Maturity gaps shown are the programme's change agenda.",
       4: "Portfolio applications serving your capabilities. Applications flagged in red are decommissioning within the programme window — these are the key decisions.",

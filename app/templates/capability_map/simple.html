@@ -141,10 +141,10 @@
     </div>
 
     {# ── FRAG-009: Coverage Gaps (process gap analysis) ── #}
-    <div x-data="{ gapsOpen: false, gapsLoading: false, gapsLoaded: false, processGaps: [], gapStats: {}, gapsError:  }" class="mb-0">
+    <div x-data="{ gapsOpen: false, gapsLoading: false, gapsLoaded: false, processGaps: [], gapStats: {}, gapsError: '' }" class="mb-0">
         <button @click="gapsOpen = !gapsOpen; if(gapsOpen && !gapsLoaded) {
             gapsLoading = true;
-            fetch(/capability-map/api/process-gaps, { credentials: same-origin })
+            fetch('/capability-map/api/process-gaps', { credentials: 'same-origin' })
                 .then(r => r.json())
                 .then(d => { processGaps = d.process_gaps || []; gapStats = d.statistics || {}; gapsLoaded = true; gapsLoading = false; })
                 .catch(e => { gapsError = e.message; gapsLoading = false; });
@@ -157,7 +157,7 @@
             <template x-if="gapsLoaded && processGaps.length > 0">
                 <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-500/10 text-amber-600 border border-amber-500/30" x-text="processGaps.length"></span>
             </template>
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 transition-transform" :class="gapsOpen ? rotate-90 : " fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 transition-transform" :class="gapsOpen ? 'rotate-90' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
         </button>
         <div x-show="gapsOpen" x-cloak x-transition class="mb-6">
             <div class="rounded-xl border border-border bg-card overflow-hidden">
