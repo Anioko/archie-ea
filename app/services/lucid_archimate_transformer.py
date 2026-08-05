@@ -60,6 +60,48 @@ class LucidArchiMateTransformer:
         "Generalization": "specialization",
     }
 
+    # Where a line's stroke pattern hides, by export flavour. ArchiMate encodes
+    # meaning in the LINE as much as the arrowhead - solid, dashed and dotted
+    # are three different relationships with the same head - so a reader that
+    # only looks at arrowheads cannot tell serving from flow from access.
+    STROKE_STYLE_PATHS = (
+        ("stroke", "style"),
+        ("style", "stroke", "style"),
+        ("style", "strokeStyle"),
+        ("strokeStyle",),
+        ("lineStyle",),
+    )
+
+    # Arrowhead vocabulary. Matched on tokens rather than exact names because
+    # Lucid spells these differently across stencils and export paths, and an
+    # exact-match table silently degrades every unrecognised head to
+    # "association" - which is precisely the bug this replaces.
+    HEAD_DIAMOND = "diamond"
+    HEAD_TRIANGLE = "triangle"
+    HEAD_BALL = "ball"
+    HEAD_ARROW = "arrow"
+
+    # ArchiMate 3.2 notation, Appendix C. Read as (head, stroke) → relationship.
+    NOTATION_TO_RELATIONSHIP: Dict[Tuple[str, str], str] = {
+        # Structural: the diamond sits at the WHOLE end, so it also fixes direction.
+        (HEAD_DIAMOND + "_filled", "solid"): "composition",
+        (HEAD_DIAMOND + "_open", "solid"): "aggregation",
+        # A hollow triangle is specialization when solid, realization when dotted.
+        (HEAD_TRIANGLE + "_open", "solid"): "specialization",
+        (HEAD_TRIANGLE + "_open", "dotted"): "realization",
+        (HEAD_TRIANGLE + "_open", "dashed"): "realization",
+        # Assignment carries a ball at the active-structure end.
+        (HEAD_BALL + "_filled", "solid"): "assignment",
+        # Dependency and dynamic relationships share an arrowhead and differ
+        # only by stroke.
+        (HEAD_ARROW + "_open", "solid"): "serving",
+        (HEAD_ARROW + "_filled", "solid"): "serving",
+        (HEAD_ARROW + "_open", "dashed"): "flow",
+        (HEAD_ARROW + "_filled", "dashed"): "flow",
+        (HEAD_ARROW + "_open", "dotted"): "access",
+        (HEAD_ARROW + "_filled", "dotted"): "access",
+    }
+
     CONNECTION_SPEC_KEY_MAP: Dict[str, str] = {
         "data": "data_name",
         "transfer strategy": "transfer_strategy",
@@ -374,14 +416,25 @@ class LucidArchiMateTransformer:
         label = self._extract_line_label(line)
         connection_spec = self._parse_connection_spec(line)
         relationship_type = self._infer_relationship_type(label, connection_spec)
-        # When the label/spec don't pin a type, fall back to the arrowhead style
-        # (e.g. a Generalization arrowhead → ArchiMate specialization).
         endpoint_style = self._endpoint_style(line)
+        notation_used = False
         if relationship_type == "association":
-            relationship_type = (
-                self.ENDPOINT_STYLE_TO_RELATIONSHIP.get(endpoint_style)
-                or relationship_type
-            )
+            # An explicit label wins - the author wrote it deliberately. Failing
+            # that, read the notation, which is how an ArchiMate diagram states
+            # the relationship when nothing is written on the line. Most real
+            # diagrams label almost nothing: this one carries five distinct
+            # relationship types across ~200 edges and labels none of them.
+            from_notation, swap = self._relationship_from_notation(line)
+            if from_notation:
+                relationship_type = from_notation
+                notation_used = True
+                if swap:
+                    source_id, target_id = target_id, source_id
+            else:
+                relationship_type = (
+                    self.ENDPOINT_STYLE_TO_RELATIONSHIP.get(endpoint_style)
+                    or relationship_type
+                )
         access_mode = self._infer_access_mode(relationship_type, label)
         flow_label = connection_spec.get("data_name") if relationship_type == "flow" else None
         # Preserve a meaningful edge label: an explicit line label, else the
@@ -405,6 +458,10 @@ class LucidArchiMateTransformer:
             "custom_label": custom_label,
             "description": None,
             "connection_spec": connection_spec or None,
+            # "notation" means the type was read from how the line was drawn
+            # rather than from a label. Correct far more often than not, but
+            # worth being able to filter on when reviewing an import.
+            "derived_from": "notation" if notation_used else None,
         }
 
     @classmethod
@@ -795,7 +852,12 @@ class LucidArchiMateTransformer:
         except Exception:  # noqa: BLE001 - transformer must work without app config
             ALL_ELEMENTS, is_valid_relationship = [], None
 
-        preferred = "aggregation" if parent_type == "Grouping" else "composition"
+        # A Grouping collects its members and a Location holds what sits in it;
+        # neither owns the way a composition claims. Everything else nests as
+        # composition, which is what Archi emits for a dropped-in element.
+        preferred = (
+            "aggregation" if parent_type in ("Grouping", "Location") else "composition"
+        )
         order = [preferred] + [t for t in self.NESTING_FALLBACK_ORDER if t != preferred]
 
         both_known = (
@@ -909,6 +971,103 @@ class LucidArchiMateTransformer:
         if s.endswith(" Arrow"):
             s = s[: -len(" Arrow")]
         return s.strip() or style.strip()
+
+    @classmethod
+    def _stroke_pattern(cls, line: Dict[str, Any]) -> str:
+        """"solid", "dashed" or "dotted" for a line, defaulting to solid.
+
+        ArchiMate puts as much meaning in the stroke as the arrowhead: serving,
+        flow and access can share a head and differ only here.
+        """
+        raw = ""
+        for path in cls.STROKE_STYLE_PATHS:
+            value: Any = line
+            for key in path:
+                if not isinstance(value, dict):
+                    value = None
+                    break
+                value = value.get(key)
+            if isinstance(value, str) and value.strip():
+                raw = value.strip().lower()
+                break
+        if not raw:
+            return "solid"
+        if "dot" in raw:
+            return "dotted"
+        if "dash" in raw:
+            return "dashed"
+        return "solid"
+
+    @classmethod
+    def _classify_head(cls, style: str) -> str:
+        """Normalise an arrowhead name to "<shape>_<fill>", or "" for none.
+
+        Token matching rather than an exact-name table: Lucid spells these
+        differently per stencil and export path ("Filled Diamond", "Composition
+        Diamond", "ArchiMate Composition"), and an exact table degrades every
+        name it has not seen to association without saying so.
+        """
+        s = (style or "").strip().lower()
+        if not s or s == "none":
+            return ""
+
+        if "diamond" in s or "composit" in s or "aggregat" in s:
+            shape = cls.HEAD_DIAMOND
+        elif "triangle" in s or "generaliz" in s or "realiz" in s or "inherit" in s:
+            shape = cls.HEAD_TRIANGLE
+        elif "ball" in s or "circle" in s or "assign" in s:
+            shape = cls.HEAD_BALL
+        elif "arrow" in s:
+            shape = cls.HEAD_ARROW
+        else:
+            return ""
+
+        # "Open"/"hollow"/"empty" is the unfilled form; aggregation and
+        # specialization are the unfilled twins of composition and realization.
+        if any(t in s for t in ("open", "hollow", "empty", "line", "aggregat", "generaliz")):
+            fill = "open"
+        elif any(t in s for t in ("fill", "solid", "closed", "composit")):
+            fill = "filled"
+        else:
+            # An unqualified head: Lucid's plain "Arrow" is a filled arrowhead,
+            # and an unqualified triangle is the hollow specialization head.
+            fill = "open" if shape == cls.HEAD_TRIANGLE else "filled"
+        return f"{shape}_{fill}"
+
+    @classmethod
+    def _relationship_from_notation(
+        cls, line: Dict[str, Any]
+    ) -> Tuple[Optional[str], bool]:
+        """(relationship type, swap_endpoints) read from the drawn notation.
+
+        Returns (None, False) when the notation says nothing, leaving the
+        caller's label-based inference and association fallback in charge.
+
+        The swap exists because two ArchiMate heads sit at the SOURCE end: a
+        composition/aggregation diamond marks the whole, and an assignment ball
+        marks the active element. When Lucid put that head on endpoint2, the
+        line was drawn from part to whole and the relationship runs the other
+        way.
+        """
+        stroke = cls._stroke_pattern(line)
+        head1 = cls._classify_head(str((line.get("endpoint1") or {}).get("style") or ""))
+        head2 = cls._classify_head(str((line.get("endpoint2") or {}).get("style") or ""))
+
+        # Heads that denote the source end rather than the target.
+        source_headed = (cls.HEAD_DIAMOND, cls.HEAD_BALL)
+
+        for head, on_target in ((head2, True), (head1, False)):
+            if not head:
+                continue
+            rel = cls.NOTATION_TO_RELATIONSHIP.get((head, stroke))
+            if rel is None:
+                continue
+            marks_source = head.split("_")[0] in source_headed
+            # A source-marking head found on endpoint2 means the line runs
+            # backwards; a target-marking head on endpoint1 likewise.
+            swap = marks_source if on_target else not marks_source
+            return rel, swap
+        return None, False
 
     @staticmethod
     def _endpoint_style(line: Dict[str, Any]) -> str:

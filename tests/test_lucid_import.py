@@ -339,6 +339,124 @@ class TestTheShapeMapIsWiderThanTheCuratedList:
             LucidArchiMateTransformer(fallback_element_type="NotTheRealThing")
 
 
+def _line(line_id, source, target, target_style="None", stroke=None, **extra):
+    line = {
+        "id": line_id,
+        "endpoint1": {"connectedTo": source, "style": "None"},
+        "endpoint2": {"connectedTo": target, "style": target_style},
+    }
+    if stroke:
+        line["stroke"] = {"style": stroke}
+    line.update(extra)
+    return line
+
+
+class TestRelationshipsAreReadFromTheNotation:
+    """A real ArchiMate diagram states its relationships by how lines are drawn.
+
+    Almost nobody labels edges. A production solution diagram carries hundreds
+    of relationships across five or six types, distinguished by arrowhead and
+    stroke and nothing else. Reading only labels collapsed all of them to
+    association: the boxes arrived and the architecture did not.
+
+    Stroke matters as much as the head - serving, flow and access share an
+    arrowhead and differ only by solid, dashed and dotted.
+    """
+
+    SHAPES = [
+        _shape("a", "ArchiMate3ComponentBoxBlock", "Business Central", (0, 0, 160, 60)),
+        _shape("b", "ArchiMate3ComponentBoxBlock", "MuleSoft", (400, 0, 160, 60)),
+    ]
+
+    def _one(self, **kwargs):
+        payload = _payload(self.SHAPES, [_line("l1", "a", "b", **kwargs)])
+        result = LucidArchiMateTransformer().transform_document(payload)
+        edges = [r for r in result["relationships"] if r["id"] == "l1"]
+        assert edges, "the line was dropped entirely"
+        return edges[0]
+
+    @pytest.mark.parametrize("style,stroke,expected", [
+        # The five notations in the source diagram's own legend.
+        ("Filled Diamond", None, "composition"),
+        ("Open Arrow", "dotted", "access"),
+        ("Arrow", "dashed", "flow"),
+        ("Arrow", None, "serving"),
+        ("None", None, "association"),
+        # The rest of ArchiMate's vocabulary.
+        ("Open Diamond", None, "aggregation"),
+        ("Hollow Triangle", None, "specialization"),
+        ("Hollow Triangle", "dotted", "realization"),
+        ("Filled Ball", None, "assignment"),
+    ])
+    def test_each_notation_yields_its_relationship(self, style, stroke, expected):
+        assert self._one(target_style=style, stroke=stroke)["type"] == expected
+
+    @pytest.mark.parametrize("style", [
+        "Filled Diamond", "Composition", "ArchiMate Composition Diamond", "Solid Diamond",
+    ])
+    def test_composition_survives_lucid_renaming_the_arrowhead(self, style):
+        """Token matching, not an exact-name table.
+
+        Lucid spells these differently across stencils and export paths, and an
+        exact table degrades every unseen name to association without saying so
+        - which is the bug this replaces.
+        """
+        assert self._one(target_style=style)["type"] == "composition"
+
+    @pytest.mark.parametrize("stroke,expected", [
+        (None, "serving"), ("dashed", "flow"), ("dotted", "access"),
+    ])
+    def test_the_same_arrowhead_means_three_things_by_stroke(self, stroke, expected):
+        """Ignoring stroke makes serving, flow and access indistinguishable."""
+        assert self._one(target_style="Arrow", stroke=stroke)["type"] == expected
+
+    @pytest.mark.parametrize("extra", [
+        {"stroke": {"style": "dashed"}},
+        {"style": {"stroke": {"style": "dashed"}}},
+        {"style": {"strokeStyle": "dashed"}},
+        {"strokeStyle": "dashed"},
+        {"lineStyle": "dashed"},
+    ])
+    def test_the_stroke_is_found_wherever_the_export_put_it(self, extra):
+        """Lucid records the stroke in a different place per export flavour."""
+        line = {
+            "id": "l1",
+            "endpoint1": {"connectedTo": "a", "style": "None"},
+            "endpoint2": {"connectedTo": "b", "style": "Arrow"},
+        }
+        line.update(extra)
+        result = LucidArchiMateTransformer().transform_document(
+            _payload(self.SHAPES, [line]))
+        assert result["relationships"][0]["type"] == "flow", (
+            "a dashed line recorded as %r was read as solid, so flow became "
+            "serving" % extra)
+
+    def test_the_diamond_end_is_the_whole(self):
+        """Composition is directional and the diamond marks which end owns.
+
+        Lucid records the line in drawing order, so a diamond on endpoint2 means
+        it was drawn from part to whole and the relationship runs backwards.
+        Getting this wrong inverts the model's containment silently.
+        """
+        rel = self._one(target_style="Filled Diamond")
+        assert (rel["source_id"], rel["target_id"]) == ("b", "a"), (
+            "the diamond end must be the source (the whole); got %s -> %s"
+            % (rel["source_id"], rel["target_id"]))
+
+    def test_an_explicit_label_still_beats_the_notation(self):
+        """If the author wrote the type on the line, that is what they meant."""
+        payload = _payload(self.SHAPES, [
+            _line("l1", "a", "b", target_style="Filled Diamond",
+                  textAreas=[{"label": "t0", "text": "triggers"}]),
+        ])
+        result = LucidArchiMateTransformer().transform_document(payload)
+        assert result["relationships"][0]["type"] == "triggering"
+
+    def test_a_notation_derived_type_is_marked_as_such(self):
+        assert self._one(target_style="Arrow", stroke="dashed")["derived_from"] == "notation"
+        assert self._one(target_style="None")["derived_from"] is None
+
+
 class TestImageAnalysisNoLongerCrashes:
     """`await ...__doc__` sat on the live image path and raised TypeError.
 
