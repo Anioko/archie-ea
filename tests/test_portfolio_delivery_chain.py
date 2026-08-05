@@ -313,6 +313,11 @@ def test_kanban_card_org_is_derivable_from_its_board(app):
     assert "organization_id" in KanbanBoard.__table__.c
 
 
+# Behaviour for these routes is covered by real HTTP round-trips in
+# tests/test_portfolio_crud_roundtrip.py. Three assertions here previously used
+# inspect.getsource() to check a string appeared in the handler — that passes
+# even when the code path never executes, so they were removed rather than left
+# to look like coverage.
 WRITE_ROUTES = [
     ("portfolio.demands", "GET"),
     ("portfolio.demand_new", "GET"),
@@ -337,35 +342,7 @@ def test_write_routes_require_login(app):
         assert client.get(url).status_code in (301, 302, 401, 403), url
 
 
-def test_declining_a_demand_requires_a_rationale(app):
-    """An unexplained decline is the one that returns next quarter."""
-    import inspect
 
-    from app.modules.portfolio.routes import portfolio_write_routes as w
-
-    src = inspect.getsource(w.demand_decide)
-    assert "A declined demand needs a rationale" in src
-
-
-def test_invalidating_an_assumption_requires_a_note(app):
-    import inspect
-
-    from app.modules.portfolio.routes import portfolio_write_routes as w
-
-    src = inspect.getsource(w.assumption_resolve)
-    assert "Say what happened when invalidating" in src
-    # The record is kept, not deleted - that entry is the useful one.
-    assert "db.session.delete" not in src
-
-
-def test_measurement_only_claims_realised_when_numbers_support_it(app):
-    """Status must not assert an outcome the measurement does not show."""
-    import inspect
-
-    from app.modules.portfolio.routes import portfolio_write_routes as w
-
-    src = inspect.getsource(w.benefit_measure)
-    assert "pct is not None and pct >= 100" in src
 
 
 def test_form_parsers_return_none_not_zero(app):

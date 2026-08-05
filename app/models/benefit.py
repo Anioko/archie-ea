@@ -15,6 +15,7 @@ New table, so `flask init-db` (create_all) provisions it; no reconcile-schema
 step is needed for a new table.
 """
 from datetime import datetime
+from decimal import Decimal
 
 from app import db
 from app.models.mixins import TenantMixin
@@ -106,19 +107,38 @@ class Benefit(TenantMixin, db.Model):
     def is_financial(self) -> bool:
         return self.benefit_type in FINANCIAL_BENEFIT_TYPES
 
+    @staticmethod
+    def _dec(value):
+        """Coerce to Decimal so DB values and form values can be compared.
+
+        Numeric columns come back as Decimal, but a value just assigned from a
+        form is a float, and `float - Decimal` raises TypeError. Mixing the two
+        is the normal case — measure a benefit and the freshly-set actual_value
+        is a float while baseline_value is still a Decimal from the database —
+        so this must not be left to chance. str() first: Decimal(0.1) carries
+        the binary float error, Decimal("0.1") does not, and these are money.
+        """
+        if value is None:
+            return None
+        if isinstance(value, Decimal):
+            return value
+        return Decimal(str(value))
+
     @property
     def target_delta(self):
         """Improvement sought: target - baseline. None when either is unset."""
-        if self.target_value is None or self.baseline_value is None:
+        target, baseline = self._dec(self.target_value), self._dec(self.baseline_value)
+        if target is None or baseline is None:
             return None
-        return self.target_value - self.baseline_value
+        return target - baseline
 
     @property
     def actual_delta(self):
         """Improvement achieved so far. None when either is unset."""
-        if self.actual_value is None or self.baseline_value is None:
+        actual, baseline = self._dec(self.actual_value), self._dec(self.baseline_value)
+        if actual is None or baseline is None:
             return None
-        return self.actual_value - self.baseline_value
+        return actual - baseline
 
     @property
     def realisation_percentage(self):
