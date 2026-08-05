@@ -56,9 +56,17 @@ def list_elements():
       ?layer=<layer>    — pre-selects the layer filter
       ?q=<term>         — initial search term
     """
+    # ArchiMate 3.2 has six layers plus concepts that belong to none of them:
+    # Location and Grouping (§4.5). Listing only the six meant those elements
+    # existed in the table, appeared in the list below, and were absent from
+    # every count above it - a repository holding 74 elements summarised 59 of
+    # them, and the 15 Locations from an imported landscape diagram were
+    # invisible. Physical is where Location, Equipment, Facility and Material
+    # live; Other is Grouping and anything unclassified.
     _LAYER_ORDER = [
         "Motivation", "Strategy", "Business",
         "Application", "Technology", "Implementation",
+        "Physical", "Other",
     ]
 
     # Count per layer

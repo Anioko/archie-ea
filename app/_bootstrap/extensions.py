@@ -92,7 +92,7 @@ def init_extensions(app):
         """
         from flask import jsonify, request
 
-        if not request.path.startswith("/api/"):
+        if "/api/" not in request.path:
             return e
         return jsonify({
             "success": False,

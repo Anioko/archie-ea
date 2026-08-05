@@ -68,7 +68,7 @@ def _api_error(status, message):
     Keyed on the path rather than the Accept header because fetch() sends
     Accept: */* by default, so header sniffing misses most real callers.
     """
-    if not request.path.startswith("/api/"):
+    if "/api/" not in request.path:
         return None
     return jsonify({
         "success": False,

@@ -22,6 +22,14 @@ def init_cli(app):
     except Exception as e:
         app.logger.warning(f"\u26a0\ufe0f  Failed to register ArchiMate CLI commands: {e}")
 
+    # Lucidchart import CLI command
+    try:
+        from app.commands.lucid_import_commands import register_lucid_import_commands
+        register_lucid_import_commands(app)
+        app.logger.info("✅ Lucidchart import CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"⚠️  Failed to register Lucidchart import CLI command: {e}")
+
     # Capabilities seed CLI commands
     try:
         from app.commands.seed_capabilities import register_capabilities_commands

@@ -2,70 +2,6 @@
 {% from 'components/page_header.html' import page_header %}
 
 {% block title %}ArchiMate Elements — Catalog
-    <!-- Tech Debt Analysis (FRAG-008) -->
-    <div x-data="{ tdOpen: false, tdData: null, tdLoading: false }" class="mt-6">
-        <button @click="tdOpen = !tdOpen; if (!tdData && !tdLoading) { tdLoading = true;
-            Promise.all([
-                fetch('/api/ea/phase-d/debt-scores').then(r => r.json()),
-                fetch('/api/ea/phase-d/stack-audit').then(r => r.json())
-            ]).then(([debt, stack]) => { tdData = {debt, stack}; tdLoading = false; })
-            .catch(() => { tdLoading = false; });
-        }" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-border bg-card text-sm font-medium text-foreground hover:bg-accent transition-colors">
-            <i data-lucide="alert-triangle" class="h-4 w-4 text-amber-500"></i>
-            Tech Debt Analysis
-            <svg xmlns='http://www.w3.org/2000/svg' class='h-3 w-3 transition-transform' :class="tdOpen ? 'rotate-90' : ''" fill='none' viewBox='0 0 24 24' stroke='currentColor' stroke-width='2'><path stroke-linecap='round' stroke-linejoin='round' d='M9 5l7 7-7 7'/></svg>
-        </button>
-        <div x-show="tdOpen" x-cloak x-transition class="mt-4 bg-card rounded-lg shadow border overflow-hidden">
-            <div x-show="tdLoading" class="px-6 py-8 text-center text-sm text-muted-foreground">Loading tech debt data...</div>
-            <template x-if="tdData">
-                <div>
-                    <template x-if="tdData.debt && tdData.debt.summary">
-                        <div class="grid grid-cols-3 gap-0 border-b border-border">
-                            <div class="p-4 text-center border-r border-border">
-                                <p class="text-2xl font-bold text-foreground" x-text="tdData.debt.summary.total_scored || tdData.debt.scores?.length || 0"></p>
-                                <p class="text-xs text-muted-foreground">Scored Elements</p>
-                            </div>
-                            <div class="p-4 text-center border-r border-border">
-                                <p class="text-2xl font-bold text-destructive" x-text="tdData.debt.summary.high_debt || 0"></p>
-                                <p class="text-xs text-muted-foreground">High Debt</p>
-                            </div>
-                            <div class="p-4 text-center">
-                                <p class="text-2xl font-bold text-amber-600" x-text="tdData.debt.summary.avg_score ? Math.round(tdData.debt.summary.avg_score) : 0"></p>
-                                <p class="text-xs text-muted-foreground">Avg Score</p>
-                            </div>
-                        </div>
-                    </template>
-                    <template x-if="tdData.debt && tdData.debt.scores && tdData.debt.scores.length > 0">
-                        <div class="max-h-72 overflow-y-auto">
-                            <table class="w-full text-sm">
-                                <thead class="bg-muted/50 sticky top-0">
-                                    <tr>
-                                        <th class="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Element</th>
-                                        <th class="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Type</th>
-                                        <th class="px-4 py-2 text-center text-xs font-medium text-muted-foreground">Debt Score</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <template x-for="item in tdData.debt.scores.sort((a,b) => (b.debt_score||b.score||0) - (a.debt_score||a.score||0)).slice(0, 30)" :key="item.id || item.name">
-                                        <tr class="border-t border-border hover:bg-muted/50">
-                                            <td class="px-4 py-2 text-foreground" x-text="item.name || item.element_name"></td>
-                                            <td class="px-4 py-2 text-muted-foreground text-xs" x-text="item.type || item.element_type || '-'"></td>
-                                            <td class="px-4 py-2 text-center">
-                                                <span class="font-medium"
-                                                    :class="(item.debt_score||item.score||0) >= 70 ? 'text-destructive' : (item.debt_score||item.score||0) >= 40 ? 'text-amber-600' : 'text-emerald-600'"
-                                                    x-text="(item.debt_score || item.score || 0)"></span>
-                                            </td>
-                                        </tr>
-                                    </template>
-                                </tbody>
-                            </table>
-                        </div>
-                    </template>
-                </div>
-            </template>
-        </div>
-    </div>
-
 {% endblock %}
 
 {% block extra_css %}
@@ -78,6 +14,8 @@
   .layer-application { background: rgb(59 130 246); }
   .layer-technology { background: rgb(16 185 129); }
   .layer-implementation { background: rgb(100 116 139); }
+  .layer-physical { background: rgb(217 119 6); }
+  .layer-other { background: rgb(120 113 108); }
 </style>
 {% endblock %}
 
@@ -85,10 +23,14 @@
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8"
      x-data="archimateElements()" x-init="init()" x-cloak>
 
-    {{ page_header(title='ArchiMate Element Catalog', description='720 elements across 6 layers — the master catalog') }}
+    {# The description used to read "720 elements across 6 layers". That number
+       was hard-coded, not counted: a repository holding 74 elements announced
+       720 of them. The live total is already tracked as totalCount and shown
+       above the table, so state it here rather than inventing one. #}
+    {{ page_header(title='ArchiMate Element Catalog', description='Every ArchiMate element in your repository') }}
 
     {# ── Layer Summary Bar (ARC-002) ── #}
-    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
+    <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-4 gap-3 mb-6">
         <template x-for="layer in layers" :key="layer.name">
             <button @click="filterByLayer(layer.name)"
                     :class="[layerBadgeClass(layer.name), activeLayer === layer.name.toLowerCase() ? 'ring-2 ring-offset-1 ring-current' : '']"
@@ -145,27 +87,27 @@
     </div>
 
     {# ── FRAG-008: Tech Debt Analysis (Phase D) ── #}
-    <div x-data="{ debtOpen: false, debtLoading: false, debtLoaded: false, debtScores: [], debtSummary: {}, debtError:  }" class="mb-4">
+    <div x-data="{ debtOpen: false, debtLoading: false, debtLoaded: false, debtScores: [], debtSummary: {}, debtError: '' }" class="mb-4">
         <button @click="debtOpen = !debtOpen; if(debtOpen && !debtLoaded) {
             debtLoading = true;
-            fetch(/api/ea/phase-d/debt-scores, { credentials: same-origin })
+            fetch('/api/ea/phase-d/debt-scores', { credentials: 'same-origin' })
                 .then(r => r.json())
                 .then(d => { debtScores = (d.scores || []).sort((a,b) => (b.debt_score||0) - (a.debt_score||0)); debtSummary = d.summary || {}; debtLoaded = true; debtLoading = false; })
                 .catch(e => { debtError = e.message; debtLoading = false; });
         }"
-            :class="debtOpen ? bg-primary text-primary-foreground : bg-muted text-muted-foreground"
+            :class="debtOpen ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'"
             class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
             </svg>
             Tech Debt Analysis
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 transition-transform" :class="debtOpen ? rotate-180 : " fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 transition-transform" :class="debtOpen ? 'rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
         </button>
         <div x-show="debtOpen" x-cloak x-transition class="mt-3">
             <div class="rounded-xl border border-border bg-card overflow-hidden">
                 <div class="bg-muted/20 px-5 py-2 border-b border-border flex items-center justify-between">
                     <span class="text-xs font-medium text-muted-foreground">Phase D — Technology Debt Scores</span>
-                    <span x-show="debtSummary.total_elements" x-cloak class="text-[10px] text-muted-foreground" x-text="(debtSummary.total_elements || 0) +  elements analyzed"></span>
+                    <span x-show="debtSummary.total_elements" x-cloak class="text-[10px] text-muted-foreground" x-text="(debtSummary.total_elements || 0) + ' elements analyzed'"></span>
                 </div>
                 <div x-show="debtLoading" x-cloak class="p-6 text-center text-sm text-muted-foreground">
                     <span class="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full inline-block mr-2"></span> Loading debt scores...
@@ -635,7 +577,9 @@ document.addEventListener('alpine:init', () => {
             business: ['BusinessActor','BusinessRole','BusinessProcess','BusinessFunction','BusinessService','BusinessObject','BusinessEvent','BusinessInterface','Contract'],
             application: ['ApplicationComponent','ApplicationService','ApplicationInterface','ApplicationFunction','DataObject'],
             technology: ['Node','Device','SystemSoftware','CommunicationNetwork','TechnologyService','Artifact','Path'],
-            implementation: ['WorkPackage','Deliverable','Plateau','Gap','ImplementationEvent']
+            implementation: ['WorkPackage','Deliverable','Plateau','Gap','ImplementationEvent'],
+            physical: ['Location','Equipment','Facility','Material','DistributionNetwork'],
+            other: ['Grouping','Junction']
         },
 
         async init() {

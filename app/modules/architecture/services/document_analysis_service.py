@@ -265,18 +265,30 @@ class DocumentAnalysisService:
         self, image_path: str, provider: str, context: str
     ) -> Tuple[Dict, Optional[LLMInteraction]]:
         """Analyze image file for ArchiMate elements."""
-        # Use specialized prompt based on context
+        # `await ...__doc__` used to sit here, awaiting a docstring string. That
+        # raises TypeError: object str can't be used in 'await' expression - so
+        # every image upload through this path failed before it reached the
+        # model, and the context prompt built above was never used by anything.
+        #
+        # Removing that await left `prompt_addition` referenced but never bound
+        # (ruff F821 - a NameError on the first image upload), because both
+        # branches of the context switch had been gutted to `pass`. Build the
+        # value the call actually wants; extract_archimate_from_diagram documents
+        # extra_instructions as caller-specific guidance appended to the prompt.
         if context == "application":
-            pass
+            prompt_addition = (
+                "Focus on Application Layer elements: application components, "
+                "application services, interfaces and the data objects they use."
+            )
         else:  # vendor
-            pass
+            prompt_addition = (
+                "Focus on vendor-supplied products and the technology they run "
+                "on: nodes, system software, technology services and the "
+                "application components each vendor provides."
+            )
 
-        # Use multi-modal service with enhanced prompt
-        await self.multi_modal_service.extract_archimate_from_diagram.__doc__
-
-        # For now, use the existing method and enhance results
         extracted_data, interaction = await self.multi_modal_service.extract_archimate_from_diagram(
-            image_path, provider
+            image_path, provider, extra_instructions=prompt_addition
         )
 
         return extracted_data, interaction
