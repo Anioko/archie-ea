@@ -452,6 +452,49 @@ class TestRelationshipsAreReadFromTheNotation:
         result = LucidArchiMateTransformer().transform_document(payload)
         assert result["relationships"][0]["type"] == "triggering"
 
+    def test_a_labelled_arrow_is_a_flow_when_the_export_dropped_the_stroke(self):
+        """Lucid's JSON export records no stroke at all.
+
+        That erases the difference between serving, flow and access, which in
+        ArchiMate is carried by solid vs dashed vs dotted and nothing else. What
+        survives is the label, and on a real diagram those labels are payloads -
+        "eSign File", "Compliance CSV", "CAMT Bank Statements" - not
+        descriptions of a service being offered.
+        """
+        payload = _payload(self.SHAPES, [
+            _line("l1", "a", "b", target_style="Arrow",
+                  textAreas=[{"label": "t0", "text": "CAMT Bank Statements"}]),
+        ])
+        rel = LucidArchiMateTransformer().transform_document(payload)["relationships"][0]
+
+        assert rel["type"] == "flow", (
+            "a labelled arrow in a stroke-less export stayed serving, so every "
+            "data flow in the diagram is mistyped")
+        assert rel["flow_label"] == "CAMT Bank Statements", (
+            "the flow lost what it carries: %r" % rel["flow_label"])
+        assert rel["derived_from"] == "stroke-stripped-label"
+
+    def test_a_complete_export_is_never_second_guessed(self):
+        """When the stroke IS present, a solid arrow means serving. Full stop.
+
+        The label fallback exists only because information was destroyed on
+        export. Applying it to an export that recorded stroke would override
+        what the author actually drew.
+        """
+        payload = _payload(self.SHAPES, [
+            # One line carries stroke data, so the export is known to be complete.
+            _line("l0", "a", "b", target_style="Arrow", stroke="dashed"),
+            _line("l1", "a", "b", target_style="Arrow",
+                  textAreas=[{"label": "t0", "text": "Some Label"}]),
+        ])
+        rels = {r["id"]: r for r in
+                LucidArchiMateTransformer().transform_document(payload)["relationships"]}
+
+        assert rels["l0"]["type"] == "flow", "the genuinely dashed line is a flow"
+        assert rels["l1"]["type"] == "serving", (
+            "a solid arrow was overridden to flow even though this export "
+            "recorded stroke, so the author's own notation was discarded")
+
     def test_a_notation_derived_type_is_marked_as_such(self):
         assert self._one(target_style="Arrow", stroke="dashed")["derived_from"] == "notation"
         assert self._one(target_style="None")["derived_from"] is None

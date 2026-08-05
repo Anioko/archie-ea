@@ -226,6 +226,7 @@ class LucidArchiMateTransformer:
             self._container_shape_ids(pages) if self.fallback_element_type else set()
         )
 
+        stroke_data_available = self._payload_has_stroke_data(pages)
         geometry_present = self._payload_has_geometry(payload)
         if not geometry_present:
             warnings.append(
@@ -326,7 +327,9 @@ class LucidArchiMateTransformer:
                 imported_shape_ids[identifier] = element
 
             for line in items.get("lines") or []:
-                relationship = self._transform_line(line, imported_shape_ids)
+                relationship = self._transform_line(
+                    line, imported_shape_ids,
+                    stroke_data_available=stroke_data_available)
                 if relationship is None:
                     skipped_relationship_count += 1
                     continue
@@ -401,10 +404,36 @@ class LucidArchiMateTransformer:
             "errors": [],
         }
 
+    @classmethod
+    def _payload_has_stroke_data(cls, pages: List[Dict[str, Any]]) -> bool:
+        """Whether ANY line in the export records a stroke pattern.
+
+        Lucid's JSON export drops stroke entirely: a line carries its endpoints,
+        its label and nothing about how it was drawn. That erases the difference
+        between serving, flow and access, which in ArchiMate is carried by solid
+        vs dashed vs dotted and by nothing else.
+
+        Knowing the information was stripped - rather than assuming every line
+        was solid - is what licenses the label fallback below.
+        """
+        for page in pages:
+            for line in (page.get("items") or {}).get("lines") or []:
+                for path in cls.STROKE_STYLE_PATHS:
+                    value: Any = line
+                    for key in path:
+                        if not isinstance(value, dict):
+                            value = None
+                            break
+                        value = value.get(key)
+                    if isinstance(value, str) and value.strip():
+                        return True
+        return False
+
     def _transform_line(
         self,
         line: Dict[str, Any],
         imported_shape_ids: Dict[str, Dict[str, Any]],
+        stroke_data_available: bool = True,
     ) -> Optional[Dict[str, Any]]:
         line_id = line.get("id")
         source_id, target_id = self._resolve_line_endpoints(line)
@@ -435,8 +464,30 @@ class LucidArchiMateTransformer:
                     self.ENDPOINT_STYLE_TO_RELATIONSHIP.get(endpoint_style)
                     or relationship_type
                 )
+        # A solid arrow carrying a data label, in an export that recorded no
+        # stroke at all, is a data flow whose stroke was stripped on the way
+        # out. ArchiMate says so directly: a flow relationship transfers
+        # something between elements, and the something is written on the line.
+        # "eSign File", "Compliance CSV", "CAMT Bank Statements" are payloads,
+        # not descriptions of a service being offered.
+        #
+        # Guarded on the export genuinely lacking stroke data, so a complete
+        # export is never second-guessed - there, a solid arrow means serving
+        # and is left alone.
+        if (
+            relationship_type == "serving"
+            and notation_used
+            and not stroke_data_available
+            and label
+            and not connection_spec
+        ):
+            relationship_type = "flow"
+            notation_used = "label"
+
         access_mode = self._infer_access_mode(relationship_type, label)
         flow_label = connection_spec.get("data_name") if relationship_type == "flow" else None
+        if relationship_type == "flow" and not flow_label and label:
+            flow_label = label
         # Preserve a meaningful edge label: an explicit line label, else the
         # arrowhead style (keeps ERD cardinality like "One Or More" visible).
         custom_label = None
@@ -458,10 +509,15 @@ class LucidArchiMateTransformer:
             "custom_label": custom_label,
             "description": None,
             "connection_spec": connection_spec or None,
-            # "notation" means the type was read from how the line was drawn
-            # rather than from a label. Correct far more often than not, but
-            # worth being able to filter on when reviewing an import.
-            "derived_from": "notation" if notation_used else None,
+            # How the type was decided. "notation" - read from how the line was
+            # drawn. "stroke-stripped-label" - the export dropped the stroke, so
+            # a labelled arrow was read as a flow; the weakest inference here
+            # and the one to review first.
+            "derived_from": (
+                "stroke-stripped-label" if notation_used == "label"
+                else "notation" if notation_used
+                else None
+            ),
         }
 
     @classmethod
