@@ -77,6 +77,47 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+  verify:
+    name: Verification gates (scripts/verify.py)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: archie_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 10s
+          --health-timeout 5s --health-retries 5
+    env:
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/archie_test
+      TEST_DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/archie_test
+      FLASK_ENV: testing
+      SECRET_KEY: ci-only-not-secret
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          [ -f requirements-test.txt ] && pip install -r requirements-test.txt || true
+      # --require-db turns a skipped database gate into a failure. Without it a
+      # missing database would report SKIP and the job would go green having
+      # verified almost nothing - which is the exact failure mode this runner
+      # exists to prevent.
+      # The `tests` gate is excluded: the Tests job above already runs pytest
+      # with coverage, and running it twice doubles the slowest job in CI.
+      - name: Run verification gates
+        run: |
+          python scripts/verify.py --tag static --require-db
+          python scripts/verify.py --gate boot-health --require-db
+          python scripts/verify.py --gate schema-drift --require-db
+
   lint:
     name: Lint (advisory)
     runs-on: ubuntu-latest
