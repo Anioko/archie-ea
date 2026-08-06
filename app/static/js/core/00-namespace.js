@@ -14,6 +14,7 @@
  * 03-fetch      → Platform.fetch
  * 04-toast      → Platform.toast
  * 05-error      → Platform.error
+ * 07-dialog    → Platform.confirm / Platform.alert
  * ui/modal      → Platform.modal
  * ui/pagination → Platform.pagination
  * ui/filter     → Platform.filter

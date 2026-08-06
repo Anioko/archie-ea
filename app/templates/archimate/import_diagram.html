@@ -1,0 +1,264 @@
+{% extends "layouts/admin_base.html" %}
+{% from 'components/page_header.html' import page_header %}
+
+{% block title %}Import a diagram{% endblock %}
+
+{% block extra_css %}
+<style>
+  [x-cloak]{display:none!important}
+  .verdict-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+  .verdict-created { background: rgb(22 163 74); }
+  .verdict-linked  { background: rgb(100 116 139); }
+  .verdict-changed { background: rgb(217 119 6); }
+  .verdict-skipped { background: rgb(220 38 38); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8" x-data="diagramImport()" x-cloak>
+
+    {{ page_header(title='Import a diagram', description='Load a Lucidchart or Visio export into the ArchiMate repository') }}
+
+    <div class="rounded-lg border border-border bg-muted/30 p-4 mb-6 text-sm text-muted-foreground">
+        Export from Lucidchart with <strong class="text-foreground">File → Export → JSON</strong>,
+        or upload a native <code>.lucid</code> archive or a Visio <code>.vsdx</code> drawing.
+        Prefer <code>.vsdx</code> where you have it: Lucid's JSON export discards shape
+        geometry, and geometry is what tells the importer which application sits inside
+        which data centre. Nothing is written until you press Import — the preview shows
+        exactly what would be created, attached to what is already here, or changed.
+    </div>
+
+    {# ── Step 1: the file and how to read it ─────────────────────────────── #}
+    <div class="rounded-xl border border-border bg-card p-6 mb-6">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div>
+                <label for="diagram-file" class="block text-sm font-medium text-foreground mb-1.5">
+                    Diagram export
+                </label>
+                <input id="diagram-file" type="file" accept=".json,.lucid,.vsdx"
+                       @change="file = $event.target.files[0]; report = null; committed = false"
+                       class="block w-full text-sm text-muted-foreground rounded-md border border-input
+                              bg-background px-3 py-2 file:mr-3 file:rounded file:border-0
+                              file:bg-muted file:px-3 file:py-1 file:text-sm file:text-foreground">
+            </div>
+
+            <div>
+                <label for="fallback-type" class="block text-sm font-medium text-foreground mb-1.5">
+                    Shapes without an ArchiMate type
+                </label>
+                <select id="fallback-type" x-model="fallbackType"
+                        class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                    <option value="">Skip them (safest)</option>
+                    <template x-for="t in elementTypes" :key="t">
+                        <option :value="t" x-text="'Import as ' + t"></option>
+                    </template>
+                </select>
+                <p class="mt-1 text-xs text-muted-foreground">
+                    Diagrams drawn with ordinary rectangles carry no type. Importing them keeps
+                    their names, colours and nesting; the type is a guess you can correct in
+                    <a href="/archimate/import-review" class="underline">Import Review</a>.
+                </p>
+            </div>
+
+            <div>
+                <label for="dedupe" class="block text-sm font-medium text-foreground mb-1.5">
+                    Matching existing elements
+                </label>
+                <select id="dedupe" x-model="dedupe"
+                        class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                    <option value="name-type">By name and type</option>
+                    <option value="name-type-container">By name, type and data centre</option>
+                    <option value="none">Import everything as drawn</option>
+                </select>
+                <p class="mt-1 text-xs text-muted-foreground">
+                    Name and type is right for a repository, but merges five boxes called
+                    INTERNET into one. Add the data centre to keep them distinct.
+                </p>
+            </div>
+
+            <div class="space-y-2">
+                <span class="block text-sm font-medium text-foreground mb-1.5">Application portfolio</span>
+                <label class="flex items-center gap-2 text-sm text-muted-foreground">
+                    <input type="checkbox" x-model="linkApplications" class="rounded border-input">
+                    Attach matching applications to their imported element
+                </label>
+                <label class="flex items-center gap-2 text-sm text-muted-foreground">
+                    <input type="checkbox" x-model="createApplications" class="rounded border-input">
+                    Create portfolio entries for applications not yet there
+                </label>
+            </div>
+        </div>
+
+        <div class="mt-6 flex flex-wrap items-center gap-3">
+            <button @click="preview()" :disabled="!file || busy"
+                    class="inline-flex items-center gap-2 rounded-md border border-input bg-background
+                           px-4 py-2 text-sm font-medium hover:bg-accent disabled:opacity-50 transition-colors">
+                <span x-show="!busy || mode !== 'preview'">Preview</span>
+                <span x-show="busy && mode === 'preview'" x-cloak>Reading…</span>
+            </button>
+            <button @click="commit()" :disabled="!report || busy || committed"
+                    class="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm
+                           font-medium text-primary-foreground hover:bg-primary/90
+                           disabled:opacity-50 transition-colors">
+                <span x-show="!busy || mode !== 'commit'">Import</span>
+                <span x-show="busy && mode === 'commit'" x-cloak>Importing…</span>
+            </button>
+            <span x-show="error" x-cloak class="text-sm text-destructive" x-text="error"></span>
+            <span x-show="committed" x-cloak class="text-sm text-foreground">
+                Imported. <a href="/archimate/import-review" class="underline">Review what was guessed →</a>
+            </span>
+        </div>
+    </div>
+
+    {# ── Step 2: what it would do ────────────────────────────────────────── #}
+    <template x-if="report">
+    <div>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+            <template x-for="card in summaryCards" :key="card.label">
+                <div class="rounded-xl border border-border bg-card p-4">
+                    <p class="text-2xl font-bold text-foreground" x-text="card.value"></p>
+                    <p class="text-xs text-muted-foreground mt-1" x-text="card.label"></p>
+                </div>
+            </template>
+        </div>
+
+        <template x-if="report.conformance">
+        <div class="rounded-lg border border-border bg-muted/30 p-4 mb-6 text-sm text-muted-foreground">
+            <span class="text-foreground font-medium">ArchiMate 3.2 conformance:</span>
+            <span x-text="report.conformance.ok"></span> permitted,
+            <span x-text="report.conformance.violations.length"></span> not permitted between
+            those concept types.
+            <span x-show="report.conformance.violations.length" x-cloak>
+                Imported anyway — a diagram is drawn to communicate, not to conform.
+            </span>
+        </div>
+        </template>
+
+        <template x-for="w in report.warnings" :key="w">
+            <div class="rounded-lg border border-border bg-muted/40 p-3 mb-2 text-xs text-muted-foreground"
+                 x-text="w"></div>
+        </template>
+
+        <div class="rounded-xl border border-border bg-card overflow-hidden mt-4">
+            <div class="bg-muted/40 px-5 py-2 border-b border-border flex items-center gap-4">
+                <span class="text-xs font-medium text-muted-foreground">Elements</span>
+                <template x-for="v in ['created','changed','linked','skipped']" :key="v">
+                    <button @click="filter = (filter === v ? '' : v)"
+                            :class="filter === v ? 'ring-1 ring-primary' : ''"
+                            class="inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-[11px] text-muted-foreground hover:bg-accent">
+                        <span class="verdict-dot" :class="'verdict-' + v"></span>
+                        <span x-text="v"></span>
+                        <span class="opacity-60" x-text="countOf(v)"></span>
+                    </button>
+                </template>
+            </div>
+            <div class="overflow-x-auto max-h-96 overflow-y-auto">
+                <table class="w-full text-sm">
+                    <tbody>
+                        <template x-for="(row, i) in shownElements" :key="i">
+                            <tr class="border-t border-border">
+                                <td class="px-4 py-1.5">
+                                    <span class="verdict-dot" :class="'verdict-' + row.verdict"></span>
+                                </td>
+                                <td class="px-2 py-1.5 text-foreground" x-text="row.name"></td>
+                                <td class="px-2 py-1.5 text-xs text-muted-foreground" x-text="row.type"></td>
+                                <td class="px-2 py-1.5 text-xs text-muted-foreground" x-text="row.detail"></td>
+                                <td class="px-2 py-1.5 text-[11px]">
+                                    <span x-show="row.guessed" x-cloak
+                                          class="rounded bg-muted text-foreground px-1.5 py-0.5">type guessed</span>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    </template>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function diagramImport() {
+    return {
+        file: null,
+        elementTypes: {{ element_types | tojson }},
+        fallbackType: '',
+        dedupe: 'name-type',
+        linkApplications: true,
+        createApplications: false,
+        report: null,
+        committed: false,
+        busy: false,
+        mode: '',
+        error: '',
+        filter: '',
+
+        get shownElements() {
+            const rows = (this.report && this.report.elements) || [];
+            return this.filter ? rows.filter(r => r.verdict === this.filter) : rows;
+        },
+        countOf(verdict) {
+            const c = this.report && this.report.counts && this.report.counts.elements;
+            return (c && c[verdict]) || 0;
+        },
+        get summaryCards() {
+            if (!this.report) return [];
+            const e = this.report.counts.elements || {};
+            const r = this.report.counts.relationships || {};
+            return [
+                { label: this.report.preview ? 'elements to create' : 'elements created',
+                  value: e.created || 0 },
+                { label: 'already in the repository', value: (e.linked || 0) + (e.changed || 0) },
+                { label: this.report.preview ? 'relationships to create' : 'relationships created',
+                  value: r.created || 0 },
+                { label: 'types guessed — review these',
+                  value: this.report.counts.guessed_types || 0 },
+            ];
+        },
+
+        _body() {
+            const fd = new FormData();
+            fd.append('file', this.file);
+            fd.append('fallback_element_type', this.fallbackType);
+            fd.append('dedupe', this.dedupe);
+            fd.append('link_applications', this.linkApplications ? '1' : '0');
+            fd.append('create_applications', this.createApplications ? '1' : '0');
+            return fd;
+        },
+
+        async _send(url) {
+            this.busy = true; this.error = '';
+            try {
+                const token = document.querySelector('meta[name="csrf-token"]');
+                const res = await fetch(url, {
+                    method: 'POST', credentials: 'same-origin', body: this._body(),
+                    headers: token ? { 'X-CSRFToken': token.content } : {},
+                });
+                const data = await res.json();
+                if (!data.success) { this.error = data.error || 'Import failed.'; return null; }
+                return data;
+            } catch (e) {
+                this.error = 'Import failed: ' + e.message;
+                return null;
+            } finally {
+                this.busy = false; this.mode = '';
+            }
+        },
+
+        async preview() {
+            this.mode = 'preview'; this.committed = false;
+            const data = await this._send('/archimate/api/import/diagram/preview');
+            if (data) this.report = data;
+        },
+
+        async commit() {
+            this.mode = 'commit';
+            const data = await this._send('/archimate/api/import/diagram/commit');
+            if (data) { this.report = data; this.committed = true; }
+        },
+    };
+}
+</script>
+{% endblock %}

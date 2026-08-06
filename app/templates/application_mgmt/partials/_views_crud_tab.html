@@ -135,7 +135,7 @@
         <p class="text-sm text-muted-foreground mb-4">
             Permanently delete this application and all associated data. This action cannot be undone.
         </p>
-        <div x-data="{ confirmDelete() { if (window.confirm('Are you sure you want to permanently delete this application? This cannot be undone.')) { document.getElementById('delete-app-form').submit(); } } }">
+        <div x-data="{ confirmDelete() { Platform.confirm({ title: 'Delete this application?', message: 'This permanently deletes the application and all associated data. This cannot be undone.', confirmText: 'Delete', variant: 'destructive' }).then(function (ok) { if (ok) document.getElementById('delete-app-form').submit(); }); } }">
             <button type="button"
                     @click="confirmDelete()"
                     class="inline-flex items-center gap-2 rounded-md bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" aria-label="Delete">

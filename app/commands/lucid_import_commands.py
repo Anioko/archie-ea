@@ -34,9 +34,16 @@ from app import db
 
 
 def _load_payload(path):
-    """Read a .json export or a .lucid archive, mirroring the upload route."""
+    """Read a .json export, a .lucid archive, or a Visio .vsdx.
+
+    Returns (payload, kind). A .vsdx is handed back as raw bytes because its
+    transformer opens the package itself.
+    """
     with open(path, "rb") as handle:
         raw = handle.read()
+
+    if path.lower().endswith(".vsdx"):
+        return raw, "visio"
 
     # A native .lucid file is a ZIP whose document.json holds the diagram.
     if raw[:2] == b"PK":
@@ -54,7 +61,7 @@ def _load_payload(path):
             raw = archive.read(member)
 
     try:
-        return json.loads(raw.decode("utf-8"))
+        return json.loads(raw.decode("utf-8")), "lucid"
     except (UnicodeDecodeError, ValueError) as exc:
         raise click.ClickException(f"Not valid Lucidchart JSON: {exc}") from exc
 
@@ -98,7 +105,6 @@ def _load_payload(path):
 def import_lucid(path, org_id, fallback_type, dedupe, link_applications,
                  create_applications, dry_run, event_type):
     """Import a Lucidchart diagram into the ArchiMate repository."""
-    from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship
     from app.models.organization import Organization
     from app.services.lucid_archimate_transformer import LucidArchiMateTransformer
 
@@ -108,11 +114,17 @@ def import_lucid(path, org_id, fallback_type, dedupe, link_applications,
             f"No organization with id {org_id}. Importing into a tenant that "
             f"does not exist would strand every row.")
 
-    payload = _load_payload(path)
+    payload, kind = _load_payload(path)
     try:
-        transformer = LucidArchiMateTransformer(
-            event_element_type=event_type, fallback_element_type=fallback_type
-        )
+        if kind == "visio":
+            from app.services.visio_archimate_transformer import VisioArchiMateTransformer
+            transformer = VisioArchiMateTransformer(
+                event_element_type=event_type, fallback_element_type=fallback_type
+            )
+        else:
+            transformer = LucidArchiMateTransformer(
+                event_element_type=event_type, fallback_element_type=fallback_type
+            )
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
 
@@ -131,163 +143,41 @@ def import_lucid(path, org_id, fallback_type, dedupe, link_applications,
         _report_conformance(elements, relationships)
         return
 
-    # For --dedupe name-type-container: which Location holds each element, taken
-    # from the containment the transformer derived. Two systems that share a name
-    # in different data centres are different systems.
-    container_of = {}
-    if dedupe == "name-type-container":
-        by_lucid_id = {e.get("id"): e for e in elements}
-        for rel in relationships:
-            if rel.get("derived_from") != "nesting":
-                continue
-            parent = by_lucid_id.get(rel.get("source_id"))
-            if parent is not None:
-                container_of[rel.get("target_id")] = parent.get("name")
+    from app.services.lucid_import_service import import_payload
 
-    created = linked = 0
-    refreshed_props = set()
-    element_rows = []
-    lucid_id_to_db_id = {}
-    skipped = []
+    # One implementation, two front doors. The import screen calls exactly this,
+    # so the CLI cannot quietly diverge from what an architect sees in the UI.
+    report = import_payload(
+        result, org_id=org_id, dedupe=dedupe,
+        link_applications=link_applications,
+        create_applications=create_applications,
+        preview=False,
+    )
 
-    for element in elements:
-        name, element_type = element.get("name"), element.get("type")
-        if not name or not element_type:
-            skipped.append(element.get("id"))
-            continue
+    counts = report["counts"]["elements"]
+    rel_counts = report["counts"]["relationships"]
+    apps = report["applications"]
 
-        existing = None
-        if dedupe != "none":
-            candidates = ArchiMateElement.query.filter_by(
-                organization_id=org_id, name=name, type=element_type).all()
-            if dedupe == "name-type-container":
-                want = container_of.get(element.get("id"))
-                candidates = [
-                    c for c in candidates
-                    if (c.custom_properties or {}).get("lucid_container") == want
-                ]
-            existing = candidates[0] if candidates else None
-        if existing is not None:
-            # Refresh provenance and lifted qualifiers on re-import. Linking to
-            # an existing row and leaving its properties as they were makes the
-            # second import a no-op: a diagram that has since gained "(Phase 2)"
-            # or a new fill colour would never show it. Merge rather than
-            # replace, so anything a person added by hand survives.
-            incoming = element.get("custom_properties") or {}
-            if incoming:
-                merged = dict(existing.custom_properties or {})
-                merged.update(incoming)
-                if merged != (existing.custom_properties or {}):
-                    existing.custom_properties = merged
-                    refreshed_props.add(existing.id)
-            lucid_id_to_db_id[element["id"]] = existing.id
-            element_rows.append((element_type, name, existing.id))
-            linked += 1
-            continue
-
-        try:
-            # A SAVEPOINT per row. A plain rollback() here would discard every
-            # element created so far in this run, not just the one that failed -
-            # and lucid_id_to_db_id would then hold ids for rows that no longer
-            # exist, quietly attaching relationships to nothing.
-            with db.session.begin_nested():
-                row = ArchiMateElement(
-                    name=name,
-                    type=element_type,
-                    layer=(element.get("layer") or "other"),
-                    description=element.get("description"),
-                    custom_properties=element.get("custom_properties") or {},
-                    organization_id=org_id,
-                )
-                db.session.add(row)
-                db.session.flush()
-            lucid_id_to_db_id[element["id"]] = row.id
-            element_rows.append((element_type, name, row.id))
-            created += 1
-        except Exception as exc:  # noqa: BLE001 — report and continue
-            click.echo(f"  ! could not create '{name[:60]}': {str(exc)[:110]}")
-            skipped.append(element.get("id"))
-
-    rels_created = 0
-    rels_skipped = 0
-    refreshed_rels = 0
-    for relationship in relationships:
-        source = lucid_id_to_db_id.get(relationship.get("source_id"))
-        target = lucid_id_to_db_id.get(relationship.get("target_id"))
-        if not source or not target:
-            rels_skipped += 1
-            continue
-
-        # Re-running must not duplicate the estate's relationships either.
-        exists = ArchiMateRelationship.query.filter_by(
-            organization_id=org_id, source_id=source, target_id=target,
-            type=relationship.get("type")
-        ).first()
-        if exists is not None:
-            # Backfill provenance onto a relationship imported before this was
-            # recorded. Only when empty: a NULL means "stated outright", and a
-            # relationship a person drew deliberately must not be relabelled as
-            # inferred by a later run.
-            incoming_provenance = relationship.get("derived_from")
-            if incoming_provenance and not exists.derived_from:
-                exists.derived_from = incoming_provenance
-                refreshed_rels += 1
-            continue
-
-        try:
-            with db.session.begin_nested():
-                db.session.add(ArchiMateRelationship(
-                    type=relationship.get("type"),
-                    source_id=source,
-                    target_id=target,
-                    description=relationship.get("description"),
-                    # Both columns are varchar(200); a diagram label can be
-                    # longer, and losing the tail beats losing the relationship.
-                    access_mode=relationship.get("access_mode"),
-                    flow_label=(relationship.get("flow_label") or None) and
-                               relationship["flow_label"][:200],
-                    custom_label=(relationship.get("custom_label") or None) and
-                                 relationship["custom_label"][:200],
-                    connection_spec=relationship.get("connection_spec") or {},
-                    # Without this the review queue has nothing to triage.
-                    derived_from=relationship.get("derived_from"),
-                    organization_id=org_id,
-                ))
-            rels_created += 1
-        except Exception as exc:  # noqa: BLE001
-            click.echo(f"  ! could not create relationship: {str(exc)[:110]}")
-
-    if refreshed_rels:
-        click.echo(f"  recorded provenance on {refreshed_rels} existing relationship(s)")
-    if refreshed_props:
-        click.echo(f"  refreshed properties on {len(refreshed_props)} existing element(s)")
-
-    app_linked = app_created = app_already = 0
+    click.echo("\n  elements      created %d, linked to existing %d, refreshed %d, skipped %d"
+               % (counts.get("created", 0), counts.get("linked", 0),
+                  counts.get("changed", 0), counts.get("skipped", 0)))
+    click.echo("  relationships created %d, linked %d, provenance recorded %d, skipped %d"
+               % (rel_counts.get("created", 0), rel_counts.get("linked", 0),
+                  rel_counts.get("changed", 0), rel_counts.get("skipped", 0)))
     if link_applications:
-        app_linked, app_created, app_already = _link_applications(
-            org_id, element_rows, create_applications)
-
-    db.session.commit()
-
-    if link_applications:
-        click.echo(f"\n  portfolio     linked {app_linked} existing application(s) to their "
-                   f"ArchiMate element, created {app_created}, "
-                   f"left {app_already} already linked")
-        if not create_applications and app_linked == 0 and app_created == 0:
+        click.echo("  portfolio     linked %d, created %d, already linked %d"
+                   % (apps["linked"], apps["created"], apps["already_linked"]))
+        if not create_applications and not apps["linked"] and not apps["created"]:
             click.echo("                nothing matched by name - pass --create-applications "
                        "to populate the portfolio from this diagram")
 
-    click.echo(f"\n  elements      created {created}, linked to existing {linked}, "
-               f"skipped {len(skipped)}")
-    click.echo(f"  relationships created {rels_created}, "
-               f"skipped {rels_skipped} (an endpoint did not import)")
     _summarise(elements, relationships)
     _report_conformance(elements, relationships)
     click.echo(
         "\n  Review what was guessed:\n"
-        "    element types   -> custom_properties->>'lucid_type_source' = 'fallback'\n"
-        "    relationships   -> derived_from 'stroke-stripped-label' was inferred "
-        "from a line label\n"
+        "    element types -> custom_properties->>'lucid_type_source' = 'fallback'\n"
+        "    relationships -> derived_from is set\n"
+        "    or open /archimate/import-review\n"
     )
 
 

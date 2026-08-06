@@ -390,7 +390,7 @@
 
       async submitForm() {
         if (!this.form.name || !this.form.start_date || !this.form.target_date) {
-          window.alert('Name, start date, and target date are required.');
+          Platform.alert('Name, start date, and target date are required.');
           return;
         }
 
@@ -436,13 +436,15 @@
           }
           this.closeModal();
         } catch (error) {
-          window.alert(error.message || 'Unable to save work package');
+          Platform.alert(error.message || 'Unable to save work package');
           this.isSubmitting = false;
         }
       },
 
       async deleteItem(item) {
-        const confirmed = window.confirm(`Delete work package "${item.name}"?`);
+        const confirmed = await Platform.confirm({ title: `Delete work package "${item.name}"?`,
+                message: 'This cannot be undone.', confirmText: 'Delete',
+                variant: 'destructive' });
         if (!confirmed) {
           return;
         }
@@ -460,7 +462,7 @@
           }
           this.items = this.items.filter(current => current.id !== item.id);
         } catch (error) {
-          window.alert(error.message || 'Unable to delete work package');
+          Platform.alert(error.message || 'Unable to delete work package');
         }
       }
     };

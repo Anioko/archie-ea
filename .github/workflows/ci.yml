@@ -168,6 +168,11 @@ jobs:
           path: coverage.xml
           if-no-files-found: ignore
 
+  # main grew a parallel `verify` job that ran --tag static / boot-health /
+  # schema-drift with --require-db. Its coverage is already provided here by the
+  # static-gates, boot-health and db-gates jobs against the 18-gate runner, so it
+  # is not carried over. main's `lint` job is likewise dropped - it carried both
+  # continue-on-error and `|| true`, so it could not fail.
   db-gates:
     name: Database gates (schema drift)
     runs-on: ubuntu-latest
