@@ -177,6 +177,36 @@ def get_available_models():
         )
 
 
+def _load_history(thread_id, user_id):
+    """Prior turns of *thread_id*, oldest first, or [] when there are none.
+
+    Ownership-checked: thread_id arrives from the client, so without the check a
+    user could replay another user's conversation into their own prompt simply
+    by passing someone else's id.
+
+    Never raises. History is an enhancement to the turn, not a precondition for
+    it - a failure here should cost the model its memory, not cost the user their
+    answer.
+    """
+    if not thread_id or not user_id:
+        return []
+    try:
+        from app.services.conversation_history import get_history_service, thread_owned_by
+
+        if not thread_owned_by(thread_id, user_id):
+            logger.warning("chat history requested for a thread the user does not own")
+            return []
+        messages = get_history_service().get_thread_messages(thread_id)
+        return [
+            {"role": m.role, "content": m.content}
+            for m in messages
+            if getattr(m, "role", None) in ("user", "assistant") and getattr(m, "content", None)
+        ]
+    except Exception:
+        logger.warning("chat history unavailable; continuing without it", exc_info=True)
+        return []
+
+
 @unified_ai_chat_bp.route("/message", methods=["POST"])
 @login_required
 @rate_limit(30, "1h")  # LLM-003: 30 requests per hour for chat operations
@@ -457,6 +487,7 @@ def send_message():
             context=context_data,
             persona=persona,
             requested_model=requested_model,
+            history=_load_history(incoming_thread_id, current_user.id),
         )
 
         # ENH-018: Populate junction tables if agent result includes design_output
@@ -711,9 +742,43 @@ def send_message_stream():
     app = current_app._get_current_object()
     user_id_for_thread = current_user.id if current_user.is_authenticated else None
 
+    # Capture the tenant NOW, while we are still on the request thread.
+    #
+    # app/middleware/tenant_context.py sets g.current_org_id in a before_request
+    # handler, and app/middleware/tenant_isolation.py returns without adding any
+    # filter when it is absent. The worker below runs in a daemon thread with only
+    # an app context - stream_with_context preserves the request context for the
+    # SSE *generator*, not for this thread - so without this every TenantMixin
+    # SELECT executed while building the prompt and running the agent's tools ran
+    # UNFILTERED ACROSS EVERY ORGANISATION. That included APISettings, so provider
+    # selection could pick up another tenant's LLM API key and send this
+    # organisation's prompts under, and billed to, that account.
+    #
+    # This is the default path: the UI tries /message/stream first and only falls
+    # back to /message on failure.
+    from app.middleware.tenant_context import current_org_id as _current_org_id
+
+    org_id_for_thread = _current_org_id()
+    # Load history here too, on the request thread, so the worker starts with the
+    # conversation already in hand rather than paying a DB round-trip inside the
+    # stream.
+    history_for_thread = _load_history(incoming_thread_id, user_id_for_thread)
+    if org_id_for_thread is None:
+        # Reproduce the request's own tenant context exactly rather than guessing
+        # an org - but say so, because an authenticated chat turn should have one.
+        logger.warning(
+            "chat stream: no tenant context on the request; the agent thread will "
+            "run with the same unscoped context this user would see in-request"
+        )
+
     def run_agent():
         try:
             with app.app_context():
+                # Re-establish the tenant before anything queries. Must precede
+                # AgentRunner construction: context assembly reads on import-time
+                # paths inside run().
+                g.current_org_id = org_id_for_thread
+
                 from app.modules.ai_chat.services.agent_runner import AgentRunner
                 runner = AgentRunner(user_id=user_id_for_thread, yield_event=emit)
                 result = runner.run(
@@ -723,6 +788,7 @@ def send_message_stream():
                     persona=persona or None,
                     requested_model=requested_model or None,
                     stream_mode=True,
+                    history=history_for_thread,
                 )
                 # Persist this turn (thread-backed history rail). Always on;
                 # never breaks the stream. thread_id rides back on the done event.
@@ -1368,11 +1434,24 @@ def reject_tool_action(approval_id: int):
 @unified_ai_chat_bp.route("/session/toggle-auto-execute", methods=["POST"])
 @login_required
 def toggle_auto_execute():
-    """
-    Toggle the agent auto-execute mode for the current session.
-    When ON: auto-tier tools execute immediately.
-    When OFF (default): all tools queue for user confirmation.
-    Returns the new state.
+    """Toggle the session's auto-execute preference and return the new state.
+
+    NOT ENFORCED. This docstring previously claimed "When OFF (default): all
+    tools queue for user confirmation" - that was false in three ways: the flag
+    is written to the Flask session and read by nothing; the default is ON, not
+    OFF (AgentRunner queues only tier=="approve" regardless); and 34 of the 37
+    tools, including every create and link, are tier=="auto" and execute with no
+    confirmation either way. blueprint_chat.js:10 documents the real behaviour.
+
+    Enforcing it needs a registry change, not a route change: `tier` currently
+    has only "auto" and "approve", and "auto" covers both reads
+    (find_applications) and writes (create_solution). Gating on the flag today
+    would put every search behind an approval prompt. Split reads from writes -
+    a third tier, or a `mutates` flag on each schema in tools/registry.py - then
+    have AgentRunner queue mutating tools when this is off.
+
+    Left in place rather than deleted because blueprint_chat.js:43 calls it and
+    the stored preference is what that future gate would read.
     """
     from flask import session as flask_session
     current = flask_session.get("agent_auto_execute", False)

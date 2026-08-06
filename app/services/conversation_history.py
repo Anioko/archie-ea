@@ -444,3 +444,96 @@ class ConversationHistoryService:
 
 
 # =====================================================================
+
+
+# =====================================================================
+# Module-level API used by the chat routes.
+#
+# app/modules/ai_chat/routes/chat_core.py imported persist_turn (:479, :760),
+# get_history_service and thread_owned_by (:1219, :1232, :1250) - none of which
+# existed anywhere in the repository. The two persist_turn call sites are wrapped
+# in `except Exception`, so the ImportError was swallowed and NO CONVERSATION WAS
+# EVER SAVED; the thread-detail and delete routes import at function scope with
+# no guard, so both returned 500. The result was a ChatGPT-style history rail
+# that is permanently empty with two of its three controls broken.
+# =====================================================================
+
+_history_service = None
+
+
+def get_history_service() -> ConversationHistoryService:
+    """Process-wide singleton.
+
+    Constructing the service initialises ChromaDB and a SentenceTransformer
+    (see __init__), so building one per request would be very expensive - and
+    every caller wants the same instance.
+    """
+    global _history_service
+    if _history_service is None:
+        _history_service = ConversationHistoryService()
+    return _history_service
+
+
+def thread_owned_by(thread_id: str, user_id: int) -> bool:
+    """True when *thread_id* exists and belongs to *user_id*.
+
+    Ownership is the authorisation boundary for the thread routes: conversation
+    threads are keyed by user, so without this check any authenticated user
+    could read or delete another user's chat history by guessing an id.
+    """
+    if not thread_id or not user_id:
+        return False
+    row = db.session.execute(  # tenant-filtered: scoped via parent FK (user_id)
+        text(
+            "SELECT 1 FROM conversation_threads "
+            "WHERE id = :thread_id AND user_id = :user_id LIMIT 1"
+        ),
+        {"thread_id": str(thread_id), "user_id": user_id},
+    ).first()
+    return row is not None
+
+
+def _derive_title(user_message: str) -> str:
+    """First line of the opening message, trimmed - what the history rail shows."""
+    text_ = (user_message or "").strip().splitlines()[0] if (user_message or "").strip() else ""
+    if not text_:
+        return "New conversation"
+    return text_[:77] + "..." if len(text_) > 80 else text_
+
+
+def persist_turn(
+    user_id: int,
+    thread_id: Optional[str],
+    user_message: str,
+    assistant_response: str,
+    model: Optional[str] = None,
+) -> Optional[str]:
+    """Save one exchange and return the thread id to send back to the client.
+
+    Creates the thread on the first turn. create_thread() already stores the
+    opening user message via its initial_message argument, so passing it there
+    and calling add_message() again would duplicate it - hence the branch.
+
+    Returns None when there is no user to attribute the turn to; callers treat a
+    falsy thread_id as "not persisted" rather than failing the request.
+    """
+    if not user_id:
+        return None
+
+    service = get_history_service()
+
+    if thread_id and thread_owned_by(thread_id, user_id):
+        service.add_message(thread_id, "user", user_message)
+    else:
+        thread = service.create_thread(
+            user_id=user_id,
+            title=_derive_title(user_message),
+            model=model or "unknown",
+            initial_message=user_message,
+        )
+        thread_id = thread.id
+
+    if assistant_response:
+        service.add_message(thread_id, "assistant", assistant_response, model=model)
+
+    return thread_id

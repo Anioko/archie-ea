@@ -1609,6 +1609,32 @@ function genomePanel() {
         if (el) el.remove();
     }
 
+    /* Escape a value that is interpolated into an innerHTML template as text.
+       The user's own message was echoed raw, so any markup a user typed became
+       live DOM in their transcript. */
+    function escapeForHtml(value) {
+        const div = document.createElement('div');
+        div.textContent = value == null ? '' : String(value);
+        return div.innerHTML;
+    }
+
+    /* Render markdown, then sanitise, before it reaches innerHTML.
+       The streaming path already did this (see the DOMPurify call further down),
+       but this function is what renders every COMPLETED message and every message
+       replayed from thread history - and it called marked.parse() straight into
+       innerHTML. Because the stream re-renders through appendMessage when it
+       finishes, the sanitised streaming output was immediately replaced by an
+       unsanitised copy of the same text: a stored-XSS path through chat history,
+       where the payload is model output or extracted document content.
+       Falls back to escaped plain text if DOMPurify is unavailable - degraded
+       formatting is an acceptable outcome; unsanitised HTML is not. */
+    function renderMarkdownSafely(text) {
+        if (window.DOMPurify && window.marked) {
+            return DOMPurify.sanitize(marked.parse(text == null ? '' : String(text)));
+        }
+        return escapeForHtml(text);
+    }
+
     function appendMessage(role, text, metadata = {}) {
         const isAi = role === 'ai';
         const div = document.createElement('div');
@@ -1637,10 +1663,10 @@ function genomePanel() {
                      </span>
                      ${metadata.processing_time ? `<span class="ml-2 text-xs text-muted-foreground">${metadata.processing_time}ms</span>` : ''}
                  </div>` : ''}
-                 <div class="message-content">${marked.parse(text)}</div>
+                 <div class="message-content">${renderMarkdownSafely(text)}</div>
                </div>`
             : `<div class="rounded-xl bg-primary text-primary-foreground p-4 text-sm max-w-3xl">
-                 <div class="message-content">${text}</div>
+                 <div class="message-content">${escapeForHtml(text)}</div>
                </div>`;
 
         div.innerHTML = avatar + bubble;
@@ -2278,6 +2304,15 @@ ${v.tco_estimate ? `**3-Year TCO:** $${v.tco_estimate.three_year.toLocaleString(
             appendMessage('ai', `**Network Error:** ${err.message}`, { domain: 'architecture' });
         }
     }
+
+    /* Enter sends; Shift+Enter newlines.
+       handleEnter() (defined above) was written for this and never bound - there
+       were zero keydown listeners in the file - so the composer was a plain
+       3-row textarea where Enter inserted a newline and the ONLY way to send a
+       message was clicking the button. That is the first thing a user tries, and
+       it is also an accessibility defect: the chat could not be submitted from
+       the keyboard at all. */
+    userInput.addEventListener('keydown', handleEnter);
 
     // Enhanced form submission
     chatForm.addEventListener('submit', async (e) => {

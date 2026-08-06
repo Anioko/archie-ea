@@ -71,6 +71,52 @@ class AgentRunner:
     # Public entry point                                                   #
     # ------------------------------------------------------------------ #
 
+    # How much prior conversation to replay. Turns, not messages: one turn is a
+    # user message plus its assistant reply.
+    MAX_HISTORY_TURNS = 10
+    MAX_HISTORY_CHARS = 24000
+
+    @staticmethod
+    def _prepare_history(history: Optional[list]) -> list:
+        """Normalise stored turns into a valid, bounded message list.
+
+        Three things have to hold or the provider rejects the request outright:
+        the sequence must alternate user/assistant, it must begin with a user
+        message, and it must not end with one (this turn's message goes there).
+        Stored history can violate all three - a turn whose assistant reply
+        failed to persist leaves two user messages adjacent - so this rebuilds
+        pairs rather than trusting the rows.
+        """
+        if not history:
+            return []
+
+        pairs = []
+        pending_user = None
+        for entry in history:
+            role = (entry or {}).get("role")
+            content = (entry or {}).get("content")
+            if not content or role not in ("user", "assistant"):
+                continue
+            if role == "user":
+                pending_user = str(content)
+            elif pending_user is not None:
+                pairs.append((pending_user, str(content)))
+                pending_user = None
+            # An assistant message with no preceding user message is dropped:
+            # replaying it would break alternation.
+
+        pairs = pairs[-AgentRunner.MAX_HISTORY_TURNS:]
+
+        # Drop whole turns from the oldest end until under the character budget.
+        while pairs and sum(len(u) + len(a) for u, a in pairs) > AgentRunner.MAX_HISTORY_CHARS:
+            pairs.pop(0)
+
+        messages = []
+        for user_text, assistant_text in pairs:
+            messages.append({"role": "user", "content": user_text})
+            messages.append({"role": "assistant", "content": assistant_text})
+        return messages
+
     def run(
         self,
         user_message: str,
@@ -79,9 +125,17 @@ class AgentRunner:
         persona: Optional[str] = None,
         requested_model: Optional[str] = None,
         stream_mode: bool = False,
+        history: Optional[list] = None,
     ) -> dict:
         """
         Execute the full ReAct loop for one user message.
+
+        `history` is the prior turns of this conversation as
+        [{"role": "user"|"assistant", "content": str}, ...], oldest first.
+        Without it every turn was an independent single-message call - the model
+        had no idea what "it" referred to in a follow-up - while the UI presented
+        a persistent thread rail. Callers pass None for a genuinely new
+        conversation.
 
         Returns
         -------
@@ -133,8 +187,16 @@ class AgentRunner:
         # Build tool schemas for the provider
         tool_schemas = self._build_tool_schemas(provider, TOOL_SCHEMAS)
 
-        # Initialise message history
-        messages = [{"role": "user", "content": user_message}]
+        # Initialise message history with the prior turns of this conversation.
+        #
+        # Bounded deliberately: the whole transcript would grow without limit and
+        # the tool-call blocks appended during this turn already share the same
+        # budget. Kept as whole turns so the sequence stays strictly alternating,
+        # which the Anthropic API requires, and trimmed from the OLDEST end so
+        # the most recent exchange - the one a follow-up refers to - always
+        # survives.
+        messages = self._prepare_history(history)
+        messages.append({"role": "user", "content": user_message})
         executor = ToolExecutor(self.user_id)
         actions_taken = []
         pending_approvals = []
