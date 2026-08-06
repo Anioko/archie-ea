@@ -43,8 +43,8 @@
       </span>
       <span class="ml-auto inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium"
             :class="gate.can_advance
-              ? 'bg-green-500/10 text-emerald-600 border border-green-500/30'
-              : 'bg-destructive/10 text-destructive border border-destructive/30'">
+ ? 'bg-green-500/10 text-emerald-600 border border-green-500/30'
+ : 'bg-destructive/10 text-destructive border border-destructive/30'">
         <span x-text="gate.summary.passed_count"></span>/<span x-text="gate.summary.total"></span> met
       </span>
     </div>
@@ -80,7 +80,7 @@
             <path stroke-linecap="round" stroke-linejoin="round"
                   d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
           </svg>
-          <span class="text-amber-600 dark:text-amber-400">
+          <span class="text-amber-600">
             <span x-text="item.label"></span>
             <span class="text-xs text-muted-foreground ml-1">
               (<span x-text="item.actual"></span>/<span x-text="item.required"></span>)
@@ -112,10 +112,10 @@
               :disabled="!gate.can_advance && gate.critical_failures.length > 0"
               class="inline-flex items-center justify-center rounded-md text-sm font-medium h-8 px-3 transition-colors"
               :class="gate.can_advance
-                ? 'bg-primary text-primary-foreground hover:bg-primary/90'
-                : gate.critical_failures.length > 0
-                  ? 'bg-muted text-muted-foreground cursor-not-allowed'
-                  : 'bg-amber-500/10 text-amber-600 border border-amber-500/30 hover:bg-amber-500/20'">
+ ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+ : gate.critical_failures.length > 0
+ ? 'bg-muted text-muted-foreground cursor-not-allowed'
+ : 'bg-amber-500/10 text-amber-600 border border-amber-500/30 hover:bg-amber-500/20'">
         <template x-if="gate.can_advance">
           <span>Advance to Phase <span x-text="gate.next_phase"></span></span>
         </template>

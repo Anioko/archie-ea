@@ -155,10 +155,10 @@ const INVESTMENT_CAPABILITIES = {{ capability_scores | tojson }};
                                 <td class="p-4 text-sm font-bold" x-text="cap.investment_priority_score + '/100'"></td>
                                 <td class="p-4">
                                     <span :class="{
-                                        'bg-destructive/10 text-destructive border-destructive/20': cap.priority_level === 'CRITICAL',
-                                        'bg-warning/10 text-warning border-warning/20': cap.priority_level === 'HIGH',
-                                        'bg-muted text-muted-foreground border-border': cap.priority_level === 'MEDIUM' || cap.priority_level === 'LOW'
-                                    }"
+ 'bg-destructive/10 text-destructive border-destructive/20': cap.priority_level === 'CRITICAL',
+ 'bg-warning/10 text-warning border-warning/20': cap.priority_level === 'HIGH',
+ 'bg-muted text-muted-foreground border-border': cap.priority_level === 'MEDIUM' || cap.priority_level === 'LOW'
+ }"
                                     class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold"
                                     x-text="cap.priority_level"></span>
                                 </td>
@@ -193,7 +193,7 @@ const INVESTMENT_CAPABILITIES = {{ capability_scores | tojson }};
                                     <div class="flex items-center gap-2">
                                         <button
                                             @click="$dispatch('open-roi-calculator', normalizeCapability(cap))"
-                                            class="inline-flex items-center gap-1 px-3 py-1 text-xs font-medium text-success hover:text-success bg-success/5 hover:bg-success/10 dark:bg-success/20 dark:hover:bg-success/30 dark:text-success/80 rounded-md transition-colors"
+                                            class="inline-flex items-center gap-1 px-3 py-1 text-xs font-medium text-success hover:text-success bg-success/5 hover:bg-success/10 rounded-md transition-colors"
                                             title="Calculate ROI"
                                             aria-label="Calculate ROI">
                                             <i data-lucide="calculator" class="h-3 w-3" aria-hidden="true"></i>
@@ -201,7 +201,7 @@ const INVESTMENT_CAPABILITIES = {{ capability_scores | tojson }};
                                         </button>
                                         <button
                                             @click="$dispatch('open-arb-submission-modal', normalizeCapability(cap))"
-                                            class="inline-flex items-center gap-1 px-3 py-1 text-xs font-medium text-primary hover:text-primary bg-primary/5 hover:bg-primary/10 dark:bg-primary/20 dark:hover:bg-primary/30 dark:text-primary/80 rounded-md transition-colors"
+                                            class="inline-flex items-center gap-1 px-3 py-1 text-xs font-medium text-primary hover:text-primary bg-primary/5 hover:bg-primary/10 rounded-md transition-colors"
                                             title="Submit to Architecture Review Board"
                                             aria-label="Submit to ARB">
                                             <i data-lucide="shield-check" class="h-3 w-3" aria-hidden="true"></i>

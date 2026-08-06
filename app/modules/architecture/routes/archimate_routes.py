@@ -163,11 +163,19 @@ def traceability_chain():
             if ids:
                 element_ids_by_layer[layer_key] = ids
     element_solutions_by_layer = get_element_solution_map_by_layer(element_ids_by_layer)
-    # JSON: { "layer": { "element_id": [solutions] } } for template lookup by selected.layer + selected.id
-    element_solutions_json = json.dumps({
+    # { "layer": { "element_id": [solutions] } } for template lookup by
+    # selected.layer + selected.id.
+    #
+    # Passed as a dict and serialised in the template with |tojson, NOT with
+    # json.dumps + |safe. json.dumps does not escape "<" or "/", and this payload
+    # carries user-controlled solution names, so a solution named
+    # "</script><script>..." closed the surrounding <script> block and executed -
+    # stored XSS against every viewer of the traceability chain. Flask's |tojson
+    # escapes <, > and & for exactly this context.
+    element_solutions_json = {
         layer: {str(eid): sols for eid, sols in by_id.items()}
         for layer, by_id in element_solutions_by_layer.items()
-    })
+    }
 
     # GLB-057: Solutions list for filter dropdown
     from app.models.solution_models import Solution

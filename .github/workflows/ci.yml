@@ -12,8 +12,14 @@ name: CI
 on:
   push:
     branches: [main, master]
+  # Deliberately NO branch filter. The previous `branches: [main, master]` gated
+  # only PRs targeting the default branch, so work on a long-lived integration
+  # branch accumulated commits with no gate having run on any of them and the
+  # first real signal arrived at the merge to main - the most expensive possible
+  # moment to learn a ratchet has regressed.
   pull_request:
-    branches: [main, master]
+  # Run the full suite against a work-in-progress branch without opening a PR.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -218,17 +224,14 @@ jobs:
         # so this gate cannot silently pass by not running.
         run: python scripts/verify.py --gate schema-drift --require-db
 
-  lint:
-    name: Lint (advisory)
-    runs-on: ubuntu-latest
-    continue-on-error: true        # advisory until the tree is lint-clean
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - run: pip install ruff
-      - run: ruff check . || true
+  # The doubly-neutered `lint` job (continue-on-error: true AND `ruff check . ||
+  # true`) that the header comment above says was replaced had in fact survived
+  # the replacement and was still running here. It could not fail under any
+  # circumstance, so it contributed a permanently-green check that read as
+  # coverage while asserting nothing. Removed rather than repaired: the ratcheted
+  # `lint-core` / `undefined-names` / `redefinitions` gates inside the
+  # `static-gates` job are the real enforcement, and they are hard gates.
+  # Advisory full-tree lint remains available locally as `ruff check .`.
 
   security-sast:
     name: SAST (bandit)

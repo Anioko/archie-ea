@@ -74,9 +74,9 @@
                     </span>
                     {% endif %}
                     <span class="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium
-                        {% if definition.automation_level == 'automated' %}bg-success/10 text-success
-                        {% elif definition.automation_level == 'assisted' %}bg-primary/10 text-primary
-                        {% else %}bg-muted text-foreground/80{% endif %}">
+ {% if definition.automation_level == 'automated' %}bg-success/10 text-success
+ {% elif definition.automation_level == 'assisted' %}bg-primary/10 text-primary
+ {% else %}bg-muted text-foreground/80{% endif %}">
                         <i data-lucide="{% if definition.automation_level == 'automated' %}bot{% elif definition.automation_level == 'assisted' %}sparkles{% else %}users{% endif %}" class="h-3 w-3" aria-hidden="true"></i>
                         {{ definition.automation_level|title }}
                     </span>
@@ -179,8 +179,8 @@
                         <!-- Step node -->
                         <div class="flex flex-col items-center max-w-[140px]">
                             {% if is_approval %}
-                            <div class="flex h-10 w-28 items-center justify-center rounded-lg border-2 border-amber-400 bg-amber-50 dark:bg-amber-900/20 text-center px-2 py-1">
-                                <span class="text-[10px] font-semibold text-amber-700 dark:text-amber-400 line-clamp-2 leading-tight">{{ step.step_name }}</span>
+                            <div class="flex h-10 w-28 items-center justify-center rounded-lg border-2 border-amber-400 bg-amber-50 text-center px-2 py-1">
+                                <span class="text-[10px] font-semibold text-amber-700 line-clamp-2 leading-tight">{{ step.step_name }}</span>
                             </div>
                             <div class="flex items-center gap-0.5 mt-1">
                                 <i data-lucide="hand" class="h-2.5 w-2.5 text-amber-500" aria-hidden="true"></i>
@@ -234,7 +234,7 @@
                         <!-- Timeline connector -->
                         <div class="flex flex-col items-center">
                             <div class="flex h-9 w-9 items-center justify-center rounded-full font-bold text-sm shrink-0
-                                {% if is_approval %}bg-warning text-primary-foreground{% else %}bg-primary/10 text-primary{% endif %}">
+ {% if is_approval %}bg-warning text-primary-foreground{% else %}bg-primary/10 text-primary{% endif %}">
                                 {{ loop.index }}
                             </div>
                             {% if not loop.last %}
@@ -257,7 +257,7 @@
                                         Notification
                                     </span>
                                     {% else %}
-                                    <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 shrink-0">
+                                    <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium bg-emerald-500/10 text-emerald-700 shrink-0">
                                         <i data-lucide="bot" class="h-3 w-3" aria-hidden="true"></i>
                                         Automated
                                     </span>
@@ -443,11 +443,11 @@
                         </td>
                         <td class="text-center py-3 px-4">
                             <span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium
-                                {% if instance.status == 'completed' %}bg-success/10 text-success
-                                {% elif instance.status == 'running' %}bg-primary/10 text-primary
-                                {% elif instance.status == 'waiting_approval' %}bg-warning/10 text-warning
-                                {% elif instance.status == 'failed' %}bg-destructive/10 text-destructive
-                                {% else %}bg-muted text-foreground/80{% endif %}">
+ {% if instance.status == 'completed' %}bg-success/10 text-success
+ {% elif instance.status == 'running' %}bg-primary/10 text-primary
+ {% elif instance.status == 'waiting_approval' %}bg-warning/10 text-warning
+ {% elif instance.status == 'failed' %}bg-destructive/10 text-destructive
+ {% else %}bg-muted text-foreground/80{% endif %}">
                                 {{ instance.status|replace('_', ' ')|title }}
                             </span>
                         </td>

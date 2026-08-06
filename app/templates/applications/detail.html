@@ -53,9 +53,9 @@
                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground border border-border" title="Never updated">unknown</span>
                 {% endif %}
                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium
-                    {% if app.completeness_score >= 80 %}bg-emerald-500/10 text-emerald-600 border border-emerald-500/30
-                    {% elif app.completeness_score >= 50 %}bg-amber-500/10 text-amber-600 border border-amber-500/30
-                    {% else %}bg-destructive/10 text-destructive border border-destructive/30{% endif %}"
+ {% if app.completeness_score >= 80 %}bg-emerald-500/10 text-emerald-600 border border-emerald-500/30
+ {% elif app.completeness_score >= 50 %}bg-amber-500/10 text-amber-600 border border-amber-500/30
+ {% else %}bg-destructive/10 text-destructive border border-destructive/30{% endif %}"
                     title="Data completeness: {{ app.completeness_gaps|join(', ') }} gaps">
                     {{ app.completeness_score }}% complete
                 </span>
@@ -117,22 +117,22 @@
 
   <!-- Data Completeness Nudge Banner -->
   {% if app.completeness_score < 40 %}
-  <div class="bg-amber-50 border-b border-amber-200 dark:bg-amber-950/20 dark:border-amber-800">
+  <div class="bg-amber-50 border-b border-amber-200">
     <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between gap-4">
       <div class="flex items-center gap-3">
         <i data-lucide="alert-triangle" class="w-5 h-5 text-amber-600 flex-shrink-0"></i>
         <div>
-          <p class="text-sm font-medium text-amber-800 dark:text-amber-200">
+          <p class="text-sm font-medium text-amber-800">
             Data completeness: {{ app.completeness_score }}% — AI analysis quality is low
           </p>
-          <p class="text-xs text-amber-700 dark:text-amber-300 mt-0.5">
+          <p class="text-xs text-amber-700 mt-0.5">
             Missing: {{ app.completeness_gaps | join(', ') }}. Fill these in to improve AI architect responses.
           </p>
         </div>
       </div>
       <div class="flex items-center gap-2 flex-shrink-0">
         <button @click="$el.closest('.bg-amber-50, .dark\\:bg-amber-950\\/20').style.display='none'"
-          class="text-xs text-amber-700 hover:text-amber-900 dark:text-amber-300 underline">Dismiss</button>
+          class="text-xs text-amber-700 hover:text-amber-900 underline">Dismiss</button>
       </div>
     </div>
   </div>
@@ -2072,10 +2072,10 @@
         {% for doc in application_documents %}
         <div class="flex items-center gap-4 p-4 border border-border rounded-lg transition-all bg-background">
           <div class="w-10 h-10 rounded-md flex items-center justify-center shrink-0
-                {% if doc.file_extension in ['PDF'] %}bg-primary/10 text-primary
-                {% elif doc.file_extension in ['DOCX', 'DOC'] %}bg-emerald-100 text-emerald-500
-                {% elif doc.file_extension in ['PNG', 'JPG', 'JPEG'] %}bg-amber-50 text-amber-500
-                {% else %}bg-muted text-muted-foreground{% endif %}">
+ {% if doc.file_extension in ['PDF'] %}bg-primary/10 text-primary
+ {% elif doc.file_extension in ['DOCX', 'DOC'] %}bg-emerald-100 text-emerald-500
+ {% elif doc.file_extension in ['PNG', 'JPG', 'JPEG'] %}bg-amber-50 text-amber-500
+ {% else %}bg-muted text-muted-foreground{% endif %}">
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
               stroke="currentColor" stroke-width="2">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>

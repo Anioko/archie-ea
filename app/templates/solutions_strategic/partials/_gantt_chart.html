@@ -517,12 +517,19 @@
                     this.allTasks = data.gantt.tasks || [];
                     this.phases = [...new Set(this.allTasks.map(t => t.group))];
                     
-                    // Calculate critical path length
-                    const criticalTasks = this.allTasks.filter(t => t.dependencies && t.dependencies.length > 0);
-                    if (criticalTasks.length > 0) {
-                        this.criticalPathLength = Math.ceil(Math.random() * 24 + 18); // Placeholder: 18-24 weeks
-                    }
-                    
+                    // Critical path length, only if the API actually computed one.
+                    //
+                    // This used to be Math.ceil(Math.random() * 24 + 18) behind a
+                    // "Placeholder" comment, so a programme's critical path was a
+                    // different number on every page load and a reader had no way to
+                    // tell it from a real figure. There is no client-side critical
+                    // path calculation here to fall back on - deriving one needs the
+                    // dependency graph and durations - so when the API does not send
+                    // it the value stays null and the "Critical path" indicator stays
+                    // hidden (it is behind x-show="criticalPathLength").
+                    const reported = data.gantt.critical_path_weeks;
+                    this.criticalPathLength = Number.isFinite(reported) ? reported : null;
+
                     this.applyFilters();
                     this.renderChart();
                     this.loading = false;

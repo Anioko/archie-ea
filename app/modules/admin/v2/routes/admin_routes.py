@@ -5209,6 +5209,7 @@ def salesforce_integration():
 @admin_bp_v2.route("/integrations/salesforce/save", methods=["POST"])
 @timed_route
 @login_required
+@admin_required
 def salesforce_save_credentials():
     """POST /admin/integrations/salesforce/save — persist credentials."""
     from app.modules.solutions_strategic.v2.services.salesforce_discovery_service import (
@@ -5227,6 +5228,7 @@ def salesforce_save_credentials():
 @admin_bp_v2.route("/integrations/salesforce/test", methods=["POST"])
 @timed_route
 @login_required
+@admin_required
 def salesforce_test_connection():
     """POST /admin/integrations/salesforce/test — test credentials."""
     from app.modules.solutions_strategic.v2.services.salesforce_discovery_service import (
@@ -5245,6 +5247,7 @@ def salesforce_test_connection():
 @admin_bp_v2.route("/integrations/salesforce/discover", methods=["POST"])
 @timed_route
 @login_required
+@admin_required
 def salesforce_discover():
     """POST /admin/integrations/salesforce/discover — list org apps + packages."""
     from app.models.application_portfolio import ApplicationComponent
@@ -5276,6 +5279,7 @@ def salesforce_discover():
 @admin_bp_v2.route("/integrations/salesforce/import", methods=["POST"])
 @timed_route
 @login_required
+@admin_required
 def salesforce_import():
     """POST /admin/integrations/salesforce/import — import selected app_ids
     with optional programme_initiative_id baseline linkage."""
@@ -5335,6 +5339,7 @@ def power_platform_integration():
 @admin_bp_v2.route("/integrations/power-platform/save", methods=["POST"])
 @timed_route
 @login_required
+@admin_required
 def power_platform_save_credentials():
     """POST /admin/integrations/power-platform/save — persist credentials to api_settings."""
     from app.models.models import APISettings
@@ -5359,6 +5364,7 @@ def power_platform_save_credentials():
 @admin_bp_v2.route("/integrations/power-platform/test", methods=["POST"])
 @timed_route
 @login_required
+@admin_required
 def power_platform_test_connection():
     """POST /admin/integrations/power-platform/test — test credentials."""
     from app.modules.solutions_strategic.v2.services.power_platform_coe_service import (
@@ -5379,6 +5385,7 @@ def power_platform_test_connection():
 @admin_bp_v2.route("/integrations/power-platform/discover", methods=["POST"])
 @timed_route
 @login_required
+@admin_required
 def power_platform_discover():
     """POST /admin/integrations/power-platform/discover — trigger discovery, return app list."""
     from app.modules.solutions_strategic.v2.services.power_platform_coe_service import (
@@ -5412,6 +5419,7 @@ def power_platform_discover():
 @admin_bp_v2.route("/integrations/power-platform/import", methods=["POST"])
 @timed_route
 @login_required
+@admin_required
 def power_platform_import():
     """POST /admin/integrations/power-platform/import — import selected app_ids."""
     from app.modules.solutions_strategic.v2.services.power_platform_coe_service import (

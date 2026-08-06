@@ -23,12 +23,12 @@
     ) }}
 
     {# ─ Onboarding Banner ─ #}
-    <div class="rounded-lg border border-primary/20 dark:border-primary bg-primary/5 dark:bg-primary/10 p-4">
+    <div class="rounded-lg border border-primary/20 bg-primary/5 p-4">
         <div class="flex items-start gap-3">
             <i data-lucide="info" class="h-5 w-5 text-primary shrink-0 mt-0.5" aria-hidden="true"></i>
             <div>
-                <h3 class="font-semibold text-primary dark:text-primary/60">Welcome to Architecture Intelligence</h3>
-                <p class="text-sm text-primary dark:text-primary/80 mt-1">This dashboard continuously scans your application portfolio to identify architectural gaps, highlight redundancies, and recommend structural improvements. Start by reviewing your top priorities below.</p>
+                <h3 class="font-semibold text-primary">Welcome to Architecture Intelligence</h3>
+                <p class="text-sm text-primary mt-1">This dashboard continuously scans your application portfolio to identify architectural gaps, highlight redundancies, and recommend structural improvements. Start by reviewing your top priorities below.</p>
             </div>
         </div>
     </div>
@@ -36,9 +36,9 @@
     {# ─ Top Priorities / Quick Actions ─ #}
     {% set has_priorities = gaps_by_severity.critical > 0 or gaps_by_severity.high > 0 or apps_needing_review|length > 0 %}
     {% if has_priorities %}
-    <div class="rounded-lg border bg-card shadow-sm border-warning/20 dark:border-orange-900/50">
-        <div class="border-b border-orange-100 dark:border-orange-900/50 bg-warning/5/50 dark:bg-warning/10 p-4">
-            <h2 class="text-lg font-semibold flex items-center gap-2 text-warning dark:text-warning/60">
+    <div class="rounded-lg border bg-card shadow-sm border-warning/20">
+        <div class="border-b border-orange-100 bg-warning/5/50 p-4">
+            <h2 class="text-lg font-semibold flex items-center gap-2 text-warning">
                 <i data-lucide="target" class="h-5 w-5" aria-hidden="true"></i>
                 Top Priorities
             </h2>
@@ -47,8 +47,8 @@
             {% if gaps_by_severity.critical > 0 or gaps_by_severity.high > 0 %}
             <div class="flex items-center justify-between p-3 rounded-lg border bg-background">
                 <div class="flex items-center gap-3">
-                    <div class="p-2 bg-destructive/10 dark:bg-destructive/30 rounded-full">
-                        <i data-lucide="alert-triangle" class="h-4 w-4 text-destructive dark:text-destructive/80" aria-hidden="true"></i>
+                    <div class="p-2 bg-destructive/10 rounded-full">
+                        <i data-lucide="alert-triangle" class="h-4 w-4 text-destructive" aria-hidden="true"></i>
                     </div>
                     <div>
                         <p class="font-medium">Critical & High Gaps</p>
@@ -64,8 +64,8 @@
             {% if apps_needing_review|length > 0 %}
             <div class="flex items-center justify-between p-3 rounded-lg border bg-background">
                 <div class="flex items-center gap-3">
-                    <div class="p-2 bg-primary/10 dark:bg-primary/30 rounded-full">
-                        <i data-lucide="clipboard-check" class="h-4 w-4 text-primary dark:text-primary/80" aria-hidden="true"></i>
+                    <div class="p-2 bg-primary/10 rounded-full">
+                        <i data-lucide="clipboard-check" class="h-4 w-4 text-primary" aria-hidden="true"></i>
                     </div>
                     <div>
                         <p class="font-medium">Lifecycle Reviews</p>
@@ -192,8 +192,8 @@
                     {% endfor %}
                 {% else %}
                 <div class="col-span-1 md:col-span-2 text-center py-10 px-4 rounded-lg border border-dashed">
-                    <div class="mx-auto w-12 h-12 bg-success/5 dark:bg-success/20 rounded-full flex items-center justify-center mb-3">
-                        <i data-lucide="check-circle-2" class="h-6 w-6 text-success dark:text-success" aria-hidden="true"></i>
+                    <div class="mx-auto w-12 h-12 bg-success/5 rounded-full flex items-center justify-center mb-3">
+                        <i data-lucide="check-circle-2" class="h-6 w-6 text-success" aria-hidden="true"></i>
                     </div>
                     <h3 class="text-lg font-medium text-foreground mb-1">Architecture is Aligned</h3>
                     <p class="text-sm text-muted-foreground max-w-sm mx-auto">

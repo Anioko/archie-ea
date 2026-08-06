@@ -66,8 +66,8 @@
             <button
                 @click="switchTab('{{ layer_key }}')"
                 :class="activeTab === '{{ layer_key }}'
-                    ? 'border-primary text-primary'
-                    : 'border-transparent text-muted-foreground hover:border-input hover:text-foreground'"
+ ? 'border-primary text-primary'
+ : 'border-transparent text-muted-foreground hover:border-input hover:text-foreground'"
                 class="flex items-center gap-2 border-b-2 px-1 py-4 text-sm font-medium transition-colors whitespace-nowrap"
              aria-label="Action">
                 {% set lcolor = layer_colors.get(layer_key, 'bg-muted text-muted-foreground') %}
@@ -317,7 +317,7 @@
     <!-- ARC-005: Data quality banner -->
     {% if no_desc_count is defined %}
     <div data-testid="data-quality-banner"
-         class="flex flex-wrap items-center gap-4 p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-sm text-amber-700 dark:text-amber-400">
+         class="flex flex-wrap items-center gap-4 p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-sm text-amber-700">
         <i data-lucide="alert-triangle" class="h-4 w-4 flex-shrink-0" aria-hidden="true"></i>
         <span class="font-medium">Data Quality:</span>
         <span data-testid="dq-no-description">

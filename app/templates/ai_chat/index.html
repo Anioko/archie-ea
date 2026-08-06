@@ -314,10 +314,10 @@ x-cloak>
                                         <div class="flex items-center gap-2">
                                             <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium capitalize"
                                                   :class="{
-                                                      'bg-green-500/10 text-emerald-600 border border-green-500/30': item.operation_type === 'create',
-                                                      'bg-yellow-500/10 text-amber-600 border border-yellow-500/30': item.operation_type === 'update',
-                                                      'bg-destructive/10 text-destructive border border-destructive/30': item.operation_type === 'delete'
-                                                  }"
+ 'bg-green-500/10 text-emerald-600 border border-green-500/30': item.operation_type === 'create',
+ 'bg-yellow-500/10 text-amber-600 border border-yellow-500/30': item.operation_type === 'update',
+ 'bg-destructive/10 text-destructive border border-destructive/30': item.operation_type === 'delete'
+ }"
                                                   x-text="item.operation_type"></span>
                                             <span class="text-sm font-medium text-foreground capitalize" x-text="item.entity_type"></span>
                                         </div>
@@ -491,7 +491,7 @@ x-cloak>
                             <h3 class="text-sm font-semibold">Results</h3>
                             <span id="nl-result-count" class="text-xs text-muted-foreground">0 found</span>
                         </div>
-                        <div id="nl-query-explanation" class="p-2 bg-primary/5 dark:bg-primary/20 rounded text-xs text-primary dark:text-primary/60"></div>
+                        <div id="nl-query-explanation" class="p-2 bg-primary/5 rounded text-xs text-primary"></div>
                         <div id="nl-results-list" class="space-y-2 max-h-60 overflow-y-auto"></div>
                     </div>
                 </div>
@@ -663,7 +663,7 @@ x-cloak>
                         <!-- Architecture -->
                         <button type="button" data-domain="architecture" data-prompt="Analyze my application architecture and suggest ArchiMate improvements"
                             class="domain-card group flex flex-col p-5 bg-card border border-border rounded-2xl text-left hover:border-primary hover:shadow-lg transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><!-- token-migration-ok -->
-                            <div class="w-12 h-12 bg-primary/5 dark:bg-blue-950 rounded-xl flex items-center justify-center text-primary mb-4 group-hover:bg-primary group-hover:text-primary-foreground transition-colors"><!-- token-migration-ok -->
+                            <div class="w-12 h-12 bg-primary/5 rounded-xl flex items-center justify-center text-primary mb-4 group-hover:bg-primary group-hover:text-primary-foreground transition-colors"><!-- token-migration-ok -->
                                 <i data-lucide="layers" class="h-6 w-6" aria-hidden="true"></i>
                             </div>
                             <h3 class="text-sm font-semibold text-foreground">Architecture</h3>
@@ -672,7 +672,7 @@ x-cloak>
                         <!-- Technology -->
                         <button type="button" data-domain="technology" data-prompt="Review my tech stack and identify lifecycle risks"
                             class="domain-card group flex flex-col p-5 bg-card border border-border rounded-2xl text-left hover:border-emerald-500 hover:shadow-lg transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                            <div class="w-12 h-12 bg-emerald-50 dark:bg-emerald-950 rounded-xl flex items-center justify-center text-emerald-600 mb-4 group-hover:bg-emerald-500 group-hover:text-primary-foreground transition-colors"><!-- token-migration-ok -->
+                            <div class="w-12 h-12 bg-emerald-50 rounded-xl flex items-center justify-center text-emerald-600 mb-4 group-hover:bg-emerald-500 group-hover:text-primary-foreground transition-colors"><!-- token-migration-ok -->
                                 <i data-lucide="cpu" class="h-6 w-6" aria-hidden="true"></i>
                             </div>
                             <h3 class="text-sm font-semibold text-foreground">Technology</h3>
@@ -681,7 +681,7 @@ x-cloak>
                         <!-- Capabilities -->
                         <button type="button" data-domain="business_capability" data-prompt="Map my business capabilities and identify strategic gaps"
                             class="domain-card group flex flex-col p-5 bg-card border border-border rounded-2xl text-left hover:border-purple-500 hover:shadow-lg transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                            <div class="w-12 h-12 bg-purple-50 dark:bg-purple-950 rounded-xl flex items-center justify-center text-primary mb-4 group-hover:bg-primary group-hover:text-primary-foreground transition-colors"><!-- token-migration-ok -->
+                            <div class="w-12 h-12 bg-purple-50 rounded-xl flex items-center justify-center text-primary mb-4 group-hover:bg-primary group-hover:text-primary-foreground transition-colors"><!-- token-migration-ok -->
                                 <i data-lucide="building-2" class="h-6 w-6" aria-hidden="true"></i>
                             </div>
                             <h3 class="text-sm font-semibold text-foreground">Capabilities</h3>
@@ -690,7 +690,7 @@ x-cloak>
                         <!-- Gap Analysis -->
                         <button type="button" data-domain="gap_analysis" data-prompt="Identify gaps in my current architecture roadmap"
                             class="domain-card group flex flex-col p-5 bg-card border border-border rounded-2xl text-left hover:border-orange-500 hover:shadow-lg transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                            <div class="w-12 h-12 bg-orange-50 dark:bg-orange-950 rounded-xl flex items-center justify-center text-orange-600 mb-4 group-hover:bg-orange-500 group-hover:text-primary-foreground transition-colors"><!-- token-migration-ok -->
+                            <div class="w-12 h-12 bg-orange-50 rounded-xl flex items-center justify-center text-orange-600 mb-4 group-hover:bg-orange-500 group-hover:text-primary-foreground transition-colors"><!-- token-migration-ok -->
                                 <i data-lucide="git-branch" class="h-6 w-6" aria-hidden="true"></i>
                             </div>
                             <h3 class="text-sm font-semibold text-foreground">Gap Analysis</h3>
@@ -699,7 +699,7 @@ x-cloak>
                         <!-- Vendors -->
                         <button type="button" data-domain="vendor_intelligence" data-prompt="Analyze my vendor contracts and identify supplier risks"
                             class="domain-card group flex flex-col p-5 bg-card border border-border rounded-2xl text-left hover:border-cyan-500 hover:shadow-lg transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                            <div class="w-12 h-12 bg-cyan-50 dark:bg-cyan-950 rounded-xl flex items-center justify-center text-cyan-600 mb-4 group-hover:bg-cyan-500 group-hover:text-primary-foreground transition-colors"><!-- token-migration-ok -->
+                            <div class="w-12 h-12 bg-cyan-50 rounded-xl flex items-center justify-center text-cyan-600 mb-4 group-hover:bg-cyan-500 group-hover:text-primary-foreground transition-colors"><!-- token-migration-ok -->
                                 <i data-lucide="briefcase" class="h-6 w-6" aria-hidden="true"></i>
                             </div>
                             <h3 class="text-sm font-semibold text-foreground">Vendors</h3>
@@ -890,9 +890,9 @@ x-cloak>
                 <template x-for="item in genomeItems" :key="item.key">
                     <div class="rounded border px-3 py-2 text-xs"
                          :class="{
-                             'border-green-500/30 border-l-2 border-l-green-500 bg-green-500/5': item.status === 'confirmed',
-                             'border-border border-l-2 border-l-amber-500 opacity-60': item.status === 'pending'
-                         }">
+ 'border-green-500/30 border-l-2 border-l-green-500 bg-green-500/5': item.status === 'confirmed',
+ 'border-border border-l-2 border-l-amber-500 opacity-60': item.status === 'pending'
+ }">
                         <div class="text-muted-foreground uppercase tracking-wider text-[10px] font-semibold mb-0.5"
                              x-text="item.label"></div>
                         <div class="text-foreground leading-relaxed" x-text="item.value || '—'"></div>
@@ -912,8 +912,8 @@ x-cloak>
                         aria-label="Generate application from genome"
                         class="w-full py-2 rounded text-sm font-semibold transition-all"
                         :class="readyToGenerate
-                          ? 'bg-primary hover:bg-primary text-primary-foreground cursor-pointer'
-                          : 'bg-muted text-muted-foreground cursor-not-allowed border border-border'"
+ ? 'bg-primary hover:bg-primary text-primary-foreground cursor-pointer'
+ : 'bg-muted text-muted-foreground cursor-not-allowed border border-border'"
                         x-text="readyToGenerate ? 'Generate Application →' : 'Answer questions to generate'">
                 </button>
             </div>
@@ -1462,7 +1462,7 @@ function genomePanel() {
                             <span class="confidence-badge ${confidenceClass}">${el.confidence}% ${confidenceLabel}</span>
                         </div>
                         <p class="text-xs text-muted-foreground line-clamp-2">${el.description || 'No description'}</p>
-                        ${el.reasoning ? `<p class="text-[10px] text-primary dark:text-blue-400 mt-1"><i data-lucide="info" class="h-3 w-3 inline mr-0.5"></i> ${el.reasoning}</p>` : ''}<!-- token-migration-ok -->
+                        ${el.reasoning ? `<p class="text-[10px] text-primary mt-1"><i data-lucide="info" class="h-3 w-3 inline mr-0.5"></i> ${el.reasoning}</p>` : ''}<!-- token-migration-ok -->
                     </div>
                 </div>`;
             }).join('');
@@ -1560,7 +1560,7 @@ function genomePanel() {
                 // Replace card with success message
                 const parent = card.parentElement;
                 parent.innerHTML = `
-                    <div class="p-4 bg-emerald-500/5 dark:bg-green-900/20 border border-emerald-200 dark:border-green-800 rounded-lg text-green-800 dark:text-green-300"><!-- token-migration-ok -->
+                    <div class="p-4 bg-emerald-500/5 border border-emerald-200 rounded-lg text-green-800"><!-- token-migration-ok -->
                         <div class="flex items-center gap-2 font-semibold">
                             <i data-lucide="check-circle" class="h-5 w-5"></i>
                             Success
@@ -1630,7 +1630,7 @@ function genomePanel() {
         const metadataDomainColor = metadata.domain ? (domainConfig[metadata.domain]?.color || 'blue') : 'blue';
         const badgeClass = getColorClass(metadataDomainColor, 'badge');
         const bubble = isAi
-            ? `<div class="rounded-xl bg-muted/50 p-4 text-sm prose dark:prose-invert max-w-3xl">
+            ? `<div class="rounded-xl bg-muted/50 p-4 text-sm prose max-w-3xl">
                  ${metadata.domain ? `<div class="mb-2">
                      <span class="px-2 py-1 ${badgeClass} text-xs rounded-full font-medium">
                          ${domainConfig[metadata.domain]?.name || 'AI'}
@@ -2445,7 +2445,7 @@ ${v.tco_estimate ? `**3-Year TCO:** $${v.tco_estimate.three_year.toLocaleString(
         wrap.className = 'flex gap-4';
         wrap.innerHTML =
             '<div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br ' + grad + ' text-primary-foreground shadow-lg"><i data-lucide="' + (domainConfig[currentDomain]?.icon || 'bot') + '" class="h-5 w-5"></i></div>' +
-            '<div class="rounded-xl bg-muted/50 p-4 text-sm prose dark:prose-invert max-w-3xl" id="' + bubbleId + '"><span class="animate-pulse">▍</span></div>';
+            '<div class="rounded-xl bg-muted/50 p-4 text-sm prose max-w-3xl" id="' + bubbleId + '"><span class="animate-pulse">▍</span></div>';
         messagesContainer.appendChild(wrap);
         if (window.lucide) lucide.createIcons();
         const target = document.getElementById(bubbleId);
@@ -3334,7 +3334,7 @@ Would you like me to provide more details about the extracted elements or help y
                 <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
                         <button type="button" data-domain="architecture" data-prompt="Analyze my ArchiMate model and identify potential improvements"
                             class="domain-card group flex flex-col p-5 bg-card border border-border rounded-2xl text-left hover:border-primary hover:shadow-lg transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><!-- token-migration-ok -->
-                            <div class="w-12 h-12 bg-primary/5 dark:bg-blue-950 rounded-xl flex items-center justify-center text-primary mb-4 group-hover:bg-primary group-hover:text-primary-foreground transition-colors"><!-- token-migration-ok -->
+                            <div class="w-12 h-12 bg-primary/5 rounded-xl flex items-center justify-center text-primary mb-4 group-hover:bg-primary group-hover:text-primary-foreground transition-colors"><!-- token-migration-ok -->
                                 <i data-lucide="layers" class="h-6 w-6"></i>
                             </div>
                             <span class="text-sm font-semibold block text-foreground">Architecture</span>
@@ -3342,7 +3342,7 @@ Would you like me to provide more details about the extracted elements or help y
                         </button>
                         <button type="button" data-domain="technology" data-prompt="Review my technology stack and recommend modernization opportunities"
                             class="domain-card group flex flex-col p-5 bg-card border border-border rounded-2xl text-left hover:border-emerald-500 hover:shadow-lg transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                            <div class="w-12 h-12 bg-emerald-50 dark:bg-emerald-950 rounded-xl flex items-center justify-center text-emerald-600 mb-4 group-hover:bg-emerald-500 group-hover:text-primary-foreground transition-colors"><!-- token-migration-ok -->
+                            <div class="w-12 h-12 bg-emerald-50 rounded-xl flex items-center justify-center text-emerald-600 mb-4 group-hover:bg-emerald-500 group-hover:text-primary-foreground transition-colors"><!-- token-migration-ok -->
                                 <i data-lucide="cpu" class="h-6 w-6"></i>
                             </div>
                             <span class="text-sm font-semibold block text-foreground">Technology</span>
@@ -3350,7 +3350,7 @@ Would you like me to provide more details about the extracted elements or help y
                         </button>
                         <button type="button" data-domain="business_capability" data-prompt="Map our business capabilities and identify gaps"
                             class="domain-card group flex flex-col p-5 bg-card border border-border rounded-2xl text-left hover:border-purple-500 hover:shadow-lg transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                            <div class="w-12 h-12 bg-purple-50 dark:bg-purple-950 rounded-xl flex items-center justify-center text-primary mb-4 group-hover:bg-primary group-hover:text-primary-foreground transition-colors"><!-- token-migration-ok -->
+                            <div class="w-12 h-12 bg-purple-50 rounded-xl flex items-center justify-center text-primary mb-4 group-hover:bg-primary group-hover:text-primary-foreground transition-colors"><!-- token-migration-ok -->
                                 <i data-lucide="building-2" class="h-6 w-6"></i>
                             </div>
                             <span class="text-sm font-semibold block text-foreground">Capabilities</span>
@@ -3358,7 +3358,7 @@ Would you like me to provide more details about the extracted elements or help y
                         </button>
                         <button type="button" data-domain="gap_analysis" data-prompt="Identify gaps between current and target architecture"
                             class="domain-card group flex flex-col p-5 bg-card border border-border rounded-2xl text-left hover:border-orange-500 hover:shadow-lg transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                            <div class="w-12 h-12 bg-orange-50 dark:bg-orange-950 rounded-xl flex items-center justify-center text-orange-600 mb-4 group-hover:bg-orange-500 group-hover:text-primary-foreground transition-colors"><!-- token-migration-ok -->
+                            <div class="w-12 h-12 bg-orange-50 rounded-xl flex items-center justify-center text-orange-600 mb-4 group-hover:bg-orange-500 group-hover:text-primary-foreground transition-colors"><!-- token-migration-ok -->
                                 <i data-lucide="git-branch" class="h-6 w-6"></i>
                             </div>
                             <span class="text-sm font-semibold block text-foreground">Gap Analysis</span>
@@ -3366,7 +3366,7 @@ Would you like me to provide more details about the extracted elements or help y
                         </button>
                         <button type="button" data-domain="vendor_intelligence" data-prompt="Analyze our vendor portfolio and contract risks"
                             class="domain-card group flex flex-col p-5 bg-card border border-border rounded-2xl text-left hover:border-cyan-500 hover:shadow-lg transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                            <div class="w-12 h-12 bg-cyan-50 dark:bg-cyan-950 rounded-xl flex items-center justify-center text-cyan-600 mb-4 group-hover:bg-cyan-500 group-hover:text-primary-foreground transition-colors"><!-- token-migration-ok -->
+                            <div class="w-12 h-12 bg-cyan-50 rounded-xl flex items-center justify-center text-cyan-600 mb-4 group-hover:bg-cyan-500 group-hover:text-primary-foreground transition-colors"><!-- token-migration-ok -->
                                 <i data-lucide="briefcase" class="h-6 w-6"></i>
                             </div>
                             <span class="text-sm font-semibold block text-foreground">Vendors</span>

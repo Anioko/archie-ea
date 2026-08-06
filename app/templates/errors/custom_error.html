@@ -50,7 +50,8 @@
                     <i data-lucide="home" class="mr-2 h-4 w-4"></i>
                     Home
                 </a>
-                {% if current_user.is_admin %}
+                {# is_admin() is a method - without parens this is always truthy. #}
+                {% if current_user.is_admin() %}
                 <a href="{{ url_for('admin.index') }}" 
                    class="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2">
                     <i data-lucide="layout-dashboard" class="mr-2 h-4 w-4"></i>

@@ -211,6 +211,124 @@ function appPortfolio() {
       }
     },
 
+    // ── Bulk field updates (PLT-020 / PLT-021 / PLT-022) ───────────────────
+    // The three endpoints have existed all along - /applications/api/bulk-lifecycle,
+    // -assign-owner and -tag in modules/applications/routes/list_views.py - but no
+    // client ever called them. list_simple.html wired its Lifecycle, Owner and Tag
+    // buttons to bulkUpdateLifecycle() / promptBulkAssignOwner() / promptBulkTag(),
+    // none of which existed anywhere in the repo, so all three did nothing at all.
+
+    bulkUpdateLifecycle(stage) {
+      if (this.selectedIds.size === 0 || !stage) return;
+      const ids = [...this.selectedIds];
+      this._applyBulkField(
+        '/applications/api/bulk-lifecycle',
+        { ids, lifecycle_stage: stage },
+        (updated) => `Lifecycle set to ${stage} for ${updated} application${updated !== 1 ? 's' : ''}.`,
+        'Failed to update lifecycle'
+      );
+    },
+
+    promptBulkAssignOwner() {
+      if (this.selectedIds.size === 0) return;
+      const ids = [...this.selectedIds];
+      const self = this;
+      // owner_name is a plain string column, not a foreign key, so a text field
+      // matches the API. If it ever becomes a real user reference this must
+      // switch to the debounced picker against /api/users that DESIGN.md
+      // requires for entity fields.
+      this._promptForValue({
+        title: 'Assign Owner',
+        label: 'Owner name',
+        placeholder: 'Name of the accountable owner',
+        confirmText: 'Assign',
+        onConfirm(value) {
+          self._applyBulkField(
+            '/applications/api/bulk-assign-owner',
+            { ids, owner_name: value },
+            (updated) => `Owner set for ${updated} application${updated !== 1 ? 's' : ''}.`,
+            'Failed to assign owner'
+          );
+        }
+      });
+    },
+
+    promptBulkTag() {
+      if (this.selectedIds.size === 0) return;
+      const ids = [...this.selectedIds];
+      const self = this;
+      this._promptForValue({
+        title: 'Add Tag',
+        label: 'Tag',
+        placeholder: 'Tag to add to each selected application',
+        confirmText: 'Add Tag',
+        onConfirm(value) {
+          self._applyBulkField(
+            '/applications/api/bulk-tag',
+            { ids, tag: value },
+            (updated) => `Tag added to ${updated} application${updated !== 1 ? 's' : ''}.`,
+            'Failed to add tag'
+          );
+        }
+      });
+    },
+
+    /** Collect a single value in a modal. Never window.prompt() - DESIGN.md. */
+    _promptForValue(opts) {
+      const inputId = 'bulk-value-input-' + Date.now();
+      const modalId = window.modalManager.createModal({
+        title: opts.title,
+        size: 'small',
+        content:
+          '<label for="' + inputId + '" class="block text-sm font-medium text-foreground mb-2">' +
+          opts.label + '</label>' +
+          '<input id="' + inputId + '" type="text" autocomplete="off" placeholder="' +
+          opts.placeholder + '" class="flex h-9 w-full rounded-md border border-input ' +
+          'bg-transparent px-3 py-1 text-sm shadow-sm transition-colors ' +
+          'placeholder:text-muted-foreground focus-visible:outline-none ' +
+          'focus-visible:ring-1 focus-visible:ring-ring">',
+        buttons: [
+          { text: 'Cancel', class: 'px-4 py-2 text-sm font-medium text-foreground bg-background border border-border rounded-md hover:bg-muted', action: 'cancel', handler: function() {} },
+          { text: opts.confirmText, class: 'px-4 py-2 text-sm font-medium text-primary-foreground bg-primary border border-transparent rounded-md hover:bg-primary/90', action: 'confirm', handler: function() {
+            const field = document.getElementById(inputId);
+            const value = field ? field.value.trim() : '';
+            if (!value) {
+              Platform.toast.error(opts.label + ' is required.');
+              return;
+            }
+            opts.onConfirm(value);
+          } }
+        ]
+      });
+      window.modalManager.open(modalId);
+    },
+
+    async _applyBulkField(url, payload, describe, errorMsg) {
+      try {
+        const data = await Platform.fetch(url, { method: 'POST', body: payload, errorMsg });
+        if (data && data.success === false) {
+          Platform.toast.error(data.error || errorMsg);
+          return;
+        }
+        // Report the server's own updated_count, not the number requested. These
+        // endpoints skip ids they cannot find and return an `errors` list, so
+        // claiming every selected application changed would overstate the result.
+        const requested = payload.ids.length;
+        const updated = (data && typeof data.updated_count === 'number')
+          ? data.updated_count
+          : requested;
+        this.notify(describe(updated), updated === requested ? 'success' : 'warning');
+        if (data && Array.isArray(data.errors) && data.errors.length > 0) {
+          console.warn('[appPortfolio] bulk update reported errors:', data.errors);
+        }
+        this.clearSelection();
+        setTimeout(() => window.location.reload(), 800);
+      } catch (err) {
+        console.error('[appPortfolio] bulk update error:', err);
+        Platform.toast.error(errorMsg + '. Please try again.');
+      }
+    },
+
     // ── Mapping ────────────────────────────────────────────────────────────
     openMappingForApp(id, name, mappingType) {
       const normalizedType = mappingType || 'capability';

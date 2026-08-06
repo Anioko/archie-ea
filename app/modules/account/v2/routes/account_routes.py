@@ -78,11 +78,14 @@ def login():
             except Exception:  # fabricated-values-ok — audit log is fire-and-forget
                 pass
             flash("You are now logged in. Welcome back!", "success")
-            next_url = request.args.get("next", "")
-            # Prevent open redirect: only allow relative URLs
-            if not next_url or next_url.startswith("//") or "://" in next_url:
-                next_url = url_for("dashboard.overview")
-            return redirect(next_url)
+            # Prevent open redirect. The previous inline check (reject "//" and
+            # "://") let "/\evil.com" through, which browsers normalise to
+            # "//evil.com" and follow off-site.
+            from app.utils.safe_redirect import safe_next_url
+
+            return redirect(
+                safe_next_url(request.args.get("next"), url_for("dashboard.overview"))
+            )
         else:
             try:
                 audit_logger.log_authentication(success=False)
@@ -182,7 +185,10 @@ def change_password():
         flash(message, flash_cat)
         if success:
             return redirect(url_for("main.index"))
-    return render_template("account/manage.html", form=form)
+    # user= is required: account/manage.html reads user.first_name / user.last_name
+    # unconditionally, so omitting it raises UndefinedError and 500s the page. The
+    # manage() route above passes it; these two did not.
+    return render_template("account/manage.html", user=current_user, form=form)
 
 
 @account_bp_v2.route("/manage/change-email", methods=["GET", "POST"])
@@ -199,7 +205,10 @@ def change_email_request():
         flash(message, flash_cat)
         if success:
             return redirect(url_for("main.index"))
-    return render_template("account/manage.html", form=form)
+    # user= is required: account/manage.html reads user.first_name / user.last_name
+    # unconditionally, so omitting it raises UndefinedError and 500s the page. The
+    # manage() route above passes it; these two did not.
+    return render_template("account/manage.html", user=current_user, form=form)
 
 
 @account_bp_v2.route("/manage/change-email/<token>", methods=["GET", "POST"])

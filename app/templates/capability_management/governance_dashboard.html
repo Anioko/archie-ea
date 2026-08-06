@@ -253,7 +253,7 @@ function userSearchWidget(getVal, setVal) {
                             </td>
                             <td class="px-4 py-3 align-middle text-sm">
                                 <template x-if="row.business_owner">
-                                    <span class="text-emerald-600 dark:text-emerald-400" x-text="row.business_owner"></span>
+                                    <span class="text-emerald-600" x-text="row.business_owner"></span>
                                 </template>
                                 <template x-if="!row.business_owner">
                                     <span class="italic text-muted-foreground">Not assigned</span>
@@ -274,17 +274,17 @@ function userSearchWidget(getVal, setVal) {
                                     <span class="text-sm" x-text="maturityDisplay(row)"></span>
                                 </template>
                                 <template x-if="!maturityDisplay(row)">
-                                    <span class="italic text-amber-600 dark:text-amber-400 text-xs">Not assessed</span>
+                                    <span class="italic text-amber-600 text-xs">Not assessed</span>
                                 </template>
                             </td>
                             <td class="px-4 py-3 align-middle">
                                 <template x-if="row.needs_attention">
-                                    <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                                    <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-700">
                                         Needs attention
                                     </span>
                                 </template>
                                 <template x-if="!row.needs_attention">
-                                    <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
+                                    <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-emerald-100 text-emerald-700">
                                         Governed
                                     </span>
                                 </template>

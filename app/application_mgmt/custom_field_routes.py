@@ -293,21 +293,26 @@ def custom_field_edit(id):
             db.session.rollback()
             flash("Error updating custom field. Please try again.", "error")
 
-    # Prepare options for textarea display
-    options_text = ""
-    if field.options:
-        try:
-            options_list = json.loads(field.options)
-            options_text = "\n".join(options_list)
-        except Exception as e:
-            logger.debug("Failed to parse custom field options JSON: %s", e)
-
-    return render_template(
-        "application_mgmt/custom_field_form.html",
-        mode="edit",
-        field=field,
-        options_text=options_text,
+    # application_mgmt/custom_field_form.html is a WTForms template - it opens with
+    # form.hidden_tag() and makes 17 form.* references - but this route builds no
+    # form object (it reads request.form directly), and no CustomField*Form class
+    # exists anywhere in the tree. Rendering it therefore raised UndefinedError and
+    # returned a hard 500 on every GET of this page.
+    #
+    # custom_field_create() above hit the identical problem and resolved it at
+    # :150-152 with "Template requires WTForms, redirect to list page". Doing the
+    # same here makes the two halves of this admin screen behave consistently and
+    # turns a 500 into the already-accepted degraded behaviour.
+    #
+    # The real fix is to build the form (or rewrite the template against the raw
+    # field names this route already parses); until then editing is unavailable
+    # rather than broken.
+    flash(
+        "Editing a custom field is not available yet. Delete and recreate the "
+        "field to change it.",
+        "warning",
     )
+    return redirect(url_for("application_mgmt.custom_fields_list"))
 
 
 @application_mgmt.route("/admin/custom-fields/<int:id>/delete", methods=["POST"])

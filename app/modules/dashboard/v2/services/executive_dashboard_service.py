@@ -112,7 +112,8 @@ class ExecutiveDashboardService:
 
             total_caps = db.session.query(db.func.count(BusinessCapability.id)).scalar() or 0
             if total_caps == 0:
-                return {"total": 0, "covered": 0, "percentage": 0.0}
+                # 0 of 0 capabilities covered is undefined, not 0% coverage.
+                return {"total": 0, "covered": 0, "percentage": None}
 
             covered = (
                 db.session.query(db.func.count(db.distinct(SolutionCapabilityMapping.capability_id)))
@@ -121,8 +122,11 @@ class ExecutiveDashboardService:
             pct = round((covered / total_caps) * 100, 1)
             return {"total": total_caps, "covered": covered, "percentage": pct}
         except Exception as exc:
+            # Counts are None, not 0: the query failed, so nothing is known about
+            # the capability set. Returning zeros would render as a measured
+            # "0 capabilities, 0% covered".
             logger.warning("Executive dashboard: capability coverage unavailable: %s", exc)
-            return {"total": 0, "covered": 0, "percentage": 0.0}
+            return {"total": None, "covered": None, "percentage": None}
 
     def _get_portfolio_stats(self):
         """Counts for solutions, applications, vendors, ArchiMate elements."""
@@ -165,10 +169,25 @@ class ExecutiveDashboardService:
         - Risk posture (30%): inverse of high/critical risk ratio
         - Capability coverage (20%): % capabilities with solution mapping
         - Governance (10%): % ARB items resolved (approved or rejected)
+
+        A component is ``None`` when it could not be measured — the query failed,
+        or there is nothing to measure yet. It is deliberately not zero, and for
+        risk posture emphatically not 100: this method used to answer a database
+        failure with ``risk_posture = 100.0``, reporting a *perfect* enterprise
+        risk posture at exactly the moment it knew least. Per CLAUDE.md a value
+        the system does not have must reach the UI as ``None`` (rendered as an em
+        dash), because a plausible number is indistinguishable from a measured
+        one and the reader acts on it.
+
+        The composite is re-weighted over whichever components are available, and
+        is itself ``None`` when none of them are.
         """
         scores = {}
 
-        # Phase maturity: % of solutions in Phase C or later
+        # Phase maturity: % of solutions in Phase C or later.
+        # None rather than 0.0 for an empty portfolio: "0% past Phase B" reads as
+        # a portfolio stalled in Phase A, which is a different fact from having
+        # no solutions recorded at all.
         try:
             from app.models.solution_models import Solution
 
@@ -182,9 +201,10 @@ class ExecutiveDashboardService:
                 ) or 0
                 scores["phase_maturity"] = round((advanced / total) * 100, 1)
             else:
-                scores["phase_maturity"] = 0.0
+                scores["phase_maturity"] = None
         except Exception:
-            scores["phase_maturity"] = 0.0
+            logger.exception("health score: phase maturity could not be measured")
+            scores["phase_maturity"] = None
 
         # Risk posture: fewer high/critical is better
         try:
@@ -206,9 +226,13 @@ class ExecutiveDashboardService:
                 ) or 0
                 scores["risk_posture"] = round((1 - severe / total_risks) * 100, 1)
             else:
-                scores["risk_posture"] = 100.0
+                # No open risks recorded is not the same as a clean risk posture.
+                # On a new or unpopulated tenant it means nobody has captured any
+                # risk yet, and scoring that 100 tells a CTO the opposite.
+                scores["risk_posture"] = None
         except Exception:
-            scores["risk_posture"] = 100.0
+            logger.exception("health score: risk posture could not be measured")
+            scores["risk_posture"] = None
 
         # Capability coverage
         cap = self._get_capability_coverage()
@@ -267,18 +291,37 @@ class ExecutiveDashboardService:
                 gov_score = 40 + round(timeliness * 40) + round(approval_rate * 20)
                 scores["governance"] = min(100.0, float(gov_score))
         except Exception:
-            scores["governance"] = 0.0
+            # The `total_arb == 0 -> 0.0` above is a deliberate modelling choice
+            # documented in the comment block: no ARB activity genuinely means
+            # governance is not in use. A failed *query* is a different thing and
+            # must not borrow that zero.
+            logger.exception("health score: governance could not be measured")
+            scores["governance"] = None
 
-        # Weighted composite
-        composite = round(
-            scores["phase_maturity"] * 0.4
-            + scores["risk_posture"] * 0.3
-            + scores["capability_coverage"] * 0.2
-            + scores["governance"] * 0.1,
-            1,
+        # Weighted composite over the components that could actually be measured,
+        # with the weights renormalised across them. Averaging a missing component
+        # in as zero would drag the headline score down for a reason the reader
+        # cannot see; treating the whole composite as unavailable when one part is
+        # missing would hide the three that are known.
+        weights = {
+            "phase_maturity": 0.4,
+            "risk_posture": 0.3,
+            "capability_coverage": 0.2,
+            "governance": 0.1,
+        }
+        available = {k: w for k, w in weights.items() if scores.get(k) is not None}
+        total_weight = sum(available.values())
+        composite = (
+            round(sum(scores[k] * w for k, w in available.items()) / total_weight, 1)
+            if total_weight
+            else None
         )
 
         return {
             "composite_score": composite,
             "components": scores,
+            # Names the components that could not be measured, so the UI can say
+            # which part of the score is missing rather than silently showing a
+            # number derived from less than it appears.
+            "unavailable_components": sorted(k for k in weights if scores.get(k) is None),
         }

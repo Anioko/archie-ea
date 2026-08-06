@@ -32,8 +32,8 @@
                         type="button"
                         @click="selectViewpoint('{{ vp.id }}')"
                         :class="activeViewpoint === '{{ vp.id }}'
-                            ? 'bg-primary text-primary-foreground'
-                            : 'hover:bg-muted text-foreground'"
+ ? 'bg-primary text-primary-foreground'
+ : 'hover:bg-muted text-foreground'"
                         class="w-full text-left rounded-md px-3 py-2 text-xs font-medium transition-colors"
                         :aria-current="activeViewpoint === '{{ vp.id }}' ? 'true' : 'false'"
                     >
@@ -307,13 +307,13 @@ function archimateViewpoints() {
 
         layerColour(layer) {
             const map = {
-                strategy: 'bg-purple-50 dark:bg-purple-950/20',
-                motivation: 'bg-violet-50 dark:bg-violet-950/20',
-                business: 'bg-primary/5 dark:bg-blue-950/20',
-                application: 'bg-cyan-50 dark:bg-cyan-950/20',
-                technology: 'bg-emerald-500/5 dark:bg-green-950/20',
-                physical: 'bg-amber-50 dark:bg-amber-950/20',
-                implementation: 'bg-orange-50 dark:bg-orange-950/20',
+                strategy: 'bg-purple-50',
+                motivation: 'bg-violet-50',
+                business: 'bg-primary/5',
+                application: 'bg-cyan-50',
+                technology: 'bg-emerald-500/5',
+                physical: 'bg-amber-50',
+                implementation: 'bg-orange-50',
             };
             return map[layer] || 'bg-muted/20';
         },

@@ -15,6 +15,7 @@ from flask_login import current_user, login_required
 from app import db
 
 # Import capability framework blueprint
+from app.decorators import admin_required
 from app.main.capability_framework_routes import capability_framework_bp
 from app.main.framework_management_routes import framework_management_bp
 from app.models.business_capabilities import BusinessCapability
@@ -357,13 +358,24 @@ def integrations():
 
 @main.route("/settings")
 @login_required
+@admin_required
 def settings():
-    """System Settings - Application configuration and user preferences"""
+    """System Settings - Application configuration and user preferences.
+
+    Admin-only: the page reads and writes the global system_settings table, and
+    it is linked only from the Administration section of the sidebar.
+    """
     return render_template("settings/index.html")
 
 
 @main.route("/api/system-settings", methods=["GET"])
 @login_required
+# system_settings is a GLOBAL table with no organization_id, so this is not
+# tenant-scoped configuration - it is the platform's. With @login_required alone
+# any authenticated user of any tenant could read it. The page that consumes it
+# (settings/index.html) is linked only from the Administration sidebar section,
+# so gating it on admin matches how it is actually reached.
+@admin_required
 def get_system_settings():
     """Return all saved system settings as JSON."""
     try:
@@ -390,6 +402,9 @@ def get_system_settings():
 
 @main.route("/api/system-settings/save", methods=["POST"])
 @login_required
+# The write half of the same global table: with @login_required alone, any
+# authenticated user could rewrite platform-wide configuration for every tenant.
+@admin_required
 def save_system_settings():
     """Persist system settings to the database."""
     try:

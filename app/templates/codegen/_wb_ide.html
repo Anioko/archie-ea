@@ -636,8 +636,8 @@
                                                             :title="'Fix: ' + dim.hint"
                                                             class="flex items-center gap-0.5 text-[9px] font-semibold px-1.5 py-0.5 rounded border transition-all"
                                                             :class="(dimFix[dim.key] && dimFix[dim.key].loading)
-                                                                ? 'border-primary/30 text-primary/60 cursor-wait'
-                                                                : 'border-primary/40 text-primary hover:bg-primary/10 hover:border-primary/60 cursor-pointer'">
+ ? 'border-primary/30 text-primary/60 cursor-wait'
+ : 'border-primary/40 text-primary hover:bg-primary/10 hover:border-primary/60 cursor-pointer'">
                                                             <template x-if="dimFix[dim.key] && dimFix[dim.key].loading">
                                                                 <svg class="w-2.5 h-2.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10" stroke-opacity=".25"/><path d="M12 2a10 10 0 0 1 10 10" /></svg>
                                                             </template>
@@ -676,10 +676,10 @@
                                         <template x-for="(rec, i) in qualityDetails.recommendations" :key="i">
                                             <div class="rounded-lg overflow-hidden"
                                                  :class="{
-                                                     'bg-destructive/5 border border-destructive/20':     (rec.icon||'warning') === 'error',
-                                                     'bg-sky-500/5 border border-sky-500/20':     (rec.icon||'warning') === 'info',
-                                                     'bg-amber-500/5 border border-amber-500/20': (rec.icon||'warning') !== 'error' && (rec.icon||'warning') !== 'info'
-                                                 }">
+ 'bg-destructive/5 border border-destructive/20': (rec.icon||'warning') === 'error',
+ 'bg-sky-500/5 border border-sky-500/20': (rec.icon||'warning') === 'info',
+ 'bg-amber-500/5 border border-amber-500/20': (rec.icon||'warning') !== 'error' && (rec.icon||'warning') !== 'info'
+ }">
                                                 <div class="flex items-start gap-2 px-3 py-2">
                                                     <!-- severity icon -->
                                                     <template x-if="(rec.icon||'warning') === 'error'">
@@ -698,8 +698,8 @@
                                                             title="Ask AI to implement this recommendation"
                                                             class="shrink-0 flex items-center gap-0.5 text-[9px] font-semibold px-1.5 py-0.5 rounded border transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                                                             :class="(recFix[i] && recFix[i].loading)
-                                                                ? 'border-primary/30 text-primary/60 cursor-wait'
-                                                                : 'border-primary/40 text-primary hover:bg-primary/10 hover:border-primary/60 cursor-pointer'">
+ ? 'border-primary/30 text-primary/60 cursor-wait'
+ : 'border-primary/40 text-primary hover:bg-primary/10 hover:border-primary/60 cursor-pointer'">
                                                         <template x-if="recFix[i] && recFix[i].loading">
                                                             <svg class="w-2.5 h-2.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10" stroke-opacity=".25"/><path d="M12 2a10 10 0 0 1 10 10" /></svg>
                                                         </template>
@@ -730,7 +730,7 @@
                                             <div class="flex items-start gap-2 px-3 py-2 rounded-lg"
                                                  :class="v.severity === 'error' ? 'bg-destructive/5 border border-destructive/20' : 'bg-amber-500/5 border border-amber-500/20'">
                                                 <span class="shrink-0 text-[9px] font-bold uppercase px-1 py-0.5 rounded"
-                                                      :class="v.severity === 'error' ? 'bg-destructive/10 text-destructive dark:bg-destructive/30 dark:text-red-400' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'"
+                                                      :class="v.severity === 'error' ? 'bg-destructive/10 text-destructive' : 'bg-amber-100 text-amber-700'"
                                                       x-text="v.severity"></span>
                                                 <div class="flex-1 min-w-0">
                                                     <p class="text-[11px] font-medium text-foreground leading-snug" x-text="v.constraint"></p>
@@ -1214,7 +1214,7 @@
                     <!-- Deploy to Vercel (only when shadcn-nextjs frontend selected) -->
                     <div x-show="fileList.length > 0 && fileList.some(f => f.startsWith('frontend/'))" x-cloak>
                         <div class="flex items-center gap-3 mb-2">
-                            <div class="w-1 h-5 rounded-full bg-foreground dark:bg-background"></div>
+                            <div class="w-1 h-5 rounded-full bg-foreground"></div>
                             <p class="text-sm font-semibold text-foreground">Deploy Frontend to Vercel</p>
                         </div>
                         <p class="text-[10px] text-muted-foreground mb-2.5 leading-relaxed">Deploy the generated Next.js frontend to Vercel for free. Vercel auto-detects Next.js from <code class="font-mono bg-muted px-1 rounded">frontend/vercel.json</code> in your repo.</p>
@@ -1877,8 +1877,8 @@
                                         x-init="$nextTick(() => window.lucide && window.lucide.createIcons())"
                                         class="inline-flex items-center gap-1.5 h-7 px-3 rounded-md text-xs font-semibold transition-all"
                                         :class="previewModalTab === tab.key
-                                            ? 'bg-background text-foreground shadow-sm'
-                                            : 'text-muted-foreground hover:text-foreground hover:bg-background/50'">
+ ? 'bg-background text-foreground shadow-sm'
+ : 'text-muted-foreground hover:text-foreground hover:bg-background/50'">
                                     <i :data-lucide="tab.icon" class="w-3.5 h-3.5"></i><span x-text="tab.label"></span>
                                 </button>
                             </template>
@@ -1895,8 +1895,8 @@
                                         x-init="$nextTick(() => window.lucide && window.lucide.createIcons())"
                                         class="h-7 w-9 rounded text-sm transition-all flex items-center justify-center"
                                         :class="previewDevice === d.key
-                                            ? 'bg-background text-foreground shadow-sm'
-                                            : 'text-muted-foreground hover:text-foreground'">
+ ? 'bg-background text-foreground shadow-sm'
+ : 'text-muted-foreground hover:text-foreground'">
                                     <i :data-lucide="d.ico" class="w-4 h-4"></i></button>
                             </template>
                         </div>

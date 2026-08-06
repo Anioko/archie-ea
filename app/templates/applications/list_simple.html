@@ -31,34 +31,34 @@
   ============================================================
 #}
 {%- set STATUS_MAP = {
-  'production':        {'label': 'Production',       'cls': 'bg-success/10 text-emerald-800 dark:bg-success/30 dark:text-success'},
-  'active':            {'label': 'Active',            'cls': 'bg-success/10 text-emerald-800 dark:bg-success/30 dark:text-success'},
-  'done':              {'label': 'Done',              'cls': 'bg-success/10 text-emerald-800 dark:bg-success/30 dark:text-success'},
-  'operational':       {'label': 'Operational',       'cls': 'bg-success/10 text-emerald-800 dark:bg-success/30 dark:text-success'},
-  '2.1 strategic':     {'label': '2.1 STRATEGIC',     'cls': 'bg-success/10 text-emerald-800 dark:bg-success/30 dark:text-success'},
-  '2.2 tactical':      {'label': '2.2 TACTICAL',      'cls': 'bg-primary/10 text-primary dark:bg-primary/30 dark:text-primary/80'},
-  '1. undetermined':   {'label': '1. UNDETERMINED',   'cls': 'bg-muted text-muted-foreground dark:bg-foreground dark:text-muted-foreground'},
-  '3. sunset':         {'label': '3. SUNSET',         'cls': 'bg-warning/10 text-warning dark:bg-warning/30 dark:text-warning/80'},
-  '4.1 decom decided': {'label': '4.1 DECOM DECIDED', 'cls': 'bg-destructive/10 text-destructive dark:bg-destructive/30 dark:text-destructive/80'},
-  '4.2 decom planned': {'label': '4.2 DECOM PLANNED', 'cls': 'bg-destructive/10 text-destructive dark:bg-destructive/30 dark:text-destructive/80'},
-  '4.3 read-only':     {'label': '4.3 READ-ONLY',     'cls': 'bg-destructive/10 text-destructive dark:bg-destructive/30 dark:text-destructive/80'},
-  '4.4 stopped':       {'label': '4.4 STOPPED',       'cls': 'bg-destructive/10 text-destructive dark:bg-destructive/30 dark:text-destructive/80'},
-  '5. decommissioned': {'label': '5. DECOMMISSIONED', 'cls': 'bg-destructive/10 text-destructive dark:bg-destructive/30 dark:text-destructive/80'},
-  'development':       {'label': 'Development',       'cls': 'bg-primary/10 text-primary dark:bg-primary/30 dark:text-primary/80'},
-  'testing':           {'label': 'Testing',            'cls': 'bg-primary/10 text-primary dark:bg-primary/30 dark:text-primary/80'},
-  'staging':           {'label': 'Staging',            'cls': 'bg-primary/10 text-primary dark:bg-primary/30 dark:text-primary/80'},
-  'in_process':        {'label': 'In Process',         'cls': 'bg-primary/10 text-primary dark:bg-primary/30 dark:text-primary/80'},
-  'planned':           {'label': 'Planned',            'cls': 'bg-muted text-muted-foreground dark:bg-foreground dark:text-muted-foreground'},
-  'not_started':       {'label': 'Not Started',        'cls': 'bg-muted text-muted-foreground dark:bg-foreground dark:text-muted-foreground'},
-  'retired':           {'label': 'Retired',            'cls': 'bg-destructive/10 text-destructive dark:bg-destructive/30 dark:text-destructive/80'},
-  'deprecated':        {'label': 'Deprecated',         'cls': 'bg-destructive/10 text-destructive dark:bg-destructive/30 dark:text-destructive/80'},
-  'decommissioned':    {'label': 'Decommissioned',     'cls': 'bg-destructive/10 text-destructive dark:bg-destructive/30 dark:text-destructive/80'}
+  'production':        {'label': 'Production',       'cls': 'bg-success/10 text-emerald-800'},
+  'active':            {'label': 'Active',            'cls': 'bg-success/10 text-emerald-800'},
+  'done':              {'label': 'Done',              'cls': 'bg-success/10 text-emerald-800'},
+  'operational':       {'label': 'Operational',       'cls': 'bg-success/10 text-emerald-800'},
+  '2.1 strategic':     {'label': '2.1 STRATEGIC',     'cls': 'bg-success/10 text-emerald-800'},
+  '2.2 tactical':      {'label': '2.2 TACTICAL',      'cls': 'bg-primary/10 text-primary'},
+  '1. undetermined':   {'label': '1. UNDETERMINED',   'cls': 'bg-muted text-muted-foreground'},
+  '3. sunset':         {'label': '3. SUNSET',         'cls': 'bg-warning/10 text-warning'},
+  '4.1 decom decided': {'label': '4.1 DECOM DECIDED', 'cls': 'bg-destructive/10 text-destructive'},
+  '4.2 decom planned': {'label': '4.2 DECOM PLANNED', 'cls': 'bg-destructive/10 text-destructive'},
+  '4.3 read-only':     {'label': '4.3 READ-ONLY',     'cls': 'bg-destructive/10 text-destructive'},
+  '4.4 stopped':       {'label': '4.4 STOPPED',       'cls': 'bg-destructive/10 text-destructive'},
+  '5. decommissioned': {'label': '5. DECOMMISSIONED', 'cls': 'bg-destructive/10 text-destructive'},
+  'development':       {'label': 'Development',       'cls': 'bg-primary/10 text-primary'},
+  'testing':           {'label': 'Testing',            'cls': 'bg-primary/10 text-primary'},
+  'staging':           {'label': 'Staging',            'cls': 'bg-primary/10 text-primary'},
+  'in_process':        {'label': 'In Process',         'cls': 'bg-primary/10 text-primary'},
+  'planned':           {'label': 'Planned',            'cls': 'bg-muted text-muted-foreground'},
+  'not_started':       {'label': 'Not Started',        'cls': 'bg-muted text-muted-foreground'},
+  'retired':           {'label': 'Retired',            'cls': 'bg-destructive/10 text-destructive'},
+  'deprecated':        {'label': 'Deprecated',         'cls': 'bg-destructive/10 text-destructive'},
+  'decommissioned':    {'label': 'Decommissioned',     'cls': 'bg-destructive/10 text-destructive'}
 } -%}
 {%- set CRIT_MAP = {
-  'critical': 'bg-destructive/10 text-destructive dark:bg-destructive/30 dark:text-destructive/80',
-  'high':     'bg-warning/10 text-warning dark:bg-warning/30 dark:text-warning/80',
-  'medium':   'bg-warning/10 text-warning dark:bg-warning/30 dark:text-warning/80',
-  'low':      'bg-muted text-muted-foreground dark:bg-foreground dark:text-muted-foreground'
+  'critical': 'bg-destructive/10 text-destructive',
+  'high':     'bg-warning/10 text-warning',
+  'medium':   'bg-warning/10 text-warning',
+  'low':      'bg-muted text-muted-foreground'
 } -%}
 
 <div
@@ -301,29 +301,18 @@
     <div class="hidden lg:block overflow-x-auto">
       {% if applications %}
 
-    <!-- FRAG-007: Bulk Actions Bar -->
-    <div x-data="{ selectedApps: [], bulkAction: '', bulkLoading: false }" class="mb-4" x-show="selectedApps.length > 0" x-cloak>
-        <div class="flex items-center gap-3 p-3 rounded-lg border border-primary/20 bg-primary/5">
-            <span class="text-sm font-medium text-foreground" x-text="selectedApps.length + ' selected'"></span>
-            <select x-model="bulkAction" class="h-8 rounded-md border border-input bg-background px-3 text-sm" aria-label="Choose action...">
-                <option value="">Choose action...</option>
-                <option value="lifecycle">Change Lifecycle</option>
-                <option value="tag">Add Tag</option>
-                <option value="owner">Assign Owner</option>
-            </select>
-            <button type="button" @click="if(bulkAction && !bulkLoading) {
-                bulkLoading = true;
-                const url = '/applications/api/bulk-' + (bulkAction === 'lifecycle' ? 'lifecycle' : bulkAction === 'tag' ? 'tag' : 'assign-owner');
-                fetch(url, {method:'POST', headers:{'Content-Type':'application/json', 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''},
-                    body: JSON.stringify({application_ids: selectedApps, value: prompt('Enter value:')})
-                }).then(r => r.json()).then(d => { bulkLoading = false; if(d.success) location.reload(); else Platform.toast.error(d.error || 'Failed'); })
-                .catch(() => { bulkLoading = false; });
-            }" :disabled="!bulkAction || bulkLoading"
-                class="inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors">
-                Apply
-            </button>
-        </div>
-    </div>
+    {# A second "FRAG-007 Bulk Actions Bar" used to sit here. It was removed
+       rather than repaired, because it could never have worked and duplicated
+       the working toolbar above:
+         - it opened its own x-data with `selectedApps: []`, a scope no checkbox
+           on this page ever wrote to, so x-show="selectedApps.length > 0" was
+           permanently false and the bar never rendered;
+         - it posted {application_ids, value} while all three endpoints read
+           {ids, lifecycle_stage|owner_name|tag}, so every field was ignored;
+         - it collected the value with window.prompt(), which DESIGN.md forbids.
+       The Lifecycle / Owner / Tag buttons in the toolbar above now call the real
+       bulkUpdateLifecycle() / promptBulkAssignOwner() / promptBulkTag() in
+       static/js/applications/list.js. #}
 
 <table class="w-full border-collapse" data-testid="applications-table">
         <thead>
@@ -354,7 +343,7 @@
           {%- set sk = (app.lifecycle_status or app.deployment_status or 'planned').lower() -%}
           {%- set si = STATUS_MAP.get(sk, {'label': app.lifecycle_status or app.deployment_status or 'Unknown', 'cls': 'bg-muted text-muted-foreground'}) -%}
           {%- set ck = (app.business_criticality or '').lower() -%}
-          {%- set cc = CRIT_MAP.get(ck, 'bg-muted text-muted-foreground dark:bg-foreground dark:text-muted-foreground') -%}
+          {%- set cc = CRIT_MAP.get(ck, 'bg-muted text-muted-foreground') -%}
           {%- set pc = app.capability_mappings[0] if app.capability_mappings else none -%}
           <tr class="border-b hover:bg-muted/30 transition-colors" data-app-id="{{ app.id }}" data-testid="app-row-{{ app.id }}">
             <td class="px-4 py-3">

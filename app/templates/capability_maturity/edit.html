@@ -54,10 +54,10 @@
                             <dd class="text-sm text-foreground">
                                 {% if capability.strategic_importance %}
                                     <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium 
-                                        {% if capability.strategic_importance == 'critical' %}bg-destructive/10 text-destructive
-                                        {% elif capability.strategic_importance == 'high' %}bg-warning/10 text-warning dark:text-warning/80
-                                        {% elif capability.strategic_importance == 'medium' %}bg-warning/10 text-warning dark:text-warning/60
-                                        {% else %}bg-muted text-foreground{% endif %}">
+ {% if capability.strategic_importance == 'critical' %}bg-destructive/10 text-destructive
+ {% elif capability.strategic_importance == 'high' %}bg-warning/10 text-warning
+ {% elif capability.strategic_importance == 'medium' %}bg-warning/10 text-warning
+ {% else %}bg-muted text-foreground{% endif %}">
                                         {{ capability.strategic_importance }}
                                     </span>
                                 {% else %}

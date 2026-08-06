@@ -221,17 +221,17 @@
     {% if review.decision == 'approved_with_conditions' and conditions_with_flags %}
     <!-- ARB-102: Conditions Tracker -->
     <div x-data="conditionsTracker({{ conditions_with_flags | tojson }}, {{ review.id }})"
-         class="mb-6 rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30">
-        <div class="flex items-center justify-between px-4 py-3 border-b border-amber-200 dark:border-amber-800">
+         class="mb-6 rounded-lg border border-amber-200 bg-amber-50">
+        <div class="flex items-center justify-between px-4 py-3 border-b border-amber-200">
             <div class="flex items-center gap-2">
                 <i data-lucide="list-checks" class="h-4 w-4 text-amber-600"></i>
-                <h3 class="font-semibold text-sm text-amber-800 dark:text-amber-200">Approval Conditions</h3>
-                <span class="text-xs px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300"
+                <h3 class="font-semibold text-sm text-amber-800">Approval Conditions</h3>
+                <span class="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700"
                       x-text="conditions.filter(c=>c.status!=='done').length + ' open'"></span>
             </div>
-            <span class="text-xs text-amber-600 dark:text-amber-400">All conditions must be met before approval takes full effect</span>
+            <span class="text-xs text-amber-600">All conditions must be met before approval takes full effect</span>
         </div>
-        <div class="divide-y divide-amber-100 dark:divide-amber-900">
+        <div class="divide-y divide-amber-100">
             <template x-for="(cond, idx) in conditions" :key="idx">
                 <div class="px-4 py-3 flex flex-col sm:flex-row sm:items-start gap-3"
                      :class="cond.overdue ? 'border-l-4 border-destructive' : ''">
@@ -255,10 +255,10 @@
                     <div class="flex items-center gap-2 flex-shrink-0">
                         <select class="text-xs border rounded px-2 py-1 bg-background focus:outline-none focus:ring-1 focus:ring-primary"
                                 :class="{
-                                    'text-emerald-700 border-green-300': cond.status === 'done',
-                                    'text-amber-700 border-amber-300': cond.status === 'in_progress',
-                                    'text-muted-foreground border-border': cond.status === 'open'
-                                }"
+ 'text-emerald-700 border-green-300': cond.status === 'done',
+ 'text-amber-700 border-amber-300': cond.status === 'in_progress',
+ 'text-muted-foreground border-border': cond.status === 'open'
+ }"
                                 @change="patch(idx, 'status', $event.target.value)">
                             <option value="open" :selected="cond.status === 'open'">Open</option>
                             <option value="in_progress" :selected="cond.status === 'in_progress'">In Progress</option>
@@ -278,15 +278,15 @@
             </template>
         </div>
         <!-- Progress bar -->
-        <div class="px-4 py-2 border-t border-amber-200 dark:border-amber-800 flex items-center gap-3">
-            <div class="flex-1 bg-amber-100 dark:bg-amber-900 rounded-full h-1.5">
+        <div class="px-4 py-2 border-t border-amber-200 flex items-center gap-3">
+            <div class="flex-1 bg-amber-100 rounded-full h-1.5">
                 <div class="bg-emerald-500 h-1.5 rounded-full transition-all duration-300"
                      :style="'width:' + (conditions.filter(c=>c.status==='done').length / conditions.length * 100) + '%'"></div>
             </div>
-            <span class="text-xs text-amber-700 dark:text-amber-300"
+            <span class="text-xs text-amber-700"
                   x-text="conditions.filter(c=>c.status==='done').length + '/' + conditions.length + ' done'"></span>
             <span x-show="saveMsg" x-text="saveMsg"
-                  class="text-xs text-emerald-600 dark:text-green-400 transition-opacity"></span>
+                  class="text-xs text-emerald-600 transition-opacity"></span>
         </div>
     </div>
     {% endif %}
@@ -414,9 +414,9 @@
                             {% endif %}
                             {% if principle.enforcement_level %}
                             <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium
-                                {% if principle.enforcement_level|upper == 'MUST' %}bg-destructive/10 text-destructive border border-destructive/30
-                                {% elif principle.enforcement_level|upper == 'SHOULD' %}bg-warning/10 text-warning border border-warning/30
-                                {% else %}bg-muted text-muted-foreground border border-border{% endif %}">
+ {% if principle.enforcement_level|upper == 'MUST' %}bg-destructive/10 text-destructive border border-destructive/30
+ {% elif principle.enforcement_level|upper == 'SHOULD' %}bg-warning/10 text-warning border border-warning/30
+ {% else %}bg-muted text-muted-foreground border border-border{% endif %}">
                                 {{ principle.enforcement_level|upper }}
                             </span>
                             {% endif %}

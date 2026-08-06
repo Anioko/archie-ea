@@ -1141,7 +1141,10 @@ def change_request_detail(cr_id):
     """Detail view for a single change request (wires arb/change_request_detail.html)."""
     from app.models.architecture_decision import ArchitectureChangeRequest
     change_request = ArchitectureChangeRequest.query.get_or_404(cr_id)
-    return render_template("arb/change_request_detail.html", change_request=change_request)
+    # The template refers to this as `cr` throughout; passing it as
+    # `change_request` raised UndefinedError, so every row of the change-request
+    # list at arb/change_requests.html:106 linked to a 500.
+    return render_template("arb/change_request_detail.html", cr=change_request)
 
 
 @arb_bp.route("/change-requests/new", methods=["GET", "POST"])

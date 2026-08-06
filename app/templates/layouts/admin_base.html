@@ -275,7 +275,7 @@
                     <template x-for="card in (roleCards[selectedRole] || [])" :key="card.title">
                         <a :href="card.href" tabindex="-1" class="flex items-start gap-3 rounded-xl border border-border bg-background p-4 hover:border-primary/30 transition-colors block">
                             <div class="shrink-0 w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
-                                <i :data-lucide="card.icon" class="h-4.5 w-4.5 text-primary" aria-hidden="true"></i>
+                                <i :data-lucide="card.icon" class="h-4 w-4 text-primary" aria-hidden="true"></i>
                             </div>
                             <div>
                                 <p class="text-sm font-medium text-foreground" x-text="card.title"></p>

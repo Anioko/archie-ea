@@ -65,6 +65,7 @@ Depends on: ENABLE_NORTH_STAR_NAV (Phase 1)
         {# ================================================================
            SECTION 1: HOME
            ================================================================ #}
+        {% if can_access_section(current_user, 'home') %}
         <div class="px-3 py-2" x-show="matchesSearch('Home Dashboard Overview Health')" x-cloak>
             <div class="mb-2 px-2 text-xs font-semibold tracking-tight text-muted-foreground uppercase">
                 Home
@@ -80,10 +81,12 @@ Depends on: ENABLE_NORTH_STAR_NAV (Phase 1)
                 </a>
             </div>
         </div>
+        {% endif %}
 
         {# ================================================================
            SECTION 2: SOLUTIONS (TOGAF ADM Cycle)
            ================================================================ #}
+        {% if can_access_section(current_user, 'solutions') %}
         <div class="px-3 py-2" x-show="matchesSearch('Solutions Create AI Chat Architecture Assistant Design ADM')" x-cloak>
             <div class="mb-2 px-2 text-xs font-semibold tracking-tight text-muted-foreground uppercase">
                 Solutions
@@ -129,10 +132,12 @@ Depends on: ENABLE_NORTH_STAR_NAV (Phase 1)
                 </a>
             </div>
         </div>
+        {% endif %}
 
         {# ================================================================
            SECTION 3: PORTFOLIO (Operational Assets)
            ================================================================ #}
+        {% if can_access_section(current_user, 'portfolio') %}
         <div class="px-3 py-2" x-show="matchesSearch('Portfolio Applications Vendors Rationalization Cost')" x-cloak>
             <div class="mb-2 px-2 text-xs font-semibold tracking-tight text-muted-foreground uppercase">
                 Portfolio
@@ -179,10 +184,12 @@ Depends on: ENABLE_NORTH_STAR_NAV (Phase 1)
                 </div>
             </div>
         </div>
+        {% endif %}
 
         {# ================================================================
            SECTION 4: ARCHITECTURE (ArchiMate 3.2 - All 6 Layers)
            ================================================================ #}
+        {% if can_access_section(current_user, 'architecture') %}
         <div class="px-3 py-2" x-show="matchesSearch('Architecture ArchiMate Elements Layers Models Viewpoint Motivation Strategy Business Application Technology Physical Implementation')" x-cloak>
             <div class="mb-2 px-2 text-xs font-semibold tracking-tight text-muted-foreground uppercase">
                 Architecture
@@ -356,10 +363,12 @@ Depends on: ENABLE_NORTH_STAR_NAV (Phase 1)
                 </div>
             </div>
         </div>
+        {% endif %}
 
         {# ================================================================
            SECTION 5: GOVERNANCE
            ================================================================ #}
+        {% if can_access_section(current_user, 'governance') %}
         <div class="px-3 py-2" x-show="matchesSearch('Governance ARB Review Board Compliance Risk Impact')" x-cloak>
             <div class="mb-2 px-2 text-xs font-semibold tracking-tight text-muted-foreground uppercase">
                 Governance
@@ -375,10 +384,12 @@ Depends on: ENABLE_NORTH_STAR_NAV (Phase 1)
                 </a>
             </div>
         </div>
+        {% endif %}
 
         {# ================================================================
            SECTION 6: DATA & INTEGRATION
            ================================================================ #}
+        {% if can_access_section(current_user, 'data_integration') %}
         <div class="px-3 py-2" x-show="matchesSearch('Data Integration Import Export Batch')" x-cloak>
             <div class="mb-2 px-2 text-xs font-semibold tracking-tight text-muted-foreground uppercase">
                 Data & Integration
@@ -394,11 +405,113 @@ Depends on: ENABLE_NORTH_STAR_NAV (Phase 1)
                 </a>
             </div>
         </div>
+        {% endif %}
 
         {# ================================================================
-           SECTION 7: ADMINISTRATION (Platform Admin Only)
+           SECTION 7: PROCUREMENT
+
+           New. app/modules/procurement/ has 14 working, @requires_procurement-
+           guarded routes and nine templates with real empty states, and until now
+           NO link anywhere in the product pointed at any of them - reachable only
+           by typing the URL. role_access.py grants this section to procurement,
+           portfolio_manager and platform_admin.
+
+           The blueprint registers non-fatally, so every url_for is guarded per
+           CLAUDE.md; with the global BuildError override a missing endpoint would
+           otherwise render as a silent "#".
            ================================================================ #}
-        {% if current_user.is_admin %}
+        {% if can_access_section(current_user, 'procurement') and 'procurement.index' in flask.current_app.view_functions %}
+        <div class="px-3 py-2" x-show="matchesSearch('Procurement Contracts Licences Licenses Renewals Spend Compliance Vendor')" x-cloak>
+            <div class="mb-2 px-2 text-xs font-semibold tracking-tight text-muted-foreground uppercase">
+                Procurement
+            </div>
+            <div class="space-y-1">
+                <a href="{{ url_for('procurement.index') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'procurement.index' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}">
+                    <i data-lucide="shopping-cart" class="h-4 w-4"></i>
+                    <span>Overview</span>
+                </a>
+                {% if 'procurement.contracts_list' in flask.current_app.view_functions %}
+                <a href="{{ url_for('procurement.contracts_list') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'procurement.contracts_list' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}">
+                    <i data-lucide="file-text" class="h-4 w-4"></i>
+                    <span>Contracts</span>
+                </a>
+                {% endif %}
+                {% if 'procurement.licenses_list' in flask.current_app.view_functions %}
+                <a href="{{ url_for('procurement.licenses_list') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'procurement.licenses_list' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}">
+                    <i data-lucide="key-round" class="h-4 w-4"></i>
+                    <span>Licences</span>
+                </a>
+                {% endif %}
+                {% if 'procurement.renewals_dashboard' in flask.current_app.view_functions %}
+                <a href="{{ url_for('procurement.renewals_dashboard') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'procurement.renewals_dashboard' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}">
+                    <i data-lucide="calendar-clock" class="h-4 w-4"></i>
+                    <span>Renewals</span>
+                </a>
+                {% endif %}
+                {% if 'procurement.spend_analytics' in flask.current_app.view_functions %}
+                <a href="{{ url_for('procurement.spend_analytics') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'procurement.spend_analytics' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}">
+                    <i data-lucide="pound-sterling" class="h-4 w-4"></i>
+                    <span>Spend</span>
+                </a>
+                {% endif %}
+                {% if 'procurement.compliance_dashboard' in flask.current_app.view_functions %}
+                <a href="{{ url_for('procurement.compliance_dashboard') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'procurement.compliance_dashboard' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}">
+                    <i data-lucide="clipboard-check" class="h-4 w-4"></i>
+                    <span>Compliance</span>
+                </a>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+        {# ================================================================
+           SECTION 8: MY APPLICATIONS
+
+           New, and the same story: app/modules/my_applications/ has six working,
+           @requires_application_owner-guarded routes that nothing linked to.
+           This is the Application Manager's entire product surface.
+           ================================================================ #}
+        {% if can_access_section(current_user, 'my_applications') and 'my_applications.dashboard' in flask.current_app.view_functions %}
+        <div class="px-3 py-2" x-show="matchesSearch('My Applications Owned Health Roadmap Impact')" x-cloak>
+            <div class="mb-2 px-2 text-xs font-semibold tracking-tight text-muted-foreground uppercase">
+                My Applications
+            </div>
+            <div class="space-y-1">
+                <a href="{{ url_for('my_applications.dashboard') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'my_applications.dashboard' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}">
+                    <i data-lucide="layout-dashboard" class="h-4 w-4"></i>
+                    <span>Overview</span>
+                </a>
+                {% if 'my_applications.app_list' in flask.current_app.view_functions %}
+                <a href="{{ url_for('my_applications.app_list') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'my_applications.app_list' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}">
+                    <i data-lucide="list" class="h-4 w-4"></i>
+                    <span>My List</span>
+                </a>
+                {% endif %}
+                {% if 'my_applications.health_overview' in flask.current_app.view_functions %}
+                <a href="{{ url_for('my_applications.health_overview') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'my_applications.health_overview' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}">
+                    <i data-lucide="heart-pulse" class="h-4 w-4"></i>
+                    <span>Health</span>
+                </a>
+                {% endif %}
+                {% if 'my_applications.roadmap_impact' in flask.current_app.view_functions %}
+                <a href="{{ url_for('my_applications.roadmap_impact') }}" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground {% if request.endpoint == 'my_applications.roadmap_impact' %}bg-accent text-accent-foreground font-medium{% else %}text-muted-foreground{% endif %}">
+                    <i data-lucide="git-branch" class="h-4 w-4"></i>
+                    <span>Roadmap Impact</span>
+                </a>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+        {# ================================================================
+           SECTION 9: ADMINISTRATION (Platform Admin Only)
+           ================================================================ #}
+        {# is_admin() is a METHOD (app/models/user.py:208). Without the parentheses
+           Jinja evaluates the bound method object, which is always truthy, so this
+           section - Users, API keys, Seed Management, Platform Settings - rendered
+           for every authenticated user of every role. AnonymousUser.is_admin() also
+           exists and returns False, so calling it is safe on both paths. #}
+        {% if current_user.is_admin() %}
         <div class="px-3 py-2" x-show="matchesSearch('Administration Users Organizations Settings API')" x-cloak>
             <div class="mb-2 px-2 text-xs font-semibold tracking-tight text-muted-foreground uppercase">
                 Administration

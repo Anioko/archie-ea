@@ -445,19 +445,27 @@ if (!window._dataTableEngine) {
 
             {# Navigation buttons #}
             <div class="flex items-center gap-1">
+                {# aria-label is required, not optional: the icon carries aria-hidden,
+                   so without a label these announce as "button" with no name. This is
+                   the shared pagination control, so every data table in the product
+                   inherits whatever it does. #}
                 <button type="button" @click="firstPage()" :disabled="currentPage <= 1"
+                        aria-label="Go to first page"
                         class="hidden lg:inline-flex items-center justify-center rounded-md border border-input bg-background h-8 w-8 hover:bg-accent transition-colors disabled:opacity-50 disabled:pointer-events-none">
                     <i data-lucide="chevrons-left" class="h-4 w-4" aria-hidden="true"></i>
                 </button>
                 <button type="button" @click="previousPage()" :disabled="currentPage <= 1"
+                        aria-label="Go to previous page"
                         class="inline-flex items-center justify-center rounded-md border border-input bg-background h-8 w-8 hover:bg-accent transition-colors disabled:opacity-50 disabled:pointer-events-none">
                     <i data-lucide="chevron-left" class="h-4 w-4" aria-hidden="true"></i>
                 </button>
                 <button type="button" @click="nextPage()" :disabled="currentPage >= totalPages"
+                        aria-label="Go to next page"
                         class="inline-flex items-center justify-center rounded-md border border-input bg-background h-8 w-8 hover:bg-accent transition-colors disabled:opacity-50 disabled:pointer-events-none">
                     <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
                 </button>
                 <button type="button" @click="lastPage()" :disabled="currentPage >= totalPages"
+                        aria-label="Go to last page"
                         class="hidden lg:inline-flex items-center justify-center rounded-md border border-input bg-background h-8 w-8 hover:bg-accent transition-colors disabled:opacity-50 disabled:pointer-events-none">
                     <i data-lucide="chevrons-right" class="h-4 w-4" aria-hidden="true"></i>
                 </button>

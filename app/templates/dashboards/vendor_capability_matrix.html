@@ -120,9 +120,9 @@ document.addEventListener('alpine:init', () => {
             const d = this.getCell(cap, vendor, product);
             if (!d) return 'bg-muted/40 text-muted-foreground/40';
             const p = d.coverage_percentage;
-            if (p >= 80) return 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/30';
-            if (p >= 60) return 'bg-amber-400/25 text-amber-700 dark:text-amber-400 hover:bg-amber-400/40';
-            if (p >= 40) return 'bg-amber-200/40 text-amber-600 dark:text-amber-300 hover:bg-amber-200/60';
+            if (p >= 80) return 'bg-emerald-500/20 text-emerald-700 hover:bg-emerald-500/30';
+            if (p >= 60) return 'bg-amber-400/25 text-amber-700 hover:bg-amber-400/40';
+            if (p >= 40) return 'bg-amber-200/40 text-amber-600 hover:bg-amber-200/60';
             return 'bg-muted/50 text-muted-foreground hover:bg-muted';
         },
 
@@ -463,9 +463,9 @@ document.addEventListener('alpine:init', () => {
                     <template x-for="gap in ($store.matrixModal.data?.gaps ?? [])" :key="gap.name">
                         <div class="flex items-start gap-2.5">
                             <span class="shrink-0 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border mt-0.5"
-                                  :class="gap.severity === 'high'   ? 'bg-destructive/10 text-destructive border-destructive/30' :
-                                          gap.severity === 'medium' ? 'bg-amber-500/10 text-amber-600 border-amber-500/30' :
-                                                                      'bg-primary/10 text-primary border-primary/30'"
+                                  :class="gap.severity === 'high' ? 'bg-destructive/10 text-destructive border-destructive/30' :
+ gap.severity === 'medium' ? 'bg-amber-500/10 text-amber-600 border-amber-500/30' :
+ 'bg-primary/10 text-primary border-primary/30'"
                                   x-text="gap.severity"></span>
                             <span class="text-sm text-foreground leading-snug" x-text="gap.name"></span>
                         </div>

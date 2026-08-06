@@ -71,7 +71,7 @@
 
 {# AIC-318: workspace return banner — visible when an active AI chat workspace is linked #}
 {% if active_workspace_id %}
-<div class="bg-info/10 border-b border-info/30 text-info dark:text-info px-4 py-2 text-sm flex items-center gap-2" role="alert" data-testid="workspace-return-banner">
+<div class="bg-info/10 border-b border-info/30 text-info px-4 py-2 text-sm flex items-center gap-2" role="alert" data-testid="workspace-return-banner">
   <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
   This solution has an active AI workspace.
   <a href="{{ url_for('unified_ai_chat.index') }}?workspace={{ active_workspace_id }}" class="font-medium underline hover:no-underline ml-1">Return to Chat Workspace &rarr;</a>
@@ -79,10 +79,10 @@
 {% endif %}
 
 {% if show_created_banner %}
-<div class="bg-emerald-500/10 border-b border-emerald-500/30 text-emerald-700 dark:text-emerald-400 px-4 py-2.5 text-sm flex items-center gap-2" role="alert" data-testid="created-banner" x-data="dismissableBanner()" x-show="show">
+<div class="bg-emerald-500/10 border-b border-emerald-500/30 text-emerald-700 px-4 py-2.5 text-sm flex items-center gap-2" role="alert" data-testid="created-banner" x-data="dismissableBanner()" x-show="show">
   <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
   <span><strong>Programme created.</strong> Your architecture blueprint is ready &mdash; fill in sections below to build it out.</span>
-  <button @click="show = false" class="ml-auto text-emerald-600 hover:text-emerald-800 dark:text-emerald-300" aria-label="Dismiss">
+  <button @click="show = false" class="ml-auto text-emerald-600 hover:text-emerald-800" aria-label="Dismiss">
     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
   </button>
 </div>
@@ -844,15 +844,15 @@
               Architecture Completeness
             </h4>
             <span class="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold
-              {{ 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20' if _ac.score >= 80
-                 else ('bg-amber-500/10 text-amber-600 border border-amber-500/20' if _ac.score >= 40
-                 else 'bg-destructive/10 text-destructive border border-destructive/20') }}">
+ {{ 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20' if _ac.score >= 80
+ else ('bg-amber-500/10 text-amber-600 border border-amber-500/20' if _ac.score >= 40
+ else 'bg-destructive/10 text-destructive border border-destructive/20') }}">
               {{ _ac.score }}% &mdash; {{ _ac.filled_count }}/{{ _ac.total }} sections
             </span>
           </div>
           <div class="h-2 w-full rounded-full bg-muted/50 overflow-hidden mb-3">
             <div class="h-full rounded-full transition-all duration-500
-              {{ 'bg-emerald-500' if _ac.score >= 80 else ('bg-amber-500' if _ac.score >= 40 else 'bg-destructive') }}"
+ {{ 'bg-emerald-500' if _ac.score >= 80 else ('bg-amber-500' if _ac.score >= 40 else 'bg-destructive') }}"
                  style="width: {{ _ac.score }}%"></div>
           </div>
           <div class="flex flex-wrap gap-1.5">

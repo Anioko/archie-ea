@@ -56,7 +56,7 @@
             </div>
             {% elif variant == 'warning' %}
             <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-warning/10 mb-4">
-                <i data-lucide="alert-circle" class="h-6 w-6 text-warning dark:text-warning/80"></i>
+                <i data-lucide="alert-circle" class="h-6 w-6 text-warning"></i>
             </div>
             {% else %}
             <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 mb-4">
@@ -86,13 +86,13 @@
                 
                 <button @click="if (callback) callback();" data-modal-close="confirm-dialog-{{ id }}" 
                         class="inline-flex items-center justify-center rounded-md text-sm font-medium px-4 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors
-                            {% if variant == 'destructive' %}
-                            bg-destructive text-destructive-foreground hover:bg-destructive/90
-                            {% elif variant == 'warning' %}
-                            bg-warning text-primary-foreground hover:bg-warning
-                            {% else %}
-                            bg-primary text-primary-foreground hover:bg-primary/90
-                            {% endif %}"
+ {% if variant == 'destructive' %}
+ bg-destructive text-destructive-foreground hover:bg-destructive/90
+ {% elif variant == 'warning' %}
+ bg-warning text-primary-foreground hover:bg-warning
+ {% else %}
+ bg-primary text-primary-foreground hover:bg-primary/90
+ {% endif %}"
                         type="button" aria-label="Close">
                     {{ confirm_text }}
                 </button>

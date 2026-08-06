@@ -143,7 +143,7 @@
                         <p class="text-sm font-medium text-muted-foreground">Total Cost</p>
                         <p class="text-2xl font-bold" x-text="'$' + (job?.actual_cost || 0).toFixed(2)"></p>
                     </div>
-                    <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/10 dark:bg-warning/30">
+                    <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/10">
                         <i data-lucide="dollar-sign" class="h-5 w-5 text-warning" aria-hidden="true"></i>
                     </div>
                 </div>
@@ -172,7 +172,7 @@
             <div class="p-6">
                 <div class="flex items-center justify-between mb-4">
                     <div class="flex items-center gap-3">
-                        <div class="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 dark:bg-primary/30">
+                        <div class="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
                             <i data-lucide="activity" class="h-5 w-5 text-primary animate-pulse" aria-hidden="true"></i>
                         </div>
                         <div>
@@ -208,11 +208,11 @@
                     <div class="p-3 space-y-1 font-mono text-xs">
                         <template x-for="msg in streamMessages" :key="msg.timestamp + msg.message">
                             <div class="flex gap-2" :class="{
-                                'text-success': msg.type === 'success',
-                                'text-destructive': msg.type === 'error',
-                                'text-warning': msg.type === 'warning',
-                                'text-muted-foreground': msg.type === 'info'
-                            }">
+ 'text-success': msg.type === 'success',
+ 'text-destructive': msg.type === 'error',
+ 'text-warning': msg.type === 'warning',
+ 'text-muted-foreground': msg.type === 'info'
+ }">
                                 <span class="text-muted-foreground/60" x-text="msg.timestamp"></span>
                                 <span x-text="msg.message"></span>
                             </div>
@@ -558,7 +558,7 @@ function jobDetail(jobId) {
 
         get costVarianceBackgroundClass() {
             if (this.costVariance > 0) return 'bg-destructive/10';
-            if (this.costVariance < 0) return 'bg-success/10 dark:bg-success/30';
+            if (this.costVariance < 0) return 'bg-success/10';
             return 'bg-muted/50';
         },
 
@@ -591,12 +591,12 @@ function jobDetail(jobId) {
         getStatusBadgeClass(status) {
             status = this._normStatus(status);
             const classes = {
-                'pending': 'border-transparent bg-muted text-muted-foreground dark:bg-foreground dark:text-muted-foreground',
-                'processing': 'border-transparent bg-primary/10 text-primary dark:bg-primary/30 dark:text-primary/80',
-                'paused': 'border-transparent bg-warning/10 text-warning dark:bg-warning/30 dark:text-warning',
-                'completed': 'border-transparent bg-success/10 text-success dark:bg-success/30 dark:text-success/80',
-                'failed': 'border-transparent bg-destructive/10 text-destructive dark:bg-destructive/30 dark:text-destructive/80',
-                'cancelled': 'border-transparent bg-muted text-muted-foreground dark:bg-muted dark:text-muted-foreground'
+                'pending': 'border-transparent bg-muted text-muted-foreground',
+                'processing': 'border-transparent bg-primary/10 text-primary',
+                'paused': 'border-transparent bg-warning/10 text-warning',
+                'completed': 'border-transparent bg-success/10 text-success',
+                'failed': 'border-transparent bg-destructive/10 text-destructive',
+                'cancelled': 'border-transparent bg-muted text-muted-foreground'
             };
             return classes[status] || classes['pending'];
         },
@@ -604,14 +604,14 @@ function jobDetail(jobId) {
         getBatchStatusBadgeClass(status) {
             status = this._normStatus(status);
             const classes = {
-                'queued': 'border-transparent bg-muted text-muted-foreground dark:bg-foreground dark:text-muted-foreground',
-                'processing': 'border-transparent bg-primary/10 text-primary dark:bg-primary/30 dark:text-primary/80',
-                'ready_for_review': 'border-transparent bg-accent text-primary dark:bg-primary/30 dark:text-primary',
-                'approved': 'border-transparent bg-warning/10 text-warning dark:bg-warning/30 dark:text-warning',
-                'committed': 'border-transparent bg-success/10 text-success dark:bg-success/30 dark:text-success/80',
-                'failed': 'border-transparent bg-destructive/10 text-destructive dark:bg-destructive/30 dark:text-destructive/80',
-                'rejected': 'border-transparent bg-destructive/10 text-destructive dark:bg-destructive/30 dark:text-destructive/80',
-                'skipped': 'border-transparent bg-muted text-muted-foreground dark:bg-muted dark:text-muted-foreground'
+                'queued': 'border-transparent bg-muted text-muted-foreground',
+                'processing': 'border-transparent bg-primary/10 text-primary',
+                'ready_for_review': 'border-transparent bg-accent text-primary',
+                'approved': 'border-transparent bg-warning/10 text-warning',
+                'committed': 'border-transparent bg-success/10 text-success',
+                'failed': 'border-transparent bg-destructive/10 text-destructive',
+                'rejected': 'border-transparent bg-destructive/10 text-destructive',
+                'skipped': 'border-transparent bg-muted text-muted-foreground'
             };
             return classes[status] || classes['queued'];
         },

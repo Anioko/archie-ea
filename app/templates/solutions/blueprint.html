@@ -34,10 +34,10 @@
 {# ══════════════════════════════════════════════════════════════════════════ #}
 {% block content %}
 {% if show_created_banner %}
-<div class="bg-emerald-500/10 border-b border-emerald-500/30 text-emerald-700 dark:text-emerald-400 px-4 py-2.5 text-sm flex items-center gap-2" role="alert" data-testid="created-banner" x-data="dismissableBanner()" x-show="show">
+<div class="bg-emerald-500/10 border-b border-emerald-500/30 text-emerald-700 px-4 py-2.5 text-sm flex items-center gap-2" role="alert" data-testid="created-banner" x-data="dismissableBanner()" x-show="show">
   <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
   <span><strong>Programme created.</strong> Your architecture blueprint is ready &mdash; fill in sections below to build it out.</span>
-  <button @click="show = false" class="ml-auto text-emerald-600 hover:text-emerald-800 dark:text-emerald-300" aria-label="Dismiss">
+  <button @click="show = false" class="ml-auto text-emerald-600 hover:text-emerald-800" aria-label="Dismiss">
     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
   </button>
 </div>
@@ -160,12 +160,12 @@
                                 {# Type badge #}
                                 <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium shrink-0 mt-0.5"
                                       :class="{
-                                          'bg-info/10 text-info border border-info/30': ['Goal','Driver'].includes(p.archimate_type),
-                                          'bg-violet-500/10 text-violet-700 border border-violet-500/30': p.archimate_type === 'Capability',
-                                          'bg-amber-500/10 text-amber-700 border border-amber-500/30': p.archimate_type === 'Constraint',
-                                          'bg-emerald-500/10 text-emerald-700 border border-emerald-500/30': ['ApplicationComponent','BusinessProcess'].includes(p.archimate_type),
-                                          'bg-muted text-muted-foreground border border-border': !['Goal','Driver','Capability','Constraint','ApplicationComponent','BusinessProcess'].includes(p.archimate_type)
-                                      }"
+ 'bg-info/10 text-info border border-info/30': ['Goal','Driver'].includes(p.archimate_type),
+ 'bg-violet-500/10 text-violet-700 border border-violet-500/30': p.archimate_type === 'Capability',
+ 'bg-amber-500/10 text-amber-700 border border-amber-500/30': p.archimate_type === 'Constraint',
+ 'bg-emerald-500/10 text-emerald-700 border border-emerald-500/30': ['ApplicationComponent','BusinessProcess'].includes(p.archimate_type),
+ 'bg-muted text-muted-foreground border border-border': !['Goal','Driver','Capability','Constraint','ApplicationComponent','BusinessProcess'].includes(p.archimate_type)
+ }"
                                       x-text="p.archimate_type"></span>
                                 {# Content #}
                                 <div class="flex-1 min-w-0">
@@ -221,11 +221,11 @@
                     <div class="flex items-center gap-2.5">
                         {% set es_score = scores.get('executive_summary', {}).get('overall', 0) if scores else 0 %}
                         <span class="w-2.5 h-2.5 rounded-full shrink-0
-                            {% if es_score >= 80 %}bg-emerald-500
-                            {% elif es_score >= 40 %}bg-amber-500
-                            {% elif es_score >= 1 %}bg-destructive
-                            {% else %}bg-muted-foreground/30
-                            {% endif %}"></span>
+ {% if es_score >= 80 %}bg-emerald-500
+ {% elif es_score >= 40 %}bg-amber-500
+ {% elif es_score >= 1 %}bg-destructive
+ {% else %}bg-muted-foreground/30
+ {% endif %}"></span>
                         <h2 class="text-sm font-semibold text-foreground">1. Executive Summary</h2>
                     </div>
                 </div>
@@ -313,11 +313,11 @@
                     <div class="flex items-center gap-2.5 min-w-0">
                         {% set sec_score = scores.get(section_id, {}).get('overall', 0) if scores else 0 %}
                         <span class="w-2.5 h-2.5 rounded-full shrink-0
-                            {% if sec_score >= 80 %}bg-emerald-500
-                            {% elif sec_score >= 40 %}bg-amber-500
-                            {% elif sec_score >= 1 %}bg-destructive
-                            {% else %}bg-muted-foreground/30
-                            {% endif %}"></span>
+ {% if sec_score >= 80 %}bg-emerald-500
+ {% elif sec_score >= 40 %}bg-amber-500
+ {% elif sec_score >= 1 %}bg-destructive
+ {% else %}bg-muted-foreground/30
+ {% endif %}"></span>
                         <div class="min-w-0">
                             <h2 class="text-sm font-semibold text-foreground">{{ num }}. {{ title }}</h2>
                             <p class="text-[10px] text-muted-foreground truncate">{{ viewpoint }}</p>
@@ -789,11 +789,11 @@
                     <div class="flex items-center gap-2.5">
                         {% set trace_score = scores.get('requirements_traceability', {}).get('overall', 0) if scores else 0 %}
                         <span class="w-2.5 h-2.5 rounded-full shrink-0
-                            {% if trace_score >= 80 %}bg-emerald-500
-                            {% elif trace_score >= 40 %}bg-amber-500
-                            {% elif trace_score >= 1 %}bg-destructive
-                            {% else %}bg-muted-foreground/30
-                            {% endif %}"></span>
+ {% if trace_score >= 80 %}bg-emerald-500
+ {% elif trace_score >= 40 %}bg-amber-500
+ {% elif trace_score >= 1 %}bg-destructive
+ {% else %}bg-muted-foreground/30
+ {% endif %}"></span>
                         <h2 class="text-sm font-semibold text-foreground">14. Requirements Traceability</h2>
                     </div>
                 </div>
@@ -920,7 +920,7 @@
         x-transition:leave-start="translate-x-0"
         x-transition:leave-end="translate-x-full"
         class="fixed right-0 top-0 h-full w-[420px] bg-background border-l border-border
-               shadow-xl z-50 flex flex-col transform"
+ shadow-xl z-50 flex flex-col transform"
         style="display:none">
 
         {# Panel header #}
@@ -934,8 +934,8 @@
                 <button
                     @click="toggleAutoExecute()"
                     :class="autoExecute
-                        ? 'bg-violet-500/10 text-violet-600 border-violet-500/30'
-                        : 'bg-muted text-muted-foreground border-border'"
+ ? 'bg-violet-500/10 text-violet-600 border-violet-500/30'
+ : 'bg-muted text-muted-foreground border-border'"
                     class="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium border transition-colors">
                     <span x-text="autoExecute ? 'Auto ON' : 'Approve each'"></span>
                 </button>
@@ -1079,13 +1079,13 @@
                     placeholder="Add a driver, link an app, run inference…"
                     rows="2"
                     class="flex-1 resize-none rounded-lg border border-border px-3 py-2 text-xs
-                           focus:outline-none focus:ring-1 focus:ring-violet-400" aria-label="Add a driver, link an app, run inference…">
+ focus:outline-none focus:ring-1 focus:ring-violet-400" aria-label="Add a driver, link an app, run inference…">
                 </textarea>
                 <button
                     @click="sendMessage()"
                     :disabled="loading || !inputText.trim()"
                     class="px-3 py-2 bg-violet-500 text-primary-foreground rounded-lg text-xs font-medium
-                           hover:bg-violet-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+ hover:bg-violet-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
                     Send
                 </button>
             </div>
@@ -1108,7 +1108,7 @@
     <template x-for="action in actions()" :key="action.label">
         <button @click="selectAction(action)"
                 class="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-foreground
-                       hover:bg-violet-50 hover:text-violet-700 transition-colors text-left">
+ hover:bg-violet-50 hover:text-violet-700 transition-colors text-left">
             <span x-text="action.icon" class="text-base leading-none"></span>
             <span x-text="action.label" class="text-xs"></span>
         </button>
@@ -1258,8 +1258,8 @@ function entityAddModal() {
                     <button type="button"
                             @click="selectedTarget = t.value"
                             :class="selectedTarget === t.value
-                                ? 'bg-emerald-500/15 text-emerald-700 border-emerald-500/40'
-                                : 'bg-muted text-muted-foreground border-border hover:text-foreground'"
+ ? 'bg-emerald-500/15 text-emerald-700 border-emerald-500/40'
+ : 'bg-muted text-muted-foreground border-border hover:text-foreground'"
                             class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium border transition-colors"
                             x-text="t.label">
                     </button>
@@ -1494,13 +1494,13 @@ function codegenModal() {
                     {# Layer indicator dot #}
                     <div class="flex-shrink-0 w-2 h-2 rounded-full mt-0.5"
                          :class="{
-                             'bg-amber-500': el.layer === 'business',
-                             'bg-primary': el.layer === 'application',
-                             'bg-emerald-500': el.layer === 'technology',
-                             'bg-violet-500': el.layer === 'motivation' || el.layer === 'strategy',
-                             'bg-orange-500': el.layer === 'implementation',
-                             'bg-slate-400': !el.layer || (el.layer !== 'business' && el.layer !== 'application' && el.layer !== 'technology' && el.layer !== 'motivation' && el.layer !== 'strategy' && el.layer !== 'implementation')
-                         }"></div>
+ 'bg-amber-500': el.layer === 'business',
+ 'bg-primary': el.layer === 'application',
+ 'bg-emerald-500': el.layer === 'technology',
+ 'bg-violet-500': el.layer === 'motivation' || el.layer === 'strategy',
+ 'bg-orange-500': el.layer === 'implementation',
+ 'bg-slate-400': !el.layer || (el.layer !== 'business' && el.layer !== 'application' && el.layer !== 'technology' && el.layer !== 'motivation' && el.layer !== 'strategy' && el.layer !== 'implementation')
+ }"></div>
 
                     {# Element info #}
                     <div class="flex-1 min-w-0">

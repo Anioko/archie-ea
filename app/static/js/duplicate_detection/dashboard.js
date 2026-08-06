@@ -13,6 +13,13 @@ function duplicateDetection() {
             last_run_summary: 'Run detection to generate results'
         },
         allGroups: [],
+        // The template referenced selectedGroups 6 times - including
+        // :class="selectedGroups.includes(group.id)" inside <template x-for> -
+        // but nothing defined it, so every row render threw a ReferenceError and
+        // the bulk action bar (x-show="selectedGroups.length > 0") could never
+        // appear. An array, not a Set: Alpine cannot observe Set mutations
+        // (DESIGN.md).
+        selectedGroups: [],
         currentPage: 1,
         perPage: 20,
         sortColumn: 'estimated_savings',
@@ -396,6 +403,134 @@ function duplicateDetection() {
                             console.error('Error dismissing group:', error);
                             Platform.toast.error('Failed to dismiss group: ' + error.message);
                         }
+                    } }
+                ]
+            });
+            window.modalManager.open(modalId);
+        },
+
+        toggleSelectGroup(groupId) {
+            let index = this.selectedGroups.indexOf(groupId);
+            if (index === -1) {
+                this.selectedGroups.push(groupId);
+            } else {
+                this.selectedGroups.splice(index, 1);
+            }
+        },
+
+        clearSelection() {
+            this.selectedGroups = [];
+        },
+
+        isAllPageSelected() {
+            let self = this;
+            let page = this.paginatedGroups();
+            if (page.length === 0) return false;
+            return page.every(function(group) {
+                return self.selectedGroups.indexOf(group.id) !== -1;
+            });
+        },
+
+        toggleSelectAll() {
+            let self = this;
+            let pageIds = this.paginatedGroups().map(function(group) { return group.id; });
+            if (this.isAllPageSelected()) {
+                // Clear only this page, so a selection made on another page of
+                // results is not silently discarded.
+                this.selectedGroups = this.selectedGroups.filter(function(id) {
+                    return pageIds.indexOf(id) === -1;
+                });
+                return;
+            }
+            let merged = this.selectedGroups.slice();
+            pageIds.forEach(function(id) {
+                if (merged.indexOf(id) === -1) merged.push(id);
+            });
+            this.selectedGroups = merged;
+        },
+
+        /**
+         * Apply a per-group action across the selection.
+         *
+         * The API exposes one action per group and no bulk endpoint, so this
+         * fans out. Partial failure is reported as partial and the groups that
+         * failed stay selected so the user can retry exactly those - reporting
+         * a clean success for a run that half-failed would be inventing an
+         * outcome the system does not have.
+         */
+        async _applyToSelection(ids, action, pastTense) {
+            let succeeded = 0;
+            let failed = [];
+            for (let i = 0; i < ids.length; i++) {
+                try {
+                    let data = await action(ids[i]);
+                    // Platform.fetch throws on a non-ok response, so reaching
+                    // here means HTTP succeeded; the payload may still say no.
+                    if (data && data.success === false) {
+                        failed.push(ids[i]);
+                    } else {
+                        succeeded++;
+                    }
+                } catch (error) {
+                    console.error('Bulk action failed for group ' + ids[i] + ':', error);
+                    failed.push(ids[i]);
+                }
+            }
+
+            if (succeeded > 0) {
+                Platform.toast.info(succeeded + ' group(s) ' + pastTense + '.');
+            }
+            if (failed.length > 0) {
+                Platform.toast.error(
+                    failed.length + ' group(s) could not be processed and remain selected.'
+                );
+            }
+            this.selectedGroups = failed;
+
+            await this.loadGroups();
+            await this.loadStats();
+        },
+
+        async bulkAddToConsolidation() {
+            let self = this;
+            let ids = this.selectedGroups.slice();
+            if (ids.length === 0) return;
+            let modalId = window.modalManager.createModal({
+                title: 'Add to Consolidation List',
+                content: '<p class="text-sm text-muted-foreground">Add all applications from ' +
+                    ids.length + ' selected group(s) to the consolidation list?</p>',
+                size: 'small',
+                buttons: [
+                    { text: 'Cancel', class: 'px-4 py-2 text-sm font-medium text-foreground bg-background border border-border rounded-md hover:bg-muted', action: 'cancel', handler: function() {} },
+                    { text: 'Add to List', class: 'px-4 py-2 text-sm font-medium text-primary-foreground bg-primary border border-transparent rounded-md hover:bg-primary/90', action: 'add', handler: async function() {
+                        await self._applyToSelection(ids, function(groupId) {
+                            return Platform.fetch.post(
+                                '/duplicate-detection/api/groups/' + groupId + '/add-to-consolidation', {}
+                            );
+                        }, 'added to the consolidation list');
+                    } }
+                ]
+            });
+            window.modalManager.open(modalId);
+        },
+
+        async bulkDismiss() {
+            let self = this;
+            let ids = this.selectedGroups.slice();
+            if (ids.length === 0) return;
+            let modalId = window.modalManager.createModal({
+                title: 'Dismiss Groups',
+                content: '<p class="text-sm text-muted-foreground">Dismiss ' + ids.length +
+                    ' selected group(s)? They will be marked as ignored.</p>',
+                size: 'small',
+                buttons: [
+                    { text: 'Cancel', class: 'px-4 py-2 text-sm font-medium text-foreground bg-background border border-border rounded-md hover:bg-muted', action: 'cancel', handler: function() {} },
+                    { text: 'Dismiss', class: 'px-4 py-2 text-sm font-medium text-destructive-foreground bg-destructive border border-transparent rounded-md hover:bg-destructive/90', action: 'dismiss', handler: async function() {
+                        await self._applyToSelection(ids, function(groupId) {
+                            return Platform.fetch.post(
+                                '/duplicate-detection/api/groups/' + groupId + '/ignore', {}
+                            );
+                        }, 'dismissed');
                     } }
                 ]
             });

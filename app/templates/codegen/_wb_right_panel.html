@@ -217,7 +217,7 @@
                                             <div class="flex items-start gap-2 px-3 py-2 rounded-lg"
                                                  :class="v.severity === 'error' ? 'bg-destructive/5 border border-destructive/20' : 'bg-amber-500/5 border border-amber-500/20'">
                                                 <span class="shrink-0 text-[9px] font-bold uppercase px-1 py-0.5 rounded"
-                                                      :class="v.severity === 'error' ? 'bg-destructive/10 text-destructive dark:bg-destructive/30 dark:text-red-400' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'"
+                                                      :class="v.severity === 'error' ? 'bg-destructive/10 text-destructive' : 'bg-amber-100 text-amber-700'"
                                                       x-text="v.severity"></span>
                                                 <div class="flex-1 min-w-0">
                                                     <p class="text-[11px] font-medium text-foreground leading-snug" x-text="v.constraint"></p>
@@ -685,7 +685,7 @@
                     <!-- Deploy to Vercel (only when shadcn-nextjs frontend selected) -->
                     <div x-show="fileList.length > 0 && fileList.some(f => f.startsWith('frontend/'))" x-cloak>
                         <div class="flex items-center gap-3 mb-2">
-                            <div class="w-1 h-5 rounded-full bg-foreground dark:bg-background"></div>
+                            <div class="w-1 h-5 rounded-full bg-foreground"></div>
                             <p class="text-sm font-semibold text-foreground">Deploy Frontend to Vercel</p>
                         </div>
                         <p class="text-[10px] text-muted-foreground mb-2.5 leading-relaxed">Deploy the generated Next.js frontend to Vercel for free. Vercel auto-detects Next.js from <code class="font-mono bg-muted px-1 rounded">frontend/vercel.json</code> in your repo.</p>
@@ -1295,8 +1295,8 @@ eas build --platform android --profile preview</pre>
                                         x-init="$nextTick(() => window.lucide && window.lucide.createIcons())"
                                         class="inline-flex items-center gap-1.5 h-7 px-3 rounded-md text-xs font-semibold transition-all"
                                         :class="previewModalTab === tab.key
-                                            ? 'bg-background text-foreground shadow-sm'
-                                            : 'text-muted-foreground hover:text-foreground hover:bg-background/50'">
+ ? 'bg-background text-foreground shadow-sm'
+ : 'text-muted-foreground hover:text-foreground hover:bg-background/50'">
                                     <i :data-lucide="tab.icon" class="w-3.5 h-3.5"></i><span x-text="tab.label"></span>
                                 </button>
                             </template>
@@ -1313,8 +1313,8 @@ eas build --platform android --profile preview</pre>
                                         x-init="$nextTick(() => window.lucide && window.lucide.createIcons())"
                                         class="h-7 w-9 rounded text-sm transition-all flex items-center justify-center"
                                         :class="previewDevice === d.key
-                                            ? 'bg-background text-foreground shadow-sm'
-                                            : 'text-muted-foreground hover:text-foreground'">
+ ? 'bg-background text-foreground shadow-sm'
+ : 'text-muted-foreground hover:text-foreground'">
                                     <i :data-lucide="d.ico" class="w-4 h-4"></i></button>
                             </template>
                         </div>

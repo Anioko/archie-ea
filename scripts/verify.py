@@ -389,31 +389,77 @@ def gate_vendor_integrity() -> Result:
                   output[-1500:])
 
 
+DEPENDENCY_AUDIT = os.path.join("scripts", "ci", "dependency_audit.py")
+DEPENDENCY_BASELINE = os.path.join("scripts", "ci", "dependency_baseline.json")
+
+
 def gate_dependency_cves() -> Result:
-    """No known CVEs in the production dependency set.
+    """No NEW known CVEs in the production dependency set.
 
     This is the scan an enterprise security review runs before granting network
     admission, so it is better to run it ourselves first. Scoped to
     requirements.txt deliberately: test tooling is not shipped, so a CVE in pytest
     is not part of the deployed attack surface.
+
+    Delegates to scripts/ci/dependency_audit.py rather than calling pip-audit
+    itself, so this gate and the CI `dependency-audit` job cannot reach different
+    verdicts on the same tree. They did, and it mattered: this gate was
+    zero-tolerance while that job ratchets against dependency_baseline.json, so the
+    two WeasyPrint advisories requirements.txt accepts *on purpose* (WeasyPrint 68
+    needs pydyf>=0.11, which 500'd PDF export) failed here and passed there. The
+    effect was that `python scripts/verify.py` could never go green — and a gate
+    that is red on every run is a gate everyone learns to ignore, which is exactly
+    the failure mode the ratchets elsewhere in this file exist to avoid.
+
+    Accepted risk now lives in one reviewable file. Anything not recorded there
+    still fails, and the accepted count is reported on success so a green run
+    never reads as "no vulnerabilities".
     """
-    proc = _run([sys.executable, "-m", "pip_audit", "-r", "requirements.txt",
-                 "--progress-spinner", "off"], timeout=600)
+    proc = _run([sys.executable, DEPENDENCY_AUDIT], timeout=600)
     output = (proc.stdout + proc.stderr).strip()
-    if "No known vulnerabilities found" in output:
-        return Result("dependency-cves", PASS, "no known vulnerabilities", 0, 0)
-    if proc.returncode != 0 and ("Failed to install" in output or "internal pip failure" in output):
-        # A resolution failure is a real problem, not a scanner hiccup: it means
-        # requirements.txt cannot be installed as written.
-        return Result("dependency-cves", FAIL,
-                      "requirements.txt does not resolve:\n" + output[-1200:],
-                      remediation="fix the conflicting pins")
+
     if "urlopen error" in output or "Temporary failure in name resolution" in output:
         return Result("dependency-cves", SKIP, "no network access to the advisory database")
-    rows = [ln for ln in output.splitlines() if re.match(r"^\S+\s+\S+\s+(PYSEC|CVE|GHSA)", ln)]
-    return Result("dependency-cves", FAIL if rows else PASS,
-                  "\n".join(rows[:15]), len(rows), 0,
-                  remediation="bump the affected package; check for a blocking upper bound")
+    if proc.returncode == 2:
+        # pip-audit could not resolve requirements.txt. That is a real problem, not
+        # a scanner hiccup: it means the file cannot be installed as written.
+        return Result("dependency-cves", FAIL,
+                      "pip-audit could not run:\n" + output[-1200:],
+                      remediation="fix the conflicting pins in requirements.txt")
+    if proc.returncode != 0:
+        _, marker, detail = output.partition("NEW advisories not in the baseline:")
+        return Result("dependency-cves", FAIL, (detail if marker else output).strip()[:1200],
+                      remediation="bump the affected package (watch for a blocking upper "
+                                  "bound), or accept it deliberately with "
+                                  "scripts/ci/dependency_audit.py --update-baseline "
+                                  "and say why in the pull request")
+
+    accepted = 0
+    try:
+        with open(DEPENDENCY_BASELINE, encoding="utf-8") as fh:
+            accepted = sum(len(v) for v in json.load(fh).get("accepted", {}).values())
+    except (OSError, ValueError):
+        pass
+
+    # Report what was actually FOUND against requirements.txt, not the size of the
+    # baseline file. They differ: the baseline also records pytest, which ADR 0005
+    # moved out of requirements.txt, so it is no longer in the audited set at all.
+    # Showing the baseline size as the measurement would overstate live debt and
+    # hide the fact that an entry is ready to be dropped.
+    found = accepted
+    match = re.search(r"dependency audit: \d+ package\(s\), (\d+) advisories total", output)
+    if match:
+        found = int(match.group(1))
+
+    detail = "no new vulnerabilities"
+    if found:
+        detail += (f"; {found} accepted in the baseline — real, unremediated risk a "
+                   f"security review will ask about (scripts/ci/dependency_baseline.json)")
+    if found < accepted:
+        detail += (f"; {accepted - found} baselined advisor"
+                   f"{'y is' if accepted - found == 1 else 'ies are'} no longer present — "
+                   f"run scripts/ci/dependency_audit.py --update-baseline to lock that in")
+    return Result("dependency-cves", PASS, detail, found, accepted)
 
 
 def gate_boot_health() -> Result:
@@ -541,7 +587,7 @@ def build_gates(baseline: dict) -> list[Gate]:
              gate_vendor_integrity,
              remediation="run: python scripts/vendor_assets.py",
              tags=["static", "ui", "airgap", "security"]),
-        Gate("dependency-cves", "No known CVEs in shipped dependencies", "zero",
+        Gate("dependency-cves", "No NEW known CVEs in shipped dependencies", "ratchet",
              gate_dependency_cves,
              remediation="bump the affected package (watch for blocking upper bounds)",
              tags=["deps", "security"]),

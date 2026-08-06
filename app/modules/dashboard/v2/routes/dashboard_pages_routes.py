@@ -1163,14 +1163,18 @@ def api_executive_summary():
         cap = summary.get("capability_coverage", {})
         risk = summary.get("risk_posture", {})
         arb = summary.get("pending_decisions", {})
+        # No `, 0` defaults. A missing key means the metric could not be measured,
+        # and a 0 the reader cannot distinguish from a real zero is worse than no
+        # number at all (CLAUDE.md). These serialise to JSON null; the dashboard
+        # renders null as an em dash.
         flat = {
-            "Health Score": health.get("composite_score", 0),
-            "Solutions": portfolio.get("solutions", 0),
-            "Applications": portfolio.get("applications", 0),
-            "ArchiMate Elements": portfolio.get("archimate_elements", 0),
-            "Capability Coverage %": cap.get("percentage", 0),
-            "Open Risks": risk.get("total", 0),
-            "ARB Pending": arb.get("pending", 0),
+            "Health Score": health.get("composite_score"),
+            "Solutions": portfolio.get("solutions"),
+            "Applications": portfolio.get("applications"),
+            "ArchiMate Elements": portfolio.get("archimate_elements"),
+            "Capability Coverage %": cap.get("percentage"),
+            "Open Risks": risk.get("total"),
+            "ARB Pending": arb.get("pending"),
         }
         return jsonify({"success": True, "data": flat})
     except Exception as e:

@@ -56,9 +56,9 @@
                                     <button
                                         type="button"
                                         class="w-full text-left mb-1 rounded-full px-2 py-0.5 text-xs font-medium
-                                               bg-background/80 dark:bg-black/40 border border-border shadow-sm
-                                               hover:shadow-md transition-shadow cursor-pointer truncate
-                                               focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
+ bg-background/80 border border-border shadow-sm
+ hover:shadow-md transition-shadow cursor-pointer truncate
+ focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
                                         :title="risk.title + (risk.description ? ': ' + risk.description : '')"
                                         :data-testid="'risk-chip-' + risk.id"
                                         @click="openEdit(risk)"
@@ -95,19 +95,19 @@
     {# Legend #}
     <div class="mt-4 flex flex-wrap gap-3" aria-label="Risk level legend">
         <div class="flex items-center gap-1.5">
-            <span class="inline-block h-4 w-4 rounded border border-green-300 bg-emerald-500/10 dark:border-green-700 dark:bg-green-900/30"></span>
+            <span class="inline-block h-4 w-4 rounded border border-green-300 bg-emerald-500/10"></span>
             <span class="text-xs text-muted-foreground">Low (score 1–3)</span>
         </div>
         <div class="flex items-center gap-1.5">
-            <span class="inline-block h-4 w-4 rounded border border-yellow-300 bg-amber-500/10 dark:border-yellow-700 dark:bg-yellow-900/30"></span>
+            <span class="inline-block h-4 w-4 rounded border border-yellow-300 bg-amber-500/10"></span>
             <span class="text-xs text-muted-foreground">Medium (score 4–8)</span>
         </div>
         <div class="flex items-center gap-1.5">
-            <span class="inline-block h-4 w-4 rounded border border-orange-300 bg-orange-100 dark:border-orange-700 dark:bg-orange-900/30"></span>
+            <span class="inline-block h-4 w-4 rounded border border-orange-300 bg-orange-100"></span>
             <span class="text-xs text-muted-foreground">High (score 9–15)</span>
         </div>
         <div class="flex items-center gap-1.5">
-            <span class="inline-block h-4 w-4 rounded border border-destructive/30 bg-destructive/10 dark:border-red-700 dark:bg-destructive/30"></span>
+            <span class="inline-block h-4 w-4 rounded border border-destructive/30 bg-destructive/10"></span>
             <span class="text-xs text-muted-foreground">Critical (score 16–25)</span>
         </div>
     </div>

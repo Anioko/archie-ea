@@ -42,7 +42,7 @@
                 <tr class="hover:bg-muted/30 app-row" data-name="{{ app.name|lower }}">
                     <td class="px-6 py-3 font-medium text-foreground">
                         <a href="{{ url_for('unified_applications.application_detail', id=app.id) }}"
-                           class="hover:underline text-primary dark:text-primary/80">{{ app.name }}</a>
+                           class="hover:underline text-primary">{{ app.name }}</a>
                     </td>
                     <td class="px-6 py-3">
                         {% set s = (app.status or 'active')|lower %}

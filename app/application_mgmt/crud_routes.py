@@ -390,7 +390,11 @@ def application_edit(id):
                 "applications/edit.html",
                 form=form,
                 mode="edit",
-                app=app,
+                # The template reads `application`, not `app`. Passing only `app`
+                # raised UndefinedError on the very first line ({{ application.name }}),
+                # so the validation-failure branch 500'd instead of redisplaying
+                # the form with its error message.
+                application=app,
             )
 
         app.name = form.name.data
@@ -685,7 +689,8 @@ def application_edit(id):
         "applications/edit.html",
         form=form,
         mode="edit",
-        app=app,
+        # The template reads `application`, not `app`.
+        application=app,
         application_functions=application_functions,
         application_processes=application_processes,
         data_objects=data_objects,

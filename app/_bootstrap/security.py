@@ -7,9 +7,35 @@ import re
 import secrets
 import time
 
+from jinja2.ext import Extension
 
-# Compiled regex: matches <script followed by whitespace or > (actual HTML script tags)
-_SCRIPT_TAG_RE = re.compile(r"<script(?=[\s>])", re.IGNORECASE)
+
+# Matches a <script> opening tag that does not already carry a nonce attribute.
+# The negative lookahead makes it idempotent, so re-processing a template is a
+# no-op rather than stacking duplicate attributes.
+_SCRIPT_OPEN_RE = re.compile(r"<script(?![^>]*\bnonce\b)(?=[\s>])", re.IGNORECASE)
+
+
+class CspNonceExtension(Extension):
+    """Add the CSP nonce to template-authored <script> tags, at compile time.
+
+    This replaces an ``after_request`` hook that ran the same substitution over
+    the *finished HTML body*. That was not a defence: it handed the nonce to
+    every script in the response, including one injected through an XSS hole -
+    which is precisely the case a nonce exists to stop. Combined with
+    'strict-dynamic', an injected script received the nonce, executed, and could
+    then load further code of the attacker's choosing. The CSP was decorative.
+
+    Rewriting the template *source* instead draws the line in the right place.
+    A tag written by a template author is nonce'd; markup that arrives later
+    through ``{{ variable }}`` interpolation is not, because by then the template
+    has already been compiled. Injected scripts therefore have no nonce and are
+    blocked, while the 517 legitimate script tags across 263 templates keep
+    working without being edited one by one.
+    """
+
+    def preprocess(self, source, name, filename=None):
+        return _SCRIPT_OPEN_RE.sub('<script nonce="{{ csp_nonce }}"', source)
 
 # Matches content-hashed static filenames, e.g. "tailwind-output.b257857d.css".
 # Such URLs change whenever the bytes change, so they are safe to cache forever.
@@ -18,6 +44,10 @@ _FINGERPRINTED_RE = re.compile(r"\.[0-9a-f]{8,}\.[^./]+$")
 
 def init_security(app):
     """Register security headers and guardrails."""
+
+    # Must be added before any template is compiled: Jinja caches compiled
+    # templates, and preprocess() only runs on compilation.
+    app.jinja_env.add_extension(CspNonceExtension)
 
     @app.before_request
     def generate_csp_nonce():
@@ -39,15 +69,10 @@ def init_security(app):
 
         nonce = getattr(g, "csp_nonce", "")
 
-        # Inject nonce into all <script> tags in HTML responses (including error pages)
-        if response.content_type and "text/html" in response.content_type:
-            data = response.get_data(as_text=True)
-            if nonce:
-                data = _SCRIPT_TAG_RE.sub(f'<script nonce="{nonce}"', data)
-            response.set_data(data)
-            # set_data stores uncompressed — remove stale encoding/length headers
-            response.headers.pop("Content-Encoding", None)
-            response.headers.pop("Content-Length", None)
+        # The nonce is applied by CspNonceExtension when a template is compiled,
+        # not by rewriting the response body here. Rewriting the body nonce'd
+        # injected scripts too, which defeated the entire mechanism. See the
+        # extension's docstring.
 
         # Standard security headers
         response.headers["X-Content-Type-Options"] = "nosniff"
@@ -83,21 +108,41 @@ def init_security(app):
                 "report-uri /api/csp-report",
             ]
         else:
+            # Production. Dead allowances removed: unpkg, jsdelivr, cdnjs and
+            # d3js have ZERO references anywhere in app/templates or
+            # app/static/js (excluding the vendored copies), because ADR 0005
+            # vendored those libraries - but the policy kept permitting them.
+            # A permitted host that nothing uses is a standing invitation: an
+            # injected tag pointing at it would still execute.
+            #
+            # cdn.segment.com and www.google-analytics.com are removed for the
+            # reason ADR 0005 §3 already states as fact - enabling third-party
+            # telemetry should require widening this policy explicitly, so the
+            # decision is visible in review rather than silent.
+            #
+            # esm.sh STAYS: it is genuinely live. codegen/workbench.html:337
+            # builds "https://esm.sh/" in JavaScript and dynamically imports
+            # CodeMirror 6 from it. The air-gap gate cannot see that, because it
+            # scans for static src= attributes - so this is a real external
+            # dependency that ADR 0005's "browser egress: zero" claim misses.
             csp_directives = [
                 "default-src 'self'",
                 f"script-src 'self' 'nonce-{nonce}' 'unsafe-eval' 'strict-dynamic' "
-                "https://unpkg.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com "
-                "https://d3js.org https://cdn.segment.com https://www.google-analytics.com "
                 "https://esm.sh",  # CodeMirror 6 ES module imports
-                "style-src 'self' 'unsafe-inline' "
-                "https://unpkg.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com "
-                "https://fonts.googleapis.com",
-                "font-src 'self' data: https://fonts.googleapis.com https://fonts.gstatic.com https://cdn.jsdelivr.net",
-                "connect-src 'self' https://cdn.jsdelivr.net https://unpkg.com https://cdn.segment.com https://www.google-analytics.com "
-                "https://esm.sh",  # CodeMirror 6 ES module imports
+                "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+                "font-src 'self' data: https://fonts.googleapis.com https://fonts.gstatic.com",
+                "connect-src 'self' https://esm.sh",  # CodeMirror 6 ES module imports
                 "img-src 'self' data: blob: https://api.qrserver.com",
                 "frame-src 'self' https://snack.expo.dev",
                 "object-src 'none'",
+                "base-uri 'self'",     # stop <base> rewriting every relative URL
+                "form-action 'self'",  # stop an injected form posting off-site
+                # Modern equivalent of X-Frame-Options, and must agree with it:
+                # codegen preview routes set g.allow_framing to embed themselves,
+                # so a flat 'none' here would block the very pages that opt in.
+                "frame-ancestors 'self'"
+                if getattr(g, "allow_framing", False)
+                else "frame-ancestors 'none'",
                 "report-uri /api/csp-report",
             ]
         response.headers["Content-Security-Policy"] = "; ".join(csp_directives)

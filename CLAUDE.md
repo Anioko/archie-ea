@@ -26,30 +26,61 @@ one. CI runs with `--require-db`, so gates needing PostgreSQL fail there rather 
 skipping.
 
 Several gates are **ratchets**: they compare a measurement against
-`verification_baseline.json` and fail when it gets worse. The tree carries known debt
-(739 raw-Tailwind-colour uses; the undefined-name and lint debt is now cleared), so the gate is "no worse", not
-"clean". Lowering a baseline is routine — `python scripts/verify.py --update-baseline`
+`verification_baseline.json` and fail when it gets worse, so the gate is "no worse",
+not "clean". Only two carry real debt now — **164** raw-Tailwind-colour uses
+(`design_tokens`) and **98** raw-SQL statements on tenant tables with no org predicate
+(`raw_sql_tenancy`). `undefined_names`, `redefinitions`, `lint_core` and `air_gap` are
+all at **0**: treat those four as must-be-clean gates that happen to be implemented as
+ratchets. Lowering a baseline is routine — `python scripts/verify.py --update-baseline`
 after a cleanup. Raising one is a regression that must be justified in review.
+
+All 18 gates, in registry order (`scripts/verify.py`, `build_gates`):
 
 | Gate | Catches | Kind |
 |---|---|---|
 | `compile` | syntax errors (bytecode-compiles every module) | must pass |
 | `undefined-exports` | `__all__` naming a missing symbol | must be 0 |
-| `undefined-names` | runtime `NameError` (ruff F821) | ratchet |
-| `redefinitions` | shadowed definitions (ruff F811) | ratchet |
-| `lint-core` | correctness lint (ruff `F,E4,E7,E9`) | ratchet |
-| `design-tokens` | raw Tailwind colours (DESIGN.md rule) | ratchet |
+| `undefined-names` | runtime `NameError` (ruff F821) | ratchet @ 0 |
+| `redefinitions` | shadowed definitions (ruff F811) | ratchet @ 0 |
+| `lint-core` | correctness lint (ruff `F,E4,E7,E9`) | ratchet @ 0 |
+| `design-tokens` | raw Tailwind colours (DESIGN.md rule) | ratchet @ 164 |
+| `air-gap` | a UI asset loaded from a public CDN | ratchet @ 0 |
+| `raw-sql-tenancy` | raw SQL on a tenant table with no `organization_id` predicate | ratchet @ 98 |
 | `template-syntax` | a Jinja template that does not parse (500s every page using it) | must be 0 |
 | `fabricated-data` | invented data reaching the UI (see below) | must be 0 |
-| `sri` | `integrity=` hash not matching the file it guards | must be 0 |
+| `deployed-deps` | installed packages below the pinned floors | must be 0 |
 | `css-build` | committed `tailwind-output.css` stale vs a rebuild | must pass (needs Tailwind CLI) |
+| `sri` | `integrity=` hash not matching the file it guards | must be 0 |
+| `vendor-integrity` | a vendored asset not matching `VENDOR_MANIFEST.txt` | must pass |
+| `dependency-cves` | known CVEs in shipped dependencies (`pip-audit`) | must be 0 |
 | `boot-health` | unregistered blueprints; unresolved `url_for` | must pass |
 | `schema-drift` | ORM/database column drift | must pass (needs DB) |
 | `tests` | behavioural regression | must pass (needs DB) |
 
+Per-line escape hatches, each of which makes the exception reviewable rather than
+silent: `fabricated-ok: <reason>`, `air-gap-ok`, `tenancy-ok: <reason>`.
+
 `pre-commit install` gives the same feedback at commit time on changed files only.
 Rationale for the whole design — and why compiler/type-checker enforcement was
-rejected — is in [ADR 0001](docs/adr/0001-verification-strategy.md).
+rejected — is in [ADR 0001](docs/adr/0001-verification-strategy.md). The air-gap,
+CSP, telemetry and CVE posture is [ADR 0005](docs/adr/0005-enterprise-network-readiness.md);
+the GPL-in-the-dependency-tree question is [ADR 0006](docs/adr/0006-dependency-licensing.md).
+
+### CI enforces more than `verify.py` can
+
+`.github/workflows/ci.yml` adds five gates with no local `verify.py` equivalent — do
+not assume a green local run means a green CI run:
+
+| CI job | Enforces |
+|---|---|
+| `secret-scan` | gitleaks over **full history** (so a bad commit is expensive to undo — stage files individually) |
+| `security-sast` | bandit, ratcheted via `scripts/ci/bandit_gate.py` against `.bandit-baseline.json` |
+| `smoke` | Playwright browser journeys, one per archetype (`tests/smoke/`), a WCAG 2.1 AA axe-core audit ratcheted against `tests/smoke/a11y_baseline.json`, and an authorisation matrix |
+| `dependency-audit` | `pip-audit` ratcheted against `scripts/ci/dependency_baseline.json` |
+| `db-gates` | also emits a CycloneDX SBOM from the *installed* environment |
+
+Line coverage is measured and printed by the `tests` job but **deliberately not
+gated** — it can regress silently, so do not read a green CI as coverage holding.
 
 ## Commands
 
@@ -213,9 +244,18 @@ map is in `DESIGN.md`. A plain textarea is not an acceptable substitute — the 
   live-search picker against the documented endpoint, not a free-text input (see `DESIGN.md`).
 - **Staging:** `git add <file>` — never `git add -A`. Untracked scratch scripts are common at the repo
   root, and CI runs `gitleaks` over full history, so an accidental commit is expensive to undo.
-- New behaviour needs a test. There is **no `conftest.py`** — tests define their own module-scoped
-  `app` fixture calling `create_app("testing")` then `db.create_all()`, and clean up their own rows
-  because the test database is shared and persistent. Follow `tests/test_business_case.py`.
+- New behaviour needs a test. There are **three** conftest files: `tests/conftest.py` (shared
+  fixtures), `tests/smoke/conftest.py` (Playwright live-server harness) and
+  `tests/journeys/conftest.py`.
+  **Write new tests against the shared fixtures** in `tests/conftest.py` — `db_session` runs the
+  test inside a transaction that is always rolled back, so it cannot leave residue in the shared,
+  persistent test database even if it fails partway; `app` is session-scoped; `make_org` and
+  `tenant_ctx` cover multi-tenant setup. Follow `tests/test_tenant_isolation.py`, currently the
+  only adopter.
+  Most older modules (including `tests/test_business_case.py`) still hand-roll a module-scoped
+  `app` fixture and delete their own rows. pytest resolves the closest fixture so they keep
+  working, but **do not copy that pattern** — it is flaky by construction, which is why the
+  shared fixtures exist.
 
 ## Documentation accuracy
 
