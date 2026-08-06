@@ -76,6 +76,69 @@ class AgentRunner:
     MAX_HISTORY_TURNS = 10
     MAX_HISTORY_CHARS = 24000
 
+    # Budget for the serialised domain context block.
+    MAX_CONTEXT_CHARS = 6000
+
+    @classmethod
+    def _serialise_context(cls, raw_ctx: dict) -> str:
+        """Serialise domain context, dropping WHOLE keys when over budget.
+
+        This was `json.dumps(raw_ctx, default=str)[:6000]` - a raw slice of a
+        JSON string. Two problems, both silent. It cut mid-token, so the model
+        received malformed JSON ending part-way through a field value and had to
+        guess where the data stopped. And nothing told it anything had been
+        removed, so a context truncated from 40 elements to 22 looked exactly
+        like a portfolio that contains 22.
+
+        Dropping whole top-level keys keeps the JSON parseable and names what
+        went missing, so the model can say "I wasn't given that" instead of
+        answering from the fragment it happened to receive.
+        """
+        if not raw_ctx:
+            return ""
+
+        blob = json.dumps(raw_ctx, default=str)
+        if len(blob) <= cls.MAX_CONTEXT_CHARS:
+            return blob
+
+        # Largest keys first - dropping one big list usually beats dropping
+        # several small scalars that carry the totals.
+        kept = dict(raw_ctx)
+        dropped = []
+        by_size = sorted(
+            raw_ctx.keys(),
+            key=lambda k: len(json.dumps(raw_ctx[k], default=str)),
+            reverse=True,
+        )
+        for key in by_size:
+            if len(json.dumps(kept, default=str)) <= cls.MAX_CONTEXT_CHARS:
+                break
+            if len(kept) == 1:
+                break  # never drop the last key - an empty object says nothing
+            kept.pop(key, None)
+            dropped.append(key)
+
+        if dropped:
+            kept["_omitted"] = {
+                "keys": sorted(dropped),
+                "reason": (
+                    "Dropped to fit the context budget. These were NOT empty - "
+                    "use the search tools to retrieve them rather than assuming "
+                    "they contain nothing."
+                ),
+            }
+
+        blob = json.dumps(kept, default=str)
+        # Belt and braces: if a single retained key still blows the budget, cut
+        # it, but say so in the text rather than leaving broken JSON.
+        if len(blob) > cls.MAX_CONTEXT_CHARS:
+            return (
+                blob[: cls.MAX_CONTEXT_CHARS]
+                + '\n/* CONTEXT TRUNCATED MID-VALUE - treat the final entry as '
+                'incomplete and verify anything from it with a tool call. */'
+            )
+        return blob
+
     @staticmethod
     def _prepare_history(history: Optional[list]) -> list:
         """Normalise stored turns into a valid, bounded message list.
@@ -320,8 +383,7 @@ class AgentRunner:
             ctx_result = svc.get_domain_context(domain, context or {})
             if ctx_result.get("success"):
                 raw_ctx = ctx_result.get("context", {})
-                # Compact serialisation — don't dump the full context blob
-                ctx_block = json.dumps(raw_ctx, default=str)[:6000]
+                ctx_block = self._serialise_context(raw_ctx)
         except Exception as e:
             logger.debug("AgentRunner: context build failed: %s", e)
 

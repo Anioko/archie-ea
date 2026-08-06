@@ -5079,6 +5079,51 @@ Use enterprise architecture terminology appropriate for this role."""
                 "capability_gaps": max(0, total_caps - int(mapped)),
                 "coverage_percent": round((int(mapped) / total_caps * 100) if total_caps else 0, 1),
             }
+
+            # Name some of the estate, not just count it.
+            #
+            # This context is what the DEFAULT domain injects, and it used to be
+            # six integers and a static domain list - roughly 700 characters with
+            # not one application, capability or vendor NAME in it. The assistant
+            # therefore knew the shape of the customer's portfolio and none of its
+            # contents, so anything specific it said had to come from a tool call
+            # or from invention.
+            #
+            # A sample, explicitly labelled as one. The counts above are the
+            # authority on size; these names exist so the model can recognise and
+            # disambiguate what the user refers to ("the Salesforce one") and know
+            # which tool to reach for. Labelling matters: an unlabelled list of 20
+            # of 5,000 applications reads as the portfolio.
+            SAMPLE = 20
+            ctx["portfolio_sample"] = {
+                "_note": (
+                    "A SAMPLE for recognition and disambiguation only, NOT the "
+                    "full portfolio. Use portfolio_summary for totals and the "
+                    "search tools to look anything up."
+                ),
+                "applications": [
+                    {"id": a.id, "name": a.name, "status": a.deployment_status}
+                    for a in ApplicationComponent.query
+                    .order_by(ApplicationComponent.updated_at.desc().nullslast())
+                    .limit(SAMPLE).all()
+                ],
+                "capabilities": [
+                    {"id": c.id, "name": c.name}
+                    for c in BusinessCapability.query
+                    .filter(BusinessCapability.name.isnot(None))
+                    .limit(SAMPLE).all()
+                ],
+                "vendors": [
+                    {"id": v.id, "name": v.name}
+                    for v in VendorOrganization.query
+                    .filter(VendorOrganization.name.isnot(None))
+                    .limit(SAMPLE).all()
+                ],
+                "showing": SAMPLE,
+                "of_applications": total_apps,
+                "of_capabilities": total_caps,
+                "of_vendors": total_vendors,
+            }
         except Exception as e:
             logger.debug(f"Cross-domain summary skipped: {e}")
         return ctx
