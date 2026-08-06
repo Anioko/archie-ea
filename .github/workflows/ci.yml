@@ -99,6 +99,11 @@ jobs:
           FLASK_CONFIG: testing
           SECRET_KEY: ci-only-not-secret
         run: python scripts/verify.py --gate boot-health
+      # deployed-deps belongs here, not in static-gates: it compares
+      # requirements.txt against what is importable, so it needs the
+      # dependencies this job installs.
+      - name: Deployed dependency floors
+        run: python scripts/verify.py --gate deployed-deps
 
   tests:
     name: Tests (pytest + coverage)

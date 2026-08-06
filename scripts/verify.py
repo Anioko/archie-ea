@@ -347,6 +347,17 @@ def gate_deployed_deps() -> Result:
     return Result("deployed-deps", PASS if count == 0 else FAIL, output[-800:], count, 0)
 
 
+def _vendored_tailwind_cli() -> Path | None:
+    """The pinned standalone CLI, or None. scripts/build_css.py falls back to
+    `npx tailwindcss@3`; this deliberately does not, because the point here is
+    reproducibility against the committed file, not merely producing CSS."""
+    for name in ("tailwindcss.exe", "tailwindcss"):
+        candidate = REPO_ROOT / "scripts" / "bin" / name
+        if candidate.exists():
+            return candidate
+    return None
+
+
 def gate_css_build() -> Result:
     """The committed tailwind-output.css matches what a rebuild produces.
 
@@ -363,7 +374,24 @@ def gate_css_build() -> Result:
     SKIPs when the Tailwind CLI is absent, which is the common case on a fresh
     clone: the binary is gitignored at scripts/bin/tailwindcss[.exe]. A SKIP is
     printed in the summary and never counts as a pass.
+
+    Also SKIPs when only the npm fallback (`npx tailwindcss@3`) is available,
+    because that comparison is not reproducible and its failures are false.
+    Autoprefixer's output depends on caniuse-lite, which the standalone binary
+    bundles and npm resolves fresh - CI proved it by emitting "Browserslist:
+    caniuse-lite is outdated" and then producing a byte-different file of the
+    same size. A byte-comparison gate across two toolchains that legitimately
+    disagree can only ever be red, and a permanently-red gate is one people
+    learn to ignore. Enforced where the toolchain is fixed (developer machines
+    and pre-commit); loudly skipped where it is not.
     """
+    if not _vendored_tailwind_cli():
+        return Result("css-build", SKIP,
+                      "no vendored Tailwind CLI at scripts/bin/tailwindcss[.exe]; "
+                      "an npm-resolved Tailwind is not byte-reproducible against "
+                      "the committed build (caniuse-lite floats), so this cannot "
+                      "be verified here")
+
     proc = _run([sys.executable, "scripts/build_css.py", "--check"])
     output = proc.stdout + proc.stderr
     if "Tailwind CLI unavailable" in output or "SKIP" in output:
@@ -571,10 +599,16 @@ def build_gates(baseline: dict) -> list[Gate]:
              remediation="render an explicit empty/error state instead of inventing data; "
                          "if genuinely fine, append 'fabricated-ok: <reason>'",
              tags=["static", "ui"]),
+        # NOT tagged "static": it compares requirements.txt against what is
+        # actually importable, so it needs the app's dependencies installed. The
+        # static-gates CI job deliberately installs only ruff and pip-audit, where
+        # this reported 81 of 85 pins "not installed" - a true statement about an
+        # environment the gate was never meant to judge. It runs in the
+        # boot-health job, which does install requirements.txt.
         Gate("deployed-deps", "installed packages satisfy the pinned floors", "zero",
              gate_deployed_deps,
              remediation="rebuild the image (deploy.sh builds) or pip install -r requirements.txt",
-             tags=["static", "security"]),
+             tags=["deps", "security"]),
         Gate("css-build", "committed tailwind-output.css matches a rebuild", "command",
              gate_css_build,
              remediation="python scripts/build_css.py   and commit the result",
