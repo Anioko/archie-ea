@@ -67,7 +67,7 @@
                     {% endif %}
                 </div>
             </div>
-            <p class="text-sm text-muted-foreground mb-3">{{ cap.description|default('No description')|truncate(100) }}</p>
+            <p class="text-sm text-muted-foreground mb-3">{{ cap.description|default('No description', true)|truncate(100) }}</p>
             {% if cap.parent_capability_id %}
             <p class="text-xs text-muted-foreground mb-2">Sub-capability</p>
             {% endif %}

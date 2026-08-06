@@ -32,7 +32,7 @@
                         </div>
                         <div>
                             <h4 class="font-medium">{{ wp.name|default('Unnamed') }}</h4>
-                            <p class="text-sm text-muted-foreground">{{ wp.description|default('')|truncate(80) }}</p>
+                            <p class="text-sm text-muted-foreground">{{ wp.description|default('', true)|truncate(80) }}</p>
                         </div>
                     </div>
                     <span class="px-2 py-1 text-xs rounded-full

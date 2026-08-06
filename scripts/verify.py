@@ -254,6 +254,32 @@ def gate_template_syntax() -> Result:
     return Result("template-syntax", PASS if count == 0 else FAIL, detail, count, 0)
 
 
+def gate_null_filters() -> Result:
+    """No `|default(...)` feeds a filter that calls len(). Gated at ZERO.
+
+    Jinja's `default` replaces an *undefined* value, not a `None` one, and every
+    nullable column arrives as None. So `description|default('-')|truncate(100)`
+    passes None to `truncate`, which raises "object of type 'NoneType' has no
+    len()" and aborts the entire render, not just that field.
+
+    Found in production: one capability with a NULL description blanked
+    /enterprise/capability-map/capabilities. The route's own `except` re-rendered
+    the same template with an empty list, so it returned 200 showing "Error
+    loading capabilities" and no rows while the capabilities existed - a reader
+    cannot tell that from an empty portfolio. Nine templates carried the pattern,
+    including capability health, plateaus, gap analysis and technology roadmap.
+
+    Fix is the boolean second argument: default('x', true).
+    """
+    proc = _run([sys.executable, "scripts/check_null_filters.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("null-filters", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = "" if count == 0 else "run scripts/check_null_filters.py to list them"
+    return Result("null-filters", PASS if count == 0 else FAIL, detail, count, 0)
+
+
 def gate_fabricated_data() -> Result:
     """No invented data can reach the UI. Gated at ZERO.
 
@@ -593,6 +619,11 @@ def build_gates(baseline: dict) -> list[Gate]:
         Gate("template-syntax", "every Jinja template parses", "zero",
              gate_template_syntax,
              remediation="see the reported line; Jinja does not nest {# #} comments",
+             tags=["static", "ui"]),
+        Gate("null-filters", "default() never feeds a len()-calling filter", "zero",
+             gate_null_filters,
+             remediation="add the boolean argument: default('x', true) - plain "
+                         "default() replaces undefined, not None",
              tags=["static", "ui"]),
         Gate("fabricated-data", "no invented data can reach the UI", "zero",
              gate_fabricated_data,
