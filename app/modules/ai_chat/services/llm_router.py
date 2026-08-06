@@ -371,7 +371,7 @@ class LLMRouter:
         defaults = {
             LLMProvider.ANTHROPIC: "claude-haiku-4-5-20251001",
             LLMProvider.OPENAI: "gpt-4o-mini",
-            LLMProvider.GEMINI: "gemini-1.5-flash",
+            LLMProvider.GEMINI: "gemini-2.0-flash",
             LLMProvider.DEEPSEEK: "deepseek-chat",
             LLMProvider.OPENROUTER: "deepseek/deepseek-chat",
             LLMProvider.AZURE: "gpt-4o",

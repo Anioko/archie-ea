@@ -208,15 +208,13 @@ class LLMService:
         provider_priority = ["openai", "anthropic", "gemini", "deepseek", "openrouter", "azure", "huggingface"]
 
         # Default models for each provider (used when falling back to .env)
-        default_models = {
-            "anthropic": "claude-3-sonnet-20240229",
-            "openai": "gpt-4",
-            "gemini": "gemini-2.0-flash",
-            "deepseek": "deepseek-chat",
-            "azure": "gpt-4",
-            "huggingface": "meta-llama/Llama-2-7b-chat-hf",
-            "openrouter": "google/gemini-2.5-flash-preview:free",
-        }
+        # Single source of truth - these ids were hardcoded in six places and
+        # drifted independently until every Claude id was stale, several to
+        # RETIRED models that now 404 (claude-3-sonnet-20240229 went out in
+        # July 2025).
+        from app.modules.ai_chat.services.model_defaults import DEFAULT_MODELS
+
+        default_models = dict(DEFAULT_MODELS)
 
         # Ensure clean transaction state before query
         try:
@@ -1656,7 +1654,7 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
             fallback_defaults = {
                 "openai": "gpt-4o-mini",
                 "anthropic": "claude-haiku-4-5-20251001",
-                "gemini": "gemini-1.5-flash",
+                "gemini": "gemini-2.0-flash",
                 "deepseek": "deepseek-chat",
                 "openrouter": "deepseek/deepseek-chat",
                 "huggingface": "meta-llama/Llama-3.1-8B-Instruct",
@@ -2539,7 +2537,7 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
             },
             "anthropic": {
                 "name": "Anthropic (Claude)",
-                "default_models": ["claude-3-opus", "claude-3-sonnet", "claude-3-haiku"]
+                "default_models": ["claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5"]
             },
             "gemini": {
                 "name": "Google (Gemini)",
@@ -2954,7 +2952,7 @@ def test_api_key(provider: str, api_key: str, model: str | None = None) -> Dict:
             return {"success": True, "message": f"Connection successful. Model: {response.model}"}
 
         elif provider == "gemini":
-            model_name = _resolve_model("gemini", model) or "gemini-1.5-flash"
+            model_name = _resolve_model("gemini", model) or "gemini-2.0-flash"
 
             try:
                 ping_response = requests.post(

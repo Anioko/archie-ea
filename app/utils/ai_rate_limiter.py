@@ -14,6 +14,11 @@ from typing import Dict
 logger = logging.getLogger(__name__)
 
 
+from app.modules.ai_chat.services.model_defaults import (
+    PRICING_PER_1K as _CURRENT_MODEL_PRICING,
+)
+
+
 class AIUsageTracker:
     """
     Tracks AI model usage and costs per user.
@@ -29,12 +34,16 @@ class AIUsageTracker:
     DEFAULT_DAILY_LIMIT = 100  # requests per day
     DEFAULT_HOURLY_LIMIT = 20  # requests per hour
     
-    # Model costs per 1K tokens (approximate)
+    # Model costs per 1K tokens.
+    #
+    # This priced claude-3-opus and claude-3-sonnet - both RETIRED - so any spend
+    # figure built on it was fiction: a cost reported for models nobody can call.
+    # Current Anthropic prices come from model_defaults, which is also what the
+    # chat falls back to, so the two cannot drift apart again.
     MODEL_COSTS = {
+        **_CURRENT_MODEL_PRICING,
         "gpt-4-turbo": {"input": 0.01, "output": 0.03},
         "gpt-4": {"input": 0.03, "output": 0.06},
-        "claude-3-opus": {"input": 0.015, "output": 0.075},
-        "claude-3-sonnet": {"input": 0.003, "output": 0.015},
         "llama-3-70b": {"input": 0.0, "output": 0.0},  # Self-hosted, no API cost
         "llama-3-8b": {"input": 0.0, "output": 0.0},
     }

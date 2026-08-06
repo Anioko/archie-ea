@@ -535,7 +535,7 @@ def preview_env_keys():
 
     default_models = {
         "openai": "gpt-4o",
-        "anthropic": "claude-3-5-sonnet-20241022",
+        "anthropic": "claude-opus-5",
         "gemini": "gemini-2.0-flash-exp",
         "deepseek": "deepseek-chat",
         "huggingface": "meta-llama/Llama-3.1-8B-Instruct",
@@ -625,7 +625,7 @@ def load_env_keys():
 
     default_models = {
         "openai": "gpt-4o",
-        "anthropic": "claude-3-5-sonnet-20241022",
+        "anthropic": "claude-opus-5",
         "gemini": "gemini-2.0-flash-exp",
         "deepseek": "deepseek-chat",
         "huggingface": "meta-llama/Llama-3.1-8B-Instruct",

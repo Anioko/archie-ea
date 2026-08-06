@@ -527,7 +527,15 @@ def send_message():
                 "actions_taken": agent_result.get("actions_taken", []),
                 "pending_approvals": agent_result.get("pending_approvals", []),
                 "requires_approval": bool(agent_result.get("pending_approvals")),
-                "context_used": True,
+                # The records the read tools actually returned this turn, so the
+                # reader can check the answer against the rows rather than
+                # trusting it.
+                "sources": agent_result.get("sources", []),
+                # Was hardcoded True on every response regardless of whether any
+                # context was built - _build_system_prompt swallows a context
+                # failure into an empty string, so the API asserted grounding
+                # unconditionally. Report what actually happened.
+                "context_used": bool(agent_result.get("sources")),
                 "workspace_id": workspace_id,
                 "thread_id": thread_id,
                 "processing_metadata": {

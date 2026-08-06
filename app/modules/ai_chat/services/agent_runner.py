@@ -46,6 +46,18 @@ HOW TO OPERATE:
 5. Never fabricate IDs. Always use names — the system resolves them to IDs.
 6. If solution_id is in the ACTIVE SOLUTION CONTEXT below, pass it to all tools automatically.
 
+GROUNDING — this is a system of record, so an unverifiable answer is worse than none:
+7. State a fact about the portfolio only if a tool returned it or it appears in the
+   context below. If neither, say you would need to look it up, and look it up.
+8. Refer to records by the exact name the tool returned. The records you read are
+   attached to your reply as sources automatically — you do not need to write links,
+   but the names must match or the citation will not line up with what you said.
+9. Read the coverage fields on every tool result. When a result says it is showing
+   N of M, report M as the total and say the list is partial. Never present the
+   number of rows you were shown as the number that exists.
+10. When context arrives with an "_omitted" key, those parts were withheld for size
+    and are NOT empty — retrieve them with a tool before drawing a conclusion.
+
 LIVE ARCHITECTURE CONTEXT:
 """
 
@@ -78,6 +90,94 @@ class AgentRunner:
 
     # Budget for the serialised domain context block.
     MAX_CONTEXT_CHARS = 6000
+
+    # ------------------------------------------------------------------ #
+    # Citations
+    # ------------------------------------------------------------------ #
+    # Which read tool yields which kind of record. Derived from the tool's own
+    # results rather than asked of the model: a citation the model writes is a
+    # claim, and claims are the thing being verified. These are ground truth -
+    # the rows the database actually returned this turn.
+    _TOOL_ENTITY = {
+        "find_applications": "application",
+        "find_applications_by_capability": "application",
+        "query_capability_gaps": "capability",
+        "search_capabilities_by_problem": "capability",
+        "search_archimate_elements": "archimate_element",
+    }
+    MAX_SOURCES = 25
+
+    @staticmethod
+    def _source_url(entity_type: str, row: dict):
+        """Best-effort link to the record, or None.
+
+        None is a normal outcome, not a failure: url_for needs the endpoint to be
+        registered, and blueprints here register non-fatally (CLAUDE.md), so a
+        degraded feature must not take the citation with it. The UI shows the
+        name unlinked in that case - still verifiable, since the id travels with
+        it.
+        """
+        from flask import url_for
+
+        try:
+            if entity_type == "application":
+                return url_for("unified_applications.application_detail", id=row["id"])
+            if entity_type == "capability":
+                return url_for("enterprise_crud.get_capability", capability_id=row["id"])
+            if entity_type == "vendor":
+                return url_for("unified_vendors.vendor_detail", vendor_id=row["id"])
+            if entity_type == "solution":
+                return url_for("solution_design.view_solution", solution_id=row["id"])
+            if entity_type == "archimate_element":
+                # This route is keyed by layer and type as well as id, both of
+                # which search_archimate_elements already returns.
+                if row.get("layer") and row.get("type"):
+                    return url_for(
+                        "archimate_crud.detail_element",
+                        layer=str(row["layer"]).lower(),
+                        element_type=str(row["type"]),
+                        element_id=row["id"],
+                    )
+        except Exception:
+            # Unregistered endpoint, or no request/app context to build against.
+            return None
+        return None
+
+    def _collect_sources(self, tool_name: str, result: dict, sources: list) -> None:
+        """Record the entities a read tool actually returned, for citation.
+
+        Without this an answer is unfalsifiable: the model says "Salesforce is
+        end-of-life in 2027" and the reader has no id, no link and no way to tell
+        a real row from a fluent invention. For a system of record that is worse
+        than no answer.
+
+        Deduplicated on (type, id) because the same record often comes back from
+        several tools in one turn, and capped so a broad query cannot bury the
+        answer under its own footnotes.
+        """
+        entity_type = self._TOOL_ENTITY.get(tool_name)
+        if not entity_type or not isinstance(result, dict) or not result.get("success"):
+            return
+        rows = result.get("result")
+        if not isinstance(rows, list):
+            return
+
+        seen = {(s["type"], s["id"]) for s in sources}
+        for row in rows:
+            if len(sources) >= self.MAX_SOURCES:
+                return
+            if not isinstance(row, dict) or row.get("id") is None or not row.get("name"):
+                continue
+            key = (entity_type, row["id"])
+            if key in seen:
+                continue
+            seen.add(key)
+            sources.append({
+                "type": entity_type,
+                "id": row["id"],
+                "name": row["name"],
+                "url": self._source_url(entity_type, row),
+            })
 
     @classmethod
     def _serialise_context(cls, raw_ctx: dict) -> str:
@@ -219,7 +319,41 @@ class AgentRunner:
         try:
             provider, model = LLMService._get_configured_provider()
             if requested_model:
-                model = requested_model
+                # Resolve the PROVIDER along with the model. Overriding `model`
+                # alone sent whatever the user picked to whatever provider the
+                # resolver happened to land on - choose an Anthropic model while
+                # it resolved OpenAI and a Claude model id went to OpenAI, which
+                # fails with an opaque provider error.
+                #
+                # MultiDomainChatService._resolve_requested_model already does
+                # this correctly by matching the id against each enabled
+                # provider's configured models; reuse it rather than writing a
+                # second, divergent copy.
+                resolved = None
+                try:
+                    from app.modules.ai_chat.services.multi_domain_chat_service import (
+                        MultiDomainChatService,
+                    )
+
+                    resolved = MultiDomainChatService()._resolve_requested_model(requested_model)
+                except Exception:
+                    logger.warning(
+                        "AgentRunner: could not resolve requested model %r to a provider",
+                        requested_model,
+                        exc_info=True,
+                    )
+
+                if resolved:
+                    provider, model = resolved
+                else:
+                    # Not configured for any enabled provider. Keep the resolved
+                    # provider's own default rather than sending it a model id it
+                    # does not serve.
+                    logger.warning(
+                        "AgentRunner: requested model %r is not configured for any "
+                        "enabled provider; using %s/%s instead",
+                        requested_model, provider, model,
+                    )
             api_keys = LLMService._get_all_api_keys(provider)
             if not api_keys:
                 return self._fallback("No API keys configured for provider: " + provider)
@@ -263,6 +397,8 @@ class AgentRunner:
         executor = ToolExecutor(self.user_id)
         actions_taken = []
         pending_approvals = []
+        # Records the read tools actually returned this turn, for citation.
+        sources = []
 
         for iteration in range(MAX_ITERATIONS):
             # Call LLM
@@ -282,6 +418,7 @@ class AgentRunner:
                     "response": llm_resp.get("text", ""),
                     "actions_taken": actions_taken,
                     "pending_approvals": pending_approvals,
+                    "sources": sources,
                 }
 
             # Process each tool call
@@ -317,6 +454,7 @@ class AgentRunner:
                     # Auto-execute
                     self._emit({"type": "tool_start", "tool": tc.name, "args": tc.arguments})
                     result = executor.execute(tc)
+                    self._collect_sources(tc.name, result, sources)
                     self._emit({"type": "tool_result", "tool": tc.name, "result": result})
 
                     if result.get("success"):
@@ -343,6 +481,7 @@ class AgentRunner:
             ),
             "actions_taken": actions_taken,
             "pending_approvals": pending_approvals,
+            "sources": sources,
         }
 
     # ------------------------------------------------------------------ #

@@ -1635,6 +1635,31 @@ function genomePanel() {
         return escapeForHtml(text);
     }
 
+    /* Records the answer was actually built from.
+       These come from the tool results server-side, not from the model - a
+       citation the model writes is another claim, and the claim is the thing
+       being checked. `url` may be null when the owning blueprint is not
+       registered; the name and id still make the record findable. */
+    function renderSources(sources) {
+        if (!Array.isArray(sources) || sources.length === 0) return '';
+        const items = sources.map(s => {
+            const label = escapeForHtml(s.name);
+            const kind = escapeForHtml(String(s.type || '').replace(/_/g, ' '));
+            const body = s.url
+                ? `<a href="${escapeForHtml(s.url)}" class="underline hover:no-underline">${label}</a>`
+                : label;
+            return `<li class="inline-flex items-center gap-1.5 mr-3">
+                      <i data-lucide="link" class="h-3 w-3 text-muted-foreground" aria-hidden="true"></i>
+                      <span>${body}</span>
+                      <span class="text-muted-foreground">(${kind} #${escapeForHtml(s.id)})</span>
+                    </li>`;
+        }).join('');
+        return `<div class="mt-3 pt-2 border-t border-border text-xs text-muted-foreground">
+                  <div class="mb-1 font-medium">Based on ${sources.length} record${sources.length === 1 ? '' : 's'}:</div>
+                  <ul class="list-none p-0 m-0">${items}</ul>
+                </div>`;
+    }
+
     function appendMessage(role, text, metadata = {}) {
         const isAi = role === 'ai';
         const div = document.createElement('div');
@@ -1664,6 +1689,7 @@ function genomePanel() {
                      ${metadata.processing_time ? `<span class="ml-2 text-xs text-muted-foreground">${metadata.processing_time}ms</span>` : ''}
                  </div>` : ''}
                  <div class="message-content">${renderMarkdownSafely(text)}</div>
+                 ${renderSources(metadata.sources)}
                </div>`
             : `<div class="rounded-xl bg-primary text-primary-foreground p-4 text-sm max-w-3xl">
                  <div class="message-content">${escapeForHtml(text)}</div>
@@ -2446,7 +2472,8 @@ ${v.tco_estimate ? `**3-Year TCO:** $${v.tco_estimate.three_year.toLocaleString(
 
                 appendMessage('ai', data.response, {
                     domain: data.domain,
-                    processing_time: data.metadata?.processing_time || processingTime
+                    processing_time: data.metadata?.processing_time || processingTime,
+                    sources: data.sources
                 });
 
                 // Genome extraction — fires after every AI response when ?mode=genome
@@ -2512,7 +2539,7 @@ ${v.tco_estimate ? `**3-Year TCO:** $${v.tco_estimate.three_year.toLocaleString(
                     } else if (ev.type === 'done') {
                         if (ev.error) throw new Error(ev.error);
                         if (!full && ev.response) full = ev.response;
-                        meta = { domain: ev.domain || currentDomain, processing_time: Math.round(performance.now() - startTime) };
+                        meta = { domain: ev.domain || currentDomain, processing_time: Math.round(performance.now() - startTime), sources: ev.sources };
                     } else if (ev.error) { throw new Error(ev.error); }
                 }
             }
