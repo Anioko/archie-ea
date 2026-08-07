@@ -130,35 +130,37 @@ def get_value_stream_with_stages(value_stream_id: int) -> Optional[Dict[str, Any
 def create_value_stream(data: Dict[str, Any]) -> ValueStream:
     """Create and persist a new ValueStream. Raises on failure (caller handles rollback).
 
-    Uses a Core-level INSERT rather than db.session.add()/commit(). A pre-existing
-    SQLAlchemy ``after_insert`` mapper event on ValueStream
-    (app/models/strategy_layer.py::create_archimate_value_stream) unconditionally
-    reads ``target.archimate_element_id`` to auto-link an ArchiMateElement — but the
-    `value_streams` table has no such column, so any ORM-level insert raises
-    AttributeError and rolls back the whole transaction. A Core insert does not fire
-    ORM mapper events (see the comment above that listener), so it sidesteps the bug
-    without touching that file. The row is re-fetched as an ORM instance afterward.
+    Uses an ORM insert so the ``after_insert`` mapper event on ValueStream
+    (app/models/strategy_layer.py::create_archimate_value_stream) fires and mirrors
+    the row into the Strategy layer as an ArchiMateElement.
+
+    This deliberately replaces an earlier Core-level INSERT. That workaround existed
+    because the listener reads ``target.archimate_element_id`` and the model had no
+    such column, so an ORM insert raised AttributeError. Core inserts fire no mapper
+    events, which dodged the crash but also meant no value stream ever reached the
+    ArchiMate layer — the AI assistant reads that layer and consequently reported
+    "no value streams modelled" while the value-stream page listed them. The column
+    now exists (see ValueStream.archimate_element_id), so the ORM path is safe.
     """
     now = datetime.utcnow()
-    values = {
-        "name": data.get("name"),
-        "code": data.get("code") or None,
-        "description": data.get("description"),
-        "value_stream_type": data.get("value_stream_type"),
-        "industry_domain": data.get("industry_domain"),
-        "strategic_importance": data.get("strategic_importance"),
-        "business_owner": data.get("business_owner"),
-        "target_cycle_time": _to_int(data.get("target_cycle_time")),
-        "current_cycle_time": _to_int(data.get("current_cycle_time")),
-        "quality_target": _to_float(data.get("quality_target")),
-        "current_quality": _to_float(data.get("current_quality")),
-        "created_at": now,
-        "updated_at": now,
-    }
-    result = db.session.execute(ValueStream.__table__.insert().values(**values))
+    vs = ValueStream(
+        name=data.get("name"),
+        code=data.get("code") or None,
+        description=data.get("description"),
+        value_stream_type=data.get("value_stream_type"),
+        industry_domain=data.get("industry_domain"),
+        strategic_importance=data.get("strategic_importance"),
+        business_owner=data.get("business_owner"),
+        target_cycle_time=_to_int(data.get("target_cycle_time")),
+        current_cycle_time=_to_int(data.get("current_cycle_time")),
+        quality_target=_to_float(data.get("quality_target")),
+        current_quality=_to_float(data.get("current_quality")),
+        created_at=now,
+        updated_at=now,
+    )
+    db.session.add(vs)
     db.session.commit()
-    new_id = result.inserted_primary_key[0]
-    return ValueStream.query.get(new_id)
+    return vs
 
 
 def update_value_stream(value_stream_id: int, data: Dict[str, Any]) -> Optional[ValueStream]:

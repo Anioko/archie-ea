@@ -440,6 +440,15 @@ class ValueStream(TenantMixin, db.Model):
     quality_target = Column(db.Float)  # Target quality percentage
     current_quality = Column(db.Float)  # Current quality percentage
 
+    # ArchiMate backbone. A value stream IS a Strategy-layer ArchiMate element, so
+    # every row carries the id of its mirror in `archimate_elements`. The
+    # `after_insert` listener in app/models/strategy_layer.py populates this; without
+    # the column that listener raised AttributeError, which is why the service used to
+    # bypass ORM events entirely and no value stream ever reached the ArchiMate layer.
+    # Nullable so `flask reconcile-schema` (ADD-only, all-nullable) can add it to
+    # existing databases; rows predating the fix keep NULL until backfilled.
+    archimate_element_id = Column(db.Integer, db.ForeignKey("archimate_elements.id"))
+
     # Timestamps
     created_at = Column(db.DateTime, default=datetime.utcnow)
     updated_at = Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

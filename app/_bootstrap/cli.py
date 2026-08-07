@@ -204,6 +204,13 @@ def init_cli(app):
         app.logger.warning(f"⚠️  Failed to register value-stream tenancy backfill CLI: {e}")
 
     try:
+        from app.commands.backfill_value_stream_archimate import init_app as init_vs_archimate
+        init_vs_archimate(app)
+        app.logger.info("✅ Value-stream ArchiMate backfill CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"⚠️  Failed to register value-stream ArchiMate backfill CLI: {e}")
+
+    try:
         from app.commands.backfill_principle_org import init_app as init_principle_org
         init_principle_org(app)
         app.logger.info("✅ Principle tenancy backfill CLI command registered")
