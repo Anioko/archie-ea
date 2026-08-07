@@ -8,7 +8,7 @@
    - LLM metadata (model used, provider)
 
    Usage:
-   {% from 'components/llm_recommendations.html' import llm_recommendations %}
+   {% from 'components/llm_recommendations.html' import llm_recommendations with context %}
 
    {{ llm_recommendations(
        dashboard='capability_health',

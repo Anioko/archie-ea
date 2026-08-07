@@ -134,12 +134,29 @@ def test_context_used_is_no_longer_hardcoded_true():
 
 
 def test_the_ui_renders_citations_escaped():
-    """Record names are database content rendered into innerHTML."""
-    ui = (ROOT / "app/templates/ai_chat/index.html").read_text(encoding="utf-8")
+    """Record names are database content rendered into innerHTML.
+
+    Lives in app/static/js/ai_chat/render.js since the client rebuild moved the
+    transcript rendering out of the template. The guarantee is unchanged: a
+    source name or url reaching innerHTML must go through escapeForHtml first,
+    because both are database content and one of them is a link target.
+    """
+    ui = (ROOT / "app/static/js/ai_chat/render.js").read_text(encoding="utf-8")
     assert "function renderSources(" in ui
-    assert "${renderSources(metadata.sources)}" in ui
+    assert "renderSources(metadata.sources)" in ui
     assert "escapeForHtml(s.name)" in ui
     assert "escapeForHtml(s.url)" in ui
+
+
+def test_no_transcript_rendering_was_left_behind_in_the_template():
+    """The template must not regrow a second, unescaped renderer.
+
+    Two copies of this function is exactly how the original stored-XSS bug
+    survived: the streaming path sanitised and the completion path did not.
+    """
+    tpl = (ROOT / "app/templates/ai_chat/index.html").read_text(encoding="utf-8")
+    assert "function renderSources(" not in tpl
+    assert "function appendMessage(" not in tpl
 
 
 def test_the_model_is_told_the_grounding_contract():

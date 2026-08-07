@@ -1638,7 +1638,7 @@
             </div>
 
             <div x-cloak x-show="activeTab === 'roadmap'" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100" role="tabpanel" id="panel-roadmap" aria-labelledby="tab-roadmap">
-                {% from 'components/roadmap_widget.html' import roadmap_widget %}
+                {% from 'components/roadmap_widget.html' import roadmap_widget with context %}
                 {{ roadmap_widget(
                     data_endpoint=url_for('capability_map.api_roadmap_gaps'),
                     title='Gap Resolution Roadmap',

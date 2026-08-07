@@ -12,7 +12,7 @@
 ]) }}
 {% endblock %}
 
-{% from 'components/archimate_gantt_widget.html' import archimate_gantt_widget %}
+{% from 'components/archimate_gantt_widget.html' import archimate_gantt_widget with context %}
 
 {% block content %}
 <div class="mx-auto px-4 py-6" x-data="implementationPlanningDashboard()">
