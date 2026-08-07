@@ -86,3 +86,65 @@ def test_feedback_insert_inherits_current_org(db_session, make_org, tenant_ctx):
             "The tenant before_flush did not set organization_id on insert, so "
             "the feedback endpoint would write unattributed rows."
         )
+
+
+def test_the_endpoint_actually_writes_a_row(app, db_session, make_org):
+    """POST /ai-chat/feedback must persist, and must not lie when it cannot.
+
+    The other tests in this file construct AIChatFeedback directly, so they pass
+    whether or not the endpoint works — they would have passed against the raw
+    INSERT that referenced a column no model declared, raised UndefinedColumn on
+    every call, swallowed it, and returned {"success": true} for a write that
+    never happened. This test exercises the route.
+    """
+    from flask import g
+
+    from app.extensions import db
+    from app.models.ai_chat_feedback import AIChatFeedback
+    from app.models.user import User
+
+    org = make_org("fb-endpoint")
+    user = User(
+        email=f"fb-{org.id}@example.com", first_name="Fb", last_name="Probe",
+        organization_id=org.id, confirmed=True,
+    )
+    user.password = "probe-password-123"
+    db_session.add(user)
+    db_session.flush()
+
+    marker = f"answer text {org.id}"
+    # A real request body: the view reads `request.json`, which is a property, so
+    # it cannot be patched from outside — the context has to carry the payload.
+    with app.test_request_context(
+        "/ai-chat/feedback",
+        method="POST",
+        json={
+            "rating": "up",
+            "domain": "architecture",
+            "persona": "enterprise_architect",
+            "message_text": marker,
+        },
+    ):
+        from flask_login import login_user
+
+        g.current_org_id = org.id
+        login_user(user)
+
+        from app.modules.ai_chat.routes.chat_core import submit_message_feedback
+
+        response = submit_message_feedback()
+
+    payload = response[0].get_json() if isinstance(response, tuple) else response.get_json()
+    status = response[1] if isinstance(response, tuple) else 200
+
+    assert status == 200 and payload.get("success") is True, (
+        f"the endpoint reported {status} {payload} — if it reports success, a row must exist"
+    )
+
+    rows = db.session.query(AIChatFeedback).filter_by(message_text=marker).all()
+    assert len(rows) == 1, (
+        "the endpoint returned success and wrote nothing. That is the exact "
+        "failure this endpoint shipped with: a bare except that swallowed "
+        "UndefinedColumn and reported success anyway."
+    )
+    assert rows[0].organization_id == org.id, "the written row was not attributed to the org"

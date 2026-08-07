@@ -263,3 +263,45 @@ def test_the_degraded_provider_banner_is_shown(page, live_server, seeded):
         "the user was told nothing. A silent degraded assistant is worse than an "
         "absent one: answers still appear, and nothing says they are unavailable."
     )
+
+
+def test_opening_a_past_conversation_renders_its_messages(page, live_server, seeded):
+    """Clicking a conversation in the rail must put its turns on screen.
+
+    This is the regression test for a real defect. loadSession() guarded its
+    render loop with `typeof appendMessage === 'function'` — true while the code
+    lived in a classic <script> that hoisted the function onto window, always
+    false once it moved into a module IIFE. The loop rendered nothing, inside a
+    bare catch, so the pane went blank with no error.
+
+    And blank was the better half: __threadId had already switched, so the next
+    message continued a conversation the user could not see.
+
+    Nothing caught it because no test called loadSession — the tab-switching test
+    clicks the History tab, which only lists. The thread payload is stubbed so
+    this asserts the client render path without needing a configured LLM.
+    """
+    _open_chat(page, live_server, seeded)
+
+    marker_user = "probe-question-%s" % uuid.uuid4().hex[:8]
+    marker_ai = "probe-answer-%s" % uuid.uuid4().hex[:8]
+    page.route(
+        "**/ai-chat/threads/stub-thread",
+        lambda route: route.fulfill(
+            status=200,
+            content_type="application/json",
+            body='{"messages": [{"role": "user", "content": "%s"},'
+                 ' {"role": "assistant", "content": "%s"}]}' % (marker_user, marker_ai),
+        ),
+    )
+
+    page.evaluate("() => window.loadSession('stub-thread')")
+    page.wait_for_timeout(1200)
+
+    body = page.locator("#messages-container").inner_text()
+    assert marker_user in body, (
+        "the user's turn from the stored conversation did not render — the "
+        "transcript is blank while __threadId has already switched to it"
+    )
+    assert marker_ai in body, "the assistant's turn from the stored conversation did not render"
+    assert not _js_errors(page), _js_errors(page)
