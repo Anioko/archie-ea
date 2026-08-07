@@ -34,6 +34,20 @@ _DEBIT = {"critical": 25, "high": 12, "info": 0}
 # clean-core eroding fit types (custom build / heavy customization)
 _EROSION_FITS = {"custom", "customization", "custom_development"}
 
+# Tables whose rows carry data-architecture content. A solution linking any of
+# these has said something about the data it touches; one linking none has not.
+# ArchiMate puts Data Object on the Application layer and Business Object on the
+# Business layer, so this cannot be answered from layer_type alone.
+_DATA_TABLES = {
+    "application_data_objects",
+    "data_objects",
+    "data_entities",
+    "data_stores",
+    "business_objects",
+    "archimate_representations",
+    "representations",
+}
+
 
 def _safe(name: str, fn: Callable[[], List[Dict]]) -> List[Dict]:
     try:
@@ -59,6 +73,8 @@ class ConformanceReviewer:
         findings: List[Dict[str, Any]] = []
         findings += _safe("integration", lambda: cls._integration_findings(solution_id))
         findings += _safe("clean_core", lambda: cls._clean_core_findings(solution_id))
+        findings += _safe("business", lambda: cls._business_findings(solution_id))
+        findings += _safe("data", lambda: cls._data_findings(solution_id))
         findings += _safe("technology", lambda: cls._technology_findings(solution_id))
         findings += _safe("deployment", lambda: cls._deployment_findings(solution_id))
 
@@ -77,8 +93,8 @@ class ConformanceReviewer:
             summary = (
                 f"{_n(len(findings), 'conformance finding')} ({flagged} needing attention). "
                 "Each names the policy it breaches and the fix. Reviewed live against "
-                "the integration-pattern catalogue, clean-core weighting, and the "
-                "ArchiMate technology layer."
+                "the integration-pattern catalogue, clean-core weighting, and coverage "
+                "of the business, data and technology architectures."
             )
 
         return {
@@ -169,6 +185,81 @@ class ConformanceReviewer:
             ),
             "evidence": "Fit-gap register · fit_type in (custom, customization, custom_development)",
             "recommendation": "Reclassify or redesign these toward standard/configuration/extension.",
+        }]
+
+    @staticmethod
+    def _element_counts(sid: int):
+        """(total elements, per-layer counter, set of element tables) for a solution."""
+        from app.models.solution_models import SolutionArchiMateElement
+
+        rows = (
+            db.session.query(
+                SolutionArchiMateElement.layer_type,
+                SolutionArchiMateElement.element_table,
+                func.count(SolutionArchiMateElement.id),
+            )
+            .filter(SolutionArchiMateElement.solution_id == sid)
+            .group_by(
+                SolutionArchiMateElement.layer_type,
+                SolutionArchiMateElement.element_table,
+            )
+            .all()
+        )
+        total = sum(n for _, _, n in rows)
+        # layer_type is written in both casings across the codebase, so fold it.
+        layers = {(layer or "").strip().lower() for layer, _, _ in rows}
+        tables = {(table or "").strip().lower() for _, table, _ in rows}
+        return total, layers, tables
+
+    @staticmethod
+    def _business_findings(sid: int) -> List[Dict]:
+        """TOGAF Phase B: a design must say which business behaviour it changes."""
+        total, layers, _ = ConformanceReviewer._element_counts(sid)
+        if total == 0:
+            return []  # nothing modelled yet — not a conformance issue
+        if "business" in layers:
+            return []
+        return [{
+            "category": "business",
+            "severity": "high",
+            "title": "No business-layer elements — the design does not say what business behaviour changes",
+            "detail": (
+                f"The solution models {_n(total, 'ArchiMate element')} but none on the "
+                "Business layer (process, function, service, actor, role). Without it "
+                "there is no way to review which processes are affected, who owns them, "
+                "or which business services degrade if the change goes wrong. TOGAF "
+                "Phase B is not optional for an architecture of record."
+            ),
+            "evidence": "ArchiMate elements · layer_type=business = 0",
+            "recommendation": (
+                "Attach the business processes, functions or services this solution "
+                "changes, and name their owners."
+            ),
+        }]
+
+    @staticmethod
+    def _data_findings(sid: int) -> List[Dict]:
+        """TOGAF Phase C (Data): a design must name the data it creates and consumes."""
+        total, _, tables = ConformanceReviewer._element_counts(sid)
+        if total == 0:
+            return []
+        if tables & _DATA_TABLES:
+            return []
+        return [{
+            "category": "data",
+            "severity": "high",
+            "title": "No data architecture — the design names no data object it creates or consumes",
+            "detail": (
+                f"The solution models {_n(total, 'ArchiMate element')} but none of them "
+                "is a data object or business object. Without the data in scope, the "
+                "design cannot be assessed for classification, personal data, retention "
+                "or lineage — the questions a data protection review asks first."
+            ),
+            "evidence": "ArchiMate elements · no data-bearing element_table linked",
+            "recommendation": (
+                "Attach the data objects or business objects this solution creates, "
+                "reads or updates, and set their classification."
+            ),
         }]
 
     @staticmethod
