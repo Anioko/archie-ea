@@ -23,7 +23,7 @@ is **not** on this path.
 | `domain` | `agent_runner.py:522` → `get_domain_context(domain, …)` | Selects 1 of 9 context loaders, whose output is serialised into the system prompt | **Yes** |
 | `persona` | `agent_runner.py:529-531` | Appends one sentence: `You are operating as: {Title Case}.` | **Barely** — see §1 |
 | `template_name` | `chat_core.py:356-362` | Validated, length-checked, HTML-sanitised — **then discarded**. `AgentRunner.run()` has no such parameter | **No — none at all** |
-| `element_id` + `context_type` | `chat_core.py:446-452` → `context_filter` | Consumed by `_load_architecture_context` and `_load_technology_context` only. Ignored by the vendor, capability and general loaders | **Domain-dependent** — see §2 |
+| `element_id` + `context_type` | `chat_core.py:446-452` → `context_filter` | Honoured by **one** loader before 2026-08-07 (`_load_technology_context`); three more fixed since | **Domain-dependent** — see §2 |
 | `model` | `agent_runner.py:345` `_resolve_requested_model` | Selects the LLM; silently falls back when the requested model is not configured, logging a warning the user never sees | **Yes**, but unreported |
 | `thread_id` | `chat_core.py` → `_load_history(...)` → `run(history=…)` | Prior turns, so follow-ups resolve | **Yes** |
 | `solution_id` | `agent_runner.py:495-503` | `ACTIVE SOLUTION CONTEXT` block; write tools default to this solution | **Yes** |
@@ -63,23 +63,41 @@ effect on retrieved context.
 
 Six places in Archie deep-link into the chat with `?element_id=…&context_type=…`
 (applications, vendors, solutions, composer, dashboard ×2). Those become
-`context_filter`. Measured by counting `context_filter` references inside each
-loader body — one reference means the signature only:
+`context_filter`.
 
-| Loader | `context_filter` refs | Uses it? |
+> **Correction, 2026-08-07.** The first version of this section counted
+> `context_filter` references per loader and inferred "uses it" from a count above
+> one. That conflated two unrelated things. `_load_architecture_context` has seven
+> references, but **none of them is the singular `element_id`** — they are `layer`
+> (a filter) and `element_ids` (plural, for graph expansion). Verified: `grep -c
+> "element_id\b"` over that function body returns **0**.
+>
+> A reference count answers "does this function read the filter at all", not "does
+> it honour the deep link". Only the second question mattered.
+
+**State before 2026-08-07 — one loader of five honoured the deep link:**
+
+| Loader | Honours `element_id`? | Note |
 |---|---|---|
-| `_load_architecture_context` | 7 | **Yes** |
-| `_load_technology_context` | 4 | **Yes** |
-| `_load_vendor_context` | 1 | **No** — signature only |
-| `_load_capability_context` | 1 | **No** |
-| `_load_general_context` | 1 | **No** |
+| `_load_technology_context` | **Yes** | AIC-016; `context_type == "application"` |
+| `_load_architecture_context` | **No** | Reads `layer` and `element_ids` (plural) for other purposes |
+| `_load_vendor_context` | **No** | Ran `VendorOrganization.query.limit(50).all()` and never looked |
+| `_load_capability_context` | **No** | |
+| `_load_general_context` | **No** | The fallback, so it received every deep link sent with no `domain` |
 
-`_load_vendor_context` opens `VendorOrganization.query.limit(50).all()` and never
-looks at the filter.
+**Consequence:** "Ask AI about this vendor" from `vendor_detail.html:63` sent the
+vendor's id, and the assistant was handed the first 50 vendors with no indication
+which one was meant. The link appeared to work. The same held for capabilities,
+for solutions, and — because `_load_architecture_context` never read it either —
+for the architecture domain that most personas default to.
 
-**Consequence:** "Ask AI about this vendor" from `vendor_detail.html:63` sends the
-vendor's id, and the assistant is handed the first 50 vendors with no indication
-which one was asked about. The link appears to work.
+**Fixed** in the three ignoring loaders (commit `809663c`), following
+`_load_technology_context` as the precedent. Each now attaches a `context_focus`
+block naming the resolved record, and reports `resolved: false` with an
+instruction to say so when the id cannot be read — rather than silently
+substituting fifty other records, which is the failure this fix exists to close.
+`_load_architecture_context` is **still unfixed**: it is the default domain for
+most personas and does not honour the deep link.
 
 ## 3. `template_name` — the Template selector does nothing
 
