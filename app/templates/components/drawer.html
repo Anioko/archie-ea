@@ -105,7 +105,13 @@
     </div>
 </div>
 
-<script>
+{# Nonce is required: without it the CSP refuses this block, window.drawerFocusTrap
+   is never defined, and the x-effect below throws
+   "ReferenceError: drawerFocusTrap is not defined" on every page that renders a
+   drawer — which, via layouts/admin_base.html's page-guide drawer, is every page.
+   This file is imported `with context` everywhere (enforced by
+   scripts/check_macro_import_context.py), so csp_nonce resolves here. #}
+<script nonce="{{ csp_nonce }}">
 /* Drawer helpers — idempotent, safe to include multiple times */
 if (!window.openDrawer) {
     function openDrawer(drawerId) {
