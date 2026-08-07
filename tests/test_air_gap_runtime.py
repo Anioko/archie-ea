@@ -88,7 +88,15 @@ def authed_client(app, db_session, make_org):
     )
     user.organization_id = org.id
     db_session.add(user)
-    db_session.flush()
+    # commit, not flush. Flask-SQLAlchemy scopes db.session to the app context,
+    # and the db_session fixture holds one context open for the whole test — so
+    # the request issued below shares this session. /applications/ opens with a
+    # defensive db.session.rollback(); with the user merely flushed, that
+    # rollback unwound the savepoint holding the INSERT, and the just-loaded
+    # current_user refreshed against a vanished row (ObjectDeletedError).
+    # Under join_transaction_mode="create_savepoint" this commit is a SAVEPOINT
+    # release, so teardown still discards everything.
+    db_session.commit()
 
     client = app.test_client()
     with client.session_transaction() as session:
