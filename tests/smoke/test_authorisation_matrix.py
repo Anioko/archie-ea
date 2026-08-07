@@ -31,6 +31,14 @@ DENIED = "denied"
 
 # path -> the archetypes that should reach it, from the decorator definitions.
 # platform_admin is added to every row because requires_role() grants it always.
+#
+# /ai-chat is the one deliberately open row. chat_views.index carries
+# @login_required and no role gate, so every archetype is expected to reach it —
+# stating that explicitly is what makes the row worth having. It pins both
+# directions of a page that had no authorisation coverage at all: a role gate
+# added later would lock eight personas out of the assistant and show up here,
+# and test_no_archetype_reaches_another_personas_section_unauthenticated now also
+# covers it, which matters because the chat sees the whole portfolio.
 POLICY = {
     "/procurement/contracts":  {"procurement", "portfolio_manager"},
     "/procurement/licenses":   {"procurement", "portfolio_manager"},
@@ -38,6 +46,7 @@ POLICY = {
     "/my-applications/":       {"application_manager"},
     "/my-applications/list":   {"application_manager"},
     "/my-applications/health": {"application_manager"},
+    "/ai-chat":                set(ARCHETYPES),
 }
 for _allowed in POLICY.values():
     _allowed.add("platform_admin")
