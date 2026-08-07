@@ -233,16 +233,22 @@ def test_capability_deep_link_names_the_capability_asked_about(
 
     org = make_org("cap-focus")
     suffix = uuid.uuid4().hex[:8]
-    for i in range(3):
-        db_session.add(
-            BusinessCapability(name=f"Other Capability {suffix} {i}", organization_id=org.id)
-        )
-    focus = BusinessCapability(name=f"Focus Capability {suffix}", organization_id=org.id)
-    db_session.add(focus)
-    db_session.flush()
-    focus_id, focus_name = focus.id, focus.name
 
+    # Create inside the tenant context. Creating a BusinessCapability fires
+    # _sync_archimate_element(), which inserts a matching ArchiMateElement — and
+    # that cascaded insert takes its organization_id from g.current_org_id via
+    # the tenant before_flush. Flushing outside a request context leaves it NULL
+    # and the insert fails the NOT NULL constraint.
     with tenant_ctx(org.id):
+        for i in range(3):
+            db_session.add(
+                BusinessCapability(name=f"Other Capability {suffix} {i}", organization_id=org.id)
+            )
+        focus = BusinessCapability(name=f"Focus Capability {suffix}", organization_id=org.id)
+        db_session.add(focus)
+        db_session.flush()
+        focus_id, focus_name = focus.id, focus.name
+
         result = _service().get_domain_context(
             "business_capability",
             {"element_id": focus_id, "context_type": "capability"},

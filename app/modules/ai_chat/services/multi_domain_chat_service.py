@@ -4520,7 +4520,7 @@ Use enterprise architecture terminology appropriate for this role."""
             app_counts = {}
             try:
                 rows = db.session.execute(  # tenant-filtered: scoped via parent FK (application_capability_mapping)
-                    text("""  # tenant-filtered
+                    text("""
                         SELECT m.business_capability_id, COUNT(DISTINCT m.application_component_id) as app_count
                         FROM application_capability_mapping m
                         GROUP BY m.business_capability_id
@@ -4534,7 +4534,7 @@ Use enterprise architecture terminology appropriate for this role."""
             children_counts = {}
             try:
                 children_rows = db.session.execute(  # tenant-filtered: scoped via parent FK (business_capability)
-                    text("""  # tenant-filtered
+                    text("""
                         SELECT parent_capability_id, COUNT(*) as child_count
                         FROM business_capability
                         WHERE parent_capability_id IS NOT NULL
