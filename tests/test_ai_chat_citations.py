@@ -143,9 +143,15 @@ def test_the_ui_renders_citations_escaped():
     """
     ui = (ROOT / "app/static/js/ai_chat/render.js").read_text(encoding="utf-8")
     assert "function renderSources(" in ui
-    assert "renderSources(metadata.sources)" in ui
     assert "escapeForHtml(s.name)" in ui
     assert "escapeForHtml(s.url)" in ui
+
+    # Defined is not the same as called. The original assertion pinned
+    # "${renderSources(metadata.sources)}" — that the result is interpolated into
+    # the message body, not merely computed. render.js concatenates rather than
+    # interpolating, so the marker changed; the guarantee must not.
+    assert "renderSources(metadata.sources)" in ui, "sources are not rendered into the message"
+    assert "renderSources(meta.sources)" in ui, "the streamed message finalises without its sources"
 
 
 def test_no_transcript_rendering_was_left_behind_in_the_template():

@@ -254,6 +254,35 @@ def gate_template_syntax() -> Result:
     return Result("template-syntax", PASS if count == 0 else FAIL, detail, count, 0)
 
 
+def gate_macro_import_context() -> Result:
+    """A macro holding a <script> is imported `with context`. Gated at ZERO.
+
+    Jinja's `from x import m` / `import x as m` do not pass the caller's context.
+    CspNonceExtension rewrites every template-authored <script> to carry
+    nonce="{{ csp_nonce }}", and csp_nonce comes from a context processor - so in a
+    context-less import it is undefined, renders as nonce="", and the CSP
+    (script-src 'self' 'nonce-...' 'strict-dynamic') refuses the script outright.
+    strict-dynamic means there is no origin fallback.
+
+    Nothing else sees it. The template compiles, the route returns 200, and the
+    JavaScript never runs. One sweep found 14 live sites shipping dead JS - the AI
+    chat's document-upload panel, the page-guide drawer included by
+    layouts/admin_base.html (so every admin page), the roadmap and gantt widgets,
+    the LLM recommendation panels on four strategic pages, and the
+    password-strength meter on every account form.
+
+    It was found by loading a page in a browser. This gate is so the next one is
+    found in 3 seconds instead.
+    """
+    proc = _run([sys.executable, "scripts/check_macro_import_context.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("macro-import-context", FAIL, f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    detail = "" if count == 0 else "run scripts/check_macro_import_context.py to list them"
+    return Result("macro-import-context", PASS if count == 0 else FAIL, detail, count, 0)
+
+
 def gate_template_references() -> Result:
     """Every `{% include %}` / `{% extends %}` target exists. Gated at ZERO.
 
@@ -650,6 +679,11 @@ def build_gates(baseline: dict) -> list[Gate]:
              gate_template_references,
              remediation="create the missing partial, correct the path, or delete the "
                          "dead reference; run scripts/check_template_references.py",
+             tags=["static", "ui"]),
+        Gate("macro-import-context", "script-bearing macros imported with context", "zero",
+             gate_macro_import_context,
+             remediation="append ` with context` to the import; run "
+                         "scripts/check_macro_import_context.py",
              tags=["static", "ui"]),
         Gate("null-filters", "default() never feeds a len()-calling filter", "zero",
              gate_null_filters,
