@@ -477,7 +477,7 @@ x-cloak>
                             <button type="button" class="quick-query-btn inline-flex items-center gap-1 rounded-md border border-input bg-background px-3 py-1 text-xs hover:bg-accent" data-quick-query="List capabilities with maturity below 3" aria-label="Quick query: Low maturity caps">Low maturity caps</button>
                             <button type="button" class="quick-query-btn inline-flex items-center gap-1 rounded-md border border-input bg-background px-3 py-1 text-xs hover:bg-accent" data-quick-query="Show vendors with contracts expiring in the next 90 days" aria-label="Quick query: Expiring vendors">Expiring vendors</button>
                             <button type="button" class="quick-query-btn inline-flex items-center gap-1 rounded-md border border-input bg-background px-3 py-1 text-xs hover:bg-accent" data-quick-query="List applications with risk score above 70" aria-label="Quick query: High-risk apps">High-risk apps</button>
-                            <button type="button" class="quick-query-btn inline-flex items-center gap-1 rounded-md border border-input bg-background px-3 py-1 text-xs hover:bg-accent" data-quick-query="/create-capability" aria-label="Quick query: Create capability">Create capability</button>
+                            <button type="button" class="quick-query-btn inline-flex items-center gap-1 rounded-md border border-input bg-background px-3 py-1 text-xs hover:bg-accent" data-quick-query="Create a new business capability" aria-label="Quick query: Create capability">Create capability</button>
                             <button type="button" class="quick-query-btn inline-flex items-center gap-1 rounded-md border border-input bg-background px-3 py-1 text-xs hover:bg-accent" data-quick-query="/map-apqc" aria-label="Quick query: Map APQC framework">Map APQC framework</button>
                         </div>
                     </div>
@@ -2717,6 +2717,17 @@ ${v.tco_estimate ? `**3-Year TCO:** $${v.tco_estimate.three_year.toLocaleString(
     }
 
     function runQuickQuery(query) {
+        /* Every [data-quick-query] click funnels through here into
+           /ai-chat/nl-query. A button carrying a slash command therefore posted
+           the literal string to the natural-language query endpoint instead of
+           running the command — including "/map-apqc", which IS a registered
+           command, so it looked correct and quietly did the wrong thing.
+           handleChatCommand is only reachable from the chat-form submit. */
+        if (query.startsWith('/')) {
+            userInput.value = query;
+            chatForm.requestSubmit();
+            return;
+        }
         // Switch to Query tab first
         switchSidebarTab('query');
         // Set the query in the input
