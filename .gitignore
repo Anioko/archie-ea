@@ -198,6 +198,7 @@ scripts/check_*.py
 !scripts/check_deployed_deps.py
 !scripts/check_raw_sql_tenancy.py
 !scripts/check_fabricated_data.py
+!scripts/check_macro_import_context.py
 !scripts/check_template_syntax.py
 scripts/patch_*.py
 scripts/find_*.py
