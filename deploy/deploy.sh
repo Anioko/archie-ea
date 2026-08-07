@@ -41,12 +41,58 @@ PREVIOUS=$(git rev-parse HEAD)
 PREVIOUS_REF=$(git rev-parse --abbrev-ref HEAD)
 say "deploying $TARGET  (currently $(git log --oneline -1))"
 
-# ── 1. never silently discard work that only exists here ────────────────────
-if ! git merge-base --is-ancestor HEAD "$TARGET" 2>/dev/null; then
+# ── 1. resolve $TARGET against origin, not whatever is locally cached ───────
+#
+# Twice in production this printed "fast-forward confirmed" and rebuilt the
+# OLD code: the fast-forward check below used to run against "$TARGET" with
+# no `git fetch` ever having happened, so a branch name resolved to whatever
+# local ref happened to exist - stale (a branch fetched days ago) or, once,
+# absent entirely (a branch never fetched on this host, so `origin/<branch>`
+# didn't even resolve). Either way the check compared HEAD to itself or to a
+# ref that trivially satisfied "is an ancestor" and never touched origin.
+# Fetch first, then fast-forward the local branch to origin's tip so every
+# later step - including the check right below - sees what origin actually
+# has.
+say "fetching origin"
+if ! timeout 60 git fetch --prune origin; then
+    echo "ABORT: git fetch origin failed - refusing to deploy against a possibly stale ref." >&2
+    exit 1
+fi
+
+if git show-ref --verify --quiet "refs/remotes/origin/$TARGET"; then
+    REMOTE_SHA=$(git rev-parse "origin/$TARGET")
+    if git show-ref --verify --quiet "refs/heads/$TARGET"; then
+        LOCAL_SHA=$(git rev-parse "refs/heads/$TARGET")
+        if [ "$LOCAL_SHA" != "$REMOTE_SHA" ]; then
+            if ! git merge-base --is-ancestor "$LOCAL_SHA" "$REMOTE_SHA"; then
+                echo "ABORT: local branch $TARGET has diverged from origin/$TARGET - refusing to guess which wins." >&2
+                echo "Local-only commits:" >&2
+                git log --oneline "$REMOTE_SHA..$LOCAL_SHA" | sed 's/^/  /' >&2
+                echo "Resolve manually (e.g. git merge --ff-only origin/$TARGET on this host) and re-run." >&2
+                exit 1
+            fi
+            if [ "$(git rev-parse --abbrev-ref HEAD)" = "$TARGET" ]; then
+                git merge --ff-only "origin/$TARGET"
+            else
+                git branch -f "$TARGET" "$REMOTE_SHA"
+            fi
+            echo "  fast-forwarded local $TARGET to origin/$TARGET"
+        fi
+    else
+        git branch "$TARGET" "$REMOTE_SHA"
+        echo "  created local $TARGET tracking origin/$TARGET (never fetched on this host before)"
+    fi
+fi
+
+TARGET_SHA=$(git rev-parse "$TARGET")
+say "resolved $TARGET -> $TARGET_SHA"
+
+# ── 2. never silently discard work that only exists here ────────────────────
+if ! git merge-base --is-ancestor HEAD "$TARGET_SHA" 2>/dev/null; then
     if [ "$FORCE" != "--force" ]; then
         echo "ABORT: $TARGET is not a fast-forward from HEAD." >&2
         echo "Commits on this host that $TARGET does not contain:" >&2
-        git log --oneline "$TARGET..HEAD" | sed 's/^/  /' >&2
+        git log --oneline "$TARGET_SHA..HEAD" | sed 's/^/  /' >&2
         echo "Re-run with --force only if you intend to discard them." >&2
         exit 1
     fi
@@ -54,17 +100,24 @@ if ! git merge-base --is-ancestor HEAD "$TARGET" 2>/dev/null; then
 fi
 echo "  fast-forward confirmed"
 
-# ── 2. backups, before anything changes ─────────────────────────────────────
+# ── 3. backups, before anything changes ─────────────────────────────────────
 say "backing up"
 docker compose exec -T postgres pg_dumpall -U postgres | gzip > "$BACKUPS/db-$TS.sql.gz"
 cp docker-compose.yml "$BACKUPS/docker-compose.yml.$TS" 2>/dev/null || true
 printf '%s\n%s\n' "$PREVIOUS" "$PREVIOUS_REF" > "$BACKUPS/ROLLBACK.$TS"
 echo "  db: $(du -h "$BACKUPS/db-$TS.sql.gz" | cut -f1)   rollback: $PREVIOUS ($PREVIOUS_REF)"
 
-# ── 3. check out, then verify integrity BEFORE restarting ───────────────────
+# ── 4. check out, then verify integrity BEFORE restarting ───────────────────
 say "checking out $TARGET"
 git checkout -q "$TARGET"
 git log --oneline -1 | sed 's/^/  /'
+
+if [ "$(git rev-parse HEAD)" != "$TARGET_SHA" ]; then
+    echo "ABORT: checked out $(git rev-parse HEAD) but resolved target was $TARGET_SHA." >&2
+    echo "This is not the ref the operator asked for - stopping before any rebuild." >&2
+    git checkout -q "$PREVIOUS_REF"
+    exit 1
+fi
 
 say "verifying subresource integrity on the checked-out tree"
 python3 - <<'PY' || { echo "ABORT: SRI mismatch - deploying this would kill the front end." >&2; git checkout -q "$PREVIOUS_REF"; exit 1; }
@@ -86,7 +139,7 @@ print("  integrity mismatches: %d" % bad)
 sys.exit(1 if bad else 0)
 PY
 
-# ── 4. rebuild, then restart (NOT SIGHUP - see README) ──────────────────────
+# ── 5. rebuild, then restart (NOT SIGHUP - see README) ──────────────────────
 #
 # The build step is not optional and its absence was a silent, serious bug.
 # `up -d --force-recreate` recreates the CONTAINER from the EXISTING image; it
@@ -122,7 +175,7 @@ docker compose build server
 say "restarting the application"
 docker compose up -d --force-recreate server
 
-# ── 5. wait for health, roll back if it never arrives ───────────────────────
+# ── 6. wait for health, roll back if it never arrives ───────────────────────
 say "waiting for health (up to ${HEALTH_TIMEOUT}s)"
 deadline=$(( $(date +%s) + HEALTH_TIMEOUT ))
 healthy=0
@@ -142,7 +195,7 @@ if [ "$healthy" != "1" ]; then
 fi
 echo "  healthy"
 
-# ── 6. prove the new code is the code that is running ───────────────────────
+# ── 7. prove the new code is the code that is running ───────────────────────
 say "post-deploy checks"
 docker compose logs server 2>/dev/null | grep -E "reconcile-schema:" | tail -1 | sed 's/^/  /' || true
 for path in / /account/login /health; do
