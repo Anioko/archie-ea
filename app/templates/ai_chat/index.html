@@ -404,20 +404,20 @@ x-cloak>
             {# Sidebar Tabs #}
             <div class="flex border-b border-border">
                 <button type="button" id="tab-context" @click="switchSidebarTab('context')"
-                    class="flex-1 px-3 py-3 text-xs font-bold border-b-2 border-primary text-primary bg-background" aria-label="Action">
+                    class="flex-1 px-3 py-3 text-xs font-bold border-b-2 border-primary text-primary bg-background">
                     Context
                 </button>
                 <button type="button" id="tab-query" @click="switchSidebarTab('query')"
-                    class="flex-1 px-3 py-3 text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors" aria-label="Action">
+                    class="flex-1 px-3 py-3 text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors">
                     Query
                 </button>
                 <button type="button" id="tab-alerts" @click="switchSidebarTab('alerts')"
-                    class="flex-1 px-3 py-3 text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors relative" aria-label="Action">
+                    class="flex-1 px-3 py-3 text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors relative">
                     Alerts
                     <span id="alert-badge" class="hidden absolute top-2.5 right-3 h-4 w-4 bg-destructive text-destructive-foreground text-[9px] rounded-full items-center justify-center font-bold border-2 border-muted/30">0</span>
                 </button>
                 <button type="button" id="tab-history" @click="switchSidebarTab('history'); loadSessionList()"
-                    class="flex-1 px-3 py-3 text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors" aria-label="Conversations">
+                    class="flex-1 px-3 py-3 text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors">
                     Chats
                 </button>
             </div>
@@ -574,7 +574,13 @@ x-cloak>
         </div>
 
         <!-- Mobile Sidebar Backdrop -->
-        <div id="sidebar-backdrop" @click="toggleSidebar()" hidden class="modal-root lg:hidden fixed inset-0 bg-black/50 overflow-y-auto z-30"  role="dialog"></div>
+        {# Authored with the `hidden` ATTRIBUTE while toggleSidebar() toggles the
+           `hidden` CLASS — the two never met, so the backdrop never appeared and
+           the page scroll-locked behind an undimmed, still-tabbable overlay.
+           The bare role="dialog" is also dropped: an element with that role and
+           no accessible name is an aria-dialog-name violation once visible, and
+           this element is decorative — the sidebar it reveals carries the meaning. #}
+        <div id="sidebar-backdrop" @click="toggleSidebar()" class="hidden modal-root lg:hidden fixed inset-0 bg-black/50 overflow-y-auto z-30"></div>
 
         <!-- Chat Message Area -->
         <div class="flex-1 flex flex-col min-w-0">
@@ -810,43 +816,13 @@ x-cloak>
                 {{ ai_chat_document_upload() }}
             </div>
 
-            <!-- Entity action modal -->
-            <div id="entity-action-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-                 role="dialog" aria-modal="true" aria-labelledby="entity-action-title">
-                <div class="w-full max-w-sm rounded-xl bg-background p-6 shadow-xl mx-4">
-                    <h2 id="entity-action-title" class="text-lg font-semibold mb-1"></h2>
-                    <p id="entity-action-subtitle" class="text-sm text-muted-foreground mb-4"></p>
-                    <div class="space-y-2">
-                        <button type="button" id="entity-action-view" class="w-full flex items-center gap-3 p-3 rounded-lg border hover:bg-accent transition-colors text-left">
-                            <div class="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                                <i data-lucide="external-link" class="h-5 w-5 text-primary"></i>
-                            </div>
-                            <div>
-                                <div class="font-medium text-sm">View Details</div>
-                                <div id="entity-action-view-desc" class="text-xs text-muted-foreground">Open the full page</div>
-                            </div>
-                        </button>
-                        <button type="button" id="entity-action-ask" class="w-full flex items-center gap-3 p-3 rounded-lg border hover:bg-accent transition-colors text-left">
-                            <div class="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                                <i data-lucide="bot" class="h-5 w-5 text-primary"></i>
-                            </div>
-                            <div>
-                                <div class="font-medium text-sm">Ask AI</div>
-                                <div class="text-xs text-muted-foreground">Get AI analysis and insights</div>
-                            </div>
-                        </button>
-                        <button type="button" id="entity-action-context" class="w-full flex items-center gap-3 p-3 rounded-lg border hover:bg-accent transition-colors text-left">
-                            <div class="h-10 w-10 rounded-lg bg-emerald-500/10 flex items-center justify-center">
-                                <i data-lucide="plus-circle" class="h-5 w-5 text-emerald-600"></i>
-                            </div>
-                            <div>
-                                <div class="font-medium text-sm">Add to Context</div>
-                                <div class="text-xs text-muted-foreground">Use as context for AI queries</div>
-                            </div>
-                        </button>
-                    </div>
-                </div>
-            </div>
+            {# The static #entity-action-modal that lived here shared its id with the
+               one showEntityInChat() builds at runtime. Every close path calls
+               getElementById('entity-action-modal').remove(), which returns the
+               FIRST match in document order — so the first click removed this
+               invisible copy and left the real overlay covering the viewport,
+               with no Escape and no focus trap. It was also a duplicate-id-aria
+               violation whenever both were present. #}
             <!-- Create solution from brief modal -->
         </div>
 
@@ -1688,19 +1664,27 @@ function genomePanel() {
 
         // ENT-122: inject "Open in Composer" button for ArchiMate responses
         if (isAi && metadata.archimate_elements && metadata.archimate_elements.length > 0) {
+            /* Key, param and timestamp all have to match what the composer
+               reads (archimate/composer.js:2407 and :2495), or the handoff
+               silently drops the payload and opens an empty canvas:
+                 - the key is 'composer_prefill', not 'archimate_prefill'
+                 - the link must carry ?prefill=1, or the reader returns early
+                 - a payload older than 5 minutes is discarded, so send a
+                   timestamp rather than relying on the absent-field branch */
             const prefillData = {
                 elements: metadata.archimate_elements,
                 relationships: metadata.archimate_relationships || [],
                 model_name: metadata.archimate_model_name || 'AI Generated Architecture',
-                source: 'ai_chat'
+                source: 'ai_chat',
+                timestamp: Date.now()
             };
-            sessionStorage.setItem('archimate_prefill', JSON.stringify(prefillData));
+            sessionStorage.setItem('composer_prefill', JSON.stringify(prefillData));
             const composerBtn = document.createElement('div');
             composerBtn.className = 'mt-3 ml-12';
             const elemCount = metadata.archimate_elements.length;
             const relCount = (metadata.archimate_relationships || []).length;
             composerBtn.innerHTML = `
-                <a href="/archimate/composer" data-ent121-composer-link
+                <a href="/archimate/composer?prefill=1" data-ent121-composer-link
                    class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors shadow-sm">
                     <i data-lucide="layout-dashboard" class="h-4 w-4"></i>
                     Open in Composer — ${elemCount} elements, ${relCount} relationships
@@ -2583,7 +2567,9 @@ ${v.tco_estimate ? `**3-Year TCO:** $${v.tco_estimate.three_year.toLocaleString(
     // ==========================================================================
 
     function switchSidebarTab(tab) {
-        const panels = ['context', 'query', 'alerts'];
+        // 'history' was missing, so choosing another tab never hid the Chats
+        // panel. The [id^="tab-"] reset below already covered all four.
+        const panels = ['context', 'query', 'alerts', 'history'];
 
         // Hide all panels
         panels.forEach(panelName => {
