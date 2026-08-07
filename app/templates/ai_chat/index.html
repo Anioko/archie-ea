@@ -1,8 +1,12 @@
 {% extends 'layouts/admin_base.html' %}
 
 {% block extra_css %}
-<!-- Marked.js for Markdown rendering in AI Chat -->
-<script src="/static/vendor/marked.min.js"></script>
+<!-- Marked.js for Markdown rendering in AI Chat. Integrity-gated like every
+     other vendored asset: marked parses model output into HTML, so it is a
+     poor place to be the one exception. -->
+<script src="/static/vendor/marked.min.js"
+        integrity="sha384-948ahk4ZmxYVYOc+rxN1H2gM1EJ2Duhp7uHtZ4WSLkV4Vtx5MUqnV+l7u9B+jFv+"
+        crossorigin="anonymous"></script>
 <!-- DOMPurify loaded globally via _head.html (v3.0.8 with SRI) — no duplicate needed -->
 <!-- Custom Styles for Chat Elements -->
 <style>
