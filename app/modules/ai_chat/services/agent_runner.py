@@ -526,10 +526,42 @@ class AgentRunner:
         except Exception as e:
             logger.debug("AgentRunner: context build failed: %s", e)
 
+        # The governed charter: the persona's mission and scope, the six HARD
+        # RULES (evidence, no fabrication, propose-don't-dispose, cite your
+        # source) and a live-data block queried now.
+        #
+        # This used to be the one-line note below and nothing else, so selecting
+        # "AI Data Architect" over "CIO" changed the prompt by a job title. The
+        # charters were reachable only through
+        # MultiDomainChatService._get_persona_system_prompt <- process_message,
+        # which this path never calls — so the assistant was not governed by the
+        # rules CLAUDE.md names as its governance layer, and the rule forbidding
+        # invented application names and counts was never in context.
         persona_note = ""
         if persona:
-            persona_note = f"\nYou are operating as: {persona.replace('_', ' ').title()}.\n"
+            try:
+                from app.modules.ai_chat.services.architect_persona_charters import (
+                    build_architect_prompt,
+                )
 
+                # Returns None for the six ungoverned personas, which then fall
+                # through to the label below rather than losing their persona.
+                charter = build_architect_prompt(persona)
+                if charter:
+                    persona_note = "\n" + charter + "\n"
+            except Exception:
+                # A charter that cannot be built must not cost the turn. The
+                # label is a worse prompt, not a broken one.
+                logger.warning(
+                    "AgentRunner: charter unavailable for persona %s", persona, exc_info=True
+                )
+            if not persona_note:
+                persona_note = f"\nYou are operating as: {persona.replace('_', ' ').title()}.\n"
+
+        # The charter goes last, after the context block. _serialise_context
+        # drops whole keys when it is over budget, so anything appended after it
+        # is safe from that trimming — and the HARD RULES are the last thing that
+        # should be sacrificed to make room.
         return _AGENT_PREFIX + solution_block + portfolio_block + ctx_block + persona_note
 
     # ------------------------------------------------------------------ #
