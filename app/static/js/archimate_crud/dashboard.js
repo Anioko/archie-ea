@@ -186,9 +186,21 @@ document.addEventListener('alpine:init', function() {
 
             init() {
                 var self = this;
-                let urlLayer = new URLSearchParams(window.location.search).get('layer');
-                if (urlLayer && this.layerConfig[urlLayer]) {
-                    this.activeTab = urlLayer;
+                let params = new URLSearchParams(window.location.search);
+                // The By-Layer navigation lands here with a layer and an element
+                // type. The query string wins over the server-rendered defaults so
+                // a bookmarked ?layer=… keeps working; both are re-checked against
+                // layerConfig, because an unrecognised value must not become an
+                // active filter that matches nothing.
+                let wantLayer = params.get('layer') || APP_CONFIG.initialLayer || null;
+                if (wantLayer && this.layerConfig[wantLayer]) {
+                    this.activeTab = wantLayer;
+                } else {
+                    wantLayer = null;
+                }
+                let wantType = params.get('element_type') || APP_CONFIG.initialElementType || null;
+                if (wantType && this.currentLayerTypes.indexOf(wantType) >= 0) {
+                    this.typeFilter = wantType;
                 }
                 let urlPanel = new URLSearchParams(window.location.search).get('panel');
                 if (urlPanel === 'health') {
@@ -199,7 +211,7 @@ document.addEventListener('alpine:init', function() {
                     // Default tab 'motivation' is usually empty; if the user didn't pick
                     // a layer, land on the most-populated one so a populated estate does
                     // not render as all-zero cards.
-                    if (!urlLayer) {
+                    if (!wantLayer) {
                         var best = Object.entries(self.layerCounts || {})
                             .sort(function(a, b){ return (b[1]||0) - (a[1]||0); })[0];
                         if (best && best[1] > 0 && best[0] !== self.activeTab) {

@@ -44,6 +44,20 @@ from app.models.archimate_missing_elements import (
     Product,
     Stakeholder,
 )
+
+# Technology Layer behavioural elements. `TechnologyCollaborationFull`
+# (technology_collaborations_full) is the ArchiMate "Technology Collaboration"
+# used here rather than technology_layer.TechnologyCollaboration
+# (technology_collaborations): the two map the same concept onto two tables, and
+# the "Full" one is the only one any application code writes or reads
+# (app/application_mgmt/detail_layer_routes.py), so it is where the rows are.
+from app.models.archimate_technology import (
+    TechnologyCollaborationFull,
+    TechnologyEvent,
+    TechnologyFunction,
+    TechnologyInteraction,
+    TechnologyProcess,
+)
 from app.models.business_capabilities import BusinessCapability, BusinessFunction
 from app.models.business_layer import (
     BusinessActor,
@@ -56,10 +70,19 @@ from app.models.business_layer import (
 # Implementation Layer imports
 from app.models.implementation_migration import Deliverable as PlanningDeliverable
 from app.models.implementation_migration import Gap
+from app.models.implementation_migration import ImplementationEvent
 from app.models.implementation_migration import Plateau
 from app.models.implementation_migration import WorkPackage
 from app.models.models import ConstraintElement, Outcome, Principle, Requirement
 from app.models.motivation import Assessment, Driver, Goal, Meaning, Value
+
+# Physical Layer imports
+from app.models.physical_layer import (
+    PhysicalDistributionNetwork,
+    PhysicalEquipment,
+    PhysicalFacility,
+    PhysicalMaterial,
+)
 from app.models.process_data import BusinessProcess
 from app.models.representation import Representation
 from app.models.strategy_layer import CourseOfAction, StrategyResource
@@ -71,6 +94,7 @@ from app.models.technology_layer import (
     Node,
     Path,
     SystemSoftware,
+    TechnologyArtifact,
     TechnologyInterface,
     TechnologyService,
 )
@@ -121,17 +145,29 @@ MODEL_REGISTRY = {
     "ApplicationEvent": ApplicationEvent,
     "ApplicationCollaboration": ApplicationCollaboration,
     "DataObject": DataObject,
-    # Technology Layer
+    # Technology Layer — all 13 ArchiMate 3.2 types
     "Node": Node,
     "Device": Device,
     "SystemSoftware": SystemSoftware,
-    "TechnologyService": TechnologyService,
+    "TechnologyCollaboration": TechnologyCollaborationFull,
     "TechnologyInterface": TechnologyInterface,
     "Path": Path,
     "CommunicationNetwork": CommunicationNetwork,
+    "TechnologyFunction": TechnologyFunction,
+    "TechnologyProcess": TechnologyProcess,
+    "TechnologyInteraction": TechnologyInteraction,
+    "TechnologyEvent": TechnologyEvent,
+    "TechnologyService": TechnologyService,
+    "Artifact": TechnologyArtifact,
+    # Physical Layer
+    "Equipment": PhysicalEquipment,
+    "Facility": PhysicalFacility,
+    "DistributionNetwork": PhysicalDistributionNetwork,
+    "Material": PhysicalMaterial,
     # Implementation & Migration Layer
     "WorkPackage": WorkPackage,
     "Deliverable": PlanningDeliverable,
+    "ImplementationEvent": ImplementationEvent,
     "Plateau": Plateau,
     "Gap": Gap,
 }
@@ -199,19 +235,56 @@ LAYER_CONFIG = {
             "Node",
             "Device",
             "SystemSoftware",
-            "TechnologyService",
+            "TechnologyCollaboration",
             "TechnologyInterface",
             "Path",
             "CommunicationNetwork",
+            "TechnologyFunction",
+            "TechnologyProcess",
+            "TechnologyInteraction",
+            "TechnologyEvent",
+            "TechnologyService",
+            "Artifact",
         ],
         "icon": "⚙️",
     },
+    "physical": {
+        "name": "Physical Layer",
+        "elements": [
+            "Equipment",
+            "Facility",
+            "DistributionNetwork",
+            "Material",
+        ],
+        "icon": "🏭",
+    },
     "implementation": {
         "name": "Implementation & Migration Layer",
-        "elements": ["WorkPackage", "Deliverable", "Plateau", "Gap"],
+        "elements": [
+            "WorkPackage",
+            "Deliverable",
+            "ImplementationEvent",
+            "Plateau",
+            "Gap",
+        ],
         "icon": "🚀",
     },
 }
+
+
+def _validated_layer_filter(layer, element_type):
+    """Narrow a requested (layer, element_type) pair to what the registry knows.
+
+    The By-Layer sidebar links hand these in on the query string. Anything the
+    registry does not recognise is dropped rather than passed through: a filter
+    that matches nothing renders as an active filter over an empty table, which
+    reads as "you have no Nodes" rather than "that is not a type".
+    """
+    if layer not in LAYER_CONFIG:
+        return None, None
+    if element_type not in LAYER_CONFIG[layer]["elements"]:
+        return layer, None
+    return layer, element_type
 
 
 # Fields to skip when auto-discovering displayable attributes
@@ -292,8 +365,22 @@ def _get_display_fields(element, model_class):
 @archimate_crud.route("/dashboard")
 @login_required
 def dashboard():
-    """Main dashboard with tabs for each layer"""
-    return render_template("archimate_crud/dashboard.html", layer_config=LAYER_CONFIG)
+    """Main dashboard with tabs for each layer.
+
+    ``?layer=`` and ``?element_type=`` pre-select a tab and a type filter, which
+    is how the By-Layer sidebar navigation lands on the elements it names. Both
+    are validated here rather than in the browser so the server decides what
+    counts as a real filter.
+    """
+    initial_layer, initial_element_type = _validated_layer_filter(
+        request.args.get("layer"), request.args.get("element_type")
+    )
+    return render_template(
+        "archimate_crud/dashboard.html",
+        layer_config=LAYER_CONFIG,
+        initial_layer=initial_layer,
+        initial_element_type=initial_element_type,
+    )
 
 
 @archimate_crud.route("/api/layer/<layer>/count")
@@ -561,6 +648,7 @@ def list_elements(layer, element_type):
             }
         )
 
+    initial_layer, initial_element_type = _validated_layer_filter(layer, element_type)
     return render_template(
         "archimate_crud/dashboard.html",
         layer=layer,
@@ -570,6 +658,11 @@ def list_elements(layer, element_type):
         search=search,
         view_mode=view_mode,
         layer_config=LAYER_CONFIG,
+        # dashboard.html is an Alpine app that fetches its own rows; without
+        # these it would ignore the path it was reached by and open on the
+        # default tab, showing a different layer than the URL asked for.
+        initial_layer=initial_layer,
+        initial_element_type=initial_element_type,
     )
 
 
