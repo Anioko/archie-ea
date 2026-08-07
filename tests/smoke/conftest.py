@@ -258,7 +258,31 @@ def seeded(live_server):
 PAGE_TIMEOUT = int(os.environ.get("SMOKE_PAGE_TIMEOUT", "90000"))
 
 
-@pytest.fixture(scope="session")
+# `package`, not `session`, and the distinction is load-bearing.
+#
+# Playwright's sync API drives its asyncio loop from a greenlet that stays parked
+# in run_until_complete() for as long as `sync_playwright()` is open. Greenlets
+# share the OS thread and asyncio's running-loop marker is thread-global, so from
+# the moment the first smoke test asks for `browser`, asyncio._get_running_loop()
+# returns Playwright's loop for every test that follows in the process.
+#
+# Session scope held that context open until the whole run ended. pytest collects
+# tests/journeys -> tests/smoke -> tests/test_*.py, so every later module ran
+# inside the leaked loop, and tests/test_lucid_import.py:705 — the only
+# asyncio.run() in the suite — died with:
+#
+#     RuntimeError: asyncio.run() cannot be called from a running event loop
+#
+# Package scope finalises the fixture when tests/smoke finishes (it has an
+# __init__.py, so it is a Package node), releasing the loop before the rest of the
+# suite. Chromium is still launched exactly once — there is one smoke package —
+# and it is scope-legal: `audited` is module-scoped and every `page` is
+# function-scoped, so no consumer outlives it.
+#
+# CI passes today only because its `tests` job never runs `playwright install`,
+# so the launch raises, the skip below unwinds the context, and the loop is
+# released. Adding a browser to that job would have turned it red.
+@pytest.fixture(scope="package")
 def browser():
     with sync_playwright() as p:
         try:

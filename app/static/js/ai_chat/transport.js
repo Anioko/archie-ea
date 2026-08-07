@@ -79,6 +79,19 @@
     async function streamMessage(payload, handlers) {
         var h = handlers || {};
         _controller = new AbortController();
+        try {
+            return await _stream(payload, h);
+        } finally {
+            /* Every exit resets the controller, not just the success path. It
+               used to be nulled only after a clean finish, so any throw — a 502,
+               a bad SSE frame, a `done` carrying an error — left it set:
+               isStreaming() kept reporting true and Stop then aborted a
+               controller for a request that had already ended. */
+            _controller = null;
+        }
+    }
+
+    async function _stream(payload, h) {
         var resp = await apiFetch('/ai-chat/message/stream', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
@@ -123,7 +136,6 @@
             }
         }
 
-        _controller = null;
         if (!full || !full.trim()) return false;  // let the caller fall back
         if (h.onDone) await h.onDone({ text: full, domain: meta.domain, sources: meta.sources });
         return true;

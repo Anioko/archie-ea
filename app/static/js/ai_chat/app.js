@@ -311,7 +311,16 @@
             /* A user-initiated stop is not a transport failure: re-issuing the
                turn against the non-streaming endpoint would be the opposite of
                what Stop means. Everything else falls through. */
-            if (_streamErr && _streamErr.name === 'AbortError') return;
+            if (_streamErr && _streamErr.name === 'AbortError') {
+                /* Stop pressed before the first byte: onOpen never ran, so the
+                   loading node it would have removed is still on screen and the
+                   transcript reads "Thinking..." forever. That is the most
+                   likely moment to press Stop, so it is the one that must be
+                   cleaned up here. */
+                const _l = document.getElementById(loadingId);
+                if (_l) _l.remove();
+                return;
+            }
             /* fall through to non-streaming */
         }
 
@@ -950,6 +959,7 @@ Would you like me to provide more details about the extracted elements or help y
    stay in one conversation. Backed by the /ai-chat/threads API. */
 (function () {
   var transport = window.ArchieChat.transport;
+  var render = window.ArchieChat.render;
   function esc(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : String(s)); return d.innerHTML; }
 
   window.loadSessionList = async function () {
@@ -995,10 +1005,21 @@ Would you like me to provide more details about the extracted elements or help y
       window.__threadId = id;
       var wg = document.getElementById('domain-welcome-grid'); if (wg) wg.classList.add('hidden');
       var mc = document.getElementById('messages-container'); if (mc) mc.innerHTML = '';
+      /* Resolved through the module, and deliberately unguarded.
+         appendMessage used to be a window global — the old template's classic
+         <script> hoisted every top-level function onto window — so
+         `typeof appendMessage === 'function'` was true. Inside an IIFE it is
+         always false, so this loop silently rendered nothing: opening a past
+         conversation cleared the pane and left it empty, while __threadId above
+         had already switched, so the next message continued a thread the user
+         could not see. A guard that can be false for a module this file depends
+         on is not a safety net, it is the bug. */
       msgs.forEach(function (m) {
-        if (typeof appendMessage === 'function') {
-          appendMessage(m.role === 'assistant' ? 'ai' : m.role, m.content, { domain: ArchieChat.state.currentDomain || 'general' });
-        }
+        render.appendMessage(
+          m.role === 'assistant' ? 'ai' : m.role,
+          m.content,
+          { domain: window.ArchieChat.state.currentDomain || 'general' }
+        );
       });
       window.loadSessionList();
       if (mc) mc.scrollTop = mc.scrollHeight;

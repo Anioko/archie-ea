@@ -7257,9 +7257,20 @@ End with: "Type **'next'** to complete the design workflow."
             feedback_count = 0
             try:
                 from sqlalchemy import text
-                feedback_count = db.session.execute(  # tenant-filtered: scoped via parent FK (ai_chat_feedback)
-                    text("SELECT COUNT(*) FROM ai_chat_feedback")  # tenant-filtered
-                ).scalar() or 0
+                # Was a bare COUNT(*) over the whole table, marked
+                # "scoped via parent FK" — there is no parent FK. Every tenant
+                # saw the global count. It read as harmless while the table was
+                # empty; the write path is fixed now, so it would not have been.
+                from flask import g as _g
+                _org = getattr(_g, "current_org_id", None)
+                if _org is None:
+                    feedback_count = None   # unknown, not zero — see CLAUDE.md
+                else:
+                    feedback_count = db.session.execute(
+                        text("SELECT COUNT(*) FROM ai_chat_feedback "
+                             "WHERE organization_id = :org"),
+                        {"org": _org},
+                    ).scalar() or 0
             except Exception:  # fabricated-values-ok
                 logger.exception("Failed to operation")
                 pass
