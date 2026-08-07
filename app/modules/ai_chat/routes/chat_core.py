@@ -471,6 +471,12 @@ def send_message():
             context_data.update(document_context)
 
         # ENT-085: Pass attached image data for vision/multimodal analysis
+        # The chat client no longer sends these. AgentRunner — which is what
+        # actually runs the turn — has no vision handling, so the base64 landed
+        # in context_data and was dropped by every context loader. The user saw
+        # a thumbnail and got a confident answer generated as if no diagram had
+        # been attached. The UI was removed rather than left lying; this stays
+        # as the reattachment point, and is inert while nothing sends it.
         image_data = data.get("image_data")
         if image_data and isinstance(image_data, str):
             context_data["image_data"] = image_data

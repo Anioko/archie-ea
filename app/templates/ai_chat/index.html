@@ -756,18 +756,12 @@ x-cloak>
                         <label for="selected-element-id" class="sr-only">Selected element</label>
                         <input type="hidden" id="selected-element-id" value="">
                         <div class="flex-1 relative">
-                            <!-- ENT-085: Image attachment preview -->
-                            <div id="image-preview-bar" class="hidden mb-2 flex items-center gap-2 rounded-md border border-input bg-muted/30 px-2 py-1">
-                                <img id="image-preview-thumb" src="" alt="Attached image preview" class="h-12 w-12 rounded object-cover border border-border">
-                                <span id="image-preview-name" class="text-xs text-muted-foreground truncate flex-1"></span>
-                                <button type="button" id="image-remove-btn"
-                                    class="inline-flex h-6 w-6 items-center justify-center rounded hover:bg-destructive/10 text-destructive transition-colors"
-                                    aria-label="Remove attached image" title="Remove image">
-                                    <i data-lucide="x" class="h-3 w-3" aria-hidden="true"></i>
-                                </button>
-                            </div>
-                            <!-- ENT-085: Hidden file input for image upload -->
-                            <input type="file" id="image-upload-input" class="hidden" accept="image/png,image/jpeg,image/gif,image/webp">
+                            {# The diagram-attach control lived here (ENT-085). It was removed
+                               deliberately: AgentRunner has no vision handling, so the base64
+                               was accepted, put into context_data and dropped. Users saw a
+                               thumbnail and received a confident answer generated as if no
+                               diagram had been attached. Do not restore this markup without
+                               implementing vision on the AgentRunner path first. #}
                             <div class="relative rounded-2xl border border-input bg-background focus-within:ring-2 focus-within:ring-primary/20 transition-shadow">
                             <textarea id="user-input"
                                 rows="3"
@@ -786,15 +780,6 @@ x-cloak>
                                 class="hidden inline-flex h-10 w-10 items-center justify-center rounded-md border border-destructive/50 bg-destructive/10 hover:bg-destructive/20 text-destructive transition-colors"
                                 aria-label="Stop generation" title="Stop generation">
                                 <i data-lucide="square" class="h-4 w-4" aria-hidden="true"></i>
-                            </button>
-                            <!-- ENT-085: Attach architecture diagram for vision analysis -->
-                            <button
-                                type="button"
-                                id="image-attach-btn"
-                                class="inline-flex h-10 w-10 items-center justify-center rounded-md bg-primary/10 hover:bg-primary/20 text-primary transition-colors"
-                                aria-label="Attach architecture diagram" title="Attach architecture diagram for AI vision analysis"
-                            >
-                                <i data-lucide="image" class="h-4 w-4" aria-hidden="true"></i>
                             </button>
                             <button
                                 type="button"
@@ -1089,7 +1074,6 @@ function genomePanel() {
     let currentPersona = '';
     let chatHistory = [];
     let contextElement = null;
-    let attachedImage = null; // ENT-085: { file, dataUrl, mimeType }
 
     // Welcome UI helpers — hide suggestion chips on first user send
     function _hideWelcomeUI() {
@@ -2394,14 +2378,6 @@ ${v.tco_estimate ? `**3-Year TCO:** $${v.tco_estimate.three_year.toLocaleString(
         messagesContainer.scrollTop = messagesContainer.scrollHeight;
         lucide.createIcons();
 
-        // ENT-085: clear image attachment after sending
-        const imageForRequest = attachedImage;
-        if (attachedImage) {
-            attachedImage = null;
-            const bar = document.getElementById('image-preview-bar');
-            if (bar) bar.classList.add('hidden');
-        }
-
         const startTime = performance.now();
         // Shared payload. thread_id keeps multi-turn chats in one conversation.
         const _payload = JSON.stringify({
@@ -2413,8 +2389,6 @@ ${v.tco_estimate ? `**3-Year TCO:** $${v.tco_estimate.three_year.toLocaleString(
             persona: currentPersona || null,
             model: document.getElementById('model-selector')?.value || null,
             thread_id: window.__threadId || null,
-            image_data: imageForRequest ? imageForRequest.dataUrl.split(',')[1] : null,
-            image_media_type: imageForRequest ? imageForRequest.mimeType : null,
         });
 
         // Stream the reply token-by-token (like ChatGPT). If streaming can't be
@@ -3313,41 +3287,6 @@ Would you like me to provide more details about the extracted elements or help y
 
         // Load initial alert count
         loadRecommendations();
-
-        // ENT-085: Wire image attach button → file picker
-        const imageAttachBtn = document.getElementById('image-attach-btn');
-        const imageUploadInput = document.getElementById('image-upload-input');
-        const imagePreviewBar = document.getElementById('image-preview-bar');
-        const imagePreviewThumb = document.getElementById('image-preview-thumb');
-        const imagePreviewName = document.getElementById('image-preview-name');
-        const imageRemoveBtn = document.getElementById('image-remove-btn');
-
-        if (imageAttachBtn && imageUploadInput) {
-            imageAttachBtn.addEventListener('click', () => imageUploadInput.click());
-
-            imageUploadInput.addEventListener('change', () => {
-                const file = imageUploadInput.files[0];
-                if (!file) return;
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    attachedImage = { file, dataUrl: e.target.result, mimeType: file.type };
-                    imagePreviewThumb.src = e.target.result;
-                    imagePreviewName.textContent = file.name;
-                    imagePreviewBar.classList.remove('hidden');
-                    imageAttachBtn.classList.add('text-primary', 'bg-primary/10');
-                };
-                reader.readAsDataURL(file);
-                imageUploadInput.value = '';
-            });
-
-            imageRemoveBtn.addEventListener('click', () => {
-                attachedImage = null;
-                imagePreviewBar.classList.add('hidden');
-                imagePreviewThumb.src = '';
-                imagePreviewName.textContent = '';
-                imageAttachBtn.classList.remove('text-primary', 'bg-primary/10');
-            });
-        }
 
         // Update welcome message with interactive domain cards
         messagesContainer.innerHTML = `
