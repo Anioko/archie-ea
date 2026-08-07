@@ -1013,6 +1013,10 @@ function genomePanel() {
     window.csrfToken = '{{ csrf_token() }}';
 </script>
 
+{# Chat modules. Loaded before the inline blocks that call them; classic
+   scripts, so they run in order and before Alpine (which is deferred). #}
+<script src="{{ url_for('static', filename='js/ai_chat/transport.js') }}"></script>
+
 <script>
     // Enhanced JavaScript for multi-domain chat with persona support
 
@@ -1071,39 +1075,32 @@ function genomePanel() {
     // Load available models
     async function loadAvailableModels() {
         try {
-            const response = await fetch('/ai-chat/models');
-            const data = await response.json();
+            const models = await ArchieChat.transport.loadModels();
 
-            if (response.ok && data.success) {
-                // Clear existing options
-                modelSelector.innerHTML = '<option value="">Auto-Select Model</option>';
+            // Clear existing options
+            modelSelector.innerHTML = '<option value="">Auto-Select Model</option>';
 
-                // Add available models
-                data.models.forEach(model => {
-                    const option = document.createElement('option');
-                    option.value = model.model;
-                    option.textContent = model.display_name;
+            // Add available models
+            models.forEach(model => {
+                const option = document.createElement('option');
+                option.value = model.model;
+                option.textContent = model.display_name;
 
-                    // Add recommended for info
-                    if (model.recommended_for && model.recommended_for.length > 0) {
-                        option.textContent += ` (${model.recommended_for[0]})`;
-                    }
+                // Add recommended for info
+                if (model.recommended_for && model.recommended_for.length > 0) {
+                    option.textContent += ` (${model.recommended_for[0]})`;
+                }
 
-                    if (model.is_fallback) {
-                        option.textContent += ` [Fallback ${model.fallback_order}]`;
-                    }
+                if (model.is_fallback) {
+                    option.textContent += ` [Fallback ${model.fallback_order}]`;
+                }
 
-                    if (model.test_status === 'failed') {
-                        option.textContent += ' [Provider Warning]';
-                    }
+                if (model.test_status === 'failed') {
+                    option.textContent += ' [Provider Warning]';
+                }
 
-                    modelSelector.appendChild(option);
-                });
-
-            } else {
-                modelSelector.innerHTML = '<option value="">Models unavailable</option>';
-                console.error('Failed to load models:', data.error);
-            }
+                modelSelector.appendChild(option);
+            });
         } catch (error) {
             modelSelector.innerHTML = '<option value="">Models unavailable</option>';
             console.error('Error loading models:', error);
@@ -2312,11 +2309,31 @@ ${v.tco_estimate ? `**3-Year TCO:** $${v.tco_estimate.three_year.toLocaleString(
        the keyboard at all. */
     userInput.addEventListener('keydown', handleEnter);
 
+    /* Send and Stop swap places while a turn is in flight. Salvaged from
+       ai_chat.js, the 169 KB file no template loads: #stop-btn has been in the
+       markup all along with its handler in a file that never ran. */
+    function _setSendingUI(sending) {
+        const sendBtn = document.getElementById('send-btn');
+        const stopBtn = document.getElementById('stop-btn');
+        if (sendBtn) { sendBtn.disabled = sending; sendBtn.classList.toggle('hidden', sending); }
+        if (stopBtn) { stopBtn.classList.toggle('hidden', !sending); }
+    }
+
+    document.getElementById('stop-btn')?.addEventListener('click', () => {
+        ArchieChat.transport.abort();
+        _setSendingUI(false);
+    });
+
     // Enhanced form submission
-    chatForm.addEventListener('submit', async (e) => {
+    chatForm.addEventListener('submit', (e) => {
         e.preventDefault();
+        _submitTurn().finally(() => _setSendingUI(false));
+    });
+
+    async function _submitTurn() {
         const message = userInput.value.trim();
         if (!message) return;
+        _setSendingUI(true);
 
         // Clear input
         userInput.value = '';
@@ -2378,14 +2395,16 @@ ${v.tco_estimate ? `**3-Year TCO:** $${v.tco_estimate.three_year.toLocaleString(
         // Stream the reply token-by-token (like ChatGPT). If streaming can't be
         // established, fall through to the non-streaming request below.
         try { if (await streamAiReply(_payload, loadingId, startTime, timestamp)) return; }
-        catch (_streamErr) { /* fall through to non-streaming */ }
+        catch (_streamErr) {
+            /* A user-initiated stop is not a transport failure: re-issuing the
+               turn against the non-streaming endpoint would be the opposite of
+               what Stop means. Everything else falls through. */
+            if (_streamErr && _streamErr.name === 'AbortError') return;
+            /* fall through to non-streaming */
+        }
 
         try {
-            const response = await fetch('/ai-chat/message', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: _payload
-            });
+            const response = await ArchieChat.transport.sendMessage(_payload);
 
             const data = await response.json();
             // Remember the conversation this turn was saved to, and refresh the
@@ -2449,70 +2468,67 @@ ${v.tco_estimate ? `**3-Year TCO:** $${v.tco_estimate.three_year.toLocaleString(
             appendMessage('ai', `**Network Error:** ${error.message}`, { domain: currentDomain });
             appendSystemMessage(`Network error: ${error.message}`, 'error');
         }
-    });
+    }
 
     // Stream an AI reply via SSE. Renders tokens live into a bubble; returns true
     // when it rendered a reply (caller then stops), throws/returns false to let
     // the caller fall back to the non-streaming endpoint.
     async function streamAiReply(payload, loadingId, startTime, timestamp) {
-        const resp = await fetch('/ai-chat/message/stream', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': window.csrfToken || (document.querySelector('meta[name=csrf-token]') || {}).content || '' },
-            body: payload
-        });
-        if (!resp.ok || !resp.body) throw new Error('stream ' + resp.status);
+        let wrap = null;
+        let target = null;
+        // Idempotent: the bubble is dropped exactly once, whether the stream
+        // finished, produced nothing, or threw.
+        const dropBubble = () => { if (wrap) { wrap.remove(); wrap = null; target = null; } };
 
-        { const _l = document.getElementById(loadingId); if (_l) _l.remove(); }
-        const bubbleId = 'stream-' + Date.now();
-        const grad = getColorClass(domainConfig[currentDomain]?.color || 'primary', 'gradient');
-        const wrap = document.createElement('div');
-        wrap.className = 'flex gap-4';
-        wrap.innerHTML =
-            '<div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br ' + grad + ' text-primary-foreground shadow-lg"><i data-lucide="' + (domainConfig[currentDomain]?.icon || 'bot') + '" class="h-5 w-5"></i></div>' +
-            '<div class="rounded-xl bg-muted/50 p-4 text-sm prose max-w-3xl" id="' + bubbleId + '"><span class="animate-pulse">▍</span></div>';
-        messagesContainer.appendChild(wrap);
-        if (window.lucide) lucide.createIcons();
-        const target = document.getElementById(bubbleId);
-
-        const reader = resp.body.getReader();
-        const dec = new TextDecoder();
-        let buf = '', full = '', meta = { domain: currentDomain };
         try {
-            while (true) {
-                const { value, done } = await reader.read();
-                if (done) break;
-                buf += dec.decode(value, { stream: true });
-                const lines = buf.split('\n'); buf = lines.pop();
-                for (const line of lines) {
-                    const s = line.trim();
-                    if (!s.startsWith('data:')) continue;
-                    const raw = s.slice(5).trim();
-                    if (raw === '[DONE]') continue;
-                    let ev; try { ev = JSON.parse(raw); } catch (_) { continue; }
-                    if (ev.thread_id) {
-                        const wasNew = ev.thread_id !== window.__threadId;
-                        window.__threadId = ev.thread_id;
-                        if (wasNew && window.loadSessionList) window.loadSessionList();
+            return await ArchieChat.transport.streamMessage(payload, {
+                onOpen: () => {
+                    { const _l = document.getElementById(loadingId); if (_l) _l.remove(); }
+                    const bubbleId = 'stream-' + Date.now();
+                    const grad = getColorClass(domainConfig[currentDomain]?.color || 'primary', 'gradient');
+                    wrap = document.createElement('div');
+                    wrap.className = 'flex gap-4';
+                    wrap.innerHTML =
+                        '<div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br ' + grad + ' text-primary-foreground shadow-lg"><i data-lucide="' + (domainConfig[currentDomain]?.icon || 'bot') + '" class="h-5 w-5"></i></div>' +
+                        '<div class="rounded-xl bg-muted/50 p-4 text-sm prose max-w-3xl" id="' + bubbleId + '"><span class="animate-pulse">▍</span></div>';
+                    messagesContainer.appendChild(wrap);
+                    if (window.lucide) lucide.createIcons();
+                    target = document.getElementById(bubbleId);
+                },
+                onThreadId: (id) => {
+                    const wasNew = id !== window.__threadId;
+                    window.__threadId = id;
+                    if (wasNew && window.loadSessionList) window.loadSessionList();
+                },
+                /* The server has emitted these since AgentRunner gained tools;
+                   the client has always discarded them. Kept as explicit no-ops
+                   so the evidence trail can consume them without a transport
+                   change. */
+                onToolStart: () => {},
+                onToolResult: () => {},
+                onToken: (_text, full) => {
+                    if (target) {
+                        target.innerHTML = (window.DOMPurify && window.marked)
+                            ? (DOMPurify.sanitize(marked.parse(full)) + '<span class="animate-pulse">▍</span>')
+                            : (full + '▍');
+                        messagesContainer.scrollTop = messagesContainer.scrollHeight;
                     }
-                    if (ev.action === 'redirect' && ev.url) { wrap.remove(); appendSystemMessage('Redirecting…', 'info'); setTimeout(() => { window.location.href = ev.url; }, 800); return true; }
-                    if (ev.type === 'token' && ev.text) {
-                        full += ev.text;
-                        if (target) { target.innerHTML = (window.DOMPurify && window.marked) ? (DOMPurify.sanitize(marked.parse(full)) + '<span class="animate-pulse">▍</span>') : (full + '▍'); messagesContainer.scrollTop = messagesContainer.scrollHeight; }
-                    } else if (ev.type === 'done') {
-                        if (ev.error) throw new Error(ev.error);
-                        if (!full && ev.response) full = ev.response;
-                        meta = { domain: ev.domain || currentDomain, processing_time: Math.round(performance.now() - startTime), sources: ev.sources };
-                    } else if (ev.error) { throw new Error(ev.error); }
+                },
+                onDone: async (result) => {
+                    dropBubble();
+                    const meta = {
+                        domain: result.domain || currentDomain,
+                        processing_time: Math.round(performance.now() - startTime),
+                        sources: result.sources
+                    };
+                    chatHistory.push({ role: 'ai', content: result.text, timestamp, metadata: meta });
+                    appendMessage('ai', result.text, meta);
+                    if (window._genomePanelInstance) { try { await window._genomePanelInstance.extractAfterMessage(chatHistory); } catch (_) {} }
                 }
-            }
-        } catch (e) { wrap.remove(); throw e; }
-
-        wrap.remove();
-        if (!full || !full.trim()) return false;  // let caller fall back
-        chatHistory.push({ role: 'ai', content: full, timestamp, metadata: meta });
-        appendMessage('ai', full, meta);
-        if (window._genomePanelInstance) { try { await window._genomePanelInstance.extractAfterMessage(chatHistory); } catch (_) {} }
-        return true;
+            });
+        } finally {
+            dropBubble();
+        }
     }
 
     // ==========================================================================
@@ -3459,8 +3475,7 @@ Would you like me to provide more details about the extracted elements or help y
    plus open/delete, and keeps window.__threadId in sync so multi-turn chats
    stay in one conversation. Backed by the /ai-chat/threads API. */
 (function () {
-  function csrf() { return (window.csrfToken) || (document.querySelector('meta[name=csrf-token]') || {}).content || ''; }
-  function H() { return { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() }; }
+  var transport = window.ArchieChat.transport;
   function esc(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : String(s)); return d.innerHTML; }
 
   window.loadSessionList = async function () {
@@ -3469,7 +3484,7 @@ Would you like me to provide more details about the extracted elements or help y
     c.innerHTML = '<div class="text-center py-4"><i data-lucide="loader-2" class="h-5 w-5 animate-spin mx-auto"></i></div>';
     if (window.lucide) lucide.createIcons();
     try {
-      var r = await fetch('/ai-chat/threads', { headers: H() });
+      var r = await transport.listThreads();
       var j = await r.json();
       var t = (j && j.threads) || [];
       if (!t.length) {
@@ -3499,7 +3514,7 @@ Would you like me to provide more details about the extracted elements or help y
   window.loadSession = async function (id) {
     if (!id) return;
     try {
-      var r = await fetch('/ai-chat/threads/' + encodeURIComponent(id), { headers: H() });
+      var r = await transport.loadThread(id);
       if (!r.ok) return;
       var j = await r.json();
       var msgs = (j && j.messages) || [];
@@ -3518,7 +3533,7 @@ Would you like me to provide more details about the extracted elements or help y
 
   window.deleteConversation = async function (id) {
     if (!id) return;
-    try { await fetch('/ai-chat/threads/' + encodeURIComponent(id), { method: 'DELETE', headers: H() }); } catch (e) {}
+    try { await transport.deleteThread(id); } catch (e) {}
     if (id === window.__threadId) { window.startNewConversation(); return; }
     window.loadSessionList();
   };
