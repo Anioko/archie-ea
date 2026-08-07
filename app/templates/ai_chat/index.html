@@ -1153,19 +1153,19 @@ function genomePanel() {
     // Tailwind-safe color class mappings (explicit classes for build-time purging)
     // token-migration-ok — domain-specific color palette for visual differentiation
     const colorClasses = {
-        'blue': { bg: 'bg-primary', gradient: 'from-blue-500 to-blue-600', text: 'text-primary', badge: 'bg-primary/10 text-primary' }, // token-migration-ok
+        'blue': { bg: 'bg-primary', gradient: 'from-info to-primary', text: 'text-primary', badge: 'bg-primary/10 text-primary' },
         'green': { bg: 'bg-emerald-500', gradient: 'from-green-500 to-green-600', text: 'text-emerald-700', badge: 'bg-emerald-500/10 text-emerald-700' }, // token-migration-ok
         'purple': { bg: 'bg-primary', gradient: 'from-purple-500 to-purple-600', text: 'text-purple-700', badge: 'bg-purple-100 text-purple-700' }, // token-migration-ok
         'orange': { bg: 'bg-orange-500', gradient: 'from-orange-500 to-orange-600', text: 'text-orange-700', badge: 'bg-orange-100 text-orange-700' },
         'indigo': { bg: 'bg-primary', gradient: 'from-indigo-500 to-indigo-600', text: 'text-indigo-700', badge: 'bg-indigo-100 text-indigo-700' }, // token-migration-ok
         'teal': { bg: 'bg-teal-500', gradient: 'from-teal-500 to-teal-600', text: 'text-teal-700', badge: 'bg-teal-100 text-teal-700' },
-        'slate': { bg: 'bg-muted-foreground', gradient: 'from-slate-500 to-slate-600', text: 'text-foreground', badge: 'bg-muted text-foreground' },
+        'slate': { bg: 'bg-muted-foreground', gradient: 'from-muted-foreground to-foreground', text: 'text-foreground', badge: 'bg-muted text-foreground' },
         'primary': { bg: 'bg-primary', gradient: 'from-primary to-primary/80', text: 'text-primary', badge: 'bg-primary/10 text-primary' },
         'amber': { bg: 'bg-amber-500', gradient: 'from-amber-500 to-amber-600', text: 'text-amber-700', badge: 'bg-amber-100 text-amber-700' },
         'cyan': { bg: 'bg-cyan-500', gradient: 'from-cyan-500 to-cyan-600', text: 'text-cyan-700', badge: 'bg-cyan-100 text-cyan-700' },
         'pink': { bg: 'bg-pink-500', gradient: 'from-pink-500 to-pink-600', text: 'text-pink-700', badge: 'bg-pink-100 text-pink-700' },
         'violet': { bg: 'bg-violet-500', gradient: 'from-violet-500 to-violet-600', text: 'text-violet-700', badge: 'bg-violet-100 text-violet-700' },
-        'red': { bg: 'bg-destructive', gradient: 'from-red-500 to-red-600', text: 'text-destructive', badge: 'bg-destructive/10 text-destructive' } // token-migration-ok
+        'red': { bg: 'bg-destructive', gradient: 'from-destructive to-destructive-emphasis', text: 'text-destructive-emphasis', badge: 'bg-destructive/10 text-destructive-emphasis' }
     };
 
     function getColorClass(colorName, type = 'bg') {
@@ -3224,22 +3224,28 @@ ${v.tco_estimate ? `**3-Year TCO:** $${v.tco_estimate.three_year.toLocaleString(
         loadRecommendations(true);
     }
 
+    /* Four distinct levels from the semantic palette. Amber has no semantic
+       token of its own (DESIGN.md), so high and medium are separated by
+       weight — solid warning vs a muted warning — rather than by hue. */
     function getPriorityBorderClass(priority) {
         const classes = {
-            'critical': 'border-l-4 border-l-red-500',
-            'high': 'border-l-4 border-l-orange-500',
-            'medium': 'border-l-4 border-l-yellow-500',
-            'low': 'border-l-4 border-l-blue-500'
+            'critical': 'border-l-4 border-l-destructive',
+            'high': 'border-l-4 border-l-warning',
+            'medium': 'border-l-4 border-l-warning/50',
+            'low': 'border-l-4 border-l-info'
         };
         return classes[priority] || '';
     }
 
-    function getPriorityBadgeClass(priority) { // token-migration-ok — priority badge colors
+    /* Coloured text on its own tint needs the -emphasis variant, not the base
+       token. The previous raw-scale values scored 2.35, 2.60 and 3.85 against
+       their own tints — all far under the AA 4.5 required for normal text. */
+    function getPriorityBadgeClass(priority) {
         const classes = {
-            'critical': 'bg-destructive/10 text-red-800', // token-migration-ok
-            'high': 'bg-orange-100 text-orange-800',
-            'medium': 'bg-amber-500/10 text-yellow-800', // token-migration-ok
-            'low': 'bg-primary/10 text-primary/90' // token-migration-ok
+            'critical': 'bg-destructive/10 text-destructive-emphasis',
+            'high': 'bg-warning/10 text-warning-emphasis',
+            'medium': 'bg-muted text-muted-foreground',
+            'low': 'bg-info/10 text-info-emphasis'
         };
         return classes[priority] || 'bg-muted text-foreground';
     }
