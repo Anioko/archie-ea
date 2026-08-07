@@ -1016,6 +1016,7 @@ function genomePanel() {
 {# Chat modules. Loaded before the inline blocks that call them; classic
    scripts, so they run in order and before Alpine (which is deferred). #}
 <script src="{{ url_for('static', filename='js/ai_chat/transport.js') }}"></script>
+<script src="{{ url_for('static', filename='js/ai_chat/render.js') }}"></script>
 
 <script>
     // Enhanced JavaScript for multi-domain chat with persona support
@@ -1050,10 +1051,15 @@ function genomePanel() {
     let domainConfig = window.domainConfig || {};
     let promptTemplates = window.promptTemplates || [];
     let personaConfig = window.personaConfig || {};
-    let currentDomain = 'general';
-    let currentPersona = '';
-    let chatHistory = [];
-    let contextElement = null;
+
+    /* Conversation state and rendering now live in ai_chat/render.js, because
+       more than one module reads them. `state` is the same object every module
+       sees — assigning state.currentDomain here is visible to render.js. */
+    const state = ArchieChat.state;
+    const {
+        getColorClass, appendMessage, appendSystemMessage, appendError,
+        beginStreamedMessage, updateStreamedMessage, finaliseStreamedMessage
+    } = ArchieChat.render;
 
     // Welcome UI helpers — hide suggestion chips on first user send
     function _hideWelcomeUI() {
@@ -1107,52 +1113,29 @@ function genomePanel() {
         }
     }
 
-    // Tailwind-safe color class mappings (explicit classes for build-time purging)
-    // token-migration-ok — domain-specific color palette for visual differentiation
-    const colorClasses = {
-        'blue': { bg: 'bg-primary', gradient: 'from-info to-primary', text: 'text-primary', badge: 'bg-primary/10 text-primary' },
-        'green': { bg: 'bg-emerald-500', gradient: 'from-green-500 to-green-600', text: 'text-emerald-700', badge: 'bg-emerald-500/10 text-emerald-700' }, // token-migration-ok
-        'purple': { bg: 'bg-primary', gradient: 'from-purple-500 to-purple-600', text: 'text-purple-700', badge: 'bg-purple-100 text-purple-700' }, // token-migration-ok
-        'orange': { bg: 'bg-orange-500', gradient: 'from-orange-500 to-orange-600', text: 'text-orange-700', badge: 'bg-orange-100 text-orange-700' },
-        'indigo': { bg: 'bg-primary', gradient: 'from-indigo-500 to-indigo-600', text: 'text-indigo-700', badge: 'bg-indigo-100 text-indigo-700' }, // token-migration-ok
-        'teal': { bg: 'bg-teal-500', gradient: 'from-teal-500 to-teal-600', text: 'text-teal-700', badge: 'bg-teal-100 text-teal-700' },
-        'slate': { bg: 'bg-muted-foreground', gradient: 'from-muted-foreground to-foreground', text: 'text-foreground', badge: 'bg-muted text-foreground' },
-        'primary': { bg: 'bg-primary', gradient: 'from-primary to-primary/80', text: 'text-primary', badge: 'bg-primary/10 text-primary' },
-        'amber': { bg: 'bg-amber-500', gradient: 'from-amber-500 to-amber-600', text: 'text-amber-700', badge: 'bg-amber-100 text-amber-700' },
-        'cyan': { bg: 'bg-cyan-500', gradient: 'from-cyan-500 to-cyan-600', text: 'text-cyan-700', badge: 'bg-cyan-100 text-cyan-700' },
-        'pink': { bg: 'bg-pink-500', gradient: 'from-pink-500 to-pink-600', text: 'text-pink-700', badge: 'bg-pink-100 text-pink-700' },
-        'violet': { bg: 'bg-violet-500', gradient: 'from-violet-500 to-violet-600', text: 'text-violet-700', badge: 'bg-violet-100 text-violet-700' },
-        'red': { bg: 'bg-destructive', gradient: 'from-destructive to-destructive-emphasis', text: 'text-destructive-emphasis', badge: 'bg-destructive/10 text-destructive-emphasis' }
-    };
-
-    function getColorClass(colorName, type = 'bg') {
-        const colors = colorClasses[colorName] || colorClasses['primary'];
-        return colors[type] || colors.bg;
-    }
-
     // Initialize domain selector
     domainSelector.addEventListener('change', (e) => {
-        currentDomain = e.target.value;
-        updateDomainUI(currentDomain);
-        loadDomainContext(currentDomain);
-        updateTemplateOptions(currentDomain);
+        state.currentDomain = e.target.value;
+        updateDomainUI(state.currentDomain);
+        loadDomainContext(state.currentDomain);
+        updateTemplateOptions(state.currentDomain);
     });
 
     // Initialize persona selector
     personaSelector.addEventListener('change', (e) => {
-        currentPersona = e.target.value;
-        updatePersonaUI(currentPersona);
-        if (currentPersona && personaConfig[currentPersona]) {
+        state.currentPersona = e.target.value;
+        updatePersonaUI(state.currentPersona);
+        if (state.currentPersona && personaConfig[state.currentPersona]) {
             // Auto-switch to persona's default domain
-            const defaultDomain = personaConfig[currentPersona].default_domain;
-            if (defaultDomain && defaultDomain !== currentDomain) {
+            const defaultDomain = personaConfig[state.currentPersona].default_domain;
+            if (defaultDomain && defaultDomain !== state.currentDomain) {
                 domainSelector.value = defaultDomain;
-                currentDomain = defaultDomain;
-                updateDomainUI(currentDomain);
-                loadDomainContext(currentDomain);
+                state.currentDomain = defaultDomain;
+                updateDomainUI(state.currentDomain);
+                loadDomainContext(state.currentDomain);
             }
             // Show sample prompts
-            updateSamplePrompts(currentPersona);
+            updateSamplePrompts(state.currentPersona);
         }
     });
 
@@ -1294,7 +1277,7 @@ function genomePanel() {
 
     function selectContext(elementId, contextType) {
         selectedElementIdInput.value = elementId;
-        contextElement = { id: elementId, type: contextType };
+        state.contextElement = { id: elementId, type: contextType };
 
         // Visual feedback
         appendSystemMessage(`Context set: ${contextType} #${elementId}`, 'info');
@@ -1316,7 +1299,7 @@ function genomePanel() {
         // Helper to get application ID (from arg or context)
         const getAppId = () => {
             if (arg && !isNaN(parseInt(arg))) return parseInt(arg);
-            if (contextElement && contextElement.type === 'application') return contextElement.id;
+            if (state.contextElement && state.contextElement.type === 'application') return state.contextElement.id;
             return null;
         };
 
@@ -1570,151 +1553,6 @@ function genomePanel() {
         if (el) el.remove();
     }
 
-    /* Escape a value that is interpolated into an innerHTML template as text.
-       The user's own message was echoed raw, so any markup a user typed became
-       live DOM in their transcript. */
-    function escapeForHtml(value) {
-        const div = document.createElement('div');
-        div.textContent = value == null ? '' : String(value);
-        return div.innerHTML;
-    }
-
-    /* Render markdown, then sanitise, before it reaches innerHTML.
-       The streaming path already did this (see the DOMPurify call further down),
-       but this function is what renders every COMPLETED message and every message
-       replayed from thread history - and it called marked.parse() straight into
-       innerHTML. Because the stream re-renders through appendMessage when it
-       finishes, the sanitised streaming output was immediately replaced by an
-       unsanitised copy of the same text: a stored-XSS path through chat history,
-       where the payload is model output or extracted document content.
-       Falls back to escaped plain text if DOMPurify is unavailable - degraded
-       formatting is an acceptable outcome; unsanitised HTML is not. */
-    function renderMarkdownSafely(text) {
-        if (window.DOMPurify && window.marked) {
-            return DOMPurify.sanitize(marked.parse(text == null ? '' : String(text)));
-        }
-        return escapeForHtml(text);
-    }
-
-    /* Records the answer was actually built from.
-       These come from the tool results server-side, not from the model - a
-       citation the model writes is another claim, and the claim is the thing
-       being checked. `url` may be null when the owning blueprint is not
-       registered; the name and id still make the record findable. */
-    function renderSources(sources) {
-        if (!Array.isArray(sources) || sources.length === 0) return '';
-        const items = sources.map(s => {
-            const label = escapeForHtml(s.name);
-            const kind = escapeForHtml(String(s.type || '').replace(/_/g, ' '));
-            const body = s.url
-                ? `<a href="${escapeForHtml(s.url)}" class="underline hover:no-underline">${label}</a>`
-                : label;
-            return `<li class="inline-flex items-center gap-1.5 mr-3">
-                      <i data-lucide="link" class="h-3 w-3 text-muted-foreground" aria-hidden="true"></i>
-                      <span>${body}</span>
-                      <span class="text-muted-foreground">(${kind} #${escapeForHtml(s.id)})</span>
-                    </li>`;
-        }).join('');
-        return `<div class="mt-3 pt-2 border-t border-border text-xs text-muted-foreground">
-                  <div class="mb-1 font-medium">Based on ${sources.length} record${sources.length === 1 ? '' : 's'}:</div>
-                  <ul class="list-none p-0 m-0">${items}</ul>
-                </div>`;
-    }
-
-    function appendMessage(role, text, metadata = {}) {
-        const isAi = role === 'ai';
-        const div = document.createElement('div');
-        div.className = `flex gap-4 ${isAi ? '' : 'flex-row-reverse'}`;
-
-        // Enhanced avatar with domain styling using safe color classes
-        const domainColor = domainConfig[currentDomain]?.color || 'primary';
-        const avatarGradient = getColorClass(domainColor, 'gradient');
-        const avatarClass = `bg-gradient-to-br ${avatarGradient}`;
-        const avatar = isAi
-            ? `<div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${avatarClass} text-primary-foreground shadow-lg"><!-- token-migration-ok -->
-                 <i data-lucide="${domainConfig[currentDomain]?.icon || 'bot'}" class="h-5 w-5"></i>
-               </div>`
-            : `<div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-secondary text-secondary-foreground">
-                 <i data-lucide="user" class="h-5 w-5"></i>
-               </div>`;
-
-        // Enhanced message bubble with metadata using safe color classes
-        const metadataDomainColor = metadata.domain ? (domainConfig[metadata.domain]?.color || 'blue') : 'blue';
-        const badgeClass = getColorClass(metadataDomainColor, 'badge');
-        const bubble = isAi
-            ? `<div class="rounded-xl bg-muted/50 p-4 text-sm prose max-w-3xl">
-                 ${metadata.domain ? `<div class="mb-2">
-                     <span class="px-2 py-1 ${badgeClass} text-xs rounded-full font-medium">
-                         ${domainConfig[metadata.domain]?.name || 'AI'}
-                     </span>
-                     ${metadata.processing_time ? `<span class="ml-2 text-xs text-muted-foreground">${metadata.processing_time}ms</span>` : ''}
-                 </div>` : ''}
-                 <div class="message-content">${renderMarkdownSafely(text)}</div>
-                 ${renderSources(metadata.sources)}
-               </div>`
-            : `<div class="rounded-xl bg-primary text-primary-foreground p-4 text-sm max-w-3xl">
-                 <div class="message-content">${escapeForHtml(text)}</div>
-               </div>`;
-
-        div.innerHTML = avatar + bubble;
-        messagesContainer.appendChild(div);
-
-        // ENT-122: inject "Open in Composer" button for ArchiMate responses
-        if (isAi && metadata.archimate_elements && metadata.archimate_elements.length > 0) {
-            /* Key, param and timestamp all have to match what the composer
-               reads (archimate/composer.js:2407 and :2495), or the handoff
-               silently drops the payload and opens an empty canvas:
-                 - the key is 'composer_prefill', not 'archimate_prefill'
-                 - the link must carry ?prefill=1, or the reader returns early
-                 - a payload older than 5 minutes is discarded, so send a
-                   timestamp rather than relying on the absent-field branch */
-            const prefillData = {
-                elements: metadata.archimate_elements,
-                relationships: metadata.archimate_relationships || [],
-                model_name: metadata.archimate_model_name || 'AI Generated Architecture',
-                source: 'ai_chat',
-                timestamp: Date.now()
-            };
-            sessionStorage.setItem('composer_prefill', JSON.stringify(prefillData));
-            const composerBtn = document.createElement('div');
-            composerBtn.className = 'mt-3 ml-12';
-            const elemCount = metadata.archimate_elements.length;
-            const relCount = (metadata.archimate_relationships || []).length;
-            composerBtn.innerHTML = `
-                <a href="/archimate/composer?prefill=1" data-ent121-composer-link
-                   class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors shadow-sm">
-                    <i data-lucide="layout-dashboard" class="h-4 w-4"></i>
-                    Open in Composer — ${elemCount} elements, ${relCount} relationships
-                </a>`;
-            messagesContainer.appendChild(composerBtn);
-        }
-
-        messagesContainer.scrollTop = messagesContainer.scrollHeight;
-
-        // Re-initialize lucide icons for new elements
-        lucide.createIcons();
-    }
-
-    function appendSystemMessage(text, type = 'info') {
-        const div = document.createElement('div');
-        div.className = 'flex justify-center my-4';
-
-        const bgColor = type === 'info' ? 'bg-primary/5 text-primary border-primary/20' : // token-migration-ok
-                       type === 'error' ? 'bg-destructive/5 text-destructive border-destructive/20' : // token-migration-ok
-                       'bg-muted/50 text-muted-foreground border-border';
-
-        div.innerHTML = `
-            <div class="px-3 py-2 rounded-lg text-xs ${bgColor} border flex items-center gap-2">
-                <i data-lucide="${type === 'info' ? 'info' : type === 'error' ? 'alert-circle' : 'check'}" class="h-3 w-3"></i>
-                ${text}
-            </div>
-        `;
-
-        messagesContainer.appendChild(div);
-        messagesContainer.scrollTop = messagesContainer.scrollHeight;
-        lucide.createIcons();
-    }
-
     // ==========================================================================
     // Actionable Chat Commands (PRD Implementation)
     // ==========================================================================
@@ -1746,7 +1584,7 @@ function genomePanel() {
     }
 
     async function handleGenerateArchimate(args) {
-        const appId = args.trim() || contextElement?.id;
+        const appId = args.trim() || state.contextElement?.id;
         if (!appId) {
             appendMessage('ai', `**Usage:** \`/generate-archimate [application_id]\`\n\nPlease provide an application ID or select an application from context first.`, { domain: 'architecture' });
             return;
@@ -1803,7 +1641,7 @@ function genomePanel() {
     }
 
     async function handleMapApqc(args) {
-        const appId = args.trim() || contextElement?.id;
+        const appId = args.trim() || state.contextElement?.id;
         if (!appId) {
             appendMessage('ai', `**Usage:** \`/map-apqc [application_id]\`\n\nPlease provide an application ID or select an application from context first.`, { domain: 'business_capability' });
             return;
@@ -1873,7 +1711,7 @@ ${lowConf.length > 0 ? lowConf.map(m => `- ❓ ${m.process_code}: ${m.process_na
     }
 
     async function handleSaveInsights(args) {
-        const appId = parseInt(args) || (contextElement?.type === 'Application' ? parseInt(contextElement.id) : null);
+        const appId = parseInt(args) || (state.contextElement?.type === 'Application' ? parseInt(state.contextElement.id) : null);
         if (!appId) {
             appendMessage('ai', `**Save Insights**\n\nTo save insights from our conversation to an application, use:\n\`/save-insights [application_id]\`\n\nOr select an application from context and run \`/save-insights\`.`, { domain: 'general' });
             return;
@@ -2341,7 +2179,7 @@ ${v.tco_estimate ? `**3-Year TCO:** $${v.tco_estimate.three_year.toLocaleString(
 
         // Add user message to history
         const timestamp = new Date().toISOString();
-        chatHistory.push({ role: 'user', content: message, timestamp });
+        state.chatHistory.push({ role: 'user', content: message, timestamp });
         appendMessage('user', message);
 
         // Check for client-side commands (actionable architect workflows)
@@ -2356,15 +2194,22 @@ ${v.tco_estimate ? `**3-Year TCO:** $${v.tco_estimate.three_year.toLocaleString(
             return;
         }
 
+        await _deliverTurn(message, timestamp);
+    }
+
+    /* The network half of a turn, separated from _submitTurn so the error
+       card's Retry can run it again without echoing the user's message into
+       the transcript a second time. */
+    async function _deliverTurn(message, timestamp) {
         // Show loading indicator
         const loadingId = 'loading-' + Date.now();
         const loadingDiv = document.createElement('div');
         loadingDiv.id = loadingId;
         loadingDiv.className = 'flex gap-4';
-        const loadingGradient = getColorClass(domainConfig[currentDomain]?.color || 'primary', 'gradient');
+        const loadingGradient = getColorClass(domainConfig[state.currentDomain]?.color || 'primary', 'gradient');
         loadingDiv.innerHTML = `
             <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br ${loadingGradient} text-primary-foreground shadow-lg"><!-- token-migration-ok -->
-                <i data-lucide="${domainConfig[currentDomain]?.icon || 'bot'}" class="h-5 w-5 animate-pulse"></i>
+                <i data-lucide="${domainConfig[state.currentDomain]?.icon || 'bot'}" class="h-5 w-5 animate-pulse"></i>
             </div>
             <div class="rounded-xl bg-muted/50 p-4 text-sm flex items-center gap-3">
                 <div class="flex space-x-1">
@@ -2383,11 +2228,11 @@ ${v.tco_estimate ? `**3-Year TCO:** $${v.tco_estimate.three_year.toLocaleString(
         // Shared payload. thread_id keeps multi-turn chats in one conversation.
         const _payload = JSON.stringify({
             message: message,
-            domain: currentDomain,
+            domain: state.currentDomain,
             template_name: templateSelector.value,
             element_id: selectedElementIdInput.value || null,
-            context_type: contextElement?.type || null,
-            persona: currentPersona || null,
+            context_type: state.contextElement?.type || null,
+            persona: state.currentPersona || null,
             model: document.getElementById('model-selector')?.value || null,
             thread_id: window.__threadId || null,
         });
@@ -2421,30 +2266,25 @@ ${v.tco_estimate ? `**3-Year TCO:** $${v.tco_estimate.three_year.toLocaleString(
             { const _l = document.getElementById(loadingId); if (_l) _l.remove(); }
 
             if (data.error) {
-                // Enhanced error handling with specific error types
-                let errorIcon = '⚠️';
+                /* A failure renders as a failure. It used to render as an AI
+                   turn beginning "**⚠️ Error:**" — the assistant's avatar, the
+                   assistant's bubble, and no way to try again. */
                 let errorTitle = 'Error';
                 if (data.error_type === 'auth') {
-                    errorIcon = '';
                     errorTitle = 'Authentication Error';
                 } else if (data.error_type === 'connection') {
-                    errorIcon = '';
                     errorTitle = 'Connection Error';
                 } else if (data.error_type === 'timeout') {
-                    errorIcon = '⏱️';
                     errorTitle = 'Timeout Error';
                 } else if (data.error_type === 'rate_limit') {
-                    errorIcon = '';
                     errorTitle = 'Rate Limit';
                 } else if (data.error_type === 'model_error') {
-                    errorIcon = '';
                     errorTitle = 'Model Error';
                 }
-                appendMessage('ai', `**${errorIcon} ${errorTitle}:** ${data.error}`, { domain: currentDomain });
-                appendSystemMessage(`${errorTitle}: ${data.error}`, 'error');
+                appendError(`${errorTitle}: ${data.error}`, () => _retryTurn(message, timestamp));
             } else {
                 // Add AI response to history
-                chatHistory.push({
+                state.chatHistory.push({
                     role: 'ai',
                     content: data.response,
                     timestamp,
@@ -2459,15 +2299,19 @@ ${v.tco_estimate ? `**3-Year TCO:** $${v.tco_estimate.three_year.toLocaleString(
 
                 // Genome extraction — fires after every AI response when ?mode=genome
                 if (window._genomePanelInstance) {
-                    await window._genomePanelInstance.extractAfterMessage(chatHistory);
+                    await window._genomePanelInstance.extractAfterMessage(state.chatHistory);
                 }
             }
 
         } catch (error) {
             { const _l = document.getElementById(loadingId); if (_l) _l.remove(); }
-            appendMessage('ai', `**Network Error:** ${error.message}`, { domain: currentDomain });
-            appendSystemMessage(`Network error: ${error.message}`, 'error');
+            appendError(`Network error: ${error.message}`, () => _retryTurn(message, timestamp));
         }
+    }
+
+    function _retryTurn(message, timestamp) {
+        _setSendingUI(true);
+        _deliverTurn(message, timestamp).finally(() => _setSendingUI(false));
     }
 
     // Stream an AI reply via SSE. Renders tokens live into a bubble; returns true
@@ -2475,25 +2319,16 @@ ${v.tco_estimate ? `**3-Year TCO:** $${v.tco_estimate.three_year.toLocaleString(
     // the caller fall back to the non-streaming endpoint.
     async function streamAiReply(payload, loadingId, startTime, timestamp) {
         let wrap = null;
-        let target = null;
-        // Idempotent: the bubble is dropped exactly once, whether the stream
-        // finished, produced nothing, or threw.
-        const dropBubble = () => { if (wrap) { wrap.remove(); wrap = null; target = null; } };
+        // The bubble is only DROPPED when the answer never arrived. On success
+        // it is finalised in place — removing and rebuilding it is what made
+        // every answer flash and the transcript jump on completion.
+        const dropBubble = () => { if (wrap) { wrap.remove(); wrap = null; } };
 
         try {
             return await ArchieChat.transport.streamMessage(payload, {
                 onOpen: () => {
                     { const _l = document.getElementById(loadingId); if (_l) _l.remove(); }
-                    const bubbleId = 'stream-' + Date.now();
-                    const grad = getColorClass(domainConfig[currentDomain]?.color || 'primary', 'gradient');
-                    wrap = document.createElement('div');
-                    wrap.className = 'flex gap-4';
-                    wrap.innerHTML =
-                        '<div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br ' + grad + ' text-primary-foreground shadow-lg"><i data-lucide="' + (domainConfig[currentDomain]?.icon || 'bot') + '" class="h-5 w-5"></i></div>' +
-                        '<div class="rounded-xl bg-muted/50 p-4 text-sm prose max-w-3xl" id="' + bubbleId + '"><span class="animate-pulse">▍</span></div>';
-                    messagesContainer.appendChild(wrap);
-                    if (window.lucide) lucide.createIcons();
-                    target = document.getElementById(bubbleId);
+                    wrap = beginStreamedMessage();
                 },
                 onThreadId: (id) => {
                     const wasNew = id !== window.__threadId;
@@ -2507,23 +2342,18 @@ ${v.tco_estimate ? `**3-Year TCO:** $${v.tco_estimate.three_year.toLocaleString(
                 onToolStart: () => {},
                 onToolResult: () => {},
                 onToken: (_text, full) => {
-                    if (target) {
-                        target.innerHTML = (window.DOMPurify && window.marked)
-                            ? (DOMPurify.sanitize(marked.parse(full)) + '<span class="animate-pulse">▍</span>')
-                            : (full + '▍');
-                        messagesContainer.scrollTop = messagesContainer.scrollHeight;
-                    }
+                    updateStreamedMessage(wrap, full);
                 },
                 onDone: async (result) => {
-                    dropBubble();
                     const meta = {
-                        domain: result.domain || currentDomain,
+                        domain: result.domain || state.currentDomain,
                         processing_time: Math.round(performance.now() - startTime),
                         sources: result.sources
                     };
-                    chatHistory.push({ role: 'ai', content: result.text, timestamp, metadata: meta });
-                    appendMessage('ai', result.text, meta);
-                    if (window._genomePanelInstance) { try { await window._genomePanelInstance.extractAfterMessage(chatHistory); } catch (_) {} }
+                    state.chatHistory.push({ role: 'ai', content: result.text, timestamp, metadata: meta });
+                    finaliseStreamedMessage(wrap, result.text, meta);
+                    wrap = null;   // finalised in place; nothing left to drop
+                    if (window._genomePanelInstance) { try { await window._genomePanelInstance.extractAfterMessage(state.chatHistory); } catch (_) {} }
                 }
             });
         } finally {
@@ -2681,7 +2511,7 @@ ${v.tco_estimate ? `**3-Year TCO:** $${v.tco_estimate.three_year.toLocaleString(
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     query: query,
-                    persona: currentPersona
+                    persona: state.currentPersona
                 })
             });
 
@@ -2944,14 +2774,14 @@ ${v.tco_estimate ? `**3-Year TCO:** $${v.tco_estimate.three_year.toLocaleString(
 
     function addToContext(entityType, entityId, entityName) {
         selectedElementIdInput.value = entityId;
-        contextElement = { id: entityId, type: entityType, name: entityName };
+        state.contextElement = { id: entityId, type: entityType, name: entityName };
         appendSystemMessage(`Context set: ${entityName} (${entityType})`, 'info');
     }
 
     function selectDomainAndPrompt(domain, samplePrompt) {
         // Switch the domain selector
         domainSelector.value = domain;
-        currentDomain = domain;
+        state.currentDomain = domain;
 
         // Update UI
         updateDomainUI(domain);
@@ -2976,14 +2806,14 @@ ${v.tco_estimate ? `**3-Year TCO:** $${v.tco_estimate.three_year.toLocaleString(
 
     // AI-1: wire the welcome-screen AI Architect persona cards. Setting the
     // (otherwise hidden) persona selector + dispatching 'change' runs the
-    // existing handler, which sets currentPersona, the persona's default
+    // existing handler, which sets state.currentPersona, the persona's default
     // domain, and the role's sample prompts.
     function selectArchitectPersona(persona, samplePrompt) {
         if (personaSelector) {
             personaSelector.value = persona;
             personaSelector.dispatchEvent(new Event('change', { bubbles: true }));
         } else {
-            currentPersona = persona;
+            state.currentPersona = persona;
         }
         if (userInput && samplePrompt) {
             userInput.value = samplePrompt;
@@ -3102,7 +2932,7 @@ ${v.tco_estimate ? `**3-Year TCO:** $${v.tco_estimate.three_year.toLocaleString(
         lucide.createIcons();
 
         try {
-            const response = await fetch(`/ai-chat/recommendations?persona=${currentPersona}&refresh=${refresh}`);
+            const response = await fetch(`/ai-chat/recommendations?persona=${state.currentPersona}&refresh=${refresh}`);
             const data = await response.json();
 
             // Update health score
@@ -3254,7 +3084,7 @@ ${summary || 'Document has been analyzed.'}
 - Confidence: ${confidence || 'Medium'}
 
 Would you like me to provide more details about the extracted elements or help you with follow-up questions?`;
-        appendMessage('ai', message, { domain: currentDomain });
+        appendMessage('ai', message, { domain: state.currentDomain });
     });
 
     // Listen for notification events
@@ -3293,9 +3123,9 @@ Would you like me to provide more details about the extracted elements or help y
 
     // Initialize on load
     document.addEventListener('DOMContentLoaded', () => {
-        updateDomainUI(currentDomain);
-        loadDomainContext(currentDomain);
-        updateTemplateOptions(currentDomain);
+        updateDomainUI(state.currentDomain);
+        loadDomainContext(state.currentDomain);
+        updateTemplateOptions(state.currentDomain);
         loadAvailableModels(); // Load available models
 
         // Load initial alert count
@@ -3435,10 +3265,10 @@ Would you like me to provide more details about the extracted elements or help y
         if (deepLinkContext === 'application' && deepLinkId && !isNaN(parseInt(deepLinkId))) {
             const appId = parseInt(deepLinkId);
             selectedElementIdInput.value = appId;
-            contextElement = { id: appId, type: 'application' };
+            state.contextElement = { id: appId, type: 'application' };
             if (domainSelector) {
                 domainSelector.value = 'technology';
-                currentDomain = 'technology';
+                state.currentDomain = 'technology';
                 updateDomainUI('technology');
                 loadDomainContext('technology');
             }
@@ -3450,11 +3280,11 @@ Would you like me to provide more details about the extracted elements or help y
             // Generic entity deep-link: ?element_id=<id>&context_type=<type>&domain=<domain>
             const entityId = parseInt(elementId);
             selectedElementIdInput.value = entityId;
-            contextElement = { id: entityId, type: contextType };
+            state.contextElement = { id: entityId, type: contextType };
             const targetDomain = deepLinkDomain || 'general';
             if (domainSelector && domainConfig[targetDomain]) {
                 domainSelector.value = targetDomain;
-                currentDomain = targetDomain;
+                state.currentDomain = targetDomain;
                 updateDomainUI(targetDomain);
                 loadDomainContext(targetDomain);
             }
