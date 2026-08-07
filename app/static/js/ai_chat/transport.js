@@ -129,7 +129,16 @@
                 } else if (ev.type === 'done') {
                     if (ev.error) throw new Error(ev.error);
                     if (!full && ev.response) full = ev.response;
-                    meta = { domain: ev.domain, sources: ev.sources };
+                    // actions_taken rides the done event already (chat_core
+                    // spreads the whole agent result); it names every tool that
+                    // ran and what it returned, which is what the evidence trail
+                    // and the write receipts are built from.
+                    meta = {
+                        domain: ev.domain,
+                        sources: ev.sources,
+                        actions: ev.actions_taken || [],
+                        pendingApprovals: ev.pending_approvals || []
+                    };
                 } else if (ev.error) {
                     throw new Error(ev.error);
                 }
@@ -137,7 +146,13 @@
         }
 
         if (!full || !full.trim()) return false;  // let the caller fall back
-        if (h.onDone) await h.onDone({ text: full, domain: meta.domain, sources: meta.sources });
+        if (h.onDone) await h.onDone({
+            text: full,
+            domain: meta.domain,
+            sources: meta.sources,
+            actions: meta.actions || [],
+            pendingApprovals: meta.pendingApprovals || []
+        });
         return true;
     }
 

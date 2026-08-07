@@ -395,6 +395,9 @@
     // the caller fall back to the non-streaming endpoint.
     async function streamAiReply(payload, loadingId, startTime, timestamp) {
         let wrap = null;
+        // One turn's tool calls, in execution order. Rebuilt per turn so an
+        // answer can never inherit the previous answer's evidence.
+        const _trail = [];
         // The bubble is only DROPPED when the answer never arrived. On success
         // it is finalised in place — removing and rebuilding it is what made
         // every answer flash and the transcript jump on completion.
@@ -411,12 +414,20 @@
                     window.__threadId = id;
                     if (wasNew && window.loadSessionList) window.loadSessionList();
                 },
-                /* The server has emitted these since AgentRunner gained tools;
-                   the client has always discarded them. Kept as explicit no-ops
-                   so the evidence trail can consume them without a transport
-                   change. */
-                onToolStart: () => {},
-                onToolResult: () => {},
+                /* The evidence trail. The server has always emitted these and
+                   the client always discarded them; they are what lets the UI
+                   state coverage structurally ("47 matched, showing 15") rather
+                   than trusting the model to mention it. */
+                onToolStart: (ev) => { _trail.push({ tool: ev.tool, args: ev.args, result: null }); },
+                onToolResult: (ev) => {
+                    for (let i = _trail.length - 1; i >= 0; i--) {
+                        if (_trail[i].tool === ev.tool && _trail[i].result === null) {
+                            _trail[i].result = ev.result;
+                            return;
+                        }
+                    }
+                    _trail.push({ tool: ev.tool, args: null, result: ev.result });
+                },
                 onToken: (_text, full) => {
                     updateStreamedMessage(wrap, full);
                 },
@@ -424,7 +435,12 @@
                     const meta = {
                         domain: result.domain || state.currentDomain,
                         processing_time: Math.round(performance.now() - startTime),
-                        sources: result.sources
+                        sources: result.sources,
+                        trail: _trail,
+                        actions: result.actions || [],
+                        // No tool ran, but the domain snapshot was in the prompt:
+                        // that is "context only", not "ungrounded".
+                        contextUsed: _trail.length === 0
                     };
                     state.chatHistory.push({ role: 'ai', content: result.text, timestamp, metadata: meta });
                     finaliseStreamedMessage(wrap, result.text, meta);

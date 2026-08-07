@@ -110,6 +110,145 @@
                '</div>';
     }
 
+
+    /* ── Evidence trail ──────────────────────────────────────────────────────
+       What the answer was actually built from, in execution order.
+
+       This replaces a proposed "grounded / not grounded" binary keyed on
+       sources.length. That binary was unshippable: citations cover 7 of the 37
+       tools, so an answer built by propose_rationalization or simulate_impact
+       against real tenant rows produced no sources and would have rendered
+       "not checked against your portfolio" — a false provenance claim on
+       exactly the highest-stakes answers, pointing in the direction the
+       fabricated-data gate cannot see.
+
+       Three states, each true by construction:
+
+         Retrieved     tools ran; here is each call and what came back
+         Context only  no tool ran, but the domain snapshot was in the prompt
+         Unretrieved   neither
+
+       Coverage is structural, not prose. When a tool returned 15 of 47 the row
+       says so, from the result payload — the model is asked to report N of M
+       (_AGENT_PREFIX rule 9) but may not, and an architect's real question is
+       never "is this grounded" but "did it look at everything, or the first
+       page?"                                                                */
+
+    var TOOL_LABELS = {
+        find_applications: 'Searched applications',
+        find_applications_by_capability: 'Searched applications by capability',
+        find_technical_capabilities: 'Searched technical capabilities',
+        query_capability_gaps: 'Queried capability gaps',
+        search_capabilities_by_problem: 'Searched capabilities',
+        search_archimate_elements: 'Searched ArchiMate elements',
+        get_solution_summary: 'Read solution summary',
+        get_completeness_score: 'Scored solution completeness',
+        propose_rationalization: 'Proposed rationalization',
+        simulate_impact: 'Simulated impact',
+        explain_element: 'Explained element',
+        diagnose_chain: 'Diagnosed chain',
+        validate_sap_clean_core: 'Validated SAP clean core',
+        verify_codegen: 'Verified generated code'
+    };
+
+    function _toolLabel(name) {
+        if (TOOL_LABELS[name]) return TOOL_LABELS[name];
+        return String(name || 'tool').replace(/_/g, ' ').replace(/^./, function (c) {
+            return c.toUpperCase();
+        });
+    }
+
+    /* "47 matched, showing 15" — only when the tool actually reported both.
+       Never inferred from the row count, because the number of rows shown is
+       precisely what must not be presented as the number that exists. */
+    function _coverage(result) {
+        if (!result || typeof result !== 'object') return '';
+        var shown = Array.isArray(result.result) ? result.result.length
+                  : (result.result && typeof result.result === 'object' ? 1 : null);
+        var total = result.total_matched != null ? result.total_matched
+                  : (result.total != null ? result.total : null);
+        if (total != null && shown != null && total > shown) {
+            return escapeForHtml(String(total)) + ' matched, showing ' + escapeForHtml(String(shown));
+        }
+        if (shown != null) {
+            return escapeForHtml(String(shown)) + (shown === 1 ? ' record' : ' records');
+        }
+        return '';
+    }
+
+    function _argSummary(args) {
+        if (!args || typeof args !== 'object') return '';
+        var parts = [];
+        Object.keys(args).slice(0, 3).forEach(function (k) {
+            var v = args[k];
+            if (v === null || v === undefined || v === '') return;
+            if (typeof v === 'object') return;
+            parts.push(escapeForHtml(k) + ' = ' + escapeForHtml(String(v).slice(0, 40)));
+        });
+        return parts.join(' · ');
+    }
+
+    /* trail: [{tool, args, result}] in execution order, collected from the
+       tool_start / tool_result stream events the server has always emitted. */
+    function renderEvidence(trail, sources, opts) {
+        var o = opts || {};
+        var ran = Array.isArray(trail) && trail.length > 0;
+        var cited = Array.isArray(sources) && sources.length > 0;
+
+        var state, summary;
+        if (ran) {
+            state = 'retrieved';
+            summary = trail.length + (trail.length === 1 ? ' lookup' : ' lookups')
+                    + (cited ? ', ' + sources.length + ' record' + (sources.length === 1 ? '' : 's') + ' cited' : '');
+        } else if (o.contextUsed) {
+            state = 'context';
+            summary = 'No lookup ran. Answered from the ' +
+                      escapeForHtml(o.domainLabel || 'portfolio') + ' snapshot in context.';
+        } else {
+            state = 'unretrieved';
+            summary = 'No portfolio data was read for this answer.';
+        }
+
+        var id = 'evidence-' + (_evidenceSeq += 1);
+        var rows = ran ? trail.map(function (step) {
+            var cov = _coverage(step.result);
+            var args = _argSummary(step.args);
+            var failed = step.result && step.result.success === false;
+            return '<li class="flex items-start gap-2 py-1">' +
+                     '<i data-lucide="' + (failed ? 'x-circle' : 'search') + '" class="h-3 w-3 mt-0.5 shrink-0 ' +
+                        (failed ? 'text-destructive-emphasis' : 'text-muted-foreground') + '" aria-hidden="true"></i>' +
+                     '<span>' +
+                       '<span class="text-foreground">' + escapeForHtml(_toolLabel(step.tool)) + '</span>' +
+                       (args ? '<span class="text-muted-foreground"> · ' + args + '</span>' : '') +
+                       (cov ? '<span class="font-medium text-foreground"> · ' + cov + '</span>' : '') +
+                       (failed ? '<span class="text-destructive-emphasis"> · failed</span>' : '') +
+                     '</span>' +
+                   '</li>';
+        }).join('') : '';
+
+        /* The accessible name is the whole sentence: the Context-only and
+           Unretrieved states have to reach a screen-reader user with the same
+           prominence as Retrieved, because those are the ones that change
+           whether an answer can be taken to an ARB. */
+        var icon = state === 'retrieved' ? 'database' : (state === 'context' ? 'layers' : 'help-circle');
+        return '<div class="mt-3 pt-2 border-t border-border text-xs">' +
+                 '<button type="button" class="js-evidence-toggle inline-flex items-center gap-1.5 ' +
+                    'text-muted-foreground hover:text-foreground transition-colors" ' +
+                    'aria-expanded="false" aria-controls="' + id + '" ' +
+                    'aria-label="' + escapeForHtml(summary) + '. Show what this answer was built from">' +
+                   '<i data-lucide="' + icon + '" class="h-3 w-3" aria-hidden="true"></i>' +
+                   '<span>' + escapeForHtml(summary) + '</span>' +
+                   '<i data-lucide="chevron-down" class="h-3 w-3 transition-transform" aria-hidden="true"></i>' +
+                 '</button>' +
+                 '<div id="' + id + '" hidden class="mt-2 space-y-2">' +
+                   (rows ? '<ul class="list-none p-0 m-0 text-muted-foreground">' + rows + '</ul>' : '') +
+                   renderSources(sources) +
+                 '</div>' +
+               '</div>';
+    }
+
+    var _evidenceSeq = 0;
+
     /* The domain pill above an answer. Shared by the completed-message path
        and the streamed-message path so the two cannot drift apart. */
     function renderMetaBadge(metadata) {
@@ -153,7 +292,10 @@
             ? '<div class="rounded-xl bg-muted/50 p-4 text-sm prose max-w-3xl">' +
                 renderMetaBadge(metadata) +
                 '<div class="message-content">' + renderMarkdown(text) + '</div>' +
-                renderSources(metadata.sources) +
+                renderEvidence(metadata.trail, metadata.sources, {
+                    contextUsed: metadata.contextUsed,
+                    domainLabel: metadata.domain
+                }) +
               '</div>'
             : '<div class="rounded-xl bg-primary text-primary-foreground p-4 text-sm max-w-3xl">' +
                 '<div class="message-content">' + escapeForHtml(text) + '</div>' +
@@ -290,11 +432,31 @@
         var bubble = body ? body.parentElement : el;
         var badge = renderMetaBadge(meta);
         if (badge) bubble.insertAdjacentHTML('afterbegin', badge);
-        var sources = renderSources(meta.sources);
+        var sources = renderEvidence(meta.trail, meta.sources, {
+            contextUsed: meta.contextUsed,
+            domainLabel: meta.domain
+        });
         if (sources) bubble.insertAdjacentHTML('beforeend', sources);
         if (window.lucide) lucide.createIcons();
         return el;
     }
+
+
+    /* One delegated listener rather than a handler per message: evidence
+       strips are injected into the transcript continuously, and re-binding on
+       each would leak listeners for the life of the conversation. */
+    document.addEventListener('click', function (e) {
+        var btn = e.target.closest && e.target.closest('.js-evidence-toggle');
+        if (!btn) return;
+        var panel = document.getElementById(btn.getAttribute('aria-controls'));
+        if (!panel) return;
+        var open = btn.getAttribute('aria-expanded') === 'true';
+        btn.setAttribute('aria-expanded', open ? 'false' : 'true');
+        panel.hidden = open;
+        var chev = btn.querySelector('[data-lucide="chevron-down"]');
+        if (chev) chev.classList.toggle('rotate-180', !open);
+        if (!open && window.lucide) lucide.createIcons();
+    });
 
     ArchieChat.render = {
         colorClasses: colorClasses,
@@ -303,6 +465,7 @@
         renderMarkdown: renderMarkdown,
         renderSources: renderSources,
         appendMessage: appendMessage,
+        renderEvidence: renderEvidence,
         appendSystemMessage: appendSystemMessage,
         appendError: appendError,
         beginStreamedMessage: beginStreamedMessage,

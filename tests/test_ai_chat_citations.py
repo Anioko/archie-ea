@@ -147,11 +147,13 @@ def test_the_ui_renders_citations_escaped():
     assert "escapeForHtml(s.url)" in ui
 
     # Defined is not the same as called. The original assertion pinned
-    # "${renderSources(metadata.sources)}" — that the result is interpolated into
-    # the message body, not merely computed. render.js concatenates rather than
-    # interpolating, so the marker changed; the guarantee must not.
-    assert "renderSources(metadata.sources)" in ui, "sources are not rendered into the message"
-    assert "renderSources(meta.sources)" in ui, "the streamed message finalises without its sources"
+    # "${renderSources(metadata.sources)}" — that the result reaches the message
+    # body, not merely that the function exists. Sources now reach it through
+    # renderEvidence's disclosure (Plan 3 Task 4), so the route changed; the
+    # guarantee must not.
+    assert "renderSources(sources)" in ui, "renderEvidence does not render the sources"
+    assert "renderEvidence(metadata.trail" in ui, "the completed message drops its sources"
+    assert "renderEvidence(meta.trail" in ui, "the streamed message finalises without its sources"
 
 
 def test_no_transcript_rendering_was_left_behind_in_the_template():
@@ -235,3 +237,71 @@ def test_a_tool_returning_no_records_still_cites_nothing():
         runner._collect_sources("get_solution_summary", payload, sources)
         runner._collect_sources("find_technical_capabilities", payload, sources)
         assert sources == [], f"invented a citation from {payload}"
+
+
+# ── Evidence trail (Plan 3 Task 4) ──────────────────────────────────────────
+
+def _render_js():
+    return (ROOT / "app/static/js/ai_chat/render.js").read_text(encoding="utf-8")
+
+
+def test_the_evidence_trail_has_three_states_not_a_binary():
+    """A grounded/ungrounded binary keyed on sources would lie.
+
+    Citations cover 7 of 37 tools, so an answer built by propose_rationalization
+    or simulate_impact against real rows produces no sources. Rendering that as
+    "not checked against your portfolio" is a false provenance claim in the
+    direction the fabricated-data gate cannot see.
+    """
+    js = _render_js()
+    assert "function renderEvidence(" in js
+    for state in ("retrieved", "context", "unretrieved"):
+        assert "'%s'" % state in js, f"the {state} state is missing"
+    assert "contextUsed" in js, (
+        "no way to distinguish 'no tool ran but the snapshot was in context' "
+        "from 'nothing was read at all'"
+    )
+
+
+def test_coverage_is_taken_from_the_result_not_inferred_from_row_count():
+    """'47 matched, showing 15' must come from the tool, never be guessed.
+
+    The number of rows shown is exactly what must not be presented as the number
+    that exists — _AGENT_PREFIX rule 9 asks the model to report N of M, and this
+    is the structural version that does not depend on it complying.
+    """
+    js = _render_js()
+    assert "total_matched" in js, "coverage does not read the tool's own total"
+    assert "matched, showing" in js
+
+
+def test_both_render_paths_go_through_the_evidence_strip():
+    """The completed path and the streamed path must not drift.
+
+    Two renderers is how the original stored-XSS bug survived: one sanitised and
+    one did not.
+    """
+    js = _render_js()
+    assert "renderEvidence(metadata.trail" in js, "the completed message skips the trail"
+    assert "renderEvidence(meta.trail" in js, "the streamed message skips the trail"
+
+
+def test_the_disclosure_is_reachable_without_a_mouse():
+    js = _render_js()
+    assert "aria-expanded" in js and "aria-controls" in js
+    assert "aria-label=" in js, (
+        "the accessible name must carry the whole sentence — the context-only "
+        "and unretrieved states have to reach a screen reader with the same "
+        "prominence as retrieved"
+    )
+    assert "js-evidence-toggle" in js and "addEventListener('click'" in js, (
+        "the toggle needs a delegated listener; an inline handler would be "
+        "refused by the CSP"
+    )
+
+
+def test_source_escaping_survives_the_new_nesting():
+    """renderSources now renders inside the disclosure, not beside it."""
+    js = _render_js()
+    assert "renderSources(sources)" in js, "renderEvidence does not render the sources"
+    assert "escapeForHtml(s.name)" in js and "escapeForHtml(s.url)" in js
