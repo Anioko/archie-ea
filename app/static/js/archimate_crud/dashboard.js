@@ -17,6 +17,7 @@ document.addEventListener('alpine:init', function() {
             totalCount: 0,
             layerCounts: {},
             layerConfig: APP_CONFIG.layerConfig || {},
+            fieldConfigs: APP_CONFIG.fieldConfigs || {},
 
             // Card filter and grouping
             cardFilter: '',
@@ -109,6 +110,16 @@ document.addEventListener('alpine:init', function() {
                 let cfg = this.layerConfig[this.activeTab];
                 let arr = (cfg && Array.isArray(cfg.elements)) ? cfg.elements : [];
                 return Array.from(new Set(arr));
+            },
+
+            get currentTypeFields() {
+                // Typed fields for whichever element type the modal is currently
+                // showing — the selected type when creating, the existing
+                // element's type when editing. A type with no config (most of
+                // them, still) returns [] and the modal stays name+description only.
+                let et = this.formData.element_type;
+                let cfg = et ? this.fieldConfigs[et] : null;
+                return (cfg && Array.isArray(cfg.fields)) ? cfg.fields : [];
             },
 
             get elementGroups() {
@@ -404,6 +415,28 @@ document.addEventListener('alpine:init', function() {
                 this.validating = false;
             },
 
+            // Typed field values for the currently-selected type, defaulted to ''
+            // so Alpine's x-model has something reactive to bind before the user
+            // types (and so a field left untouched still posts as '' rather than
+            // being absent, matching create_empty_form_data on the server side).
+            typedFieldDefaults(elementType, source) {
+                let cfg = elementType ? this.fieldConfigs[elementType] : null;
+                let fields = (cfg && Array.isArray(cfg.fields)) ? cfg.fields : [];
+                let out = {};
+                for (let i = 0; i < fields.length; i++) {
+                    let name = fields[i].name;
+                    out[name] = (source && source[name] !== undefined) ? source[name] : '';
+                }
+                return out;
+            },
+            resetTypedFields() {
+                // Called when the Element Type select changes: drop any typed
+                // values entered for the previous type and seed defaults for the
+                // newly selected one.
+                let base = { element_type: this.formData.element_type, name: this.formData.name, description: this.formData.description };
+                Object.assign(base, this.typedFieldDefaults(this.formData.element_type));
+                this.formData = base;
+            },
             openCreateModal() {
                 this.editingElement = null;
                 this.formData = { element_type: '', name: '', description: '' };
@@ -419,6 +452,7 @@ document.addEventListener('alpine:init', function() {
                     name: el.name,
                     description: el.description || '',
                 };
+                Object.assign(this.formData, this.typedFieldDefaults(el.element_type, el));
                 this.formError = '';
                 if (window.Platform && window.Platform.modal) {
                     window.Platform.modal.open('archimate-form-modal');
@@ -442,13 +476,18 @@ document.addEventListener('alpine:init', function() {
                     } else {
                         url = '/architecture/' + this.activeTab + '/' + this.formData.element_type + '/new';
                     }
+                    let payload = {
+                        name: this.formData.name,
+                        description: this.formData.description,
+                    };
+                    // Include typed fields for the selected type (if any) so the
+                    // server's _set_model_fields can persist them alongside
+                    // name/description; a type with no config contributes none.
+                    Object.assign(payload, this.typedFieldDefaults(this.formData.element_type, this.formData));
                     let resp = await fetch(url, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            name: this.formData.name,
-                            description: this.formData.description,
-                        }),
+                        body: JSON.stringify(payload),
                     });
                     let data = await resp.json();
                     if (data.success) {
