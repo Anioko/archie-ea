@@ -918,8 +918,10 @@ x-cloak>
     window.csrfToken = '{{ csrf_token() }}';
 </script>
 
-{# Chat modules. Loaded before the inline blocks that call them; classic
-   scripts, so they run in order and before Alpine (which is deferred). #}
+{# Chat modules. Classic scripts, so they execute in source order and before
+   Alpine, which is deferred — that is what lets x-data="genomePanel()" and the
+   @click handlers resolve off window. Order matters: each module reads the
+   namespace the ones above it built (render.js owns ArchieChat.state). #}
 <script src="{{ url_for('static', filename='js/ai_chat/transport.js') }}"></script>
 <script src="{{ url_for('static', filename='js/ai_chat/render.js') }}"></script>
 <script src="{{ url_for('static', filename='js/ai_chat/commands.js') }}"></script>
