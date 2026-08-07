@@ -634,10 +634,43 @@ def gate_schema_drift() -> Result:
 
 
 def gate_tests() -> Result:
-    proc = _run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
-                 "--ignore=tests/test_boot_health.py"])
-    tail = (proc.stdout + proc.stderr).strip().splitlines()[-20:]
-    return Result("tests", PASS if proc.returncode == 0 else FAIL, "\n".join(tail))
+    """Behavioural regression. Runs smoke in its own process, as CI does.
+
+    tests/ and tests/smoke/ cannot share a pytest process. Both conftest trees
+    build a Flask app, and the second registration is rejected -
+
+        The setup method 'route' can no longer be called on the blueprint
+        'codegen'. It has already been registered at least once
+
+    - which leaves the smoke live_server on a degraded app whose login POST
+    never responds. Every archetype sign-in then times out after 90s: 31
+    failures and 9 errors, reproducible in BOTH collection orders, while each
+    suite passes cleanly on its own.
+
+    CI does not hit this, by accident rather than design: its `tests` job never
+    runs `playwright install`, so the browser fixture skips and takes the smoke
+    tests with it. Only the `smoke` job has a browser, and it runs
+    `pytest tests/smoke` on its own. Locally a browser IS present, so the
+    collision is real here and invisible there.
+
+    Two invocations rather than --ignore, so a local run still covers smoke
+    instead of quietly dropping the only browser tests in the repo.
+    """
+    parts = [
+        ("unit+integration", ["-p", "no:cacheprovider",
+                              "--ignore=tests/test_boot_health.py",
+                              "--ignore=tests/smoke"]),
+        ("smoke", ["-p", "no:cacheprovider", "tests/smoke"]),
+    ]
+    summaries, failed = [], []
+    for label, args in parts:
+        proc = _run([sys.executable, "-m", "pytest", "-q"] + args)
+        tail = (proc.stdout + proc.stderr).strip().splitlines()[-12:]
+        summaries.append("[%s] %s" % (label, tail[-1] if tail else "no output"))
+        if proc.returncode != 0:
+            failed.append(label)
+            summaries.extend("    " + line for line in tail)
+    return Result("tests", PASS if not failed else FAIL, "\n".join(summaries))
 
 
 # ---------------------------------------------------------------- registry
