@@ -415,13 +415,20 @@ def api_layer_count(layer):
 
     layer_types = LAYER_CONFIG[layer]["elements"]
     total = 0
-    # Count from dedicated per-type tables
+    # Count from dedicated per-type tables, EXCLUDING rows that are mirrored into
+    # archimate_elements — those are added below, and counting both sides made the
+    # page report every mirrored entity twice. A tenant with 71 elements was told
+    # it had 142 (71 typed rows + the same 71 mirrors). A model with no
+    # archimate_element_id cannot be deduplicated this way, so it is counted whole.
     for etype in layer_types:
         model_class = MODEL_REGISTRY.get(etype)
         if not model_class:
             continue
         try:
-            total += model_class.query.count()
+            q = model_class.query
+            if hasattr(model_class, "archimate_element_id"):
+                q = q.filter(model_class.archimate_element_id.is_(None))
+            total += q.count()
         except Exception as e:
             current_app.logger.warning(f"api_layer_count: count failed for {etype}: {e}")
 
@@ -1552,14 +1559,33 @@ def api_health_scorecard():
         # ------------------------------------------------------------------ #
         # Fetch raw counts (union of legacy + inference relationship tables)  #
         # ------------------------------------------------------------------ #
-        total_elements = db.session.query(func.count(ArchiMateElement.id)).scalar() or 0
-        legacy_rels = db.session.query(func.count(ArchiMateRelationship.id)).scalar() or 0
+        # Scope every count to the signed-in tenant explicitly. These are COLUMN
+        # queries (func.count(...)), and this codebase's isolation is
+        # with_loader_criteria, which only applies to ENTITY queries — so an
+        # unscoped func.count() silently reports every organisation's rows. The
+        # same defect put another tenant's totals in the sidebar.
+        from flask import g
+
+        _org = getattr(g, "current_org_id", None)
+
+        def _scope(query, model):
+            return query.filter(model.organization_id == _org) if _org is not None else query
+
+        total_elements = _scope(
+            db.session.query(func.count(ArchiMateElement.id)), ArchiMateElement
+        ).scalar() or 0
+        legacy_rels = _scope(
+            db.session.query(func.count(ArchiMateRelationship.id)), ArchiMateRelationship
+        ).scalar() or 0
         inference_rels = db.session.query(func.count(InfRel.id)).scalar() or 0
         total_rels = legacy_rels + inference_rels
 
         # Elements per layer
         layer_rows = (
-            db.session.query(ArchiMateElement.layer, func.count(ArchiMateElement.id))
+            _scope(
+                db.session.query(ArchiMateElement.layer, func.count(ArchiMateElement.id)),
+                ArchiMateElement,
+            )
             .group_by(ArchiMateElement.layer)
             .all()
         )
