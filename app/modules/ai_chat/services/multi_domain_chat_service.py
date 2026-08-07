@@ -4586,7 +4586,7 @@ Use enterprise architecture terminology appropriate for this role."""
             cap_list.sort(key=lambda c: c["investment_priority"], reverse=True)
             priority_caps = [c for c in cap_list[:5] if c["investment_priority"] > 0]
 
-            return {
+            result = {
                 "business_capabilities": cap_list[:60],
                 "total_capabilities": len(cap_list),
                 "covered_capabilities": covered,
@@ -4595,6 +4595,51 @@ Use enterprise architecture terminology appropriate for this role."""
                 "total_applications": total_apps,
                 "priority_investment_areas": priority_caps,
             }
+
+            # Deep-link focus: ?element_id=<id>&context_type=capability. The list
+            # above is sorted by investment priority and cut at 60, so the asked-for
+            # capability could be absent entirely — pull it to the front and label it.
+            focus_id = (context_filter or {}).get("element_id")
+            focus_type = (context_filter or {}).get("context_type")
+            if focus_id and focus_type in ("capability", "business_capability"):
+                focus_cap = None
+                try:
+                    focus_cap = BusinessCapability.query.get(int(focus_id))
+                except (TypeError, ValueError):
+                    focus_cap = None
+                if focus_cap is None:
+                    result["context_focus"] = {
+                        "type": "capability",
+                        "id": focus_id,
+                        "resolved": False,
+                        "_note": (
+                            f"The user opened this chat from a capability page (id={focus_id}) "
+                            "but that capability could not be loaded for this organisation. Do "
+                            "NOT assume it is one of the capabilities listed here — say the "
+                            "record could not be read."
+                        ),
+                    }
+                else:
+                    entry = next(
+                        (c for c in cap_list if c.get("id") == focus_cap.id),
+                        {"id": focus_cap.id, "name": focus_cap.name},
+                    )
+                    if entry not in result["business_capabilities"]:
+                        result["business_capabilities"].insert(0, entry)
+                    result["context_focus"] = {
+                        "type": "capability",
+                        "id": focus_cap.id,
+                        "name": focus_cap.name,
+                        "resolved": True,
+                        "capability": entry,
+                        "_note": (
+                            "The user opened this chat from this capability's page. It is the "
+                            "subject of their question unless they say otherwise. The other "
+                            "capabilities below are context, not the subject."
+                        ),
+                    }
+
+            return result
         except Exception as e:
             self.logger.error(f"Error loading capability context: {e}")
             return {"error": str(e)}
@@ -4778,6 +4823,23 @@ Use enterprise architecture terminology appropriate for this role."""
 
             vendors = VendorOrganization.query.limit(50).all()
 
+            # Deep-link focus. vendor_detail.html links here with
+            # ?element_id=<id>&context_type=vendor, and before this the filter was
+            # dropped on the floor: the model got the first 50 vendors with nothing
+            # saying which one the user had open. Load the asked-for vendor first so
+            # it is guaranteed to survive the 30-row slice below.
+            # (docs/known-issues/ai-chat-parameter-effects.md §2)
+            focus_id = (context_filter or {}).get("element_id")
+            focus_wanted = (context_filter or {}).get("context_type") == "vendor" and focus_id
+            focus_vendor = None
+            if focus_wanted:
+                try:
+                    focus_vendor = VendorOrganization.query.get(int(focus_id))
+                except (TypeError, ValueError):
+                    focus_vendor = None
+                if focus_vendor is not None and all(v.id != focus_vendor.id for v in vendors):
+                    vendors.insert(0, focus_vendor)
+
             # Vendor concentration via 3 data paths
             concentration = {}  # vendor_org_id -> set of app_ids
             try:
@@ -4890,13 +4952,48 @@ Use enterprise architecture terminology appropriate for this role."""
                     vendor_entry["name"], []
                 )
 
-            return {
+            result = {
                 "vendor_organizations": vendor_list[:30],
                 "total_vendors": len(vendor_list),
                 "high_risk_vendors": [v for v in vendor_list if v["concentration_risk"] == "high"],
                 "total_applications_with_vendor": sum(len(s) for s in concentration.values()),
                 "capability_alternatives": self._get_capability_alternative_vendors(),
             }
+
+            if focus_wanted:
+                if focus_vendor is None:
+                    # Say so. Silently returning the generic list would let the
+                    # model answer about a vendor that is not the one asked about.
+                    result["context_focus"] = {
+                        "type": "vendor",
+                        "id": focus_id,
+                        "resolved": False,
+                        "_note": (
+                            f"The user opened this chat from a vendor page (id={focus_id}) "
+                            "but that vendor record could not be loaded. Do NOT assume it is "
+                            "one of the vendors listed here — say the record could not be read."
+                        ),
+                    }
+                else:
+                    entry = next(
+                        (v for v in vendor_list if v.get("id") == focus_vendor.id), None
+                    )
+                    if entry is not None and entry not in result["vendor_organizations"]:
+                        result["vendor_organizations"].insert(0, entry)
+                    result["context_focus"] = {
+                        "type": "vendor",
+                        "id": focus_vendor.id,
+                        "name": focus_vendor.name,
+                        "resolved": True,
+                        "vendor": entry,
+                        "_note": (
+                            "The user opened this chat from this vendor's page. It is the "
+                            "subject of their question unless they say otherwise. The other "
+                            "vendors below are context, not the subject."
+                        ),
+                    }
+
+            return result
         except Exception as e:
             self.logger.error(f"Error loading vendor context: {e}")
             return {"error": str(e)}
@@ -5126,6 +5223,72 @@ Use enterprise architecture terminology appropriate for this role."""
             }
         except Exception as e:
             logger.debug(f"Cross-domain summary skipped: {e}")
+
+        # Deep-link focus. The general domain is the fallback, so it receives every
+        # deep link that carries no `domain` — archimate/composer.html sends
+        # ?element_id=<id>&context_type=solution with no domain at all. Without this
+        # the id was discarded and the model saw only a 20-row sample that need not
+        # contain the record the user was looking at.
+        focus_id = (context_filter or {}).get("element_id")
+        focus_type = (context_filter or {}).get("context_type")
+        if focus_id and focus_type:
+            try:
+                from app.models.application_portfolio import ApplicationComponent
+                from app.models.business_capabilities import BusinessCapability
+                from app.models.solution_models import Solution
+                from app.models.vendor.vendor_organization import VendorOrganization
+
+                model = {
+                    "application": ApplicationComponent,
+                    "capability": BusinessCapability,
+                    "business_capability": BusinessCapability,
+                    "solution": Solution,
+                    "vendor": VendorOrganization,
+                }.get(str(focus_type).lower())
+
+                record = None
+                if model is not None:
+                    try:
+                        record = model.query.get(int(focus_id))
+                    except (TypeError, ValueError):
+                        record = None
+
+                focus = {"type": focus_type, "id": focus_id, "resolved": record is not None}
+                if record is not None:
+                    focus["name"] = record.name
+                    description = getattr(record, "description", None)
+                    if description:
+                        focus["description"] = description[:500]
+                    focus["_note"] = (
+                        f"The user opened this chat from this {focus_type}'s page. It is the "
+                        "subject of their question unless they say otherwise. The "
+                        "portfolio_sample below is a sample, not the subject."
+                    )
+                elif model is None:
+                    focus["_note"] = (
+                        f"The user arrived from a page of an unrecognised type "
+                        f"('{focus_type}', id={focus_id}), so nothing could be loaded for it. "
+                        "Ask what they are asking about rather than guessing."
+                    )
+                else:
+                    focus["_note"] = (
+                        f"The user opened this chat from a {focus_type} page (id={focus_id}) "
+                        "but that record could not be loaded for this organisation. Do NOT "
+                        "assume it is one of the records sampled below — say the record "
+                        "could not be read."
+                    )
+                ctx["context_focus"] = focus
+            except Exception as e:
+                logger.debug(f"Context focus resolution skipped: {e}")
+                ctx["context_focus"] = {
+                    "type": focus_type,
+                    "id": focus_id,
+                    "resolved": False,
+                    "_note": (
+                        "The record this chat was opened from could not be loaded. Do NOT "
+                        "assume it is one of the records sampled below."
+                    ),
+                }
         return ctx
 
     def _get_capability_crossref(self, context: Dict) -> str:
