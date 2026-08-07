@@ -388,8 +388,13 @@ x-cloak>
                 </div>
             </div>
 
-            <!-- Rate Limit Badge — populated by JS after first message; hidden until then -->
-            <span id="rate-limit-badge" class="hidden text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground font-medium" title="AI requests remaining this hour"></span>
+            {# The rate-limit badge lived here. It was never populated: the only
+               implementation was a sessionStorage counter in the dead
+               ai_chat.js that guessed at the server's state. @rate_limit(30,
+               "1h") in chat_core.py raises on breach and returns no remaining
+               quota — no header, no body field — so there is nothing honest to
+               show. Restoring the badge means exposing the count server-side
+               first. #}
         </div>
     </header>
 
