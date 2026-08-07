@@ -7,6 +7,7 @@ from flask import current_app  # dead-code-ok
 from flask_login import current_user  # dead-code-ok
 from sqlalchemy import types
 from sqlalchemy.ext.mutable import MutableDict
+from sqlalchemy.orm import validates
 
 from .. import db  # main SQLAlchemy object
 from .mixins import TenantMixin
@@ -77,6 +78,112 @@ class _EncryptedString(types.TypeDecorator):
         except Exception:
             _key_log.warning("Failed to decrypt api_key value — returning raw (may be legacy plaintext)")
             return value
+
+
+# ---------------------------------------------------------------------------
+# ArchiMate layer names — one canonical casing, two accepted conventions
+# ---------------------------------------------------------------------------
+# `archimate_elements.layer` accumulated both casings, and Postgres `=` is
+# case-sensitive, so the column silently partitioned itself:
+#
+#     [Application] 47   [application] 52
+#     [Strategy]   274   [strategy]      4
+#     [Motivation]   8   [motivation]   13
+#     [Technology]   1   [technology]   24
+#     [business]    11   <- no capitalised "Business" row ever existed
+#
+# The code disagrees with itself the same way: ~70 call sites spell the layer
+# in lower case and ~30 capitalise it. So the nine sites querying "Business"
+# returned nothing at all, and the thirteen querying "strategy" saw 4 rows out
+# of 278. Writers disagreed too — strategy_layer.py writes "Strategy".
+#
+# Normalising the stored data alone would have *created* a second outage: every
+# capitalised comparison would go from partly-working to never-working. So the
+# canonical form is enforced at three points, and each one only ever widens
+# what matches:
+#
+#   1. `process_bind_param` canonicalises the value SQLAlchemy sends to the
+#      database. That covers INSERT/UPDATE values *and* the literal in
+#      `layer == "Business"`, `filter_by(layer="Strategy")` and
+#      `layer.in_([...])` — so a query keeps its own spelling in the source and
+#      still matches canonical rows. This is what lets ~100 existing call sites
+#      stay exactly as they are, including modules this change does not touch.
+#   2. `@validates` canonicalises assignment, so the in-Python value is correct
+#      before a flush ever happens.
+#   3. `process_result_value` hands back a str that compares case-insensitively,
+#      so `element.layer == "Strategy"` stays true for a row stored as
+#      "strategy". Without this, normalising storage would break the ~30
+#      capitalised in-memory comparisons.
+#
+# Lower case is canonical because it is the majority convention in this
+# codebase (~70 vs ~30 in Python, 44 vs 30 in templates/JS) and it matches the
+# sibling `scope` column.
+#
+# Existing rows are repaired by `flask backfill-archimate-layer-casing`
+# (app/commands/backfill_archimate_layer_casing.py). Until that has run, step 1
+# already makes both conventions agree on every newly written row.
+
+
+class _LayerName(str):
+    """An ArchiMate layer name that compares equal regardless of casing.
+
+    A plain ``str`` subclass, so templates render it, ``json.dumps`` serialises
+    it and ``.lower()``/``.title()`` behave normally. Its hash is the hash of
+    the canonical (lower-case) text it already holds, so dict and set behaviour
+    is byte-identical to a plain lower-case ``str``. The only difference is
+    that ``==`` is case-insensitive, which can turn a False into a True but
+    never the reverse — no comparison that succeeds today can start failing.
+    """
+
+    __slots__ = ()
+
+    def __eq__(self, other):
+        if isinstance(other, str):
+            return str.__eq__(str.lower(self), other.lower())
+        return NotImplemented
+
+    def __ne__(self, other):
+        result = self.__eq__(other)
+        if result is NotImplemented:
+            return result
+        return not result
+
+    def __hash__(self):
+        return str.__hash__(str.lower(self))
+
+
+def canonical_archimate_layer(value):
+    """Return the canonical spelling of an ArchiMate layer name.
+
+    Returns a :class:`_LayerName` so a value read back from the database still
+    compares equal to either convention. Non-strings (and ``None``) pass
+    through untouched — this normalises casing, it does not invent data.
+    """
+    if not isinstance(value, str):
+        return value
+    return _LayerName(value.strip().lower())
+
+
+class _ArchiMateLayerType(types.TypeDecorator):
+    """VARCHAR column whose values *and bind parameters* are canonicalised.
+
+    Canonicalising the bind parameter is the load-bearing part: it makes
+    ``layer == "Business"`` and ``layer == "business"`` emit identical SQL, so
+    both spellings match the same rows without editing either call site.
+    """
+
+    impl = types.String
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        if not isinstance(value, str):
+            return value
+        # Deliberately a plain str — the DBAPI should never see a subclass.
+        return value.strip().lower()
+
+    def process_result_value(self, value, dialect):
+        return canonical_archimate_layer(value)
+
 
 _FAST_INIT = os.getenv("APP_FAST_INIT", "0") == "1"
 
@@ -153,7 +260,9 @@ else:
         id = db.Column(db.Integer, primary_key=True)
         name = db.Column(db.String(100), nullable=False)
         type = db.Column(db.String(50), index=True)
-        layer = db.Column(db.String(30), index=True)
+        # VARCHAR(30) on the database side, exactly as before — see
+        # _ArchiMateLayerType above for why the casing is mediated here.
+        layer = db.Column(_ArchiMateLayerType(30), index=True)
         description = db.Column(db.Text, nullable=True)
 
         # Scope for Enterprise vs Application level filtering
@@ -308,6 +417,19 @@ else:
         uml_elements = db.relationship(
             "UMLElement", back_populates="archimate_element", lazy="dynamic"
         )
+
+        @validates("layer")
+        def _canonicalise_layer(self, key, value):
+            """Canonicalise the layer at assignment time.
+
+            The column type already canonicalises what reaches the database, but
+            an unflushed object would otherwise report back whatever casing the
+            caller passed — so ``el = ArchiMateElement(layer="Strategy")`` and a
+            later ``el.layer == "strategy"`` would disagree until the next
+            flush. Doing it here as well means the in-memory object and the row
+            never differ.
+            """
+            return canonical_archimate_layer(value)
 
         def __repr__(self):
             return f"<ArchiMateElement {self.name} ({self.type})>"
