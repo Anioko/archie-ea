@@ -1,7 +1,14 @@
 # ADR 0003 — Tenant isolation: known gaps and required scoping
 
-- **Status:** Accepted (gaps recorded; remediation of gap 1 **not yet done**)
-- **Date:** 2026-07-30
+- **Status:** Accepted; **gap 1 remediated 2026-08-07** — `do_orm_execute` now
+  filters ORM-enabled UPDATE/DELETE (remediation option 4 below), and the two
+  strict xfails were removed in the same change, as this ADR required. In the
+  same change every business/data/technology/physical model gained `TenantMixin`
+  (~43 classes; all tables verified empty in production first), with
+  `flask backfill-layer-tenancy` adding/hardening `organization_id` on existing
+  databases at boot — the interim pattern ADR-0002 sanctions until its Alembic
+  cutover. Gap 2 (no context ⇒ no filtering) remains by design.
+- **Date:** 2026-07-30 (gap 1 closed 2026-08-07)
 - **Severity:** **Medium — latent.** Revised down from High after execution: the
   mechanism gap is confirmed real, but the highest-risk endpoint is protected by a
   scoped pre-check. See "Verified results" below.

@@ -213,14 +213,6 @@ def test_explicit_org_on_insert_is_not_overwritten(db_session, make_org, tenant_
 # --------------------------------------------------------------- known gaps
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "KNOWN GAP: do_orm_execute returns early for non-SELECT, so bulk UPDATE is "
-        "not tenant-filtered. See docs/adr/0003-tenant-isolation-gaps.md. "
-        "If this now passes, the gap was fixed — remove this marker."
-    ),
-)
 def test_bulk_update_cannot_cross_tenants(db_session, make_org, tenant_ctx):
     """A bulk UPDATE in org A's context must not modify org B's rows."""
     from app.models.application_portfolio import ApplicationComponent
@@ -228,6 +220,13 @@ def test_bulk_update_cannot_cross_tenants(db_session, make_org, tenant_ctx):
     org_a, org_b = make_org("a"), make_org("b")
     b_row = _make_app_component(db_session, org_b.id, "Original name")
     b_row_id = b_row.id
+    # Commit (a SAVEPOINT release under the db_session fixture), because leaving
+    # tenant_ctx pops an app context and Flask-SQLAlchemy's teardown discards
+    # merely-flushed rows — the post-context .get() then returns None and this
+    # test "fails" without ever testing the filter. Same mechanism as the
+    # air-gap fixture fix; it kept the old strict xfail green for years of
+    # runs for the wrong reason.
+    db_session.commit()
 
     with tenant_ctx(org_a.id):
         ApplicationComponent.query.filter_by(id=b_row_id).update(
@@ -235,21 +234,21 @@ def test_bulk_update_cannot_cross_tenants(db_session, make_org, tenant_ctx):
         )
         db_session.flush()
 
+    # Verify AS ORG B, the row's owner. An unscoped final read is impossible
+    # here: test_request_context reuses the fixture's app context, so the
+    # g.current_org_id set inside the block above SURVIVES it (the same
+    # context-reuse behaviour CLAUDE.md documents for g._login_user), and a
+    # bare .get() after the block runs tenant-filtered as org A — org B's row
+    # comes back None and reads as a leak when the update actually matched 0.
+    org_b_id = org_b.id  # capture before expunge_all detaches the instance
     db_session.expunge_all()
-    after = db_session.get(ApplicationComponent, b_row_id)
-    assert after is not None and after.name == "Original name", (
-        "TENANT LEAK: a bulk UPDATE executed in org A's context modified org B's row."
-    )
+    with tenant_ctx(org_b_id):
+        after = db_session.get(ApplicationComponent, b_row_id)
+        assert after is not None and after.name == "Original name", (
+            "TENANT LEAK: a bulk UPDATE executed in org A's context modified org B's row."
+        )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "KNOWN GAP: bulk DELETE is not tenant-filtered (non-SELECT path). This is the "
-        "mechanism behind the app/api/v1/applications.py:482 delete. "
-        "See docs/adr/0003-tenant-isolation-gaps.md. Remove this marker once fixed."
-    ),
-)
 def test_bulk_delete_cannot_cross_tenants(db_session, make_org, tenant_ctx):
     """A bulk DELETE in org A's context must not remove org B's rows."""
     from app.models.application_portfolio import ApplicationComponent
@@ -257,15 +256,19 @@ def test_bulk_delete_cannot_cross_tenants(db_session, make_org, tenant_ctx):
     org_a, org_b = make_org("a"), make_org("b")
     b_row = _make_app_component(db_session, org_b.id, "App owned by B")
     b_row_id = b_row.id
+    db_session.commit()  # see the commit note in the bulk-update test above
 
     with tenant_ctx(org_a.id):
         ApplicationComponent.query.filter_by(id=b_row_id).delete(synchronize_session=False)
         db_session.flush()
 
+    # As org B — see the context-reuse note in the bulk-update test above.
+    org_b_id = org_b.id  # capture before expunge_all detaches the instance
     db_session.expunge_all()
-    assert db_session.get(ApplicationComponent, b_row_id) is not None, (
-        "TENANT LEAK: a bulk DELETE executed in org A's context removed org B's row."
-    )
+    with tenant_ctx(org_b_id):
+        assert db_session.get(ApplicationComponent, b_row_id) is not None, (
+            "TENANT LEAK: a bulk DELETE executed in org A's context removed org B's row."
+        )
 
 
 # --------------------------------------------------------------- documented no-op

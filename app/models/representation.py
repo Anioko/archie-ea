@@ -23,9 +23,11 @@ Relationships:
 from datetime import datetime
 
 from app import db
+from app.models.mixins import TenantMixin
 
 
-class Representation(db.Model):
+# ADR-0003: tenant-scoped — organization_id backfilled/hardened by flask backfill-layer-tenancy
+class Representation(TenantMixin, db.Model):
     """
     ArchiMate 3.2 Representation - Business Layer
 

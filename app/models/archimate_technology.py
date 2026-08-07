@@ -24,6 +24,8 @@ from datetime import datetime
 from sqlalchemy import event
 from sqlalchemy.orm import relationship
 
+from app.models.mixins import TenantMixin
+
 from .. import db
 
 # ============================================================================
@@ -31,7 +33,8 @@ from .. import db
 # ============================================================================
 
 
-class TechnologyCollaborationFull(db.Model):
+# ADR-0003: tenant-scoped — organization_id backfilled/hardened by flask backfill-layer-tenancy
+class TechnologyCollaborationFull(TenantMixin, db.Model):
     """
     ArchiMate 3.2 Technology Collaboration - Aggregate of technology nodes working together
 
@@ -123,7 +126,8 @@ class TechnologyCollaborationFull(db.Model):
 # ============================================================================
 
 
-class TechnologyFunction(db.Model):
+# ADR-0003: tenant-scoped — organization_id backfilled/hardened by flask backfill-layer-tenancy
+class TechnologyFunction(TenantMixin, db.Model):
     """
     ArchiMate 3.2 Technology Function - Collection of technology behavior
 
@@ -220,7 +224,8 @@ class TechnologyFunction(db.Model):
 # ============================================================================
 
 
-class TechnologyProcess(db.Model):
+# ADR-0003: tenant-scoped — organization_id backfilled/hardened by flask backfill-layer-tenancy
+class TechnologyProcess(TenantMixin, db.Model):
     """
     ArchiMate 3.2 Technology Process - Sequence of technology behaviors
 
@@ -321,7 +326,8 @@ class TechnologyProcess(db.Model):
 # ============================================================================
 
 
-class TechnologyInteraction(db.Model):
+# ADR-0003: tenant-scoped — organization_id backfilled/hardened by flask backfill-layer-tenancy
+class TechnologyInteraction(TenantMixin, db.Model):
     """
     ArchiMate 3.2 Technology Interaction - Unit of collective technology behavior
 
@@ -429,7 +435,8 @@ class TechnologyInteraction(db.Model):
 # ============================================================================
 
 
-class TechnologyEvent(db.Model):
+# ADR-0003: tenant-scoped — organization_id backfilled/hardened by flask backfill-layer-tenancy
+class TechnologyEvent(TenantMixin, db.Model):
     """
     ArchiMate 3.2 Technology Event - State change in technology layer
 

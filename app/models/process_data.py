@@ -31,7 +31,8 @@ from app.models.mixins import TenantMixin
 # ============================================================================
 
 
-class BusinessProcess(db.Model):
+class BusinessProcess(TenantMixin, db.Model):
+    # ADR-0003: tenant-scoped — organization_id backfilled/hardened by flask backfill-layer-tenancy
     """
     Business Process definition with full BPMN 2.0 semantic storage.
 
@@ -360,7 +361,8 @@ class VendorProcessMapping(TenantMixin, db.Model):
 # ============================================================================
 
 
-class DataDomain(db.Model):
+class DataDomain(TenantMixin, db.Model):
+    # ADR-0003: tenant-scoped — organization_id backfilled/hardened by flask backfill-layer-tenancy
     """
     High-level data domain representing a logical grouping of related data entities.
 
@@ -432,7 +434,8 @@ class DataDomain(db.Model):
         return f"<DataDomain {self.name}>"
 
 
-class DataEntity(db.Model):
+class DataEntity(TenantMixin, db.Model):
+    # ADR-0003: tenant-scoped — organization_id backfilled/hardened by flask backfill-layer-tenancy
     """
     Represents a data entity/object managed within a data domain.
 
@@ -597,18 +600,18 @@ class DataEntity(db.Model):
 # ``set_committed_value`` so no further flush is provoked. A Core insert does NOT
 # re-fire ORM mapper events, so there is no cascade.
 #
-# DataEntity has no organization_id column (unlike ValueStream), so it is left out
-# of the insert entirely; ArchiMateElement.organization_id's own column default
-# (_default_org_id in app/models/mixins/core.py) resolves it from
-# g.current_org_id, which is present because routes run inside a request context.
+# DataEntity is TenantMixin as of ADR-0003, so the mirror takes its tenant from
+# the row itself: before_flush stamps target.organization_id before the flush
+# that fires this event, making it strictly more reliable than the ambient
+# g.current_org_id (which the ArchiMateElement column default would otherwise
+# read, and which is absent outside a request context).
 def _link_data_entity_archimate(connection, target, organization_id=None):
     """Create the ArchiMateElement and point ``target.archimate_element_id`` at it.
 
-    ``organization_id`` is an explicit override for callers running outside a
-    request context (the backfill command) — see the module docstring above
-    the ``after_insert`` listener for why DataEntity itself carries no
-    organization_id to read one from. Left as ``None`` (the mapper-event call
-    site), ArchiMateElement.organization_id's own column default resolves the
+    ``organization_id`` is an explicit override for callers that hold rows
+    predating tenancy (the backfill command). Left as ``None`` (the
+    mapper-event call site), the tenant is read from ``target.organization_id``,
+    falling back to ArchiMateElement.organization_id's own column default, which resolves the
     tenant from ``g.current_org_id``.
     """
     from sqlalchemy.orm.attributes import set_committed_value
@@ -622,8 +625,13 @@ def _link_data_entity_archimate(connection, target, organization_id=None):
         "layer": "application",
         "description": target.description or f"Data object for entity: {target.name}",
     }
-    if organization_id is not None:
-        values["organization_id"] = organization_id
+    effective_org = (
+        organization_id
+        if organization_id is not None
+        else getattr(target, "organization_id", None)
+    )
+    if effective_org is not None:
+        values["organization_id"] = effective_org
 
     result = connection.execute(archimate_table.insert().values(**values))
     new_id = result.inserted_primary_key[0]

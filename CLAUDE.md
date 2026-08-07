@@ -183,10 +183,13 @@ Guard cross-module links:
 - Anything running outside a request context (CLI, scheduler, tests) has no `g.current_org_id` and is
   therefore **unfiltered**. Scope explicitly in those paths.
 - A new tenant-scoped model needs `TenantMixin` — omitting it silently leaks rows across orgs.
-- **Bulk `UPDATE`/`DELETE` are NOT tenant-filtered** (verified), even inside a request
-  context: `do_orm_execute` returns early for non-`SELECT`, and `before_flush` only
-  covers inserts. 35 bulk-write call sites over 55 `TenantMixin` models — each is safe
-  only if a scoped read happens first. Always put `organization_id` in the predicate.
+- **Bulk `UPDATE`/`DELETE` ARE tenant-filtered as of ADR-0003's closure** —
+  `do_orm_execute` now applies `with_loader_criteria` to ORM-enabled UPDATE and
+  DELETE, not just SELECT, so `Model.query.filter(...).update()/.delete()` inside a
+  request carries the tenant predicate mechanically. The two strict xfails that
+  encoded this gap in `tests/test_tenant_isolation.py` are now plain passing tests.
+  Still put `organization_id` in bulk-write predicates as defence-in-depth: raw-SQL
+  writes and anything outside a request context remain unfiltered.
   `Query.get()` / `Session.get()` are scoped **only on an identity-map miss** —
   correcting an earlier "is scoped (verified)" note here, which was measured with a
   cold session and so only ever tested the miss. On a hit they return the cached
