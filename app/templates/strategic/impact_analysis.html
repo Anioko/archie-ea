@@ -474,7 +474,7 @@
 </script>
 
 <!-- LLM-Powered Recommendations -->
-{% from 'components/llm_recommendations.html' import llm_recommendations %}
+{% from 'components/llm_recommendations.html' import llm_recommendations with context %}
 {% from 'components/impact_scenario_comparison_modal.html' import impact_scenario_comparison_modal %}
 
 {{ impact_scenario_comparison_modal() }}

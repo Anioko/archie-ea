@@ -2,7 +2,7 @@
 ArchiMate Gantt Widget - ArchiMate 3.2 Implementation & Migration Layer Visualization
 
 Usage:
-  {% from 'components/archimate_gantt_widget.html' import archimate_gantt_widget %}
+  {% from 'components/archimate_gantt_widget.html' import archimate_gantt_widget with context %}
   {{ archimate_gantt_widget(
       data_endpoint=url_for('implementation_planning.api_roadmap_data'),
       title='Implementation Roadmap',

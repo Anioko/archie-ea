@@ -2,7 +2,7 @@
    Right-side slide-in panel for complex create/edit forms.
 
    Usage:
-   {% from 'components/drawer.html' import drawer %}
+   {% from 'components/drawer.html' import drawer with context %}
 
    {% call drawer(id='create-solution', title='New Solution', description='Create a new enterprise solution') %}
    <form ...>...</form>

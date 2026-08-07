@@ -155,7 +155,7 @@
 </div>
 
 <!-- LLM-Powered Recommendations -->
-{% from 'components/llm_recommendations.html' import llm_recommendations %}
+{% from 'components/llm_recommendations.html' import llm_recommendations with context %}
 {% from 'components/risk_detail_modal.html' import risk_detail_modal %}
 
 {{ risk_detail_modal() }}

@@ -2,7 +2,7 @@
 {% from 'components/page_header.html' import page_header %}
 {% from 'components/card.html' import card, card_header, card_title, card_content %}
 {% from 'components/badge.html' import badge %}
-{% from 'macros/nav_macros_shadcn.html' import pill_tabs, tab_panel %}
+{% from 'macros/nav_macros_shadcn.html' import pill_tabs, tab_panel with context %}
 
 {% block title %}{% if app is defined and app %}{{ app.name }} — Application Detail{% else %}Applications Dashboard{% endif %}{% endblock %}
 
