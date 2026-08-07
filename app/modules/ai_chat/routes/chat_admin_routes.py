@@ -12,7 +12,7 @@ import json
 import logging
 from datetime import datetime, timedelta
 
-from flask import abort, jsonify, render_template, request
+from flask import abort, g, jsonify, render_template, request
 from flask_login import current_user, login_required
 from sqlalchemy import func
 
@@ -257,6 +257,12 @@ def admin_analytics_data():
     }
 
     # --- Feedback summary ---
+    # AIChatFeedback now carries TenantMixin, so do_orm_execute scopes this
+    # SELECT to g.current_org_id. Before that it did not: message_text holds the
+    # assistant's reply — portfolio content — and this aggregation, filtered on
+    # created_at alone, counted every organisation's feedback together.
+    # The explicit predicate is belt-and-braces: this view is admin-facing, and
+    # a future caller running it outside a request context would be unfiltered.
     if AIChatFeedback is not None:
         try:
             fb_rows = (
@@ -266,6 +272,7 @@ def admin_analytics_data():
                     func.count(AIChatFeedback.id),
                 )
                 .filter(AIChatFeedback.created_at >= cutoff)
+                .filter(AIChatFeedback.organization_id == g.current_org_id)
                 .group_by(AIChatFeedback.domain, AIChatFeedback.rating)
                 .all()
             )
