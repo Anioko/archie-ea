@@ -86,7 +86,17 @@ class ChiefArchitectService:
 
     @staticmethod
     def _readiness(solution, conformance, adr) -> List[Dict[str, Any]]:
-        """The board-readiness checklist — what's in place, what's missing."""
+        """The board-readiness checklist — what's in place, what's missing.
+
+        Covers two different questions. The first four rows are process: is
+        there an owner, a technical lead, a recommended decision, an accepted
+        one. The domain rows are architecture *content*: TOGAF treats Business
+        (Phase B), Data (Phase C) and Technology (Phase D) as peers of the
+        application architecture, so a board asked to approve a design is
+        entitled to see which of them the design has not addressed. Previously
+        every row was process-only, and a solution naming no business process,
+        no data object and no platform could still read as board-ready.
+        """
         items = [
             {"label": "Owner assigned", "ok": bool(getattr(solution, "solution_owner", None))},
             {"label": "Technical lead assigned", "ok": bool(getattr(solution, "technical_lead", None))},
@@ -95,7 +105,33 @@ class ChiefArchitectService:
             {"label": "No high/critical conformance issues",
              "ok": conformance.get("success") and conformance.get("flagged", 1) == 0},
         ]
+        items += ChiefArchitectService._domain_readiness(solution)
         return items
+
+    @staticmethod
+    def _domain_readiness(solution) -> List[Dict[str, Any]]:
+        """One row per architecture domain, read from what the solution models.
+
+        Derived from the linked elements rather than from conformance findings:
+        a design with nothing modelled at all raises no findings, and must not
+        therefore be reported as having addressed every domain.
+        """
+        from app.modules.solutions_strategic.v2.services.conformance_reviewer import (
+            _DATA_TABLES,
+            ConformanceReviewer,
+        )
+
+        try:
+            _total, layers, tables = ConformanceReviewer._element_counts(solution.id)
+        except Exception:  # noqa: BLE001 — the checklist must still render
+            logger.debug("domain readiness unavailable for solution %s", solution.id)
+            return []
+
+        return [
+            {"label": "Business architecture addressed", "ok": "business" in layers},
+            {"label": "Data architecture addressed", "ok": bool(tables & _DATA_TABLES)},
+            {"label": "Technology architecture addressed", "ok": "technology" in layers},
+        ]
 
     @classmethod
     def portfolio_synthesis(cls) -> Dict[str, Any]:

@@ -99,17 +99,22 @@ def data_architecture_dashboard():
 @enterprise_bp.route("/data/models")
 @login_required
 def data_models():
-    """Data Models Overview - renders existing data architecture dashboard"""
-    try:
-        conceptual_models = ConceptualDataModel.query.limit(500).all()
-        logical_models = LogicalDataModel.query.limit(500).all()
-        physical_models = PhysicalDataModel.query.limit(500).all()
+    """Data Models Overview - renders existing data architecture dashboard.
 
+    Passes the same counts as `data_architecture_dashboard`, because both render
+    `enterprise/data_architecture_dashboard.html` and its metric tiles read
+    `conceptual_count` / `logical_count` / `physical_count`. This route used to
+    pass three *lists* under different names; the template never read them, so
+    every tile fell through `value=... or 0` and displayed 0 whatever the real
+    count was — a fabricated zero indistinguishable from a measured one. The
+    lists were also never rendered, so fetching up to 1500 rows was pure waste.
+    """
+    try:
         return render_template(
             "enterprise/data_architecture_dashboard.html",
-            conceptual_models=conceptual_models,
-            logical_models=logical_models,
-            physical_models=physical_models,
+            conceptual_count=ConceptualDataModel.query.count(),
+            logical_count=LogicalDataModel.query.count(),
+            physical_count=PhysicalDataModel.query.count(),
         )
     except SQLAlchemyError as e:
         current_app.logger.error(f"Database error loading data models: {e}")
