@@ -176,3 +176,62 @@ def test_the_model_is_told_the_grounding_contract():
     assert "showing" in prefix.lower() and "total" in prefix.lower(), (
         "the model must be told to report the true total, not the row count"
     )
+
+
+def test_a_read_tool_returning_a_single_record_is_cited():
+    """_collect_sources required a list, so a one-record tool cited nothing.
+
+    get_solution_summary returns {"result": {"id": .., "name": ..}} — a dict, not
+    a list — so the isinstance(rows, list) guard skipped it entirely and an
+    answer built on a real solution looked ungrounded. _source_url has had a
+    `solution` branch all along that no tool could reach.
+    """
+    from app.modules.ai_chat.services.agent_runner import AgentRunner
+
+    sources = []
+    AgentRunner.__new__(AgentRunner)._collect_sources(
+        "get_solution_summary",
+        {"success": True, "result": {"id": 7, "name": "Order-to-Cash"}},
+        sources,
+    )
+    assert sources, "a single-record read tool produced no citation"
+    assert sources[0]["type"] == "solution"
+    assert sources[0]["id"] == 7 and sources[0]["name"] == "Order-to-Cash"
+
+
+def test_technical_capability_rows_are_cited():
+    """find_technical_capabilities returns a list of {id, name} and was uncited."""
+    from app.modules.ai_chat.services.agent_runner import AgentRunner
+
+    sources = []
+    AgentRunner.__new__(AgentRunner)._collect_sources(
+        "find_technical_capabilities",
+        {"success": True, "result": [
+            {"id": 3, "name": "Identity & Access Management"},
+            {"id": 4, "name": "API Gateway"},
+        ]},
+        sources,
+    )
+    assert len(sources) == 2, "technical capability rows produced no citations"
+    assert {s["type"] for s in sources} == {"technical_capability"}
+
+
+def test_a_tool_returning_no_records_still_cites_nothing():
+    """The widening must not invent a citation where there is no record.
+
+    A source that does not correspond to a returned row is fabrication, which is
+    the failure the whole citation mechanism exists to prevent.
+    """
+    from app.modules.ai_chat.services.agent_runner import AgentRunner
+
+    runner = AgentRunner.__new__(AgentRunner)
+    for payload in (
+        {"success": False, "result": [{"id": 1, "name": "x"}]},   # tool failed
+        {"success": True, "result": {"score": 62}},               # no id/name
+        {"success": True, "result": [{"id": None, "name": "x"}]}, # no real id
+        {"success": True, "result": "a narrative string"},        # not records
+    ):
+        sources = []
+        runner._collect_sources("get_solution_summary", payload, sources)
+        runner._collect_sources("find_technical_capabilities", payload, sources)
+        assert sources == [], f"invented a citation from {payload}"

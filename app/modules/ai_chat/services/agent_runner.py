@@ -98,12 +98,24 @@ class AgentRunner:
     # results rather than asked of the model: a citation the model writes is a
     # claim, and claims are the thing being verified. These are ground truth -
     # the rows the database actually returned this turn.
+    #
+    # Widened by reading each of the 37 tools' return shapes, not by matching
+    # names. Only tools whose result carries records with a real id and name
+    # belong here; the rest return scores, narratives or write receipts, so
+    # mapping them would be inert at best and, if the entity type were guessed
+    # wrong, a fabricated citation - the exact failure this mechanism prevents.
+    #
+    # technical_capability has no detail route, so _source_url returns None for
+    # it and the UI shows the name unlinked. The id still travels, so the record
+    # stays findable.
     _TOOL_ENTITY = {
         "find_applications": "application",
         "find_applications_by_capability": "application",
         "query_capability_gaps": "capability",
         "search_capabilities_by_problem": "capability",
         "search_archimate_elements": "archimate_element",
+        "find_technical_capabilities": "technical_capability",
+        "get_solution_summary": "solution",
     }
     MAX_SOURCES = 25
 
@@ -159,6 +171,12 @@ class AgentRunner:
         if not entity_type or not isinstance(result, dict) or not result.get("success"):
             return
         rows = result.get("result")
+        # A single-record tool returns {"result": {...}} rather than a list.
+        # get_solution_summary is exactly that, so requiring a list meant an
+        # answer built on a real solution cited nothing and read as ungrounded —
+        # while _source_url had carried an unreachable `solution` branch all along.
+        if isinstance(rows, dict):
+            rows = [rows]
         if not isinstance(rows, list):
             return
 
