@@ -153,7 +153,13 @@
     
     {# ENT-101: Global Search (Ctrl+K) — handled by admin_header.html unified command palette #}
 
-    {# PLT-040: First-login onboarding modal — shows once when onboarding_completed_at is NULL #}
+    {# PLT-040: First-login onboarding modal — shows once when onboarding_completed_at is NULL.
+       Completing it POSTs enterprise_role, so the picker below MUST offer every role the
+       product assigns and MUST preselect the user's current one: a role missing from the
+       list leaves its holder no correct answer, and submitting then overwrites the real
+       value and re-scopes their sidebar. business_architect was assignable but absent.
+       (Gating on enterprise_role being empty does not work — the column is nullable=False
+       with a platform_admin default, so it is never empty.) #}
     {% if current_user.is_authenticated and not current_user.onboarding_completed_at %}
     <div x-data="{
             showOnboarding: true,
@@ -169,6 +175,11 @@
                     {icon: 'package', title: 'Application Portfolio', desc: 'View and manage all applications in the estate', href: '/applications/'},
                     {icon: 'map', title: 'Capability Map', desc: 'Explore business capability landscape', href: '/capability-map/'},
                     {icon: 'table', title: 'ArchiMate Elements', desc: 'Browse and manage architecture elements', href: '/architecture/dashboard'},
+                ],
+                business_architect: [
+                    {icon: 'map', title: 'Capability Map', desc: 'Explore the business capability landscape', href: '/capability-map/'},
+                    {icon: 'git-branch', title: 'Value Streams', desc: 'Map end-to-end value delivery and its stages', href: '/value-streams/'},
+                    {icon: 'package', title: 'Application Portfolio', desc: 'See which applications support each capability', href: '/applications/'},
                 ],
                 arb_member: [
                     {icon: 'shield-check', title: 'ARB Dashboard', desc: 'Review pending architecture decisions', href: '/arb/dashboard'},
@@ -204,6 +215,7 @@
             primaryCTA: {
                 solution_architect: {label: 'Start Architecture Journey', href: '/architecture-journey/'},
                 enterprise_architect: {label: 'View Application Portfolio', href: '/applications/'},
+                business_architect: {label: 'Open the Capability Map', href: '/capability-map/'},
                 arb_member: {label: 'Go to ARB Dashboard', href: '/arb/dashboard'},
                 portfolio_manager: {label: 'Open Rationalization', href: '/dashboard/rationalization'},
                 platform_admin: {label: 'Manage Organizations', href: '/admin/organizations'},
@@ -214,6 +226,7 @@
             roleLabels: {
                 solution_architect: 'Solution Architect',
                 enterprise_architect: 'Enterprise Architect',
+                business_architect: 'Business Architect',
                 arb_member: 'ARB Member',
                 portfolio_manager: 'Portfolio Manager',
                 cto: 'CTO / CIO',
