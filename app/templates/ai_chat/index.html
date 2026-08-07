@@ -817,7 +817,7 @@ x-cloak>
 
             <!-- Floating Document Upload Panel - Positioned outside input area -->
             <div id="document-upload-panel" class="hidden fixed bottom-24 right-6 w-[420px] max-h-[600px] overflow-y-auto bg-background border rounded-lg shadow-xl z-50 p-4">
-                {% from 'ai_chat/document_upload.html' import ai_chat_document_upload %}
+                {% from 'ai_chat/document_upload.html' import ai_chat_document_upload with context %}
                 {{ ai_chat_document_upload() }}
             </div>
 
