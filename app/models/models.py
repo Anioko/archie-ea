@@ -2006,7 +2006,8 @@ from .application_layer import (  # noqa: E402,F401  # dead-code-ok
 # DataObject is re-exported from application_layer.py (tablename: application_data_objects).
 # DataFlow and DataStore are new models.
 
-class DataStore(db.Model):
+# ADR-0003: tenant-scoped — organization_id backfilled/hardened by flask backfill-layer-tenancy
+class DataStore(TenantMixin, db.Model):
     """ArchiMate Data Layer — Data Store element representing persistent data storage."""
     __tablename__ = "data_stores"
     __table_args__ = {"extend_existing": True}

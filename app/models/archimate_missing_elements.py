@@ -25,6 +25,7 @@ from sqlalchemy import (
 )
 
 from .. import db
+from app.models.mixins import TenantMixin
 
 # Stakeholder is defined in app.models.motivation — re-export for backward compatibility
 from app.models.motivation import Stakeholder  # noqa: F401
@@ -34,7 +35,8 @@ from app.models.motivation import Stakeholder  # noqa: F401
 # ============================================================================
 
 
-class MissingBusinessCollaboration(db.Model):
+# ADR-0003: tenant-scoped — organization_id backfilled/hardened by flask backfill-layer-tenancy
+class MissingBusinessCollaboration(TenantMixin, db.Model):
     """
     ArchiMate 3.2 Business Collaboration element (Business Layer).
 
@@ -80,7 +82,8 @@ class MissingBusinessCollaboration(db.Model):
         return f"<BusinessCollaboration {self.name}>"
 
 
-class MissingBusinessInterface(db.Model):
+# ADR-0003: tenant-scoped — organization_id backfilled/hardened by flask backfill-layer-tenancy
+class MissingBusinessInterface(TenantMixin, db.Model):
     """
     ArchiMate 3.2 Business Interface element (Business Layer).
 
@@ -131,7 +134,8 @@ class MissingBusinessInterface(db.Model):
         return f"<BusinessInterface {self.name} ({self.interface_type})>"
 
 
-class MissingBusinessInteraction(db.Model):
+# ADR-0003: tenant-scoped — organization_id backfilled/hardened by flask backfill-layer-tenancy
+class MissingBusinessInteraction(TenantMixin, db.Model):
     """
     ArchiMate 3.2 Business Interaction element (Business Layer).
 
@@ -182,7 +186,8 @@ class MissingBusinessInteraction(db.Model):
         return f"<BusinessInteraction {self.name} ({self.interaction_type})>"
 
 
-class Product(db.Model):
+# ADR-0003: tenant-scoped — organization_id backfilled/hardened by flask backfill-layer-tenancy
+class Product(TenantMixin, db.Model):
     """
     ArchiMate 3.2 Product element (Business Layer).
 

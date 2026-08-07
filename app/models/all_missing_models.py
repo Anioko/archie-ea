@@ -36,11 +36,13 @@ from sqlalchemy import (
 )
 
 from .. import db
+from .mixins import TenantMixin
 
 # Use db.relationship instead of importing relationship
 
 
-class ConceptualDataModel(db.Model):
+class ConceptualDataModel(TenantMixin, db.Model):
+    # ADR-0003: tenant-scoped — organization_id backfilled/hardened by flask backfill-layer-tenancy
     """
     ArchiMate-inspired Conceptual Data Model.
 
@@ -95,7 +97,8 @@ class ConceptualDataModel(db.Model):
         return f"<ConceptualDataModel {self.name} ({self.business_domain})>"
 
 
-class LogicalDataModel(db.Model):
+class LogicalDataModel(TenantMixin, db.Model):
+    # ADR-0003: tenant-scoped — organization_id backfilled/hardened by flask backfill-layer-tenancy
     """
     ArchiMate-inspired Logical Data Model.
 
@@ -151,7 +154,8 @@ class LogicalDataModel(db.Model):
         return f"<LogicalDataModel {self.name} ({self.normalization_level})>"
 
 
-class PhysicalDataModel(db.Model):
+class PhysicalDataModel(TenantMixin, db.Model):
+    # ADR-0003: tenant-scoped — organization_id backfilled/hardened by flask backfill-layer-tenancy
     """
     ArchiMate-inspired Physical Data Model.
 
@@ -227,7 +231,8 @@ class PhysicalDataModel(db.Model):
         return f"<PhysicalDataModel {self.name} ({self.database_type})>"
 
 
-class DataLineage(db.Model):
+class DataLineage(TenantMixin, db.Model):
+    # ADR-0003: tenant-scoped — organization_id backfilled/hardened by flask backfill-layer-tenancy
     """
     Data Lineage tracking model.
 
@@ -305,7 +310,8 @@ class DataLineage(db.Model):
         return f"<DataLineage {self.name} ({self.source_system} → {self.target_system})>"
 
 
-class DataTransformation(db.Model):
+class DataTransformation(TenantMixin, db.Model):
+    # ADR-0003: tenant-scoped — organization_id backfilled/hardened by flask backfill-layer-tenancy
     """
     Data Transformation model for ETL/ELT processes.
 

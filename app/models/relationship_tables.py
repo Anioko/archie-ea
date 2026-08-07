@@ -21,6 +21,7 @@ Junction Tables:
 from datetime import datetime
 
 from .. import db
+from .mixins import TenantMixin
 
 # ============================================================================
 # Vendor Product Association Tables (Option B+)
@@ -425,7 +426,8 @@ class ProcessRoleRaci(db.Model):
 # ============================================================================
 
 
-class ProcessDataCrud(db.Model):
+class ProcessDataCrud(TenantMixin, db.Model):
+    # ADR-0003: tenant-scoped — organization_id backfilled/hardened by flask backfill-layer-tenancy
     """
     CRUD Matrix: Links BusinessProcess to BusinessObject with CRUD operations
 
@@ -690,7 +692,8 @@ class InterfaceConsumer(db.Model):
 # ============================================================================
 
 
-class DataObjectStorage(db.Model):
+class DataObjectStorage(TenantMixin, db.Model):
+    # ADR-0003: tenant-scoped — organization_id backfilled/hardened by flask backfill-layer-tenancy
     """
     Data Object Storage: BusinessObject is stored in ApplicationComponent
 

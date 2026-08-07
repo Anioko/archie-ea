@@ -17,9 +17,11 @@ from sqlalchemy import event
 from sqlalchemy.orm import relationship
 
 from app import db
+from app.models.mixins import TenantMixin
 
 
-class PhysicalEquipment(db.Model):
+# ADR-0003: tenant-scoped — organization_id backfilled/hardened by flask backfill-layer-tenancy
+class PhysicalEquipment(TenantMixin, db.Model):
     """ArchiMate 3.2 Equipment - Physical computing or network equipment"""
 
     __tablename__ = "physical_equipment"
@@ -65,7 +67,8 @@ class PhysicalEquipment(db.Model):
         return f"<PhysicalEquipment {self.name}: {self.equipment_type}>"
 
 
-class PhysicalFacility(db.Model):
+# ADR-0003: tenant-scoped — organization_id backfilled/hardened by flask backfill-layer-tenancy
+class PhysicalFacility(TenantMixin, db.Model):
     """ArchiMate 3.2 Facility - Physical location or building"""
 
     __tablename__ = "physical_facilities"
@@ -119,7 +122,8 @@ class PhysicalFacility(db.Model):
         return f"<PhysicalFacility {self.name}: {self.facility_type}>"
 
 
-class PhysicalDistributionNetwork(db.Model):
+# ADR-0003: tenant-scoped — organization_id backfilled/hardened by flask backfill-layer-tenancy
+class PhysicalDistributionNetwork(TenantMixin, db.Model):
     """ArchiMate 3.2 Distribution Network - Network of connected facilities"""
 
     __tablename__ = "physical_distribution_networks"
@@ -163,7 +167,8 @@ class PhysicalDistributionNetwork(db.Model):
         return f"<PhysicalDistributionNetwork {self.name}: {self.network_type}>"
 
 
-class PhysicalMaterial(db.Model):
+# ADR-0003: tenant-scoped — organization_id backfilled/hardened by flask backfill-layer-tenancy
+class PhysicalMaterial(TenantMixin, db.Model):
     """ArchiMate 3.2 Material - Physical materials or resources"""
 
     __tablename__ = "physical_materials"

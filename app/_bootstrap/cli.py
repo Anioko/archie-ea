@@ -78,6 +78,14 @@ def init_cli(app):
     except Exception as e:
         app.logger.warning(f"⚠️  Failed to register demo mapping seed CLI: {e}")
 
+    # ADR-0003: layer-wide tenancy backfill/harden (runs on boot after reconcile-schema)
+    try:
+        from app.commands.backfill_layer_tenancy import init_app as init_layer_tenancy
+        init_layer_tenancy(app)
+        app.logger.info("✅ Layer tenancy backfill CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"⚠️  Failed to register layer tenancy backfill CLI: {e}")
+
     # BIZBOK Strategy & Motivation backfill CLI command
     try:
         from scripts.backfill_strategy_motivation_elements import init_app as init_strat_backfill

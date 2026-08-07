@@ -31,8 +31,19 @@ def install_tenant_filter(app):
         if not hasattr(g, "current_org_id") or g.current_org_id is None:
             return
 
-        # Only filter SELECTs — writes are handled by before_flush
-        if not orm_execute_state.is_select:
+        # SELECT plus ORM-enabled bulk UPDATE/DELETE. Inserts are handled by
+        # before_flush below. This closes ADR-0003 gap 1: the early return for
+        # non-SELECT statements meant Model.query.filter(...).update()/.delete()
+        # ran with NO tenant predicate even inside an authenticated request, so
+        # safety at all 35 bulk-write call sites rested on a scoped read having
+        # happened first — an invariant held by convention, not mechanism.
+        # with_loader_criteria is honoured by ORM-enabled UPDATE and DELETE
+        # (SQLAlchemy 1.4+), so the same option covers all three.
+        if not (
+            orm_execute_state.is_select
+            or orm_execute_state.is_update
+            or orm_execute_state.is_delete
+        ):
             return
 
         # Add WHERE organization_id = X to all TenantMixin models

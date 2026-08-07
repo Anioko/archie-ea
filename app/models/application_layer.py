@@ -933,7 +933,8 @@ class ApplicationInteraction(db.Model):
 # ============================================================================
 
 
-class DataObject(db.Model):
+class DataObject(TenantMixin, db.Model):
+    # ADR-0003: tenant-scoped — organization_id backfilled/hardened by flask backfill-layer-tenancy
     """
     ArchiMate 3.2 Data Object - Data structured for automated processing
 
