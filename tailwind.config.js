@@ -40,6 +40,7 @@ module.exports = {
         warning: {
           DEFAULT: "hsl(var(--warning) / <alpha-value>)",
           foreground: "hsl(var(--warning-foreground) / <alpha-value>)",
+          emphasis: "hsl(var(--warning-emphasis) / <alpha-value>)",
         },
         info: {
           DEFAULT: "hsl(var(--info) / <alpha-value>)",

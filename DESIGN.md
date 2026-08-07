@@ -80,15 +80,27 @@ Green and yellow have no semantic tokens — use emerald and amber scales direct
 **Coloured text on its own tint** — use `-emphasis`, not the base token:
 
 ```
-❌ bg-destructive/10 text-destructive   → ✅ bg-destructive/10 text-destructive-emphasis
-❌ bg-info/10 text-info                 → ✅ bg-info/10 text-info-emphasis
+❌ bg-destructive/10 text-destructive           → ✅ bg-destructive/10 text-destructive-emphasis
+❌ bg-info/10 text-info                         → ✅ bg-info/10 text-info-emphasis
+❌ bg-warning/10 text-warning-foreground        → ✅ bg-warning/10 text-warning-emphasis
 ```
 
 `--destructive` scores 3.30 against `bg-destructive/10` and `--info` scores 4.50
 against `bg-info/10`, both under the WCAG AA 4.5 required for normal text. shadcn's
 `-foreground` variants do not cover this case: they are for text on a *solid* fill.
-`--destructive-emphasis` and `--info-emphasis` are darker in light mode (5.68 and
-6.49 on the same tints) and lighter in dark mode, where the tint is dark.
+The `-emphasis` variants are darker in light mode and lighter in dark mode, where
+the tint is dark.
+
+**Warning is the trap.** `--warning-foreground` is pure black — `0 0% 0%` — in
+*both* themes. On `bg-warning/10` that is 19.43 in light mode and **1.19 in dark
+mode**, where the tint composites to near-black: invisible, not merely low-contrast.
+Use `--warning-emphasis` (5.62 light / 11.81 dark) on any warning tint.
+
+All three emphasis tokens are now declared in **both** `:root` and `.dark`.
+`--info-emphasis` was previously light-mode only, so `text-info-emphasis` resolved
+to an invalid declaration in dark mode and silently fell back to the inherited
+colour. When adding an `-emphasis` token, declare both halves or it will fail in
+exactly one theme — the one you are less likely to be looking at.
 
 Note on blue: `bg-blue-500` maps to `bg-info`, not `bg-primary`, despite the table
 above. In light mode the two are the same colour, but `--primary` becomes near-white

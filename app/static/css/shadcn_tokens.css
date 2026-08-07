@@ -26,6 +26,11 @@
     --success-foreground: 0 0% 100%;
     --warning: 37.7 92.1% 50.2%;
     --warning-foreground: 0 0% 0%;
+    /* 5.62 on bg-warning/10. --warning-foreground is pure black in BOTH themes,
+       which is 19.43 here but 1.19 in dark mode, where bg-warning/10 composites
+       to near-black — the AI degraded-mode and provider-health banners were
+       unreadable for dark-theme users. */
+    --warning-emphasis: 32 95% 30%;
     --info: 221.2 83.2% 53.3%;
     --info-foreground: 210 40% 98%;
     --info-emphasis: 221 83% 42%;
@@ -66,8 +71,14 @@
     --success-foreground: 0 0% 0%;
     --warning: 45.4 93.4% 47.5%;
     --warning-foreground: 0 0% 0%;
+    --warning-emphasis: 45 93% 65%;   /* 11.81 on bg-warning/10 */
     --info: 217.2 91.2% 59.8%;
     --info-foreground: 222.2 47.4% 11.2%;
+    /* --info-emphasis was declared in :root only, so text-info-emphasis
+       resolved to an invalid declaration in dark mode and fell back to the
+       inherited colour — affecting admin_overview.html and
+       _capability_heatmap.html. 9.88 on bg-info/10. */
+    --info-emphasis: 213 94% 78%;
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
     --ring: 212.7 26.8% 83.9%;

@@ -114,7 +114,7 @@
 
 {% block content %}
 {% if chat_bootstrap_error %}
-<div class="mx-4 mt-4 rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning-foreground" role="alert">
+<div class="mx-4 mt-4 rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning-emphasis" role="alert">
     <div class="flex items-start gap-2">
         <i data-lucide="alert-triangle" class="mt-0.5 h-4 w-4 shrink-0 text-amber-600" aria-hidden="true"></i>
         <span>{{ chat_bootstrap_error }}</span>
@@ -140,7 +140,7 @@
 x-init="checkHealth(); setInterval(() => checkHealth(), 60000)"
 x-cloak>
     <div x-show="llmStatus !== 'healthy'"
-         class="flex items-center gap-2 bg-warning/10 border-b border-warning/30 px-4 py-2 text-sm text-warning-foreground"
+         class="flex items-center gap-2 bg-warning/10 border-b border-warning/30 px-4 py-2 text-sm text-warning-emphasis"
          role="alert">
         <i data-lucide="alert-triangle" class="h-4 w-4 shrink-0 text-amber-600" aria-hidden="true"></i><!-- token-migration-ok -->
         <span x-text="llmProvider ? ('AI provider degraded: ' + llmProvider) : 'AI provider unavailable — responses may be delayed or unavailable'"></span>
