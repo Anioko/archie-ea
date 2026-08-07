@@ -578,6 +578,72 @@ class DataEntity(db.Model):
         return element
 
 
+# Auto-create an ArchiMate element when a DataEntity is created, mirroring the
+# strategy_layer.py pattern (see app/models/strategy_layer.py::_link_strategy_archimate).
+#
+# ArchiMate 3.2 is the backbone, not a view — but ArchiMate 3.2 has no "DataEntity"
+# element type. A DataEntity is a data-architecture catalogue concept, so it mirrors
+# as the closest ArchiMate 3.2 fit: an Application-layer "DataObject" (this is what
+# ``ensure_archimate_element`` above already builds, but nothing on the create path
+# called it — ``create_data_entity`` in data_architecture_routes.py inserted the row
+# directly, so entities created via the UI never got an element. The AI assistant,
+# which reads the ArchiMate layer, would report none of them existed even though the
+# catalogue page listed them).
+#
+# This runs as a mapper ``after_insert`` event, i.e. INSIDE the unit-of-work flush.
+# Writing through ``db.session`` there (session.add + flush) would be a reentrant
+# flush — "Session is already flushing" — so this writes through the event's own
+# ``connection`` (Core, not the session) and reflects the new FK with
+# ``set_committed_value`` so no further flush is provoked. A Core insert does NOT
+# re-fire ORM mapper events, so there is no cascade.
+#
+# DataEntity has no organization_id column (unlike ValueStream), so it is left out
+# of the insert entirely; ArchiMateElement.organization_id's own column default
+# (_default_org_id in app/models/mixins/core.py) resolves it from
+# g.current_org_id, which is present because routes run inside a request context.
+def _link_data_entity_archimate(connection, target, organization_id=None):
+    """Create the ArchiMateElement and point ``target.archimate_element_id`` at it.
+
+    ``organization_id`` is an explicit override for callers running outside a
+    request context (the backfill command) — see the module docstring above
+    the ``after_insert`` listener for why DataEntity itself carries no
+    organization_id to read one from. Left as ``None`` (the mapper-event call
+    site), ArchiMateElement.organization_id's own column default resolves the
+    tenant from ``g.current_org_id``.
+    """
+    from sqlalchemy.orm.attributes import set_committed_value
+
+    from .archimate_core import ArchiMateElement
+
+    archimate_table = ArchiMateElement.__table__
+    values = {
+        "name": target.name,
+        "type": "DataObject",
+        "layer": "application",
+        "description": target.description or f"Data object for entity: {target.name}",
+    }
+    if organization_id is not None:
+        values["organization_id"] = organization_id
+
+    result = connection.execute(archimate_table.insert().values(**values))
+    new_id = result.inserted_primary_key[0]
+
+    connection.execute(
+        target.__table__.update()
+        .where(target.__table__.c.id == target.id)
+        .values(archimate_element_id=new_id)
+    )
+    # keep the in-memory object consistent without marking it dirty (no re-flush)
+    set_committed_value(target, "archimate_element_id", new_id)
+
+
+@event.listens_for(DataEntity, "after_insert")
+def create_archimate_data_entity(mapper, connection, target):
+    """Automatically create/link an ArchiMateElement (type DataObject) for a new DataEntity."""
+    if not target.archimate_element_id:
+        _link_data_entity_archimate(connection, target)
+
+
 def _ensure_archimate_relationship(
     session,
     rel_type: str,
