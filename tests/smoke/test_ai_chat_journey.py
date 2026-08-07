@@ -77,8 +77,31 @@ def _login(page, base, email):
     assert "/account/login" not in page.url, "could not sign in as %s" % email
 
 
+@pytest.fixture(scope="module")
+def authed_context(browser, live_server, seeded):
+    """One signed-in browser context for the whole module.
+
+    /account/login is rate-limited to 10 requests per minute. The smoke suite as
+    a whole already sits near that ceiling, so five more logins — one per test in
+    this file — pushed it over and refused a later archetype's sign-in with
+    "Rate limit exceeded". The archetype that lost varied with timing, which is
+    what made it look like a race.
+
+    Signing in once and issuing each test its own page from the same context
+    keeps the cookie and costs one login instead of five.
+    """
+    ctx = browser.new_context(viewport={"width": 1440, "height": 900})
+    ctx.set_default_timeout(PAGE_TIMEOUT)
+    ctx.set_default_navigation_timeout(PAGE_TIMEOUT)
+    login_page = ctx.new_page()
+    _login(login_page, live_server, seeded["emails"]["enterprise_architect"])
+    login_page.close()
+    yield ctx
+    ctx.close()
+
+
 @pytest.fixture
-def page(browser):
+def page(authed_context):
     """A page whose JavaScript errors are recorded from the first navigation.
 
     The listeners are attached before any goto, which is the whole point: an
@@ -90,16 +113,13 @@ def page(browser):
     `pageerror` gets uncaught exceptions — the ReferenceError a half-extracted
     module produces — which Playwright does not deliver as a console event.
     """
-    ctx = browser.new_context(viewport={"width": 1440, "height": 900})
-    ctx.set_default_timeout(PAGE_TIMEOUT)
-    ctx.set_default_navigation_timeout(PAGE_TIMEOUT)
-    pg = ctx.new_page()
+    pg = authed_context.new_page()
     pg.console_errors = []
     pg.page_errors = []
     pg.on("console", lambda m: pg.console_errors.append(m.text) if m.type == "error" else None)
     pg.on("pageerror", lambda e: pg.page_errors.append(str(e)))
     yield pg
-    ctx.close()
+    pg.close()
 
 
 # Errors whose stack names another document. Clearing the lists after login is
@@ -124,12 +144,10 @@ def _js_errors(page):
 
 
 def _open_chat(page, live_server, seeded):
-    """Sign in as the enterprise architect and land on a settled /ai-chat."""
-    _login(page, live_server, seeded["emails"]["enterprise_architect"])
-    # Signing in redirects through /dashboard/overview, whose own console errors
-    # would otherwise be charged to /ai-chat — the listener is attached once, at
-    # page creation, and never resets itself. Scope the assertion to the page
-    # under test so a failure here names this page and not the login journey.
+    """Land on a settled /ai-chat. The context is already signed in."""
+    # Errors carried over from any earlier navigation in this context belong to
+    # that page, not this one. The listeners are attached at page creation and
+    # never reset themselves, so scope the assertion here.
     page.console_errors.clear()
     page.page_errors.clear()
     response = page.goto(live_server + "/ai-chat", wait_until="domcontentloaded",
