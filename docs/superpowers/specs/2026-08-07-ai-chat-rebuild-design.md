@@ -61,7 +61,7 @@ cheapest fix.
 
 | # | Defect | Evidence |
 |---|---|---|
-| **D13** | **Attached diagrams are silently discarded.** User attaches an architecture diagram, sees a thumbnail, and gets a confident answer generated as if no image existed | `chat_core.py:474-477` puts `image_data` into `context_data`; the turn runs through `AgentRunner`, which has **zero** occurrences of `image_data`/`vision`. The base64 never reaches a model |
+| **D13** | **Attached diagrams are silently discarded.** User attaches an architecture diagram, sees a thumbnail, and gets a confident answer generated as if no image existed | `chat_core.py:474-477` puts `image_data` into `context_data`; the turn runs through `AgentRunner`, which has **zero** occurrences of `image_data`/`vision`. The base64 never reaches a model. **Decided: remove the UI — §17** |
 | **D14** | **"Open in Composer" opens an empty canvas** | chat writes `sessionStorage['archimate_prefill']` (`:1709`); `archimate/composer.js:2407,2495` reads `composer_prefill`. Nothing reads the key the chat writes |
 | **D15** | **Export conversation and the rate-limit badge are dead** | Both defined only in the orphaned `ai_chat.js` (`:2519`, `:246`). The Export button throws an Alpine expression error on every click |
 | **D16** | **The entity modal needs two clicks to close** | Static `#entity-action-modal` (`:825`) and a dynamically built one (`:2877`) share an id. Close paths call `getElementById(...).remove()`, which returns the *first* — the invisible decoy — leaving the real overlay covering the viewport with no Escape and no focus trap. Also `duplicate-id-aria` (critical) |
@@ -562,8 +562,9 @@ sync with the hardcoded `<option>` values at `:173-179` and `:203-218`.
 to `/ai-chat/message` when streaming fails** (`:2418-2419`). Lose that and one bad proxy means
 no answers at all. The `{action:'redirect'}` branch (`:2535`) has no server emitter; delete it.
 
-**Payload is 10 fields**, not 4: `message, domain, template_name, element_id, context_type,
-persona, model, thread_id, image_data, image_media_type`. `element_id`/`context_type` are how
+**Payload is 10 fields today**, not the 4 v1 named: `message, domain, template_name,
+element_id, context_type, persona, model, thread_id, image_data, image_media_type` —
+**becoming 8**, since `image_data`/`image_media_type` are removed with the vision UI (§17). `element_id`/`context_type` are how
 §12.2's deep-link context reaches the model.
 
 ### 12.5 Do not port — already dead
@@ -592,11 +593,12 @@ trail and receipts need **no** backend change, because `tool_start`/`tool_result
    `_source_url` already has unreachable branches for `vendor` and `solution`
    (`agent_runner.py:127-130`), so the shape is anticipated.
 3. **Add the `mutates` flag** to `tools/registry.py` (§8).
-4. **Fix `AIChatFeedback` tenancy** (B4) — see §17.
-5. **Either implement vision on the `AgentRunner` path or remove the attach UI** (D13/B3).
-   Shipping a control that silently discards its input is the worst option and is the status
-   quo.
-6. **Fix `PERSONA_CONFIGS["data_architect"].default_domain`** (B8).
+4. **Fix `AIChatFeedback` tenancy** (B4) — `organization_id` + `TenantMixin` + org predicate
+   on the admin aggregation. **Decided; gates the thumbs.** See §17.
+5. **Fix `PERSONA_CONFIGS["data_architect"].default_domain`** (B8).
+
+**Not a backend change:** vision (D13/B3) is resolved by *removing* the client UI — decided,
+see §17. No `AgentRunner` work.
 
 Everything else in §7 and §8 is client work against data already on the wire.
 
@@ -692,15 +694,44 @@ into a grounded conversation; assistant picker and a few starters below.
 
 ## 17. Blockers and open decisions
 
-**B4 — `AIChatFeedback` tenancy is a blocker, not a footnote.** v1 deferred it. The model has
-no `TenantMixin` and no `organization_id`, so it sits outside ORM tenant isolation while
-storing AI answers — portfolio content — and the admin dashboard aggregates across
-organisations. This rebuild makes the table non-empty for the first time. **Either the column
-and the mixin land before the thumbs are wired, or the thumbs are not wired.** Landing a
-known cross-tenant read three commits after `fix(ai-chat): cross-tenant leak…` is not
-defensible.
+Both blockers were put to the product owner on 2026-08-07 and **decided**. They are
+requirements now, not open questions.
 
-**D13 — vision.** Implement on the `AgentRunner` path or remove the UI. Not both, not neither.
+**B4 — `AIChatFeedback` tenancy. DECIDED: fix first, then wire the thumbs.**
+The model has no `TenantMixin` and no `organization_id`, so it sits outside ORM tenant
+isolation while storing AI answers — portfolio content — and the admin dashboard aggregates
+across organisations (`chat_admin_routes.py:260-265`). This rebuild makes the table non-empty
+for the first time, converting a dormant defect into a live one.
+
+Ordered work, and the thumbs do not ship before it completes:
+
+1. `app/models/ai_chat_feedback.py` — add `organization_id`, **nullable** (`reconcile-schema`
+   only adds nullable columns; a non-nullable one breaks every existing database — see
+   `CLAUDE.md` § Schema), and `TenantMixin`. The insert at `chat_core.py:647` already writes
+   the column, so this closes model/schema drift at the same time.
+2. `chat_admin_routes.py` — add the org predicate to the aggregation. Note the existing
+   query is raw-ish SQLAlchemy over a tenant table, so it is also in scope for the
+   `raw_sql_tenancy` gate.
+3. A test that a feedback row written as org A is not readable as org B — following
+   `tests/test_tenant_isolation.py`, and using `db.session.remove()` between tenants, because
+   `Session.get()` is scoped only on an identity-map miss (`CLAUDE.md`).
+4. Only then: wire 👍/👎 (§10).
+
+**D13 — vision. DECIDED: remove the attach UI.**
+Implementing vision is real backend scope with a model-routing decision attached, and it does
+not belong in a page rebuild. Shipping a control that silently discards its input is the worst
+of the three options and is the status quo, so the UI goes:
+
+- Remove `#image-attach-btn` (`:787-794`), `#image-upload-input` (`:766`),
+  `#image-preview-bar` / `-thumb` / `-name` / `#image-remove-btn` (`:756-764`), and the
+  FileReader wiring (`:3307-3340`).
+- Drop `image_data` and `image_media_type` from the request payload (`:2412-2413`), taking
+  §12.4's field count from 10 to **8**.
+- Leave `chat_core.py:474-477` in place — it is harmless and marks where vision would
+  reattach — with a comment recording that the client no longer sends these and why.
+
+This is a deliberate capability removal, not an oversight. Record it in the commit message so
+it is not "restored" later by someone reading only the template.
 
 **Deferred deliberately:** the artifact object (§8.1) · flipping `REQUIRE_AI_APPROVAL` ·
 `multi_domain_chat_service.py`'s ~8,300 lines of workflows reachable only through the legacy
