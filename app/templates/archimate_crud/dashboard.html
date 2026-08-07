@@ -887,6 +887,10 @@ document.addEventListener('DOMContentLoaded', function() {
 <script>
   window.__APP_CONFIG__ = window.__APP_CONFIG__ || {};
   window.__APP_CONFIG__.layerConfig = {{ layer_config | tojson | safe }};
+  {# Server-validated pre-selection from the By-Layer navigation. Null when the
+     page was reached without a filter, or with one the registry rejected. #}
+  window.__APP_CONFIG__.initialLayer = {{ (initial_layer if initial_layer is defined else None) | tojson | safe }};
+  window.__APP_CONFIG__.initialElementType = {{ (initial_element_type if initial_element_type is defined else None) | tojson | safe }};
 </script>
 <script src="{{ url_for('static', filename='js/archimate_crud/dashboard.js') }}"></script>
 {% endblock %}
